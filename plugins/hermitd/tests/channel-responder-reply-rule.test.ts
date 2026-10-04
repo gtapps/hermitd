@@ -243,7 +243,7 @@ test('procedure owners retain mandatory rules and command interfaces', () => {
       'Report the actual mode supplied in the next prompt, not the requested mode',
       '`!advisor off` clears it', 'do not invent a value list', 'The mod relays observed rejections to the requesting chat',
       "persists in Claude Code's user settings across restarts", 'Each advisor call adds spend',
-      '`!doctor` requires explicit user invocation', 'Apply the silence rule',
+      'the mod starts it as its own turn',
       'Never invoke bare `!advisor`',
       '**Do not write a finding**', 'with no open record, write nothing',
       '[HH:MM] Channel pattern:', '[origin: external]', 'Do not classify tier, tag Evidence Source',

@@ -497,7 +497,7 @@ describe('stop-pipeline', () => {
         tmux_session: 'hermit-test',
       }));
       write(hermit(dir, 'state', 'pending-harness-command.json'), JSON.stringify({
-        command: '/doctor', arg: null, by: 'operator', requested_at: new Date().toISOString(),
+        command: '/permission-mode', arg: 'auto', by: 'operator', requested_at: new Date().toISOString(),
       }));
 
       const r = await runScript('stop-pipeline.ts', {
@@ -507,7 +507,7 @@ describe('stop-pipeline', () => {
       });
 
       expect(r.exitCode).toBe(0);
-      const delivered = r.stderr.indexOf('harness-command: delivered');
+      const delivered = r.stderr.indexOf('harness-command:');
       const accounted = r.stderr.indexOf('cost-tracker');
       expect(delivered).toBeGreaterThan(-1);
       expect(accounted).toBeGreaterThan(-1); // else the ordering below passes vacuously

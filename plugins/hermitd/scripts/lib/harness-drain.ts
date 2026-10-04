@@ -1,10 +1,10 @@
-// Drain a pending channel-requested harness command into the tmux pane.
+// Drain a pending channel-requested permission-mode switch into the tmux pane.
 // Split out of stop-pipeline.ts so the guard cascade is unit-testable without
 // spawning the whole Stop hook.
 
 import { readRuntimeJson } from './runtime';
-import { capturePane, paneModeLine, sendKeys, tmuxSessionAlive } from './tmux';
-import { CHANNEL_SETTABLE_MODES, clearPendingCommand, normalizePermissionMode, readPendingCommand, renderCommand, writeSkillRelay } from './harness-command';
+import { capturePane, paneModeLine, tmuxSessionAlive } from './tmux';
+import { CHANNEL_SETTABLE_MODES, clearPendingCommand, normalizePermissionMode, readPendingCommand, renderCommand } from './harness-command';
 import type { PendingCommand } from './harness-command';
 import path from 'node:path';
 
@@ -18,7 +18,7 @@ import path from 'node:path';
  *
  * The pending marker is deliberately left in place: the cycler clears it once its first
  * keystroke lands, so a helper that dies before touching the pane leaves the request for
- * the next turn to retry, the same contract sendKeys gives the typed commands.
+ * the next turn to retry.
  */
 function deliverPermissionMode(hermitRoot: string, sessionName: string, pending: PendingCommand): void {
   const target = pending.arg ? normalizePermissionMode(pending.arg) : null;
@@ -53,7 +53,7 @@ function deliverPermissionMode(hermitRoot: string, sessionName: string, pending:
   console.error(`[stop-pipeline] harness-command: cycling ${current} → ${target} (requested by ${pending.by})`);
 }
 
-/** Deliver only doctor and permission-mode requests after the Stop hook. */
+/** Deliver a pending permission-mode request after the Stop hook. */
 export function drainHarnessCommand(hermitRoot: string): void {
   const pending = readPendingCommand(hermitRoot);
   if (!pending) return;
@@ -65,28 +65,5 @@ export function drainHarnessCommand(hermitRoot: string): void {
   const sessionName: string = runtime.tmux_session ?? '';
   if (!sessionName || !tmuxSessionAlive(sessionName)) return;
 
-  const text = renderCommand(pending);
-
-  if (pending.command === '/permission-mode') {
-    deliverPermissionMode(hermitRoot, sessionName, pending);
-    return;
-  }
-
-  if (!sendKeys(sessionName, text)) {
-    console.error(`[stop-pipeline] harness-command: tmux refused "${text}" — marker kept for retry`);
-    return;
-  }
-
-  if (pending.command === '/doctor' && pending.reply_to) {
-    writeSkillRelay(hermitRoot, {
-      command: pending.command,
-      arg: pending.arg,
-      by: pending.by,
-      reply_to: pending.reply_to,
-      delivered_at: new Date().toISOString(),
-    });
-  }
-  clearPendingCommand(hermitRoot);
-
-  console.error(`[stop-pipeline] harness-command: delivered "${text}" (requested by ${pending.by})`);
+  deliverPermissionMode(hermitRoot, sessionName, pending);
 }

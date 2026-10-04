@@ -211,3 +211,40 @@ test('pass keeps the prompt; refusal drops and a failed send requests one relay'
   expect(relays.length).toBe(2);
   expect(relays[1]).toContain('Shutting down');
 });
+
+test('doctor writes the relay before running and reports only a failed start', async ($, on) => {
+  const clock = mock.clock(on);
+  const calls: string[] = [];
+  const outcomes: any[] = [];
+  let fail = false;
+  let relayed = 'ok';
+  on('session.cwd', () => ({ value: '/work' }));
+  on('session.id', () => ({ value: 'resident' }));
+  on('process.run', ($, e) => {
+    calls.push(e.argv[3]);
+    if (e.argv[3] === 'finalize') outcomes.push(JSON.parse(e.argv[5]));
+    const reply = e.argv[3] === 'intake' ? run('/doctor', null) : { decision: e.argv[3] === 'relay' ? relayed : 'ok' };
+    return { value: { exitCode: 0, stdout: JSON.stringify(reply), stderr: '' } };
+  });
+  on('command.run', ($, e) => {
+    calls.push(e.command);
+    if (fail) throw new Error('no command named /doctor');
+    return {};
+  });
+  expect(isCommandPrompt(channel('!checkup').text)).toBe(true);
+  expect((await $.prompt.submit(channel('!doctor'))).drop).toBeDefined();
+  await clock.settle();
+  await clock.advance(120000);
+  expect(calls).toEqual(['intake', 'relay', 'doctor']);
+  fail = true;
+  await $.prompt.submit(channel('!doctor'));
+  await clock.settle();
+  expect(calls.slice(3)).toEqual(['intake', 'relay', 'doctor', 'finalize']);
+  expect(outcomes[0].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+  fail = false;
+  relayed = 'pass';
+  await $.prompt.submit(channel('!doctor'));
+  await clock.settle();
+  expect(calls.slice(7)).toEqual(['intake', 'relay', 'finalize']);
+  expect(outcomes[1].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+});

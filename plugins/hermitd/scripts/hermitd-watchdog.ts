@@ -595,8 +595,7 @@ function readTranscriptTail(transcriptId: string | null, world: World = REAL_WOR
   }
 }
 
-// sendKeys now lives in lib/tmux.ts so the harness-command drain shares one
-// implementation (and one bracketed-paste workaround) with the watchdog.
+// sendKeys lives in lib/tmux.ts, with its bracketed-paste workaround.
 
 // --- Lifecycle lock ---
 

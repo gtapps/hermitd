@@ -119,12 +119,12 @@ describe('channel-reply-reminder', () => {
 
   test('control verdicts retain reply routing without requesting a Skill call', withDir(async (dir) => {
     write(hermit(dir, 'state', 'runtime.json'), JSON.stringify({ runtime_mode: 'headless', tmux_session: 'hermit-test' }));
-    for (const command of ['!permission-mode auto', '!doctor', '!pause', '!snooze 30m']) {
+    for (const command of ['!permission-mode auto', '!pause', '!snooze 30m']) {
       const result = await run(`<channel source="discord" chat_id="1" user="U1">${command}</channel>`, dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('mcp__plugin_discord_discord__reply');
       expect(result.stdout).not.toContain('invoke `');
-      if (command === '!permission-mode auto' || command === '!doctor') {
+      if (command === '!permission-mode auto') {
         expect(result.stdout).toContain('End the turn with no tool call and no reply');
       } else expect(result.stdout).toContain('Only the channel reply tool works');
     }

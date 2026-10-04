@@ -1,4 +1,4 @@
-// Prompt admission for native mod commands and the remaining Stop-hook commands.
+// Prompt admission for native mod commands and the remaining Stop-hook command.
 
 import { safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
@@ -36,7 +36,7 @@ export function run(ctx: StageContext): StageResult | void {
     } };
   }
 
-  if (parsed.command !== '/permission-mode' && parsed.command !== '/doctor') return;
+  if (parsed.command !== '/permission-mode') return;
 
   // Interactive sessions store tmux_session: null (hermitd-start.ts), so there is no pane
   // to deliver into. Refuse HERE rather than recording a marker the drain could never
@@ -59,12 +59,10 @@ export function run(ctx: StageContext): StageResult | void {
   }
 
   const by = safeForLLM(senderLabel(env).slice(0, 64));
-  const isRelayedSkillCommand = parsed.command === '/doctor';
   const ok = writePendingCommand(dir, {
     command: parsed.command,
     arg: parsed.arg,
     by,
-    ...(isRelayedSkillCommand ? { reply_to: { source: env.source, chat_id: env.chatId } } : {}),
     requested_at: new Date().toISOString(),
   });
   if (!ok) return;
@@ -72,8 +70,6 @@ export function run(ctx: StageContext): StageResult | void {
   ctx.suppressResponderInvoke = true;
   const rendered = renderCommand(parsed);
   return {
-    context: isRelayedSkillCommand
-      ? `[harness-command] "${rendered}" requested by ${by} — will run when the current turn ends; its result comes back to this chat. End the turn with no tool call and no reply.\n`
-      : `[harness-command] "${rendered}" requested by ${by} — will be applied to this session when the current turn ends. End the turn with no tool call and no reply.\n`,
+    context: `[harness-command] "${rendered}" requested by ${by} — will be applied to this session when the current turn ends. End the turn with no tool call and no reply.\n`,
   };
 }

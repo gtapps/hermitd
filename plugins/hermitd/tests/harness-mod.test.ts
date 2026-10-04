@@ -144,7 +144,7 @@ for (const command of ['/model', '/effort']) {
   });
 }
 
-for (const body of ['!compact', '!advisor opus', '!effort low']) {
+for (const body of ['!compact', '!advisor opus', '!effort low', '!doctor', '!checkup']) {
   test(`${body} uses the native route`, async () => {
     const { wd } = fixture();
     expect((await call(wd, 'intake', envelope(body))).decision).toBe('run');
@@ -178,4 +178,18 @@ test('claim ignores an expired deferred switch', async () => {
     commands: [{ command: '/model', arg: 'sonnet' }], by: 'terminal', requested_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
   }));
   expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
+});
+
+test('doctor intake runs on a non-technical install and relay writes the reply target', async () => {
+  const { wd, dir } = fixture();
+  const configPath = path.join(dir, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ ...JSON.parse(fs.readFileSync(configPath, 'utf8')), operator_profile: 'non-technical' }));
+  const request = await call(wd, 'intake', envelope('!doctor'));
+  expect(request).toMatchObject({ decision: 'run', commands: [{ command: '/doctor', arg: null }], reply_to: { source: 'telegram', chat_id: '12345' } });
+  expect(fs.existsSync(path.join(dir, 'state/pending-skill-relay.json'))).toBe(false);
+  expect(await call(wd, 'relay', JSON.stringify(request))).toEqual({ decision: 'ok' });
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/pending-skill-relay.json'), 'utf8')))
+    .toMatchObject({ command: '/doctor', arg: null, reply_to: { source: 'telegram', chat_id: '12345' } });
+  await call(wd, 'finalize', JSON.stringify({ ...request, outcomes: [{ command: '/doctor', arg: null, status: 'failed', text: 'no command' }] }));
+  expect(fs.existsSync(path.join(dir, 'state/pending-skill-relay.json'))).toBe(false);
 });

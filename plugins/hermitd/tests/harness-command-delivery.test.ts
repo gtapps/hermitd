@@ -222,16 +222,6 @@ for (const command of ['/model', '/effort', '/compact', '/clear', '/advisor']) {
   }));
 }
 
-test('doctor delivers from a drifted hook cwd', withDir(async dir => {
-  seedPendingSwitch(dir, '/doctor', null);
-  const sub = path.join(dir, 'nested/deeper');
-  fs.mkdirSync(sub, { recursive: true });
-  const { bin, log } = installFakeTmux(dir, 'Claude ready');
-  expect((await drain(sub, bin)).exitCode).toBe(0);
-  expect(fs.readFileSync(log, 'utf8')).toContain('-l -- /doctor');
-  expect(fs.existsSync(pendingMarker(dir))).toBe(false);
-}));
-
 describe('permission-mode status-bar parsing', () => {
   test('reads every mode off its live status bar', () => {
     for (const [mode, bar] of Object.entries(MODE_STATUS_BARS)) {

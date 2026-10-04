@@ -128,7 +128,6 @@ export type PendingCommand = {
   command: string;
   arg: string | null;
   by: string;
-  reply_to?: { source: string; chat_id: string };
   requested_at: string;
 };
 
@@ -178,7 +177,7 @@ export function readPendingCommand(hermitRoot: string): PendingCommand | null {
   try {
     const raw = fs.readFileSync(markerPath(hermitRoot), 'utf-8');
     const parsed = JSON.parse(raw) as PendingCommand;
-    if (!parsed || !['/doctor', '/permission-mode'].includes(parsed.command)) return null;
+    if (!parsed || parsed.command !== '/permission-mode') return null;
 
     const ts = Date.parse(parsed.requested_at);
     if (Number.isNaN(ts)) return null;

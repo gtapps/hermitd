@@ -28,7 +28,6 @@ const LIVE_RUNTIME: Runtime = {
 const hermitRoot = (dir: string) => path.join(dir, '.hermit');
 const stateDir = (dir: string) => path.join(hermitRoot(dir), 'state');
 const markerPath = (dir: string) => path.join(stateDir(dir), 'pending-harness-command.json');
-const relayPath = (dir: string) => path.join(stateDir(dir), 'pending-skill-relay.json');
 
 function seed(dir: string, opts: { runtime?: Runtime; requestedAt?: string } = {}): void {
   fs.writeFileSync(
@@ -36,8 +35,8 @@ function seed(dir: string, opts: { runtime?: Runtime; requestedAt?: string } = {
     JSON.stringify(opts.runtime ?? LIVE_RUNTIME),
   );
   writePendingCommand(hermitRoot(dir), {
-    command: '/doctor',
-    arg: null,
+    command: '/permission-mode',
+    arg: 'auto',
     by: 'operator',
     requested_at: opts.requestedAt ?? new Date().toISOString(),
   });
@@ -110,21 +109,5 @@ describe('drainHarnessCommand guards', () => {
     drainHarnessCommand(hermitRoot(dir));
 
     expect(markerSurvives(dir)).toBe(true);
-  }));
-
-  test('an absent tmux session leaves no skill relay file', withDir(async (dir) => {
-    fs.writeFileSync(path.join(stateDir(dir), 'runtime.json'), JSON.stringify(LIVE_RUNTIME));
-    writePendingCommand(hermitRoot(dir), {
-      command: '/doctor',
-      arg: null,
-      by: 'operator',
-      reply_to: { source: 'telegram', chat_id: '12345' },
-      requested_at: new Date().toISOString(),
-    });
-
-    drainHarnessCommand(hermitRoot(dir));
-
-    expect(markerSurvives(dir)).toBe(true);
-    expect(fs.existsSync(relayPath(dir))).toBe(false);
   }));
 });

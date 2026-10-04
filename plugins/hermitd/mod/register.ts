@@ -20,7 +20,7 @@ const DEADLINE_MS = 120_000;
 // authorization and residency; ordinary prompts never start a process.
 export function isCommandPrompt(text: string): boolean {
   const body = /^\s*<channel\b[^>]*>([\s\S]*)<\/channel>\s*$/.exec(text)?.[1] ?? '';
-  return /^(?:(?:<@!?\d+>|@\S+)\s*)?!(?:model|effort|compact|clear|advisor)(?:@[^\s]+)?(?:\s|$)/i.test(body.trim());
+  return /^(?:(?:<@!?\d+>|@\S+)\s*)?!(?:model|effort|compact|clear|advisor|doctor|checkup)(?:@[^\s]+)?(?:\s|$)/i.test(body.trim());
 }
 
 export function classifyStdout(command: string, text: string): 'ok' | 'failed' {
@@ -97,6 +97,7 @@ async function dispatch($: EngineInterface) {
   request ??= queue.shift();
   if (!request) return;
   const command = request.commands[outcomes.length];
+  if (command.command === '/doctor') return runDoctor($, request);
   const current = {
     command, resolved: false, stdoutStarted: false, expectedModel: null as string | null,
     evidence: undefined as { status: 'ok' | 'failed'; text: string } | undefined,
@@ -120,6 +121,23 @@ async function dispatch($: EngineInterface) {
   } finally {
     dispatching = false;
     if (!active) schedule($);
+  }
+}
+
+// /doctor is a prompt-type command: run resolves at submit and prints no stdout, and its
+// own turn replies to the chat through the skill-relay marker written first.
+async function runDoctor($: EngineInterface, doctor: Request) {
+  request = undefined;
+  dispatching = true;
+  try {
+    // The bridge answers `pass` rather than exiting non-zero when it cannot record the target.
+    if ((await bridge($, 'relay', JSON.stringify(doctor))).decision !== 'ok') throw new Error('Reply target not recorded');
+    await $.command.run({ command: 'doctor', args: '' });
+  } catch (error) {
+    await finalize($, { ...doctor, outcomes: [{ ...doctor.commands[0], status: 'failed', text: String(error) }] }).catch(() => undefined);
+  } finally {
+    dispatching = false;
+    schedule($);
   }
 }
 
