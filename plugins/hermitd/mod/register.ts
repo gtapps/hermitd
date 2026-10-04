@@ -130,7 +130,8 @@ async function runDoctor($: EngineInterface, doctor: Request) {
   request = undefined;
   dispatching = true;
   try {
-    await bridge($, 'relay', JSON.stringify(doctor));
+    // The bridge answers `pass` rather than exiting non-zero when it cannot record the target.
+    if ((await bridge($, 'relay', JSON.stringify(doctor))).decision !== 'ok') throw new Error('Reply target not recorded');
     await $.command.run({ command: 'doctor', args: '' });
   } catch (error) {
     await finalize($, { ...doctor, outcomes: [{ ...doctor.commands[0], status: 'failed', text: String(error) }] }).catch(() => undefined);

@@ -217,12 +217,14 @@ test('doctor writes the relay before running and reports only a failed start', a
   const calls: string[] = [];
   const outcomes: any[] = [];
   let fail = false;
+  let relayed = 'ok';
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'resident' }));
   on('process.run', ($, e) => {
     calls.push(e.argv[3]);
     if (e.argv[3] === 'finalize') outcomes.push(JSON.parse(e.argv[5]));
-    return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run('/doctor', null) : { decision: 'ok' }), stderr: '' } };
+    const reply = e.argv[3] === 'intake' ? run('/doctor', null) : { decision: e.argv[3] === 'relay' ? relayed : 'ok' };
+    return { value: { exitCode: 0, stdout: JSON.stringify(reply), stderr: '' } };
   });
   on('command.run', ($, e) => {
     calls.push(e.command);
@@ -239,4 +241,10 @@ test('doctor writes the relay before running and reports only a failed start', a
   await clock.settle();
   expect(calls.slice(3)).toEqual(['intake', 'relay', 'doctor', 'finalize']);
   expect(outcomes[0].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+  fail = false;
+  relayed = 'pass';
+  await $.prompt.submit(channel('!doctor'));
+  await clock.settle();
+  expect(calls.slice(7)).toEqual(['intake', 'relay', 'finalize']);
+  expect(outcomes[1].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
 });

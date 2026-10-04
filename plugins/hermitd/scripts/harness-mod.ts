@@ -4,7 +4,7 @@ import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
 import { readRuntimeJson } from './lib/runtime';
 import { applyContextReset } from './lib/context-reset';
-import { clearSkillRelay, readSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
+import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
   ackDeferredSwitch, MOD_LOADED_FILE, readDeferredSwitch, writeModState,
@@ -45,9 +45,8 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
         outcomes?: HarnessOutcome[]; reason?: string; by?: string; reply_to?: ReplyTarget;
       };
       const outcomes = input.outcomes ?? [];
-      // A relayed command that never started must not hand its reply target to a later turn.
-      const relay = readSkillRelay(dir);
-      if (relay && outcomes.some(outcome => outcome.status !== 'ok' && outcome.command === relay.command)) clearSkillRelay(dir);
+      // A relayed /doctor that never started must not hand its reply target to a later turn.
+      if (outcomes.some(outcome => outcome.status !== 'ok' && outcome.command === '/doctor')) clearSkillRelay(dir);
       for (const outcome of outcomes) {
         if (outcome.status !== 'ok') continue;
         if (outcome.command === '/model' || outcome.command === '/effort') {

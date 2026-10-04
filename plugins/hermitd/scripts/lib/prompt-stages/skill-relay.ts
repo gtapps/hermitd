@@ -1,4 +1,4 @@
-// Tell a delivered /doctor pane turn who requested it and where to reply.
+// Tell a mod-started /doctor turn who requested it and where to reply.
 
 import { clearSkillRelay, readSkillRelay, renderCommand } from '../harness-command';
 import type { StageContext, StageResult } from './types';
