@@ -4,7 +4,7 @@ Read on demand from `SKILL.md`; never loaded on a turn that does not need it.
 
 ## Standing work
 
-Standing work is what the hermit does without being asked in the moment: routines, watches, and standing roles. Session-triggered `scheduled_checks` fire on session events and are not standing work. Answer in channel voice (`SKILL.md` § 3): no cron strings, ids, file paths, or slash commands, except the relayed `!doctor` when a live check is the next step.
+Standing work is what the hermit does without being asked in the moment: routines, watches, and standing roles. Session-triggered `scheduled_checks` fire on session events and are not standing work. Answer in channel voice (`SKILL.md` § 3): no cron strings, ids, file paths, or slash commands, except `!doctor` when a live check is the next step.
 
 ### Gather (bounded reads only)
 
@@ -13,7 +13,7 @@ Standing work is what the hermit does without being asked in the moment: routine
 - Watches: `Read state/monitors.runtime.json` for id, description, source, class, started_at.
 - Roles: the `[role` lines already in this turn's context. Hermit-wide ones always apply; a pinned `[role <key>:<chat_id>]` line applies only to that chat (`SKILL.md` § 1).
 - Current activity: the open-record digest and its execution observation.
-- Health evidence: `Read state/doctor-report.json` only for the "anything to deal with" and "what can you access" shapes. Do not run `doctor-check.ts` from this intent; a live check is the relayed `!doctor` command, which the operator sends.
+- Health evidence: `Read state/doctor-report.json` only for the "anything to deal with" and "what can you access" shapes. Do not run `doctor-check.ts` from this intent; a live check is the `!doctor` command, which the operator sends.
 
 Never `tail` `state/routine-metrics.jsonl`, the cost log, or the channel log. A field none of these sources records is unknown; say so instead of guessing.
 
@@ -63,10 +63,10 @@ From config: channels with `enabled !== false` and whether each has an allowlist
 
   - `!model`, `!effort`, `!compact`, `!clear`, and `!advisor` run through the core mod without an agent turn or tmux keystroke. `/compact` still makes its summarization call. Replies report observed success, failure text, or an unknown outcome at the deadline; they are direct on Discord and Telegram and model-relayed elsewhere (or if a direct send fails).
   - Claude Code saves `model`, `effortLevel`, and `advisorModel` in user settings, affecting sessions sharing that config directory. Boot re-asserts configured model and effort overrides; with `config.effort: null`, the saved effort can survive restart. Boot does not re-assert advisor. Permission mode lasts for the current session and resets to `config.permission_mode` at boot.
-  - The mod approves only its dispatched `/model` target, after settings-level deny or ask decisions have had their say. A terminal `/model` still asks “Switch model?”. If the mod is unavailable, doctor reports “chat harness commands unavailable”; there is no tmux fallback for the five commands.
+  - The mod approves only its dispatched `/model` target, after settings-level deny or ask decisions have had their say. A terminal `/model` still asks “Switch model?”. If the mod is unavailable, doctor reports “chat harness commands unavailable”; there is no tmux fallback for the six commands.
   - `!permission-mode` accepts `default`, `acceptEdits`, or `auto`. Relay other modes' refusal reasons: `plan` blocks replies, `bypassPermissions` requires a terminal decision, and `dontAsk` is unreachable mid-session. The hook drives Claude Code's mode cycle and reads the status bar. Report the actual mode supplied in the next prompt, not the requested mode.
   - `!advisor <model>` adds a second model for decision-point consultation (experimental, Anthropic API only); `!advisor off` clears it. Claude Code validates the model; do not invent a value list. The mod relays observed rejections to the requesting chat. There is no cached-context pause. The selection persists in Claude Code's user settings across restarts and sessions sharing that config directory; boot does not re-assert it. Each advisor call adds spend; clear it with `!advisor off`.
-  - `!doctor` requires explicit user invocation, so the hook types it into the pane after this turn; that later turn delivers the result to the requesting chat. Apply the silence rule. Like `!model`, it requires the operator's own chat.
+  - `!doctor` runs Claude Code's own `/doctor` checkup, which only a user can start, so the mod starts it as its own turn; that turn delivers the result to the requesting chat. Like `!model`, it requires the operator's own chat.
   - Near-misses (argument-free `!model`, bare `clear`, or prose mentions) are not intercepted; classify below. Never invoke bare `!advisor`: its picker blocks the session. Ask for `!advisor <model>` or `!advisor off`.
 
 ## Capture Interactive Patterns

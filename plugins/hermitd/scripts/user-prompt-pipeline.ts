@@ -138,7 +138,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
       if (!fs.existsSync(dir) || !sessionId || ctx.runtime()?.cc_session_id !== sessionId) return;
       const env = ctx.envelope;
       const parsed = resolveCommand(ctx);
-      if (!env || !parsed || !['/model', '/effort', '/compact', '/clear', '/advisor'].includes(parsed.command)
+      if (!env || !parsed || !['/model', '/effort', '/compact', '/clear', '/advisor', '/doctor'].includes(parsed.command)
         || !isTrustedController(ctx.config(), env.source, env.userId, env.chatId)) return;
     }
     const guest = isGuest(path.join(dir, 'state'), sessionId);

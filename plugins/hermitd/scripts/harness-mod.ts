@@ -4,11 +4,11 @@ import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
 import { readRuntimeJson } from './lib/runtime';
 import { applyContextReset } from './lib/context-reset';
-import { renderCommand, writeSwitchVerify } from './lib/harness-command';
+import { clearSkillRelay, readSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
   ackDeferredSwitch, MOD_LOADED_FILE, readDeferredSwitch, writeModState,
-  type HarnessOutcome, type ReplyTarget,
+  type HarnessOutcome, type HarnessRequest, type ReplyTarget,
 } from './lib/harness-mod';
 
 export async function run(verb: string, sessionId: string, payload = ''): Promise<unknown> {
@@ -32,11 +32,22 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     case 'ack':
       ackDeferredSwitch(dir, payload);
       return { decision: 'ok' };
+    case 'relay': {
+      const input = JSON.parse(payload) as HarnessRequest;
+      const command = input.commands?.[0];
+      if (!command || !input.reply_to || !writeSkillRelay(dir, {
+        command: command.command, arg: command.arg, by: input.by, reply_to: input.reply_to, delivered_at: new Date().toISOString(),
+      })) throw new Error('Skill relay marker not written');
+      return { decision: 'ok' };
+    }
     case 'finalize': {
       const input = JSON.parse(payload) as {
         outcomes?: HarnessOutcome[]; reason?: string; by?: string; reply_to?: ReplyTarget;
       };
       const outcomes = input.outcomes ?? [];
+      // A relayed command that never started must not hand its reply target to a later turn.
+      const relay = readSkillRelay(dir);
+      if (relay && outcomes.some(outcome => outcome.status !== 'ok' && outcome.command === relay.command)) clearSkillRelay(dir);
       for (const outcome of outcomes) {
         if (outcome.status !== 'ok') continue;
         if (outcome.command === '/model' || outcome.command === '/effort') {

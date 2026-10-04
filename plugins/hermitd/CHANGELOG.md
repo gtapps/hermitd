@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Chat `!doctor` (alias `!checkup`) runs through the core mod instead of being typed into the tmux pane, and its result still goes back to the requesting chat; `!permission-mode` is the only chat command left on the Stop hook.
+
 ## [1.4.9] - 2026-10-02
 
 ### Added
