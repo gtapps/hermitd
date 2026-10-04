@@ -1,5 +1,5 @@
-# >>> claude-code-hermit (managed block — do not edit between markers) >>>
-.claude-code-hermit/OPERATOR.md
-.claude-code-hermit/config.json
-.claude-code-hermit/compiled/
-# <<< claude-code-hermit <<<
+# >>> hermitd (managed block — do not edit between markers) >>>
+.hermit/OPERATOR.md
+.hermit/config.json
+.hermit/compiled/
+# <<< hermitd <<<

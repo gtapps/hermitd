@@ -46,29 +46,29 @@ Thumbs.db
 # Session local state (settings.local.json is per-developer)
 .claude/settings.local.json
 
-# claude-code-hermit
+# hermitd
 # Hermit local state (fully local in this monorepo)
-.claude-code-hermit/OPERATOR.md
-.claude-code-hermit/OPERATOR.md.bak
-.claude-code-hermit/sessions/
-.claude-code-hermit/templates/
-.claude-code-hermit/cost-log.jsonl
-.claude-code-hermit/config.json
-.claude-code-hermit/proposals/
-.claude-code-hermit/MEMORY-SEED.md
-.claude-code-hermit/sessions/.eval-hash
-.claude-code-hermit/state/
-.claude-code-hermit/raw/
-.claude-code-hermit/compiled/
-.claude-code-hermit/cost-summary.md
-.claude-code-hermit/bin/
-.claude-code-hermit/HEARTBEAT.md
-.claude-code-hermit/knowledge-schema.md
-.claude-code-hermit/RESIDENT.md
-.claude-code-hermit/claude-settings.json
-.claude-code-hermit/dashboard-render.ts
-.claude-code-hermit/helper-reports/
-.claude-code-hermit/tasks/
+.hermit/OPERATOR.md
+.hermit/OPERATOR.md.bak
+.hermit/sessions/
+.hermit/templates/
+.hermit/cost-log.jsonl
+.hermit/config.json
+.hermit/proposals/
+.hermit/MEMORY-SEED.md
+.hermit/sessions/.eval-hash
+.hermit/state/
+.hermit/raw/
+.hermit/compiled/
+.hermit/cost-summary.md
+.hermit/bin/
+.hermit/HEARTBEAT.md
+.hermit/knowledge-schema.md
+.hermit/RESIDENT.md
+.hermit/claude-settings.json
+.hermit/dashboard-render.ts
+.hermit/helper-reports/
+.hermit/tasks/
 
 # Claude Code internal state
 .claude/agent-memory/
