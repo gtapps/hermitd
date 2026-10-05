@@ -1,12 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.10] - 2026-10-05
 
 ### Changed
 - Chat `!doctor` (alias `!checkup`) runs through the core mod instead of being typed into the tmux pane, and its result still goes back to the requesting chat; `!permission-mode` is the only chat command left on the Stop hook.
 
 ### Fixed
 - A watchdog restart no longer sets `CLAUDE_CONFIG_DIR=~/.claude` when the agent was started without it, which moved Claude Code's state file and stalled the restarted session at the first-run theme picker.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Refresh managed files** — apply the standard template refresh.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.9] - 2026-10-02
 
