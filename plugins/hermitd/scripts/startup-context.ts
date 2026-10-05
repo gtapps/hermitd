@@ -24,7 +24,7 @@ import { readMicroProposals } from './lib/micro-proposals-io';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
 import { findResident, ownsResidentIdentity } from './lib/session-registry';
-import { defaultConfigDir, envAuthPresent } from './lib/setup-token';
+import { envAuthPresent } from './lib/setup-token';
 import { seedOperatorActivity } from './record-operator-action';
 import { clearGuest, markGuest, pruneGuestMarkers } from './lib/guest-marker';
 import { recordContextPolicy } from './lib/context-policy';
@@ -249,7 +249,11 @@ function stampSessionEnv(stateDir: string, sessionId: string | null): void {
     // launched, not the resident. A restarted resident's dead predecessor is dropped by
     // the registry, so a reboot stamps freely (see ownsResidentIdentity).
     if (!ownsResidentIdentity(runtime)) return;
-    const configDir = defaultConfigDir();
+    // Only a dir actually set in the environment: Claude Code keeps .claude.json
+    // under CLAUDE_CONFIG_DIR whenever it is set, even to ~/.claude, so stamping the
+    // resolved default would make the watchdog's restart read a fresh state file.
+    // Absent field means "unset" and every reader falls back to the default.
+    const configDir = process.env.CLAUDE_CONFIG_DIR || undefined;
     const envAuth = envAuthPresent();
     // The session's own inbox socket, exported by Claude Code before any hook
     // runs. Stamping it here is what lets the watchdog wake this session
@@ -281,7 +285,7 @@ function stampSessionEnv(stateDir: string, sessionId: string | null): void {
     ) {
       return;
     }
-    runtime.config_dir = configDir;
+    runtime.config_dir = configDir; // undefined drops the key on write
     runtime.env_auth = envAuth;
     runtime.inbox_socket = inboxSocket;
     runtime.session_pid = sessionPid;

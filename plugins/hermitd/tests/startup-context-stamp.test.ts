@@ -142,10 +142,13 @@ describe('startup-context.ts — session launch stamp', () => {
     }
   });
 
-  it('no config dir in the environment → the CLI default is recorded', async () => {
+  // Claude Code keeps .claude.json under CLAUDE_CONFIG_DIR whenever it is set, so
+  // recording the resolved default would make a watchdog restart export it and
+  // boot against a fresh state file. Unset stays unset, and a stale stamp clears.
+  it('no config dir in the environment → nothing recorded, stale stamp cleared', async () => {
     const wd = setupWorkdir();
     try {
-      seedRuntime(wd.dir);
+      seedRuntime(wd.dir, { config_dir: path.join(wd.dir, '.claude') });
       const res = await run(wd.dir, {
         HERMIT_MANAGED: '1',
         HOME: wd.dir,
@@ -155,8 +158,21 @@ describe('startup-context.ts — session launch stamp', () => {
       });
       expect(res.exitCode).toBe(0);
       const runtime = readRuntime(wd.dir);
-      expect(runtime.config_dir).toBe(path.join(wd.dir, '.claude'));
+      expect('config_dir' in runtime).toBe(false);
       expect(runtime.env_auth).toBe(false);
+    } finally {
+      wd.cleanup();
+    }
+  });
+
+  it('an explicitly set default config dir is still recorded', async () => {
+    const wd = setupWorkdir();
+    try {
+      seedRuntime(wd.dir);
+      const configDir = path.join(wd.dir, '.claude');
+      const res = await run(wd.dir, { HERMIT_MANAGED: '1', HOME: wd.dir, CLAUDE_CONFIG_DIR: configDir });
+      expect(res.exitCode).toBe(0);
+      expect(readRuntime(wd.dir).config_dir).toBe(configDir);
     } finally {
       wd.cleanup();
     }

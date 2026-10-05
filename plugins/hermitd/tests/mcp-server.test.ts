@@ -456,6 +456,22 @@ describe('list_hermits + get_status', () => {
     }
   });
 
+  // A resident started without CLAUDE_CONFIG_DIR has no stamp; its registry lives
+  // in the default config dir the server resolves for itself.
+  test('resident enrichment without a stamped config_dir uses the default config dir', async () => {
+    const wd = setupWorkdir();
+    tmpdirs.push(wd.dir);
+    const { ident, configDir } = writeResident(wd.dir, { status: 'busy', statusUpdatedAt: 1_700_000_000_000 }, { config_dir: undefined });
+    const s = McpSession.start(['--roots', wd.dir], { CLAUDE_CONFIG_DIR: configDir });
+    try {
+      await handshake(s);
+      const st = toolBody(await callTool(s, 'get_status', { root: wd.dir }));
+      expect(st.resident).toEqual({ status: 'busy', statusUpdatedAt: 1_700_000_000_000, pid: ident.pid });
+    } finally {
+      await s.close();
+    }
+  });
+
   test('--roots wins over HERMIT_MCP_ROOTS; duplicates and non-hermit roots fail at startup', async () => {
     const a = setupWorkdir();
     const b = setupWorkdir();

@@ -171,8 +171,7 @@ function agentName(hermit: string): string | null {
 }
 
 function residentOf(runtime: Json): Json | null {
-  if (typeof runtime?.config_dir !== 'string' || !runtime.config_dir) return null;
-  const entry = findResident(runtime, runtime.config_dir);
+  const entry = findResident(runtime, runtime?.config_dir);
   if (!entry) return null;
   return { status: entry.status, statusUpdatedAt: entry.statusUpdatedAt, pid: entry.pid };
 }
