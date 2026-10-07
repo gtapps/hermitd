@@ -34,7 +34,6 @@ import { readContextSurface } from './lib/context-surface';
 import { expandSessionName } from './lib/tmux';
 import { readJson } from './lib/cli';
 import { MOD_LOADED_FILE } from './lib/harness-mod';
-import { compileCron } from './lib/cron-match';
 import { secondMostRecentMatch } from './lib/backup';
 import { findResident } from './lib/session-registry';
 import { bootMismatch } from './lib/monitor-health';
@@ -2401,10 +2400,9 @@ function checkBackup(p: DoctorPaths = PATHS) {
     const schedule = readJson(path.join(p.hermitDir, 'state', 'backup-schedule.json')) as any;
     const mode = backup.mode ?? 'workspace';
 
-    const compiled = compileCron(String(backup.schedule ?? ''));
-    const prev2 = compiled
-      ? secondMostRecentMatch(compiled, typeof config?.timezone === 'string' ? config.timezone : null, new Date())
-      : null;
+    const prev2 = secondMostRecentMatch(
+      String(backup.schedule ?? ''), typeof config?.timezone === 'string' ? config.timezone : null, new Date(),
+    );
 
     const successMs = status?.last_success_at ? Date.parse(status.last_success_at) : NaN;
     const anchorMs = Date.parse(status?.configured_at ?? schedule?.last_consumed_mark ?? '');

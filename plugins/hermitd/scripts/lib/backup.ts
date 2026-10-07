@@ -9,7 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compileCron, makeTzFormatter, partsFromFormatter, cronMatchesCompiled, type CompiledCron } from './cron-match';
+import { latestFires } from './cron';
+import { validateCronSchedule } from '../validate-config';
 import { pidAlive } from './lockfile';
 import { scanCredentials } from './sanitize';
 import { transcriptPathKey } from './cc-compat';
@@ -297,39 +298,17 @@ function floorToMinute(d: Date): Date {
   return new Date(Math.floor(d.getTime() / MINUTE_MS) * MINUTE_MS);
 }
 
-/** Latest cron-matching minute in (from, until], or null. */
-function latestMatchIn(compiled: CompiledCron, tz: string | null, from: Date, until: Date): Date | null {
-  const fmt = makeTzFormatter(tz);
-  if (!fmt) return null;
-  let latest: Date | null = null;
-  for (let t = from.getTime() + MINUTE_MS; t <= until.getTime(); t += MINUTE_MS) {
-    const candidate = new Date(t);
-    const parts = partsFromFormatter(fmt, candidate);
-    if (parts && cronMatchesCompiled(compiled, parts)) latest = candidate;
-  }
-  return latest;
-}
-
 /**
  * The second-most-recent scheduled minute at or before `now` — the doctor's
  * "two windows missed" threshold. Null when the schedule fires less often than
  * maxBackMinutes covers.
  */
 export function secondMostRecentMatch(
-  compiled: CompiledCron, tz: string | null, now: Date, maxBackMinutes = 8 * 1440,
+  schedule: string, tz: string | null, now: Date, maxBackMinutes = 8 * 1440,
 ): Date | null {
-  const fmt = makeTzFormatter(tz);
-  if (!fmt) return null;
   const end = floorToMinute(now);
-  let seen = 0;
-  for (let t = end.getTime(); t > end.getTime() - maxBackMinutes * MINUTE_MS; t -= MINUTE_MS) {
-    const parts = partsFromFormatter(fmt, new Date(t));
-    if (parts && cronMatchesCompiled(compiled, parts)) {
-      seen += 1;
-      if (seen === 2) return new Date(t);
-    }
-  }
-  return null;
+  const fires = latestFires(schedule, tz, new Date(end.getTime() - maxBackMinutes * MINUTE_MS), end, 2);
+  return fires.length === 2 ? fires[0] : null;
 }
 
 /**
@@ -343,8 +322,8 @@ export function secondMostRecentMatch(
 export function evaluateBackupDue(config: Json, hermitDir: string, now: Date): boolean {
   const backup = config?.backup;
   if (!backup || backup.enabled !== true || typeof backup.schedule !== 'string') return false;
-  const compiled = compileCron(backup.schedule);
-  if (!compiled) return false;
+  // Before the lock check and cursor init: an invalid schedule leaves backup state untouched.
+  if (validateCronSchedule(backup.schedule)) return false;
 
   // A live run still holds the lock: defer without consuming, so its window is
   // not silently spent while it works. This is the primary mutual-exclusion gate;
@@ -365,7 +344,7 @@ export function evaluateBackupDue(config: Json, hermitDir: string, now: Date): b
 
   const windowFloor = new Date(nowMinute.getTime() - WINDOW_MS);
   const from = raw.getTime() < windowFloor.getTime() ? windowFloor : raw;
-  const latest = latestMatchIn(compiled, tz, from, nowMinute);
+  const latest = latestFires(backup.schedule, tz, from, nowMinute, 1)[0] ?? null;
 
   if (!latest) {
     if (raw.getTime() < nowMinute.getTime()) {

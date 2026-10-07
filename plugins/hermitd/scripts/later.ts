@@ -7,7 +7,7 @@ import { flagValue, readStdinIfFlagged } from './lib/cli';
 import { checkKey } from './lib/conversation-key';
 import { scanForInjection } from './lib/injection-scan';
 import { readConfigRaw } from './lib/config-read';
-import { compileCron, cronMatchesCompiled, makeTzFormatter, partsFromFormatter } from './lib/cron-match';
+import { nextFire } from './lib/cron';
 import { acquireLockWithWait, releaseLock } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { resolveHermitNowMs } from './lib/time';
@@ -21,32 +21,23 @@ interface Row {
 }
 
 const DAY_MS = 86400000;
-const MINUTE_MS = 60000;
-/** Long enough for a monthly schedule to resolve; one formatter is reused across the scan. */
-const SCAN_MINUTES = 32 * 24 * 60;
+/** Long enough for a monthly schedule to resolve; a rarer one falls back to `due` + 1 day. */
+const HORIZON_MS = 32 * DAY_MS;
 
-/** First fire of the enabled `later-check` routine strictly after `after`, or null. */
-function nextFire(dir: string, after: Date): Date | null {
+/** First fire of the enabled `later-check` routine within the horizon after `after`, or null. */
+function laterCheckFire(dir: string, after: Date): Date | null {
   const config = readConfigRaw(dir);
   const routine = config?.routines?.find((r: any) => r?.id === 'later-check');
   if (!routine || routine.enabled !== true) return null;
-  const cron = compileCron(String(routine.schedule ?? ''));
-  const fmt = makeTzFormatter(config?.timezone ?? null);
-  if (!cron || !fmt) return null;
-  const first = Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS;
-  for (let minute = 0; minute < SCAN_MINUTES; minute++) {
-    const date = new Date(first + minute * MINUTE_MS);
-    const parts = partsFromFormatter(fmt, date);
-    if (parts && cronMatchesCompiled(cron, parts)) return date;
-  }
-  return null;
+  const fire = nextFire(String(routine.schedule ?? ''), config?.timezone ?? null, after);
+  return fire && fire.getTime() - after.getTime() < HORIZON_MS ? fire : null;
 }
 
 /** Late means the first fire after `due` was missed: checked at or after the second one. */
 function isLate(dir: string, row: Row, date: Date): boolean {
   const due = new Date(row.due);
-  const first = nextFire(dir, due);
-  const second = first && nextFire(dir, first);
+  const first = laterCheckFire(dir, due);
+  const second = first && laterCheckFire(dir, first);
   return second ? date.getTime() >= second.getTime() : date.getTime() > due.getTime() + DAY_MS;
 }
 
@@ -120,7 +111,7 @@ async function main() {
       ...(timeoutS !== DEFAULT_TIMEOUT_S ? { timeout_s: timeoutS } : {}) };
     const error = withLedgerLock(file, () => appendJsonlLine(file, JSON.stringify(row)));
     if (error) throw new Error(error);
-    console.log(`OK|${row.id}|next_fire=${nextFire(dir, date)?.toISOString() ?? 'none'}`);
+    console.log(`OK|${row.id}|next_fire=${laterCheckFire(dir, date)?.toISOString() ?? 'none'}`);
     return;
   }
   if (verb === 'list') {

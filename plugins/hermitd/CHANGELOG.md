@@ -4,15 +4,21 @@
 
 ### Added
 - A task assignment can name the effort its worker runs at (`low` to `max`); without one the worker keeps its default.
+- Config validation warns about a routine or backup schedule that matches no date and so never fires.
 
 ### Changed
 - Minimum Claude Code version is now 2.1.292.
+- Minimum Bun version is now 1.4.0; the Docker image installs Bun 1.4.2.
+- Routine and backup schedules are evaluated by `Bun.cron.parse`. A time inside the skipped spring-forward hour fires one hour later that day instead of being skipped.
 - Install commands, the installer and the Docker entrypoint use `claude plugin install <plugin> --marketplace <source>`, which adds the marketplace when it is missing, instead of a separate `claude plugin marketplace add` step.
 
 ### Upgrade Instructions
 
+**Bun.** `hermitd-start` refuses to boot on Bun older than 1.4.0. If `bun --version` on the host prints a lower version, run `bun upgrade` before restarting the hermit. Docker images built with Bun 1.4.0 keep working; the next `hermitd-docker update` moves them to 1.4.2.
+
 **Docker hermits.** This release changes `docker-entrypoint.hermit.sh`, which evolve refreshes from the template. Run `.hermit/bin/hermitd-docker update` once more after evolve so the refreshed entrypoint is baked into the image; `update` rebuilds from the on-disk copy, so the update that launched evolve still carries the old one. If evolve reports the entrypoint as kept or conflicted, merge your own copy first, then rebuild. Claude Code in the image must be 2.1.292 or newer; a `CLAUDE_CODE_VERSION` build arg pinned below that makes every boot install fail. Use `hermitd-docker update` rather than `restart --build` for this rebuild: `restart --build` pins the image to the Claude Code version the running container already has.
 ### Fixed
+- Fixed-hour routine and backup schedules inside the repeated hour on the night clocks fall back fire once instead of twice.
 - Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
 
 ## [1.4.10] - 2026-10-05

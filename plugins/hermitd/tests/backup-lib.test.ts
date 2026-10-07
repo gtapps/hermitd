@@ -8,7 +8,6 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { compileCron } from '../scripts/lib/cron-match';
 import { validate } from '../scripts/validate-config';
 import {
   CRED_HELPER_ARGS,
@@ -124,12 +123,12 @@ describe('evaluateBackupDue', () => {
 
 describe('secondMostRecentMatch', () => {
   test('returns the previous day for a daily schedule', () => {
-    const got = secondMostRecentMatch(compileCron('0 3 * * *')!, 'UTC', new Date('2026-09-01T10:00:00Z'));
+    const got = secondMostRecentMatch('0 3 * * *', 'UTC', new Date('2026-09-01T10:00:00Z'));
     expect(got?.toISOString()).toBe('2026-08-31T03:00:00.000Z');
   });
 
   test('returns null when the schedule fires less often than the lookback', () => {
-    expect(secondMostRecentMatch(compileCron('0 3 1 1 *')!, 'UTC', new Date('2026-09-01T10:00:00Z'))).toBeNull();
+    expect(secondMostRecentMatch('0 3 1 1 *', 'UTC', new Date('2026-09-01T10:00:00Z'))).toBeNull();
   });
 });
 

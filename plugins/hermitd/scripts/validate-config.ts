@@ -102,7 +102,23 @@ function validateCronSchedule(schedule: string): string | null {
   const domRestricted = fields[2] !== '*';
   const dowRestricted = fields[4] !== '*';
   if (domRestricted && dowRestricted) return 'both DOM and DOW restricted — not supported in v1';
+  // lib/cron.ts evaluates with Bun.cron.parse, which rejects some forms the field parser
+  // tolerates (`1-2-3`, `5.0`, `-5`); such a schedule would pass validation and never fire.
+  try {
+    Bun.cron.parse(schedule);
+  } catch (e: any) {
+    return e.message;
+  }
   return null;
+}
+
+// A valid schedule with no matching date (e.g. Feb 31) parses to null.
+function neverFires(schedule: string): boolean {
+  try {
+    return Bun.cron.parse(schedule) === null;
+  } catch {
+    return false;
+  }
 }
 
 function retiredKeyWarning(key: string): string {
@@ -227,6 +243,8 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         const cronErr = validateCronSchedule(r.schedule);
         if (cronErr) {
           errors.push(`routines[${i}]: invalid schedule "${r.schedule}" — ${cronErr}`);
+        } else if (neverFires(r.schedule)) {
+          warnings.push(`routines[${i}]: schedule "${r.schedule}" never fires — no date matches it`);
         } else if (r.id === 'heartbeat-restart' && r.schedule.split(/\s+/).slice(2).some((f: string) => f !== '*')) {
           // The anchor's re-arm keeps the routine CronCreates inside CC's 7-day expiry
           // and arm.ts's 26h anchor-age window; both assume it fires every day.
@@ -602,6 +620,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         } else {
           const err = validateCronSchedule(b.schedule);
           if (err) errors.push(`backup.schedule: invalid "${b.schedule}" — ${err}`);
+          else if (neverFires(b.schedule)) warnings.push(`backup.schedule: "${b.schedule}" never fires — no date matches it`);
         }
       } else if (b.enabled === true) {
         errors.push('backup.schedule: required when backup.enabled is true');

@@ -382,24 +382,6 @@ function checkForUpgrade(config: Json): void {
   } catch {}
 }
 
-/** Parse up to the first three dot-separated version parts as integers (null on garbage). */
-function parseVersionTuple(v: string): number[] | null {
-  const nums: number[] = [];
-  for (const p of v.split('.').slice(0, 3)) {
-    if (!/^\d+$/.test(p.trim())) return null; // Python int() would raise ValueError
-    nums.push(parseInt(p, 10));
-  }
-  return nums;
-}
-
-/** Python tuple comparison: element-wise, shorter prefix sorts first. */
-function versionLess(a: number[], b: number[]): boolean {
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    if (a[i] !== b[i]) return a[i] < b[i];
-  }
-  return a.length < b.length;
-}
-
 /** Check that required tools are available. */
 function checkPrerequisites(): Json {
   const errors: string[] = [];
@@ -429,16 +411,14 @@ function checkPrerequisites(): Json {
   } else {
     // Already running under bun, so Bun.version is a free in-process probe.
     const bunVersion = Bun.version.trim();
-    let required = '1.3.0';
+    let required = '1.4.0';
     try {
       const metaPath = path.join(PLUGIN_ROOT, '.claude-plugin', 'hermit-meta.json');
       const declared = JSON.parse(fs.readFileSync(metaPath, 'utf-8')).required_bun_version;
-      if (pyTruthy(declared)) required = String(declared).replace(/^[>=]+/, '').trim();
+      if (pyTruthy(declared)) required = String(declared).replace(/^[>=\s]+/, '').trim();
     } catch {} // unreadable meta — fall back to the baseline floor
-    const cur = parseVersionTuple(bunVersion);
-    const req = parseVersionTuple(required);
-    // unparseable version — don't block boot on the probe itself
-    if (cur && req && versionLess(cur, req)) {
+    // cmpSemver ignores prerelease suffixes (a newer canary passes) and never blocks on an unparseable probe.
+    if (cmpSemver(bunVersion, required) < 0) {
       errors.push(`bun: version ${bunVersion} below required ${required}. Upgrade: bun upgrade`);
     }
   }

@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.4.0'
+          bun-version: '1.4.2'
       # Python is a TEST FIXTURE for the HA suite only; nothing shipped runs it.
       # gate-corpus replays the retired Python hooks and yaml-parity compares
       # against PyYAML. Same versions test-ha.yml pins.
