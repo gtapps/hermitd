@@ -269,8 +269,10 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (r.effort !== undefined && r.effort !== null) {
         if (typeof r.effort !== 'string' || !VALID_EFFORT.includes(r.effort)) {
           errors.push(`routines[${i}]: effort "${r.effort}" not in [${VALID_EFFORT.join(', ')}] (omit to keep the subagent's default)`);
-        } else if (r.model === undefined || r.model === null || r.id === 'heartbeat-restart') {
-          warnings.push(`routines[${i}]: effort has no effect without "model" — it applies only to the model-override subagent`);
+        } else if (r.id === 'heartbeat-restart') {
+          warnings.push(`routines[${i}]: effort on "heartbeat-restart" is ignored; re-arm must run in the session`);
+        } else if (r.model === undefined || r.model === null) {
+          warnings.push(`routines[${i}]: effort has no effect without "model"; it applies only to the model-override subagent`);
         }
       }
       if (r.precheck !== undefined && r.precheck !== null) {

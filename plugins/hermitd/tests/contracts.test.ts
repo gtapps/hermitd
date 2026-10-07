@@ -732,6 +732,12 @@ describe('routine model validation', () => {
     expect(out.warnings.some((w: string) => w.includes('effort has no effect'))).toBe(true);
   });
 
+  test('effort on heartbeat-restart warns that it is ignored, even beside model', () => {
+    const out = runValidate({ routines: [{ ...HB_ROUTINE, model: 'haiku', effort: 'high' }] });
+    expect(out.warnings.some((w: string) => w.includes('effort on "heartbeat-restart" is ignored'))).toBe(true);
+    expect(out.warnings.some((w: string) => w.includes('effort has no effect without'))).toBe(false);
+  });
+
   test('a daily heartbeat-restart schedule produces no warning', () => {
     const out = runValidate({ routines: [HB_ROUTINE] });
     expect(out.errors).toEqual([]);
