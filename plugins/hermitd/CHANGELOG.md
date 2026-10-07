@@ -4,17 +4,25 @@
 
 ### Added
 - A task assignment can name the effort its worker runs at (`low` to `max`); without one the worker keeps its default.
+- `heartbeat.effort` sets the effort the heartbeat evaluator runs at; `null` keeps the evaluator's own default.
 
 ### Changed
 - Minimum Claude Code version is now 2.1.292.
 - Install commands, the installer and the Docker entrypoint use `claude plugin install <plugin> --marketplace <source>`, which adds the marketplace when it is missing, instead of a separate `claude plugin marketplace add` step.
 - The proposal-triage agent runs on Haiku again.
+- The heartbeat evaluator defaults to Haiku at high effort instead of Sonnet.
 
 ### Upgrade Instructions
 
 **Docker hermits.** This release changes `docker-entrypoint.hermit.sh`, which evolve refreshes from the template. Run `.hermit/bin/hermitd-docker update` once more after evolve so the refreshed entrypoint is baked into the image; `update` rebuilds from the on-disk copy, so the update that launched evolve still carries the old one. If evolve reports the entrypoint as kept or conflicted, merge your own copy first, then rebuild. Claude Code in the image must be 2.1.292 or newer; a `CLAUDE_CODE_VERSION` build arg pinned below that makes every boot install fail. Use `hermitd-docker update` rather than `restart --build` for this rebuild: `restart --build` pins the image to the Claude Code version the running container already has.
+
+**Heartbeat model.** Read `heartbeat` in `.hermit/config.json`.
+1. If `heartbeat.model` is `"sonnet"`, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set heartbeat.model haiku`. Leave any other value alone: an absent key already resolves to `haiku`, and `null` means the operator chose the session model.
+2. If `heartbeat.effort` is absent, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set heartbeat.effort high`. Leave an existing value alone.
+3. If step 1 changed the model, tell the operator: "Heartbeat checks now run on Haiku at high effort, which matched Sonnet's accuracy in testing at a small fraction of the cost. To switch back, ask me to set `heartbeat.model` to sonnet."
 ### Fixed
 - Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
+- Claude Haiku 5.5 turns are costed at its own rates and no longer flagged as an unpriced model; the `haiku` alias prices as Haiku 5.5.
 
 ## [1.4.10] - 2026-10-05
 

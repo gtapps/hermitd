@@ -29,7 +29,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { ESCALATION, OPERATOR_PROFILE, AUTH_MODE, QUALITY_GATE_TIER, BUDGET_ACTION, VOICE_STYLE } from './settings/enums';
+import { ESCALATION, OPERATOR_PROFILE, AUTH_MODE, QUALITY_GATE_TIER, BUDGET_ACTION, VOICE_STYLE, EFFORT } from './settings/enums';
 
 type Json = any;
 
@@ -90,7 +90,8 @@ export const TABLE: Record<string, Spec> = {
     stale_threshold: str('2h', { pattern: 'duration' }),
     waiting_timeout: str(null, { pattern: 'duration' }),
     clean_recheck_cooldown: str('6h', { pattern: 'duration', nullable: true }),
-    model: str('sonnet'),
+    model: str('haiku'),
+    effort: str('high', { enum: EFFORT }),
   }),
   quality_gate: shape({ tier: str('budget', { enum: QUALITY_GATE_TIER }) }),
   knowledge: shape({

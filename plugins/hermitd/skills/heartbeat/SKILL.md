@@ -30,7 +30,7 @@ This subcommand is the handler for `HEARTBEAT_EVALUATE` notifications emitted by
    ```
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts tick .hermit
    ```
-   It prints one JSON line with `verdict`, optional `reason` or `alert`, `notifications: {budget: [...], queue?: {task_id, handle, title, ack}}`, and the settled `model`. Budget notices carry `text` and `mark_key`. A queue notice identifies a runnable resident record left past `tasks.queue_nudge_minutes`; no acknowledgement is written until pickup or delivery succeeds.
+   It prints one JSON line with `verdict`, optional `reason` or `alert`, `notifications: {budget: [...], queue?: {task_id, handle, title, ack}}`, and the settled `model` and `effort`. Budget notices carry `text` and `mark_key`. A queue notice identifies a runnable resident record left past `tasks.queue_nudge_minutes`; no acknowledgement is written until pickup or delivery succeeds.
 2. Branch on `verdict`:
    - `SKIP` → emit `HEARTBEAT_SKIP (<reason>)`. No channel notification. Stop.
    - `OK` → emit `HEARTBEAT_OK`. Stop.
@@ -46,7 +46,7 @@ This subcommand is the handler for `HEARTBEAT_EVALUATE` notifications emitted by
    ```
    Marking before a confirmed send would silently swallow the alert; that is why the tick leaves `notified` untouched and cost-tracker stays the sole writer of `budget-alerts.json`. An empty array is the common case — continue to step 4 either way.
    For `notifications.queue`: under `balanced` or `autonomous`, continue with that record in this turn using `/hermitd:task`. Under `conservative`, notify the requester in the record's conversation. After pickup or confirmed delivery, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts ack-queue .hermit <ack>`. For a channel send, confirmed delivery requires `delivered: true`; failed or degraded delivery leaves the notice unacknowledged. A stale token returns `acknowledged: false`; read current state on the next tick instead of editing the acknowledgement file.
-4. **Take `model` from the step 1 tick JSON.** **Dispatch via the Agent tool** (`subagent_type: "hermitd:skill-eval-runner"`) to run the report-only evaluation. Pass the `model` param from that field: a string → `model: "<that value>"`; `null` → **omit the `model` param entirely** so the subagent inherits the session model. The evaluation reads only files and needs none of the session history, so a fresh subagent context is both cleaner and cheaper. Instructions for the subagent:
+4. **Take `model` and `effort` from the step 1 tick JSON.** **Dispatch via the Agent tool** (`subagent_type: "hermitd:skill-eval-runner"`) to run the report-only evaluation. Pass the `model` param from that field: a string → `model: "<that value>"`; `null` → **omit the `model` param entirely** so the subagent inherits the session model. Pass `effort` the same way; `null` → omit it, keeping the subagent's own effort. The evaluation reads only files and needs none of the session history, so a fresh subagent context is both cleaner and cheaper. Instructions for the subagent:
    > Read `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 
    Receive the structured JSON back from the subagent.

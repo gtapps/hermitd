@@ -23,10 +23,11 @@ type TickResult = {
   alert?: string;
   notifications: Notifications;
   model: string | null;
+  effort: string | null;
 };
 
 /** Split the precheck's one-line grammar into the JSON fields the skill branches on. */
-function parseVerdict(raw: string): Omit<TickResult, 'model'> {
+function parseVerdict(raw: string): Omit<TickResult, 'model' | 'effort'> {
   if (raw.startsWith('SKIP|')) return { verdict: 'SKIP', reason: raw.slice(5), notifications: { budget: [] } };
   if (raw.startsWith('ALERT|')) return { verdict: 'ALERT', alert: raw.slice(6), notifications: { budget: [] } };
   return { verdict: raw, notifications: { budget: [] } };
@@ -66,9 +67,10 @@ async function composeBudgetAlerts(hermitDir: string, config: Json, out: Notific
 
 export async function run(args: string[]): Promise<void> {
   const hermitDir = args[0];
-  // Settled once, shared by the model field and the bookkeeping below. Settling
-  // preserves an explicit `heartbeat.model: null` (the skill reads it as "inherit
-  // the session model") while folding absent/""/wrong-typed to 'sonnet'; the
+  // Settled once, shared by the model and effort fields and the bookkeeping below.
+  // Settling preserves an explicit `heartbeat.model: null` (the skill reads it as
+  // "inherit the session model") or `heartbeat.effort: null` ("use the subagent's
+  // own effort") while folding absent/""/wrong-typed to 'haiku' and 'high'; the
   // reader never writes and never throws.
   const config = readSettledConfig(hermitDir);
   // Mutating precheck, exactly once — before anything below can throw, so a tick
@@ -76,6 +78,7 @@ export async function run(args: string[]): Promise<void> {
   const result: TickResult = {
     ...parseVerdict(runPrecheck(hermitDir, false)),
     model: config.heartbeat.model,
+    effort: config.heartbeat.effort,
   };
 
   try {

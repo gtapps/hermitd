@@ -53,6 +53,6 @@ To set a preferred channel, add `"primary": "<channel-name>"` inside `channels` 
 
 - **Scheduling:** this skill doesn't self-register a routine. To run it on a schedule, add
   `hermitd:cost-reflect --maintainer` as a routine via `/hermitd:hermit-settings`.
-- **What it measures:** token-type cost composition (cache_read / cache_write / output / input), per-model breakdown (shown when ≥2 models appear, e.g. Opus main + Sonnet heartbeat), cold-start turns (context warm-ups with no prior cache hit), and per-session cost attribution. For week-over-week totals, use `/hermitd:hermit-evolution` instead.
+- **What it measures:** token-type cost composition (cache_read / cache_write / output / input), per-model breakdown (shown when ≥2 models appear, e.g. Opus main + Haiku heartbeat), cold-start turns (context warm-ups with no prior cache hit), and per-session cost attribution. For week-over-week totals, use `/hermitd:hermit-evolution` instead.
 - **`--plain` mode** (channel-tagged turns only): today's spend vs. a trailing-7-day typical day, drivers named by work (not token type), spend-cap status, and a one-line notional-dollars caveat. No token categories, session IDs, or internal IDs.
 - **Non-technical installs** (`config.operator_profile === 'non-technical'`): a client-chat spend question never reaches this skill, since `channel-responder` deflects it with a plain "handled by your provider" reply. Spend figures stay maintainer-side (terminal, maintainer chat, weekly review), so a channel-tagged run here is expected only from a maintainer-audience surface.

@@ -29,7 +29,7 @@ const CURRENT_TIER: Record<string, string> = {
   fable: 'claude-fable-5-1',
   opus: 'claude-opus-5-5',
   sonnet: 'claude-sonnet-5-5',
-  haiku: 'claude-haiku-4-5',
+  haiku: 'claude-haiku-5-5',
 };
 
 const PRICING: Record<string, ModelPricing> = {
@@ -44,6 +44,8 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-5-5': { input: 2, output: 10 },
   'claude-sonnet-5':  { input: 2, output: 10 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
+  // Base tier only: Haiku 5.5 rates rise to $0.50 / $2.50 past 100k prompt tokens.
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   'claude-haiku-4-5': { input: 1, output: 5 },
 };
 
