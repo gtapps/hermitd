@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.20] - 2026-10-07
 
 ### Changed
 - Minimum Claude Code version is now 2.1.292, matching the one-step `claude plugin install --marketplace` install command.
