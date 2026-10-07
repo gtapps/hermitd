@@ -107,6 +107,17 @@ describe('planCron — targeted changes', () => {
     expect(plan.keepCount).toBe(1);
   });
 
+  test('effort changed → exactly that id DELETE+CREATE; an unset effort keeps the hash', () => {
+    const before = [r('a', { model: 'haiku' }), r('b')];
+    const mirror = seedMirror(before, {}, T0 - 1000);
+    expect(planCron(before, mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0).deletes).toEqual([]);
+    const after = [r('a', { model: 'haiku', effort: 'high' }), r('b')];
+    const plan = planCron(after, mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
+    expect(plan.deletes).toEqual(['a']);
+    expect(plan.creates.map(c => c.id)).toEqual(['a']);
+    expect(plan.keepCount).toBe(1);
+  });
+
   // expect_artifact is embedded in the fallback CronCreate prompt, so it has to
   // be part of the hash — otherwise adding or editing a contract leaves the old
   // prompt registered indefinitely.

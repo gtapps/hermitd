@@ -5,6 +5,7 @@
 ### Added
 - A task assignment can name the effort its worker runs at (`low` to `max`); without one the worker keeps its default.
 - `heartbeat.effort` sets the effort the heartbeat evaluator runs at; `null` keeps the evaluator's own default.
+- A routine with `model` set can also set `effort` for the subagent it runs in; without one the subagent keeps its default.
 - Config validation warns about a routine or backup schedule that matches no date and so never fires.
 
 ### Changed

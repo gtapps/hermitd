@@ -105,6 +105,8 @@ function promptHash(r: Json, shiftedSchedule: string, pluginRoot: string): strin
     id: r.id,
     skill: r.skill,
     model: r.model ?? null,
+    // Spread only when set so existing routines keep their hash and are not re-registered.
+    ...(r.effort != null ? { effort: r.effort } : {}),
     reflect_after: !!r.reflect_after,
     expect_artifact: r.expect_artifact ?? null,
     precheck: r.precheck ?? null,

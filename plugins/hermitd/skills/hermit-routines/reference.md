@@ -44,7 +44,7 @@ Routines (config.json):
 - **Routine ids** must match `^[A-Za-z0-9._-]{1,64}$` (enforced by `validate-config.ts`) — ids travel through bracket markers, `--ids` CSVs, and JSONL rows.
 - **Changes take effect immediately.** `hermit-settings routines` invokes `load` after writing config; hand-edited `config.json` needs a manual `load`.
 - **Interactive mode does not auto-register routines.** `hermitd-start.ts` calls `load` only on always-on launches.
-- **`model` (optional)** runs a routine's skill in an isolated-context subagent at the named model (`opus`/`sonnet`/`haiku`) — returns only a one-line status, so skip it on routines whose value is the rich chat output. Ignored on `heartbeat-restart` (re-arm must run in the session). Validated by `scripts/validate-config.ts`.
+- **`model` (optional)** runs a routine's skill in an isolated-context subagent at the named model (`opus`/`sonnet`/`haiku`) — returns only a one-line status, so skip it on routines whose value is the rich chat output. Ignored on `heartbeat-restart` (re-arm must run in the session). **`effort` (optional, `low`/`medium`/`high`/`xhigh`/`max`)** sets that subagent's effort and has no effect without `model`. Both validated by `scripts/validate-config.ts`.
 - **Converting a costly broad-skill routine into a scoped one?** See [Routine Authoring](../../docs/routine-authoring.md).
 
 ### CronCreate fallback details
