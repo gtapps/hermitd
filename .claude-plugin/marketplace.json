@@ -136,7 +136,7 @@
       "name": "hermitd-scribe",
       "source": "./plugins/hermitd-scribe",
       "description": "A GitHub App Bot for Hermit that turns proposals and reports into issues, with privacy checks and approval before publishing.",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "category": "maintainer",
       "author": {
         "name": "gtapps",

@@ -1,6 +1,6 @@
 {
   "name": "hermitd-scribe",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A GitHub App Bot for Hermit that turns proposals and reports into issues, with privacy checks and approval before publishing.",
   "author": {
     "name": "gtapps",
@@ -19,7 +19,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.7"
+      "version": "^1.4.11"
     }
   ]
 }
