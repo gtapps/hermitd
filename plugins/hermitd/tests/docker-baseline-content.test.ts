@@ -317,11 +317,13 @@ describe('Entrypoint: Python retired, PATH covers bun', () => {
   });
 });
 
-describe('Entrypoint: marketplace registration uses list --json, not dir existence', () => {
-  test('entrypoint: marketplace_registered helper present', () => {
-    expect(entrypoint).toContain('marketplace_registered()');
-    expect(entrypoint).toContain('marketplace list --json');
-    expect(entrypoint).toContain('.name == $n');
+describe('Entrypoint: installs add their marketplace in one step', () => {
+  test('entrypoint: every install names its marketplace source, no separate add step', () => {
+    expect(entrypoint).not.toContain('plugin marketplace add');
+    expect(entrypoint).not.toContain('"marketplace", "add"');
+    expect(entrypoint).toContain('claude plugin install hermitd --marketplace gtapps/hermitd --scope project');
+    expect(entrypoint).toContain('--marketplace anthropics/claude-plugins-official --scope local');
+    expect(entrypoint).toContain('"--marketplace", marketplace');
   });
 
   test('entrypoint: no [ -d MARKETPLACE_DIR ] registration checks remain', () => {

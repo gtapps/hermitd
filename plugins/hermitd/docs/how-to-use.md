@@ -6,7 +6,7 @@ A paid Claude plan (Pro, Max, Teams, or Enterprise). Linux, macOS, or Windows vi
 
 Claude Code auto memory must stay enabled (the default): learning, preferences, and standing roles live there. Setting `autoMemoryEnabled: false` or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables them.
 
-The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.287+, **Bun** ≥1.3 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
+The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.292+, **Bun** ≥1.3 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
 
 ---
 
@@ -39,8 +39,7 @@ The installer is a convenience, not a requirement. With Claude Code and Bun alre
 
 ```bash
 cd /path/to/your/project
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd@hermitd --scope local
+claude plugin install hermitd --marketplace gtapps/hermitd --scope local
 ```
 
 `--scope local` keeps the hermit personal to this folder rather than committing it to the repo for everyone. `/hatch` asks the shared-vs-personal question separately.

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- A task assignment can name the effort its worker runs at (`low` to `max`); without one the worker keeps its default.
+
+### Changed
+- Minimum Claude Code version is now 2.1.292.
+- Install commands, the installer and the Docker entrypoint use `claude plugin install <plugin> --marketplace <source>`, which adds the marketplace when it is missing, instead of a separate `claude plugin marketplace add` step.
+
+### Upgrade Instructions
+
+**Docker hermits.** This release changes `docker-entrypoint.hermit.sh`, which evolve refreshes from the template. Run `.hermit/bin/hermitd-docker update` once more after evolve so the refreshed entrypoint is baked into the image; `update` rebuilds from the on-disk copy, so the update that launched evolve still carries the old one. If evolve reports the entrypoint as kept or conflicted, merge your own copy first, then rebuild. Claude Code in the image must be 2.1.292 or newer; a `CLAUDE_CODE_VERSION` build arg pinned below that makes every boot install fail. Use `hermitd-docker update` rather than `restart --build` for this rebuild: `restart --build` pins the image to the Claude Code version the running container already has.
 ### Fixed
 - Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
 

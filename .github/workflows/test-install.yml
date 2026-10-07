@@ -101,7 +101,12 @@ jobs:
           cd "$RUNNER_TEMP/proj"
           CLAUDE_CONFIG_DIR="$RUNNER_TEMP/cfg" \
             bash "$GITHUB_WORKSPACE/scripts/install.sh" 2>&1 | tee "$RUNNER_TEMP/out2.txt"
-          grep -q 'already registered' "$RUNNER_TEMP/out2.txt"
+          grep -q 'Prerequisites set' "$RUNNER_TEMP/out2.txt"
+          # The re-run reuses the marketplace rather than registering it again.
+          export PATH="$HOME/.local/bin:$PATH"
+          n="$(CLAUDE_CONFIG_DIR="$RUNNER_TEMP/cfg" claude plugin marketplace list \
+            | grep -cE 'hermitd[[:space:]]*$')"
+          test "$n" = 1 || { echo "expected one hermitd marketplace, found $n"; exit 1; }
 
       - name: Seed the hatched-state sentinel for uninstall
         if: '!cancelled()'

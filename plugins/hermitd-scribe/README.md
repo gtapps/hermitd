@@ -14,8 +14,7 @@ Files GitHub issues via a configured GitHub App so they're attributed to a bot i
 Requires `hermitd` ≥1.2.34. Before installing or running hermit-scribe 0.1.1, upgrade core with `/hermitd:hermit-evolve`.
 
 ```bash
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-scribe@hermitd --scope local
+claude plugin install hermitd-scribe --marketplace gtapps/hermitd --scope local
 ```
 
 ## GitHub App setup

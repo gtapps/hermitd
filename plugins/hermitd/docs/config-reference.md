@@ -525,7 +525,7 @@ Manage session checks with `/hermit-settings scheduled-checks`; manage periodic 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `plugin` | string | _(required)_ | Plugin name to install (substring of `claude plugin list --json` `id` left of `@`). |
-| `marketplace` | string | `"anthropics/claude-plugins-official"` | Marketplace `org/repo`, passed to `claude plugin marketplace add`. The entrypoint resolves the canonical marketplace name at boot via `claude plugin marketplace list --json` to build `<plugin>@<name>` install targets. |
+| `marketplace` | string | `"anthropics/claude-plugins-official"` | Marketplace `org/repo`, passed as `claude plugin install <plugin> --marketplace <org/repo>`, which adds the marketplace on first boot. |
 | `scope` | string | `"project"` | Install scope: `"project"` or `"local"`. |
 | `enabled` | boolean | `false` | Whether to install on container boot. |
 

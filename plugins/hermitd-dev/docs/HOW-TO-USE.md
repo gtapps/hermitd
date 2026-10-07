@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com) v2.1.287+
+- [Claude Code](https://code.claude.com) v2.1.292+
 - [hermitd](https://github.com/gtapps/hermitd) core, installed and hatched; `/hermitd-dev:hatch` enforces the required version from `.claude-plugin/hermit-meta.json`
 - Node.js 24+ (for the `git-push-guard` hook at strict profile)
 
@@ -11,8 +11,7 @@
 ## Setup
 
 ```bash
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-dev@hermitd --scope local
+claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 /hermitd-dev:hatch
 ```
 

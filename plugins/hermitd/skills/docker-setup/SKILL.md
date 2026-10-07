@@ -201,7 +201,7 @@ Mirror host-installed plugins into the container so the container starts with th
    - Regex: `^[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*$`
    - Applies to: `repo` values read from the marketplace JSON AND values typed by the operator.
    - If a value does not match: reject, explain why, re-prompt. Never write a failing value to config.
-   - Purpose: defense-in-depth against malformed JSON, typos, or injected strings landing in `config.json` and being passed to `claude plugin marketplace add` on boot.
+   - Purpose: defense-in-depth against malformed JSON, typos, or injected strings landing in `config.json` and being passed to `claude plugin install --marketplace` on boot.
 
 5. **Partition the filtered list using the safelist:**
 
@@ -265,11 +265,11 @@ Record the confirmed selection as `docker.recommended_plugins`. Each entry has:
 ```json
 {"plugin": "<plugin-name>", "marketplace": "<org/repo>", "scope": "<scope>", "enabled": true}
 ```
-The entrypoint resolves the canonical marketplace name at boot via `claude plugin marketplace list --json` (no need to store it on the entry), adds the marketplace if missing, and installs every enabled entry on first boot. See [Recommended Plugins](../../docs/recommended-plugins.md) for the full policy.
+The entrypoint installs every enabled entry on first boot with `claude plugin install <plugin> --marketplace <org/repo>`, which adds the marketplace if missing, so the entry needs no marketplace name. See [Recommended Plugins](../../docs/recommended-plugins.md) for the full policy.
 
 This step always rebuilds `docker.recommended_plugins` from the current host plugin list; existing entries are replaced, not merged. The entrypoint warns and skips any entry whose `marketplace` is not an `org/repo` until this skill is re-run.
 
-**On container-side `claude plugin marketplace add` / `plugin install` failure (either in entrypoint logs or when re-running the command manually after boot):** if the error mentions SSH auth, HTTPS credentials, `gh` not found, or `.gitconfig` read-only, **stop immediately — do not attempt workarounds inside the container.** The container has no SSH client, no `gh` CLI, and `.gitconfig` is bind-mounted read-only by design. Iterating on `GIT_CONFIG_NOSYSTEM`, `git config --global url...insteadOf`, or similar is guaranteed to fail and wastes the operator's time. Surface the error to the operator verbatim and move on — no retry unless the operator changes something host-side (makes the repo public, mirrors it, etc.) and asks to retry.
+**On container-side `claude plugin install` failure (either in entrypoint logs or when re-running the command manually after boot):** if the error mentions SSH auth, HTTPS credentials, `gh` not found, or `.gitconfig` read-only, **stop immediately — do not attempt workarounds inside the container.** The container has no SSH client, no `gh` CLI, and `.gitconfig` is bind-mounted read-only by design. Iterating on `GIT_CONFIG_NOSYSTEM`, `git config --global url...insteadOf`, or similar is guaranteed to fail and wastes the operator's time. Surface the error to the operator verbatim and move on — no retry unless the operator changes something host-side (makes the repo public, mirrors it, etc.) and asks to retry.
 
 ### 7b.packages: Plugin-declared apt dependencies
 

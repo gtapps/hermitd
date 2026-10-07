@@ -20,7 +20,7 @@
 set -euo pipefail
 
 MARKETPLACE="gtapps/hermitd"
-PLUGIN="hermitd@hermitd"
+PLUGIN="hermitd"
 META_URL="https://raw.githubusercontent.com/gtapps/hermitd/main/plugins/hermitd/.claude-plugin/hermit-meta.json"
 DOCS_URL="https://github.com/gtapps/hermitd#quick-start"
 
@@ -213,22 +213,13 @@ ensure_tmux() {
 # ------------------------------------------------------------------ plugin ----
 
 install_plugin() {
-  # Anchored to the marketplace-name line ("  > hermitd"). A bare
-  # substring match also hits the "Source: GitHub (owner/hermitd)"
-  # line, so a fork registered under a different marketplace name would skip the
-  # add and then fail the install below on an unregistered marketplace id.
-  if claude plugin marketplace list 2>/dev/null | grep -qE 'hermitd[[:space:]]*$'; then
-    ok "marketplace" "$MARKETPLACE (already registered)"
-  else
-    work "marketplace" "adding $MARKETPLACE..."
-    claude plugin marketplace add "$MARKETPLACE" >/dev/null 2>&1 \
-      || die "Could not add the marketplace. It clones over git, so this needs 'git' installed and network access to github.com. On macOS a missing Xcode CLT makes git prompt instead of run."
-    ok "marketplace" "$MARKETPLACE"
-  fi
-
+  # --marketplace adds the marketplace when it is missing and reuses it otherwise.
   work "plugin" "installing at local scope..."
-  claude plugin install "$PLUGIN" --scope local >/dev/null 2>&1 \
-    || die "Plugin install failed. Re-run, or install by hand: claude plugin install $PLUGIN --scope local"
+  local out
+  if ! out="$(claude plugin install "$PLUGIN" --marketplace "$MARKETPLACE" --scope local 2>&1)"; then
+    printf '%s\n' "$out" >&2
+    die "Plugin install failed (Claude Code's output above). If it is a git or network error: adding the marketplace clones over git, so this needs 'git' installed and network access to github.com; on macOS a missing Xcode CLT makes git prompt instead of run. Re-run, or install by hand: claude plugin install $PLUGIN --marketplace $MARKETPLACE --scope local"
+  fi
   ok "plugin" "hermitd ($(pwd))"
 }
 

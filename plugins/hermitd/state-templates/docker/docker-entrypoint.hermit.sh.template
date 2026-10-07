@@ -306,31 +306,14 @@ export HERMIT_ENTRY_PHASE=pre-boot
 if [ -f "${PROJECT_DIR}/docker-entrypoint.hermit-local.sh" ]; then . "${PROJECT_DIR}/docker-entrypoint.hermit-local.sh"; fi
 
 # --- 3. Install plugins (named volume starts empty on first run) ---
-# Registration is checked via `marketplace list --json` (reads known_marketplaces.json),
-# not by directory existence. A dir can exist while the marketplace is unregistered:
-# partial add, a bind-mount, or a prior install that cloned the dir but didn't write
-# the registration. Directory existence ≠ registered state.
+# `claude plugin install <name> --marketplace <source>` adds the marketplace when it is
+# not registered yet and reuses it when it is, so no separate add step is needed.
 MARKETPLACE_DIR="${CLAUDE_CONFIG_DIR}/plugins/marketplaces"
 
-# Fetch registered marketplace names once; reused for all checks this boot.
-MARKETPLACE_LIST_JSON=$(claude plugin marketplace list --json 2>/dev/null || echo '[]')
-
-# Returns 0 if the marketplace whose canonical name matches $1 is already registered.
-marketplace_registered() {
-  echo "$MARKETPLACE_LIST_JSON" \
-    | jq -e --arg n "$1" 'any(.[]?; .name == $n)' >/dev/null 2>&1
-}
-
-# Hermit marketplace + plugin (checks are independent so a prior install failure self-heals)
-if ! marketplace_registered hermitd; then
-  echo "[docker-entrypoint] Adding hermit marketplace..."
-  if ! claude plugin marketplace add gtapps/hermitd; then
-    echo "[docker-entrypoint] ERROR: failed to add hermit marketplace — plugin install will fail."
-  fi
-fi
+# Hermit plugin (re-checked every boot so a prior install failure self-heals)
 if ! claude plugin list 2>/dev/null | grep -qF 'hermitd@hermitd'; then
   echo "[docker-entrypoint] Installing hermit plugin..."
-  if claude plugin install hermitd@hermitd --scope project; then
+  if claude plugin install hermitd --marketplace gtapps/hermitd --scope project; then
     audit_install "gtapps/hermitd" "hermitd" "project"
   else
     echo "[docker-entrypoint] Warning: failed to install hermit plugin — install manually"
@@ -340,21 +323,6 @@ fi
 # Idempotent enable — runs every boot to self-heal if plugin was disabled.
 enable_plugin hermitd@hermitd project
 
-# Official marketplace (needed by channel plugins)
-NEEDS_OFFICIAL=false
-[ -n "$CHANNELS" ] && NEEDS_OFFICIAL=true
-if [ "$NEEDS_OFFICIAL" = true ] && ! marketplace_registered claude-plugins-official; then
-  echo "[docker-entrypoint] Adding official plugins marketplace..."
-  if ! claude plugin marketplace add anthropics/claude-plugins-official; then
-    echo "[docker-entrypoint] ERROR: failed to add claude-plugins-official marketplace."
-    echo "[docker-entrypoint]        Channel and recommended plugins will NOT be installed."
-    echo "[docker-entrypoint]        Fix: shell into the container and run the command manually:"
-    echo "[docker-entrypoint]          hermitd docker bash"
-    echo "[docker-entrypoint]          claude plugin marketplace add anthropics/claude-plugins-official"
-    NEEDS_OFFICIAL=false
-  fi
-fi
-
 # Snapshot installed plugins once — used by the recommended-plugin scheduled check below.
 # stderr is kept visible so CLI errors surface in `docker compose logs`.
 INSTALLED_PLUGINS=$(claude plugin list || echo "")
@@ -363,7 +331,7 @@ INSTALLED_PLUGINS=$(claude plugin list || echo "")
 # Installed at --scope local so the entry lives in the named config volume and
 # does not leak into the project's .claude/settings.json via the bind mount.
 # stderr is NOT suppressed — install/enable failures must be visible.
-if [ "$NEEDS_OFFICIAL" = true ] && [ -n "$CHANNELS" ]; then
+if [ -n "$CHANNELS" ]; then
   for plugin in $CHANNELS; do
     target="${plugin}@claude-plugins-official"
     if echo "$INSTALLED_PLUGINS" | grep -qF "$target"; then
@@ -372,8 +340,8 @@ if [ "$NEEDS_OFFICIAL" = true ] && [ -n "$CHANNELS" ]; then
       continue
     fi
     echo "[docker-entrypoint] Installing channel plugin: ${plugin}"
-    if ! claude plugin install "$target" --scope local; then
-      echo "[docker-entrypoint] ERROR: 'claude plugin install ${target}' failed — see stderr above."
+    if ! claude plugin install "$plugin" --marketplace anthropics/claude-plugins-official --scope local; then
+      echo "[docker-entrypoint] ERROR: 'claude plugin install ${plugin} --marketplace anthropics/claude-plugins-official' failed; see stderr above."
       continue
     fi
     audit_install "claude-plugins-official" "$plugin" "local"
@@ -387,7 +355,7 @@ if [ "$NEEDS_OFFICIAL" = true ] && [ -n "$CHANNELS" ]; then
       claude plugin list | sed 's/^/[docker-entrypoint]          /' || true
       echo "[docker-entrypoint]        Fix: shell in and reinstall manually:"
       echo "[docker-entrypoint]          hermitd docker bash"
-      echo "[docker-entrypoint]          claude plugin install ${target} --scope local"
+      echo "[docker-entrypoint]          claude plugin install ${plugin} --marketplace anthropics/claude-plugins-official --scope local"
     fi
   done
 fi
@@ -432,11 +400,10 @@ function audit(marketplace, plugin, scope) {
   }
 }
 
-// Resolve marketplace canonical names from the CLI's source of truth. We need the
-// 'name' field to build install targets (<plugin>@<name>) and check the on-disk
-// cache dir (which is keyed by name). Storing both name and org/repo in config
-// would just duplicate this lookup; one subprocess call here is cheaper than a
-// permanent schema bifurcation.
+// Resolve marketplace canonical names from the CLI's source of truth. The installed
+// check below matches "<plugin>@<name>" entries. Storing both name and org/repo in
+// config would just duplicate this lookup; one subprocess call here is cheaper than
+// a permanent schema bifurcation.
 function fetchMarketplaceNames() {
   const result = spawnSync("claude", ["plugin", "marketplace", "list", "--json"],
     { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
@@ -452,7 +419,7 @@ function fetchMarketplaceNames() {
   }
 }
 
-let nameByRepo = fetchMarketplaceNames();
+const nameByRepo = fetchMarketplaceNames();
 
 for (const entry of plugins) {
   const plugin = entry.plugin;
@@ -468,39 +435,29 @@ for (const entry of plugins) {
     continue;
   }
 
-  let marketplaceName = nameByRepo[marketplace];
-  if (!marketplaceName) {
-    // Marketplace not yet registered in this container — add it, then re-fetch.
-    console.log(`[docker-entrypoint] Adding marketplace: ${marketplace}`);
-    const result = spawnSync("claude", ["plugin", "marketplace", "add", marketplace], INHERIT);
-    if (result.error) {
-      console.log(`[docker-entrypoint] Warning: claude not found adding marketplace ${marketplace} — skipping ${plugin}`);
-      continue;
-    }
-    if (result.status !== 0) {
-      console.log(`[docker-entrypoint] Warning: failed to add marketplace ${marketplace} — skipping ${plugin}`);
-      continue;
-    }
-    nameByRepo = fetchMarketplaceNames();
-    marketplaceName = nameByRepo[marketplace];
-    if (!marketplaceName) {
-      console.log(`[docker-entrypoint] Warning: marketplace ${marketplace} added but name not resolvable — skipping ${plugin}`);
-      continue;
-    }
-  }
-
-  const installTarget = `${plugin}@${marketplaceName}`;
-  if (installedBlob.includes(`❯ ${installTarget}`)) continue;
+  // Skip plugins the snapshot already lists. A plugin whose marketplace is not
+  // registered yet cannot be in the snapshot, so it always goes to install.
+  const marketplaceName = nameByRepo[marketplace];
+  if (marketplaceName && installedBlob.includes(`❯ ${plugin}@${marketplaceName}`)) continue;
   console.log(`[docker-entrypoint] Installing recommended plugin: ${plugin}`);
-  let result = spawnSync("claude", ["plugin", "install", installTarget, "--scope", scope], INHERIT);
+  // --marketplace adds the marketplace on first use; --json reports the resolved plugin id.
+  let result = spawnSync("claude", ["plugin", "install", plugin, "--marketplace", marketplace, "--scope", scope, "--json"],
+    { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" });
   if (result.error) {
     console.log(`[docker-entrypoint] Warning: claude not found installing ${plugin} — may have self-updated; will retry on next restart`);
     continue;
   }
-  if (result.status !== 0) {
-    console.log(`[docker-entrypoint] Warning: failed to install ${plugin} — install manually`);
+  let installed = null;
+  for (const line of (result.stdout ?? "").trim().split("\n").reverse()) {
+    try { installed = JSON.parse(line); break; } catch {}
+  }
+  if (result.status !== 0 || installed?.outcome !== "ok" || !installed.pluginId) {
+    const reason = installed?.message ? `: ${installed.message}` : "";
+    console.log(`[docker-entrypoint] Warning: failed to install ${plugin}${reason}; install manually`);
     continue;
   }
+  console.log(`[docker-entrypoint] ${installed.message ?? `Installed ${installed.pluginId}`}`);
+  const installTarget = installed.pluginId;
   audit(marketplace, plugin, scope);
   // Self-heal enable — mirrors shell enable_plugin(): suppress the benign "already enabled"
   // exit, warn on a genuine failure. Output captured (stdin still ignored) to match the message.

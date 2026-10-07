@@ -13,8 +13,7 @@ A **feed-to-brief pipeline** for [`hermitd`](../hermitd/README.md). Point it at 
 ## Install
 
 ```
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-feed@hermitd --scope local
+claude plugin install hermitd-feed --marketplace gtapps/hermitd --scope local
 ```
 
 Then, in your project (with the core hermit already hatched):
