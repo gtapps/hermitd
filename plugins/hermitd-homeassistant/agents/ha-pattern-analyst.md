@@ -23,7 +23,7 @@ Analyze artifacts to find:
 - Usage patterns (time-of-day, day-of-week for device activity)
 - Unused or inactive devices
 - Energy consumption anomalies
-- Entities stuck in unavailable/unknown
+- Entities stuck in unavailable
 - Correlated state changes that suggest automation opportunities
 - Drift from known patterns (compared to previous analysis)
 
