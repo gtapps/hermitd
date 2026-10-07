@@ -153,7 +153,7 @@ Common causes:
 - Check plugin version: `cat .claude-plugin/plugin.json | grep version` (or check the installed plugin path).
 - Check config version: `cat .hermit/config.json | grep _hermit_versions`.
 - If both match, there's genuinely nothing to upgrade. New features may have landed as skill changes (no config migration needed).
-- If the plugin was updated but the marketplace cache is stale: `claude plugin marketplace add gtapps/hermitd` to force refresh, then reinstall. `hermitd-docker update` / `hermitd-update` refresh the catalog automatically before moving pins, so this manual step is mainly for driving `plugin update` by hand.
+- If the plugin was updated but the marketplace cache is stale: `claude plugin marketplace update hermitd` to refresh the catalog, then `claude plugin update hermitd@hermitd --scope <local|project|user>`. `hermitd-docker update` / `hermitd-update` refresh the catalog automatically before moving pins, so this manual step is mainly for driving `plugin update` by hand.
 
 ## Docker Container Keeps Restarting
 

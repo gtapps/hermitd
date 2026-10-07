@@ -130,6 +130,7 @@ Routines live in `config.json` as a `routines` array:
 - `schedule`: 5-field cron expression (`minute hour dom month dow`), written in `config.timezone`. Monitor mode evaluates it directly in that timezone; the CronCreate anchor/fallback path converts it to machine-local time at registration (see [Config reference — routines.schedule](../docs/config-reference.md#cron-schedule-rules))
 - `skill`: full slash-command name (e.g. `hermitd:brief --morning` for plugin skills, `ha-refresh-context` for local project skills)
 - `model`: optional — one of `opus`, `sonnet`, `haiku`. Runs the skill in a subagent at that model to save cost on lightweight routines (e.g. URL checks, threshold comparisons). Subagents run in isolated context and return only a one-line status, so only use it on stateless routines — not ones whose value is chat/transcript output, and not `heartbeat-restart` (ignored there). See [config-reference](config-reference.md#routines) for details.
+- `effort`: optional, and only with `model`. One of `low`, `medium`, `high`, `xhigh`, `max`. Sets that subagent's effort; omit it to keep the subagent's default. See [config-reference](config-reference.md#routines).
 - `enabled`: toggle without removing
 
 Manage with `/hermitd:hermit-settings routines`. Changes take effect immediately — `hermit-settings` auto-runs `/hermitd:hermit-routines load` after writing config. If you edit `config.json` by hand, run `/hermitd:hermit-routines load` to apply.
