@@ -6,7 +6,7 @@ This plugin controls real home devices. The safety model is layered — the agen
 
 Every MCP call matching `mcp__homeassistant__.*` is pre-screened by `hooks/mcp-safety-gate.ts` (importing the policy from `src/policy.ts` directly) before it reaches Home Assistant. The matcher covers the **whole** `homeassistant` server namespace — a default-deny chokepoint — so script-derived and any other non-`Hass`-prefixed actuation tools cannot bypass the gate. The hook fails closed — if the policy check errors, the input can't be parsed, or the target can't be resolved to a concrete entity, the call is blocked (exit 2).
 
-A small explicit allowlist of **read-only** tools (`GetLiveContext`, `GetDateTime`, and their HA 2026.9+ prefixed forms `homeassistant__GetLiveContext`, `llm__GetDateTime` — see `READ_ONLY_TOOLS` in `src/policy.ts`) is short-circuited to allow before entity resolution, since they carry no `entity_id` and would otherwise fail closed. The allowlist is an explicit name set, not a pattern, so a future mutating tool cannot be granted by accident.
+A small explicit allowlist of **read-only** tools (`GetLiveContext`, `GetDateTime`, and their HA 2026.9+ prefixed forms `homeassistant__GetLiveContext`, `llm__GetDateTime`; see `READ_ONLY_TOOLS` in `src/policy.ts`) is short-circuited to allow before entity resolution, since they carry no `entity_id` and would otherwise fail closed. The allowlist is an explicit name set, not a pattern, so a future mutating tool cannot be granted by accident.
 
 ## What's Blocked by Default
 

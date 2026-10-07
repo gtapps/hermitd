@@ -24,9 +24,10 @@ export const READ_ONLY_TOOLS = new Set([
 
 const MCP_TOOL_PREFIX = 'mcp__homeassistant__';
 
-// `Hass*` intent tools, bare (older HA) or domain-prefixed on HA 2026.9+
-// (`intent__`, `light__`, `todo__`, ...).
-const HASS_INTENT_TOOL = /^mcp__homeassistant__(?:[a-z0-9_]+__)?Hass/;
+// `Hass*` intent tools, bare (older HA) or with ONE domain prefix on HA 2026.9+
+// (`intent__`, `light__`, `media_player__`, ...). A stacked prefix such as the
+// multi-API `assist__intent__` is not matched, so it stays an opaque tool.
+const HASS_INTENT_TOOL = /^mcp__homeassistant__(?:[a-z0-9]+(?:_[a-z0-9]+)*__)?Hass/;
 
 /** True if `toolName` is a known read-only tool on the homeassistant MCP server. */
 export function isReadOnlyTool(toolName: string): boolean {

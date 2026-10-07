@@ -151,3 +151,17 @@ test('a prefixed script tool is not treated as a Hass* intent under assist contr
   expect(r.exit).toBe(0);
   expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
 });
+
+test('a stacked-prefix Hass* tool is not treated as an intent under assist control', () => {
+  const cwd = makeHaConfigWith('ask', { ha_assist_control_enabled: true });
+  const r = runGate(
+    JSON.stringify({
+      tool_name: 'mcp__homeassistant__assist__intent__HassTurnOff',
+      tool_input: { name: 'front gate' },
+    }),
+    undefined,
+    cwd,
+  );
+  expect(r.exit).toBe(0);
+  expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+});
