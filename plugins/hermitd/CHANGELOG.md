@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.11] - 2026-10-07
 
 ### Added
 - A task assignment can name the effort its worker runs at (`low` to `max`); without one the worker keeps its default.
@@ -16,6 +16,11 @@
 - The proposal-triage agent runs on Haiku again.
 - The heartbeat evaluator defaults to Haiku at high effort instead of Sonnet.
 
+### Fixed
+- Fixed-hour routine and backup schedules inside the repeated hour on the night clocks fall back fire once instead of twice.
+- Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
+- Claude Haiku 5.5 turns are costed at its own rates and no longer flagged as an unpriced model; the `haiku` alias prices as Haiku 5.5.
+
 ### Upgrade Instructions
 
 **Bun.** `hermitd-start` refuses to boot on Bun older than 1.4.0. If `bun --version` on the host prints a lower version, run `bun upgrade` before restarting the hermit. Docker images built with Bun 1.4.0 keep working; the next `hermitd-docker update` moves them to 1.4.2.
@@ -25,10 +30,6 @@
 **Heartbeat model.** Read `heartbeat` in `.hermit/config.json`.
 1. If `heartbeat.model` is `"sonnet"`, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set heartbeat.model haiku`. Leave any other value alone: an absent key already resolves to `haiku`, and `null` means the operator chose the session model.
 2. If step 1 changed the model, tell the operator: "Heartbeat checks now run on Haiku at high effort, which matched Sonnet's accuracy in testing at a small fraction of the cost. To switch back, ask me to set `heartbeat.model` to sonnet."
-### Fixed
-- Fixed-hour routine and backup schedules inside the repeated hour on the night clocks fall back fire once instead of twice.
-- Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
-- Claude Haiku 5.5 turns are costed at its own rates and no longer flagged as an unpriced model; the `haiku` alias prices as Haiku 5.5.
 
 ## [1.4.10] - 2026-10-05
 
