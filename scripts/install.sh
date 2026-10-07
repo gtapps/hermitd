@@ -215,8 +215,11 @@ ensure_tmux() {
 install_plugin() {
   # --marketplace adds the marketplace when it is missing and reuses it otherwise.
   work "plugin" "installing at local scope..."
-  claude plugin install "$PLUGIN" --marketplace "$MARKETPLACE" --scope local >/dev/null 2>&1 \
-    || die "Plugin install failed. Adding the marketplace clones over git, so this needs 'git' installed and network access to github.com; on macOS a missing Xcode CLT makes git prompt instead of run. Re-run, or install by hand: claude plugin install $PLUGIN --marketplace $MARKETPLACE --scope local"
+  local out
+  if ! out="$(claude plugin install "$PLUGIN" --marketplace "$MARKETPLACE" --scope local 2>&1)"; then
+    printf '%s\n' "$out" >&2
+    die "Plugin install failed (Claude Code's output above). If it is a git or network error: adding the marketplace clones over git, so this needs 'git' installed and network access to github.com; on macOS a missing Xcode CLT makes git prompt instead of run. Re-run, or install by hand: claude plugin install $PLUGIN --marketplace $MARKETPLACE --scope local"
+  fi
   ok "plugin" "hermitd ($(pwd))"
 }
 
