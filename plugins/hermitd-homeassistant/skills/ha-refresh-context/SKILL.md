@@ -6,6 +6,7 @@ allowed-tools:
   - Read
   - Write
   - mcp__homeassistant__GetLiveContext
+  - mcp__homeassistant__homeassistant__GetLiveContext
 ---
 
 # HA Refresh Context

@@ -1,0 +1,7 @@
+{
+  "gate": "mcp",
+  "stdin": "{\"tool_name\":\"mcp__homeassistant__homeassistant__GetLiveContext\",\"tool_input\":{}}",
+  "verdict": "allow",
+  "divergence": "HA 2026.9+ domain-prefixed name for GetLiveContext: read-only, no entity_id, so the allowlist passes it (exit 0). The retired Python gate never saw it (old matcher was Hass.*) and would fail closed on the empty id list (exit 2).",
+  "expect_py": { "exit": 2 }
+}

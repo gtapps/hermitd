@@ -8,7 +8,9 @@ allowed-tools:
   - Grep
   - Write
   - mcp__homeassistant__GetLiveContext
+  - mcp__homeassistant__homeassistant__GetLiveContext
   - mcp__homeassistant__GetDateTime
+  - mcp__homeassistant__llm__GetDateTime
 ---
 
 # HA Evening Brief

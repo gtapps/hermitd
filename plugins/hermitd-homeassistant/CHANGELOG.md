@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Home Assistant 2026.9+ domain-prefixed MCP tool names: `homeassistant__GetLiveContext` and `llm__GetDateTime` are allowed as read-only again, and prefixed `Hass*` intent tools honor `ha_assist_control_enabled`.
+
 ## [0.4.20] - 2026-10-02
 
 ### Changed

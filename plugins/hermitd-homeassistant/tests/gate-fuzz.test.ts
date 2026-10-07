@@ -79,6 +79,8 @@ function oracleExtractIds(payload: unknown): string[] {
 const READONLY_TOOLS = new Set([
   'mcp__homeassistant__GetLiveContext',
   'mcp__homeassistant__GetDateTime',
+  'mcp__homeassistant__homeassistant__GetLiveContext',
+  'mcp__homeassistant__llm__GetDateTime',
 ]);
 function isReadonlyTool(payload: unknown): boolean {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return false;

@@ -13,10 +13,21 @@ export const SAFE_RELOAD_DOMAINS = new Set(['automation', 'script', 'scene']);
 // branch and be blocked — must be short-circuited to allow. Explicit names, NOT a
 // `*Get*` pattern: a permissive regex could silently grant a future mutating tool
 // whose name happens to contain "Get". Extend this set against the live server's
-// tool inventory if it exposes more read-only tools.
-export const READ_ONLY_TOOLS = new Set(['GetLiveContext', 'GetDateTime']);
+// tool inventory if it exposes more read-only tools. HA 2026.9+ prefixes each
+// tool with its integration's domain; the bare names cover older HA.
+export const READ_ONLY_TOOLS = new Set([
+  'GetLiveContext',
+  'GetDateTime',
+  'homeassistant__GetLiveContext',
+  'llm__GetDateTime',
+]);
 
 const MCP_TOOL_PREFIX = 'mcp__homeassistant__';
+
+// `Hass*` intent tools, bare (older HA) or with ONE domain prefix on HA 2026.9+
+// (`intent__`, `light__`, `media_player__`, ...). A stacked prefix such as the
+// multi-API `assist__intent__` is not matched, so it stays an opaque tool.
+const HASS_INTENT_TOOL = /^mcp__homeassistant__(?:[a-z0-9]+(?:_[a-z0-9]+)*__)?Hass/;
 
 /** True if `toolName` is a known read-only tool on the homeassistant MCP server. */
 export function isReadOnlyTool(toolName: string): boolean {
@@ -24,6 +35,11 @@ export function isReadOnlyTool(toolName: string): boolean {
     ? toolName.slice(MCP_TOOL_PREFIX.length)
     : toolName;
   return READ_ONLY_TOOLS.has(bare);
+}
+
+/** True if `toolName` is a `Hass*` intent tool on the homeassistant MCP server. */
+export function isHassIntentTool(toolName: string): boolean {
+  return HASS_INTENT_TOOL.test(toolName);
 }
 
 export const PermissionDecision = {
