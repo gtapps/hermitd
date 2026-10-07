@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.21] - 2026-10-07
 
 ### Fixed
 - `ha-morning-brief` takes pending tasks only from the live task list, never from an earlier brief or the session's context.

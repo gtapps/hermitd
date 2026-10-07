@@ -1,7 +1,7 @@
 {
-  "required_core_version": ">=1.4.8",
+  "required_core_version": ">=1.4.11",
   "requires": {
-    "hermitd": ">=1.4.8"
+    "hermitd": ">=1.4.11"
   },
   "hermit": {
     "boot_skill": "/hermitd-homeassistant:ha-boot"
