@@ -21,8 +21,11 @@ function makeJWT(appId: string, pem: string): string {
 }
 
 // fetch, not node:https: Bun's fetch honours HTTPS_PROXY / NO_PROXY, so the
-// script works on hosts whose only egress is a proxy.
+// script works on hosts whose only egress is a proxy. A proxy that refuses the
+// tunnel answers in GitHub's place, so its errors are labelled separately:
+// only GitHub's own responses carry x-github-request-id.
 async function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
+  const proxied = Boolean(process.env.HTTPS_PROXY || process.env.https_proxy);
   const data = body ? JSON.stringify(body) : undefined;
   const res = await fetch(`https://api.github.com${path}`, {
     method,
@@ -34,7 +37,13 @@ async function ghRequest(method: string, path: string, auth: string, body?: Json
       ...(data ? { "Content-Type": "application/json" } : {}),
     },
     body: data,
+  }).catch((err) => {
+    throw proxied ? new Error(`Proxy error: ${err.message} (check HTTPS_PROXY)`) : err;
   });
+  if (res.status >= 400 && proxied && !res.headers.has("x-github-request-id")) {
+    const status = `${res.status} ${res.statusText}`.trimEnd();
+    throw new Error(`Proxy ${status}: request did not reach GitHub (check HTTPS_PROXY)`);
+  }
   const raw = await res.text();
   let json: Json;
   try { json = JSON.parse(raw); } catch { json = { message: raw }; }

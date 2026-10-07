@@ -184,6 +184,18 @@ test("API calls are tunnelled through HTTPS_PROXY", () => {
   const r = run({ ...fullEnv, HTTPS_PROXY: `http://127.0.0.1:${proxyPort}` }, ["--check", "PROP-001"]);
   assertEqual(r.status, 1, "exit code");
   assertMatch(readFileSync(proxyLog, "utf8"), /^CONNECT api\.github\.com:443 /, "proxy log");
+  // A refused tunnel must not read as a GitHub rejection ("GH 407: ").
+  assertMatch(
+    r.stderr,
+    /^Proxy 407 Proxy Authentication Required: request did not reach GitHub \(check HTTPS_PROXY\)$/m,
+    "stderr"
+  );
+});
+
+test("an unreachable proxy is reported as a proxy error", () => {
+  const r = run({ ...fullEnv, HTTPS_PROXY: "http://127.0.0.1:1" }, ["--check", "PROP-001"]);
+  assertEqual(r.status, 1, "exit code");
+  assertMatch(r.stderr, /^Proxy error: .*\(check HTTPS_PROXY\)$/m, "stderr");
 });
 
 proxy.kill();
