@@ -15,7 +15,7 @@ A maintainer utility skill that files GitHub issues and comments through a confi
 
 ## Development
 
-- No npm dependencies, ever: only the Node stdlib APIs Bun provides (`node:crypto`, `node:https`, `node:fs`). No `package.json`, no `node_modules`.
+- No npm dependencies, ever: only the Node stdlib APIs Bun provides (`node:crypto`, `node:fs`) and the global `fetch` (which honours `HTTPS_PROXY`/`NO_PROXY`; `node:https` does not). No `package.json`, no `node_modules`.
 - Tests: `bash tests/run-all.sh` from this directory. Manual smoke checks: `README.md` § Development.
 - Local run against a target project: from the repo root, `bun run dev <target-project>`, hatch core, then `/hermitd-scribe:hatch`.
 

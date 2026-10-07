@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { createSign } from "node:crypto";
-import https from "node:https";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -21,37 +20,26 @@ function makeJWT(appId: string, pem: string): string {
   return `${input}.${sig}`;
 }
 
-function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
-  return new Promise((resolve, reject) => {
-    const data = body ? JSON.stringify(body) : undefined;
-    const req = https.request(
-      {
-        hostname: "api.github.com",
-        path,
-        method,
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: auth,
-          "User-Agent": "hermit-scribe/1",
-          "X-GitHub-Api-Version": "2022-11-28",
-          ...(data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {}),
-        },
-      },
-      (res) => {
-        let raw = "";
-        res.on("data", (c) => (raw += c));
-        res.on("end", () => {
-          let json: Json;
-          try { json = JSON.parse(raw); } catch { json = { message: raw }; }
-          if (res.statusCode! >= 400) reject(new Error(`GH ${res.statusCode}: ${json.message || raw}`));
-          else resolve(json);
-        });
-      }
-    );
-    req.on("error", reject);
-    if (data) req.write(data);
-    req.end();
+// fetch, not node:https: Bun's fetch honours HTTPS_PROXY / NO_PROXY, so the
+// script works on hosts whose only egress is a proxy.
+async function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
+  const data = body ? JSON.stringify(body) : undefined;
+  const res = await fetch(`https://api.github.com${path}`, {
+    method,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: auth,
+      "User-Agent": "hermit-scribe/1",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(data ? { "Content-Type": "application/json" } : {}),
+    },
+    body: data,
   });
+  const raw = await res.text();
+  let json: Json;
+  try { json = JSON.parse(raw); } catch { json = { message: raw }; }
+  if (res.status >= 400) throw new Error(`GH ${res.status}: ${json.message || raw}`);
+  return json;
 }
 
 function loadEnv(): Json {

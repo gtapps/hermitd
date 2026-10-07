@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
@@ -165,6 +166,35 @@ test("--templates with missing key file shows labeled error", () => {
     /HERMIT_GH_APP_KEY_FILE=.*does not exist/
   );
 });
+
+// API calls must go through HTTPS_PROXY: node:https ignored it and timed out on
+// proxy-only hosts. The stub proxy logs the CONNECT and refuses it, so nothing
+// reaches GitHub.
+const proxyLog = path.join(fixtures, "proxy.log");
+const proxy = spawn(
+  process.execPath,
+  [
+    "-e",
+    `const net = require("node:net"), fs = require("node:fs");
+     const s = net.createServer((c) => c.once("data", (b) => {
+       fs.appendFileSync(process.env.LOG, b.toString().split("\\r\\n")[0] + "\\n");
+       c.end("HTTP/1.1 403 Forbidden\\r\\n\\r\\n");
+     }));
+     s.listen(0, "127.0.0.1", () => console.log(s.address().port));`,
+  ],
+  { env: { PATH: process.env.PATH, LOG: proxyLog }, stdio: ["ignore", "pipe", "inherit"] }
+);
+const proxyPort = (await once(proxy.stdout!, "data"))[0].toString().trim();
+
+test("API calls are tunnelled through HTTPS_PROXY", () => {
+  writeFileSync(proxyLog, "");
+  const r = run({ ...fullEnv, HTTPS_PROXY: `http://127.0.0.1:${proxyPort}` }, ["--check", "PROP-001"]);
+  assertEqual(r.status, 1, "exit code");
+  assertMatch(r.stderr, /\S/, "stderr");
+  assertMatch(readFileSync(proxyLog, "utf8"), /^CONNECT api\.github\.com:443 /, "proxy log");
+});
+
+proxy.kill();
 
 // Requires real GitHub App credentials. Set HERMIT_GH_CHECK_LIVE=1 to run.
 if (process.env.HERMIT_GH_CHECK_LIVE) {
