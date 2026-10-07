@@ -731,6 +731,20 @@ describe('routine model validation', () => {
   });
 });
 
+describe('heartbeat.effort validation', () => {
+  test('high and null pass', () => {
+    for (const effort of ['high', null]) {
+      const out = runValidate({ heartbeat: { ...BASE_CONFIG.heartbeat, effort } });
+      expect(out.errors.some((e: string) => e.includes('heartbeat.effort'))).toBe(false);
+    }
+  });
+
+  test('turbo is an error', () => {
+    const out = runValidate({ heartbeat: { ...BASE_CONFIG.heartbeat, effort: 'turbo' } });
+    expect(out.errors.some((e: string) => e.includes('heartbeat.effort') && e.includes('not in'))).toBe(true);
+  });
+});
+
 // ============================================================
 // context_hygiene.compact validation (PROP-011 commit 3)
 // ============================================================

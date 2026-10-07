@@ -132,7 +132,8 @@ Manage with `/hermit-settings channels` (subcommands include `primary <name>` an
 | `active_hours.end` | string | `"23:00"` | End of active window. |
 | `stale_threshold` | string | `"2h"` | Heartbeat staleness window. Validated as a duration; no current script reads it. |
 | `waiting_timeout` | string/null | `null` | Waiting-state timeout. Validated as a duration when set; no current script reads it. |
-| `model` | string/null | `"sonnet"` | Model for the heartbeat EVALUATE subagent (`opus`, `sonnet`, `haiku`). `null` uses the session model. |
+| `model` | string/null | `"haiku"` | Model for the heartbeat EVALUATE subagent (`opus`, `sonnet`, `haiku`). `null` uses the session model. |
+| `effort` | string/null | `"high"` | Effort for the heartbeat EVALUATE subagent (`low`, `medium`, `high`, `xhigh`, `max`), passed on each dispatch. `null` uses the subagent's own effort. Haiku at `medium` misreads checklist items it gets right at `high`. |
 | `clean_recheck_cooldown` | string/null | `"6h"` | After a clean EVALUATE (nothing found), suppress re-evaluation for this window. Trades up to this much latency for surfacing a newly-arising condition in exchange for ~3× fewer LLM wakes/active-day. `null` disables (reverts to per-tick EVALUATE). All time-sensitive gates — micro-proposal, pending-proposal, task-queue, suppressed-digest — bypass the damper. Bypassing it is not the same as firing forever: the micro-proposal and pending-proposal gates damp on their own `micro-proposal-pending:*` / `proposal-pending:*` suppression ladders. |
 
 > **Note:** The tick counter (`total_ticks`) lives in `state/alert-state.json`, not here. It is runtime state, not operator configuration.

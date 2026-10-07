@@ -28,6 +28,18 @@ describe('resolvePricing', () => {
     expect(r.rates).toBe(PRICING['claude-sonnet-5-5']);
   });
 
+  test('claude-haiku-5-5 is exact', () => {
+    const r = resolvePricing('claude-haiku-5-5');
+    expect(r.exact).toBe(true);
+    expect(r.rates).toEqual(PRICING['claude-haiku-5-5']);
+  });
+
+  test('tier alias haiku → haiku-5-5, not exact', () => {
+    const r = resolvePricing('haiku');
+    expect(r.exact).toBe(false);
+    expect(r.rates).toBe(PRICING['claude-haiku-5-5']);
+  });
+
   test('claude-opus-5-5 is exact', () => {
     const r = resolvePricing('claude-opus-5-5');
     expect(r.exact).toBe(true);

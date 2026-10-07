@@ -185,7 +185,7 @@ Quick summary: set installation-wide daily, weekly, and monthly USD caps in the 
 
 Four levers, in rough order of impact:
 
-**1. Whole-session model** (`config.model: "haiku"`). The single highest-leverage cut. Every idle turn (routines, interactive) inherits the session model; heartbeat evaluation uses `heartbeat.model` (default `sonnet`, `null` to inherit), so set that too. Tradeoff: your interactive work and idle task pickup also drop to Haiku. It is whole-session, not heartbeat-only. Set via `/hermit-settings` or directly in `config.json`.
+**1. Whole-session model** (`config.model: "haiku"`). The single highest-leverage cut. Every idle turn (routines, interactive) inherits the session model; heartbeat evaluation uses `heartbeat.model` (default `haiku`, `null` to inherit). Tradeoff: your interactive work and idle task pickup also drop to Haiku. It is whole-session, not heartbeat-only. Set via `/hermit-settings` or directly in `config.json`.
 
 **2. Per-routine model override** (since v1.0.20). Routines that are self-contained and stateless (URL checks, threshold comparisons, file audits) can run their skill in a subagent at a cheaper model:
 
