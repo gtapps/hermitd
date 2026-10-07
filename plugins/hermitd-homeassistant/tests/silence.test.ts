@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { normalizeContext } from '../src/cli';
 import { computeSilenceSummary } from '../src/silence';
 import { isoUtc } from '../src/time-utils';
 
@@ -161,6 +162,16 @@ test('long unavailable only includes entities past threshold', () => {
   const idx = { 'sensor.temp': { state: 'unavailable', last_changed: recent, attributes: {} } };
   const result = computeSilenceSummary(normalized(idx, ['sensor.temp']), tmpPath(), { now: NOW });
   expect(result.long_unavailable).toEqual([]);
+});
+
+test('long unavailable excludes unknown entities from a snapshot', () => {
+  const old = daysAgo(9);
+  const states = [
+    { entity_id: 'button.restart', state: 'unknown', last_changed: old, attributes: {} },
+    { entity_id: 'sensor.temp', state: 'unavailable', last_changed: old, attributes: {} },
+  ];
+  const result = computeSilenceSummary(normalizeContext(states, [], []), tmpPath(), { now: NOW });
+  expect(result.long_unavailable.map((r: Record<string, any>) => r.entity_id)).toEqual(['sensor.temp']);
 });
 
 // --- sort order ---

@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { normalizeContext } from '../src/cli';
 import {
   computeDegradedDomains,
   formatIntegrationHealthStdout,
@@ -56,6 +57,12 @@ test('degraded domains flags domain over thresholds', () => {
   expect(entry.total).toBe(6);
   expect(entry.unavailable).toBe(5);
   expect(entry.ratio).toBe(Math.round((5 / 6) * 10_000) / 10_000);
+});
+
+test('unknown entities from a snapshot do not degrade their domain', () => {
+  const states = Array.from({ length: 5 }, (_, i) => ({ entity_id: `button.b${i}`, state: 'unknown' }));
+  const result = computeDegradedDomains(normalizeContext(states, [], []));
+  expect(result.degraded_entity_domains).toEqual([]);
 });
 
 test('degraded domains ignores small domains under min_total', () => {

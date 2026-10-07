@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `ha-integration-health` and long-unavailable silence findings no longer count `unknown` entities (never-pressed buttons, `notify`, `update` before its first check) as unavailable; a sensor stuck at `unknown` is no longer reported as long-unavailable.
+
 ## [0.4.20] - 2026-10-02
 
 ### Changed

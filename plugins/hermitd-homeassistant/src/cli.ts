@@ -2519,7 +2519,7 @@ export async function refreshContextIncremental(
 
 function collectUnavailable(entityIndex: Record<string, any>): string[] {
   return Object.entries(entityIndex)
-    .filter(([, state]) => ['unavailable', 'unknown'].includes(String(state.state)))
+    .filter(([, state]) => String(state.state) === 'unavailable')
     .map(([eid]) => eid)
     .sort();
 }
