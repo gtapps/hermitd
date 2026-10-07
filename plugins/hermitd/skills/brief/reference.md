@@ -8,7 +8,7 @@ The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `dai
 
 Run `task-report` (Commands) with arguments `--limit 20` for normalized records and `task-list` (Commands) with arguments `--open --owner resident --json` for open resident work. Run `duties-summary` (Commands) for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` last event is healthy (the routine ran its precheck and had nothing to do), not a discrepancy.
 
-Open, waiting and queued items come only from the `task-list` rows returned in this run. Never take them from an earlier brief (`state/last-brief.json`, `compiled/brief-*`).
+Open, waiting and queued items come only from the `task-list` and `task-report` rows returned in this run. Never take them from an earlier brief (`state/last-brief.json`, `compiled/brief-*`).
 
 ## Per-mode instructions
 
@@ -16,7 +16,7 @@ For morning, run `proposal-index` (Commands), then read `state/proposals-index.j
 
 For evening and daily, select records whose `closed_at` date matches `today`, and open records whose `opened_at` date matches `today`. Populate `sessions_today` with task source paths as the compatibility `session` identifier and one-line title/outcome summaries. Populate `findings` from lessons and `tomorrow` from runnable open records, leaving waiting ones to `waiting`. Do not count `cancelled` or `unconfirmed` as done.
 
-For morning, evening and daily, populate `waiting` from `task-list` rows whose `listing` includes `unconfirmed` or `waiting on`, one `<title>: <waiting_on, or "result awaiting confirmation">` entry per row.
+For morning, evening and daily, populate `waiting` from `task-list` rows with a non-null `result` or `waiting_on`, one entry per row: `<title>: result awaiting confirmation from <waiting_on>` when `result` is set, otherwise `<title>: waiting on <waiting_on>`.
 
 For morning, evening and daily, populate `decisions` from report rows' decision lines stamped within the last day as `<task title>: <what changed, why>`, dropping timestamp and actor; otherwise an empty array.
 

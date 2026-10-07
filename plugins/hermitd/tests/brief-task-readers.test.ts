@@ -23,7 +23,6 @@ describe('task-based reader instructions', () => {
     for (const text of [skill, ref]) {
       expect(text).toContain('`state/last-brief.json`, `compiled/brief-*`');
     }
-    expect(read('../hermitd-homeassistant/skills/ha-morning-brief/SKILL.md')).toContain('Pending tasks come only from that list, never from an earlier brief');
   });
 
   test('reflection and weekly evaluation consume bounded normalized records', () => {

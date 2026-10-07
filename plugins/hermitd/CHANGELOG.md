@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
-- Morning and evening briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
+- Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
 
 ## [1.4.10] - 2026-10-05
 

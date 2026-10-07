@@ -110,13 +110,13 @@ Next: description of next action (or "No next action" if all done)
 
 ## Rules
 
-- One line per field; a reader on a phone should get the whole brief without scrolling. Extra lines only for the alert count, the proposal count, and the decisions line in routine briefs
+- One line per field; a reader on a phone should get the whole brief without scrolling. Extra lines only for the alert count, the proposal count, and the decisions and waiting lines in routine briefs
 - When delivered over a channel, replace every slash-command pointer in the template with the plain reply the operator can send (e.g. 'reply "start" to begin', 'ask me for a health check'); command names stay in terminal output
 - Use the record's date, not today's date
 - Include tags in the header only if they exist
 - For "Done", list only records with outcome `done`. Label cancelled and unconfirmed outcomes explicitly.
 - For "Next", name an open record or its waiting reason; do not infer success from a result awaiting confirmation.
-- Open, waiting and queued items come only from records read this turn (runner JSON or the dispatch task list). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record never appears.
+- Open, waiting and queued items come only from records read this turn (runner JSON or the dispatch task list). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
 - After composing the 5-line output: scan `.hermit/proposals/` for files with `source: auto-detected` and `status: proposed` (read `status:` and `source:` from the **leading `---` YAML frontmatter block only** — do not count files where those phrases appear in the proposal body text; skip files with no frontmatter block). If any exist, append a 6th line: `Proposals: N auto-detected proposal(s) pending review`
 
 ## Daily Summary Format
