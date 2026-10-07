@@ -785,7 +785,7 @@ describe('buildClaudeCommand channel resolution', () => {
     expect(out).toContain('matrix');
     expect(out).toContain('someone-fork');
     expect(out).toContain('not registered');
-    expect(out).toContain('claude plugin marketplace add');
+    expect(out).toContain('claude plugin install <plugin> --marketplace <repo>');
   }, 15000);
 
   test('unregistered marketplace with repo match redirects to registered name', async () => {

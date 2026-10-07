@@ -720,7 +720,7 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
                   console.log(
                     `[hermit] WARNING: channel "${channel}" — marketplace "${marketplaceName}" is not registered with claude.`,
                   );
-                  console.log('[hermit]   Fix: claude plugin marketplace add <repo>');
+                  console.log('[hermit]   Fix: claude plugin install <plugin> --marketplace <repo> --scope local');
                 }
                 console.log(
                   `[hermit]   Dropping "${channel}" from --channels to avoid silent boot with no channels active.`,

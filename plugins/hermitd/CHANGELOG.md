@@ -11,7 +11,7 @@
 
 ### Upgrade Instructions
 
-**Docker hermits.** This release changes `docker-entrypoint.hermit.sh`, which evolve refreshes from the template. Run `.hermit/bin/hermitd-docker update` once more after evolve so the refreshed entrypoint is baked into the image; `update` rebuilds from the on-disk copy, so the update that launched evolve still carries the old one. If evolve reports the entrypoint as kept or conflicted, merge your own copy first, then rebuild. Claude Code in the image must be 2.1.292 or newer; a `CLAUDE_CODE_VERSION` build arg pinned below that makes every boot install fail.
+**Docker hermits.** This release changes `docker-entrypoint.hermit.sh`, which evolve refreshes from the template. Run `.hermit/bin/hermitd-docker update` once more after evolve so the refreshed entrypoint is baked into the image; `update` rebuilds from the on-disk copy, so the update that launched evolve still carries the old one. If evolve reports the entrypoint as kept or conflicted, merge your own copy first, then rebuild. Claude Code in the image must be 2.1.292 or newer; a `CLAUDE_CODE_VERSION` build arg pinned below that makes every boot install fail. Use `hermitd-docker update` rather than `restart --build` for this rebuild: `restart --build` pins the image to the Claude Code version the running container already has.
 
 ## [1.4.10] - 2026-10-05
 

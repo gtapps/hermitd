@@ -341,7 +341,7 @@ if [ -n "$CHANNELS" ]; then
     fi
     echo "[docker-entrypoint] Installing channel plugin: ${plugin}"
     if ! claude plugin install "$plugin" --marketplace anthropics/claude-plugins-official --scope local; then
-      echo "[docker-entrypoint] ERROR: 'claude plugin install ${plugin} --marketplace anthropics/claude-plugins-official' failed — see stderr above."
+      echo "[docker-entrypoint] ERROR: 'claude plugin install ${plugin} --marketplace anthropics/claude-plugins-official' failed; see stderr above."
       continue
     fi
     audit_install "claude-plugins-official" "$plugin" "local"
@@ -453,7 +453,7 @@ for (const entry of plugins) {
   }
   if (result.status !== 0 || installed?.outcome !== "ok" || !installed.pluginId) {
     const reason = installed?.message ? `: ${installed.message}` : "";
-    console.log(`[docker-entrypoint] Warning: failed to install ${plugin}${reason} — install manually`);
+    console.log(`[docker-entrypoint] Warning: failed to install ${plugin}${reason}; install manually`);
     continue;
   }
   console.log(`[docker-entrypoint] ${installed.message ?? `Installed ${installed.pluginId}`}`);
