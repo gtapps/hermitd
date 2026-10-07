@@ -54,6 +54,6 @@ export function renderStatus(rows: Record<string, unknown>[], json = false): str
   if (json) return JSON.stringify(rows.length === 1 ? rows[0] : rows);
   const columns = ['name', 'runtime', 'transport', 'execution', 'age', 'open', 'waiting', 'working_on', 'state', 'registered'];
   const cells = [columns.map(c => c === 'working_on' ? 'WORKING ON' : c.toUpperCase()), ...rows.map(row => columns.map(c => String(row[c] ?? '-').replace(/[\r\n\t\x1b]/g, ' ')))];
-  const widths = columns.map((_, i) => Math.max(...cells.map(row => row[i].length)));
-  return cells.map(row => row.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd()).join('\n');
+  const widths = columns.map((_, i) => Math.max(...cells.map(row => Bun.stringWidth(row[i]))));
+  return cells.map(row => row.map((cell, i) => cell + ' '.repeat(widths[i] - Bun.stringWidth(cell))).join('  ').trimEnd()).join('\n');
 }

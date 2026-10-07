@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.4.0'
+          bun-version: '1.4.2'
 
       # The current template, rendered exactly as /docker-setup renders it with
       # no operator packages.
@@ -62,7 +62,7 @@ jobs:
           cd build
           verdict=$(AGENT_DIR="$PWD/.hermit" \
             bun ../plugins/hermitd/scripts/docker-bun-pin.ts \
-              "$PWD/.hermit" 1.4.0 ci-build)
+              "$PWD/.hermit" 1.4.2 ci-build)
           echo "verdict: $verdict"
           test "$verdict" = "OK|converged"
 
@@ -74,5 +74,5 @@ jobs:
         run: |
           got=$(docker run --rm --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'bun --version')
           echo "bun in image: $got"
-          test "$got" = "1.4.0"
+          test "$got" = "1.4.2"
           docker run --rm --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'claude --version'

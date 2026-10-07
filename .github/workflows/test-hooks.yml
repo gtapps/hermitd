@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.4.0'
+          bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
       # No-op until the first .ts lands; tsc exits 18003 on zero inputs, so gate on file presence.
       - run: |
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.4.0'
+          bun-version: '1.4.2'
       # Previously pinned to --parallel=4 (333d7334) on an unverified
       # "ubuntu-latest is 4 vCPU" assumption; reverted (6287b1f8) after a
       # subprocess test consumed most of the 5s default timeout under CI
