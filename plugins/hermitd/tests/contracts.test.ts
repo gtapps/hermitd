@@ -718,6 +718,20 @@ describe('routine model validation', () => {
     expect(out.warnings.some((w: string) => w.includes('ignored'))).toBe(true);
   });
 
+  test('effort beside model is accepted; an unknown effort is an error', () => {
+    const out = runValidate({ routines: [{ ...BASE_ROUTINE, model: 'haiku', effort: 'high' }] });
+    expect(out.errors).toEqual([]);
+    expect(out.warnings.some((w: string) => w.includes('effort'))).toBe(false);
+    const bad = runValidate({ routines: [{ ...BASE_ROUTINE, model: 'haiku', effort: 'hgh' }] });
+    expect(bad.errors.some((e: string) => e.includes('effort'))).toBe(true);
+  });
+
+  test('effort without model warns that it has no effect', () => {
+    const out = runValidate({ routines: [{ ...BASE_ROUTINE, effort: 'high' }] });
+    expect(out.errors).toEqual([]);
+    expect(out.warnings.some((w: string) => w.includes('effort has no effect'))).toBe(true);
+  });
+
   test('a daily heartbeat-restart schedule produces no warning', () => {
     const out = runValidate({ routines: [HB_ROUTINE] });
     expect(out.errors).toEqual([]);
@@ -1659,6 +1673,10 @@ describe('hermit-routines model contract', () => {
 
   test('SKILL.md must reference Agent tool dispatch for model overrides', () => {
     expect(skillContent).toContain('via the Agent tool');
+  });
+
+  test('SKILL.md passes the routine effort on the model-override dispatch only when set', () => {
+    expect(skillContent).toContain('effort "<effort>" only when the routine sets one');
   });
 
   test('SKILL.md must document the heartbeat-restart short-circuit in the substitution rule', () => {

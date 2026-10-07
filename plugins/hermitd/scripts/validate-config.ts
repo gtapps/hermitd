@@ -34,6 +34,7 @@ const REQUIRED_KEYS: Record<string, string[]> = {
 // Enum value sets live in lib/settings/enums.ts so this hook and the
 // `/hermit-settings` registry cannot drift apart on what a valid value is.
 const VALID_ROUTINE_MODEL = ENUM.ROUTINE_MODEL;
+const VALID_EFFORT: readonly string[] = ENUM.EFFORT;
 const VALID_TELEMETRY_DEST = ENUM.TELEMETRY_DEST;
 const VALID_BACKUP_MODE: readonly string[] = ENUM.BACKUP_MODE;
 const VALID_BACKUP_INCLUDE: readonly string[] = ENUM.BACKUP_INCLUDE;
@@ -263,6 +264,13 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           errors.push(`routines[${i}]: model "${r.model}" not in [${VALID_ROUTINE_MODEL.join(', ')}] (omit to use session model)`);
         } else if (r.id === 'heartbeat-restart') {
           warnings.push(`routines[${i}]: model on "heartbeat-restart" is ignored — re-arm must run in the session`);
+        }
+      }
+      if (r.effort !== undefined && r.effort !== null) {
+        if (typeof r.effort !== 'string' || !VALID_EFFORT.includes(r.effort)) {
+          errors.push(`routines[${i}]: effort "${r.effort}" not in [${VALID_EFFORT.join(', ')}] (omit to keep the subagent's default)`);
+        } else if (r.model === undefined || r.model === null || r.id === 'heartbeat-restart') {
+          warnings.push(`routines[${i}]: effort has no effect without "model" — it applies only to the model-override subagent`);
         }
       }
       if (r.precheck !== undefined && r.precheck !== null) {
