@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { createSign } from "node:crypto";
-import https from "node:https";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -21,37 +20,40 @@ function makeJWT(appId: string, pem: string): string {
   return `${input}.${sig}`;
 }
 
-function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
-  return new Promise((resolve, reject) => {
-    const data = body ? JSON.stringify(body) : undefined;
-    const req = https.request(
-      {
-        hostname: "api.github.com",
-        path,
-        method,
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: auth,
-          "User-Agent": "hermit-scribe/1",
-          "X-GitHub-Api-Version": "2022-11-28",
-          ...(data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {}),
-        },
-      },
-      (res) => {
-        let raw = "";
-        res.on("data", (c) => (raw += c));
-        res.on("end", () => {
-          let json: Json;
-          try { json = JSON.parse(raw); } catch { json = { message: raw }; }
-          if (res.statusCode! >= 400) reject(new Error(`GH ${res.statusCode}: ${json.message || raw}`));
-          else resolve(json);
-        });
-      }
-    );
-    req.on("error", reject);
-    if (data) req.write(data);
-    req.end();
+// fetch, not node:https: Bun's fetch honours HTTPS_PROXY / NO_PROXY, so the
+// script works on hosts whose only egress is a proxy. A proxy that refuses the
+// tunnel answers in GitHub's place, so its errors are labelled separately:
+// only GitHub's own responses carry x-github-request-id.
+async function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
+  // Mirrors Bun 1.4's NO_PROXY matching: "*", the exact host, or a parent domain.
+  const bypass = (process.env.NO_PROXY || process.env.no_proxy || "")
+    .split(",")
+    .map((h) => h.trim().replace(/^\./, ""))
+    .some((h) => h === "*" || h === "api.github.com" || "api.github.com".endsWith(`.${h}`));
+  const proxied = Boolean(process.env.HTTPS_PROXY || process.env.https_proxy) && !bypass;
+  const data = body ? JSON.stringify(body) : undefined;
+  const res = await fetch(`https://api.github.com${path}`, {
+    method,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: auth,
+      "User-Agent": "hermit-scribe/1",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(data ? { "Content-Type": "application/json" } : {}),
+    },
+    body: data,
+  }).catch((err) => {
+    throw proxied ? new Error(`Proxy error: ${err.message} (check HTTPS_PROXY)`) : err;
   });
+  if (res.status >= 400 && proxied && !res.headers.has("x-github-request-id")) {
+    const status = `${res.status} ${res.statusText}`.trimEnd();
+    throw new Error(`Proxy ${status}: request did not reach GitHub (check HTTPS_PROXY)`);
+  }
+  const raw = await res.text();
+  let json: Json;
+  try { json = JSON.parse(raw); } catch { json = { message: raw }; }
+  if (res.status >= 400) throw new Error(`GH ${res.status}: ${json.message || raw}`);
+  return json;
 }
 
 function loadEnv(): Json {

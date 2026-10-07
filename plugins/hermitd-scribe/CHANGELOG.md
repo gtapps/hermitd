@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `file-issue.ts` honours `HTTPS_PROXY` and `NO_PROXY`, so GitHub API calls no longer time out on hosts whose only egress is a proxy. A proxy that refuses the request is reported as a proxy error, not a GitHub one.
+
 ## [0.1.8] - 2026-10-02
 
 ### Changed

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
@@ -165,6 +165,40 @@ test("--templates with missing key file shows labeled error", () => {
     /HERMIT_GH_APP_KEY_FILE=.*does not exist/
   );
 });
+
+// API calls must go through HTTPS_PROXY: node:https ignored it and timed out on
+// proxy-only hosts. The stub proxy logs the CONNECT and refuses it, so nothing
+// reaches GitHub. It runs as a child process because spawnSync blocks this one.
+const proxyLog = path.join(fixtures, "proxy.log");
+const proxy = spawn(process.execPath, [path.join(import.meta.dir, "stub-proxy.ts"), proxyLog], {
+  stdio: ["ignore", "pipe", "inherit"],
+});
+// Reject on early exit: an unresolved top-level await hangs Bun forever.
+const proxyPort = await new Promise<string>((resolve, reject) => {
+  proxy.stdout!.once("data", (b) => resolve(b.toString().trim()));
+  proxy.once("exit", () => reject(new Error("stub proxy exited before listening")));
+});
+
+test("API calls are tunnelled through HTTPS_PROXY", () => {
+  writeFileSync(proxyLog, "");
+  const r = run({ ...fullEnv, HTTPS_PROXY: `http://127.0.0.1:${proxyPort}` }, ["--check", "PROP-001"]);
+  assertEqual(r.status, 1, "exit code");
+  assertMatch(readFileSync(proxyLog, "utf8"), /^CONNECT api\.github\.com:443 /, "proxy log");
+  // A refused tunnel must not read as a GitHub rejection ("GH 407: ").
+  assertMatch(
+    r.stderr,
+    /^Proxy 407 Proxy Authentication Required: request did not reach GitHub \(check HTTPS_PROXY\)$/m,
+    "stderr"
+  );
+});
+
+test("an unreachable proxy is reported as a proxy error", () => {
+  const r = run({ ...fullEnv, HTTPS_PROXY: "http://127.0.0.1:1" }, ["--check", "PROP-001"]);
+  assertEqual(r.status, 1, "exit code");
+  assertMatch(r.stderr, /^Proxy error: .*\(check HTTPS_PROXY\)$/m, "stderr");
+});
+
+proxy.kill();
 
 // Requires real GitHub App credentials. Set HERMIT_GH_CHECK_LIVE=1 to run.
 if (process.env.HERMIT_GH_CHECK_LIVE) {
