@@ -18,8 +18,7 @@
 
 **Heartbeat model.** Read `heartbeat` in `.hermit/config.json`.
 1. If `heartbeat.model` is `"sonnet"`, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set heartbeat.model haiku`. Leave any other value alone: an absent key already resolves to `haiku`, and `null` means the operator chose the session model.
-2. If `heartbeat.effort` is absent, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set heartbeat.effort high`. Leave an existing value alone.
-3. If step 1 changed the model, tell the operator: "Heartbeat checks now run on Haiku at high effort, which matched Sonnet's accuracy in testing at a small fraction of the cost. To switch back, ask me to set `heartbeat.model` to sonnet."
+2. If step 1 changed the model, tell the operator: "Heartbeat checks now run on Haiku at high effort, which matched Sonnet's accuracy in testing at a small fraction of the cost. To switch back, ask me to set `heartbeat.model` to sonnet."
 ### Fixed
 - Morning, evening and daily briefs list records waiting on a reply or confirmation from this turn's task list, and never carry open or waiting items over from an earlier brief or the session's context.
 - Claude Haiku 5.5 turns are costed at its own rates and no longer flagged as an unpriced model; the `haiku` alias prices as Haiku 5.5.

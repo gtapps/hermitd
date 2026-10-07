@@ -731,10 +731,6 @@ describe('routine model validation', () => {
   });
 });
 
-// ============================================================
-// context_hygiene.compact validation (PROP-011 commit 3)
-// ============================================================
-
 describe('heartbeat.effort validation', () => {
   test('high and null pass', () => {
     for (const effort of ['high', null]) {
@@ -748,6 +744,10 @@ describe('heartbeat.effort validation', () => {
     expect(out.errors.some((e: string) => e.includes('heartbeat.effort') && e.includes('not in'))).toBe(true);
   });
 });
+
+// ============================================================
+// context_hygiene.compact validation (PROP-011 commit 3)
+// ============================================================
 
 describe('context_hygiene validation', () => {
   test('a fully valid compact block produces no errors or warnings', () => {
