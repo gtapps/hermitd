@@ -15,6 +15,17 @@ describe('task-based reader instructions', () => {
     expect(skill).not.toContain('S-*-REPORT.md');
   });
 
+  test('brief builds waiting items from this turn\'s records, never from an earlier brief', () => {
+    const skill = read('skills/brief/SKILL.md');
+    const ref = read('skills/brief/reference.md');
+    expect(ref).toContain('populate `waiting` from `task-list` rows');
+    expect(skill).toContain('use `runner.waiting`');
+    for (const text of [skill, ref]) {
+      expect(text).toContain('`state/last-brief.json`, `compiled/brief-*`');
+    }
+    expect(read('../hermitd-homeassistant/skills/ha-morning-brief/SKILL.md')).toContain('Pending tasks come only from that list, never from an earlier brief');
+  });
+
   test('reflection and weekly evaluation consume bounded normalized records', () => {
     for (const path of ['skills/reflect/reference.md', 'skills/weekly-review/reference.md']) {
       const text = read(path);
