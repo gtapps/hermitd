@@ -61,9 +61,18 @@ test('opaque script tool prompts under ask', () => {
   );
 });
 
+// Bare names (older HA) and HA 2026.9+ domain-prefixed names.
+const READ_ONLY_NAMES = [
+  'GetLiveContext',
+  'GetDateTime',
+  'homeassistant__GetLiveContext',
+  'llm__GetDateTime',
+];
+const HASS_INTENT_NAMES = ['HassTurnOff', 'intent__HassTurnOff', 'light__HassLightSet'];
+
 test('read-only tools allow in both modes', () => {
   for (const mode of ['strict', 'ask']) {
-    for (const name of ['GetLiveContext', 'GetDateTime']) {
+    for (const name of READ_ONLY_NAMES) {
       const r = runGate(
         JSON.stringify({ tool_name: `mcp__homeassistant__${name}`, tool_input: {} }),
         mode,
@@ -86,25 +95,59 @@ test('unresolvable area_id selector hard-blocks even under ask', () => {
 // With ha_assist_control_enabled, HA's own expose-to-Assist gate is the control
 // boundary — see the following test.
 test('Hass* intent tool with name/area target hard-blocks even under ask (assist control disabled)', () => {
-  for (const input of [{ name: 'front gate' }, { area: 'garage' }]) {
-    const r = runGate(
-      JSON.stringify({ tool_name: 'mcp__homeassistant__HassTurnOff', tool_input: input }),
-      'ask',
-    );
-    expect(r.exit).toBe(2);
-    expect(r.stdout).toBe('');
+  for (const name of HASS_INTENT_NAMES) {
+    for (const input of [{ name: 'front gate' }, { area: 'garage' }]) {
+      const r = runGate(
+        JSON.stringify({ tool_name: `mcp__homeassistant__${name}`, tool_input: input }),
+        'ask',
+      );
+      expect(r.exit).toBe(2);
+      expect(r.stdout).toBe('');
+    }
   }
 });
 
 test('Hass* intent tool with name/area target allows when assist control is enabled', () => {
   const cwd = makeHaConfigWith('ask', { ha_assist_control_enabled: true });
-  for (const input of [{ name: 'front gate' }, { area: 'garage' }]) {
-    const r = runGate(
-      JSON.stringify({ tool_name: 'mcp__homeassistant__HassTurnOff', tool_input: input }),
-      undefined,
-      cwd,
-    );
-    expect(r.exit).toBe(0);
-    expect(r.stdout).toBe('');
+  for (const name of HASS_INTENT_NAMES) {
+    for (const input of [{ name: 'front gate' }, { area: 'garage' }]) {
+      const r = runGate(
+        JSON.stringify({ tool_name: `mcp__homeassistant__${name}`, tool_input: input }),
+        undefined,
+        cwd,
+      );
+      expect(r.exit).toBe(0);
+      expect(r.stdout).toBe('');
+    }
   }
+});
+
+// The read-only allowlist is exact names, not a suffix match: any other prefix
+// in front of a read-only name (including the multi-API `assist__` namespace)
+// stays an opaque tool, blocked under strict and prompted under ask.
+test('prefixed lookalikes of read-only tools are not allowlisted', () => {
+  for (const name of [
+    'evil__GetDateTime',
+    'script__GetLiveContext',
+    'assist__homeassistant__GetLiveContext',
+  ]) {
+    const stdin = JSON.stringify({ tool_name: `mcp__homeassistant__${name}`, tool_input: {} });
+    const strict = runGate(stdin, 'strict');
+    expect(strict.exit).toBe(2);
+    expect(strict.stdout).toBe('');
+    const ask = runGate(stdin, 'ask');
+    expect(ask.exit).toBe(0);
+    expect(JSON.parse(ask.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+  }
+});
+
+test('a prefixed script tool is not treated as a Hass* intent under assist control', () => {
+  const cwd = makeHaConfigWith('ask', { ha_assist_control_enabled: true });
+  const r = runGate(
+    JSON.stringify({ tool_name: 'mcp__homeassistant__script__hass_lights', tool_input: {} }),
+    undefined,
+    cwd,
+  );
+  expect(r.exit).toBe(0);
+  expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
 });

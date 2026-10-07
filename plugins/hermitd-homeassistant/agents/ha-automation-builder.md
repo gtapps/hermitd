@@ -13,7 +13,9 @@ tools:
   - Glob
   - Grep
   - mcp__homeassistant__GetLiveContext
+  - mcp__homeassistant__homeassistant__GetLiveContext
   - mcp__homeassistant__GetDateTime
+  - mcp__homeassistant__llm__GetDateTime
 memory: project
 disallowedTools:
   - Agent

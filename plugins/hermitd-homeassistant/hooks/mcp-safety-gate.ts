@@ -41,6 +41,7 @@ import {
   classifyEntity,
   extractEntityIds,
   hasUnresolvableTarget,
+  isHassIntentTool,
   isReadOnlyTool,
   isWellFormedEntityId,
   safetyMode,
@@ -167,8 +168,7 @@ function main(): void {
     // hard-blocked because we cannot enumerate its fan-out entity set.
     // Garbage with no tool_name also always fails closed.
     if (resolved.length === 0) {
-      const isHassIntent =
-        typeof toolName === 'string' && toolName.startsWith('mcp__homeassistant__Hass');
+      const isHassIntent = typeof toolName === 'string' && isHassIntentTool(toolName);
       if (isHassIntent && assistControl(root)) {
         process.exit(0);
       }
