@@ -21,13 +21,16 @@ interface Row {
 }
 
 const DAY_MS = 86400000;
+/** Long enough for a monthly schedule to resolve; a rarer one falls back to `due` + 1 day. */
+const HORIZON_MS = 32 * DAY_MS;
 
-/** First fire of the enabled `later-check` routine strictly after `after`, or null. */
+/** First fire of the enabled `later-check` routine within the horizon after `after`, or null. */
 function laterCheckFire(dir: string, after: Date): Date | null {
   const config = readConfigRaw(dir);
   const routine = config?.routines?.find((r: any) => r?.id === 'later-check');
   if (!routine || routine.enabled !== true) return null;
-  return nextFire(String(routine.schedule ?? ''), config?.timezone ?? null, after);
+  const fire = nextFire(String(routine.schedule ?? ''), config?.timezone ?? null, after);
+  return fire && fire.getTime() - after.getTime() < HORIZON_MS ? fire : null;
 }
 
 /** Late means the first fire after `due` was missed: checked at or after the second one. */

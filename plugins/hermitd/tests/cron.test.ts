@@ -88,6 +88,12 @@ describe('schedule validation', () => {
     expect(validateCronSchedule('0 9 * * 1-5')).toBeNull();
   });
 
+  test('forms Bun.cron.parse rejects are rejected, not accepted and silently never fired', () => {
+    for (const s of ['1-2-3 * * * *', '1/2/3 * * * *', '5.0 * * * *', '-5 * * * *']) {
+      expect(validateCronSchedule(s)).not.toBeNull();
+    }
+  });
+
   test('a valid schedule that never fires is a warning, not an error', () => {
     const r = validate({
       routines: [{ id: 'leap', skill: '/x', schedule: '0 0 31 2 *', enabled: true }],

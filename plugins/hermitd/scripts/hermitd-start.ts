@@ -411,13 +411,14 @@ function checkPrerequisites(): Json {
   } else {
     // Already running under bun, so Bun.version is a free in-process probe.
     const bunVersion = Bun.version.trim();
-    let required = '>=1.4.0';
+    let required = '1.4.0';
     try {
       const metaPath = path.join(PLUGIN_ROOT, '.claude-plugin', 'hermit-meta.json');
       const declared = JSON.parse(fs.readFileSync(metaPath, 'utf-8')).required_bun_version;
-      if (pyTruthy(declared)) required = String(declared).trim();
+      if (pyTruthy(declared)) required = String(declared).replace(/^[>=\s]+/, '').trim();
     } catch {} // unreadable meta — fall back to the baseline floor
-    if (!Bun.semver.satisfies(bunVersion, required)) {
+    // cmpSemver ignores prerelease suffixes (a newer canary passes) and never blocks on an unparseable probe.
+    if (cmpSemver(bunVersion, required) < 0) {
       errors.push(`bun: version ${bunVersion} below required ${required}. Upgrade: bun upgrade`);
     }
   }

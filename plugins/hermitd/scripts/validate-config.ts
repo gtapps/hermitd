@@ -102,6 +102,13 @@ function validateCronSchedule(schedule: string): string | null {
   const domRestricted = fields[2] !== '*';
   const dowRestricted = fields[4] !== '*';
   if (domRestricted && dowRestricted) return 'both DOM and DOW restricted — not supported in v1';
+  // lib/cron.ts evaluates with Bun.cron.parse, which rejects some forms the field parser
+  // tolerates (`1-2-3`, `5.0`, `-5`); such a schedule would pass validation and never fire.
+  try {
+    Bun.cron.parse(schedule);
+  } catch (e: any) {
+    return e.message;
+  }
   return null;
 }
 
