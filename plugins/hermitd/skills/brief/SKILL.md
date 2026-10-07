@@ -44,7 +44,8 @@ Readers use `task-report.ts` for normalized task outcomes. Never open frozen ses
   "tomorrow": ["<text>"],
   "pending_proposals": ["<PROP-NNN: title>"],
   "operator_priorities": ["<text>"],
-  "queued_work": ["<text>"]
+  "queued_work": ["<text>"],
+  "waiting": ["<text>"]
 }
 ```
 <!-- brief-eval-schema:end -->
@@ -59,6 +60,7 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 - **Pending proposals:** use `runner.pending_proposals`
 - **Operator priorities:** use `runner.operator_priorities`
 - **Queued work:** use `runner.queued_work`
+- **Waiting:** use `runner.waiting` (records awaiting a reply or confirmation); omit the line when the array is empty
 - **Context recovery:** if `runner.report_summary` is non-null, use it for task context
 - If `config.always_on` is `true`: frame as "what happened overnight (activity since evening routine)"
 - If `config.always_on` is `false`: frame as "here's where things stand"
@@ -80,7 +82,8 @@ Emphasize backward-looking content. Compose from runner JSON (see Dispatch above
 - **Tasks today:** use `runner.sessions_today` (the compatibility key contains task IDs and outcomes).
 - **Key findings:** use `runner.findings` from record lessons.
 - **Decisions:** use `runner.decisions` for what changed and why; omit the line when the array is empty.
-- **Tomorrow:** use `runner.tomorrow` from open records and waiting reasons.
+- **Tomorrow:** use `runner.tomorrow` from runnable open records.
+- **Waiting:** use `runner.waiting`; omit the line when the array is empty.
 - **Duties:** append the requested and observed duty digest. Unconfirmed results remain open until checked, confirmed, or cancelled; report them without prompting for a session close.
 
 ### No flag (default)
@@ -107,16 +110,17 @@ Next: description of next action (or "No next action" if all done)
 
 ## Rules
 
-- One line per field; a reader on a phone should get the whole brief without scrolling. Extra lines only for the alert count, the proposal count, and the decisions line in routine briefs
+- One line per field; a reader on a phone should get the whole brief without scrolling. Extra lines only for the alert count, the proposal count, and the decisions and waiting lines in routine briefs
 - When delivered over a channel, replace every slash-command pointer in the template with the plain reply the operator can send (e.g. 'reply "start" to begin', 'ask me for a health check'); command names stay in terminal output
 - Use the record's date, not today's date
 - Include tags in the header only if they exist
 - For "Done", list only records with outcome `done`. Label cancelled and unconfirmed outcomes explicitly.
 - For "Next", name an open record or its waiting reason; do not infer success from a result awaiting confirmation.
+- Open, waiting and queued items come only from records read this turn (runner JSON or the dispatch task list). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
 - After composing the 5-line output: scan `.hermit/proposals/` for files with `source: auto-detected` and `status: proposed` (read `status:` and `source:` from the **leading `---` YAML frontmatter block only** — do not count files where those phrases appear in the proposal body text; skip files with no frontmatter block). If any exist, append a 6th line: `Proposals: N auto-detected proposal(s) pending review`
 
 ## Daily Summary Format
 
 When invoked with "brief today", "daily summary", or "what happened today":
 
-Compose from runner JSON (mode: `daily`). Use `runner.sessions_today`, `runner.findings`, `runner.decisions`, and `runner.tomorrow` for the day narrative. Format as a day-level summary covering: work done, decisions (what changed and why; omit the line when the array is empty), and proposals created/resolved.
+Compose from runner JSON (mode: `daily`). Use `runner.sessions_today`, `runner.findings`, `runner.decisions`, `runner.tomorrow`, and `runner.waiting` for the day narrative. Format as a day-level summary covering: work done, decisions (what changed and why; omit the line when the array is empty), and proposals created/resolved.

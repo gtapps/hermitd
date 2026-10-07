@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- `ha-morning-brief` takes pending tasks only from the live task list, never from an earlier brief or the session's context.
 - `ha-integration-health` and long-unavailable silence findings no longer count `unknown` entities (never-pressed buttons, `notify`, `update` before its first check) as unavailable; a sensor stuck at `unknown` is no longer reported as long-unavailable.
 - Home Assistant 2026.9+ domain-prefixed MCP tool names: `homeassistant__GetLiveContext` and `llm__GetDateTime` are allowed as read-only again, and prefixed `Hass*` intent tools honor `ha_assist_control_enabled`.
 
