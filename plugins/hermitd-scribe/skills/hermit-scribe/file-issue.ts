@@ -25,7 +25,12 @@ function makeJWT(appId: string, pem: string): string {
 // tunnel answers in GitHub's place, so its errors are labelled separately:
 // only GitHub's own responses carry x-github-request-id.
 async function ghRequest(method: string, path: string, auth: string, body?: Json): Promise<Json> {
-  const proxied = Boolean(process.env.HTTPS_PROXY || process.env.https_proxy);
+  // Mirrors Bun 1.4's NO_PROXY matching: "*", the exact host, or a parent domain.
+  const bypass = (process.env.NO_PROXY || process.env.no_proxy || "")
+    .split(",")
+    .map((h) => h.trim().replace(/^\./, ""))
+    .some((h) => h === "*" || h === "api.github.com" || "api.github.com".endsWith(`.${h}`));
+  const proxied = Boolean(process.env.HTTPS_PROXY || process.env.https_proxy) && !bypass;
   const data = body ? JSON.stringify(body) : undefined;
   const res = await fetch(`https://api.github.com${path}`, {
     method,
