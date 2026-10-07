@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 'ubuntu' user at UID 1000 — remove it first.
 ARG HOST_UID=1000
 ARG CLAUDE_CODE_VERSION=latest
-ARG BUN_VERSION=1.4.0
+ARG BUN_VERSION=1.4.2
 RUN userdel -r ubuntu 2>/dev/null; \
     useradd -m -s /bin/bash -u ${HOST_UID} claude && \
     mkdir -p /run/hermit-fleet && \

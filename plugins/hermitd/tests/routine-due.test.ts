@@ -120,7 +120,7 @@ describe('routine-due', () => {
   }));
 
   test('invalid config.timezone → fail-soft: no fire, but cursor init and stale-entry prune still run', withDir(async (dir) => {
-    // A bad tz makes the formatter null → the minute scan finds no match, but the missing
+    // Bun.cron.parse throws on a bad tz, so lib/cron.ts finds no match, but the missing
     // cursor must still initialize and a stale non-eligible entry must still be pruned.
     writeConfig(dir, [ROUTINE({ id: 'live-one' })], 'Not/AZone');
     writeSchedule(dir, { 'gone-routine': { last_consumed_mark: '2026-07-15T08:00:00.000Z' } }); // no longer in config

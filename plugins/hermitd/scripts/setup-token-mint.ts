@@ -125,13 +125,6 @@ const OSC8_TARGET_RE = /\x1b\]8;;(https:\/\/[^\x07\x1b]+)(?:\x07|\x1b\\)/g;
 const PLAIN_URL_RE = /https:\/\/[^\s\x07"'<>]+/g;
 const TOKEN_RE = /sk-ant-[A-Za-z0-9_-]{20,}/g;
 
-function stripAnsi(s: string): string {
-  return s
-    .replace(/\x1b\][0-9]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC (incl. hyperlinks)
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '') // CSI
-    .replace(/\x1b[()][A-Za-z0-9]/g, ''); // charset selects
-}
-
 /**
  * The OAuth URL from a pipe-pane stream.
  *
@@ -144,7 +137,7 @@ function stripAnsi(s: string): string {
 export function extractUrl(stream: string): string | null {
   const candidates: string[] = [];
   for (const m of stream.matchAll(OSC8_TARGET_RE)) candidates.push(m[1]);
-  for (const m of stripAnsi(stream).matchAll(PLAIN_URL_RE)) candidates.push(m[0]);
+  for (const m of Bun.stripANSI(stream).matchAll(PLAIN_URL_RE)) candidates.push(m[0]);
 
   const oauth = candidates
     .map((u) => u.trim().replace(/[)\],.]+$/, ''))
@@ -155,7 +148,7 @@ export function extractUrl(stream: string): string | null {
 
 /** The minted token, or null. Last match wins — the token is the final thing printed. */
 export function extractToken(stream: string): string | null {
-  const matches = [...stripAnsi(stream).matchAll(TOKEN_RE)].map((m) => m[0]);
+  const matches = [...Bun.stripANSI(stream).matchAll(TOKEN_RE)].map((m) => m[0]);
   for (let i = matches.length - 1; i >= 0; i--) {
     if (isPlausibleToken(matches[i])) return matches[i];
   }

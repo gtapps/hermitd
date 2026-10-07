@@ -35,7 +35,7 @@ function project(contents: string | null, manifest?: object): string {
   return dir;
 }
 
-async function pin(dir: string, bunVersion = '1.4.0', pluginVersion = '1.2.46') {
+async function pin(dir: string, bunVersion = '1.4.2', pluginVersion = '1.2.46') {
   const stateDir = path.join(dir, '.hermit');
   const r = await runScript('docker-bun-pin.ts', {
     args: [stateDir, bunVersion, pluginVersion],
@@ -60,7 +60,7 @@ describe('docker-bun-pin.ts', () => {
     // bun leaves the npm line; Claude Code stays on it.
     expect(out).not.toMatch(/npm install -g bun/);
     expect(out).toContain('RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}');
-    expect(out).toContain('ARG BUN_VERSION=1.4.0');
+    expect(out).toContain('ARG BUN_VERSION=1.4.2');
     expect(out).toContain('RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"');
     expect(out).toContain('ENV BUN_INSTALL=/home/claude/.bun');
     expect(out).toContain('ENV PATH=/home/claude/.bun/bin:$PATH');
@@ -78,7 +78,7 @@ describe('docker-bun-pin.ts', () => {
     [
       'a hand-applied npm version pin',
       LEGACY.replace('npm install -g bun ', 'npm install -g bun@1.3.11 '),
-      'ARG BUN_VERSION=1.4.0',
+      'ARG BUN_VERSION=1.4.2',
     ],
   ])('converges %s', async (_label, contents, expectedLine) => {
     const dir = project(contents);
@@ -97,10 +97,10 @@ describe('docker-bun-pin.ts', () => {
   });
 
   test('repins an older ARG pin, matching on the key not the value', async () => {
-    const dir = project(TEMPLATE.replace('ARG BUN_VERSION=1.4.0', 'ARG BUN_VERSION=1.3.11'));
+    const dir = project(TEMPLATE.replace('ARG BUN_VERSION=1.4.2', 'ARG BUN_VERSION=1.3.11'));
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|repinned 1.3.11->1.4.0');
-    expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.0');
+    expect(r.verdict).toBe('OK|repinned 1.3.11->1.4.2');
+    expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.2');
   });
 
   test('leaves an already-pinned file untouched', async () => {
@@ -144,7 +144,7 @@ describe('docker-bun-pin.ts', () => {
   // the ARG is there, but npm still installs a floating bun below it. Reading
   // the ARG alone would call that pinned and leave the image unpinned forever.
   test('converges a dead ARG that no native installer reads', async () => {
-    const dir = project(LEGACY.replace(/^ARG CLAUDE_CODE_VERSION=.*$/m, (l) => `ARG BUN_VERSION=1.4.0\n${l}`));
+    const dir = project(LEGACY.replace(/^ARG CLAUDE_CODE_VERSION=.*$/m, (l) => `ARG BUN_VERSION=1.4.2\n${l}`));
     const r = await pin(dir);
     expect(r.verdict).toBe('OK|converged');
 
@@ -173,16 +173,16 @@ describe('docker-bun-pin.ts', () => {
     const dir = project(LEGACY);
     const stateDir = path.join(dir, '.hermit');
     const r = await runScript('docker-bun-pin.ts', {
-      args: [stateDir, '1.4.0', '1.2.46'],
+      args: [stateDir, '1.4.2', '1.2.46'],
       cwd: freshDir(),
       env: { AGENT_DIR: stateDir },
     });
     expect(r.stdout.trim()).toBe('OK|converged');
-    expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.0');
+    expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.2');
   });
 
   test('re-records the template baseline, preserving foreign keys', async () => {
-    const dir = project(TEMPLATE.replace('ARG BUN_VERSION=1.4.0', 'ARG BUN_VERSION=1.3.11'), {
+    const dir = project(TEMPLATE.replace('ARG BUN_VERSION=1.4.2', 'ARG BUN_VERSION=1.3.11'), {
       version: 1,
       files: {
         'templates/PROPOSAL.md.template': { sha256: 'a'.repeat(64), plugin_version: '1.2.40' },
@@ -207,7 +207,7 @@ describe('docker-bun-pin.ts', () => {
   test.each([
     [
       'OK|repinned',
-      TEMPLATE.replace('ARG BUN_VERSION=1.4.0', 'ARG BUN_VERSION=1.3.11'),
+      TEMPLATE.replace('ARG BUN_VERSION=1.4.2', 'ARG BUN_VERSION=1.3.11'),
       sha256(TEMPLATE),
     ],
     [
@@ -286,7 +286,7 @@ describe('docker-bun-pin.ts', () => {
     const other = freshDir();
     fs.mkdirSync(path.join(other, '.hermit', 'state'), { recursive: true });
     const r = await runScript('docker-bun-pin.ts', {
-      args: [path.join(other, '.hermit'), '1.4.0', '1.2.46'],
+      args: [path.join(other, '.hermit'), '1.4.2', '1.2.46'],
       cwd: dir,
       env: { AGENT_DIR: path.join(dir, '.hermit') },
     });
@@ -297,7 +297,7 @@ describe('docker-bun-pin.ts', () => {
   test('requires all three arguments', async () => {
     const dir = project(LEGACY);
     const r = await runScript('docker-bun-pin.ts', {
-      args: [path.join(dir, '.hermit'), '1.4.0'],
+      args: [path.join(dir, '.hermit'), '1.4.2'],
       cwd: dir,
       env: { AGENT_DIR: path.join(dir, '.hermit') },
     });

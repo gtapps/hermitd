@@ -105,6 +105,15 @@ function validateCronSchedule(schedule: string): string | null {
   return null;
 }
 
+// A valid schedule with no matching date (e.g. Feb 31) parses to null.
+function neverFires(schedule: string): boolean {
+  try {
+    return Bun.cron.parse(schedule) === null;
+  } catch {
+    return false;
+  }
+}
+
 function retiredKeyWarning(key: string): string {
   return `${key} is retired and no longer read; run /hermitd:hermit-evolve to remove it`;
 }
@@ -227,6 +236,8 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         const cronErr = validateCronSchedule(r.schedule);
         if (cronErr) {
           errors.push(`routines[${i}]: invalid schedule "${r.schedule}" — ${cronErr}`);
+        } else if (neverFires(r.schedule)) {
+          warnings.push(`routines[${i}]: schedule "${r.schedule}" never fires — no date matches it`);
         } else if (r.id === 'heartbeat-restart' && r.schedule.split(/\s+/).slice(2).some((f: string) => f !== '*')) {
           // The anchor's re-arm keeps the routine CronCreates inside CC's 7-day expiry
           // and arm.ts's 26h anchor-age window; both assume it fires every day.
@@ -602,6 +613,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         } else {
           const err = validateCronSchedule(b.schedule);
           if (err) errors.push(`backup.schedule: invalid "${b.schedule}" — ${err}`);
+          else if (neverFires(b.schedule)) warnings.push(`backup.schedule: "${b.schedule}" never fires — no date matches it`);
         }
       } else if (b.enabled === true) {
         errors.push('backup.schedule: required when backup.enabled is true');

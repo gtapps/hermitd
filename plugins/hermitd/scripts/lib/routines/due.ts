@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isPaused } from '../pause';
 import { validateCronSchedule, ROUTINE_ID_RE } from '../../validate-config';
-import { makeTzFormatter, partsFromFormatter, compileCron, cronMatchesCompiled } from '../cron-match';
+import { latestFires } from '../cron';
 import { readJson as readJSON } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
@@ -115,11 +115,8 @@ const configuredLateness = config.routine_max_lateness_minutes;
 const maxLatenessMinutes = Number.isInteger(configuredLateness) && configuredLateness >= 1 && configuredLateness <= 1440
   ? configuredLateness : 60;
 
+// A bad tz finds no match (fail-soft), but cursor init/reset and pruning below still run.
 const timezone: string | null = typeof config.timezone === 'string' ? config.timezone : null;
-// One formatter per poll, reused across every candidate minute. null on a bad tz — the
-// per-candidate scan then finds no match (fail-soft), but cursor init/reset and pruning
-// below still run exactly as before.
-const tzFormatter = makeTzFormatter(timezone);
 const routines: Json[] = Array.isArray(config.routines) ? config.routines : [];
 const eligible = routines.filter((r: Json) =>
   r && r.enabled === true && r.id && r.skill && r.schedule && r.id !== ANCHOR_ID);
@@ -150,10 +147,6 @@ for (const routine of eligible) {
     process.stderr.write(`routine-due: skipping routine "${id}" — invalid schedule "${routine.schedule}"\n`);
     continue;
   }
-  // Parse the cron once per routine (invariant across the minute scan). Non-null here since
-  // validateCronSchedule already accepted it — the guard just satisfies the type checker.
-  const compiled = compileCron(routine.schedule);
-  if (!compiled) continue;
 
   const entry = schedule[id];
   let cursor: Date | null = entry && typeof entry.last_consumed_mark === 'string'
@@ -168,12 +161,7 @@ for (const routine of eligible) {
 
   const from = cursor.getTime() < windowFloor.getTime() ? windowFloor : cursor;
 
-  let latestMatch: Date | null = null;
-  for (let t = from.getTime() + MINUTE_MS; t <= nowMinute.getTime(); t += MINUTE_MS) {
-    const candidate = new Date(t);
-    const parts = tzFormatter ? partsFromFormatter(tzFormatter, candidate) : null;
-    if (parts && cronMatchesCompiled(compiled, parts)) latestMatch = candidate;
-  }
+  const latestMatch: Date | null = latestFires(routine.schedule, timezone, from, nowMinute, 1)[0] ?? null;
 
   if (!latestMatch) {
     // No match in (from, now]: advance the cursor to nowMinute so the next poll re-scans only
