@@ -22,7 +22,7 @@ A Home Assistant domain layer for `hermitd`: skills, subagents, a safety hook, a
 
 ## MCP vs CLI
 
-- **MCP server `homeassistant`**: read-only live ops by default (`GetLiveContext`, `GetDateTime`). `Hass*` intent tools (`HassTurnOn`, `HassLightSet`, ...) are hard-blocked unless `ha_assist_control_enabled: true` in `config.json` (set during hatch); when enabled, HA's own expose-to-Assist gate is the control boundary and the hook defers to it. The server name `homeassistant` is required: the hook matches on it.
+- **MCP server `homeassistant`**: read-only live ops by default (`GetLiveContext`, `GetDateTime`; HA 2026.9+ prefixes every tool with its integration domain, e.g. `homeassistant__GetLiveContext`, `llm__GetDateTime`). `Hass*` intent tools (`HassTurnOn`, `intent__HassTurnOn`, `light__HassLightSet`, ...) are hard-blocked unless `ha_assist_control_enabled: true` in `config.json` (set during hatch); when enabled, HA's own expose-to-Assist gate is the control boundary and the hook defers to it. The server name `homeassistant` is required: the hook matches on it.
 - **CLI `bin/ha-agent-lab`**: build and analysis operations: context refresh, YAML simulation, policy checks, apply, audits, structural writes (helpers, areas, registries, dashboards), `ha trigger-automation`. Invoke as `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha <command>`; `--help` and `src/cli.ts` are the command surface, `docs/cli-reference.md` has examples. Writes are gated by `ha_safety_mode` and Claude Code native approval.
 
 ## HA API gotchas

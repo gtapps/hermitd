@@ -5,6 +5,7 @@ allowed-tools:
   - Bash
   - Read
   - mcp__homeassistant__GetDateTime
+  - mcp__homeassistant__llm__GetDateTime
 ---
 
 # HA Automation Explorer
@@ -62,7 +63,7 @@ Invoked as `/hermitd-homeassistant:ha-automation-explorer <keyword>`.
 
 Invoked as `/hermitd-homeassistant:ha-automation-explorer --last-fired`.
 
-1. Call `mcp__homeassistant__GetDateTime` for the current UTC timestamp.
+1. Call `GetDateTime` for the current UTC timestamp.
 2. Sort all automations by `entity_index[entity_id].attributes.last_triggered` descending (most recently fired first). Automations with null `last_triggered` go at the bottom.
 3. Compute human-readable "N days ago" using the timestamp from Step 1. For null `last_triggered`: show "never fired."
 4. Enrich with `silence_summary.dead_automations` to mark stale entries — do NOT call `fetch-history`. An automation is dead if it appears in `silence_summary.dead_automations` (30+ days silent while enabled, or never fired).

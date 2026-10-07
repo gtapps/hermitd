@@ -6,7 +6,9 @@ allowed-tools:
   - Read
   - Glob
   - mcp__homeassistant__GetLiveContext
+  - mcp__homeassistant__homeassistant__GetLiveContext
   - mcp__homeassistant__GetDateTime
+  - mcp__homeassistant__llm__GetDateTime
 ---
 
 # HA Boot Check
