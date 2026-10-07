@@ -21,7 +21,7 @@ A Claude Code plugin that turns any Claude Code instance into a self-improving p
                                  |
  +-------------------------------v----------------------------------+
  |                    LAYER 3: AGENT LAYER                          |
- |   proposal-triage, reflection-judge, evolve-runner (Sonnet)      |
+ |   proposal-triage, reflection-judge, evolve-runner               |
  |   (Hermits add specialized agents here)                          |
  +-------------------------------|----------------------------------+
                                  |
@@ -82,7 +82,7 @@ assignment -> open record -> work -> result awaiting confirmation
 | Agent                    | Model  | Max Turns | Role                                                                              |
 | ------------------------ | ------ | --------- | --------------------------------------------------------------------------------- |
 | `evolve-runner`          | Sonnet | 50        | Runs the hermit-evolve upgrade in isolation                                       |
-| `proposal-triage`        | Sonnet | —         | Pre-creation gate: deduplicates proposals, applies three-condition rule           |
+| `proposal-triage`        | Haiku  | —         | Pre-creation gate: deduplicates proposals, applies three-condition rule           |
 | `reflection-judge`       | Sonnet | —         | Post-reflect validator: verifies cross-session evidence citations before queuing  |
 
 Tools: Read, Write, Edit, Bash, Glob, Grep. No web access. Uses `memory: project` for accumulated knowledge across sessions.

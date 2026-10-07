@@ -1,7 +1,7 @@
 ---
 name: proposal-triage
 description: "Pre-creation gate for proposals — deduplicates, cross-references sessions/OPERATOR.md/compiled, and applies the three-condition rule. Accepts one or more candidates in a single call (a single candidate is a batch of one). Returns one verdict per candidate, matched by title: CREATE: <title> | SUPPRESS: <title> — <code>: <reason> (\"<excerpt>\") | DUPLICATE: <title> — <PROP-ID>: <reason>, plus additive metadata lines. Call before proposal-create and before queuing micro-proposals in reflect."
-model: sonnet
+model: haiku
 effort: low
 tools:
   - Read

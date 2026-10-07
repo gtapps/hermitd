@@ -8,6 +8,7 @@
 ### Changed
 - Minimum Claude Code version is now 2.1.292.
 - Install commands, the installer and the Docker entrypoint use `claude plugin install <plugin> --marketplace <source>`, which adds the marketplace when it is missing, instead of a separate `claude plugin marketplace add` step.
+- The proposal-triage agent runs on Haiku again.
 
 ### Upgrade Instructions
 
