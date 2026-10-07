@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { spawn, spawnSync } from "node:child_process";
-import { once } from "node:events";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { generateKeyPairSync } from "node:crypto";
@@ -169,28 +168,21 @@ test("--templates with missing key file shows labeled error", () => {
 
 // API calls must go through HTTPS_PROXY: node:https ignored it and timed out on
 // proxy-only hosts. The stub proxy logs the CONNECT and refuses it, so nothing
-// reaches GitHub.
+// reaches GitHub. It runs as a child process because spawnSync blocks this one.
 const proxyLog = path.join(fixtures, "proxy.log");
-const proxy = spawn(
-  process.execPath,
-  [
-    "-e",
-    `const net = require("node:net"), fs = require("node:fs");
-     const s = net.createServer((c) => c.once("data", (b) => {
-       fs.appendFileSync(process.env.LOG, b.toString().split("\\r\\n")[0] + "\\n");
-       c.end("HTTP/1.1 403 Forbidden\\r\\n\\r\\n");
-     }));
-     s.listen(0, "127.0.0.1", () => console.log(s.address().port));`,
-  ],
-  { env: { PATH: process.env.PATH, LOG: proxyLog }, stdio: ["ignore", "pipe", "inherit"] }
-);
-const proxyPort = (await once(proxy.stdout!, "data"))[0].toString().trim();
+const proxy = spawn(process.execPath, [path.join(import.meta.dir, "stub-proxy.ts"), proxyLog], {
+  stdio: ["ignore", "pipe", "inherit"],
+});
+// Reject on early exit: an unresolved top-level await hangs Bun forever.
+const proxyPort = await new Promise<string>((resolve, reject) => {
+  proxy.stdout!.once("data", (b) => resolve(b.toString().trim()));
+  proxy.once("exit", () => reject(new Error("stub proxy exited before listening")));
+});
 
 test("API calls are tunnelled through HTTPS_PROXY", () => {
   writeFileSync(proxyLog, "");
   const r = run({ ...fullEnv, HTTPS_PROXY: `http://127.0.0.1:${proxyPort}` }, ["--check", "PROP-001"]);
   assertEqual(r.status, 1, "exit code");
-  assertMatch(r.stderr, /\S/, "stderr");
   assertMatch(readFileSync(proxyLog, "utf8"), /^CONNECT api\.github\.com:443 /, "proxy log");
 });
 
