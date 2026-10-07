@@ -10,7 +10,7 @@ tmux-based setup for running your hermit without Docker, plus the lifecycle refe
 | ------------------------ | ------------ | ------------------------------------------ |
 | **tmux**                 | Boot scripts | `brew install tmux` / `apt install tmux` — see [Installing tmux](https://github.com/tmux/tmux/wiki/Installing) for other platforms |
 | **Bun 1.3+**             | Hooks, scripts | Every hook and helper script runs on Bun |
-| **Claude Code v2.1.287+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.292+** | Channels, sandbox | Minimum supported version |
 
 tmux is required. Channels are optional.
 

@@ -30,11 +30,10 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 <details open>
 <summary>Install the Claude Code plugin</summary>
 
-With Claude Code 2.1.287+ and Bun 1.3+ installed:
+With Claude Code 2.1.292+ and Bun 1.3+ installed:
 
 ```bash
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd@hermitd --scope local
+claude plugin install hermitd --marketplace gtapps/hermitd --scope local
 claude "/hermitd:hatch"
 ```
 

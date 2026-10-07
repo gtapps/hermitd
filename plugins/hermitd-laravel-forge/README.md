@@ -18,8 +18,7 @@ Deploys, manages servers and sites, reads logs, and runs a daily estate health s
 
 ```
 # Install
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-laravel-forge@hermitd --scope local
+claude plugin install hermitd-laravel-forge --marketplace gtapps/hermitd --scope local
 
 # Setup wizard
 /hermitd-laravel-forge:hatch
@@ -46,14 +45,13 @@ Every write operation goes through **surface-then-approve**: the canonical targe
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.287+, a paid Claude plan (Pro, Max, Teams, or Enterprise), PHP 8.5+ with `ext-json` and `ext-curl`, Composer (for the SDK install at hatch time), and a [Laravel Forge API token](https://forge.laravel.com/profile/api).
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.292+, a paid Claude plan (Pro, Max, Teams, or Enterprise), PHP 8.5+ with `ext-json` and `ext-curl`, Composer (for the SDK install at hatch time), and a [Laravel Forge API token](https://forge.laravel.com/profile/api).
 
 ### 1. Install
 
 ```bash
 cd /path/to/your/project   # any folder — empty is fine
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-laravel-forge@hermitd --scope local
+claude plugin install hermitd-laravel-forge --marketplace gtapps/hermitd --scope local
 ```
 
 ### 2. Initialize

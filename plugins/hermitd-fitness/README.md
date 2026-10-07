@@ -18,8 +18,7 @@ Reads your Strava, spots load anomalies, drafts weekly plans, and flags recovery
 
 ```
 # Install
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-fitness@hermitd --scope local
+claude plugin install hermitd-fitness --marketplace gtapps/hermitd --scope local
 
 # Setup wizard
 /hermitd-fitness:hatch
@@ -56,14 +55,13 @@ Need a different cadence or a new routine? Just ask — hermit sets it up.
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.287+, a paid Claude plan (Pro, Max, Teams, or Enterprise), Node.js (for `npx` to launch the Strava MCP server), and a [Strava developer app](https://www.strava.com/settings/api) with four OAuth credentials — `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_ACCESS_TOKEN`, `STRAVA_REFRESH_TOKEN` — and scopes `read,activity:read_all,profile:read_all`. The default `read` scope alone is not enough; activity and stream reads will return 401. See the [Strava OAuth guide](https://developers.strava.com/docs/authentication/) for the full flow.
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.292+, a paid Claude plan (Pro, Max, Teams, or Enterprise), Node.js (for `npx` to launch the Strava MCP server), and a [Strava developer app](https://www.strava.com/settings/api) with four OAuth credentials — `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_ACCESS_TOKEN`, `STRAVA_REFRESH_TOKEN` — and scopes `read,activity:read_all,profile:read_all`. The default `read` scope alone is not enough; activity and stream reads will return 401. See the [Strava OAuth guide](https://developers.strava.com/docs/authentication/) for the full flow.
 
 ### 1. Install
 
 ```bash
 cd /path/to/your/project   # any folder — empty is fine
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-fitness@hermitd --scope local
+claude plugin install hermitd-fitness --marketplace gtapps/hermitd --scope local
 ```
 
 > Use `--scope local` (writes to the gitignored `.claude/settings.local.json`) to keep the hermit out of a shared repo's committed config. Use `--scope project` only when the folder is a fresh directory dedicated to the assistant.

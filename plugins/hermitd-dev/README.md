@@ -18,8 +18,7 @@ Strict git-safety hook for any Claude Code agent — blocks force-push, `--no-ve
 
 ```
 # Install
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-dev@hermitd --scope local
+claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 
 # Boot Claude Code and run the setup wizard
 /hermitd-dev:hatch
@@ -44,14 +43,13 @@ Two hooks, one instruction template, hatch, and three generic development skills
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.287+, a Claude plan (Pro, Max, Teams, or Enterprise), Node.js 24+ (for the `git-push-guard` hook at strict profile), a forge CLI when publishing PRs through the project's workflow.
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.292+, a Claude plan (Pro, Max, Teams, or Enterprise), Node.js 24+ (for the `git-push-guard` hook at strict profile), a forge CLI when publishing PRs through the project's workflow.
 
 ### 1. Install
 
 ```bash
 cd /path/to/your/project
-claude plugin marketplace add gtapps/hermitd
-claude plugin install hermitd-dev@hermitd --scope local
+claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 ```
 
 ### 2. Initialize
