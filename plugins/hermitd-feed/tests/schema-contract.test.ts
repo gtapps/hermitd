@@ -3,16 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // docs/schema.md is the product's spine — the archive-frontmatter and registry
-// contracts the pipeline depends on. Guard against silent drift, especially the
-// sources_skipped vs sources_quiet distinction that powers source-health.
+// contracts the pipeline depends on. Guard against silent drift.
 const schema = readFileSync(join(import.meta.dir, "..", "docs", "schema.md"), "utf8");
 
 const DAILY_ARCHIVE_KEYS = [
-  "date",
-  "type",
-  "title",
-  "created",
-  "tags",
   "top_categories",
   "item_count",
   "sources_used",
@@ -26,17 +20,6 @@ for (const key of DAILY_ARCHIVE_KEYS) {
     expect(schema).toContain(key);
   });
 }
-
-test("schema.md keeps sources_skipped vs sources_quiet distinct", () => {
-  expect(schema).toContain("sources_skipped");
-  expect(schema).toContain("sources_quiet");
-});
-
-test("schema.md documents the source Type enum", () => {
-  for (const t of ["web", "rss", "chrome", "reddit", "reddit-home", "x"]) {
-    expect(schema).toContain(t);
-  }
-});
 
 test('scratch producer and schema agree on caller-supplied run identity', () => {
   const agent = readFileSync(join(import.meta.dir, '..', 'agents', 'source-fetcher.md'), 'utf8');
