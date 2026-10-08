@@ -66,40 +66,31 @@ const skillContent = new Map(
   skillNames.map((name) => [name, fs.readFileSync(path.join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8')]),
 );
 
-describe('channel-ask contract: every channel-reachable skill guards its asks', () => {
-  for (const name of skillNames) {
-    if (name in TERMINAL_ONLY) continue;
-
-    test(`${name}/SKILL.md has no unguarded ask (or carries the Step-0 marker)`, () => {
+describe('channel-ask contract', () => {
+  test('every channel-reachable skill with an ask carries the Step-0 marker', () => {
+    const unguarded = skillNames.filter((name) => {
+      if (name in TERMINAL_ONLY) return false;
       const content = skillContent.get(name)!;
       const hasAskUserQuestion = content.replace(PROHIBITION_RE, '').includes('AskUserQuestion');
       const hasUnguardedAskLine = UNGUARDED_ASK_RE.test(content);
-      const hasMarker = content.includes(STEP0_MARKER);
-
-      if (hasAskUserQuestion || hasUnguardedAskLine) {
-        expect(hasMarker).toBe(true);
-      }
+      return (hasAskUserQuestion || hasUnguardedAskLine) && !content.includes(STEP0_MARKER);
     });
-  }
-});
+    expect(unguarded).toEqual([]);
+  });
 
-describe('channel-ask contract: Step-0 marker is canonical, not just a heading', () => {
-  for (const name of skillNames) {
-    const content = skillContent.get(name)!;
-    if (!content.includes(STEP0_MARKER)) continue;
-
-    test(`${name}/SKILL.md's Step-0 marker names the <channel source="..."> tag test`, () => {
-      expect(content).toContain(CHANNEL_TAG_FRAGMENT);
+  test('every Step-0 marker names the <channel source="..."> tag test', () => {
+    const missingTag = skillNames.filter((name) => {
+      const content = skillContent.get(name)!;
+      return content.includes(STEP0_MARKER) && !content.includes(CHANNEL_TAG_FRAGMENT);
     });
-  }
-});
+    expect(missingTag).toEqual([]);
+  });
 
-describe('channel-ask contract: allowlist stays honest', () => {
-  for (const name of Object.keys(TERMINAL_ONLY)) {
-    test(`allowlisted skill '${name}' still exists`, () => {
-      expect(fs.existsSync(path.join(SKILLS_DIR, name, 'SKILL.md'))).toBe(true);
-    });
-  }
+  test('every allowlisted terminal-only skill still exists', () => {
+    const missing = Object.keys(TERMINAL_ONLY)
+      .filter((name) => !fs.existsSync(path.join(SKILLS_DIR, name, 'SKILL.md')));
+    expect(missing).toEqual([]);
+  });
 });
 
 // Suggestion cards (PROP audit §8 item 2): a static drift guard for the

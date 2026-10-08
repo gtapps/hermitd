@@ -176,8 +176,8 @@ describe('cost-tracker', () => {
 describe('cost-tracker budget message', () => {
   // Chat voice contract: composeBudgetMessage is the one deterministic
   // (non-model) channel sender that composes prose, so it's the only place a
-  // forbidden-string assertion can enforce actual output, not just documented
-  // intent — see the "chat voice contract" describe block in contracts.test.ts.
+  // forbidden-string assertion can enforce actual output; the rule itself is
+  // the Channel voice paragraph in state-templates/CLAUDE-APPEND.md.
   test('composeBudgetMessage never leaks internal IDs or token jargon', () => {
     const periods = [
       { period: 'daily', spend: 5.2, cap: 5, ratio: 1.04, level: 'breach' },
@@ -1475,6 +1475,13 @@ describe('doctor-check', () => {
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',
       'startup-context', 'stop-pipeline', 'stop-failure-stamp', 'subagent-cost', 'precompact-stamp',
     ].sort());
+  });
+
+  test('hooks: user-prompt-pipeline runs on UserPromptSubmit', () => {
+    // The pause, status and reply-reminder stages only run from this event.
+    const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
+    const args = (manifest.hooks.UserPromptSubmit ?? []).flatMap((entry: any) => entry.hooks.flatMap((hook: any) => hook.args ?? []));
+    expect(args.some((a: string) => a.endsWith('/scripts/user-prompt-pipeline.ts'))).toBe(true);
   });
 
   test('doctor-check (hooks: real hooks.json passes — every exec-form arg resolves)', withDir(async (dir) => {

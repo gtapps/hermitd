@@ -10,7 +10,6 @@ plugins/hermitd/tests/heartbeat-tick.test.ts
 plugins/hermitd/tests/scripts.test.ts
 plugins/hermitd/tests/apply-reflection-actions.test.ts
 plugins/hermitd/tests/brief-task-readers.test.ts
-plugins/hermitd/tests/channel-responder-task-wiring.test.ts
 plugins/hermitd/tests/evolve-plan.test.ts
 plugins/hermitd/tests/hatch-scaffold.test.ts
 plugins/hermitd/tests/proposal-write.test.ts

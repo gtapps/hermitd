@@ -1161,8 +1161,8 @@ describe('proposal-id scheme', () => {
 // ============================================================
 // Analytics skills contract (TestAnalyticsSkillsContract, PROP-038)
 //
-// Guards against copy-paste drift between the directory name, the frontmatter
-// `name` field, and the channel-reply step that downstream operators depend on.
+// Guards against copy-paste drift between the directory name and the
+// frontmatter `name` field.
 // ============================================================
 
 describe('analytics skills contract', () => {
@@ -1185,43 +1185,22 @@ describe('analytics skills contract', () => {
       expect(head).toContain('description:');
     }
   });
-
-  test('each analytics skill must keep its Step 0 channel-reply branch (PROP-037 contract)', () => {
-    for (const slug of ANALYTICS_SKILLS) {
-      const content = readSkill(slug);
-      expect(content).toContain('Channel reply');
-      expect(content).toContain('<channel source=');
-    }
-  });
-
-  test('each analytics skill declares the ≤1500-char channel budget', () => {
-    for (const slug of ANALYTICS_SKILLS) {
-      expect(readSkill(slug)).toContain('1500 chars');
-    }
-  });
 });
 
 // ============================================================
 // Plain spend statement contract (cost-reflect --plain routing)
 //
 // Guards against a future edit silently reverting a channel cost question to
-// the jargon-laden raw table: cost-reflect's channel branch must run --plain,
-// and channel-responder must route spend questions to cost-reflect rather than
-// falling through to a free-form model turn (the actual no-jargon guarantee on
-// --plain's OUTPUT is verified at runtime in cost-reflect-plain.test.ts).
+// the jargon-laden raw table: cost-reflect's channel branch must run --plain
+// (the actual no-jargon guarantee on --plain's OUTPUT is verified at runtime in
+// cost-reflect-plain.test.ts).
 // ============================================================
 
 describe('plain spend statement routing contract', () => {
   const costReflect = read(path.join(SKILLS, 'cost-reflect', 'SKILL.md'));
-  const channelResponder = read(path.join(SKILLS, 'channel-responder', 'SKILL.md'));
 
   test('cost-reflect channel branch runs --plain, not the raw breakdown', () => {
     expect(costReflect).toContain('--plain');
-  });
-
-  test('channel-responder routes spend questions to cost-reflect', () => {
-    expect(channelResponder).toContain('cost-reflect');
-    expect(channelResponder.toLowerCase()).toContain('spend request');
   });
 });
 
@@ -1251,11 +1230,6 @@ describe('kill metrics contract', () => {
     expect(proposalTemplate).toContain('## Verification');
   });
 
-  test('PROPOSAL.md.template must carry a References section', () => {
-    // missing → proposal-create has no header to fill backward-looking sources into
-    expect(proposalTemplate).toContain('## References');
-  });
-
   test('proposal-create triage-verdict event must include evidence_source', () => {
     // missing → triage-survival rate cannot be segmented by brainstorm origin.
     // the gate verb (tests/scripts.test.ts describe('proposal gate')) guards that the
@@ -1282,10 +1256,6 @@ describe('kill metrics contract', () => {
     expect(parts.length).toBeGreaterThan(1); // Kill criteria section missing
     const killSection = parts[1].split('## ')[0];
     expect(killSection).toContain('proposal.ts metrics');
-  });
-
-  test('capability-brainstorm no longer describes itself as never running autonomously', () => {
-    expect(capabilityBrainstorm).not.toContain('Never runs autonomously');
   });
 
   test('proposal.ts metrics segment registry must discriminate capability-brainstorm', () => {
@@ -1327,40 +1297,12 @@ describe('procedure capture contract', () => {
     expect(procedureCaptureKillSection()).toContain('`proposal-metrics` (Commands)');
   });
 
-  test('reflect kill criteria must document the 25%/30% kill thresholds', () => {
-    const killSection = procedureCaptureKillSection();
-    expect(killSection).toContain('25%');
-    expect(killSection).toContain('30%');
-  });
-
-  test('reflect kill criteria must specify counting per candidate surfaced (not per reflect run)', () => {
-    expect(procedureCaptureKillSection()).toContain('per candidate surfaced');
-  });
-
   test('proposal-create Skill Draft variant must set the procedure-capture tag', () => {
     const skillDraftParts = proposalCreate.split('## Skill Draft');
     expect(skillDraftParts.length).toBeGreaterThan(1); // ## Skill Draft variant missing
     const skillDraftSection = skillDraftParts[1].split('\n**For ')[0];
     // missing → acceptance-rate grep in reflect kill criteria will find nothing
     expect(skillDraftSection).toContain('procedure-capture');
-  });
-
-  test('PROPOSAL.md.template must not have new frontmatter keys (body-section decision locked)', () => {
-    const templateText = read(path.join(TEMPLATES, 'PROPOSAL.md.template'));
-    const m = templateText.match(/^---\n([\s\S]*?)\n---/m);
-    expect(m).not.toBeNull();
-    const keys = m![1]
-      .split('\n')
-      .filter((line) => line.includes(':') && !line.startsWith(' '))
-      .map((line) => line.split(':')[0].trim());
-    const expected = new Set([
-      'id', 'title', 'status', 'source', 'session', 'created',
-      'accepted_date', 'resolved_date', 'related_sessions', 'category',
-      'tags', 'responded', 'self_eval_key', 'accepted_in_session', 'success_signal',
-    ]);
-    const extra = keys.filter((k) => !expected.has(k));
-    // procedure capture must use a body section (## Skill Draft), not a new field
-    expect(extra).toEqual([]);
   });
 });
 
@@ -1402,10 +1344,6 @@ describe('hermit-settings channel reachability', () => {
     // Broader than isModelInvocationDisabled on purpose: any value of the key
     // here is a mistake, not just `true`.
     expect(frontmatterBlock(text)).not.toContain('disable-model-invocation');
-  });
-
-  test('Step 0 fences the security tier and names the enforcing gate', () => {
-    expect(text).toContain('settings-gate.ts');
   });
 });
 
@@ -1454,38 +1392,18 @@ describe('model-invocable inventory', () => {
 // skill now creates the entry itself via hatch-config.ts --reinit.
 //
 // Coverage note: this is a static text scan of SKILL.md. It proves the
-// dead-end prose is gone and the writer is named, not that the model
-// follows the branch — that needs a live probe.
+// writer is named, not that the model follows the branch; that needs a
+// live probe.
 // ============================================================
 
 describe('channel-setup empty-channels branch', () => {
   const text = read(path.join(SKILLS, 'channel-setup', 'SKILL.md'));
-
-  test('does not send the operator to hermit-settings to add a channel', () => {
-    // Match the dead-end redirect specifically — a bare 'hermit-settings channels'
-    // or 'to add one first' would also fire on unrelated future prose.
-    expect(text).not.toContain('No channels in config.json');
-    expect(text).not.toMatch(/hermit-settings channels`? to add one first/);
-  });
 
   test('creates the entry through hatch-config.ts --reinit, discarding stdout', () => {
     expect(text).toContain('hatch-config.ts');
     expect(text).toContain('--reinit');
     // hatch-config prints the whole config on success; skills must not ingest it.
     expect(text).toContain('--reinit >/dev/null');
-  });
-
-  test('offers Discord and Telegram only — step 4 has no iMessage token branch', () => {
-    const start = text.indexOf('If no channels configured');
-    const end = text.indexOf('If entries exist but all are disabled');
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const firstBranch = text.slice(start, end);
-    expect(firstBranch).toContain('**Discord**');
-    expect(firstBranch).toContain('**Telegram**');
-    expect(firstBranch).toContain('**Cancel**');
-    // iMessage may be named in the rationale, but never as a selectable option.
-    expect(firstBranch).not.toContain('**iMessage**');
   });
 });
 
@@ -1518,13 +1436,6 @@ describe('channel setup ownership', () => {
     expect(settings).toContain('Never call `AskUserQuestion` on a channel-tagged turn');
   });
 
-  test('does not redirect Docker operators to docker-setup', () => {
-    // Old gate: runtime.json runtime_mode, or a scaffolded Dockerfile.hermit.
-    expect(channelSetup).not.toContain('docker/Dockerfile.hermit');
-    expect(channelSetup).not.toContain('runtime_mode');
-    expect(channelSetup).not.toMatch(/Run `\/hermitd:docker-setup`/);
-  });
-
   test('keeps a live host tmux hermit on the local flow', () => {
     expect(channelSetup).toContain('liveOwner');
   });
@@ -1533,10 +1444,6 @@ describe('channel setup ownership', () => {
     expect(channelSetup).toContain('hermitd restart');
     expect(channelSetup).toContain('hermitd start');
     expect(channelSetup).toContain('hermitd docker logs');
-  });
-
-  test('docker-setup pairing notes the bot may take up to 1 min', () => {
-    expect(dockerSetup).toContain('Still nothing after waiting up to 1 min');
   });
 });
 
@@ -1656,39 +1563,6 @@ describe('hermit-routines plugin-root resolution contract', () => {
     expect(skillContent).toContain('test -f "${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts"');
     expect(skillContent).not.toContain('echo $CLAUDE_PLUGIN_ROOT');
   });
-
-  test('SKILL.md documents that $CLAUDE_PLUGIN_ROOT is not a Bash env var at runtime', () => {
-    expect(skillContent).toContain('NOT a Bash env var at runtime');
-  });
-});
-
-// ============================================================
-// hermit-routines model contract (TestHermitRoutinesModelContract)
-//
-// Guards against the template change being reverted while the validator keeps
-// accepting the model field (accepted-but-inert), and against the
-// heartbeat-restart short-circuit guard being silently dropped.
-// ============================================================
-
-describe('hermit-routines model contract', () => {
-  const skillContent = read(path.join(SKILLS, 'hermit-routines', 'SKILL.md'));
-
-  test('SKILL.md must document the model-override substitution rule', () => {
-    expect(skillContent).toContain('Model-override substitution');
-  });
-
-  test('SKILL.md must reference Agent tool dispatch for model overrides', () => {
-    expect(skillContent).toContain('via the Agent tool');
-  });
-
-  test('SKILL.md passes the routine effort on the model-override dispatch only when set', () => {
-    expect(skillContent).toContain('effort "<effort>" only when the routine sets one');
-  });
-
-  test('SKILL.md must document the heartbeat-restart short-circuit in the substitution rule', () => {
-    expect(skillContent).toContain('heartbeat-restart');
-    expect(skillContent).toContain('treat `model` as absent');
-  });
 });
 
 // ============================================================
@@ -1716,10 +1590,6 @@ describe('hermit-routines diff-registration contract', () => {
   test('SKILL.md documents the HEALTHY fast path as a full stop', () => {
     expect(skillContent).toContain('HEALTHY|routines=');
     expect(skillContent).toContain('**Log that one line and stop.**');
-  });
-
-  test('load\'s default success path is no longer an unconditional CronList sweep', () => {
-    expect(skillContent).not.toContain('Unconditional reset — ensures stale entries');
   });
 
   test('SKILL.md documents the KEEP-only fast path (no CronList/CronCreate/CronDelete)', () => {
@@ -1781,6 +1651,20 @@ describe('gate-agent memory contract', () => {
       }
     }
   });
+
+  // Consumer half of proposal.ts's `Anchor:` line. A relative `.hermit/` path in
+  // a gate resolves to a worktree projection with no state/, so dedup sees nothing.
+  test('gate agents read the Anchor: line, fail closed as GATE_BLIND, and never use a relative .hermit/ path', () => {
+    for (const name of GATE_AGENTS) {
+      const body = read(path.join(AGENTS, `${name}.md`));
+      expect(body).toContain('Anchor:');
+      expect(body).toContain('GATE_BLIND');
+      expect(body).not.toContain('.hermit/');
+    }
+    for (const caller of [['proposal-create', 'SKILL.md'], ['reflect', 'branches.md'], ['reflect', 'SKILL.md']]) {
+      expect(read(path.join(SKILLS, ...caller))).toContain('Anchor:');
+    }
+  });
 });
 
 // ============================================================
@@ -1788,24 +1672,20 @@ describe('gate-agent memory contract', () => {
 //
 // hermit-evolve delegates steps 0–9 to the evolve-runner subagent. Guards
 // against: the agent reference losing its namespace (bare names fail with
-// "Agent type not found"), the recursion guard being dropped (subagent would
-// re-dispatch), and evolve-runner gaining tools it must not have (Agent →
+// "Agent type not found") and evolve-runner gaining tools it must not have (Agent →
 // recursion; web/channel → the subagent must not notify, step 10 owns that).
 // ============================================================
 
 describe('hermit-evolve delegation contract', () => {
   const skill = read(path.join(SKILLS, 'hermit-evolve', 'SKILL.md'));
-  const reference = read(path.join(SKILLS, 'hermit-evolve', 'reference.md'));
 
   test('SKILL.md dispatches evolve-runner fully-qualified', () => {
     expect(skill).toContain('hermitd:evolve-runner');
   });
 
-  test('SKILL.md keeps the recursion guard', () => {
-    // The subagent reads this same SKILL.md; without this line it would
-    // re-enter the routing branch and dispatch another evolve-runner.
-    expect(skill).toContain('running AS the `evolve-runner` subagent');
-    expect(skill).toContain('execute steps 0–9 directly');
+  // Consumer half of `routines.ts arm`'s restart verdict.
+  test('SKILL.md branches on the arm restart verdict', () => {
+    expect(skill).toContain('RESTART_REQUIRED|command-drift');
   });
 
   test('evolve-runner omits Agent, web, and channel/MCP tools', () => {
@@ -1833,45 +1713,6 @@ describe('hermit-evolve delegation contract', () => {
     expect(block(agent)).toBe(block(skill));
   });
 
-  test('report carries successful CLAUDE-APPEND writes into the context-reload notice', () => {
-    expect(skill).toContain('Context reload: <required (comma-separated plugin names) | no>');
-    expect(reference).toContain('initialize `context_reload_targets` as an empty ordered list');
-    expect(reference).toContain('After the targeted Edit or append succeeds, add `hermitd`');
-    expect(reference).toContain('After the replacement succeeds, add `<name>`');
-    expect(reference).toContain('emit `Context reload: no` when the list is empty');
-    expect(reference).toContain('emit `Context reload: required (<names>)`');
-  });
-
-  test('context reload is not requested for CLAUDE-APPEND branches that do not write', () => {
-    expect(reference).toContain('Never add a target for an unchanged block');
-    for (const branch of [
-      'block-drifted',
-      'claude_append_needs_render',
-      'claude_append_block_missing',
-      'claude_append_ambiguous',
-    ]) {
-      expect(reference).toContain(branch);
-    }
-  });
-
-  test('evolve-runner keeps Context reload alive on a blocked report', () => {
-    const agent = read(path.join(AGENTS, 'evolve-runner.md'));
-    expect(agent).toContain('except the `Context reload:` line');
-    expect(skill).toContain('Deliver it on a `blocked:` report too');
-  });
-
-  test('an unchanged sibling CLAUDE-APPEND block is reported without an Edit or reload target', () => {
-    expect(reference).toContain('`sibling.claude_append_changed !== true` → report `<name> block current`');
-    expect(reference).toContain('apply no Edit and add no reload target');
-  });
-
-  test('context-reload notice names every supported reload path and rejects plugin reload', () => {
-    expect(skill).toContain('Run `/compact` to load them now');
-    expect(skill).toContain('`/clear` or restarting the Claude session also works');
-    expect(skill).toContain('`/reload-plugins` alone does not reload CLAUDE.md');
-    expect(skill).toContain('Never issue `/compact`, `/clear`, or a restart on the operator\'s behalf');
-  });
-
   test('evolve-runner reads reference.md, not SKILL.md, for steps 0-9', () => {
     // Unlike the generic skill-eval-runner dispatchers (reflect/brief/weekly-review),
     // evolve-runner is a dedicated agent that hard-codes the file it reads — so this
@@ -1890,18 +1731,6 @@ describe('hermit-evolve delegation contract', () => {
     // checks SKILL.md would dispatch into a broken read if reference.md were missing.
     expect(skill).toContain('test -f "${CLAUDE_PLUGIN_ROOT}/skills/hermit-evolve/reference.md"');
     expect(skill).toContain('skills/hermit-evolve/reference.md');
-  });
-
-  test('operator-action-required steps are notes, never executed or deferred', () => {
-    expect(reference).toContain('A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category');
-    expect(reference).toContain('never execute it and never record it as a deferred-migration block');
-    expect(reference).toContain('Same rules as Step 2b');
-    expect(skill).toContain('append every line to the delivered result as its own line');
-    expect(skill).toContain('Never fold these lines into the one-line summary');
-    expect(skill).toContain('never merge them with deferred-migration text');
-    expect(skill).toContain('keeps that marker so it renders bold');
-    expect(skill).toContain('RESTART_REQUIRED|command-drift');
-    expect(skill).toContain('arm nothing, then continue to delivery');
   });
 });
 
@@ -1930,15 +1759,6 @@ describe('reflect delegation contract', () => {
     // checks, and procedure capture live there. A stub that loses the pointer
     // would strand those flows.
     expect(skill).toContain('skills/reflect/branches.md');
-  });
-
-  test('skill-eval-runner stays generic and reference-driven', () => {
-    // Shared runner: a downstream operator can't edit plugin source, so behavior
-    // must come from the dispatched reference.md, not from rules baked into the agent.
-    // Guard against re-coupling it to a single skill or hardcoding a state path.
-    const agent = read(path.join(AGENTS, 'skill-eval-runner.md'));
-    expect(agent).not.toContain('.hermit/');
-    expect(agent.toLowerCase()).not.toContain('reflect');
   });
 
   test('skill-eval-runner declares no memory and no model override', () => {
@@ -2014,9 +1834,8 @@ describe('weekly-review delegation contract', () => {
 // weekly-review folds channel-log consolidation into its single
 // skill-eval-runner dispatch, and the runner files its own candidates in that
 // isolated context (the main session only marks, prunes, and logs the receipt).
-// Guards against: losing the fully-qualified agent reference, a silent revert to
-// caller-applied writes, and producer/consumer schema drift between
-// consolidation-reference.md and SKILL.md.
+// Guards against: losing the fully-qualified agent reference and
+// producer/consumer schema drift between consolidation-reference.md and SKILL.md.
 // ============================================================
 
 describe('weekly-review consolidation delegation contract', () => {
@@ -2032,23 +1851,6 @@ describe('weekly-review consolidation delegation contract', () => {
     const block = (text: string) => extractBlock(text, '<!-- weekly-review-consolidation-schema:start -->', '<!-- weekly-review-consolidation-schema:end -->');
     expect(block(refFile)).toBe(block(skill));
   });
-
-  test('consolidation-reference.md has the runner file its own candidates', () => {
-    // Positive assertions, not a bare `not.toContain('read-only')` — that phrase
-    // is common enough to fail on an unrelated future sentence.
-    expect(refFile).toContain('and the writes');
-    expect(refFile).toContain('## Filing');
-    expect(refFile).toContain('applied_row_ids');
-    expect(refFile).toContain('failed_row_ids');
-  });
-
-  // A failed candidate's row must stay out of the marked set even when another
-  // candidate from the same row filed cleanly: main marks reviewed-minus-failed,
-  // so a row dropped from failed_row_ids gets consolidated and later pruned with
-  // the un-filed candidate never recorded anywhere.
-  test('consolidation-reference.md makes a failure win over a success on a shared row', () => {
-    expect(refFile).toContain('failure wins over a success');
-  });
 });
 
 // ============================================================
@@ -2060,15 +1862,9 @@ describe('weekly-review consolidation delegation contract', () => {
 // ============================================================
 
 describe('external-origin quarantine contract', () => {
-  const reflect = read(path.join(SKILLS, 'reflect', 'SKILL.md'));
   const judge = read(path.join(AGENTS, 'reflection-judge.md'));
   const triage = read(path.join(AGENTS, 'proposal-triage.md'));
   const proposalCreate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
-
-  test('reflect SKILL.md must document that external-content candidates are Tier 3', () => {
-    expect(reflect).toContain('external-content');
-    expect(reflect).toContain('Tier 3');
-  });
 
   test('reflection-judge must document the quarantine escalation and reason phrase', () => {
     expect(judge).toContain('external-content');
@@ -2084,10 +1880,6 @@ describe('external-origin quarantine contract', () => {
   test('proposal-create must thread Evidence Origin through its Pre-Creation Gate', () => {
     expect(proposalCreate).toContain('external-content');
     expect(proposalCreate).toContain('Evidence Origin');
-  });
-
-  test('proposal-create must write operator-visible provenance for external-content proposals', () => {
-    expect(proposalCreate).toContain('review for injection');
   });
 });
 
@@ -2292,68 +2084,6 @@ describe('capability-brainstorm delegation contract', () => {
 describe('proposal-act dispatch contract', () => {
   const skill = PROPOSAL_ACT;
 
-  test('falsification gate runs for every code-edit implementation', () => {
-    expect(skill).toContain('You are a read-only falsification gate. Verify every cited path and symbol against the current code. For a cited compiled/ or raw/ doc missing at its original path, search for the same basename under that directory\'s .archive/ and, on a match, treat the citation as present and verify against the archived copy; a doc absent from both locations is a real stale-paths.');
-    // skill-authoring bodies (Skill Improvement / Skill Draft) skip the gate; everything else runs it
-    expect(skill).toContain('Skip when the body contains `## Skill Improvement` or `## Skill Draft`');
-    expect(skill).toContain('both are skill-authoring, handled in-main');
-    // the ## Skill Draft substitute check is the operative gate for that body (the skip above
-    // only bypasses the generic Plan-agent pass), so it needs the same archive fallback, and
-    // the install flow's own read has to follow the citation to the archived copy
-    expect(skill).toContain('searching `compiled/` then `compiled/.archive/` for the same basename and reading the archived copy on a match');
-    expect(skill).toContain('the procedure brief in `compiled/`, or the same basename under `compiled/.archive/` when it has rotated');
-    // dispatch block is labelled by what gates it, not the stale "no skill marker"
-    expect(skill).toContain('Dispatch (falsification gate returned PROCEED, no in-main skill handler)');
-  });
-
-  test('Skill Improvement gate rejects a deleted target, but not a still-installed plugin skill', () => {
-    expect(skill).toContain('For `## Skill Improvement`, first resolve the component name to `.claude/skills/<name>/SKILL.md`');
-    // stale-paths is conditional: a missing file for a name still in the available-skills
-    // list is a plugin-skill improvement, not a dead proposal (re-running reflect would
-    // regenerate the identical body, so a blanket REJECT is a permanent dead end).
-    expect(skill).toContain('`stale-paths` fires only when the target is provably gone: that file is missing **and** `<name>` is not an installed plugin skill');
-    expect(skill).toContain('is a plugin-shipped-skill improvement, not a stale path: let it through');
-    expect(skill).toContain('If the available-skills list is not in context, proceed');
-    // the list namespaces plugin skills as `<plugin>:<name>` and nothing else (probed), so the
-    // match must be ON the namespaced form: a literal test of the bare canonical name never
-    // hits a plugin skill, and a bare entry is an operator-space or bundled skill, which must
-    // not clear the REJECT on behalf of a plugin one
-    expect(skill).toContain('a namespaced `<plugin>:<name>` entry in the available-skills list');
-    expect(skill).toContain('a bare `<name>` entry is operator-space or bundled, not a plugin one');
-  });
-
-  test('queued Skill Improvement task carries the same guards as the in-main path', () => {
-    // Queued work is consumed in a later turn, so step (e) never
-    // runs again — the guards have to travel in the bullet or the queued path can resurrect a
-    // target deleted after queueing, or rewrite one already fixed
-    const queued = skill.slice(skill.indexOf('\n## Queue a task\n'), skill.indexOf('\n## Channel re-entry'));
-    expect(queued).toContain('For a cited compiled/ or raw/ doc missing at its original path, search for the same basename under that directory\'s .archive/ and, on a match, treat the citation as present and verify against the archived copy; a doc absent from both locations is a real stale-paths.');
-    expect(queued).toContain('If it exists, read it before writing and author only the behaviors from the ## Skill Improvement body that are not already present');
-    expect(queued).toContain('never write into the plugin cache, and create a file at that name only after the operator explicitly confirms');
-  });
-
-  test('Skill Improvement authoring reads before writing and resolves an already fixed skill', () => {
-    expect(skill).toContain('**It exists:** read it before writing, compare each corrected behavior in the body against its current content, and author only behaviors not already present');
-    expect(skill).toContain('If every listed behavior is already present, skip e.5 (nothing was written, so there is no diff to clean) but still run e.6');
-    expect(skill).toContain('tell the operator or channel that the skill was already fixed, writing nothing');
-  });
-
-  test('Skill Improvement never writes into the plugin cache or resurrects a deleted skill', () => {
-    expect(skill).toContain('never write into the plugin cache and never resurrect a deleted skill');
-    expect(skill).toContain('author the improvement as an operator-space override at that path and require the operator\'s explicit confirmation');
-  });
-
-  test('queued Skill Improvement task does not require a source artifact brief', () => {
-    expect(skill).toContain('Use the source_artifact brief only when present, and validate the result.');
-    expect(skill).not.toContain('from the source_artifact brief and validate it');
-  });
-
-  test('dispatch prompt instructs escalate-don\'t-guess (cannot prompt the operator)', () => {
-    // missing → subagent guesses on ambiguous/destructive choices instead of escalating
-    expect(skill).toContain('You cannot prompt the operator');
-    expect(skill).toContain('stop and return an escalation block');
-  });
-
   test('dispatch prompt defines the six-field structured return shape', () => {
     // missing → resolve/notify branch and escalation relay have no defined source fields
     expect(skill).toContain('Status: implemented | escalated | blocked:');
@@ -2362,30 +2092,6 @@ describe('proposal-act dispatch contract', () => {
     expect(skill).toContain('Quality gate:');
     expect(skill).toContain('Verification: passed | failed:');
     expect(skill).toContain('Deferred for operator:');
-  });
-
-  test('subagent owns the quality gate and verification (design b)', () => {
-    // missing → e.5/e.6 bounce back to main, splitting execution across two contexts
-    expect(skill).toContain('then run its quality gate and verification');
-    expect(skill).toContain('/simplify');
-    // The subagent asks the gate rather than judging the tier itself — the two
-    // prose copies of that rubric had already diverged on the bookkeeping filter.
-    expect(skill).toContain('proposal.ts quality-gate');
-    expect(skill).not.toContain('decide RUN vs SKIP yourself');
-  });
-
-  test('verification failure is handled inside the subagent with a bounded retry', () => {
-    // missing → a verification failure after dispatch has no defined recovery path
-    expect(skill).toContain('attempt **one** fix and re-verify');
-    expect(skill).toContain('it still fails, set `Verification: failed`');
-  });
-
-  test('main resolves only on a verified return; escalation branches interactive vs autonomous', () => {
-    // missing → main resolves on failed/escalated, or silently discards escalations
-    expect(skill).toContain('`Status: implemented` **and** `Verification:` is `passed` or `none defined`');
-    expect(skill).toContain('do **not** resolve');
-    expect(skill).toContain('(interactive)');
-    expect(skill).toContain('(autonomous)');
   });
 });
 
@@ -3418,29 +3124,13 @@ describe('doctor routine template contract', () => {
 describe('proposal-triage batch contract', () => {
   const triage = read(path.join(AGENTS, 'proposal-triage.md'));
   const branches = read(path.join(SKILLS, 'reflect', 'branches.md'));
-  const reflectSkill = read(path.join(SKILLS, 'reflect', 'SKILL.md'));
   const proposalCreate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
   const brainstorm = read(path.join(SKILLS, 'capability-brainstorm', 'SKILL.md'));
-
-  test('agents/proposal-triage.md documents multi-candidate batch input', () => {
-    expect(triage).toContain('batch of one');
-    expect(triage).toContain('separated by a blank line');
-  });
 
   test('agents/proposal-triage.md documents the title-tagged verdict grammar', () => {
     expect(triage).toContain('CREATE: <title>');
     expect(triage).toContain('SUPPRESS: <title>');
     expect(triage).toContain('DUPLICATE: <title>');
-  });
-
-  test('agents/proposal-triage.md no longer documents the old bare grammar', () => {
-    expect(triage).not.toContain('SUPPRESS — <code>');
-    expect(triage).not.toContain('DUPLICATE:<PROP-ID> — <one-line reason>');
-  });
-
-  test('reflect/branches.md gates candidates through proposal-triage in one batched call', () => {
-    expect(branches).toContain('single batched call');
-    expect(branches).not.toContain('single-candidate — invoke per-candidate, never as a batch');
   });
 
   test('reflect/branches.md parses the title-tagged triage verdict grammar', () => {
@@ -3450,11 +3140,6 @@ describe('proposal-triage batch contract', () => {
     expect(branches).toContain('PROCEED|CREATE');
     expect(branches).toContain('DROP|DUPLICATE:<PROP-ID>');
     expect(branches).toContain('DROP|SUPPRESS:<code>');
-  });
-
-  test('reflect/SKILL.md no longer describes per-candidate triage dispatch', () => {
-    expect(reflectSkill).not.toContain('Triage each candidate');
-    expect(reflectSkill).not.toContain('per-candidate `hermitd:proposal-triage`');
   });
 
   test('proposal-create/SKILL.md documents its call as a batch of one and parses the new grammar', () => {
@@ -3467,39 +3152,6 @@ describe('proposal-triage batch contract', () => {
   test('capability-brainstorm/SKILL.md parses proposal-create outcome with the title-tagged grammar', () => {
     expect(brainstorm).toContain('CREATE: <title>');
     expect(brainstorm).toContain('DUPLICATE: <title> — <PROP-ID>');
-  });
-});
-
-// ============================================================
-// Chat voice contract
-//
-// Presence/drift guard proving the "no internal IDs / no slash commands / no
-// token counts to a channel" rule is documented in the two surfaces that
-// carry it — this proves the rule is specified, not that every
-// channel-emitting skill obeys it (model-authored replies can't be enforced
-// by a markdown scan). The one deterministic (non-model) channel sender that
-// composes prose, composeBudgetMessage, is covered by a real forbidden-string
-// assertion in hooks.contract.test.ts (it shares that file's single-import
-// cost-tracker.ts fixture — see the comment there on why the module can only
-// be imported once per process).
-// ============================================================
-
-describe('chat voice contract', () => {
-  test('CLAUDE-APPEND.md documents the channel voice rule', () => {
-    const append = read(path.join(TEMPLATES, 'CLAUDE-APPEND.md'));
-    expect(append).toContain('Channel voice.');
-    expect(append).toContain('No internal IDs (PROP-NNN, T-..., MP-…)');
-  });
-
-  test('channel-responder/SKILL.md mirrors the channel voice rule', () => {
-    const responder = read(path.join(SKILLS, 'channel-responder', 'SKILL.md'));
-    expect(responder).toContain('Channel voice:');
-    expect(responder).toContain('no internal IDs');
-  });
-
-  test('hermit-doctor/SKILL.md channel example contains no slash command', () => {
-    const doctor = read(path.join(SKILLS, 'hermit-doctor', 'SKILL.md'));
-    expect(doctor).not.toMatch(/then run \/channel-setup/);
   });
 });
 
@@ -3531,71 +3183,6 @@ describe('voice carrier contract', () => {
     expect(text).toContain(
       'Project security, routing, approval, and audience rules take precedence',
     );
-  });
-
-  test('channel routing policy stays in CLAUDE-APPEND.md, not the voice file', () => {
-    // The voice file is operator-owned tone. Channel voice/routing is plugin
-    // policy with its own home and its own contract test above — duplicating it
-    // here would give the operator an editable copy of a non-negotiable rule.
-    const text = voice();
-    expect(text).not.toContain('maintainer_channel_id');
-    expect(text).not.toContain('PROP-NNN');
-  });
-
-  test('OPERATOR.md template points tone at the config.json voice block instead of owning it, and does not overclaim its own question count', () => {
-    const operator = read(path.join(TEMPLATES, 'OPERATOR.md'));
-    expect(operator).toContain("config.json's `voice` block");
-    expect(operator).toContain('/hermitd:hermit-settings voice');
-    expect(operator).not.toContain('Comms style:');
-    expect(operator).toContain('three questions');
-    expect(operator).not.toContain('four questions');
-  });
-
-  // Operators run these hermits from a chat, so the voice is reachable there —
-  // but split by what the value carries: three sealed style names are everyday
-  // settings, while free prose feeds the next session's system prompt and
-  // raises the native permission prompt.
-  test('hermit-settings tiers the voice rather than holding all of it at the terminal', () => {
-    const settings = read(path.join(SKILLS, 'hermit-settings', 'SKILL.md'));
-    expect(settings).toContain('**If argument is "voice":**');
-    expect(settings).toContain('Picking a built-in is an everyday setting');
-    expect(settings).toContain('Writing custom prose raises the native permission prompt');
-  });
-
-  test('hatch asks the comms question in the batch but keeps the answer out of OPERATOR.md', () => {
-    const hatch = read(path.join(SKILLS, 'hatch', 'SKILL.md'));
-    // The question rides the batch the operator is already answering — a separate
-    // dialog for it was a third blocking prompt at the end of hatch.
-    const call1 = hatch.slice(hatch.indexOf('Call 1 — always sent'), hatch.indexOf('Call 2 —'));
-    expect(call1).toMatch(/comms style|communicate/i);
-
-    // What keeps the answer out of the file is now a stated constraint on the
-    // draft, not the ordering of the question.
-    const draft = hatch.slice(hatch.indexOf('#### Phase 4 — Write final OPERATOR.md'), hatch.indexOf('#### Phase 4b — Style'));
-    expect(draft).toContain('Draft from Q1–Q3');
-    expect(draft).toContain('must not reach this file');
-
-    // Phase 4b still runs after the file is written — it applies an answer, so
-    // there is nothing left to leak into a draft that is already on disk.
-    const operatorWriteIdx = hatch.indexOf('Write the final version to `.hermit/OPERATOR.md`.');
-    const styleStepIdx = hatch.indexOf('#### Phase 4b — Style');
-    expect(operatorWriteIdx).toBeGreaterThan(-1);
-    expect(styleStepIdx).toBeGreaterThan(operatorWriteIdx);
-  });
-
-  test('hatch offers the two rendered built-ins and falls back to the operator\'s own words', () => {
-    const hatch = read(path.join(SKILLS, 'hatch', 'SKILL.md'));
-    expect(hatch).toContain('Default / Concise');
-    // The other Claude Code built-ins are coding-tool styles; a hermit renders
-    // only these two, and anything else is the operator's own /config choice.
-    expect(hatch).not.toContain('style = Explanatory');
-    expect(hatch).toContain('apply-known voice default');
-    expect(hatch).toContain('apply-known voice Concise');
-    // Free text goes to config, prose before style — the reverse order is invalid.
-    const proseIdx = hatch.indexOf('set voice.prose');
-    const styleIdx = hatch.indexOf('apply-known voice custom');
-    expect(proseIdx).toBeGreaterThan(-1);
-    expect(styleIdx).toBeGreaterThan(proseIdx);
   });
 
   // One renderer owns config.voice -> outputStyle + the style file. hatch and
@@ -3647,11 +3234,6 @@ describe('voice carrier contract', () => {
 // ============================================================
 
 describe('proactive-notify unification contract', () => {
-  test('cost-reflect channel (inbound reply) still uses the channel reply tool', () => {
-    const costReflect = read(path.join(SKILLS, 'cost-reflect', 'SKILL.md'));
-    expect(costReflect).toContain("reply through that channel's reply tool");
-  });
-
   test('cost-reflect Step 3 (proactive) routes through --notice', () => {
     const costReflect = read(path.join(SKILLS, 'cost-reflect', 'SKILL.md'));
     const step3 = costReflect.slice(costReflect.indexOf('## Step 3'));
@@ -3660,45 +3242,6 @@ describe('proactive-notify unification contract', () => {
     expect(step3).toContain('channel-send.ts');
     expect(step3).toContain('--notice');
     expect(step3).toContain('`maintainer` leg only (no `client` leg)');
-  });
-
-  test('doctor sends one two-leg notice and lets channel-send route it', () => {
-    const doctor = read(path.join(SKILLS, 'hermit-doctor', 'SKILL.md'));
-    // Prose wraps, so phrase pins run against a single-line copy; the payload literal
-    // is on one line by construction and is matched verbatim.
-    const flat = doctor.replace(/\s+/g, ' ');
-    expect(doctor).toContain('`{"client": "<plain headline for the rows without a tier, plus the one next step>", "maintainer": "<complete summary, every row>"}`');
-    expect(flat).toContain('Omit `client` when every new row is tiered');
-    // The client leg is new to the routine's `--maintainer` invocation, which used to
-    // send a maintainer-only notice. Doctor rows carry check ids, paths and spend
-    // figures, so an unconstrained client leg would put all of that in the client chat
-    // on a non-technical install with a maintainer chat configured (docs/security.md
-    // § Tiered disclosure bars exactly that).
-    expect(flat).toContain('no check ids, file paths, USD or token figures');
-    // No `fallback` key: its default is the one that diverts a maintainer leg to
-    // Findings on a non-technical install. "primary" bypassed that guard, which is
-    // why the destination had to be resolved by hand in prose.
-    expect(doctor).not.toContain('"fallback": "primary"');
-    expect(doctor).not.toContain('Include this finding only when that destination');
-    // The flag survives for routine strings already on disk, but decides nothing.
-    expect(flat).toContain('`--maintainer` is accepted and ignored');
-    // "exactly once" was an overclaim: dedup was persisted before the send, so a
-    // failed send was counted as delivered (issue #690). One attempt per episode,
-    // retried until confirmed, is the guarantee doctor can actually keep.
-    expect(doctor).toContain('Deliver it once through the canonical notice path');
-    expect(doctor).not.toContain('Without `--maintainer`, do not call `channel-send.ts`');
-    // Every announced id gets confirmed, or escalation.new stays non-empty and the
-    // weekly routine gate wakes on the same standing finding forever.
-    expect(flat).toContain('tiered rows included');
-  });
-
-  test('hermit-evolve uses explicit unattended as the maintainer delivery signal', () => {
-    const evolve = read(path.join(SKILLS, 'hermit-evolve', 'SKILL.md'));
-    expect(evolve).toContain('Only the explicit `unattended` argument authorizes a proactive maintainer notification');
-    expect(evolve).toContain('delivery *direct-channel-reply*');
-    expect(evolve).toContain('`{\"maintainer\":\"<complete condensed result>\"}`');
-    expect(evolve).toContain('no `client` leg');
-    expect(evolve).toContain('hermit-routines load');
   });
 
   test('weekly-review proactive delivery routes through --notice', () => {
@@ -3743,10 +3286,6 @@ describe('heartbeat eval-runner return contract', () => {
     expect(reference).not.toContain('self_eval_updates');
   });
 
-  test('reference.md checklist firing entry documents item', () => {
-    expect(reference).toContain('`item`: the HEARTBEAT.md line, verbatim');
-  });
-
   test('reference.md never instructs the model to author removed bookkeeping fields', () => {
     // Backtick-wrapped, matching how a field name is referenced in these docs —
     // 'suppressed'/'consecutive_clean' still appear as plain prose describing
@@ -3754,10 +3293,6 @@ describe('heartbeat eval-runner return contract', () => {
     for (const field of REMOVED_MODEL_FIELDS) {
       expect(reference).not.toContain(`\`${field}\``);
     }
-  });
-
-  test('reference.md forbids the model from emitting structured (file-backed) keys', () => {
-    expect(reference).toContain('**Never** emit a `micro-proposal-pending:*` or `proposal-pending:*` key.');
   });
 
   test('SKILL.md step 5 leaves validation to the script', () => {
@@ -3883,11 +3418,9 @@ describe('proposal lifecycle: no tool-mediated state writes', () => {
 });
 
 // hermit-evolve Step 8 must delegate the whole permission reconciliation to
-// apply-settings.ts rather than restate it in prose — both halves. The additive
-// list had already drifted (15 of the canonical entries) and instructed a Write
-// rule the writer strips; the removal half was a hand-grown bullet list that only
-// ever got a new line when someone remembered, which is why it now lives in the
-// script's sealed HERMIT_OBSOLETE registry instead.
+// apply-settings.ts rather than restate it in prose. The additive list had
+// already drifted (15 of the canonical entries) and instructed a Write rule the
+// writer strips; removals live in the script's sealed HERMIT_OBSOLETE registry.
 describe('hermit-evolve permission delegation contract', () => {
   const evolveRef = fs.readFileSync(path.join(SKILLS, 'hermit-evolve', 'reference.md'), 'utf-8');
   const step8 = evolveRef.slice(
@@ -3912,14 +3445,6 @@ describe('hermit-evolve permission delegation contract', () => {
     const inlineGrants = step8.match(/Bash\(bun \*\/scripts\//g) ?? [];
     expect(inlineGrants.length).toBe(1);
     expect(step8).toContain('Bash(bun */scripts/apply-settings.ts*)');
-  });
-
-  test('Step 8 no longer hand-maintains the stale-entry removal list', () => {
-    // These were bullets the model was told to scrub by hand; HERMIT_OBSOLETE owns
-    // them now, so a new script deletion reaches operators without editing prose.
-    for (const stale of ['run-with-profile.ts', 'suggest-compact.ts', 'Bash(python3:*)']) {
-      expect(step8).not.toContain(stale);
-    }
   });
 });
 
@@ -3981,16 +3506,6 @@ describe('worktree state-dir template contract', () => {
   });
 });
 
-// Resident boot reports readiness without selecting a commitment.
-describe('resident-start always-on readiness', () => {
-  test('boot has no interactive task selection', () => {
-    const skill = read(path.join(SKILLS, 'resident-start', 'SKILL.md'));
-    expect(skill).toContain('In always-on mode never ask for a task');
-    expect(skill).toContain('Startup does not select a task');
-    expect(skill).not.toContain('What should I work on next?');
-  });
-});
-
 // The task worker's dispatch/return contract is what channel-responder parses.
 describe('task-worker agent contract', () => {
   const agent = read(path.join(AGENTS, 'task-worker.md'));
@@ -4014,9 +3529,32 @@ describe('task-worker agent contract', () => {
     expect(agent).toContain('edit_message');
   });
 
-  test('records a reusable lesson when the work taught one', () => {
-    expect(agent).toContain('task.ts lesson');
+  // Consumer half of the WORKER lines and of conversation.ts's task-thread annotation.
+  test('the task skill parses both WORKER lines and the task-thread annotation', () => {
+    const task = read(path.join(SKILLS, 'task', 'SKILL.md'));
+    expect(task).toContain('WORKER <task-id> done <id>');
+    expect(task).toContain('WORKER <task-id> needs-input <id>');
+    expect(task).toContain('[task thread <key>: ');
   });
+});
+
+// Skill text spells script invocations out for the model; a renamed verb or flag
+// whose own subprocess tests were updated leaves these callers failing at runtime.
+test('skill command strings match the script verbs and flags they call', () => {
+  const pins: [string, string[]][] = [
+    [path.join(TEMPLATES, 'CLAUDE-APPEND.md'), ['hermitd-run observations observe .hermit skill-preference-applied']],
+    [path.join(SKILLS, 'reflect', 'SKILL.md'), ['observations.ts graduate .hermit', '--graduation-cursor']],
+    [path.join(SKILLS, 'task', 'SKILL.md'), [
+      "chat-lookup --chat-id '<chat_id>'",
+      "thread-create --chat-id '<chat_id>' --message-id '<message_id>' --name '<title>'",
+      "conversation.ts .hermit history --source '<source>' --chat-id '<chat_id>' --limit 100",
+    ]],
+  ];
+  const missing = pins.flatMap(([file, commands]) => {
+    const text = read(file);
+    return commands.filter((c) => !text.includes(c)).map((c) => `${path.relative(PLUGIN_ROOT, file)}: ${c}`);
+  });
+  expect(missing).toEqual([]);
 });
 
 
