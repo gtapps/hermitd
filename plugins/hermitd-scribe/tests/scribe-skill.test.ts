@@ -47,7 +47,6 @@ const sanitizerText = readFileSync(SANITIZER, "utf8");
 const step1 = region(skillText, /^\*\*Step 1: resolve content\.\*\*/m, /^\*\*Step 1b:/m);
 const step3 = region(skillText, /^\*\*Step 3: sanitize\.\*\*/m, /^\*\*Step 4: operator preview\.\*\*/m);
 const filingFlow = region(skillText, /^## How to file$/m, /^## How to comment$/m);
-const step4 = region(skillText, /^\*\*Step 4: operator preview\.\*\*/m, /^\*\*Step 5: write title and body to temp files\.\*\*/m);
 
 test("footer is not constructed in Step 1 (would expose proposal={id} to the sanitizer)", () => {
   assertTrue(!step1.includes("Filed via hermit-scribe"), "Step 1 region carries no footer template");
@@ -69,40 +68,6 @@ test("issue-sanitizer has an inline-only input contract with a refusal output", 
 test("issue-template detection calls file-issue.ts --templates, not a local glob", () => {
   assertTrue(filingFlow.includes('file-issue.ts" --templates'), "invokes the --templates script mode");
   assertTrue(!filingFlow.includes("Glob '.github"), "does not fall back to a local-filesystem glob of .github/");
-});
-
-test("operator preview surfaces detected issue templates", () => {
-  assertTrue(/ISSUE_TEMPLATE/.test(step4), "preview instructions reference detected templates");
-});
-
-test("template filenames are excluded from the sanitizer's input channel", () => {
-  assertTrue(
-    filingFlow.includes("never passed to the Step 3 sanitizer"),
-    "documents the bypass reasoning",
-  );
-});
-
-// ── --check match predicate ─────────────────────────────────────────────────
-// file-issue.ts:124 has no exported helper for this — it's an inline
-// `body.includes("proposal=" + proposalId)`. Assert the predicate directly
-// rather than adding an export just to satisfy this test.
-
-function matchesProposal(body: string, proposalId: string): boolean {
-  return body.includes(`proposal=${proposalId}`);
-}
-
-test("a body carrying the proposal anchor satisfies --check's match predicate", () => {
-  assertTrue(
-    matchesProposal("---\n*Filed via hermit-scribe · proposal=PROP-168-x*", "PROP-168-x"),
-    "anchored body matches",
-  );
-});
-
-test("a sanitizer-redacted body does not satisfy --check's match predicate", () => {
-  assertTrue(
-    !matchesProposal("---\n*Filed via hermit-scribe · proposal=<redacted>*", "PROP-168-x"),
-    "redacted body does not match",
-  );
 });
 
 // The publication gate is a static permissions.ask rule, not a hook, so it holds

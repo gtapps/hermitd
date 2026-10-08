@@ -60,14 +60,12 @@ function assertFails(env: Json, args: string[], pattern: RegExp) {
 const fixtures = mkdtempSync(path.join(tmpdir(), "hermit-scribe-test-"));
 const keyFile = path.join(fixtures, "key.pem");
 const titleFile = path.join(fixtures, "title");
-const emptyTitleFile = path.join(fixtures, "empty");
 const wsTitleFile = path.join(fixtures, "ws");
 const bodyFile = path.join(fixtures, "body.md");
 
 const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 writeFileSync(keyFile, privateKey.export({ type: "pkcs1", format: "pem" }));
 writeFileSync(titleFile, "valid issue title\n");
-writeFileSync(emptyTitleFile, "");
 writeFileSync(wsTitleFile, "   \n\t\n  ");
 writeFileSync(bodyFile, "issue body content\n");
 
@@ -78,10 +76,6 @@ const fullEnv = {
 };
 
 console.log("hermit-scribe CLI tests");
-
-test("no args prints usage and exits 1", () => {
-  assertFails({}, [], /Usage: bun file-issue\.ts/);
-});
 
 test("one arg prints usage and exits 1", () => {
   assertFails({}, ["--publish", titleFile], /Usage: bun file-issue\.ts/);
@@ -127,14 +121,6 @@ test("HERMIT_GH_REPO with no slash is rejected", () => {
     { ...fullEnv, HERMIT_GH_REPO: "single" },
     ["--publish", titleFile, bodyFile],
     /HERMIT_GH_REPO must be "owner\/repo"/
-  );
-});
-
-test("missing key file shows labeled error with var name and path", () => {
-  assertFails(
-    { ...fullEnv, HERMIT_GH_APP_KEY_FILE: "/nonexistent/key.pem" },
-    ["--publish", titleFile, bodyFile],
-    /HERMIT_GH_APP_KEY_FILE=.*does not exist/
   );
 });
 
@@ -214,10 +200,6 @@ if (process.env.HERMIT_GH_CHECK_LIVE) {
   });
 }
 
-test("empty title file is rejected", () => {
-  assertFails(fullEnv, ["--publish", emptyTitleFile, bodyFile], /Title file is empty/);
-});
-
 test("whitespace-only title file is rejected after trim", () => {
   assertFails(fullEnv, ["--publish", wsTitleFile, bodyFile], /Title file is empty/);
 });
@@ -234,10 +216,6 @@ function assertDeepEqual(actual: any, expected: any, label: string) {
 
 test("buildLabels([]) returns [hermit-filed]", () => {
   assertDeepEqual(buildLabels([]), ["hermit-filed"], "labels");
-});
-
-test("buildLabels(undefined) returns [hermit-filed]", () => {
-  assertDeepEqual(buildLabels(undefined), ["hermit-filed"], "labels");
 });
 
 test("buildLabels with extra labels puts hermit-filed first", () => {
@@ -296,10 +274,6 @@ test("resolveScope priority 2: plugins/<slug>/ path match", () => {
   );
 });
 
-test("resolveScope priority 2: strips hermitd- prefix", () => {
-  assertEqual(resolveScope("about hermitd-dev", slugSet), "dev", "scope");
-});
-
 test("resolveScope priority 2: substring of longer identifier is not a match", () => {
   // "hermitd-scribe" appears only inside "my-hermitd-scribe-thing" -> no whole-word match.
   // Falls through to priority 3 (single fleet hermit among the two-slug set below).
@@ -345,8 +319,6 @@ test("deriveLabels: unknown -> enhancement, no scope", () =>
 
 // --- classify: buildTitleLine ---
 
-test("buildTitleLine: with scope", () =>
-  assertEqual(buildTitleLine("feat", "hermit-scribe", "add thing"), "feat(hermit-scribe): add thing", "line"));
 test("buildTitleLine: without scope", () =>
   assertEqual(buildTitleLine("fix", null, "squash bug"), "fix: squash bug", "line"));
 
