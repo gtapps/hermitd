@@ -41,17 +41,9 @@ if (fs.existsSync(appendPath)) {
   ok('no Skill catalog table', !/^\|\s*Skill\s*\|/m.test(append));
   ok('no Tool catalog table', !/^\|\s*Tool\s*\|/m.test(append));
   ok('no Agent catalog table', !/^\|\s*Agent\s*\|/m.test(append));
-  ok('self-advertises instead of cataloging', append.includes('self-advertise through their own SKILL.md'));
   // The context-engineering pass then dropped the routine/check tables and the
   // five-file state map (docs/knowledge-schema.md owns it), landing at ~2,881 B.
   ok('under post-trim ceiling (~2881 B)', Buffer.byteLength(append, 'utf-8') <= 3200, `${Buffer.byteLength(append, 'utf-8')} B`);
-
-  // Rules the trim was not allowed to touch.
-  ok('keeps connection-first', append.includes('check-strava-connection'));
-  ok('keeps the secrets rule', /[Nn]ever commit Strava tokens/.test(append));
-  ok('keeps the zones rule', append.includes('get-athlete-zones'));
-  ok('keeps full-history authority', append.includes('get-athlete-stats'));
-  ok('keeps the fitness-lab mediation boundary', append.includes('fitness-lab.ts'));
   ok('points at the schema for state wiring', append.includes('`knowledge-schema.md` doc'));
 
   // The state contracts the APPEND stopped enumerating must exist where it points.

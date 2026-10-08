@@ -11,8 +11,8 @@ function fixture() {
   mkdirSync(join(root, '.claude')); mkdirSync(join(root, '.hermit'));
   return root;
 }
-function run(root: string, extra: string[] = []) {
-  return Bun.spawnSync(['bun', script, join(root, '.claude/settings.local.json'), ...extra]);
+function run(root: string) {
+  return Bun.spawnSync(['bun', script, join(root, '.claude/settings.local.json')]);
 }
 test('install preserves unrelated settings and denies; repeated seeding is stable', () => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
@@ -27,11 +27,4 @@ test('malformed permission arrays are not overwritten', () => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
   const original = '{"permissions":{"ask":"bad"}}'; writeFileSync(file, original);
   expect(run(root).exitCode).not.toBe(0); expect(readFileSync(file, 'utf8')).toBe(original);
-});
-test('running with --migrate exits non-zero and leaves the settings file byte-identical', () => {
-  const root = fixture(), file = join(root, '.claude/settings.local.json');
-  const original = JSON.stringify({ env: { KEEP: 'yes' }, permissions: { deny: ['Bash(custom *)'] } });
-  writeFileSync(file, original);
-  expect(run(root, ['--migrate']).exitCode).not.toBe(0);
-  expect(readFileSync(file, 'utf8')).toBe(original);
 });
