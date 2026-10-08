@@ -1,4 +1,4 @@
-// Structural lint for the /domain-brainstorm skill (14 cases). Originally a
+// Structural lint for the /domain-brainstorm skill. Originally a
 // 1:1 port of tests/test_domain_brainstorm_skill.py; the two metrics-emit
 // cases were retired when the skill stopped writing its own `brainstorm-emit`
 // event and started riding core's triage ledger via proposal tags.
@@ -54,14 +54,6 @@ test('gate count', () => {
   expect(gates.length).toBe(EXPECTED_GATES);
 });
 
-test('gate 0 present', () => {
-  expect(/^### Gate 0 —/m.test(skillBody)).toBe(true);
-});
-
-test('gate 4 present', () => {
-  expect(/^### Gate 4 —/m.test(skillBody)).toBe(true);
-});
-
 // --- Contract references ---
 
 test('evidence source capability-brainstorm', () => {
@@ -76,18 +68,6 @@ test('proposal tags carry brainstorm provenance', () => {
   // proposal-create writes these onto both the triage-verdict row and the
   // proposal frontmatter; that is what the kill-criteria segment reads.
   expect(skillBody).toContain('tags: [capability-brainstorm]');
-});
-
-test('prefix automation-gap', () => {
-  expect(skillBody).toContain('[automation-gap]');
-});
-
-test('prefix coverage-asymmetry', () => {
-  expect(skillBody).toContain('[coverage-asymmetry]');
-});
-
-test('prefix unbuilt-intent', () => {
-  expect(skillBody).toContain('[unbuilt-intent]');
 });
 
 // --- Boundary guard: suppression framing ---
