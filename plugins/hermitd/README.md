@@ -1,4 +1,5 @@
 <p align="center">
+  <a href="https://hermitd.dev"><img src="https://img.shields.io/badge/website-hermitd.dev-black.svg" alt="Website" /></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.11-green.svg" alt="Version 1.4.11" /></a>
@@ -7,15 +8,19 @@
   <a href="https://discord.gg/54sJqAxhUh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Join" /></a>
 </p>
 
-> **Notice:** Claude Code 2.1.287 blocks plugins named `claude*`, so this project moved from `claude-code-hermit` to `hermitd`. [How to migrate](#upgrading-from-claude-code-hermit).
+# Like Claude Tag, but local.
 
-# Your own local Claude Tag.
+Run an always-on Claude Code agent on your own machine, for you or your team. Start sessions from your chat in any project it can reach, on the model and effort you choose, and steer them through the agent or take over in the Claude app or CLI.
 
-Run an always-on Claude Code agent on your machine or server, for you or your team. Use it from your terminal or the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels).
+Use it from your terminal or the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels).
 
 Give it ongoing responsibilities: maintain research, monitor systems, run routines, and follow up on unfinished work. Between requests, it checks those responsibilities, carries progress across sessions, and reaches you when something needs attention.
 
 Run it on your Claude subscription and extend it with your own MCP servers, skills, and plugins.
+
+**It's Claude Code.** hermitd is a plugin for the official Claude Code CLI, which runs as Anthropic ships it. New Claude models, features, and fixes work as soon as Claude Code supports them.
+
+Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
 <p align="center">
   <img src="assets/cover.png" alt="Always-on Claude Code agent" />
@@ -28,7 +33,7 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 **Choose one installation method below.** Run it from the folder where you want your agent, empty or existing. Uses your Claude subscription on Linux, macOS, or Windows via WSL2. See [prerequisites](docs/how-to-use.md#prerequisites).
 
 <details open>
-<summary>Install the Claude Code plugin</summary>
+<summary>Already run Claude Code? Install the plugin</summary>
 
 With Claude Code 2.1.292+ and Bun 1.4+ installed:
 
@@ -40,7 +45,7 @@ claude "/hermitd:hatch"
 </details>
 
 <details>
-<summary>Or use the bootstrap installer</summary>
+<summary>Fresh machine? Use the bootstrap installer</summary>
 
 Prepares Claude Code, Bun, and tmux, installs the plugin, and launches setup:
 
@@ -50,7 +55,7 @@ curl -fsSL https://gtapps.github.io/hermitd/install.sh | bash
 
 </details>
 
-Both options install Hermit for this folder. Hatch guides you through the agent’s purpose and preferences, then shows how to start it. Choose Quick for defaults you can adjust later.
+Both options set up the agent in this folder. Hatch guides you through the agent’s purpose and preferences, then shows how to start it. Choose Quick for defaults you can adjust later.
 
 ## Keep it running
 
@@ -100,7 +105,7 @@ Optional [Docker security controls](docs/docker-security.md) cover local-network
 
 - **Control and visibility.** Track progress, proposals, and usage through the dashboard. Pause is enforced at the tool boundary, and optional usage caps can alert you or pause further work.
 
-**Part of your project channel.** With passive mode, the agent saves incoming group messages to look back on later, and wakes when someone you allow @mentions it. It also remembers instructions for that channel. For example: “When I ask for a status update, include blockers.”
+**Part of your project channel.** With passive mode, the agent saves incoming group messages to look back on later, and wakes when someone you allow @mentions it. It also remembers instructions for that channel.
 
 <a id="configure-it"></a>
 
@@ -198,13 +203,37 @@ a lesson    a change
 
 Reflection runs at eligible task or session pauses, daily, and after routines configured to reflect. Approved changes can start now, become a task, or be left for manual implementation. Proposals are resolved when verification passes or later evidence shows the problem is gone.
 
-**Follow-up verification.** The agent checks whether a fix or prediction held up over time. For example: “`/later` check tomorrow whether those errors have returned.”
+## Ask it from your chat
 
-**New ways to help.** The agent proposes new capabilities based on your work and the tools available to it. For example: “What else could you be doing for me?”
+| Ask | What it does |
+|-----|--------------|
+| “Start X in `~/code/api` on Opus at high effort, in its own worktree.” | Starts a session in any project, on your model and effort. |
+| “Tell me when my session in `~/code/web` finishes.” | Watches your other Claude Code sessions. |
+| `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
+| “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
+| “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
+| “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
 
 ## Cost
 
 Quiet heartbeat checks, skipped routines, and passive chat capture use no model tokens. Work, evaluations, and replies consume usage; context management keeps conversation history bounded.
+
+```text
+event: a file, a log line, a webhook, a schedule
+   │
+   ▼
+precheck (plain script, no model tokens)
+   │
+   ├── nothing changed ──▶ back to sleep
+   │
+   ▼ something to do
+Claude Code turn on your machine
+   │
+   ├── needs a decision ──▶ asks you in chat
+   │
+   ▼
+result in your chat  +  usage recorded
+```
 
 - **See what drives usage.** Token usage is recorded per call, including the model, input/output/cache split, and whether work came from a routine, heartbeat, channel, or another source. Session and daily totals feed the dashboard, weekly review, and `/cost-reflect`.
 - **Set limits.** Optional daily, weekly, and monthly caps can alert you or enforce a pause until the exceeded budget window resets. Under Claude subscription billing, dollar figures are usage estimates rather than additional per-token charges.
@@ -248,7 +277,7 @@ You can run separate agents for different responsibilities, each with its own wo
 
 ## Upgrading from claude-code-hermit
 
-Before migrating, update every registered agent in the Claude config directory to core **1.4.8** and stop all of them, including Docker agents. Run once on the host:
+Claude Code 2.1.287 blocks plugins named `claude*`, so this project moved from `claude-code-hermit` to `hermitd`. Before migrating, update every registered agent in the Claude config directory to core **1.4.8** and stop all of them, including Docker agents. Run once on the host:
 
 ```bash
 curl -fsSL https://gtapps.github.io/hermitd/migrate.sh | bash
@@ -262,7 +291,7 @@ Follow the printed start command for each agent, then run `/hermitd:hermit-evolv
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container.
 
-`hermitd list` shows registered and discovered hermits on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the first runnable task. Both support `--json`. Listing never removes entries; `hermitd prune` removes missing projects.
+`hermitd list` shows registered and discovered agents on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the first runnable task. Both support `--json`. Listing never removes entries; `hermitd prune` removes missing projects.
 
 Use `hermitd start|stop|restart|attach [name]` for lifecycle commands, `hermitd pause [name] on|off|snooze <duration>|status`, `hermitd watchdog [name] run|install|uninstall`, or `hermitd run [name] <script> [args]` for maintenance. Names match the project folder or agent name; with no name, the nearest project above the current folder is used.
 
@@ -292,3 +321,5 @@ Join the [Discord community](https://discord.gg/54sJqAxhUh) for setup help and d
 ## License
 
 [MIT](../../LICENSE)
+
+Independent project, not affiliated with Anthropic.
