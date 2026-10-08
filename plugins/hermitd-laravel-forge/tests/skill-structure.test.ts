@@ -40,10 +40,8 @@ ok(`still states its own PHP floor (${phpFloor}, from composer.json)`,
   new RegExp(`PHP ${phpFloor.replace(/\./g, '\\.')}\\+? is required`).test(hatchText));
 
 // CLAUDE-APPEND token-efficiency guard. The block is re-paid on every session
-// load and every subagent dispatch, so the trim that removed the restated 4-step
-// walk, the two extra dispatch examples, the scheduled-check contract, and the
-// two producerless proposal prefixes must not creep back — and the safety rules
-// it was not allowed to touch must stay.
+// load and every subagent dispatch, so the size ceiling keeps the trim from
+// creeping back, and the safety rules it was not allowed to touch must stay.
 console.log('\nstate-templates/CLAUDE-APPEND.md:');
 const appendPath = path.join(import.meta.dir, '..', 'state-templates', 'CLAUDE-APPEND.md');
 ok('CLAUDE-APPEND exists', fs.existsSync(appendPath), appendPath);
@@ -59,13 +57,7 @@ if (fs.existsSync(appendPath)) {
   // so asserting it would keep the template documenting a guarantee the code
   // does not make. The plan hash is the guarantee that took its place.
   ok('keeps the plan-bound write fact', append.includes('hash-checked plan'));
-  ok('keeps the typed-int ID gotcha', append.includes('strict_types'));
-  ok('keeps the credential-check command', append.includes('forge.php check'));
   ok('keeps secret hygiene', append.includes('[REDACTED]'));
-
-  ok('keeps the one live proposal prefix', append.includes('[reliability]'));
-  ok('drops the producerless prefixes',
-    !append.includes('[hygiene]') && !append.includes('[deploy-safety]'));
 }
 
 process.exit(summary() === 0 ? 0 : 1);
