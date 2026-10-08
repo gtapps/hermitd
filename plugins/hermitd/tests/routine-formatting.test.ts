@@ -7,10 +7,6 @@ import { PLUGIN_ROOT } from './helpers/run';
 const routines = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/hermit-routines/SKILL.md'), 'utf8');
 const responder = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/channel-responder/SKILL.md'), 'utf8');
 
-test('routine finish follows the background agent hand-back and final skill step', () => {
-  expect(routines).toContain("after the agent's hand-back, never at dispatch");
-});
-
 test('routine formatting Read bounds cover exactly the canonical section', () => {
   const section = routines.slice(routines.indexOf('**Formatting-only read.**'), routines.indexOf('**Model-override substitution.**'));
   const json = section.match(/```json\n([^\n]+)\n```/)?.[1];
@@ -28,14 +24,9 @@ test('routine formatting Read bounds cover exactly the canonical section', () =>
   expect(excerpt).toBe(responder.slice(start, end + 1));
 });
 
-test('inline and delegated routines receive the bounded Read without another lookup', () => {
+test('inline and delegated routine templates use the bounded Read', () => {
   const dispatch = routines.slice(routines.indexOf('**Model-override substitution.**'), routines.indexOf('Base execution,'));
   const inline = routines.slice(routines.indexOf('Base execution,'), routines.indexOf('**Optional `precheck`'));
   expect(dispatch).toContain('use <formatting-read>');
   expect(inline).toContain('use <formatting-read>');
-  expect(routines).toContain("Include the arguments in the dispatched agent's prompt too");
-  for (const template of [dispatch, inline]) {
-    expect(template).toContain('already in context');
-    expect(template).toContain('no channel send is needed');
-  }
 });

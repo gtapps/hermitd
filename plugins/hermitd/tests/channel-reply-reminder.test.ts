@@ -5,9 +5,9 @@
 // (stdin in, stdout out) — the boundary Claude Code sees. Mirrors
 // tests/pause-keyword.test.ts.
 //
-// tests/channel-responder-reply-rule.test.ts is a separate, static wiring
-// check (skill text / hooks.json / script presence) — it does not run this
-// script, so this file is the only behavioral coverage for it.
+// tests/channel-responder-structure.test.ts is a separate, static check of
+// the skill text. It does not run this script, so this file is the only
+// behavioral coverage for it.
 //
 // Usage: bun test tests/channel-reply-reminder.test.ts   (from the plugin root)
 

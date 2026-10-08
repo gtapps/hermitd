@@ -12,7 +12,7 @@
 //
 // Usage: bun test tests/env-example-refs.test.ts   (from the plugin root)
 
-import { describe, test, expect } from 'bun:test';
+import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -59,12 +59,9 @@ function surfaces(): string[] {
   return out;
 }
 
-describe('no plugin prose references a .env.example', () => {
-  for (const file of surfaces()) {
-    const rel = path.relative(MONOREPO_ROOT, file);
-    test(rel, () => {
-      const hits = hitLines(fs.readFileSync(file, 'utf8'));
-      expect(hits).toEqual([]);
-    });
-  }
+test('no plugin prose references a .env.example', () => {
+  // Each offender is reported as `<path>:<line>`.
+  const offenders = surfaces().flatMap(file =>
+    hitLines(fs.readFileSync(file, 'utf8')).map(line => `${path.relative(MONOREPO_ROOT, file)}:${line}`));
+  expect(offenders).toEqual([]);
 });

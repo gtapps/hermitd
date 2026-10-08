@@ -44,22 +44,20 @@ function stateTemplateSurfaces(): string[] {
 }
 
 describe('operator surfaces have no bare docs/ refs', () => {
-  for (const file of stateTemplateSurfaces()) {
-    const rel = path.relative(MONOREPO_ROOT, file);
-    test(rel, () => {
-      const hits = bareRefs(fs.readFileSync(file, 'utf8'));
-      expect(hits).toEqual([]);
-    });
-  }
+  test('state templates name no bare docs/ ref', () => {
+    // Each offender is reported as `<path>: <ref>`.
+    const offenders = stateTemplateSurfaces().flatMap(file =>
+      bareRefs(fs.readFileSync(file, 'utf8')).map(ref => `${path.relative(MONOREPO_ROOT, file)}: ${ref}`));
+    expect(offenders).toEqual([]);
+  });
 
   // Scripts that print doc pointers to the operator's terminal from their
   // project cwd, where a bare `docs/foo.md` dangles. Listed explicitly (not a
   // blanket scripts/ walk) so code-comment refs in helper libs don't trip the
   // guard — only strings the operator actually sees are in scope.
-  for (const script of ['startup-context.ts', 'hermitd-start.ts']) {
-    test(`scripts/${script} emits no bare docs/ ref`, () => {
-      const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', script), 'utf8');
-      expect(bareRefs(src)).toEqual([]);
-    });
-  }
+  test('operator-facing scripts emit no bare docs/ ref', () => {
+    const offenders = ['startup-context.ts', 'hermitd-start.ts'].flatMap(script =>
+      bareRefs(fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', script), 'utf8')).map(ref => `scripts/${script}: ${ref}`));
+    expect(offenders).toEqual([]);
+  });
 });
