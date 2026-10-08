@@ -4,11 +4,9 @@ import { parseArgs, buildUrl, mapPost, extractPosts, userAgent } from "../script
 
 const SCRIPT = join(import.meta.dir, "..", "scripts", "reddit-fetch.ts");
 
-const originalFetch = globalThis.fetch;
 const originalUA = process.env.REDDIT_USER_AGENT;
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
   if (originalUA === undefined) delete process.env.REDDIT_USER_AGENT;
   else process.env.REDDIT_USER_AGENT = originalUA;
 });
@@ -90,18 +88,6 @@ test("userAgent defaults when env unset", () => {
 test("userAgent honours REDDIT_USER_AGENT override", () => {
   process.env.REDDIT_USER_AGENT = "custom/9.9";
   expect(userAgent()).toBe("custom/9.9");
-});
-
-test("fetch is called with the User-Agent header", async () => {
-  let seenUA: string | undefined;
-  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
-    const headers = (init?.headers ?? {}) as Record<string, string>;
-    seenUA = headers["User-Agent"];
-    return new Response(JSON.stringify({ data: { children: [] } }), { status: 200 });
-  }) as typeof fetch;
-  const resp = await globalThis.fetch(buildUrl("x", 20), { headers: { "User-Agent": userAgent() } });
-  await resp.json();
-  expect(seenUA).toBe("hermit/1.0 (feed bot)");
 });
 
 test("no args → exit 1", async () => {

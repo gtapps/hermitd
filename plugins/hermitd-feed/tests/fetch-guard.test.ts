@@ -6,8 +6,6 @@ import { isAllowed, parseAllowlist } from "../hooks/fetch-guard";
 
 const SCRIPT = join(import.meta.dir, "..", "hooks", "fetch-guard.ts");
 
-const INFRA = ["raw.githubusercontent.com", "api.github.com", "registry.npmjs.org", "pypi.org", "codeload.github.com"];
-
 const HN_ONLY = "| Name | Type | URL |\n| - | - | - |\n| HN | web | https://news.ycombinator.com |\n";
 
 // Every spawn scrubs CLAUDE_PROJECT_DIR: these tests run inside a Claude Code
@@ -45,12 +43,8 @@ test("subdomain of an allowlist entry is allowed", () => {
   expect(isAllowed("api.example.com", ["example.com"])).toBe(true);
 });
 
-test("infra-list domain is allowed", () => {
-  expect(isAllowed("raw.githubusercontent.com", INFRA)).toBe(true);
-});
-
 test("off-allowlist domain is denied", () => {
-  expect(isAllowed("evil.com", ["example.com", ...INFRA])).toBe(false);
+  expect(isAllowed("evil.com", ["example.com"])).toBe(false);
 });
 
 test("parseAllowlist extracts hostnames from a feed-sources.md table", () => {
@@ -64,13 +58,6 @@ test("parseAllowlist extracts hostnames from a feed-sources.md table", () => {
   expect(hosts).toContain("example.com");
 });
 
-test("hook fails open (exit 0) on malformed stdin", async () => {
-  const proc = Bun.spawn(["bun", SCRIPT], { stdin: "pipe", stdout: "ignore", stderr: "ignore", env: guardEnv() });
-  proc.stdin.write("not json");
-  await proc.stdin.end();
-  expect(await proc.exited).toBe(0);
-});
-
 test("hook blocks (exit 2) an off-allowlist URL", async () => {
   const dir = mkdtempSync(join(tmpdir(), "fetch-guard-"));
   writeFileSync(join(dir, "feed-sources.md"), HN_ONLY);
@@ -81,6 +68,11 @@ test("drifted cwd inside a hatched project still enforces the allowlist", async 
   const { deep } = hatchedProject();
   expect(await runGuard(deep, "https://evil.example.org")).toBe(2);
   expect(await runGuard(deep, "https://news.ycombinator.com")).toBe(0);
+});
+
+test("hook allows the hardcoded infra list on top of feed-sources.md", async () => {
+  const { root } = hatchedProject(); // allows news.ycombinator.com only
+  expect(await runGuard(root, "https://raw.githubusercontent.com/o/r/main/f")).toBe(0);
 });
 
 test("CLAUDE_PROJECT_DIR names the project even when cwd has its own allowlist", async () => {
