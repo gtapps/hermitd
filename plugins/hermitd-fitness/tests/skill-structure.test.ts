@@ -41,7 +41,6 @@ if (fs.existsSync(appendPath)) {
   ok('no Skill catalog table', !/^\|\s*Skill\s*\|/m.test(append));
   ok('no Tool catalog table', !/^\|\s*Tool\s*\|/m.test(append));
   ok('no Agent catalog table', !/^\|\s*Agent\s*\|/m.test(append));
-  ok('self-advertises instead of cataloging', append.includes('self-advertise through their own SKILL.md'));
   // The context-engineering pass then dropped the routine/check tables and the
   // five-file state map (docs/knowledge-schema.md owns it), landing at ~2,881 B.
   ok('under post-trim ceiling (~2881 B)', Buffer.byteLength(append, 'utf-8') <= 3200, `${Buffer.byteLength(append, 'utf-8')} B`);

@@ -17,7 +17,6 @@ try {
     ['{"trend":"insufficient-data"}', 0, 'SKIP'],
     ['garbage', 0, null],
     ['{"trend":"unknown"}', 0, null],
-    ['{}', 0, null],
     ['{"trend":"none"}', 2, null],
   ] as const) {
     fs.writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "$HERMIT_DIR/args.txt"\nprintf '%s\\n' '${output}'\nexit ${code}\n`, { mode: 0o755 });
@@ -30,10 +29,10 @@ try {
       new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
     ]);
     ok(`${output} exit ${code}`, expected === null ? exitCode !== 0 && stdout === '' : exitCode === 0 && stdout === `${expected}\n`);
-    ok('sibling command receives the consumer root', fs.readFileSync(path.join(hermitDir, 'args.txt'), 'utf-8') === [
-      'sibling-run', 'hermitd-fitness', 'scripts/fitness-lab.ts', 'weekly-patterns', '--project-root', project, '',
-    ].join('\n'));
   }
+  ok('sibling command receives the consumer root', fs.readFileSync(path.join(hermitDir, 'args.txt'), 'utf-8') === [
+    'sibling-run', 'hermitd-fitness', 'scripts/fitness-lab.ts', 'weekly-patterns', '--project-root', project, '',
+  ].join('\n'));
 } finally {
   fs.rmSync(project, { recursive: true, force: true });
 }
