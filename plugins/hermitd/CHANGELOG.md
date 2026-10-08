@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- The watchdog restarts an always-on resident at its next idle moment after an upgrade so the heartbeat and routine monitors move to the new plugin version.
+
 ## [1.4.11] - 2026-10-07
 
 ### Added

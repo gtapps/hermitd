@@ -51,7 +51,7 @@ import { readContextSurface } from './lib/context-surface';
 import { runTelemetryExportIfDue } from './report-export';
 import { applyContextReset } from './lib/context-reset';
 import { ensureLedgerFile } from './lib/append-jsonl';
-import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
+import { heartbeatHealth, PLUGIN_ROOT } from './lib/heartbeat/monitor-cmd';
 import { routineHealth } from './lib/routines/arm';
 import { bootMismatch } from './lib/monitor-health';
 import { readBootId } from './lib/routines/registry';
@@ -238,7 +238,9 @@ export function composeRestartMessage(reason: string, resumed: boolean, timezone
   const hhmm = nowHHMM(timezone);
   const cause = reason === 'dead-process'
     ? WATCHDOG[locale].restartCauseNotRunning()
-    : WATCHDOG[locale].restartCauseFrozen();
+    : reason === 'upgrade'
+      ? WATCHDOG[locale].restartCauseUpgrade()
+      : WATCHDOG[locale].restartCauseFrozen();
   return WATCHDOG[locale].restart(hhmm, cause, resumed);
 }
 
@@ -1314,6 +1316,37 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     } else {
       appendEvent('monitor-dead-deferred', guard.ok ? (boundary.ok ? 'idle' : boundary.reason) : guard.reason, world);
     }
+    return;
+  }
+  const upgradeLegs: string[] = [];
+  for (const record of ['heartbeat-monitor.runtime.json', 'routine-monitor.runtime.json']) {
+    const monitor = world.files.readJson(path.join(world.paths.stateDir, record));
+    if (monitor?.launch !== 'native' || !bootId || monitor.boot_id !== bootId
+      || monitor.mode === 'croncreate-fallback') continue;
+    const health = record === 'heartbeat-monitor.runtime.json'
+      ? heartbeatHealth(world.paths.hermitRoot, config, world.clock.nowMs())
+      : routineHealth(world.paths.hermitRoot, world.clock.nowMs());
+    if (health.reason === 'restart-required') upgradeLegs.push(record);
+  }
+  if (upgradeLegs.length > 0) {
+    const pluginVersion = world.files.readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))?.version;
+    if (!pluginVersion || config._hermit_versions?.hermitd !== pluginVersion) {
+      appendEvent('upgrade-restart-deferred', 'evolve-pending', world);
+      return;
+    }
+    const runtime = readRuntimeJson(world.paths.stateDir);
+    const guard = passesLifecycleGuards(runtime ?? {}, world);
+    if (!guard.ok) {
+      appendEvent('upgrade-restart-deferred', guard.reason, world);
+      return;
+    }
+    const boundary = passesExecutionBoundary(world.paths.hermitRoot);
+    if (!boundary.ok) {
+      appendEvent('upgrade-restart-deferred', boundary.reason, world);
+      return;
+    }
+    await world.actions.restart(sessionName, 'upgrade', runtime, config.timezone ?? 'UTC');
+    appendEvent('upgrade-restart', upgradeLegs.join('+'), world);
     return;
   }
   if (isPaused(world.paths.hermitRoot).paused) return;               // no injection while paused (mirrors doNudge)
