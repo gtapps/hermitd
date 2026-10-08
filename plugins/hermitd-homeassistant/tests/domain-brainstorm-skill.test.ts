@@ -49,9 +49,9 @@ test('frontmatter has description', () => {
 
 // --- Gate structure ---
 
-test('gate count', () => {
-  const gates = skillBody.match(/^### Gate \d+ —/gm) ?? [];
-  expect(gates.length).toBe(EXPECTED_GATES);
+test('gates are numbered 0..4', () => {
+  const gates = [...skillBody.matchAll(/^### Gate (\d+) —/gm)].map((m) => Number(m[1]));
+  expect(gates).toEqual([...Array(EXPECTED_GATES).keys()]);
 });
 
 // --- Contract references ---
@@ -68,6 +68,13 @@ test('proposal tags carry brainstorm provenance', () => {
   // proposal-create writes these onto both the triage-verdict row and the
   // proposal frontmatter; that is what the kill-criteria segment reads.
   expect(skillBody).toContain('tags: [capability-brainstorm]');
+});
+
+test('every title prefix the HA APPEND advertises is one the skill emits', () => {
+  const append = readFileSync(join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
+  const prefixes = [...append.matchAll(/^- \*\*(\[[a-z-]+\])\*\*/gm)].map((m) => m[1]);
+  expect(prefixes.length).toBeGreaterThan(0);
+  for (const prefix of prefixes) expect(skillBody).toContain(prefix);
 });
 
 // --- Boundary guard: suppression framing ---
