@@ -2695,8 +2695,16 @@ test('command drift with a live supervisor is not re-armed', withHermit(async (h
   expect(tmuxCalls(h)).not.toContain('/hermitd:heartbeat start');
 }));
 
+// A registered supervisor command running from a plugin copy of the given version.
+const registeredCommand = (h: Hermit, leg: string, version: string): string => {
+  const root = path.join(h.dir, 'cached-plugin', version);
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'hermitd', version }));
+  return `bash "${root}"/scripts/monitor-supervisor.sh ${leg === 'heartbeat' ? 'heartbeat' : 'routines'} "${path.join(h.dir, '.hermit')}"`;
+};
+
 for (const leg of ['heartbeat', 'routine'] as const) {
-  for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused'] as const) {
+  for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused', 'current-copy'] as const) {
     test(`upgrade monitor ${leg} with ${scenario}`, withHermit(async (h) => {
       writeConfig(h);
       const configPath = path.join(h.dir, '.hermit', 'config.json');
@@ -2708,9 +2716,12 @@ for (const leg of ['heartbeat', 'routine'] as const) {
       writeFakeTmux(h, 0);
       writeFakePgrep(h, 1);
       fs.writeFileSync(state(h, '.boot-id'), 'native-boot\n');
+      // Evolve pending: the resident already runs the new copy but config still names the old one.
+      // Current copy: same version as applied, from a root other than the watchdog's own.
+      const registered = scenario === 'evolve-pending' || scenario === 'current-copy' ? pluginVersion : 'old-version';
       writeState(h, `${leg}-monitor.runtime.json`, {
         launch: 'native', mode: 'monitor', boot_id: 'native-boot', interval: leg === 'heartbeat' ? 7200 : 60,
-        command: 'bash /old/plugin/scripts/monitor-supervisor.sh', started_at: isoAgo(1),
+        command: registeredCommand(h, leg, registered), started_at: isoAgo(1),
       });
       writeState(h, leg === 'heartbeat' ? 'heartbeat-liveness.json' : 'routine-monitor-liveness.json', {
         pid: process.pid, last_peek_at: isoAgo(0),
@@ -2729,6 +2740,9 @@ for (const leg of ['heartbeat', 'routine'] as const) {
         expect(events(h)).toContain(`${leg}-monitor.runtime.json`);
         expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('upgrade');
         expect(tmuxCalls(h)).toContain('kill-session');
+      } else if (scenario === 'current-copy') {
+        expect(events(h)).not.toContain('upgrade-restart');
+        expect(tmuxCalls(h)).not.toContain('kill-session');
       } else {
         expect(events(h)).toContain('upgrade-restart-deferred');
         expect(events(h)).toContain(scenario === 'in_flight' ? 'execution-not-idle' : scenario);

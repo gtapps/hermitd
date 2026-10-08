@@ -1291,6 +1291,13 @@ export function rearmDamperOpen(lastStamp: unknown, world: World = REAL_WORLD): 
   return age === null || age >= MONITOR_REARM_DAMPER_SECS;
 }
 
+/** Version of the plugin copy a registered supervisor command runs from, or null when unreadable. */
+function registeredPluginVersion(command: unknown, world: World): string | null {
+  const root = typeof command === 'string' ? /^bash "([^"]+)"\/scripts\/monitor-supervisor\.sh /.exec(command)?.[1] : undefined;
+  const version = root ? world.files.readJson(path.join(root, '.claude-plugin', 'plugin.json'))?.version : null;
+  return typeof version === 'string' ? version : null;
+}
+
 /**
  * Re-arm a heartbeat/routine Monitor that died mid-session, detected via its stale
  * liveness file. Injects only the dead monitor's re-arm command (both are in
@@ -1318,11 +1325,17 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     }
     return;
   }
+  // The watchdog runs from the marketplace checkout and the resident from the versioned
+  // cache, so a command path mismatch alone is not an upgrade: only a registered copy
+  // whose version differs from the applied one is.
+  const applied = config._hermit_versions?.hermitd;
   const upgradeLegs: string[] = [];
   for (const record of ['heartbeat-monitor.runtime.json', 'routine-monitor.runtime.json']) {
     const monitor = world.files.readJson(path.join(world.paths.stateDir, record));
     if (monitor?.launch !== 'native' || !bootId || monitor.boot_id !== bootId
       || monitor.mode === 'croncreate-fallback') continue;
+    const registered = registeredPluginVersion(monitor.command, world);
+    if (!registered || registered === applied) continue;
     const health = record === 'heartbeat-monitor.runtime.json'
       ? heartbeatHealth(world.paths.hermitRoot, config, world.clock.nowMs())
       : routineHealth(world.paths.hermitRoot, world.clock.nowMs());
@@ -1330,7 +1343,7 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
   }
   if (upgradeLegs.length > 0) {
     const pluginVersion = world.files.readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))?.version;
-    if (!pluginVersion || config._hermit_versions?.hermitd !== pluginVersion) {
+    if (!pluginVersion || applied !== pluginVersion) {
       appendEvent('upgrade-restart-deferred', 'evolve-pending', world);
       return;
     }
