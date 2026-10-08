@@ -241,10 +241,12 @@ assert('release/1.2 blocked when release/* is protected', runWithConfig('git pus
 assert('release/1.2 allowed with default config', run('git push origin release/1.2', { AGENT_HOOK_PROFILE: 'strict' }), 0);
 assert('staging blocked when staging is in config', runWithConfig('git push origin staging', ['main', 'staging']), 2);
 assert('feature/x allowed with custom config', runWithConfig('git push origin feature/x', ['main', 'staging']), 0);
+assert('config still blocks main', runWithConfig('git push origin main', ['main', 'staging']), 2);
 
 // --- Current-branch resolution (bare push / HEAD) ---
 console.log('\nCurrent-branch resolution:');
 assert('bare push on main is blocked', runInGitRepo('git push', { branch: 'main' }), 2);
+assert('bare push origin on master is blocked', runInGitRepo('git push origin', { branch: 'master' }), 2);
 assert('bare push on feature branch is allowed', runInGitRepo('git push', { branch: 'feature/x' }), 0);
 assert('push origin HEAD on main is blocked', runInGitRepo('git push origin HEAD', { branch: 'main' }), 2);
 assert('push origin HEAD on feature branch is allowed', runInGitRepo('git push origin HEAD', { branch: 'feature/x' }), 0);
