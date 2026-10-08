@@ -70,6 +70,11 @@ test("drifted cwd inside a hatched project still enforces the allowlist", async 
   expect(await runGuard(deep, "https://news.ycombinator.com")).toBe(0);
 });
 
+test("hook allows the hardcoded infra list on top of feed-sources.md", async () => {
+  const { root } = hatchedProject(); // allows news.ycombinator.com only
+  expect(await runGuard(root, "https://raw.githubusercontent.com/o/r/main/f")).toBe(0);
+});
+
 test("CLAUDE_PROJECT_DIR names the project even when cwd has its own allowlist", async () => {
   const { root } = hatchedProject(); // allows news.ycombinator.com only
   const decoy = mkdtempSync(join(tmpdir(), "fetch-guard-decoy-"));
