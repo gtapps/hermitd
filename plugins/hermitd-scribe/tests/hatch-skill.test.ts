@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 
 // Structural lint for skills/hatch/SKILL.md — grep-level checks, no runtime
-// skill execution. Pins what other files depend on: the _hermit_versions stamp
-// key, the block's closing marker, the native-rules install order and the
-// skill route named in the injected block.
+// skill execution. Pins the _hermit_versions stamp key, the version-gated
+// block refresh (scribe is exempt from the cross-plugin hatch contract, so
+// this file is its only guard against skipping on marker-presence alone), the
+// block's closing marker, the native-rules install order and the skill route
+// named in the injected block.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -33,6 +35,20 @@ const text = readFileSync(HATCH_SKILL, "utf8");
 
 test("stamps _hermit_versions[\"hermitd-scribe\"] into config.json", () => {
   assertTrue(text.includes('_hermit_versions["hermitd-scribe"]'), 'contains the stamp key');
+});
+
+test("version-gates the block refresh instead of skipping on marker-presence alone", () => {
+  assertTrue(
+    /stamped version equals plugin version/.test(text),
+    'gate compares plugin.json version against the config stamp',
+  );
+});
+
+test("re-renders on marker absent, stamp null, or stamp stale (not marker-presence-only)", () => {
+  assertTrue(
+    /marker absent, stamped version null, OR stamped version stale/.test(text),
+    'all three refresh conditions are documented',
+  );
 });
 
 test("replace case bounds the block through the closing marker", () => {
