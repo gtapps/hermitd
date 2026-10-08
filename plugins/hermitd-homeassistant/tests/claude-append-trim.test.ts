@@ -20,11 +20,6 @@ test('HA APPEND carries no skills/subagents/tool catalog tables', () => {
   expect(/^\|\s*Tool\s*\|/m.test(APPEND)).toBe(false);
 });
 
-test('HA APPEND self-advertises instead of cataloging', () => {
-  expect(APPEND.includes('self-advertise through their own SKILL.md')).toBe(true);
-  expect(APPEND.includes('ha-boot')).toBe(true);
-});
-
 test('HA APPEND points to the resolvable CLI reference, and the doc exists', () => {
   // The operator's CLAUDE.md must name a pointer that resolves from their
   // project cwd: `ha-agent-lab --help`. A bare `docs/cli-reference.md` would

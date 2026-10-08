@@ -1,4 +1,4 @@
-// Structural lint for the /domain-brainstorm skill (14 cases). Originally a
+// Structural lint for the /domain-brainstorm skill. Originally a
 // 1:1 port of tests/test_domain_brainstorm_skill.py; the two metrics-emit
 // cases were retired when the skill stopped writing its own `brainstorm-emit`
 // event and started riding core's triage ledger via proposal tags.
@@ -49,17 +49,9 @@ test('frontmatter has description', () => {
 
 // --- Gate structure ---
 
-test('gate count', () => {
-  const gates = skillBody.match(/^### Gate \d+ —/gm) ?? [];
-  expect(gates.length).toBe(EXPECTED_GATES);
-});
-
-test('gate 0 present', () => {
-  expect(/^### Gate 0 —/m.test(skillBody)).toBe(true);
-});
-
-test('gate 4 present', () => {
-  expect(/^### Gate 4 —/m.test(skillBody)).toBe(true);
+test('gates are numbered 0..4', () => {
+  const gates = [...skillBody.matchAll(/^### Gate (\d+) —/gm)].map((m) => Number(m[1]));
+  expect(gates).toEqual([...Array(EXPECTED_GATES).keys()]);
 });
 
 // --- Contract references ---
@@ -78,16 +70,11 @@ test('proposal tags carry brainstorm provenance', () => {
   expect(skillBody).toContain('tags: [capability-brainstorm]');
 });
 
-test('prefix automation-gap', () => {
-  expect(skillBody).toContain('[automation-gap]');
-});
-
-test('prefix coverage-asymmetry', () => {
-  expect(skillBody).toContain('[coverage-asymmetry]');
-});
-
-test('prefix unbuilt-intent', () => {
-  expect(skillBody).toContain('[unbuilt-intent]');
+test('every title prefix the HA APPEND advertises is one the skill emits', () => {
+  const append = readFileSync(join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
+  const prefixes = [...append.matchAll(/^- \*\*(\[[a-z-]+\])\*\*/gm)].map((m) => m[1]);
+  expect(prefixes.length).toBeGreaterThan(0);
+  for (const prefix of prefixes) expect(skillBody).toContain(prefix);
 });
 
 // --- Boundary guard: suppression framing ---
