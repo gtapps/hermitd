@@ -50,6 +50,7 @@ function eq(name: string, actual: unknown, expected: unknown) {
 // ---------------------------------------------------------------------------
 console.log('\nbasic stats:');
 eq('median odd', median([1, 5, 2]), 2);
+eq('median even', median([160, 170, 180, 190]), 175);
 
 console.log('\ncardiac drift (linear ramp, signed):');
 const ramp = Array.from({ length: 20 }, (_, i) => 140 + i); // 140..159
@@ -429,7 +430,7 @@ console.log('\ncontract: weekly-load:');
     j = JSON.parse(out);
   } catch {}
   ok('weeks array', Array.isArray(j?.weeks));
-  ok('method documented', typeof j?.method?.tss_proxy === 'string');
+  ok('method documented', typeof j?.method?.zone_pct === 'string' && typeof j?.method?.tss_proxy === 'string');
   fs.rmSync(proj, { recursive: true });
 }
 
