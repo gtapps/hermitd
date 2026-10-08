@@ -51,7 +51,7 @@ import { readContextSurface } from './lib/context-surface';
 import { runTelemetryExportIfDue } from './report-export';
 import { applyContextReset } from './lib/context-reset';
 import { ensureLedgerFile } from './lib/append-jsonl';
-import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
+import { heartbeatHealth, PLUGIN_ROOT } from './lib/heartbeat/monitor-cmd';
 import { routineHealth } from './lib/routines/arm';
 import { bootMismatch } from './lib/monitor-health';
 import { readBootId } from './lib/routines/registry';
@@ -238,7 +238,9 @@ export function composeRestartMessage(reason: string, resumed: boolean, timezone
   const hhmm = nowHHMM(timezone);
   const cause = reason === 'dead-process'
     ? WATCHDOG[locale].restartCauseNotRunning()
-    : WATCHDOG[locale].restartCauseFrozen();
+    : reason === 'upgrade'
+      ? WATCHDOG[locale].restartCauseUpgrade()
+      : WATCHDOG[locale].restartCauseFrozen();
   return WATCHDOG[locale].restart(hhmm, cause, resumed);
 }
 
@@ -1289,6 +1291,13 @@ export function rearmDamperOpen(lastStamp: unknown, world: World = REAL_WORLD): 
   return age === null || age >= MONITOR_REARM_DAMPER_SECS;
 }
 
+/** Version of the plugin copy a registered supervisor command runs from, or null when unreadable. */
+function registeredPluginVersion(command: unknown, world: World): string | null {
+  const root = typeof command === 'string' ? /^bash "([^"]+)"\/scripts\/monitor-supervisor\.sh /.exec(command)?.[1] : undefined;
+  const version = root ? world.files.readJson(path.join(root, '.claude-plugin', 'plugin.json'))?.version : null;
+  return typeof version === 'string' ? version : null;
+}
+
 /**
  * Re-arm a heartbeat/routine Monitor that died mid-session, detected via its stale
  * liveness file. Injects only the dead monitor's re-arm command (both are in
@@ -1314,6 +1323,43 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     } else {
       appendEvent('monitor-dead-deferred', guard.ok ? (boundary.ok ? 'idle' : boundary.reason) : guard.reason, world);
     }
+    return;
+  }
+  // The watchdog runs from the marketplace checkout and the resident from the versioned
+  // cache, so a command path mismatch alone is not an upgrade: only a registered copy
+  // whose version differs from the applied one is.
+  const applied = config._hermit_versions?.hermitd;
+  const upgradeLegs: string[] = [];
+  for (const record of ['heartbeat-monitor.runtime.json', 'routine-monitor.runtime.json']) {
+    const monitor = world.files.readJson(path.join(world.paths.stateDir, record));
+    if (monitor?.launch !== 'native' || !bootId || monitor.boot_id !== bootId
+      || monitor.mode === 'croncreate-fallback') continue;
+    const registered = registeredPluginVersion(monitor.command, world);
+    if (!registered || registered === applied) continue;
+    const health = record === 'heartbeat-monitor.runtime.json'
+      ? heartbeatHealth(world.paths.hermitRoot, config, world.clock.nowMs())
+      : routineHealth(world.paths.hermitRoot, world.clock.nowMs());
+    if (health.reason === 'restart-required') upgradeLegs.push(record);
+  }
+  if (upgradeLegs.length > 0) {
+    const pluginVersion = world.files.readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))?.version;
+    if (!pluginVersion || applied !== pluginVersion) {
+      appendEvent('upgrade-restart-deferred', 'evolve-pending', world);
+      return;
+    }
+    const runtime = readRuntimeJson(world.paths.stateDir);
+    const guard = passesLifecycleGuards(runtime ?? {}, world);
+    if (!guard.ok) {
+      appendEvent('upgrade-restart-deferred', guard.reason, world);
+      return;
+    }
+    const boundary = passesExecutionBoundary(world.paths.hermitRoot);
+    if (!boundary.ok) {
+      appendEvent('upgrade-restart-deferred', boundary.reason, world);
+      return;
+    }
+    await world.actions.restart(sessionName, 'upgrade', runtime, config.timezone ?? 'UTC');
+    appendEvent('upgrade-restart', upgradeLegs.join('+'), world);
     return;
   }
   if (isPaused(world.paths.hermitRoot).paused) return;               // no injection while paused (mirrors doNudge)

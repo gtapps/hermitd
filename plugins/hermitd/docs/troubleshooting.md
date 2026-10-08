@@ -111,7 +111,7 @@ After a survivor-blocked stop the shutdown gate keeps the channel silent, becaus
 - Run `/hermitd:hermit-doctor` and check the `routine-monitor` line. `croncreate-fallback mode` means routines use CronCreate because native monitors were unavailable or activation produced no liveness proof.
 - `/hermitd:hermit-routines load` invokes the activation skill to start native plugin monitors. It accepts a live supervisor PID or a liveness tick; it no longer registers a Monitor tool task. Check `state/routine-monitor-liveness.json` for `pid` and `last_peek_at`.
 - An exited inner poller is respawned by its supervisor. A dead supervisor causes the watchdog to restart the resident when lifecycle guards pass and execution is idle; active or unknown execution defers the restart.
-- `RESTART_REQUIRED|command-drift` (or `SKIP|restart-required:<legs>` from the daily anchor) means the live supervisor still uses the old plugin path. Restart the resident to pick up the new path; invoking activation again cannot replace an already-armed native monitor in the same session.
+- `RESTART_REQUIRED|command-drift` (or `SKIP|restart-required:<legs>` from the daily anchor) means the live supervisor still uses the old plugin path. The watchdog restarts an always-on resident at an idle boundary once evolve has finished and the lifecycle guards pass. Check `upgrade-restart` / `upgrade-restart-deferred` events in `state/watchdog-events.jsonl` for the restart or deferral reason. For sessions without a watchdog, restart the resident with `hermitd restart` to pick up the new path; invoking activation again cannot replace an already-armed native monitor in the same session.
 
 ## Queued Task Not Picked Up
 

@@ -123,7 +123,7 @@ costs one Bash call instead of loading the routines skill. Route on its single l
   that changed routines shows up here as `fallback-drift`) and re-arms the heartbeat leg with it.
 - `ARM|heartbeat|…` alone — invoke `/hermitd:heartbeat start`.
 - `SKIP|paused` — the hermit is paused and fires nothing until resumed. Log the line; invoke nothing.
-- `SKIP|restart-required:<legs>` or `RESTART_REQUIRED|command-drift`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: **Operator action required:** the resident must be restarted to pick up the new plugin path (`hermitd restart`).
+- `SKIP|restart-required:<legs>` or `RESTART_REQUIRED|command-drift`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself to finish the upgrade at its next idle moment; otherwise, restart the resident with `hermitd restart`.
 - `ARM|…|check-error:<reason>` — state was unreadable, so nothing is safe to re-arm. Append that
   line and the manual `hermit-routines load` next action to the report.
 

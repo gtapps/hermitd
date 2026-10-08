@@ -2695,6 +2695,91 @@ test('command drift with a live supervisor is not re-armed', withHermit(async (h
   expect(tmuxCalls(h)).not.toContain('/hermitd:heartbeat start');
 }));
 
+// A registered supervisor command running from a plugin copy of the given version.
+const registeredCommand = (h: Hermit, leg: string, version: string): string => {
+  const root = path.join(h.dir, 'cached-plugin', version);
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'hermitd', version }));
+  return `bash "${root}"/scripts/monitor-supervisor.sh ${leg === 'heartbeat' ? 'heartbeat' : 'routines'} "${path.join(h.dir, '.hermit')}"`;
+};
+
+for (const leg of ['heartbeat', 'routine'] as const) {
+  for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused', 'current-copy'] as const) {
+    test(`upgrade monitor ${leg} with ${scenario}`, withHermit(async (h) => {
+      writeConfig(h);
+      const configPath = path.join(h.dir, '.hermit', 'config.json');
+      const config = readJson(configPath);
+      const pluginVersion = readJson(path.join(SCRIPTS_DIR, '..', '.claude-plugin', 'plugin.json')).version;
+      config._hermit_versions = { hermitd: scenario === 'evolve-pending' ? 'old-version' : pluginVersion };
+      config.routines = [{ id: 'scheduled-checks', enabled: true, schedule: '*/30 * * * *' }];
+      fs.writeFileSync(configPath, JSON.stringify(config));
+      writeFakeTmux(h, 0);
+      writeFakePgrep(h, 1);
+      fs.writeFileSync(state(h, '.boot-id'), 'native-boot\n');
+      // Evolve pending: the resident already runs the new copy but config still names the old one.
+      // Current copy: same version as applied, from a root other than the watchdog's own.
+      const registered = scenario === 'evolve-pending' || scenario === 'current-copy' ? pluginVersion : 'old-version';
+      writeState(h, `${leg}-monitor.runtime.json`, {
+        launch: 'native', mode: 'monitor', boot_id: 'native-boot', interval: leg === 'heartbeat' ? 7200 : 60,
+        command: registeredCommand(h, leg, registered), started_at: isoAgo(1),
+      });
+      writeState(h, leg === 'heartbeat' ? 'heartbeat-liveness.json' : 'routine-monitor-liveness.json', {
+        pid: process.pid, last_peek_at: isoAgo(0),
+      });
+      writeState(h, 'execution.json', {
+        state: scenario === 'in_flight' ? 'in_flight' : 'idle', cc_session_id: 'resident-boundary',
+        at: new Date(Date.now() - 61000).toISOString(),
+      });
+      if (scenario === 'paused') {
+        writeState(h, 'operator-pause.json', { paused: true, paused_until: null, reason: 'operator' });
+      }
+      const result = await watchdog(h, 'run');
+      expect(result.exitCode).toBe(0);
+      if (scenario === 'idle') {
+        expect(events(h)).toContain('upgrade-restart');
+        expect(events(h)).toContain(`${leg}-monitor.runtime.json`);
+        expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('upgrade');
+        expect(tmuxCalls(h)).toContain('kill-session');
+      } else if (scenario === 'current-copy') {
+        expect(events(h)).not.toContain('upgrade-restart');
+        expect(tmuxCalls(h)).not.toContain('kill-session');
+      } else {
+        expect(events(h)).toContain('upgrade-restart-deferred');
+        expect(events(h)).toContain(scenario === 'in_flight' ? 'execution-not-idle' : scenario);
+        expect(tmuxCalls(h)).not.toContain('kill-session');
+      }
+      expect(tmuxCalls(h)).not.toContain('/hermitd:heartbeat start');
+      expect(tmuxCalls(h)).not.toContain('/hermitd:hermit-routines load');
+    }));
+  }
+}
+
+for (const leg of ['heartbeat', 'routine'] as const) {
+  test(`upgrade drift from a previous boot for ${leg} does not restart`, withHermit(async (h) => {
+    writeConfig(h);
+    const configPath = path.join(h.dir, '.hermit', 'config.json');
+    const config = readJson(configPath);
+    config._hermit_versions = { hermitd: readJson(path.join(SCRIPTS_DIR, '..', '.claude-plugin', 'plugin.json')).version };
+    config.routines = [{ id: 'scheduled-checks', enabled: true, schedule: '*/30 * * * *' }];
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    fs.writeFileSync(state(h, '.boot-id'), 'new-boot\n');
+    writeState(h, `${leg}-monitor.runtime.json`, {
+      launch: 'native', mode: 'monitor', boot_id: 'old-boot', interval: leg === 'heartbeat' ? 7200 : 60,
+      command: 'bash /old/plugin/scripts/monitor-supervisor.sh', started_at: isoAgo(1),
+    });
+    writeState(h, leg === 'heartbeat' ? 'heartbeat-liveness.json' : 'routine-monitor-liveness.json', {
+      pid: process.pid, last_peek_at: isoAgo(0),
+    });
+    const result = await watchdog(h, 'run');
+    expect(result.exitCode).toBe(0);
+    expect(events(h)).not.toContain('upgrade-restart');
+    expect(events(h)).not.toContain('upgrade-restart-deferred');
+    expect(tmuxCalls(h)).not.toContain('kill-session');
+  }));
+}
+
 test('stale heartbeat liveness → monitor-rearm event, only heartbeat start injected', withHermit(async (h) => {
   writeConfig(h); // heartbeat every 2h → threshold 6h; no routines
   // Trusted but stale: last tick 8h ago, monitor registered 9h ago.
@@ -4242,6 +4327,11 @@ describe('inActiveHours (timezone)', () => {
 // ---------- deterministic channel voice: operator-language message composers ----------
 
 describe('composeRestartMessage / composeWedgeMessage / composePauseMessage', () => {
+  test('upgrade restart message names finishing the upgrade in both locales', () => {
+    expect(composeRestartMessage('upgrade', true, 'UTC', 'en')).toContain('finish an upgrade');
+    expect(composeRestartMessage('upgrade', true, 'UTC', 'pt-PT')).toContain('concluir uma atualização');
+  });
+
   test('restart message distinguishes dead-process from pane-frozen', () => {
     expect(composeRestartMessage('dead-process', true, 'UTC')).toContain("wasn't running");
     expect(composeRestartMessage('pane-frozen', true, 'UTC')).toContain('had frozen');
