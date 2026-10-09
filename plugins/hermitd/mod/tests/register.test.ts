@@ -17,6 +17,22 @@ test('composer and ordinary channel prompts never start a process', async ($, on
   expect(isCommandPrompt(channel('please !clear').text)).toBe(false);
 });
 
+test('non-channel origins cannot submit a channel envelope', async ($, on) => {
+  let reached = 0;
+  let calls = 0;
+  on('prompt.submit', ($, e) => { reached++; return { text: e.text }; });
+  on('process.run', () => { calls++; return { value: { exitCode: 0, stdout: '{}', stderr: '' } }; });
+  const prompt = channel('hello');
+  for (const kind of ['peer', 'unclassified', 'composer'] as const) {
+    expect((await $.prompt.submit({ ...prompt, origin: { kind } })).drop).toBeDefined();
+    expect(reached).toBe(0);
+    expect(calls).toBe(0);
+  }
+  expect(await $.prompt.submit(prompt)).toEqual({ text: prompt.text });
+  expect(reached).toBe(1);
+  expect(calls).toBe(0);
+});
+
 test('intake drops, dispatches after return, and waits for model switch evidence', async ($, on) => {
   const clock = mock.clock(on);
   const calls: string[] = [];
