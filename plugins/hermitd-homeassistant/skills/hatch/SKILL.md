@@ -184,6 +184,7 @@ If **absent**, append the following block under `## Work Products` (create the s
 - brief: morning/evening house brief. location: compiled/brief-<morning|evening>-<date>.md
 - context: foundational house/system profile. location: compiled/context-house-profile-<date>.md
 - presence-report: presence history and tracker diagnostics. location: compiled/presence-report-<date>.md
+- domain-brainstorm: report from a domain plugin's `domain-brainstorm` skill, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
 ```
 
 And under `## Raw Captures` (create if absent):
@@ -195,6 +196,8 @@ And under `## Raw Captures` (create if absent):
 - remove: HA automation/script delete audit. location: raw/audit-ha-remove-<slug>-<date>.md
 - analysis: HA pattern analysis. location: raw/patterns-<date>.md
 ```
+
+Omit the `domain-brainstorm` bullet when `## Work Products` already declares it (another domain plugin's hatch may have added it).
 
 If already present: skip (idempotent).
 

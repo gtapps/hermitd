@@ -21,6 +21,7 @@
 - note: general-purpose compiled note for one-off outputs. location: compiled/note-<slug>-<date>.md
 - review: weekly review report from the weekly-review routine. location: compiled/review-weekly-<YYYY>-W<NN>.md
 - procedure-brief: audit record of a recurring procedure detected by reflect. Not session-injected (transient record, not a domain output). Required fields: title, type, created, tags, source, session, related_sessions, proposed_skill_name. location: compiled/procedure-brief-<slug>-<date>.md
+- capability-brainstorm: report from the monthly capability-brainstorm routine or an on-demand run, written only when the run created at least one proposal. location: compiled/capability-brainstorm-<YYYY-MM-DD-HHMM>.md
 
 ## Raw Captures
 <!-- What operational inputs does this hermit collect into raw/?

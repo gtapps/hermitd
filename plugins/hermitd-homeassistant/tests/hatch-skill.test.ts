@@ -19,7 +19,7 @@ test('knowledge-schema extension declares every HA type', () => {
   // The sentinel must appear as the actual typed bullet in the appended block,
   // not just as a backtick-quoted example in the prose description.
   expect(skillText).toContain('- analysis: HA pattern analysis');
-  const types = ['context', 'brief', 'presence-report', 'audit', 'simulation', 'apply', 'remove'];
+  const types = ['context', 'brief', 'presence-report', 'domain-brainstorm', 'audit', 'simulation', 'apply', 'remove'];
   for (const type of types) {
     expect(skillText).toContain(`- ${type}:`);
   }

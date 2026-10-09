@@ -165,6 +165,7 @@ If **absent**, append the following block under `## Work Products` (create the s
 - recovery-assessment: recovery indicators from recent activity data. Triggered by operator request or an evening-brief flag. location: compiled/recovery-assessment-<YYYY-MM-DD>.md
 - fitness-snapshot: current fitness state snapshot. Triggered by operator request. location: compiled/fitness-snapshot-<YYYY-MM-DD>.md
 - activity-note: per-activity coaching analysis. Triggered by activity-deep-dive skill. location: compiled/activity-<id>-<YYYY-MM-DD>.md
+- domain-brainstorm: report from a domain plugin's `domain-brainstorm` skill, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
 ```
 
 And under `## Raw Captures` (create if absent):
@@ -173,6 +174,8 @@ And under `## Raw Captures` (create if absent):
 - activity-fetch: raw activity list from Strava. Feeds weekly-plan, weekly-summary, recovery-assessment. Retention: 3 days. location: raw/activity-fetch-<date>.json
 - activity-streams: HR/pace/power time-series for a specific activity. Feeds recovery-assessment, activity-note, fitness-snapshot. Retention: 7 days. location: raw/activity-streams-<id>-<date>.json
 ```
+
+Omit the `domain-brainstorm` bullet when `## Work Products` already declares it (another domain plugin's hatch may have added it).
 
 If already present: skip (idempotent).
 

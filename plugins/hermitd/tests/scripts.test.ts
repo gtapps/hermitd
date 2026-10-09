@@ -868,9 +868,22 @@ describe('knowledge-lint', () => {
     const template = fs.readFileSync(
       path.join(PLUGIN_ROOT, 'state-templates', 'knowledge-schema.md.template'), 'utf-8');
     write(hermit(dir, 'knowledge-schema.md'),
-      template.split('\n').filter((l) => !/^- (note|input|review|procedure-brief|topic):/.test(l)).join('\n'));
+      template.split('\n').filter((l) => !/^- (note|input|review|procedure-brief|topic|capability-brainstorm):/.test(l)).join('\n'));
     const r = await runLint(dir); // exit code intentionally not asserted (bash used `|| true`)
     expect(r.stdout + r.stderr).toContain('schema-empty');
+  }));
+
+  test('knowledge-lint (template declares capability-brainstorm)', withDir(async (dir) => {
+    fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
+    write(hermit(dir, 'config.json'), '{}');
+    const template = fs.readFileSync(
+      path.join(PLUGIN_ROOT, 'state-templates', 'knowledge-schema.md.template'), 'utf-8');
+    write(hermit(dir, 'knowledge-schema.md'), template);
+    write(hermit(dir, 'compiled', 'capability-brainstorm-2026-10-09-1200.md'),
+      `---\ntitle: Capability brainstorm\ntype: capability-brainstorm\ncreated: ${isoSec(daysAgo(1))}\n---\nCreated a proposal.`);
+    const r = await runLint(dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout + r.stderr).not.toContain('undeclared-type');
   }));
 
   // 6b. Schema enforcement — undeclared type warned; declared+matching type clean
