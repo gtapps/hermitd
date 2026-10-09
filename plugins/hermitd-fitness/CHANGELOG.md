@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Domain brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
+
+### Upgrade Instructions
+1. If `.hermit/knowledge-schema.md` exists and its `## Work Products` section has neither a `- domain-brainstorm:` nor a `- **domain-brainstorm**:` bullet, append the `domain-brainstorm` bullet from `${CLAUDE_PLUGIN_ROOT}/skills/hatch/SKILL.md` to that section. Otherwise skip. Preserve all existing content.
+
 ## [0.2.4] - 2026-10-02
 
 ### Changed

@@ -5,6 +5,12 @@
 ### Changed
 - The watchdog restarts an always-on resident at its next idle moment after an upgrade so the heartbeat and routine monitors move to the new plugin version.
 
+### Fixed
+- Capability brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
+
+### Upgrade Instructions
+1. If `.hermit/knowledge-schema.md` exists and its `## Work Products` section has neither a `- capability-brainstorm:` nor a `- **capability-brainstorm**:` bullet, append the `capability-brainstorm` bullet from `${CLAUDE_PLUGIN_ROOT}/state-templates/knowledge-schema.md.template` to that section. Otherwise skip. Preserve all existing content.
+
 ## [1.4.11] - 2026-10-07
 
 ### Added

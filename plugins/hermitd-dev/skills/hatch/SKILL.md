@@ -106,7 +106,23 @@ Single atomic config.json write:
 
 If the operator answered "Yes" to `Docs MCP`: `claude plugin install context7@claude-plugins-official --scope project`.
 
-### 6. Report results
+### 6. Knowledge-schema extension
+
+Read `.hermit/knowledge-schema.md`.
+
+Check if either `- domain-brainstorm:` or `- **domain-brainstorm**:` is present in the file.
+
+If **absent**, append the following bullet under `## Work Products` (create the section header if absent):
+
+```
+- domain-brainstorm: report from `/hermitd-dev:domain-brainstorm`, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
+```
+
+If already present: skip (idempotent).
+
+Use Edit to make the changes.
+
+### 7. Report results
 
 Print a summary that reflects what actually happened:
 
@@ -120,6 +136,7 @@ Git safety:
 Updated:
   CLAUDE.md — dev block [appended / updated to vX.Y.Z / already current]
   OPERATOR.md — dev conventions [added / already present / skipped]
+  .hermit/knowledge-schema.md — domain-brainstorm type [added / already present]
 
 Companion plugin: context7 [installed / already present / skipped]
 

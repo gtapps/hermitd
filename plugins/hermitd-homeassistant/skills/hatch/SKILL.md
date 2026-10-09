@@ -184,6 +184,7 @@ If **absent**, append the following block under `## Work Products` (create the s
 - brief: morning/evening house brief. location: compiled/brief-<morning|evening>-<date>.md
 - context: foundational house/system profile. location: compiled/context-house-profile-<date>.md
 - presence-report: presence history and tracker diagnostics. location: compiled/presence-report-<date>.md
+- domain-brainstorm: report from `/hermitd-homeassistant:domain-brainstorm`, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
 ```
 
 And under `## Raw Captures` (create if absent):

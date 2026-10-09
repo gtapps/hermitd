@@ -165,6 +165,7 @@ If **absent**, append the following block under `## Work Products` (create the s
 - recovery-assessment: recovery indicators from recent activity data. Triggered by operator request or an evening-brief flag. location: compiled/recovery-assessment-<YYYY-MM-DD>.md
 - fitness-snapshot: current fitness state snapshot. Triggered by operator request. location: compiled/fitness-snapshot-<YYYY-MM-DD>.md
 - activity-note: per-activity coaching analysis. Triggered by activity-deep-dive skill. location: compiled/activity-<id>-<YYYY-MM-DD>.md
+- domain-brainstorm: report from `/hermitd-fitness:domain-brainstorm`, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
 ```
 
 And under `## Raw Captures` (create if absent):
