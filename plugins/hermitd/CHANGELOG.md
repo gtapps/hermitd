@@ -6,6 +6,7 @@
 - The watchdog restarts an always-on resident at its next idle moment after an upgrade so the heartbeat and routine monitors move to the new plugin version.
 
 ### Fixed
+- A channel-shaped message that did not arrive through a channel, such as one from another Claude session, is dropped instead of being treated as operator chat.
 - Capability brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
 
 ### Upgrade Instructions
