@@ -147,9 +147,11 @@ function schedule($: EngineInterface) {
 
 export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
-    // Only the engine stamps a channel origin; an envelope from any other origin is forged.
-    if (e.origin.kind !== 'channel' && /^\s*<channel\s/.test(e.text)) return { drop: 'Channel envelope from a non-channel origin' };
-    if (e.origin.kind !== 'channel' || !isCommandPrompt(e.text)) return next(e);
+    if (e.origin.kind !== 'channel') {
+      // Only the engine stamps a channel origin; an envelope from any other origin is forged.
+      return /^\s*<channel\s/.test(e.text) ? { drop: 'Channel envelope from a non-channel origin' } : next(e);
+    }
+    if (!isCommandPrompt(e.text)) return next(e);
     const result = await bridge($, 'intake', e.text);
     if (result.decision === 'pass') return next(e);
     if (result.decision === 'run') {
