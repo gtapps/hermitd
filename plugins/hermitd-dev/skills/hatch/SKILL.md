@@ -110,12 +110,12 @@ If the operator answered "Yes" to `Docs MCP`: `claude plugin install context7@cl
 
 Read `.hermit/knowledge-schema.md`.
 
-Check if either `- domain-brainstorm:` or `- **domain-brainstorm**:` is present in the file.
+Check if `## Work Products` already has a `- domain-brainstorm:` or `- **domain-brainstorm**:` bullet (another domain plugin's hatch may have added it).
 
 If **absent**, append the following bullet under `## Work Products` (create the section header if absent):
 
 ```
-- domain-brainstorm: report from `/hermitd-dev:domain-brainstorm`, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
+- domain-brainstorm: report from a domain plugin's `domain-brainstorm` skill, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
 ```
 
 If already present: skip (idempotent).
@@ -136,7 +136,7 @@ Git safety:
 Updated:
   CLAUDE.md — dev block [appended / updated to vX.Y.Z / already current]
   OPERATOR.md — dev conventions [added / already present / skipped]
-  .hermit/knowledge-schema.md — domain-brainstorm type [added / already present]
+  .hermit/knowledge-schema.md: domain-brainstorm type [added / already present]
 
 Companion plugin: context7 [installed / already present / skipped]
 

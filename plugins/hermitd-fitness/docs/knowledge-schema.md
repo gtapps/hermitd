@@ -40,6 +40,7 @@ Durable outputs. Injected into session context at startup within `compiled_budge
 | `recovery-assessment-<date>.md` | `recovery-assessment` | no | Operator request or evening-brief flag | On demand |
 | `fitness-snapshot-<date>.md` | `fitness-snapshot` | yes | Operator request | On demand |
 | `activity-<id>-<date>.md` | `activity-note` | no | activity-deep-dive skill | After each analyzed workout |
+| `domain-brainstorm-<YYYY-MM-DD-HHMM>.md` | `domain-brainstorm` | no | domain-brainstorm skill | Operator request, only when a proposal was created |
 
 ## state/
 
