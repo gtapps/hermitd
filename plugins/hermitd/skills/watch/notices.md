@@ -28,8 +28,8 @@ for X:
    For a `GUEST_REPORT:` from an open record's helper owner with no live entry,
    use § Handling an unprompted helper report instead.
 2. On an idle notice with a matching `GUEST_REPORT:`, retry only when the
-   entry has `followup`, has no `retry`, and the report's Verdict/Why says a
-   permission check or auto mode denied an action, or the helper declined
+   entry has `followup`, has no `retry`, and the report's Verdict/Why says
+   auto mode denied an action, or the helper declined
    because the instructions came by message. Set `retry: true` on the entry
    and write the registry first. This resends the operator's own stored request
    as a new prompt; it is not a retry of a call this session made.
@@ -39,10 +39,11 @@ for X:
    as watch flags: `--record <record>`, `--proposal <proposal>`, and
    `--implement` for `purpose: "implement"`, omitting absent fields.
    Inside an open record's turn, log one `task-note` (Commands) that the retry
-   was attempted. If resumed, end this handler: skip the operator notice and
-   report recording for this round, and leave the replacement watch live.
-   If the procedure ends without resuming, continue below and say the retry
-   could not start in the operator notice.
+   was attempted. If resumed with a live replacement watch, end this handler:
+   skip the operator notice and report recording for this round. If the
+   procedure ends without resuming, or the resumed helper runs unwatched,
+   continue below and say so in the operator notice, including that a helper
+   stopped for the retry is no longer running.
 3. When a matching report has an entry record with a conversation, post it in
    that thread through § Posting a report in a task thread below instead of the
    channel notice. Otherwise notify the operator per CLAUDE-APPEND § Operator Notification with a `client`

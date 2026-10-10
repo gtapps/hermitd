@@ -40,17 +40,19 @@ On `invalid-owner` or `owner-busy`, leave it resident-owned and note why.
   § Follow-ups, "Resume with new instructions" with the instructions, note
   "Implement PROP-NNN", and `--record <id> --proposal PROP-NNN --implement`,
   where `<id>` is the record step (a) opened. No `followup` is stored for a
-  resume. A launched resume counts as reached for the no-double-Dispatch rule.
-  If not ready (busy, background or scheduled work), `SendMessage` it the
+  resume. A launched resume counts as reached for the no-double-Dispatch rule;
+  launch failure or unexpected output goes straight to the Fallback. If still
+  listed after the stop, use the next bullet's checks and Fallback before any
+  resume. If not ready (busy, blocked, background or scheduled work) or it has
+  no bg row, a listed session is messaged, not resumed, because resuming a
+  running session starts a copy: `SendMessage` it the
   instructions with `notify_when_idle: true` on that same send. Then read
   [watch/SKILL.md](../watch/SKILL.md) for its shared rules and
   [watch/session-watch.md](../watch/session-watch.md#registering-an-existing-idle-subscription)
   § Registering an existing idle subscription with this send's result and sent
   text. Set `record` to the record step (a) opened, `proposal` to PROP-NNN and
   `purpose` to `implement`, so the relay records implementation and can retry
-  a blocked follow-up once. Launch failure or unexpected output goes straight
-  to the Fallback. If still listed after the stop, or no bg row was found,
-  use the next bullet's checks and Fallback before any resume.
+  a blocked follow-up once.
 - No row ([watch/SKILL.md](../watch/SKILL.md) § Branch instructions leaves an idle helper for the
   supervisor to reclaim): a line with no `(<sid>)` has no resume handle, so
   take the Fallback. `ListAgents` omits a helper stalled at boot or still starting, so first run

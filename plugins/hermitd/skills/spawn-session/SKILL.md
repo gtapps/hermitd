@@ -229,9 +229,9 @@ the caller so it can handle a resume that could not start.
    then invoke `/hermitd:watch session <name> "<note>" --id <bg-id>` plus the
    given flags. Use the resumed session's bg id (the first 8 characters of its
    session id). Do not store these prompt instructions as `followup`: they
-   were delivered by resume, not by message. A declined watch is handled as in
-   proposal-act's reuse-spawned-helper § Fallback;
-   a launched resume counts as reached even if its watch declines.
+   were delivered by resume, not by message. If the watch declines, return
+   that the resumed helper runs unwatched; a launched resume counts as
+   reached even so.
 
 ## Stuck helper
 
