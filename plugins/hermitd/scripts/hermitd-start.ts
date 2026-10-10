@@ -1202,6 +1202,34 @@ function seedWorkspaceTrust(): void {
 }
 
 /**
+ * Claude Code skips an MCP server for 15 minutes after any session failed to start it
+ * (mcp-needs-auth-cache.json). Drop the launch's channel entries so a restart inside
+ * that window still connects its channels.
+ */
+function clearChannelFailureCache(cmd: string[]): void {
+  const at = cmd.indexOf('--channels');
+  if (at === -1) return;
+  const prefixes: string[] = [];
+  for (const arg of cmd.slice(at + 1)) {
+    if (arg.startsWith('--')) break;
+    const m = arg.match(/^plugin:([^@]+)@/);
+    if (m) prefixes.push(`plugin:${m[1]}:`);
+  }
+  const file = path.join(defaultConfigDir(), 'mcp-needs-auth-cache.json');
+  try {
+    const cache = readJson(file);
+    if (!isDict(cache)) return;
+    const stale = Object.keys(cache).filter((key) => prefixes.some((p) => key.startsWith(p)));
+    if (!stale.length) return;
+    for (const key of stale) delete cache[key];
+    writeFileAtomic(file, JSON.stringify(cache, null, 2) + '\n');
+    console.log(`[hermit] Cleared cached channel start failure: ${stale.join(', ')}`);
+  } catch (error: any) {
+    console.log(`[hermit] WARNING: cached channel start failure not cleared (${error?.message ?? error}): continuing boot.`);
+  }
+}
+
+/**
  * os.execvp replacement: Bun cannot replace the process image, so spawn the
  * command with inherited stdio and exit with its status. The lifecycle lock
  * is released first — Python's flock fd was O_CLOEXEC and released on exec.
@@ -1534,6 +1562,7 @@ async function main(): Promise<void> {
   applyVoiceRender(config);
   applyArtifactGrant(config);
   seedWorkspaceTrust();
+  clearChannelFailureCache(cmd);
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
     if (!noTmuxFlag && !pyTruthy(tools.tmux)) {
@@ -1772,6 +1801,7 @@ export {
   requireResident,
   renderLaunchOverlay,
   seedWorkspaceTrust,
+  clearChannelFailureCache,
   resolveHermitEnv,
   writeSettingsEnv,
   applyVoiceRender,

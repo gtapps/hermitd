@@ -8,6 +8,7 @@
 ### Fixed
 - A channel-shaped message that did not arrive through a channel, such as one from another Claude session, is dropped instead of being treated as operator chat.
 - Capability brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
+- A resident started or restarted within 15 minutes of another session failing to start a channel plugin, such as Discord, connects that channel instead of skipping it on Claude Code's cached failure.
 
 ### Upgrade Instructions
 1. If `.hermit/knowledge-schema.md` exists and its `## Work Products` section has neither a `- capability-brainstorm:` nor a `- **capability-brainstorm**:` bullet, append the `capability-brainstorm` bullet from `${CLAUDE_PLUGIN_ROOT}/state-templates/knowledge-schema.md.template` to that section. Otherwise skip. Preserve all existing content.

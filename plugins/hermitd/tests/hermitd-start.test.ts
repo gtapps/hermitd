@@ -36,6 +36,7 @@ import {
   applyVoiceRender,
   renderLaunchOverlay,
   seedWorkspaceTrust,
+  clearChannelFailureCache,
   applyAlwaysOnDoctorSchedule,
   clearShutdownStampsOnBoot,
   hydrateSetupTokenEnv,
@@ -1538,6 +1539,44 @@ describe('seedWorkspaceTrust', () => {
     expect(out).toContain('[hermit] WARNING: workspace trust not seeded (');
     expect(out).toContain('continuing boot.');
     expect(fs.readFileSync(file, 'utf8')).toBe('{broken');
+  });
+});
+
+describe('clearChannelFailureCache', () => {
+  const cacheFile = () => path.join(process.env.CLAUDE_CONFIG_DIR!, 'mcp-needs-auth-cache.json');
+  const writeCache = (cache: object) => {
+    fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
+    fs.writeFileSync(cacheFile(), JSON.stringify(cache));
+  };
+  const cmd = ['claude', '--channels', 'plugin:discord@claude-plugins-official', 'plugin:voice@voice-channel', '--name', 'x'];
+
+  test('drops cached failures for launched channel plugins and keeps other servers', () => {
+    writeCache({
+      'plugin:discord:discord': { timestamp: 1, id: 'a' },
+      'plugin:voice:voice': { timestamp: 2 },
+      'plugin:context7:context7': { timestamp: 3 },
+      'claude.ai Trello': { timestamp: 4 },
+    });
+    const { out } = captureLog(() => clearChannelFailureCache(cmd));
+    expect(JSON.parse(fs.readFileSync(cacheFile(), 'utf8'))).toEqual({
+      'plugin:context7:context7': { timestamp: 3 },
+      'claude.ai Trello': { timestamp: 4 },
+    });
+    expect(out).toContain('plugin:discord:discord');
+  });
+  test('leaves the file untouched when nothing matches or no channels launch', () => {
+    writeCache({ 'plugin:context7:context7': { timestamp: 3 } });
+    const before = fs.statSync(cacheFile()).ino;
+    clearChannelFailureCache(cmd);
+    clearChannelFailureCache(['claude', '--name', 'x']);
+    expect(fs.statSync(cacheFile()).ino).toBe(before);
+  });
+  test('absent or corrupt cache does not throw', () => {
+    expect(() => clearChannelFailureCache(cmd)).not.toThrow();
+    fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
+    fs.writeFileSync(cacheFile(), '{broken');
+    expect(() => clearChannelFailureCache(cmd)).not.toThrow();
+    expect(fs.readFileSync(cacheFile(), 'utf8')).toBe('{broken');
   });
 });
 
