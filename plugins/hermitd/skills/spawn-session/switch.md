@@ -3,16 +3,18 @@
 Inputs: `--switch <n> --record <T-id>` and `--model <m>` and/or `--effort <e>`.
 The record must be owned by `helper:<n>`; otherwise refuse without switching.
 Use the Commands from the parent skill. Never ask the operator a question.
+"The thread" is the record's conversation.
 
 1. Read the helper's `claude agents --json` row by `name`, taking `id`,
-   `status`, `state` and `cwd`. Apply the readiness rule in § Follow-ups,
+   `status` and `state`. Apply the readiness rule in § Follow-ups,
    "Resume with new instructions" step 1 to a listed row. A listed helper
    that is not ready is queued: read `.hermit/state/monitors.runtime.json`
    and take the live `peer-idle` entry whose `target` is `<n>`. With none,
    first run `/hermitd:watch session <n> "<note>" --id <bg-id> --record <T-id>`;
    if no live entry results, report that outcome and end. Set the entry's
-   `switch` to an object containing the supplied `model` and/or `effort`,
-   merging into any queued value so a newer value for the same key wins.
+   `switch` to an object containing `record: "<T-id>"` and the supplied
+   `model` and/or `effort`, merging into any queued value so a newer value for
+   the same key wins.
    Write the registry, post one line in the thread:
    `<n> switches to <value> when its current turn ends.`, and end.
    For both values, render `<value>` as `<model>/<effort>`; for one, use that
@@ -28,8 +30,8 @@ Use the Commands from the parent skill. Never ask the operator a question.
    registry as in `/hermitd:watch` § Stopping a watch.
 4. If listed, run `claude stop <bg-id>` and the bounded stop-and-poll from
    § Follow-ups, "Resume with new instructions" step 2. Still listed at the
-   deadline: report that outcome and end. `cd` to the row's `cwd` (unlisted:
-   the script's `cwd`) as its own Bash call. As the next call, run
+   deadline: report that outcome and end. `cd` to the script's `cwd` (the
+   helper's worktree when it has one) as its own Bash call. As the next call, run
    `claude --bg --resume <sid> <flags> '<continuation>'`, then `cd` back to
    the project root as the next call whatever the launch returned.
    The continuation says the model or effort was switched, to reply only

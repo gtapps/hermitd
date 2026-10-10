@@ -99,8 +99,8 @@ for X:
 5. Name the session by display name only, never by socket path or pid. Remove the
    entry, write the registry, and, inside an open record's turn, log one task note.
    After an idle notice, if the removed entry carried `switch`, invoke
-   `/hermitd:spawn-session --switch <target> --record <record>` with `--model`
-   and/or `--effort` from that object's values. This happens after the report
+   `/hermitd:spawn-session --switch <target> --record <record>` with the
+   switch object's `record` and its `--model` and/or `--effort` values. This happens after the report
    has been relayed and recorded, never on subscription expiry.
 
 ### Posting a report in a task thread

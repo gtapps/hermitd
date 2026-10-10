@@ -741,6 +741,7 @@ describe('conversation commands', () => {
     ['!model', 'conversation command refused: !model needs one valid value'],
     ['!model sonnet extra', 'conversation command refused: !model needs one valid value'],
     ['!model bad;model', 'conversation command refused: !model needs one valid value'],
+    ['!model --effort', 'conversation command refused: !model needs one valid value'],
   ]) {
     test(`routes helper ${body} before the harness recorder`, async () => {
       const wd = setupChannelWorkdir();

@@ -43,6 +43,7 @@ for (const [label, state, args] of [
   ['no change', saved, []],
   ['invalid effort', saved, ['--effort', 'turbo']],
   ['invalid model', saved, ['--model', 'bad;model']],
+  ['flag-shaped model', saved, ['--model', '-p']],
   ['missing model', saved, ['--model']],
   ['missing effort', saved, ['--effort']],
   ['missing state', null, ['--model', 'sonnet']],
