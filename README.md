@@ -1,3 +1,4 @@
+
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
@@ -19,10 +20,8 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 
 **It's Claude Code.** hermitd is a plugin for the official Claude Code CLI, which runs as Anthropic ships it. New Claude models, features, and fixes work as soon as Claude Code supports them.
 
-Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
-
 <p align="center">
-  <img src="plugins/hermitd/assets/cover.png" alt="Always-on Claude Code agent" />
+  <video src="https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3" title="hermitd" width="720" controls muted></video>
 </p>
 
 <a id="quick-start"></a>
@@ -289,6 +288,8 @@ The migration records every agent before replacing the marketplace, moves projec
 Follow the printed start command for each agent, then run `/hermitd:hermit-evolve`. Pending `later` commands that still use old paths are reported for re-arming.
 
 ## Upgrading
+
+Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container.
 
