@@ -73,7 +73,7 @@ An assignment from chat opens a task record and runs in an internal task worker 
 | iMessage | One record per chat. |
 | Marketplace channel plugins | One record per chat id supplied by the plugin. |
 
-A message in an open task thread costs one resident routing turn in addition to the worker's own work; the worker edits its own progress card, so progress costs the resident nothing. Results and progress cards use the channel plugin's reply/edit tools. `!mute`, `!unmute`, `!restart`, and `!help` apply to the task thread. Per-conversation `!model` and `!effort` are not supported.
+A message in an open task thread costs one resident routing turn in addition to the worker's own work; the worker edits its own progress card, so progress costs the resident nothing. Results and progress cards use the channel plugin's reply/edit tools. `!mute`, `!unmute`, `!restart`, and `!help` apply to the task thread. On a helper-bound thread, `!model` and `!effort` switch that helper and keep its conversation; a busy helper switches when its current turn ends. Per-conversation `!model` and `!effort` remain unsupported on a worker-owned thread.
 
 Thread ownership lives in the task record under `tasks/`, not in a separate store. An allowed sender's messages in an open task thread bypass the passive-chat block; a muted thread admits mentions and any addressed `!` command, so `!pause`, `!status`, and the conversation commands keep working there. A chat with no open record retains its mention requirement. The upstream channel plugin must still deliver the message: Discord threads inherit the parent's mention gate and sender allowlist.
 
