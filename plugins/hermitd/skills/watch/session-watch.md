@@ -96,6 +96,8 @@ only records that subscription; do not send another message or subscribe again.
    `{id: "session-<name>-<epoch>-<rand>", description: <note or "session <name>">, target: <name>, started_at, source: "adhoc", class: "peer-idle"}`.
    Store a supplied record as `record`, proposal as `proposal`, implementation
    purpose (`--implement`) as `purpose: "implement"`, and `--retry` as `retry: true`.
+   `switch` is an optional object with `model` and/or `effort`; only
+   `/hermitd:spawn-session`'s switch procedure writes it.
    When the send carried a message, store its exact text as `followup: ["<text>"]`.
    Do not add `task_id` (`task_id` means a Monitor task and drives `TaskStop`).
    Write the registry back.

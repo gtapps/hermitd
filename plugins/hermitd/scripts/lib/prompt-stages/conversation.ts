@@ -4,6 +4,7 @@ import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel
 import { cachedChat } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
+import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
 
 // An assignment on a Discord guild channel (type 0 or 5) gets its own thread, and the
@@ -59,6 +60,15 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   if (harnessCommand && owner !== 'resident') {
     ctx.skipHarnessCommand = true;
     if (name === 'clear') return { context: `${context}\n[conversation command: restart]` };
+    if (owner === 'helper' && (name === 'model' || name === 'effort')) {
+      const values = args.split(/\s+/);
+      const valid = values.length === 1 && (name === 'model'
+        ? HELPER_MODEL.test(values[0])
+        : EFFORT.includes(values[0] as typeof EFFORT[number]));
+      return { context: `${context}\n${valid
+        ? `[conversation command: helper-switch --${name} ${values[0]}]`
+        : `[conversation command refused: !${name} needs one valid value]`}` };
+    }
     const reason = name === 'model' || name === 'effort' ? 'per-conversation model/effort not supported' : `!${name} does not reach the resident from a task thread`;
     return { context: `${context}\n[conversation command refused: ${reason}]` };
   }

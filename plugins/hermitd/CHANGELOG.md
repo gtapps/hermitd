@@ -4,6 +4,7 @@
 
 ### Added
 - Task threads can be bound to a spawned session, which answers follow-ups and whose reports land on the task.
+- `!model` and `!effort` in a helper's task thread switch that helper, keeping its conversation and thread; a busy helper switches when its current turn ends.
 
 ### Changed
 - A `gate-failed` row in `state/proposal-metrics.jsonl` records the rejected verdict line, and reflect's gate-failure note quotes it.
