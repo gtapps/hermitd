@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.12] - 2026-10-10
 
 ### Added
 - Task threads can be bound to a spawned session, which answers follow-ups and whose reports land on the task.
