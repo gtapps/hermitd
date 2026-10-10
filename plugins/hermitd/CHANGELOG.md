@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- A `gate-failed` row in `state/proposal-metrics.jsonl` records the rejected verdict line, and reflect's gate-failure note quotes it, so a recurring gate failure can be diagnosed.
+- A `gate-failed` row in `state/proposal-metrics.jsonl` records the rejected verdict line, and reflect's gate-failure note quotes it.
 - The watchdog restarts an always-on resident at its next idle moment after an upgrade so the heartbeat and routine monitors move to the new plugin version.
 
 ### Fixed

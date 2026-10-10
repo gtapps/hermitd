@@ -1953,6 +1953,12 @@ describe('proposal gate', () => {
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar', verdict: '' });
   }));
 
+  test('gate (judge GATE_BLIND -> GATE_FAILED, blind line kept in the gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'GATE_BLIND: Bar — missing Anchor: line');
+    expect(out).toBe('GATE_FAILED');
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', verdict: 'GATE_BLIND: Bar — missing Anchor: line' });
+  }));
+
   test('gate (invalid --gate value -> GATE_FAILED)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'bogus' as any }, 'Foo', 'CREATE: Foo');
     expect(out).toBe('GATE_FAILED');
