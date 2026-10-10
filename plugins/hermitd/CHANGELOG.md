@@ -9,6 +9,7 @@
 - The watchdog restarts an always-on resident at its next idle moment after an upgrade so the heartbeat and routine monitors move to the new plugin version.
 
 ### Fixed
+- Spawned helpers whose follow-up is blocked or declined are resumed once with the same instructions before the block is reported, and accepting a suggestion with implement now resumes its idle helper directly.
 - A channel-shaped message that did not arrive through a channel, such as one from another Claude session, is dropped instead of being treated as operator chat.
 - Capability brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
 - A resident started or restarted within 15 minutes of another session failing to start a channel plugin, such as Discord, connects that channel instead of skipping it on Claude Code's cached failure.

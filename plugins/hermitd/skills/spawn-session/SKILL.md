@@ -79,7 +79,8 @@ Six limits sit on that command:
 Use only the launch options documented here. Never add bypass flags, tool
 preapprovals, or settings overrides to widen the helper's permissions. If launch
 or execution is blocked, report the blocker; do not retry through a script,
-alternate invocation, or weaker permission mode.
+alternate invocation, or weaker permission mode. The one exception is
+§ Follow-ups, "Resume with new instructions", for an operator follow-up.
 
 ## Plan
 
@@ -199,10 +200,44 @@ alternate invocation, or weaker permission mode.
    and say whether the tail leaves the helper running unwatched or stuck,
    rather than leaving a commitment waiting on a report that cannot arrive.
 
+## Follow-ups
+
+Send follow-ups by `SendMessage` with `notify_when_idle: true`, then read
+watch § Registering an existing idle subscription with the sent text. The watch relay
+retries a blocked or declined follow-up once with that stored request.
+
+### Resume with new instructions
+
+Inputs: helper name, instructions, watch note and flags. Return the outcome to
+the caller so it can handle a resume that could not start.
+
+1. Read the helper's row in `claude agents --json`. Ready means `status` is
+   `idle` and `state` is neither `working`, `blocked` nor `scheduled`. Take its
+   `id` as the bg id and its `sessionId` as the resume handle. Not ready or no
+   row: end without resuming; never stop a busy helper.
+2. Run `claude stop <bg-id>`, then in one bounded Bash call poll
+   `claude agents --json` every 2s for up to 30s until no row has that `id`.
+   Still listed at the deadline: end without resuming and report that outcome.
+3. From the project root, run
+   `claude --bg --resume <sessionId> '<instructions>'` with no other flag.
+   Apply the launch limits' `'\''` quoting rule to every apostrophe in the
+   instructions. The saved options include the helper system prompt; extra
+   flags start a copy instead. Launch failure or any output other than a normal
+   resume (for example "started a copy"): do not try again; tell the operator
+   what it printed and end with that outcome.
+4. Remove the helper's old watch entry if still live and write the registry,
+   then invoke `/hermitd:watch session <name> "<note>" --id <bg-id>` plus the
+   given flags. Use the resumed session's bg id (the first 8 characters of its
+   session id). Do not store these prompt instructions as `followup`: they
+   were delivered by resume, not by message. If the watch declines, return
+   that the resumed helper runs unwatched; a launched resume counts as
+   reached even so.
+
 ## Stuck helper
 
 `claude logs <id>`, `claude stop <id>`, and the watch expiry notice. Never tmux.
-Idle is not stuck: watch's idle-notice relay leaves an idle helper running.
+Idle is not stuck: watch's idle-notice relay leaves an idle helper running,
+except for § Follow-ups, "Resume with new instructions".
 A boot dialog in `claude logs <id>` is handled as in this terminal: relaunch
 with the option that makes the dialog moot when one exists, otherwise give
 the operator `claude attach <id>` (for a hermit in Docker,
