@@ -43,7 +43,10 @@ for X:
    subscription's lifetime, so never state one. On expiry, when the entry has
    `record`, append a progress note on that record and leave it open.
 3. When the idle notice carried a matching `GUEST_REPORT:`:
-   - If the entry has `record`, pipe the full block into
+   - If the entry's `record` is now owned by a `worker:` (a restart replaced the
+     helper), append the report as a note through `task-note` (Commands) instead
+     of a result.
+   - Otherwise, if the entry has `record`, pipe the full block into
      `task-block` (Commands) with arguments `<record> --result-stdin`
      (the result form for a finished recommendation awaiting acceptance) and
      require `listing: "unconfirmed"` in the digest before saying it is recorded.

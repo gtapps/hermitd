@@ -37,8 +37,9 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     return;
   }
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
-  let context = `[task thread ${safeForLLM(key)}: owner=${record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
-  if ((record.owner === 'resident' || record.owner.startsWith('helper:')) && record.waiting_on !== null) {
+  const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
+  let context = `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
+  if (owner !== 'worker' && record.waiting_on !== null) {
     // `note --done` clears result/result_at without clearing waiting_on, so a
     // record can be waiting with neither a stall nor a result to quote.
     const latestIsStall = record.stall_at !== null && (!record.result_at || Date.parse(record.stall_at) > Date.parse(record.result_at));
@@ -55,7 +56,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     const confirmed = actor ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --result-rev ${record.result_rev} --reason-stdin` : '';
     context += `\n[waiting task ${record.id}: ${reason}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}; nothing is owed when this message does not change the task]`;
   }
-  if (harnessCommand && record.owner !== 'resident') {
+  if (harnessCommand && owner !== 'resident') {
     ctx.skipHarnessCommand = true;
     if (name === 'clear') return { context: `${context}\n[conversation command: restart]` };
     const reason = name === 'model' || name === 'effort' ? 'per-conversation model/effort not supported' : `!${name} does not reach the resident from a task thread`;

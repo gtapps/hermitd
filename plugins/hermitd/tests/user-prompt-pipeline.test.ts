@@ -755,10 +755,10 @@ describe('conversation commands', () => {
       expect(fs.existsSync(hermit(wd.dir, 'state', 'pending-harness-command.json'))).toBe(false);
     });
   }
-  test('!clear in a worker thread restarts the worker instead of clearing the resident', async () => {
+  for (const owner of ['worker:a1b2c3d4e5f6a7b8c', 'helper:review']) test(`!clear in a ${owner.split(':')[0]} thread restarts the worker instead of clearing the resident`, async () => {
     const wd = setupChannelWorkdir();
     writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-    expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+    expect((await openThreadTask(wd, 'telegram:12345', owner, false)).exitCode).toBe(0);
     const result = await run(wd, '!clear', 'http://127.0.0.1:1');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[conversation command: restart]');
