@@ -1,10 +1,10 @@
 {
   "name": "hermitd-fitness",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.8"
+      "version": "^1.4.12"
     }
   ],
   "description": "Fitness coaching for Hermit, with read-only Strava access, activity analysis, training plans, and recovery flags.",

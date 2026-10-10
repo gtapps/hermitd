@@ -72,7 +72,7 @@
       "name": "hermitd-fitness",
       "source": "./plugins/hermitd-fitness",
       "description": "Fitness coaching for Hermit, with read-only Strava access, activity analysis, training plans, and recovery flags.",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "category": "fitness",
       "author": {
         "name": "gtapps",
