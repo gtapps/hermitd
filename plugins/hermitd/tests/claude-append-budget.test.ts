@@ -223,6 +223,19 @@ describe('watch progressive disclosure', () => {
     }
   });
 
+  test('helper switches preserve handoffs and wait for the current turn', () => {
+    const switchProcedure = fs.readFileSync(path.join(SKILLS_DIR, 'spawn-session', 'switch.md'), 'utf8');
+    for (const text of ['`helper-switch` (Commands)', 'claude stop', '--resume', 'Handed to helper', 'peer-idle', 'when its current turn ends']) {
+      expect(switchProcedure).toContain(text);
+    }
+    for (const text of ['${CLAUDE_PLUGIN_ROOT}', 'cache', 'stop it now']) {
+      expect(switchProcedure).not.toContain(text);
+    }
+    const notices = fs.readFileSync(path.join(watchDir, 'notices.md'), 'utf8');
+    expect(notices).toContain('spawn-session --switch');
+    expect(notices).toContain('queued switch');
+  });
+
   test('watch supporting procedures need no plugin-root substitution by Read', () => {
     // Scoped to executable procedures changed here: other support files may
     // legitimately mention the placeholder in warnings against using it.

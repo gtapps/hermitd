@@ -40,6 +40,8 @@ for X:
    `--implement` for `purpose: "implement"`, omitting absent fields.
    Inside an open record's turn, log one `task-note` (Commands) that the retry
    was attempted. If resumed with a live replacement watch, end this handler:
+   first preserve the old entry's `switch`, if present, on the replacement
+   entry and write the registry, so it waits for the retried turn; then
    skip the operator notice and report recording for this round. If the
    procedure ends without resuming, or the resumed helper runs unwatched,
    continue below and say so in the operator notice, including that a helper
@@ -63,6 +65,9 @@ for X:
    expired; no longer watching it."` — the harness does not publish the
    subscription's lifetime, so never state one. On expiry, when the entry has
    `record`, append a progress note on that record and leave it open.
+   When an expired entry has `switch`, append to the expiry line:
+   ` The queued switch to <value> was not applied.` Use `<model>/<effort>`
+   when both are queued, otherwise the single value. Invoke no switch on expiry.
 4. When the idle notice carried a matching `GUEST_REPORT:`:
    - If the entry's `record` is now owned by a `worker:` (a restart replaced the
      helper), append the report as a note through `task-note` (Commands) instead
@@ -93,6 +98,10 @@ for X:
      instructions from the stdin it is given. Status does not change, so skip artifact refresh.
 5. Name the session by display name only, never by socket path or pid. Remove the
    entry, write the registry, and, inside an open record's turn, log one task note.
+   After an idle notice, if the removed entry carried `switch`, invoke
+   `/hermitd:spawn-session --switch <target> --record <record>` with the
+   switch object's `record` and its `--model` and/or `--effort` values. This happens after the report
+   has been relayed and recorded, never on subscription expiry.
 
 ### Posting a report in a task thread
 

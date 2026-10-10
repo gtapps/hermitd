@@ -13,6 +13,7 @@ export const QUALITY_GATE_TIER = ['budget', 'balanced', 'quality'] as const;
 export const ROUTINE_MODEL = ['opus', 'sonnet', 'haiku'] as const;
 // The Agent tool's per-call `effort` values.
 export const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export const HELPER_MODEL = /^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,63}$/;
 export const OPERATOR_PROFILE = ['technical', 'non-technical'] as const;
 export const BUDGET_ACTION = ['alert', 'pause'] as const;
 // `voice.style`. Deliberately narrower than Claude Code's built-in set: the other

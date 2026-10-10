@@ -1,6 +1,6 @@
 ---
 name: spawn-session
-description: Spawns a background Claude Code helper in the project or another folder with the configured Remote Control and the boot-written helper system prompt that a hand-built `claude --bg` omits, watches it until idle, and relays its report to the operator. Use when the operator says "spawn a helper", "spawn a new session", "run this in a background session", asks for a new session with `--model` or `--effort`, or names `/spawn-session`.
+description: Spawns a background Claude Code helper in the project or another folder with the configured Remote Control and the boot-written helper system prompt that a hand-built `claude --bg` omits, watches it until idle, and relays its report to the operator. Use when the operator says "spawn a helper", "spawn a new session", "run this in a background session", asks for a new session with `--model` or `--effort`, asks to switch a running helper's model or effort, or names `/spawn-session`.
 ---
 
 # Spawn Session
@@ -12,6 +12,7 @@ notice, and relay the report through `/hermitd:watch`.
 
 ```
 /hermitd:spawn-session <prompt-or-/skill> [--cwd <abs-dir>] [--worktree] [--name <n>] [--model <m>] [--effort <e>] [--background <abs-file>] [--proposal <PROP-id>] [--strict-mcp-config]
+/hermitd:spawn-session --switch <n> --record <T-id> [--model <m>] [--effort <e>]
 ```
 
 From `<dir>`, the launch folder (`<abs>`, the hermit project root, unless
@@ -79,8 +80,16 @@ Six limits sit on that command:
 Use only the launch options documented here. Never add bypass flags, tool
 preapprovals, or settings overrides to widen the helper's permissions. If launch
 or execution is blocked, report the blocker; do not retry through a script,
-alternate invocation, or weaker permission mode. The one exception is
-§ Follow-ups, "Resume with new instructions", for an operator follow-up.
+alternate invocation, or weaker permission mode. The exceptions are
+§ Follow-ups, "Resume with new instructions", for an operator follow-up, and
+§ Switch a running helper for a model or effort switch.
+
+## Commands
+
+- `helper-switch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/helper-switch.ts`
+- `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
+- `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
+- `proposal-patch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit`
 
 ## Plan
 
@@ -233,11 +242,16 @@ the caller so it can handle a resume that could not start.
    that the resumed helper runs unwatched; a launched resume counts as
    reached even so.
 
+## Switch a running helper
+
+For `--switch`, Read [switch.md](switch.md) and follow that procedure instead of
+the launch Plan. It preserves the helper's conversation, name and thread binding.
+
 ## Stuck helper
 
 `claude logs <id>`, `claude stop <id>`, and the watch expiry notice. Never tmux.
 Idle is not stuck: watch's idle-notice relay leaves an idle helper running,
-except for § Follow-ups, "Resume with new instructions".
+except for § Follow-ups, "Resume with new instructions", and § Switch a running helper.
 A boot dialog in `claude logs <id>` is handled as in this terminal: relaunch
 with the option that makes the dialog moot when one exists, otherwise give
 the operator `claude attach <id>` (for a hermit in Docker,

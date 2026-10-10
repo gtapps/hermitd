@@ -734,6 +734,26 @@ describe('task thread admission', () => {
 });
 
 describe('conversation commands', () => {
+  for (const [body, annotation] of [
+    ['!model sonnet', 'conversation command: helper-switch --model sonnet'],
+    ['!effort xhigh', 'conversation command: helper-switch --effort xhigh'],
+    ['!effort turbo', 'conversation command refused: !effort needs one valid value'],
+    ['!model', 'conversation command refused: !model needs one valid value'],
+    ['!model sonnet extra', 'conversation command refused: !model needs one valid value'],
+    ['!model bad;model', 'conversation command refused: !model needs one valid value'],
+    ['!model --effort', 'conversation command refused: !model needs one valid value'],
+  ]) {
+    test(`routes helper ${body} before the harness recorder`, async () => {
+      const wd = setupChannelWorkdir();
+      writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
+      expect((await openThreadTask(wd, 'telegram:12345', 'helper:review', false)).exitCode).toBe(0);
+      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`[${annotation}]`);
+      expect(result.stdout).not.toContain('[harness-command]');
+      expect(fs.existsSync(hermit(wd.dir, 'state', 'pending-harness-command.json'))).toBe(false);
+    });
+  }
   for (const body of ['!help', '!mute', '!unmute', '!restart']) {
     test(`annotates ${body}, including while muted`, async () => {
       const wd = setupChannelWorkdir();
