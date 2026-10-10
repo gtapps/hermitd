@@ -31,5 +31,39 @@ it('foreign root exits 2 before reading', async () => { const f = taskFixture();
 it('open note block and close leave session and other ledgers byte-identical', async () => { const f = taskFixture(); try { fs.writeFileSync(path.join(f.dir, 'state/hypotheses.jsonl'), ''); fs.writeFileSync(path.join(f.dir, 'sessions', 'SHELL.md'), 'frozen'); const files = ['state/runtime.json', 'sessions/SHELL.md', 'state/hypotheses.jsonl']; const before = files.map(p => fs.readFileSync(path.join(f.dir, p), 'utf8')); const { id } = await f.open(); await f.ok('note', [id], 'Progress'); await f.ok('block', [id, '--result-stdin'], 'Ready'); await f.ok('close', [id, '--by', 'confirmed', '--actor', 'discord:u1', '--result-rev', '1', '--reason-stdin'], 'ok'); expect(files.map(p => fs.readFileSync(path.join(f.dir, p), 'utf8'))).toEqual(before); } finally { f.cleanup(); } });
 it('hands a carded record to a worker and back', async () => { const f = taskFixture(); try { const lib = await taskLib(); const { id } = await f.open(['--card', JSON.stringify({ chat_id: 'c1', message_id: 'm1' })]); await f.ok('note', [id, '--owner', 'worker:a1b2c3d4e5f6a7b8c'], ''); let record = lib.decodeTask(f.text(id)); expect(record.owner).toBe('worker:a1b2c3d4e5f6a7b8c'); expect(record.card_chat_id).toBe('c1'); expect(record.card_message_id).toBe('m1'); await f.ok('note', [id, '--owner', 'worker:a2b2c3d4e5f6a7b8c'], ''); await f.ok('note', [id, '--owner', 'resident'], ''); record = lib.decodeTask(f.text(id)); expect(record.owner).toBe('resident'); expect((await f.run('note', [id, '--owner', 'helper:discord:c1'], '')).stderr).toContain('invalid-owner'); expect((await f.run('note', [id, '--owner', 'worker:*'], '')).stderr).toContain('invalid-owner'); expect((await f.run('note', [id, '--owner', 'worker:agent-1'], '')).stderr).toContain('invalid-owner'); } finally { f.cleanup(); } });
 it('list json exposes stored card ids or null after a worker handoff', async () => { const f = taskFixture(); try { const carded = await f.open(['--card', JSON.stringify({ chat_id: 'c1', message_id: 'm1' })]); const plain = await f.open(); await f.ok('note', [carded.id, '--owner', 'worker:a1b2c3d4e5f6a7b8c'], ''); expect((await f.ok('list', ['--id', carded.id, '--json'])).rows[0]).toMatchObject({ card_chat_id: 'c1', card_message_id: 'm1' }); expect((await f.ok('list', ['--id', plain.id, '--json'])).rows[0]).toMatchObject({ card_chat_id: null, card_message_id: null }); } finally { f.cleanup(); } });
-it('rejects a helper owner at open and lists worker records by wildcard', async () => { const f = taskFixture(); try { expect((await f.run('open', ['--title', 'T', '--requester', 'discord:u1', '--done', 'D', '--owner', 'helper:discord:c1'])).stderr).toContain('invalid-owner'); const { id } = await f.open(['--owner', 'worker:a1b2c3d4e5f6a7b8c']); const list = await f.ok('list', ['--open', '--owner', 'worker:*', '--json']); expect(list.rows.map((r: any) => r.id)).toEqual([id]); } finally { f.cleanup(); } });
+it('rejects a malformed helper owner at open and lists worker records by wildcard', async () => { const f = taskFixture(); try { expect((await f.run('open', ['--title', 'T', '--requester', 'discord:u1', '--done', 'D', '--owner', 'helper:discord:c1'])).stderr).toContain('invalid-owner'); const { id } = await f.open(['--owner', 'worker:a1b2c3d4e5f6a7b8c']); const list = await f.ok('list', ['--open', '--owner', 'worker:*', '--json']); expect(list.rows.map((r: any) => r.id)).toEqual([id]); } finally { f.cleanup(); } });
 it('muted round-trips and a record without it decodes false', async () => { const f = taskFixture(); try { const lib = await taskLib(); const { id } = await f.open(); expect(lib.decodeTask(f.text(id)).muted).toBe(false); await f.ok('note', [id, '--muted', 'true'], ''); expect(lib.decodeTask(f.text(id)).muted).toBe(true); const file = path.join(f.dir, 'tasks', `${id}.md`); fs.writeFileSync(file, f.text(id).replace(/^muted: true\n/m, '')); expect(lib.decodeTask(f.text(id)).muted).toBe(false); } finally { f.cleanup(); } });
+
+it('helper owners round-trip through open, note, list and thread lookup', async () => {
+  const f = taskFixture(); try {
+    const lib = await taskLib();
+    const { id } = await f.open(['--owner', 'helper:Review_1.a-b', '--conversation', 'discord:c1']);
+    expect(lib.decodeTask(f.text(id)).owner).toBe('helper:Review_1.a-b');
+    expect(lib.threadRecords(f.dir).map((r: any) => r.id)).toEqual([id]);
+    await f.ok('note', [id, '--owner', 'helper:next']);
+    expect((await f.ok('list', ['--owner', 'helper:next', '--json'])).rows[0].id).toBe(id);
+    expect((await f.ok('list', ['--owner', 'helper:Review_1.a-b'])).rows).toEqual([]);
+  } finally { f.cleanup(); }
+});
+for (const owner of ['helper:discord:c1', 'helper:', 'helper:a b', 'helper:' + 'a'.repeat(65)]) it(`rejects malformed helper owner ${owner}`, async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open();
+    for (const [verb, args] of [['open', ['--title', 'T', '--requester', 'discord:u1', '--done', 'D']], ['note', [id]], ['list', []]] as const) {
+      const r = await f.run(verb, [...args, '--owner', owner]);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('invalid-owner');
+    }
+  } finally { f.cleanup(); }
+});
+for (const owner of ['helper:review', 'worker:a1b2c3d4e5f6a7b8c']) it(`allows only one open record for ${owner}`, async () => {
+  const f = taskFixture(); try {
+    const first = await f.open(['--owner', owner]);
+    const second = await f.open();
+    await f.ok('note', [first.id, '--owner', owner]);
+    expect((await f.run('open', ['--title', 'T', '--requester', 'discord:u1', '--done', 'D', '--owner', owner])).stderr).toContain('owner-busy');
+    expect((await f.run('note', [second.id, '--owner', owner])).stderr).toContain('owner-busy');
+    expect((await f.ok('list', ['--id', second.id])).rows[0].owner).toBe('resident');
+    await f.ok('cancel', [first.id, '--actor', 'discord:u1', '--reason-stdin'], 'Cancelled');
+    await f.ok('note', [second.id, '--owner', owner]);
+  } finally { f.cleanup(); }
+});

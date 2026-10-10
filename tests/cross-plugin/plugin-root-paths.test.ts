@@ -13,6 +13,8 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'hermit-settings -> channel-setup/references/group-enrollment.md': 'commands',
     'docker-setup -> channel-setup/references/group-enrollment.md': 'commands',
     'proposal-act -> watch/session-watch.md': 'commands',
+    'task -> watch/session-watch.md': 'commands',
+    'task -> proposal-act/reuse-spawned-helper.md': 'commands',
     'proposal-act -> watch/SKILL.md': 'prose-only',
     'hermit-evolve -> channel-responder/approvals.md': 'prose-only',
     'hermit-doctor -> channel-responder/outbound.md': 'commands',

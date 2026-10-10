@@ -155,6 +155,10 @@ alternate invocation, or weaker permission mode.
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id>`,
    where `<T-id>` is that open record's id, not the bg id (the note is
    timestamped for you).
+   After the handoff note, bind the record with
+   `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id> --owner helper:<n>`.
+   On `invalid-owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
+   `owner-busy`, leave it resident-owned and tell the operator why.
    With `--proposal`, open the record (title names
    the helper work; requester is the current operator or channel identity). The
    key is `helper:PROP-NNN`, not `proposal:PROP-NNN`: that second key belongs to
@@ -177,7 +181,8 @@ alternate invocation, or weaker permission mode.
    When the watch reports the helper blocked on its `waitingFor`, give the operator
    `claude attach <id>` to answer it (in Docker,
    `docker exec -it <container> claude attach <id>`).
-   When `--proposal` was used, also pass `--record <T-id> --proposal <PROP-id>`.
+   Whenever step 3 bound or opened a record, also pass `--record <T-id>`.
+   With `--proposal`, also pass `--proposal <PROP-id>`.
    That skill owns the subscription (`watch/session-watch.md` § Starting a session watch)
    and the idle-notice relay (`watch/notices.md` § Handling idle notices); do not re-implement either.
    When it declines the subscription, pass on the reason it gives rather than

@@ -17,6 +17,7 @@ test('execution boundary checks identity, idle age, workers and token floor', as
     expect(passesExecutionBoundary(f.dir)).toEqual({ ok: false, reason: 'worker-running' });
     await f.ok('cancel', [id, '--actor', 'discord:u1', '--reason-stdin'], 'Cancelled');
     expect(passesExecutionBoundary(f.dir, { minTokens: 20000 })).toEqual({ ok: false, reason: 'under-token-floor' });
+    await f.open(['--owner', 'helper:review']);
     expect(passesExecutionBoundary(f.dir)).toEqual({ ok: true });
   } finally { f.cleanup(); }
 });

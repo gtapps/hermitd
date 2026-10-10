@@ -609,6 +609,7 @@ describe('user-prompt-pipeline: resident gate', () => {
 describe('task thread admission', () => {
   for (const scenario of [
     { name: 'worker thread inside passive parent passes', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: false, body: 'continue', blocked: false },
+    { name: 'helper thread inside passive parent passes', task: true, owner: 'helper:review', muted: false, body: 'continue', blocked: false },
     { name: 'resident thread inside passive parent passes', task: true, owner: 'resident', muted: false, body: 'continue', blocked: false },
     { name: 'muted thread is blocked', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: true, body: 'continue', blocked: true },
     { name: 'muted thread with mention passes', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: true, body: '<@777> continue', blocked: false },
@@ -628,7 +629,7 @@ describe('task thread admission', () => {
         expect(JSON.parse(result.stdout).decision).toBe('block');
         expect(result.stdout).not.toContain('[task thread');
       } else {
-        expect(result.stdout).toContain(`[task thread discord:thread: owner=${scenario.owner === 'resident' ? 'resident' : 'worker'}, muted=${scenario.muted}, waiting=false]`);
+        expect(result.stdout).toContain(`[task thread discord:thread: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=${scenario.muted}, waiting=false]`);
         expect(result.stdout).toContain('[channel reply reminder]');
         expect(result.stdout).not.toContain('[waiting task');
       }
@@ -677,6 +678,8 @@ describe('task thread admission', () => {
     { name: 'equal timestamps prefer the posted result', owner: 'resident', stallAt: '2026-09-20T10:00:00Z', resultAt: '2026-09-20T10:00:00Z', long: false, stall: false },
     { name: 'long stall fields are sanitized and bounded', owner: 'resident', stallAt: '2026-09-21T10:00:00Z', resultAt: null, long: true, stall: true },
     { name: 'long result is sanitized and bounded', owner: 'resident', stallAt: null, resultAt: '2026-09-20T10:00:00Z', long: true, stall: false },
+    { name: 'helper result awaits confirmation', owner: 'helper:review', stallAt: null, resultAt: '2026-09-20T10:00:00Z', long: false, stall: false },
+    { name: 'helper stall requests input', owner: 'helper:review', stallAt: '2026-09-21T10:00:00Z', resultAt: null, long: false, stall: true },
     { name: 'worker waiting thread has no second line', owner: 'worker:a1b2c3d4e5f6a7b8c', stallAt: '2026-09-21T10:00:00Z', resultAt: null, long: false, stall: true },
   ]) {
     test(scenario.name, async () => {
@@ -698,8 +701,8 @@ describe('task thread admission', () => {
         stdin: JSON.stringify({ prompt: envelope('continue') }), cwd: wd.dir,
       });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(`[task thread telegram:12345: owner=${scenario.owner === 'resident' ? 'resident' : 'worker'}, muted=false, waiting=true]`);
-      if (scenario.owner !== 'resident') {
+      expect(result.stdout).toContain(`[task thread telegram:12345: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=false, waiting=true]`);
+      if (scenario.owner.startsWith('worker:')) {
         expect(result.stdout).not.toContain('[waiting task');
         return;
       }
@@ -752,10 +755,10 @@ describe('conversation commands', () => {
       expect(fs.existsSync(hermit(wd.dir, 'state', 'pending-harness-command.json'))).toBe(false);
     });
   }
-  test('!clear in a worker thread restarts the worker instead of clearing the resident', async () => {
+  for (const owner of ['worker:a1b2c3d4e5f6a7b8c', 'helper:review']) test(`!clear in a ${owner.split(':')[0]} thread restarts the worker instead of clearing the resident`, async () => {
     const wd = setupChannelWorkdir();
     writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-    expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+    expect((await openThreadTask(wd, 'telegram:12345', owner, false)).exitCode).toBe(0);
     const result = await run(wd, '!clear', 'http://127.0.0.1:1');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[conversation command: restart]');

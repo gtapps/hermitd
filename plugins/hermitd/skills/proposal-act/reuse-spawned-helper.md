@@ -31,7 +31,10 @@ triage without `purpose`, or implementation with `purpose: "implement"`.
 Send nothing: no `SendMessage`, no resume, and no Fallback. Keep the record from step (a) open. Tell the operator which of the two the helper is still doing and that
 they can ask again to implement once its report lands (that re-entry is
 `accept PROP-NNN --answer "implement now"`); `/hermitd:watch stop <id>` clears the entry if it is stale.
-With no such entry, continue below.
+With no such entry, continue below. After a successful send or resume to `<n>`,
+bind the record step (a) opened with
+run `task-note` (Commands) with arguments `<record> --owner helper:<n>`.
+On `invalid-owner` or `owner-busy`, leave it resident-owned and note why.
 
 - `<n>` has a `ListAgents` row: `SendMessage` it the instructions with
   `notify_when_idle: true` on that same send. Then read [watch/SKILL.md](../watch/SKILL.md)
