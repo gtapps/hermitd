@@ -1,5 +1,4 @@
 <p align="center">
-  <a href="https://hermitd.dev"><img src="https://img.shields.io/badge/website-hermitd.dev-black.svg" alt="Website" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
   <a href="plugins/hermitd/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.12-green.svg" alt="Version 1.4.12" /></a>
