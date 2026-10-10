@@ -1907,7 +1907,18 @@ describe('proposal gate', () => {
   test('gate (triage garbled verdict -> GATE_FAILED + gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
     expect(out).toBe('GATE_FAILED');
-    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage', title: 'Foo' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage', title: 'Foo', verdict: 'garbled nonsense' });
+  }));
+
+  test('gate (triage GATE_BLIND -> GATE_FAILED, blind line kept in the gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'GATE_BLIND: Foo — missing Anchor: line');
+    expect(out).toBe('GATE_FAILED');
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', verdict: 'GATE_BLIND: Foo — missing Anchor: line' });
+  }));
+
+  test('gate (gate-failed event caps the stored verdict at 200 chars)', withDir(async (dir) => {
+    await gate(dir, { gate: 'triage' }, 'Foo', 'x'.repeat(500));
+    expect(ledgerLines(dir)[0].verdict).toBe('x'.repeat(200));
   }));
 
   test('gate (judge ACCEPT -> PROCEED, no ledger event)', withDir(async (dir) => {
@@ -1939,7 +1950,13 @@ describe('proposal gate', () => {
   test('gate (judge empty verdict -> GATE_FAILED + gate-failed event tagged reflection-judge)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', '');
     expect(out).toBe('GATE_FAILED');
-    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar', verdict: '' });
+  }));
+
+  test('gate (judge GATE_BLIND -> GATE_FAILED, blind line kept in the gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'GATE_BLIND: Bar — missing Anchor: line');
+    expect(out).toBe('GATE_FAILED');
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', verdict: 'GATE_BLIND: Bar — missing Anchor: line' });
   }));
 
   test('gate (invalid --gate value -> GATE_FAILED)', withDir(async (dir) => {
