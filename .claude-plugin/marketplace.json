@@ -32,7 +32,7 @@
       "name": "hermitd-dev",
       "source": "./plugins/hermitd-dev",
       "description": "Git safeguards, debugging, and merge-conflict resolution for your Hermit.",
-      "version": "0.4.20",
+      "version": "0.4.21",
       "category": "development",
       "author": {
         "name": "gtapps",

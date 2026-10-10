@@ -1,10 +1,10 @@
 {
   "name": "hermitd-dev",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.11"
+      "version": "^1.4.12"
     }
   ],
   "description": "Git safeguards, debugging, and merge-conflict resolution for your Hermit.",
