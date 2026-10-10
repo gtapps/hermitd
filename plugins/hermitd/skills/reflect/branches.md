@@ -121,7 +121,7 @@ Verdict: <the judge's line for this candidate, verbatim>
 
 ### Gate failure handling
 
-The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `GATE_FAILED` and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `GATE_FAILED`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>` in open record notes. The candidate re-surfaces on the next reflect cycle.
+The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `GATE_FAILED` and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `GATE_FAILED`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>; <the agent's line, verbatim>` in open record notes. The candidate re-surfaces on the next reflect cycle.
 
 ### Component Health signal ladder
 

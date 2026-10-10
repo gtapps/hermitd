@@ -20,7 +20,8 @@
 // existing prose contract in proposal-create/SKILL.md and reflect/branches.md).
 // Judge verdicts are not separately logged today — only a judge gate *failure*
 // appends `gate-failed`; this script preserves that rather than introducing a
-// new judge-verdict metric type. Verdict grammars: agents/proposal-triage.md
+// new judge-verdict metric type. A `gate-failed` row carries the rejected line,
+// capped at 200 chars, as `verdict`. Verdict grammars: agents/proposal-triage.md
 // § Output, agents/reflection-judge.md § Verdicts.
 
 import fs from 'node:fs';
@@ -63,7 +64,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   function failClosed(): never {
     appendJsonlLine(
       path.join(stateDir, 'state', 'proposal-metrics.jsonl'),
-      JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title }),
+      JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title, verdict: verdictLine.slice(0, 200) }),
     );
     emit('GATE_FAILED');
   }
