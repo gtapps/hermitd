@@ -1,6 +1,6 @@
 {
   "name": "hermitd-homeassistant",
-  "version": "0.4.21",
+  "version": "0.4.22",
   "description": "Build, manage, monitor, and troubleshoot your Home Assistant setup with Hermit.",
   "author": {
     "name": "gtapps",
@@ -18,7 +18,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.11"
+      "version": "^1.4.12"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.22] - 2026-10-10
 
 ### Fixed
 - Domain brainstorm reports have a declared knowledge-schema type, avoiding schema drift findings.
