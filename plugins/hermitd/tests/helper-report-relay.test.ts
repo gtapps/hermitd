@@ -79,9 +79,18 @@ test('a resident-owned record substitutes too', withDir(async dir => {
   expect(JSON.parse((await run(dir, payload())).stdout).hookSpecificOutput.updatedInput.text).toBe('resident report');
 }));
 
+test('a helper-owned record substitutes too', withDir(async dir => {
+  fs.mkdirSync(path.join(dir, '.hermit', 'helper-reports'), { recursive: true });
+  await openRecord(dir, 'discord:123', 'helper:review');
+  fs.writeFileSync(path.join(dir, '.hermit', 'helper-reports', 'abc123.md'), 'helper report');
+  const result = await run(dir, payload());
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput.text).toBe('helper report');
+}));
+
 test('same chat on distinct sources resolves the matching tool, including plugin prefix', withDir(async dir => {
   await seed(dir);
-  await openRecord(dir, 'telegram:123');
+  await openRecord(dir, 'telegram:123', 'worker:b1b2c3d4e5f6a7b8c');
   for (const tool of ['mcp__telegram__reply', 'mcp__plugin_channel_telegram__reply']) {
     const result = await run(dir, payload(undefined, tool));
     expect(result.exitCode).toBe(0);
@@ -96,7 +105,7 @@ for (const failure of ['missing chat', 'no record', 'two records on the chat', '
     const file = path.join(reports, 'abc123.md');
     if (failure === 'missing chat') delete input.tool_input.chat_id;
     if (failure === 'no record') input.tool_input.chat_id = 'unknown';
-    if (failure === 'two records on the chat') await openRecord(dir, 'discord:123');
+    if (failure === 'two records on the chat') await openRecord(dir, 'discord:123', 'resident');
     if (failure === 'wrong source') input.tool_name = 'mcp__other__reply';
     if (failure === 'unknown id') input.tool_input.text = '[[helper-report absent12]]';
     if (failure === 'empty') fs.writeFileSync(file, '');

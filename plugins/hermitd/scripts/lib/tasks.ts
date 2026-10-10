@@ -26,9 +26,10 @@ export type Task = Record<typeof requiredStrings[number], string> & Record<typeo
 // An agent id is lowercase hex (probed shape: `a5670124e38fb50cb`); the charset keeps
 // the `worker:*` list wildcard, or any other non-id string, from being stored as an owner.
 const WORKER_OWNER = /^worker:[0-9a-f]{8,}$/;
-const validOwner = (value: string) => value === 'resident' || WORKER_OWNER.test(value);
+const HELPER_OWNER = /^helper:[A-Za-z0-9._-]{1,64}$/;
+const validOwner = (value: string) => value === 'resident' || WORKER_OWNER.test(value) || HELPER_OWNER.test(value);
 // The records that own a chat thread: one open record per conversation key, held by
-// the resident or by the worker it was handed to. The three hook paths that resolve a
+// the resident, a worker, or a spawned helper session. The three hook paths that resolve a
 // thread from a chat id all read it from here.
 export const threadRecords = (dir: string): Task[] =>
   readTasks(dir).filter(record => record.status === 'open' && record.conversation !== null && validOwner(record.owner));
@@ -125,11 +126,13 @@ function dateFlag(flags: TaskFlags, name: string): string | null {
   return new Date(value).toISOString();
 }
 function ownerFlag(flags: TaskFlags): string {
-  // resident → worker:*, worker:* → worker:*, worker:* → resident. Re-stating the
-  // owner a record already has is a no-op, so only the shape is checked.
+  // Re-stating the owner a record already has is a no-op.
   const value = flag(flags, 'owner') ?? '';
   if (!validOwner(value)) throw new Error('invalid-owner');
   return value;
+}
+function checkOwnerAvailable(records: Task[], owner: string, id?: string): void {
+  if (owner !== 'resident' && records.some(record => record.status === 'open' && record.owner === owner && record.id !== id)) throw new Error('owner-busy');
 }
 function mutedFlag(flags: TaskFlags): boolean {
   const value = flag(flags, 'muted');
@@ -188,6 +191,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const dedupe = flag(flags, 'dedupe-key') ?? null;
       const existing = dedupe && records.find(r => r.status === 'open' && r.dedupe_key === dedupe);
       if (existing) return openDigest(existing, records, false);
+      checkOwnerAvailable(records, owner);
       const title = required(flags, 'title');
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'task';
       let handle = base;
@@ -225,7 +229,11 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if ('check' in flags && record.check !== checkFlag(flags)) { record.check = checkFlag(flags); record.result_rev++; }
         if ('due' in flags) record.due = dateFlag(flags, 'due');
         card(record, flag(flags, 'card'));
-        if ('owner' in flags) record.owner = ownerFlag(flags);
+        if ('owner' in flags) {
+          const owner = ownerFlag(flags);
+          checkOwnerAvailable(records, owner, record.id);
+          record.owner = owner;
+        }
         if ('muted' in flags) record.muted = mutedFlag(flags);
         if (flags['clear-waiting']) { record.waiting_on = null; record.waiting_since = null; }
         if ('done' in flags) {

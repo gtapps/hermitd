@@ -37,8 +37,8 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     return;
   }
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
-  let context = `[task thread ${safeForLLM(key)}: owner=${record.owner === 'resident' ? 'resident' : 'worker'}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
-  if (record.owner === 'resident' && record.waiting_on !== null) {
+  let context = `[task thread ${safeForLLM(key)}: owner=${record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
+  if ((record.owner === 'resident' || record.owner.startsWith('helper:')) && record.waiting_on !== null) {
     // `note --done` clears result/result_at without clearing waiting_on, so a
     // record can be waiting with neither a stall nor a result to quote.
     const latestIsStall = record.stall_at !== null && (!record.result_at || Date.parse(record.stall_at) > Date.parse(record.result_at));
