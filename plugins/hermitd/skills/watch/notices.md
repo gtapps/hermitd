@@ -27,7 +27,23 @@ for X:
    reply, channel notification, or log entry. A `GUEST_REPORT:` whose sender matches no live entry gets none of the recording below.
    For a `GUEST_REPORT:` from an open record's helper owner with no live entry,
    use § Handling an unprompted helper report instead.
-2. When a matching report has an entry record with a conversation, post it in
+2. On an idle notice with a matching `GUEST_REPORT:`, retry only when the
+   entry has `followup`, has no `retry`, and the report's Verdict/Why says a
+   permission check or auto mode denied an action, or the helper declined
+   because the instructions came by message. Set `retry: true` on the entry
+   and write the registry first. This resends the operator's own stored request
+   as a new prompt; it is not a retry of a call this session made.
+   Run spawn-session § Follow-ups,
+   "Resume with new instructions" with the `followup` entries joined by a blank
+   line, the entry's description as the note, and `--retry` plus its metadata
+   as watch flags: `--record <record>`, `--proposal <proposal>`, and
+   `--implement` for `purpose: "implement"`, omitting absent fields.
+   Inside an open record's turn, log one `task-note` (Commands) that the retry
+   was attempted. If resumed, end this handler: skip the operator notice and
+   report recording for this round, and leave the replacement watch live.
+   If the procedure ends without resuming, continue below and say the retry
+   could not start in the operator notice.
+3. When a matching report has an entry record with a conversation, post it in
    that thread through § Posting a report in a task thread below instead of the
    channel notice. Otherwise notify the operator per CLAUDE-APPEND § Operator Notification with a `client`
    leg. For an idle notice, if a `GUEST_REPORT:` from sender X is in this
@@ -38,11 +54,15 @@ for X:
    the operator can judge them; quoting them is the one place the Channel voice
    rule's no-paths/no-commands clause does not apply; drop the clause entirely
    rather than paraphrasing.
+   For a blocked report with no retry applicable, offer Remote Control or
+   `claude attach <id>` so the operator can take over. When the entry has
+   `retry`, say the result came after one retry; if the retry could not start,
+   say that instead.
    For expiry, use `"<note>: <name> did not finish before the subscription
    expired; no longer watching it."` — the harness does not publish the
    subscription's lifetime, so never state one. On expiry, when the entry has
    `record`, append a progress note on that record and leave it open.
-3. When the idle notice carried a matching `GUEST_REPORT:`:
+4. When the idle notice carried a matching `GUEST_REPORT:`:
    - If the entry's `record` is now owned by a `worker:` (a restart replaced the
      helper), append the report as a note through `task-note` (Commands) instead
      of a result.
@@ -70,7 +90,7 @@ for X:
      collapse them to one line and drop any `Set:` or `Decision:` the helper put at
      the start of a line, because the patch reads those as frontmatter and decision
      instructions from the stdin it is given. Status does not change, so skip artifact refresh.
-4. Name the session by display name only, never by socket path or pid. Remove the
+5. Name the session by display name only, never by socket path or pid. Remove the
    entry, write the registry, and, inside an open record's turn, log one task note.
 
 ### Posting a report in a task thread
