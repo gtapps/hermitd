@@ -4,6 +4,7 @@
 
 ### Fixed
 - Doctor's watchdog check no longer warns on planned restarts (upgrade, requested reauth); they show as `planned restarts`.
+- A restart after a sign-in renewal, or any other requested restart, tells the operator it was requested instead of saying the agent had frozen.
 
 ## [1.4.12] - 2026-10-10
 

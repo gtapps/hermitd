@@ -4364,6 +4364,12 @@ describe('composeRestartMessage / composeWedgeMessage / composePauseMessage', ()
     expect(composeRestartMessage('pane-frozen', true, 'UTC')).toContain('had frozen');
   });
 
+  test('requested restart message says it was requested, not frozen, in both locales', () => {
+    expect(composeRestartMessage('requested', false, 'UTC', 'en')).toContain('a restart was requested');
+    expect(composeRestartMessage('requested', false, 'UTC', 'en')).not.toContain('frozen');
+    expect(composeRestartMessage('requested', false, 'UTC', 'pt-PT')).toContain('foi pedido um reinício');
+  });
+
   test('wedge message names the check-in time', () => {
     expect(composeWedgeMessage('UTC')).toContain('checking on it now');
   });
