@@ -112,7 +112,32 @@ test('a second policy change clears again before any other reset', () => {
   } finally { f.cleanup(); }
 });
 
-for (const reason of ['execution-not-idle','stale-identity', 'idle-too-fresh', 'worker-running', 'registry-busy', 'under-token-floor']) test(`standalone clear refuses ${reason}`, async () => {
+test('a max-age clear during a quiet stretch is not followed by a quiet clear', () => {
+  const f = fixture();
+  try {
+    f.put('state/runtime.json', { ...f.runtime, last_context_reset_at: new Date(f.now - 25 * 3600000).toISOString() });
+    expect(maybeStandaloneClear({}, f.world)).toBe('quiescence-pending');
+    expect(maybeStandaloneClear({}, f.world)).toBe('clear:max-age');
+    expect(maybeStandaloneClear({}, f.world)).toBe('already-triggered');
+    expect(f.sent).toEqual(['/clear']);
+  } finally { f.cleanup(); }
+});
+
+test('quiet clears again after the operator acts and goes quiet once more', () => {
+  const f = fixture();
+  try {
+    expect(maybeStandaloneClear({}, f.world)).toBe('quiescence-pending');
+    expect(maybeStandaloneClear({}, f.world)).toBe('clear:quiet');
+    expect(maybeStandaloneClear({}, f.world)).toBe('already-triggered');
+    const resetAt = Date.parse(f.world.files.readJson(path.join(f.dir, 'state/runtime.json')).last_context_reset_at);
+    f.put('state/last-operator-action.json', { at: new Date(resetAt + 60000).toISOString() });
+    f.world.clock = { nowMs: () => resetAt + 2 * 3600000 };
+    expect(maybeStandaloneClear({}, f.world)).toBe('clear:quiet');
+    expect(f.sent).toEqual(['/clear', '/clear']);
+  } finally { f.cleanup(); }
+});
+
+for (const reason of ['execution-not-idle', 'stale-identity', 'idle-too-fresh', 'worker-running', 'registry-busy', 'under-token-floor']) test(`standalone clear refuses ${reason}`, async () => {
   const f = fixture();
   try {
     if (reason === 'execution-not-idle') f.put('state/execution.json', { state: 'in_flight', cc_session_id: 'resident', at: new Date().toISOString() });

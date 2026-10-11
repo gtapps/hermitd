@@ -1406,7 +1406,7 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
   const clear = config.context_hygiene?.clear ?? {};
   if (clear.enabled === false) return 'disabled';
   const runtime = readRuntimeJson(world.paths.stateDir);
-  if (!runtime) return null;
+  if (!runtime) return 'no-runtime';
   const guard = passesLifecycleGuards(runtime, world);
   if (!guard.ok) return `lifecycle:${guard.reason}`;
   const boundary = passesExecutionBoundary(world.paths.hermitRoot, { minTokens: clear.min_tokens ?? 20000 });
@@ -1419,11 +1419,12 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
   const reason = previous?.policy_hash && previous.policy_hash !== policyHash ? 'policy'
     : runtime.last_context_reset_at && now - Date.parse(runtime.last_context_reset_at) >= parseDurationMs(clear.max_age ?? '24h', 86400000) ? 'max-age'
     : quietAge !== null && quietAge * 1000 >= parseDurationMs(clear.quiet ?? '1h', 3600000) ? 'quiet' : null;
-  // Only quiet can still hold right after its own clear. A clear moves reset_at past
-  // max-age and records the new policy hash, so guarding those would latch them.
-  if (reason === 'quiet' && previous?.last_trigger?.reason === reason
-    && typeof previous.last_trigger.reset_at === 'string'
-    && previous.last_trigger.reset_at === runtime.last_context_reset_at) return 'already-triggered';
+  // Only quiet still holds right after a clear, whichever reason fired it, until the
+  // operator acts again. A clear moves reset_at past max-age and records the new
+  // policy hash, so guarding those would latch them.
+  if (reason === 'quiet' && typeof previous?.last_trigger?.reset_at === 'string'
+    && previous.last_trigger.reset_at === runtime.last_context_reset_at
+    && quietAge! * 1000 >= now - Date.parse(runtime.last_context_reset_at)) return 'already-triggered';
   const state = readWatchdogState(world);
   const hash = getPaneHash(guard.sessionName, world);
   const stable = hash !== null && state.last_pane_hash_standalone === hash;
