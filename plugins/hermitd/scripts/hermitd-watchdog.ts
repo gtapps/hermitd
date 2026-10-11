@@ -889,6 +889,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     });
     child.on('error', (e) => process.stderr.write(`[watchdog] restart failed: ${e}\n`));
     child.unref();
+    // doctor-check.ts checkWatchdog reads `upgrade,` and `fresh: requested` from this reason.
     appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`);
     process.stderr.write(`[watchdog] attempting restart of "${sessionName}", reason: ${reason}\n`);
     // Only announce a restart attempt when the start binary is actually

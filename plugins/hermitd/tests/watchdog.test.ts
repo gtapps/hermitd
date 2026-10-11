@@ -566,6 +566,7 @@ describe('restart subcommand', () => {
     expect(r.exitCode).toBe(0);
     const events = fs.readFileSync(eventsFile(h), 'utf-8');
     expect(events).toContain('restart');
+    expect(events).toContain('fresh: requested'); // doctor checkWatchdog keys planned restarts on this
     expect(await waitForStartMarker(h)).toBe(true);
   }), 45000);
 });
@@ -3176,6 +3177,32 @@ test('doctor checkWatchdog: restart in last 7d → warn', withHermit(async (h) =
   const w = await doctorWatchdogCheck(h);
   expect(w.status).toBe('warn');
   expect(w.detail).toContain('restarts: 1');
+}));
+
+test('doctor checkWatchdog: planned restarts (upgrade, requested) → ok, counted apart', withHermit(async (h) => {
+  writeDoctorConfig(h);
+  fs.writeFileSync(eventsFile(h), [
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'upgrade, tree-verified, resume abc' },
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'reauth, tree-verified, fresh: requested' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  setLastRun(h, new Date().toISOString());
+  const w = await doctorWatchdogCheck(h);
+  expect(w.status).toBe('ok');
+  expect(w.detail).toContain('restarts: 0');
+  expect(w.detail).toContain('planned restarts: 2');
+}));
+
+test('doctor checkWatchdog: recovery restart alongside planned → still warn', withHermit(async (h) => {
+  writeDoctorConfig(h);
+  fs.writeFileSync(eventsFile(h), [
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'upgrade, tree-verified, resume abc' },
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'pane-frozen, tree-verified, resume abc' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  setLastRun(h, new Date().toISOString());
+  const w = await doctorWatchdogCheck(h);
+  expect(w.status).toBe('warn');
+  expect(w.detail).toContain('restarts: 1');
+  expect(w.detail).toContain('planned restarts: 1');
 }));
 
 // -------------------------------------------------------

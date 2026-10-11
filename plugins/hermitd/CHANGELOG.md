@@ -8,6 +8,8 @@
 ### Fixed
 - The standalone context clear fires again after a max-age or policy clear instead of staying blocked until the next compaction.
 - The standalone quiet clear re-arms once the operator acts again, and no longer fires a second clear right after a max-age or policy clear.
+### Fixed
+- Doctor's watchdog check no longer warns on planned restarts (upgrade, requested reauth); they show as `planned restarts`.
 
 ## [1.4.12] - 2026-10-10
 

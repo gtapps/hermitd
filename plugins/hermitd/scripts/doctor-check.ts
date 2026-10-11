@@ -1090,6 +1090,7 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
     const eventsPath = path.join(stateDir, 'watchdog-events.jsonl');
     const cutoff = new Date(Date.now() - 7 * MS_PER_DAY).toISOString();
     let restarts = 0;
+    let plannedRestarts = 0;
     let nudges = 0;
     let rearms = 0;
     let clears = 0;
@@ -1101,7 +1102,13 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
         try {
           const e = JSON.parse(line);
           if (e.ts < cutoff) continue;
-          if (e.action === 'restart') restarts++;
+          // Upgrade and requested restarts are planned and announced when they happen,
+          // so they don't warn. Reason format: hermitd-watchdog.ts doRestart.
+          if (e.action === 'restart') {
+            const reason = String(e.reason ?? '');
+            if (reason.startsWith('upgrade,') || reason.includes('fresh: requested')) plannedRestarts++;
+            else restarts++;
+          }
           // 'nudge-socket' is the same wedge nudge delivered over the session's
           // inbox socket instead of typed — counting only 'nudge' would report 0
           // for every episode the socket wake resolved.
@@ -1114,6 +1121,7 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
     } catch {}
 
     const parts = [`restarts: ${restarts}`, `nudges: ${nudges}`, `re-arms: ${rearms}`, `clears: ${clears}`, `compacts: ${compacts}`];
+    if (plannedRestarts > 0) parts.push(`planned restarts: ${plannedRestarts}`);
     if (consecutive > 0) parts.push(`stale cycles in progress: ${consecutive}`);
     // last_hygiene_eval is keyed per mechanism; the compact tier and the standalone
     // clear record one. Any other key (a retired tier's leftover `clear`) is ignored.
