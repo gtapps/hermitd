@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- The standalone context clear fires again after a max-age or policy clear instead of staying blocked until the next compaction.
+
 ## [1.4.12] - 2026-10-10
 
 ### Added

@@ -1419,7 +1419,9 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
   const reason = previous?.policy_hash && previous.policy_hash !== policyHash ? 'policy'
     : runtime.last_context_reset_at && now - Date.parse(runtime.last_context_reset_at) >= parseDurationMs(clear.max_age ?? '24h', 86400000) ? 'max-age'
     : quietAge !== null && quietAge * 1000 >= parseDurationMs(clear.quiet ?? '1h', 3600000) ? 'quiet' : null;
-  if (reason && previous?.last_trigger?.reason === reason
+  // Only quiet can still hold right after its own clear. A clear moves reset_at past
+  // max-age and records the new policy hash, so guarding those would latch them.
+  if (reason === 'quiet' && previous?.last_trigger?.reason === reason
     && typeof previous.last_trigger.reset_at === 'string'
     && previous.last_trigger.reset_at === runtime.last_context_reset_at) return 'already-triggered';
   const state = readWatchdogState(world);
