@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- `/hermitd:hermit-doctor` shows the standalone clear's last outcome beside the compact tier's.
+
+### Fixed
+- The standalone context clear fires again after a max-age or policy clear instead of staying blocked until the next compaction.
+- The standalone quiet clear re-arms once the operator acts again, and no longer fires a second clear right after a max-age or policy clear.
 ### Fixed
 - Doctor no longer warns that the core mod is not loaded after the watchdog resumes the resident into a forked session.
 - A chat `!model` with an unknown model is reported as failed at once instead of after the two-minute deadline, so queued commands are no longer held behind it.

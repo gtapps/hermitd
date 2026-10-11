@@ -1405,9 +1405,9 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
 
 export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): string | null {
   const clear = config.context_hygiene?.clear ?? {};
-  if (clear.enabled === false) return null;
+  if (clear.enabled === false) return 'disabled';
   const runtime = readRuntimeJson(world.paths.stateDir);
-  if (!runtime) return null;
+  if (!runtime) return 'no-runtime';
   const guard = passesLifecycleGuards(runtime, world);
   if (!guard.ok) return `lifecycle:${guard.reason}`;
   const boundary = passesExecutionBoundary(world.paths.hermitRoot, { minTokens: clear.min_tokens ?? 20000 });
@@ -1420,9 +1420,12 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
   const reason = previous?.policy_hash && previous.policy_hash !== policyHash ? 'policy'
     : runtime.last_context_reset_at && now - Date.parse(runtime.last_context_reset_at) >= parseDurationMs(clear.max_age ?? '24h', 86400000) ? 'max-age'
     : quietAge !== null && quietAge * 1000 >= parseDurationMs(clear.quiet ?? '1h', 3600000) ? 'quiet' : null;
-  if (reason && previous?.last_trigger?.reason === reason
-    && typeof previous.last_trigger.reset_at === 'string'
-    && previous.last_trigger.reset_at === runtime.last_context_reset_at) return 'already-triggered';
+  // Only quiet still holds right after a clear, whichever reason fired it, until the
+  // operator acts again. A clear moves reset_at past max-age and records the new
+  // policy hash, so guarding those would latch them.
+  if (reason === 'quiet' && typeof previous?.last_trigger?.reset_at === 'string'
+    && previous.last_trigger.reset_at === runtime.last_context_reset_at
+    && quietAge! * 1000 >= now - Date.parse(runtime.last_context_reset_at)) return 'already-triggered';
   const state = readWatchdogState(world);
   const hash = getPaneHash(guard.sessionName, world);
   const stable = hash !== null && state.last_pane_hash_standalone === hash;
@@ -1602,6 +1605,16 @@ function stamped(world: World, outcome: HygieneOutcome, promptTokensVal?: number
 export function stampHygieneEval(world: World, outcome: HygieneOutcome, promptTokensVal?: number, compactibleVal?: number): void {
   const ws = readWatchdogState(world);
   setHygieneEval(world, ws, outcome, promptTokensVal, compactibleVal);
+  writeWatchdogState(ws, world);
+}
+
+/** Records the standalone clear's outcome under `standalone_clear`, so a clear that
+ *  keeps refusing is diagnosable from state alone. Latest-only: fired clears are
+ *  already in the event log. Not `clear`, which a retired tier left behind. */
+function stampStandaloneClearEval(world: World, outcome: string): void {
+  const ws = readWatchdogState(world);
+  if (!ws.last_hygiene_eval || typeof ws.last_hygiene_eval !== 'object') ws.last_hygiene_eval = {};
+  ws.last_hygiene_eval.standalone_clear = { ts: worldStamp(world), outcome };
   writeWatchdogState(ws, world);
 }
 
@@ -1906,7 +1919,8 @@ const MAINTENANCE: Decision<TickContext>[] = [
     return 'continue';
   } },
   { id: 'standalone-clear', run: ({ world, config }) => {
-    maybeStandaloneClear(config, world);
+    const outcome = maybeStandaloneClear(config, world);
+    if (outcome !== 'disabled') stampStandaloneClearEval(world, outcome ?? 'not-due');
     return 'continue';
   } },
   { id: 'context-compact', run: ({ world, config }) =>

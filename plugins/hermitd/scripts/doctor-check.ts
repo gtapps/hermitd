@@ -1123,13 +1123,14 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
     const parts = [`restarts: ${restarts}`, `nudges: ${nudges}`, `re-arms: ${rearms}`, `clears: ${clears}`, `compacts: ${compacts}`];
     if (plannedRestarts > 0) parts.push(`planned restarts: ${plannedRestarts}`);
     if (consecutive > 0) parts.push(`stale cycles in progress: ${consecutive}`);
-    // last_hygiene_eval is keyed per mechanism; only the compact tier records one, so
-    // any other key is ignored.
-    const compactEval = lastHygieneEval?.compact;
-    if (compactEval && typeof compactEval.outcome === 'string') {
-      const t = typeof compactEval.ts === 'string' ? Date.parse(compactEval.ts) : NaN;
+    // last_hygiene_eval is keyed per mechanism; the compact tier and the standalone
+    // clear record one. Any other key (a retired tier's leftover `clear`) is ignored.
+    for (const key of ['compact', 'standalone_clear']) {
+      const ev = lastHygieneEval?.[key];
+      if (!ev || typeof ev.outcome !== 'string') continue;
+      const t = typeof ev.ts === 'string' ? Date.parse(ev.ts) : NaN;
       const ageSuffix = Number.isFinite(t) ? `, ${Math.round((Date.now() - t) / 60000)}m ago` : '';
-      parts.push(`last hygiene eval: compact/${compactEval.outcome}${ageSuffix}`);
+      parts.push(`last hygiene eval: ${key.replace('_', '-')}/${ev.outcome}${ageSuffix}`);
     }
     // Durable first-blocker counters (each evaluation records the first guard that
     // returned, not every binding constraint): top compact outcomes so the skip mix
