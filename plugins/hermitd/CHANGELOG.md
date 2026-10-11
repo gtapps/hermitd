@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `/hermitd:hermit-doctor` shows the standalone clear's last outcome beside the compact tier's.
+
 ### Fixed
 - The standalone context clear fires again after a max-age or policy clear instead of staying blocked until the next compaction.
 

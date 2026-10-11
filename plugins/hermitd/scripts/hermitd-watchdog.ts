@@ -1404,7 +1404,7 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
 
 export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): string | null {
   const clear = config.context_hygiene?.clear ?? {};
-  if (clear.enabled === false) return null;
+  if (clear.enabled === false) return 'disabled';
   const runtime = readRuntimeJson(world.paths.stateDir);
   if (!runtime) return null;
   const guard = passesLifecycleGuards(runtime, world);
@@ -1603,6 +1603,16 @@ function stamped(world: World, outcome: HygieneOutcome, promptTokensVal?: number
 export function stampHygieneEval(world: World, outcome: HygieneOutcome, promptTokensVal?: number, compactibleVal?: number): void {
   const ws = readWatchdogState(world);
   setHygieneEval(world, ws, outcome, promptTokensVal, compactibleVal);
+  writeWatchdogState(ws, world);
+}
+
+/** Records the standalone clear's outcome under `standalone_clear`, so a clear that
+ *  keeps refusing is diagnosable from state alone. Latest-only: fired clears are
+ *  already in the event log. Not `clear`, which a retired tier left behind. */
+function stampStandaloneClearEval(world: World, outcome: string): void {
+  const ws = readWatchdogState(world);
+  if (!ws.last_hygiene_eval || typeof ws.last_hygiene_eval !== 'object') ws.last_hygiene_eval = {};
+  ws.last_hygiene_eval.standalone_clear = { ts: worldStamp(world), outcome };
   writeWatchdogState(ws, world);
 }
 
@@ -1907,7 +1917,8 @@ const MAINTENANCE: Decision<TickContext>[] = [
     return 'continue';
   } },
   { id: 'standalone-clear', run: ({ world, config }) => {
-    maybeStandaloneClear(config, world);
+    const outcome = maybeStandaloneClear(config, world);
+    if (outcome !== 'disabled') stampStandaloneClearEval(world, outcome ?? 'not-due');
     return 'continue';
   } },
   { id: 'context-compact', run: ({ world, config }) =>

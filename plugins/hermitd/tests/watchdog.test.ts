@@ -3313,6 +3313,17 @@ test('doctor checkWatchdog: last_hygiene_eval surfaces in the ok detail', withHe
   expect(w.detail).toContain('compact/fired');
 }));
 
+test('doctor checkWatchdog: the standalone clear outcome surfaces beside compact', withHermit(async (h) => {
+  writeDoctorConfig(h);
+  fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
+    last_run: new Date().toISOString(),
+    last_hygiene_eval: { standalone_clear: { ts: new Date().toISOString(), outcome: 'already-triggered' } },
+  }) + '\n');
+  const w = await doctorWatchdogCheck(h);
+  expect(w.status).toBe('ok');
+  expect(w.detail).toContain('standalone-clear/already-triggered');
+}));
+
 test('doctor checkWatchdog: a leftover clear-tier eval never surfaces, only compact',
   withHermit(async (h) => {
     writeDoctorConfig(h);
@@ -4115,6 +4126,35 @@ test('context_compact: last_hygiene_eval records the fire outcome and prompt tok
     expect(r2.exitCode).toBe(0);
     const ws = readJson(state(h, 'watchdog-state.json'));
     expect(ws.last_hygiene_eval?.compact).toMatchObject({ outcome: 'fired', prompt_tokens: 250000 });
+  }));
+
+test('standalone clear: each tick records its outcome in last_hygiene_eval',
+  withHermit(async (h) => {
+    writeContextCompactConfig(h);
+    writeAlwaysOnRuntime(h);
+    writeFakeTmux(h, 0, 'static pane content');
+    writeFakePgrep(h, 1);
+
+    const r = await watchdog(h, 'run');
+    expect(r.exitCode).toBe(0);
+    const ws = readJson(state(h, 'watchdog-state.json'));
+    expect(ws.last_hygiene_eval?.standalone_clear).toMatchObject({ outcome: 'stale-identity' });
+    expect(typeof ws.last_hygiene_eval.standalone_clear.ts).toBe('string');
+  }));
+
+test('standalone clear: a disabled clear leaves no outcome',
+  withHermit(async (h) => {
+    writeContextCompactConfig(h);
+    const configPath = path.join(h.dir, '.hermit', 'config.json');
+    const config = readJson(configPath);
+    config.context_hygiene.clear = { enabled: false };
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    writeAlwaysOnRuntime(h);
+    writeFakeTmux(h, 0, 'static pane content');
+    writeFakePgrep(h, 1);
+
+    expect((await watchdog(h, 'run')).exitCode).toBe(0);
+    expect(readJson(state(h, 'watchdog-state.json')).last_hygiene_eval?.standalone_clear).toBeUndefined();
   }));
 
 // -------------------------------------------------------
