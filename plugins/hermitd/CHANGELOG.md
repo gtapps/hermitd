@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.13] - 2026-10-11
 
 ### Changed
 - `/hermitd:hermit-doctor` shows the standalone clear's last outcome beside the compact tier's.
@@ -8,11 +8,20 @@
 ### Fixed
 - The standalone context clear fires again after a max-age or policy clear instead of staying blocked until the next compaction.
 - The standalone quiet clear re-arms once the operator acts again, and no longer fires a second clear right after a max-age or policy clear.
-### Fixed
 - Doctor no longer warns that the core mod is not loaded after the watchdog resumes the resident into a forked session.
 - A chat `!model` with an unknown model is reported as failed at once instead of after the two-minute deadline, so queued commands are no longer held behind it.
 - Doctor's watchdog check no longer warns on planned restarts (upgrade, requested reauth); they show as `planned restarts`.
 - A restart after a sign-in renewal, or any other requested restart, tells the operator it was requested instead of saying the agent had frozen.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Refresh the plugin version** — no state or config migration is needed.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.12] - 2026-10-10
 
