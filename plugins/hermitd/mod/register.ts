@@ -185,7 +185,10 @@ export const register: Register = on => {
 
   on('session.append', async ($, e, next) => {
     const result = await next(e);
-    if (!active || e.door !== 'command' || e.origin.kind !== 'plugin' || e.origin.name !== $.plugin.name) return result;
+    // A rejected command (such as `/model` with an unknown model) appends its rows with
+    // engine origin; the command-name and args match below still ties them to this run.
+    const own = e.origin.kind === 'engine' || (e.origin.kind === 'plugin' && e.origin.name === $.plugin.name);
+    if (!active || e.door !== 'command' || !own) return result;
     const content = e.message?.content;
     const text = typeof content === 'string' ? content : Array.isArray(content)
       ? content.filter((part: { type: string }) => part.type === 'text').map((part: { text: string }) => part.text).join('\n') : '';
@@ -222,18 +225,16 @@ export const register: Register = on => {
     return result;
   });
 
-  // A /clear changes the session id without another session.start. The plugin's own
-  // SessionStart command hook restamps the resident id; next(e) resolves after it, while
-  // session.end and $.command.run resolve before it starts.
+  // A /clear or a forked resume changes the session id, and session.start can run before
+  // the plugin's own SessionStart command hook restamps the resident id. next(e) resolves
+  // after that hook, while session.end and $.command.run resolve before it starts.
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e);
-    if (e.source === 'clear') {
-      if (active?.command.command === '/clear') {
-        active.evidence = { status: 'ok', text: 'Context cleared' };
-        observe($);
-      }
-      $.clock.after(0, () => bridge($, 'loaded'));
+    if (e.source === 'clear' && active?.command.command === '/clear') {
+      active.evidence = { status: 'ok', text: 'Context cleared' };
+      observe($);
     }
+    $.clock.after(0, () => bridge($, 'loaded'));
     return result;
   });
 
