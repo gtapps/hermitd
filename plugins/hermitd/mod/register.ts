@@ -185,9 +185,10 @@ export const register: Register = on => {
 
   on('session.append', async ($, e, next) => {
     const result = await next(e);
-    // A rejected command (such as `/model` with an unknown model) appends its rows with
+    // A rejected command (such as `/model` with an unknown model) appends system rows with
     // engine origin; the command-name and args match below still ties them to this run.
-    const own = e.origin.kind === 'engine' || (e.origin.kind === 'plugin' && e.origin.name === $.plugin.name);
+    const own = (e.origin.kind === 'engine' && e.message?.type === 'system')
+      || (e.origin.kind === 'plugin' && e.origin.name === $.plugin.name);
     if (!active || e.door !== 'command' || !own) return result;
     const content = e.message?.content;
     const text = typeof content === 'string' ? content : Array.isArray(content)
@@ -234,7 +235,7 @@ export const register: Register = on => {
       active.evidence = { status: 'ok', text: 'Context cleared' };
       observe($);
     }
-    $.clock.after(0, () => bridge($, 'loaded'));
+    $.clock.after(0, () => bridge($, 'loaded').catch(() => undefined));
     return result;
   });
 

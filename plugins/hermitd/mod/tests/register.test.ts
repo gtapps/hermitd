@@ -119,8 +119,8 @@ test('a rejected model reports failed from its engine-origin rows, without the d
     return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run('/model', 'low') : { decision: 'ok' }), stderr: '' } };
   });
   on('command.run', ($, e) => { commands.push(e.command); return {}; });
-  const row = (content: string, uuid: string, origin: any = { kind: 'engine' }) =>
-    $.session.append({ message: { type: 'system', content: [{ type: 'text', text: content }] }, door: 'command', origin, uuid } as any);
+  const row = (content: string, uuid: string, origin: any = { kind: 'engine' }, type = 'system') =>
+    $.session.append({ message: { type, content: [{ type: 'text', text: content }] }, door: 'command', origin, uuid } as any);
   await $.prompt.submit(channel('!model low'));
   await clock.settle();
   expect(commands).toEqual(['model']);
@@ -129,6 +129,8 @@ test('a rejected model reports failed from its engine-origin rows, without the d
   await row('<local-command-stdout>Reloaded</local-command-stdout>', 'b');
   await row('<command-name>/model</command-name><command-args>low</command-args>', 'c', { kind: 'peer' });
   await row("<local-command-stdout>Model 'low' not found</local-command-stdout>", 'd', { kind: 'peer' });
+  await row('<command-name>/model</command-name><command-args>low</command-args>', 'g', { kind: 'engine' }, 'user');
+  await row("<local-command-stdout>Model 'low' not found</local-command-stdout>", 'h', { kind: 'engine' }, 'user');
   await clock.settle();
   expect(finalized).toEqual([]);
   await row('<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>low</command-args>', 'e');
@@ -182,23 +184,34 @@ test('session start and clear record the current session id', async ($, on) => {
   on('session.start', () => ({ cwd: '/work' }));
   on('session.end', () => ({ sessionId: 'old' }));
   on('classic.SessionStart', () => ({}));
+  // Like the bridge, a stamp lands only when the id matches the resident record.
+  let runtime = 'old';
+  const stamped: string[] = [];
   on('process.run', ($, e) => {
-    if (e.argv[3] === 'loaded') loaded.push(e.argv[4]);
+    if (e.argv[3] === 'loaded') {
+      loaded.push(e.argv[4]);
+      if (e.argv[4] === runtime) stamped.push(e.argv[4]);
+    }
     return { value: { exitCode: 0, stdout: '{"decision":"ok"}', stderr: '' } };
   });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   await $.session.end({ reason: 'clear', sessionId: 'old' });
+  runtime = 'new';
   id = 'new';
   await clock.settle();
   expect(loaded).toEqual(['old']);
   await $.classic.SessionStart({ source: 'clear' });
   await clock.settle();
   expect(loaded).toEqual(['old', 'new']);
-  // A forked resume mints another id; its SessionStart restamps it too.
+  // A forked resume mints another id, and session.start can run before the plugin's
+  // SessionStart command hook restamps the resident record; SessionStart catches up.
   id = 'fork';
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  expect(stamped).toEqual(['old', 'new']);
+  runtime = 'fork';
   await $.classic.SessionStart({ source: 'fork' });
   await clock.settle();
-  expect(loaded).toEqual(['old', 'new', 'fork']);
+  expect(stamped).toEqual(['old', 'new', 'fork']);
 });
 
 test('stdout classification recognizes observed success and failures', () => {
