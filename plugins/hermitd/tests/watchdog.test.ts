@@ -3178,6 +3178,19 @@ test('doctor checkWatchdog: restart in last 7d → warn', withHermit(async (h) =
   expect(w.detail).toContain('restarts: 1');
 }));
 
+test('doctor checkWatchdog: planned restarts (upgrade, requested) → ok, counted apart', withHermit(async (h) => {
+  writeDoctorConfig(h);
+  fs.writeFileSync(eventsFile(h), [
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'upgrade, tree-verified, resume abc' },
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'reauth, tree-verified, fresh: requested' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  setLastRun(h, new Date().toISOString());
+  const w = await doctorWatchdogCheck(h);
+  expect(w.status).toBe('ok');
+  expect(w.detail).toContain('restarts: 0');
+  expect(w.detail).toContain('planned restarts: 2');
+}));
+
 // -------------------------------------------------------
 // liveness: last_run stamp (script) + doctor liveness branches
 // -------------------------------------------------------
