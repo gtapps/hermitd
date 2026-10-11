@@ -12,6 +12,7 @@
 - Doctor no longer warns that the core mod is not loaded after the watchdog resumes the resident into a forked session.
 - A chat `!model` with an unknown model is reported as failed at once instead of after the two-minute deadline, so queued commands are no longer held behind it.
 - Doctor's watchdog check no longer warns on planned restarts (upgrade, requested reauth); they show as `planned restarts`.
+- A restart after a sign-in renewal, or any other requested restart, tells the operator it was requested instead of saying the agent had frozen.
 
 ## [1.4.12] - 2026-10-10
 

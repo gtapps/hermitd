@@ -560,14 +560,24 @@ describe('re-auth relay', () => {
 describe('restart subcommand', () => {
   test('restart <reason> → doRestart path runs with that reason', withHermit(async (h) => {
     writeConfig(h);
+    configureChannel(h);
     writeFakeTmux(h, 0);
     writeFakePgrep(h, 1);
-    const r = await watchdog(h, 'restart', { env: {} });
-    expect(r.exitCode).toBe(0);
-    const events = fs.readFileSync(eventsFile(h), 'utf-8');
-    expect(events).toContain('restart');
-    expect(events).toContain('fresh: requested'); // doctor checkWatchdog keys planned restarts on this
-    expect(await waitForStartMarker(h)).toBe(true);
+    const stub = startHttpStub();
+    try {
+      const r = await watchdog(h, 'restart', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
+      expect(r.exitCode).toBe(0);
+      const events = fs.readFileSync(eventsFile(h), 'utf-8');
+      expect(events).toContain('restart');
+      expect(events).toContain('fresh: requested'); // doctor checkWatchdog keys planned restarts on this
+      expect(await waitForStartMarker(h)).toBe(true);
+      // The operator notice names a requested restart, whatever reason was passed.
+      expect(stub.requests.length).toBe(1);
+      expect(stub.requests[0].body.text).toContain('a restart was requested');
+      expect(stub.requests[0].body.text).not.toContain('frozen');
+    } finally {
+      stub.stop();
+    }
   }), 45000);
 });
 
@@ -4402,6 +4412,12 @@ describe('composeRestartMessage / composeWedgeMessage / composePauseMessage', ()
   test('restart message distinguishes dead-process from pane-frozen', () => {
     expect(composeRestartMessage('dead-process', true, 'UTC')).toContain("wasn't running");
     expect(composeRestartMessage('pane-frozen', true, 'UTC')).toContain('had frozen');
+  });
+
+  test('requested restart message says it was requested, not frozen, in both locales', () => {
+    expect(composeRestartMessage('requested', false, 'UTC', 'en')).toContain('a restart was requested');
+    expect(composeRestartMessage('requested', false, 'UTC', 'en')).not.toContain('frozen');
+    expect(composeRestartMessage('requested', false, 'UTC', 'pt-PT')).toContain('foi pedido um reinício');
   });
 
   test('wedge message names the check-in time', () => {

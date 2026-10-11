@@ -233,14 +233,17 @@ function nowHHMM(timezone: string, ref?: Date): string {
 }
 
 /** Operator-language message for a watchdog restart. `resumed` says whether hermitd-start was
- *  asked to restore the conversation, so a fresh start never promises one. */
+ *  asked to restore the conversation, so a fresh start never promises one. Reason `requested`
+ *  marks a restart someone asked for (cmdRestart), whatever reason they gave. */
 export function composeRestartMessage(reason: string, resumed: boolean, timezone: string, locale: Locale = OPERATOR_LOCALE): string {
   const hhmm = nowHHMM(timezone);
   const cause = reason === 'dead-process'
     ? WATCHDOG[locale].restartCauseNotRunning()
     : reason === 'upgrade'
       ? WATCHDOG[locale].restartCauseUpgrade()
-      : WATCHDOG[locale].restartCauseFrozen();
+      : reason === 'requested'
+        ? WATCHDOG[locale].restartCauseRequested()
+        : WATCHDOG[locale].restartCauseFrozen();
   return WATCHDOG[locale].restart(hhmm, cause, resumed);
 }
 
@@ -897,7 +900,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     // 'error' handler above, after this synchronous path already returned, so
     // guard the push on the binary existing rather than on spawn's async result.
     // The lock is already released above, so a slow send never holds it.
-    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(reason, skip === null, timezone));
+    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(resumable ? reason : 'requested', skip === null, timezone));
   } catch (e) {
     process.stderr.write(`[watchdog] restart failed: ${e}\n`);
   } finally {
