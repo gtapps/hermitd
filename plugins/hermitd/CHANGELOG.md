@@ -705,7 +705,7 @@ No config.json changes required for steps 4, 5, 6, and 7.
 - Login-mode renewal over the channel: the relay signs in against a staging config dir and the watchdog commits the credential inside its own restart, where nothing is refreshing `.credentials.json` underneath the write. The Docker entrypoint template gained an `auth_mode` gate; a customized entrypoint shows an evolve conflict at Step 5c.
 - `hermit-run setup-token-mint stamp-auth-mode` records the mode an existing install already uses, from what is on its volume.
 - MCP stdio control surface (`hermit-run mcp-server --roots …`) exposes `list_hermits`, `get_status`, `get_health`, `get_brief`, `get_version`, and `wake` for external orchestrators. A root without `.claude-code-hermit/` fails startup rather than being skipped.
-- `hermit-run backup <setup|run|status>` commits the hermit's own state, config, and auto-memory on a cron schedule from the watchdog tick, with no model turn, and pushes to `backup.remote` over https using a token from the environment or the project `.env`. `workspace` mode commits the project repo; `mirror` mode copies into a separate repo so a hermit inside a project repo leaves it untouched. Secret-shaped paths, `state/channel-log.sqlite*`, oversized files and nested repos are refused per path. Never pulls, rebases, merges or force-pushes: a diverged remote is reported, not resolved. Ships off; enable with `backup setup` from a terminal. `/hatch` skips its `.gitignore` step on the backup marker line, and the hatch report's next steps mention `backup setup`.
+- `hermit-run backup <setup|run|status>` commits the hermit's own state, config, and auto-memory on a cron schedule from the watchdog tick, with no model turn, and pushes to `backup.remote` using configured credentials. `workspace` mode commits the project repo; `mirror` mode copies into a separate repo so a hermit inside a project repo leaves it untouched. Secret-shaped paths, `state/channel-log.sqlite*`, oversized files and nested repos are refused per path. Never pulls, rebases, merges or force-pushes: a diverged remote is reported, not resolved. Ships off; enable with `backup setup` from a terminal. `/hatch` skips its `.gitignore` step on the backup marker line, and the hatch report's next steps mention `backup setup`.
 - `/hermit-doctor` gains a `backup` check (thirty-one checks): warns when two scheduled windows pass without a success, when a push fails three times running, or when the remote has diverged.
 - The watchdog scheduler registers on every surviving tmux boot; `watchdog.scheduler_enabled: false` stops it re-registering, and `hermit-watchdog uninstall` removes an installed timer.
 - That first registration also sets `watchdog.enabled: true`, so never-installed tmux hermits get restarts at their next boot. Keep them off with `hermit-watchdog uninstall` or `watchdog.enabled: false` after that boot.
@@ -769,7 +769,7 @@ No config.json changes required for steps 4, 5, 6, and 7.
 - The watchdog recognises a held-peer-message dialog as a stalled question, so one that still appears is reported instead of wedging the session silently.
 
 ### Removed
-- The `enforce-deny-patterns` PreToolUse hook, and the `AGENT_HOOK_PROFILE=strict` guard, which set it enforced on every managed hermit regardless of seed (`ssh`, `docker`, `kubectl`, `git push --force`, `git push origin main`, `git reset --hard`, `--no-verify`, edits to OPERATOR.md, `config.json`, settings files, voice file). After the evolve merge those are native `permissions.ask`: prompted under `auto`, denied under `dontAsk`, not enforced under `bypassPermissions`. `apply-settings.ts <file> deny hardened` restores hard blocks. The `$IFS`/backslash/whitespace folding and the state-template edit warning go with the hook.
+- The `enforce-deny-patterns` PreToolUse hook, and the `AGENT_HOOK_PROFILE=strict` guard, which set it enforced on every managed hermit regardless of seed (remote shell, `docker`, `kubectl`, `git push --force`, `git push origin main`, `git reset --hard`, `--no-verify`, edits to OPERATOR.md, `config.json`, settings files, voice file). After the evolve merge those are native `permissions.ask`: prompted under `auto`, denied under `dontAsk`, not enforced under `bypassPermissions`. `apply-settings.ts <file> deny hardened` restores hard blocks. The `$IFS`/backslash/whitespace folding and the state-template edit warning go with the hook.
 - The hook-only shell-redirect deny patterns for settings files, `config.json` and the voice file, retired with the hook (redirects are classifier-watched). The OPERATOR.md redirect pair stays seeded as native `permissions.deny`.
 
 ### Upgrade Instructions
@@ -935,7 +935,7 @@ Everything else in this release is self-migrating on next run: the denial ledger
 ### Changed
 - Execution-adjacent settings (`permission_mode`, `env`, `monitors`, `boot_skill`, `shutdown_skill`, a routine `precheck`) no longer ask for a confirmation code on a channel whose `settings_policy` is `allow`. The code exists to separate someone who can read the settings chat from someone who can post in it; where one person can do both it only cost a round trip. Set `ask` on any channel more than one person can post in.
 - `settings_from_chat` is retired. Its `false` becomes `settings_policy: deny` on every channel; `hermit-evolve` migrates it, and until it does, a leftover `false` still holds every channel with no policy of its own at `deny` so an upgrade cannot reopen the opt-out. A leftover key warns instead of failing validation.
-- The `Bash(*API_KEY*)`, `Bash(*SECRET*)`, and `Bash(*TOKEN*)` deny patterns are gone from `deny-patterns.json` — trivially bypassable and blocking ordinary work (a grep, a commit message). The anchored `env`/`printenv`/`cat .env*`/`cat ~/.ssh/*`/`cat ~/.aws/*` entries stay; see `docs/security.md` for the full rationale.
+- The `Bash(*API_KEY*)`, `Bash(*SECRET*)`, and `Bash(*TOKEN*)` deny patterns are gone from `deny-patterns.json` — trivially bypassable and blocking ordinary work (a grep, a commit message). The anchored `env`/`printenv`/`cat .env*` entries and the reads of the user's key and cloud-credential directories stay; see `docs/security.md` for the full rationale.
 - Sigil-anchored entries replace them, for `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` and `HERMIT_TELEMETRY_TOKEN`, each in bare and `${…}` spelling, plus `Bash(printenv *)`. An expansion of a live credential (`echo $ANTHROPIC_API_KEY` while debugging auth, `${ANTHROPIC_API_KEY:-}`, `printenv ANTHROPIC_API_KEY`) blocks; every bare mention of the name — a grep, a commit message, writing the placeholder into `.env` — stays allowed. The braced entry stops at the variable name, so every parameter-expansion modifier lands on the same glob. The hook enforces them from the shipped template, so nothing needs adding to your settings file.
 - `permissions-sync` retires the three word globs from `permissions.deny` as well, so the copy `hatch` wrote into an already-installed hermit's settings goes with them. It removes three exact strings from a sealed registry and nothing else — an operator's own deny rules cannot be caught by shape — and names each removal in the evolve report. This replaces the hand edit the first draft of this release asked for, which an unattended hermit on the strict profile could not perform on itself.
 - How the hermit talks to you is now a `config.json` setting (`voice.style` — `default`, `Concise`, or `custom` with your own words in `voice.prose`), written through `settings-edit` like every other setting and rendered into Claude Code's `outputStyle` (and, for `custom`, `.claude/output-styles/hermit-voice.md`) by one op that runs at hatch, at `hermit-settings voice`, and at every boot. Picking a built-in creates no file.
@@ -1010,7 +1010,7 @@ Everything else in this release is self-migrating on next run: the denial ledger
 - **Key absent** — nothing to do. The hermit picks up the new default on its next restart.
 - **Set to anything other than `"standard"`** — leave it. It is a deliberate choice and is still honored.
 - **Set to `"standard"`** — this is ambiguous and must not be changed automatically: the old template shipped that exact value, so it cannot be distinguished from an operator who chose it. **Defer per SKILL.md Step 10** with `options: ["Adopt the new default (unset env.AGENT_HOOK_PROFILE)", "Keep standard"]`, no `on_resolve`, and `skipped: skipped pending operator`; the chosen branch is applied in attended Step 10 only:
-  - *Adopt the new default* — run `.claude-code-hermit/bin/hermit-run settings-edit .claude-code-hermit/config.json unset env.AGENT_HOOK_PROFILE`. On the next restart the hermit will refuse to hand-edit its own `config.json`, `OPERATOR.md` and Claude settings files, and will refuse `ssh`, `docker`, `kubectl`, `git push origin main` and `git reset --hard` from the managed session. A Docker hermit already behaves this way.
+  - *Adopt the new default* — run `.claude-code-hermit/bin/hermit-run settings-edit .claude-code-hermit/config.json unset env.AGENT_HOOK_PROFILE`. On the next restart the hermit will refuse to hand-edit its own `config.json`, `OPERATOR.md` and Claude settings files, and will refuse remote shell, `docker`, `kubectl`, `git push origin main` and `git reset --hard` from the managed session. A Docker hermit already behaves this way.
   - *Keep today's behavior* — leave the key in place. It now reads as an explicit choice rather than a leftover default.
 
   Only an always-on launch is affected; an interactive `claude` in the same project never inherits this profile.
@@ -1598,7 +1598,7 @@ Docker-mode hermits need nothing: the container entrypoint runs the watchdog loo
 ## [1.2.30] - 2026-07-21
 
 ### Added
-- Docker long-lived login token auth (`claude setup-token`) — subscription logins expire on an unknowable date and recovery needed SSH access to the box; the hermit now mints its own 1-year token, so expiry is deterministic. Stored `0600` on the config volume (never `.env` — `env_file` applies at container creation, which would force a host-side recreate per renewal) and exported by the launcher at process start. New default for `/docker-setup`; `/login` and API-key remain documented alternatives.
+- Docker long-lived login token auth (`claude setup-token`) — subscription logins expire on an unknowable date and recovery needed a remote shell on the box; the hermit now mints its own 1-year token, so expiry is deterministic. Stored `0600` on the config volume (never `.env` — `env_file` applies at container creation, which would force a host-side recreate per renewal) and exported by the launcher at process start. New default for `/docker-setup`; `/login` and API-key remain documented alternatives.
 - In doctor, core self-declares its login token to `credential-expiry` — the check now walks core's own `hermit-meta.json` alongside siblings', and honours a per-credential `warn_days` (core uses 14; default stays 7). Check count unchanged.
 - `/claude-code-hermit:relogin` — renews the login token over the operator's channel: relays a one-time sign-in link, takes the code back, installs, restarts. The token itself never crosses the channel.
 - In watchdog, reactive re-auth recovery — a lapsed token is detected and recovered deterministically with no model in the loop (the hermit can't reason without a login). Ack-first: it asks the operator to reply `reauth` before minting anything, so a one-time link is never burned while nobody is watching.
@@ -2485,7 +2485,7 @@ Run `/claude-code-hermit:hermit-evolve`. The evolve skill handles:
 
 Run `/claude-code-hermit:hermit-evolve`. The evolve skill handles:
 
-1. Verify bun is installed before anything else (Step 0b is the hard gate): `bun --version` must be >= 1.3.0. If missing: `curl -fsSL https://bun.sh/install | bash`.
+1. Verify bun is installed before anything else (Step 0b is the hard gate): `bun --version` must be >= 1.3.0. If missing: install Bun from its official site.
 2. Refresh ALL on-disk boot wrappers (Step 5b's byte-compare will list every `bin/` file as changed — copy each from `state-templates/bin/`). The old wrappers exec `python3` directly and break when the Python scripts are removed from the plugin.
 3. Note for Docker operators: `hermit-status`, `hermit-attach`, and `hermit-docker` run on the HOST and now use bun there — install bun on the host even when the hermit itself runs in the container.
 4. Docker operators: surgically replace `docker-entrypoint.hermit.sh` at the project root — copy it from the plugin template:
@@ -2826,7 +2826,7 @@ No config.json changes required.
 
 - In `/simplify` skill, plugin-owned port of the bundled skill — CC v2.1.146 renamed it to `/code-review` (read-only). Three parallel reviewers (reuse, quality, efficiency) propose edits; main agent applies them with conflict resolution. Reports `applied N · deduped M · principle-rejected K · stale-anchor skips L · parse failures P`.
 - In push_notifications, new opt-in config flag (GH #106) — when `true`, fires `PushNotification` as fallback when no channel is enabled, the channel is unreachable, or a post-resolve reply fails. Default false; toggle via `/hermit-settings push-notifications`.
-- In sandbox, auto-configured by `/hatch` when supported — writes the standard profile (filesystem denies for `~/.aws`, `~/.ssh`, `~/.gnupg`; network unrestricted) silently on probe pass; prints an install hint and skips on probe fail. Existing `sandbox.*` keys are preserved. Set `sandbox.enabled: false` to opt out.
+- In sandbox, auto-configured by `/hatch` when supported — writes the standard profile (filesystem denies for the user's cloud-credential and key directories; network unrestricted) silently on probe pass; prints an install hint and skips on probe fail. Existing `sandbox.*` keys are preserved. Set `sandbox.enabled: false` to opt out.
 - In `scripts/sandbox-probe.py`, shared capability probe — returns `pass/warn/fail` with install hint on failure; result cached per boot. Used by `/hatch`, `hermit-start`, and `/hermit-doctor`.
 - In Docker image, ships `bubblewrap` + `socat` — required for sandbox inside unprivileged containers. `hermit-start` auto-sets `sandbox.enableWeakerNestedSandbox: true` on container boots and removes it otherwise.
 - `/hermit-doctor` sandbox check (ninth check) — Runs the capability probe and cross-references `sandbox.enabled` in settings files. Reports `pass/warn/fail` with remediation.
@@ -2982,19 +2982,7 @@ No config.json changes required.
     apt-get install -y --no-install-recommends nodejs && \
 ```
 
-Replace the continuation (the `rm -rf` line that follows it) with:
-
-```
-    apt-get install -y --no-install-recommends nodejs && \
-    mkdir -p -m 755 /etc/apt/keyrings && \
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      > /etc/apt/sources.list.d/github-cli.list && \
-    apt-get update && apt-get install -y --no-install-recommends gh && \
-    rm -rf /var/lib/apt/lists/*
-```
+Replace the continuation (the `rm -rf` line that follows it) with the GitHub CLI apt-repository block from the plugin's `state-templates/docker/Dockerfile.hermit.template`: the lines from the `nodejs` install through `rm -rf /var/lib/apt/lists/*`.
 
 **Step 2 — docker-compose.hermit.yml.** Open `docker-compose.hermit.yml` at the project root. If the file does not exist, skip to Step 3. Check whether it already contains `GH_TOKEN=`. If it does, skip to Step 3. If not, find the line starting with `      - AGENT_HOOK_PROFILE=` and add immediately after it:
 
@@ -3004,7 +2992,7 @@ Replace the continuation (the `rm -rf` line that follows it) with:
 
 **Step 3 — Rebuild.** Run `hermit-docker update` to rebuild the image with the patched Dockerfile. On next start, `gh --version` should succeed inside the container.
 
-**Netguard note:** No dnsmasq allowlist change is required. The existing `server=/github.com/` rule already covers `api.github.com` and `cli.github.com` as subdomains — do not add redundant entries.
+**Netguard note:** No dnsmasq allowlist change is required. The existing `server=/github.com/` rule already covers the GitHub API and CLI hosts as subdomains — do not add redundant entries.
 
 **Authenticated calls (optional):** To use `gh` with a GitHub PAT, add `HERMIT_GH_TOKEN=<your-pat>` to `.claude-code-hermit/.env`, then `hermit-docker down && hermit-docker up`. The Compose template maps it to `GH_TOKEN` inside the container. Without a token, `gh` runs anonymously (60 req/hr rate limit).
 
