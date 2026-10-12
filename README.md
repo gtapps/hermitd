@@ -95,7 +95,7 @@ Optional [Docker security controls](plugins/hermitd/docs/docker-security.md) cov
 
 - **Work through chat.** Assign work and receive results in your connected chat. Longer assignments get threaded progress updates, with a separate reply when the agent needs a decision. Assignments can also carry a persistent task record with requester, due date, result confirmation, and a dashboard view by person.
 
-- **Your network.** Local databases, SSH, LAN devices, and Home Assistant are reachable because the agent runs where they are.
+- **Your network.** Local databases, SSH, LAN devices, filesystem are reachable because the agent runs where they are.
 
 - **Token efficiency.** With Claude Code’s [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool), heartbeat checks and optional routine prechecks run outside the model. Quiet checks and skipped routines use no model tokens; eligible routines due together can share a wake.
 
