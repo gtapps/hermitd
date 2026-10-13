@@ -151,6 +151,13 @@ describe('dnsmasq.allowlist.template', () => {
     expect(allowlist).toContain('server=/claude.com/');
   });
 
+  test('allowlist: server=/claudeusercontent.com/ present (Claude in Chrome bridge)', () => {
+    const core = allowlist.split('# --- Core hermit operation ---')[1].split('# --- Fleet-plugin contributions')[0];
+    expect(core).toContain("# Claude in Chrome's bridge\nserver=/claudeusercontent.com/1.1.1.1");
+    expect(allowlist.match(/^server=\/claudeusercontent\.com\//gm)).toHaveLength(1);
+    expect(allowlist.trimEnd().endsWith('address=/#/')).toBe(true);
+  });
+
   test('allowlist: documents address=/<host>/<ip> as a static pin (issue #602)', () => {
     expect(allowlist).toContain('address=/<host>/<ip>');
   });

@@ -36,6 +36,7 @@ import {
   applyVoiceRender,
   renderLaunchOverlay,
   seedWorkspaceTrust,
+  seedChromeOnboarding,
   clearChannelFailureCache,
   applyAlwaysOnDoctorSchedule,
   clearShutdownStampsOnBoot,
@@ -222,6 +223,7 @@ async function runBuildClaudeCommand(
   config: any,
   claudeStubBody: string,
   opts?: { resume?: string },
+  env: Record<string, string> = {},
 ): Promise<{ cmd: string[]; out: string }> {
   const bin = path.join(tmpdir, 'stub-bin');
   fs.mkdirSync(bin, { recursive: true });
@@ -238,7 +240,7 @@ async function runBuildClaudeCommand(
   const proc = Bun.spawn({
     cmd: [process.execPath, '-e', harness],
     cwd: tmpdir,
-    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -1542,6 +1544,50 @@ describe('seedWorkspaceTrust', () => {
   });
 });
 
+describe('seedChromeOnboarding', () => {
+  test('sets absent onboarding and does not rewrite an already completed file', () => {
+    seedChromeOnboarding(['claude', '--chrome']);
+    const file = claudeStateFile();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).hasCompletedClaudeInChromeOnboarding).toBe(true);
+    const before = fs.statSync(file);
+    seedChromeOnboarding(['claude', '--chrome']);
+    expect(fs.statSync(file).ino).toBe(before.ino);
+    expect(fs.statSync(file).mtimeMs).toBe(before.mtimeMs);
+  });
+  test('flips false and preserves projects and top-level keys', () => {
+    const file = claudeStateFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const state = { hasCompletedClaudeInChromeOnboarding: false, oauthAccount: { emailAddress: 'operator@example.test' }, projects: {
+      '/other': { hasTrustDialogAccepted: true }, [tmpdir]: { allowedTools: [] },
+    } };
+    fs.writeFileSync(file, JSON.stringify(state));
+    seedChromeOnboarding(['claude', '--chrome']);
+    state.hasCompletedClaudeInChromeOnboarding = true;
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(state);
+  });
+  test('corrupt file warns without throwing or changing the file', () => {
+    const file = claudeStateFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{broken');
+    const { out } = captureLog(() => seedChromeOnboarding(['claude', '--chrome']));
+    expect(out).toContain('[hermit] WARNING: Chrome onboarding not seeded (');
+    expect(out).toContain('continuing boot.');
+    expect(fs.readFileSync(file, 'utf8')).toBe('{broken');
+  });
+  test('without --chrome leaves absent and existing state untouched', () => {
+    const file = claudeStateFile();
+    seedChromeOnboarding(['claude']);
+    expect(fs.existsSync(file)).toBe(false);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{"hasCompletedClaudeInChromeOnboarding":false}');
+    const before = fs.statSync(file);
+    seedChromeOnboarding(['claude']);
+    expect(fs.readFileSync(file, 'utf8')).toBe('{"hasCompletedClaudeInChromeOnboarding":false}');
+    expect(fs.statSync(file).ino).toBe(before.ino);
+    expect(fs.statSync(file).mtimeMs).toBe(before.mtimeMs);
+  });
+});
+
 describe('clearChannelFailureCache', () => {
   const cacheFile = () => path.join(process.env.CLAUDE_CONFIG_DIR!, 'mcp-needs-auth-cache.json');
   const writeCache = (cache: object) => {
@@ -2270,4 +2316,21 @@ test('host registry failure is non-fatal at startup', () => {
   process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = blocked;
   try { expect(() => registerHostProjectOnBoot(tmpdir, path.join(tmpdir, 'cache/mp/hermitd/1'))).not.toThrow(); }
   finally { if (prior === undefined) delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = prior; }
+});
+
+describe('chrome command', () => {
+  for (const container of ['', 'docker']) {
+    for (const auth_mode of ['login', 'token']) {
+      test(`chrome with ${auth_mode} in ${container || 'host'}`, async () => {
+        const { cmd, out } = await runBuildClaudeCommand({ chrome: true, auth_mode }, CLAUDE_FETCH_FAILS, undefined, {
+          container, CLAUDE_CONFIG_DIR: path.join(tmpdir, 'creds'), ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '',
+          CLAUDE_CODE_USE_BEDROCK: '', CLAUDE_CODE_USE_VERTEX: '', CLAUDE_CODE_USE_FOUNDRY: '',
+        });
+        expect(cmd.includes('--chrome')).toBe(auth_mode === 'login');
+        expect(out).not.toContain('ignored');
+        if (auth_mode === 'token') expect(out).toContain('[hermit] WARNING: Chrome stays off with a setup-token');
+        else expect(out).not.toContain('Chrome stays off');
+      }, 15000);
+    }
+  }
 });

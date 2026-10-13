@@ -4,6 +4,31 @@
 
 ### Fixed
 - Storage drift no longer flags `.hermit/helper-reports/`, which core writes for helper and worker reports.
+### Added
+- `chrome: true` works in Docker hermits signed in with a claude.ai login, driving Chrome on any machine on the same account.
+- The netguard DNS allowlist template includes `claudeusercontent.com` for Claude in Chrome's bridge.
+
+### Changed
+- A hermit with `chrome: true` on a setup-token or env credential launches without `--chrome` and warns at boot and in `/hermitd:hermit-doctor`.
+
+### Fixed
+- The first `--chrome` boot no longer waits on Claude Code's Claude in Chrome intro dialog.
+- The launch line reports Chrome as enabled only when `--chrome` is passed.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Allow the Chrome bridge in existing netguard installs.** If `.hermit/docker/dnsmasq.allowlist` is absent, or already contains a `server=/claudeusercontent.com/` line, skip silently. Otherwise insert exactly these two lines immediately above the `address=/#/` catch-all, touching no other line and preserving all hand-added `address=` records:
+
+   ```text
+   # Claude in Chrome's bridge
+   server=/claudeusercontent.com/1.1.1.1
+   ```
+
+   Never re-run `/hermitd:docker-security`: it regenerates the file and erases hand-added records. The entry takes effect at the next `hermitd-docker down && hermitd-docker up` on the host. After a successful edit, tell the operator to run that command now only when `config.chrome` is true; otherwise say nothing, since it applies at the next recreate.
+
+   If the edit is refused or fails, do not retry. Tell the operator in one line: Add `server=/claudeusercontent.com/1.1.1.1` with the comment `# Claude in Chrome's bridge` above `address=/#/` in `.hermit/docker/dnsmasq.allowlist`, then run `hermitd-docker down && hermitd-docker up` on the host.
 
 ## [1.4.13] - 2026-10-11
 
