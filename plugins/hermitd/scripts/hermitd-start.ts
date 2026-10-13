@@ -1180,32 +1180,19 @@ function renderLaunchOverlay(config: Json): string | null {
  *  nearest example, not the bound. Accepted because the early return below makes this
  *  write happen about once per project, and no in-session writer is added. */
 function seedWorkspaceTrust(): void {
-  const file = claudeStateFile();
   const project = process.cwd();
-  try {
-    let state: Json = {};
-    try {
-      state = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    if (!isDict(state) || ('projects' in state && !isDict(state.projects))) {
-      throw new Error('invalid Claude Code state');
-    }
+  seedClaudeState('workspace trust', (state) => {
+    if ('projects' in state && !isDict(state.projects)) throw new Error('invalid Claude Code state');
     const projects = state.projects ?? {};
     if (project in projects && !isDict(projects[project])) throw new Error('invalid project state');
-    if (projects[project]?.hasTrustDialogAccepted === true) return;
+    if (projects[project]?.hasTrustDialogAccepted === true) return false;
     state.projects = { ...projects, [project]: { ...projects[project], hasTrustDialogAccepted: true } };
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
-  } catch (error: any) {
-    console.log(`[hermit] WARNING: workspace trust not seeded (${error?.message ?? error}): continuing boot.`);
-  }
+    return true;
+  });
 }
 
-/** Pre-confirm the Chrome intro so an unattended argv boot prompt can run. */
-function seedChromeOnboarding(cmd: string[]): void {
-  if (!cmd.includes('--chrome')) return;
+/** Read-modify-write of Claude Code's state file; `apply` mutates and returns false to skip the write. */
+function seedClaudeState(label: string, apply: (state: Json) => boolean): void {
   const file = claudeStateFile();
   try {
     let state: Json = {};
@@ -1215,13 +1202,22 @@ function seedChromeOnboarding(cmd: string[]): void {
       if (error?.code !== 'ENOENT') throw error;
     }
     if (!isDict(state)) throw new Error('invalid Claude Code state');
-    if (state.hasCompletedClaudeInChromeOnboarding === true) return;
-    state.hasCompletedClaudeInChromeOnboarding = true;
+    if (!apply(state)) return;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
   } catch (error: any) {
-    console.log(`[hermit] WARNING: Chrome onboarding not seeded (${error?.message ?? error}): continuing boot.`);
+    console.log(`[hermit] WARNING: ${label} not seeded (${error?.message ?? error}): continuing boot.`);
   }
+}
+
+/** Pre-confirm the Chrome intro so an unattended argv boot prompt can run. */
+function seedChromeOnboarding(cmd: string[]): void {
+  if (!cmd.includes('--chrome')) return;
+  seedClaudeState('Chrome onboarding', (state) => {
+    if (state.hasCompletedClaudeInChromeOnboarding === true) return false;
+    state.hasCompletedClaudeInChromeOnboarding = true;
+    return true;
+  });
 }
 
 /**

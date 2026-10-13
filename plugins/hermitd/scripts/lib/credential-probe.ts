@@ -2,6 +2,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { siblingPluginDirs, readHermitMeta, readCoreName } from './plugin-siblings';
+import { pyTruthy } from './channel-config';
 import {
   resolveAuthMode, readTokenValue, tokenFilePath, defaultConfigDir,
   credentialsFilePath, parkedCredentialsFilePath, storedLoginUsable,
@@ -140,9 +141,10 @@ export function shadowingCredentialNote(config: any = {}): string | null {
 // Chrome requires a claude.ai login; setup-tokens and environment credentials
 // leave it disabled in Claude Code even when --chrome is requested.
 export function chromeAuthNote(config: any = {}): string | null {
-  if (!config.chrome) return null;
-  const cause = envAuthPresent() ? 'env credential' :
-    resolveAuthMode(config, defaultConfigDir()) === 'token' ? 'setup-token' : null;
-  if (!cause) return null;
-  return `Chrome stays off with a ${cause}; use auth_mode: login via /hermitd:relogin`;
+  if (!pyTruthy(config.chrome)) return null;
+  if (envAuthPresent()) {
+    return 'Chrome stays off with an env credential; remove it from the hermit environment, then use auth_mode: login via /hermitd:relogin';
+  }
+  if (resolveAuthMode(config, defaultConfigDir()) !== 'token') return null;
+  return 'Chrome stays off with a setup-token; use auth_mode: login via /hermitd:relogin';
 }
