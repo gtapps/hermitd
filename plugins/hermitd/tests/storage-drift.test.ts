@@ -41,6 +41,16 @@ describe('findStorageDrift — allowlist', () => {
     expect(hits.every(h => !h.includes('forge-runtime'))).toBe(true);
   });
 
+  it('does NOT flag helper-reports without an ignore entry', () => {
+    const base = path.join(tmp, 'test-helper-reports');
+    fs.mkdirSync(base);
+    const hermitDir = mkHermitDir(base, { storage_drift: { ignore: [] } });
+    mkDir(hermitDir, 'helper-reports');
+
+    const hits = findStorageDrift(hermitDir);
+    expect(hits.every(h => !h.includes('helper-reports'))).toBe(true);
+  });
+
   it('still flags an unknown dir NOT in the ignore list', () => {
     const base = path.join(tmp, 'test-garbage');
     fs.mkdirSync(base);

@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Storage drift no longer flags `.hermit/helper-reports/`, which core writes for helper and worker reports.
+
 ## [1.4.13] - 2026-10-11
 
 ### Changed
