@@ -5,7 +5,7 @@ import { siblingPluginDirs, readHermitMeta, readCoreName } from './plugin-siblin
 import {
   resolveAuthMode, readTokenValue, tokenFilePath, defaultConfigDir,
   credentialsFilePath, parkedCredentialsFilePath, storedLoginUsable,
-  CREDENTIALS_FILENAME, TOKEN_FILENAME,
+  CREDENTIALS_FILENAME, TOKEN_FILENAME, envAuthPresent,
 } from './setup-token';
 
 // Probe timeout: 5s default; env override exists solely so tests can exercise
@@ -135,4 +135,14 @@ export function shadowingCredentialNote(config: any = {}): string | null {
   // absent, unreadable, or an inert stub (parked file, /logout) — nothing to shadow
   if (!storedLoginUsable(configDir)) return null;
   return `stored ${CREDENTIALS_FILENAME} will shadow the login token in interactive sessions — park it (mv ${credentialsFilePath(configDir)} ${parkedCredentialsFilePath(configDir)}) and restart`;
+}
+
+// Chrome requires a claude.ai login; setup-tokens and environment credentials
+// leave it disabled in Claude Code even when --chrome is requested.
+export function chromeAuthNote(config: any = {}): string | null {
+  if (!config.chrome) return null;
+  const cause = envAuthPresent() ? 'env credential' :
+    resolveAuthMode(config, defaultConfigDir()) === 'token' ? 'setup-token' : null;
+  if (!cause) return null;
+  return `Chrome stays off with a ${cause}; use auth_mode: login via /hermitd:relogin`;
 }

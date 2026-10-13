@@ -24,6 +24,7 @@ import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, claudeStateFile, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
 import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { isContainer } from './lib/container';
+import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
 import { cmpSemver } from './lib/semver';
 import { sanitizeLanguage } from './lib/operator-language';
@@ -743,8 +744,9 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
   }
 
   if (pyTruthy(config.chrome)) {
-    if (isContainer()) {
-      console.log('[hermit] WARNING: chrome=true ignored — browser not available in containers.');
+    const note = chromeAuthNote(config);
+    if (note) {
+      console.log(`[hermit] WARNING: ${note}`);
     } else {
       cmd.push('--chrome');
     }
@@ -1201,6 +1203,27 @@ function seedWorkspaceTrust(): void {
   }
 }
 
+/** Pre-confirm the Chrome intro so an unattended argv boot prompt can run. */
+function seedChromeOnboarding(cmd: string[]): void {
+  if (!cmd.includes('--chrome')) return;
+  const file = claudeStateFile();
+  try {
+    let state: Json = {};
+    try {
+      state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (!isDict(state)) throw new Error('invalid Claude Code state');
+    if (state.hasCompletedClaudeInChromeOnboarding === true) return;
+    state.hasCompletedClaudeInChromeOnboarding = true;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
+  } catch (error: any) {
+    console.log(`[hermit] WARNING: Chrome onboarding not seeded (${error?.message ?? error}): continuing boot.`);
+  }
+}
+
 /**
  * Claude Code skips an MCP server for 15 minutes after any session failed to start it
  * (mcp-needs-auth-cache.json). Drop the launch's channel entries so a restart inside
@@ -1549,7 +1572,7 @@ async function main(): Promise<void> {
   console.log(`[hermit] Effort: ${config.effort || 'default'}`);
   console.log(`[hermit] Channels: ${getEnabledChannels(config).join(', ') || 'none'}`);
   console.log(`[hermit] Remote: ${pyTruthy(config.remote) ? 'enabled' : 'disabled'}`);
-  console.log(`[hermit] Chrome: ${pyTruthy(config.chrome) ? 'enabled' : 'disabled'}`);
+  console.log(`[hermit] Chrome: ${cmd.includes('--chrome') ? 'enabled' : 'disabled'}`);
   console.log(`[hermit] Permissions: ${config.permission_mode || 'auto'}`);
 
   const hookProfile = writeSettingsEnv(config, bootMode);
@@ -1562,6 +1585,7 @@ async function main(): Promise<void> {
   applyVoiceRender(config);
   applyArtifactGrant(config);
   seedWorkspaceTrust();
+  seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
@@ -1801,6 +1825,7 @@ export {
   requireResident,
   renderLaunchOverlay,
   seedWorkspaceTrust,
+  seedChromeOnboarding,
   clearChannelFailureCache,
   resolveHermitEnv,
   writeSettingsEnv,
