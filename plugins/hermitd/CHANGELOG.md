@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+### Fixed
+- Storage drift no longer flags `.hermit/helper-reports/`, which core writes for helper and worker reports.
 ### Added
 - `chrome: true` works in Docker hermits signed in with a claude.ai login, driving Chrome on any machine on the same account.
 - The netguard DNS allowlist template includes `claudeusercontent.com` for Claude in Chrome's bridge.
