@@ -41,14 +41,16 @@ describe('findStorageDrift — allowlist', () => {
     expect(hits.every(h => !h.includes('forge-runtime'))).toBe(true);
   });
 
-  it('does NOT flag helper-reports without an ignore entry', () => {
-    const base = path.join(tmp, 'test-helper-reports');
+  it('does NOT flag any core dir the gitignore template lists, without an ignore entry', () => {
+    const base = path.join(tmp, 'test-core-dirs');
     fs.mkdirSync(base);
     const hermitDir = mkHermitDir(base, { storage_drift: { ignore: [] } });
-    mkDir(hermitDir, 'helper-reports');
+    const gitignore = fs.readFileSync(path.join(import.meta.dir, '../state-templates/GITIGNORE-APPEND.txt'), 'utf-8');
+    const coreDirs = [...gitignore.matchAll(/^\.hermit\/([^/\s]+)\/$/gm)].map(m => m[1]);
+    expect(coreDirs).toContain('helper-reports');
+    for (const name of coreDirs) mkDir(hermitDir, name);
 
-    const hits = findStorageDrift(hermitDir);
-    expect(hits.every(h => !h.includes('helper-reports'))).toBe(true);
+    expect(findStorageDrift(hermitDir)).toEqual([]);
   });
 
   it('still flags an unknown dir NOT in the ignore list', () => {
