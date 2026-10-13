@@ -1,9 +1,7 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.14] - 2026-10-13
 
-### Fixed
-- Storage drift no longer flags `.hermit/helper-reports/`, which core writes for helper and worker reports.
 ### Added
 - `chrome: true` works in Docker hermits signed in with a claude.ai login, driving Chrome on any machine on the same account.
 - The netguard DNS allowlist template includes `claudeusercontent.com` for Claude in Chrome's bridge.
@@ -14,6 +12,7 @@
 ### Fixed
 - The first `--chrome` boot no longer waits on Claude Code's Claude in Chrome intro dialog.
 - The launch line reports Chrome as enabled only when `--chrome` is passed.
+- Storage drift no longer flags `.hermit/helper-reports/`, which core writes for helper and worker reports.
 
 ### Upgrade Instructions
 
