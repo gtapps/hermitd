@@ -24,6 +24,7 @@ import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, claudeStateFile, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
 import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { isContainer } from './lib/container';
+import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
 import { cmpSemver } from './lib/semver';
 import { sanitizeLanguage } from './lib/operator-language';
@@ -743,8 +744,9 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
   }
 
   if (pyTruthy(config.chrome)) {
-    if (isContainer()) {
-      console.log('[hermit] WARNING: chrome=true ignored — browser not available in containers.');
+    const note = chromeAuthNote(config);
+    if (note) {
+      console.log(`[hermit] WARNING: ${note}`);
     } else {
       cmd.push('--chrome');
     }
@@ -1178,8 +1180,20 @@ function renderLaunchOverlay(config: Json): string | null {
  *  nearest example, not the bound. Accepted because the early return below makes this
  *  write happen about once per project, and no in-session writer is added. */
 function seedWorkspaceTrust(): void {
-  const file = claudeStateFile();
   const project = process.cwd();
+  seedClaudeState('workspace trust', (state) => {
+    if ('projects' in state && !isDict(state.projects)) throw new Error('invalid Claude Code state');
+    const projects = state.projects ?? {};
+    if (project in projects && !isDict(projects[project])) throw new Error('invalid project state');
+    if (projects[project]?.hasTrustDialogAccepted === true) return false;
+    state.projects = { ...projects, [project]: { ...projects[project], hasTrustDialogAccepted: true } };
+    return true;
+  });
+}
+
+/** Read-modify-write of Claude Code's state file; `apply` mutates and returns false to skip the write. */
+function seedClaudeState(label: string, apply: (state: Json) => boolean): void {
+  const file = claudeStateFile();
   try {
     let state: Json = {};
     try {
@@ -1187,18 +1201,23 @@ function seedWorkspaceTrust(): void {
     } catch (error: any) {
       if (error?.code !== 'ENOENT') throw error;
     }
-    if (!isDict(state) || ('projects' in state && !isDict(state.projects))) {
-      throw new Error('invalid Claude Code state');
-    }
-    const projects = state.projects ?? {};
-    if (project in projects && !isDict(projects[project])) throw new Error('invalid project state');
-    if (projects[project]?.hasTrustDialogAccepted === true) return;
-    state.projects = { ...projects, [project]: { ...projects[project], hasTrustDialogAccepted: true } };
+    if (!isDict(state)) throw new Error('invalid Claude Code state');
+    if (!apply(state)) return;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
   } catch (error: any) {
-    console.log(`[hermit] WARNING: workspace trust not seeded (${error?.message ?? error}): continuing boot.`);
+    console.log(`[hermit] WARNING: ${label} not seeded (${error?.message ?? error}): continuing boot.`);
   }
+}
+
+/** Pre-confirm the Chrome intro so an unattended argv boot prompt can run. */
+function seedChromeOnboarding(cmd: string[]): void {
+  if (!cmd.includes('--chrome')) return;
+  seedClaudeState('Chrome onboarding', (state) => {
+    if (state.hasCompletedClaudeInChromeOnboarding === true) return false;
+    state.hasCompletedClaudeInChromeOnboarding = true;
+    return true;
+  });
 }
 
 /**
@@ -1549,7 +1568,7 @@ async function main(): Promise<void> {
   console.log(`[hermit] Effort: ${config.effort || 'default'}`);
   console.log(`[hermit] Channels: ${getEnabledChannels(config).join(', ') || 'none'}`);
   console.log(`[hermit] Remote: ${pyTruthy(config.remote) ? 'enabled' : 'disabled'}`);
-  console.log(`[hermit] Chrome: ${pyTruthy(config.chrome) ? 'enabled' : 'disabled'}`);
+  console.log(`[hermit] Chrome: ${cmd.includes('--chrome') ? 'enabled' : 'disabled'}`);
   console.log(`[hermit] Permissions: ${config.permission_mode || 'auto'}`);
 
   const hookProfile = writeSettingsEnv(config, bootMode);
@@ -1562,6 +1581,7 @@ async function main(): Promise<void> {
   applyVoiceRender(config);
   applyArtifactGrant(config);
   seedWorkspaceTrust();
+  seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
@@ -1801,6 +1821,7 @@ export {
   requireResident,
   renderLaunchOverlay,
   seedWorkspaceTrust,
+  seedChromeOnboarding,
   clearChannelFailureCache,
   resolveHermitEnv,
   writeSettingsEnv,

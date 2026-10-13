@@ -2412,6 +2412,34 @@ describe('doctor context-age check', () => {
   }), 20000);
 });
 
+describe('chromeAuthNote', () => {
+  const cases = [
+    { name: 'explicit token', config: { chrome: true, auth_mode: 'token' }, token: false, apiKey: '', cause: 'setup-token' },
+    { name: 'token on volume', config: { chrome: true, auth_mode: null }, token: true, apiKey: '', cause: 'setup-token' },
+    { name: 'env credential', config: { chrome: true, auth_mode: 'login' }, token: false, apiKey: 'test-key', cause: 'env credential' },
+    { name: 'login', config: { chrome: true, auth_mode: 'login' }, token: false, apiKey: '', cause: null },
+    ...['token', 'login', null].map((mode) => ({ name: `chrome off (${mode})`, config: { chrome: false, auth_mode: mode }, token: true, apiKey: 'test-key', cause: null })),
+  ];
+  for (const c of cases) {
+    test(c.name, withTmpdir(async (dir) => {
+      if (c.token) fs.writeFileSync(path.join(dir, '.hermit-setup-token'), 'sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789\n');
+      const proc = Bun.spawn({
+        cmd: [process.execPath, '-e', `import { chromeAuthNote } from ${JSON.stringify(path.join(SCRIPTS, 'lib/credential-probe.ts'))}; process.stdout.write(JSON.stringify(chromeAuthNote(${JSON.stringify(c.config)})));`],
+        cwd: dir,
+        env: { ...process.env, CLAUDE_CONFIG_DIR: dir, ANTHROPIC_API_KEY: c.apiKey, ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_USE_BEDROCK: '', CLAUDE_CODE_USE_VERTEX: '', CLAUDE_CODE_USE_FOUNDRY: '' },
+        stdout: 'pipe', stderr: 'pipe',
+      });
+      const note = JSON.parse(await new Response(proc.stdout).text());
+      expect(await proc.exited).toBe(0);
+      if (c.cause) {
+        expect(note).toContain(c.cause);
+        expect(note).toContain('auth_mode: login');
+        expect(note).toContain('/hermitd:relogin');
+      } else expect(note).toBeNull();
+    }));
+  }
+});
+
 describe('doctor credential-expiry check', () => {
   const credCheck = (report: any) => (report.checks ?? []).find((c: any) => c.id === 'credential-expiry');
   const VALID_OAT = 'sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789';
@@ -2482,6 +2510,23 @@ describe('doctor credential-expiry check', () => {
     const c = credCheck(JSON.parse(r.stdout));
     expect(c.status).toBe('ok');
   }), 20000);
+
+  for (const chrome of [true, false]) {
+    test(`token mode with chrome=${chrome}`, withTmpdir(async (dir) => {
+      writeConfig(dir, { auth_mode: 'token', chrome });
+      writeTokenRecord(dir, 30);
+      const r = await runScript('doctor-check.ts', {
+        args: ['.hermit'], cwd: dir,
+        env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: path.join(dir, 'creds'), ANTHROPIC_API_KEY: '' },
+      });
+      const c = credCheck(JSON.parse(r.stdout));
+      expect(c.status).toBe(chrome ? 'warn' : 'ok');
+      if (chrome) {
+        expect(c.detail).toContain('Chrome stays off with a setup-token');
+        expect(c.detail).toContain('/hermitd:relogin');
+      } else expect(c.detail).not.toContain('Chrome');
+    }), 20000);
+  }
 
   // A ~30-day login is the short one, so the window is measured against it: at 10
   // days out — a third of that credential's life — the hermit must still stay quiet.

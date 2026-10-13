@@ -28,6 +28,8 @@ server=/anthropic.com/1.1.1.1
 # Claude Code OAuth / login — NXDOMAIN maps to ECONNREFUSED in Node, breaking /login
 server=/claude.ai/1.1.1.1
 server=/claude.com/1.1.1.1
+# Claude in Chrome's bridge
+server=/claudeusercontent.com/1.1.1.1
 server=/githubusercontent.com/1.1.1.1
 server=/github.com/1.1.1.1
 server=/githubassets.com/1.1.1.1

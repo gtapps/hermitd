@@ -164,6 +164,22 @@ See [Always-On Operations](always-on-ops.md) for tmux setup and operational deta
 
 ---
 
+## Browser Tasks
+
+Turn on `chrome: true` via `/hermitd:hermit-settings` to let your hermit browse sites, fill forms, and work in web apps you are signed into.
+
+Requirements:
+
+- A claude.ai `/login` sign-in (`auth_mode: login`). Setup-tokens and env credentials keep Chrome off; boot and doctor warn when Chrome is requested with either.
+- The Claude in Chrome extension signed in to the same claude.ai account and organization as the hermit.
+- Chrome open on any machine on that account, including when the hermit runs on another host or in Docker.
+
+Enabling Chrome adds context cost because browser tools and their instructions are always loaded. See [Claude Code's Chrome documentation](https://code.claude.com/docs/en/chrome) for setup and context usage.
+
+Docker hermits also need `auth_mode: login`. If netguard filters DNS, its allowlist needs `server=/claudeusercontent.com/1.1.1.1`; the shipped template includes it. Existing installs receive the entry through `/hermitd:hermit-evolve`, and it takes effect after `hermitd-docker down && hermitd-docker up` on the host.
+
+The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unattended browser runs are untested.
+
 ## Common Workflows
 
 **Disconnected?** — Restart Claude Code. Hermit detects the active session and shows where you left off. Type "continue."

@@ -41,7 +41,7 @@ import { routineHealth } from './lib/routines/arm';
 import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
 import { effectiveHeartbeatMode } from './lib/heartbeat/control';
 import { readBootId } from './lib/routines/registry';
-import { probeDeclaredCredentials, shadowingCredentialNote } from './lib/credential-probe';
+import { probeDeclaredCredentials, shadowingCredentialNote, chromeAuthNote } from './lib/credential-probe';
 
 type Json = any;
 
@@ -1587,9 +1587,12 @@ function checkCredentialExpiry(p: DoctorPaths = PATHS) {
     const sib = probeDeclaredCredentials(p.pluginRoot);
     // The mode is a config question, so the note needs the config. An unreadable one
     // resolves from the volume, which is the same answer the probe itself used.
-    const shadow = shadowingCredentialNote(readConfigRaw(p.hermitDir) ?? {});
+    const config = readConfigRaw(p.hermitDir) ?? {};
+    const shadow = shadowingCredentialNote(config);
+    const chrome = chromeAuthNote(config);
     const parts = [...sib.badNotes];
     if (shadow) parts.push(shadow);
+    if (chrome) parts.push(chrome);
     const status = parts.length > 0 ? 'warn' : 'ok';
     if (sib.okCount > 0) parts.push(`${sib.okCount} plugin credential(s) ok`);
     if (parts.length === 0) parts.push('no plugin declares a credential to probe');
