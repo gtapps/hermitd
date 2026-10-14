@@ -28,7 +28,7 @@ import {
 } from './artifacts';
 import { auditAutomations, auditScripts } from './audits';
 import { automationDiff, formatAutomationDiff } from './automation-diff';
-import { bootStatus, saveBootPreferences } from './boot';
+import { bootStatus, saveBootPreferences, writeMcpConfig } from './boot';
 import { AppConfig, loadConfig, normalizedContextPath, projectRoot } from './config';
 import { HomeAssistantClient, HomeAssistantError, extractHaErrorMessage } from './ha-api';
 import { HomeAssistantWsClient } from './ha-ws';
@@ -169,7 +169,7 @@ class ParserExit extends Error {
 }
 
 const TOP_USAGE = 'usage: ha_agent_lab [-h] {boot,ha} ...';
-const BOOT_USAGE = 'usage: ha_agent_lab boot [-h] {status,store} ...';
+const BOOT_USAGE = 'usage: ha_agent_lab boot [-h] {status,store,mcp-config} ...';
 function argError(prog: string, usage: string, message: string): never {
   console.error(`${usage}\n${prog}: error: ${message}`);
   throw new ParserExit(2);
@@ -342,6 +342,20 @@ export const COMMANDS: Record<string, CommandRecord> = {
       });
       console.log(jsonDumps({ updated: changes }));
       return 0;
+    },
+  },
+  'boot mcp-config': {
+    spec: {
+      prog: 'ha_agent_lab boot mcp-config',
+      usage: 'usage: ha_agent_lab boot mcp-config [-h]',
+      positionals: [],
+      flags: {},
+    },
+    help: '',
+    run: async (args, { config }) => {
+      const result = writeMcpConfig(config);
+      console.log(jsonDumps(result));
+      return result.ok ? 0 : 1;
     },
   },
   'ha refresh-context': {
@@ -1710,10 +1724,10 @@ options:
 const BOOT_HELP = `${BOOT_USAGE}
 
 positional arguments:
-  {status,store}
+  {status,store,mcp-config}
 
 options:
-  -h, --help      show this help message and exit`;
+  -h, --help            show this help message and exit`;
 
 // argparse only described the commands that carry a help block; the four
 // oldest ha commands never had one, and their records leave `help` empty.

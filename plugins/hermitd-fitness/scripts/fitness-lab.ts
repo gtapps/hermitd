@@ -14,6 +14,8 @@
  *   weekly-load [--weeks N]         summary-activity load aggregation (default 4)
  *   weekly-patterns                 filesystem-only cardiac-drift trend (no token)
  *   rpe <activity-id|latest> <rpe> [notes...]   upsert subjective RPE + notes
+ *   env-check                       hatch: which Strava .env keys are missing (names only)
+ *   mcp-config                      hatch: write the strava entry into .mcp.json (no values printed)
  *
  * Common flags:
  *   --project-root <path>   default process.cwd(); .env + .hermit/ live there
@@ -114,17 +116,83 @@ export function parseEnv(projectRoot: string): Record<string, string> {
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq < 0) continue;
-    const key = line.slice(0, eq).trim();
+    const key = line.slice(0, eq).trim().replace(/^export\s+/, '');
     let val = line.slice(eq + 1).trim();
     if (
       (val.startsWith('"') && val.endsWith('"')) ||
       (val.startsWith("'") && val.endsWith("'"))
     ) {
       val = val.slice(1, -1);
+    } else {
+      val = val.replace(/\s+#.*$/, '');
     }
     out[key] = val;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// hatch: .env check + .mcp.json strava entry, so hatch never holds the secrets.
+// Results carry key names only, never values.
+// ---------------------------------------------------------------------------
+export const STRAVA_ENV_KEYS = [
+  'STRAVA_CLIENT_ID',
+  'STRAVA_CLIENT_SECRET',
+  'STRAVA_ACCESS_TOKEN',
+  'STRAVA_REFRESH_TOKEN',
+] as const;
+
+const missingStravaKeys = (env: Record<string, string>): string[] =>
+  STRAVA_ENV_KEYS.filter((k) => !env[k] || env[k] === 'replace_me');
+
+export function envCheck(projectRoot: string): { ok: boolean; missing: string[] } {
+  const missing = missingStravaKeys(parseEnv(projectRoot));
+  return { ok: missing.length === 0, missing };
+}
+
+export type McpConfigResult =
+  | { ok: true; server: 'strava'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
+  | { ok: false; missing?: string[]; message?: string };
+
+/** Adds a missing `strava` entry, replaces one still carrying `${...}`
+ *  placeholders, refreshes only the four credentials of a literal entry when
+ *  they differ from `.env` (keeping a pinned command/args), and skips it
+ *  otherwise. */
+export function writeMcpConfig(projectRoot: string): McpConfigResult {
+  const env = parseEnv(projectRoot);
+  const missing = missingStravaKeys(env);
+  if (missing.length > 0) return { ok: false, missing };
+
+  const mcpPath = path.join(projectRoot, '.mcp.json');
+  let doc: unknown = {};
+  if (fs.existsSync(mcpPath)) {
+    try {
+      doc = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+    } catch {
+      doc = null;
+    }
+  }
+  const isObject = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (!isObject(doc) || (doc.mcpServers != null && !isObject(doc.mcpServers))) {
+    return { ok: false, message: '.mcp.json is not a valid JSON object with an mcpServers object; fix or remove it, then re-run.' };
+  }
+  const servers: Record<string, unknown> = (doc.mcpServers ??= {});
+  const creds: Record<string, string> = Object.fromEntries(STRAVA_ENV_KEYS.map((k) => [k, env[k]]));
+  const existing = servers.strava;
+  let action: 'added' | 'replaced' | 'updated';
+  if (isObject(existing) && !JSON.stringify(existing).includes('${')) {
+    const current = isObject(existing.env) ? existing.env : {};
+    if (STRAVA_ENV_KEYS.every((k) => current[k] === creds[k])) {
+      return { ok: true, server: 'strava', action: 'skipped' };
+    }
+    servers.strava = { ...existing, env: { ...current, ...creds } };
+    action = 'updated';
+  } else {
+    action = existing === undefined ? 'added' : 'replaced';
+    servers.strava = { command: 'npx', args: ['-y', '@r-huijts/strava-mcp-server'], env: creds };
+  }
+  fs.writeFileSync(mcpPath, `${JSON.stringify(doc, null, 2)}\n`);
+  return { ok: true, server: 'strava', action };
 }
 
 function mcpConfigPath(): string {
@@ -990,8 +1058,15 @@ async function main() {
       const result = upsertRpe(projectRoot, id, rpe, notes, new Date().toISOString());
       console.log(JSON.stringify(result));
       process.exit(0);
+    } else if (cmd === 'env-check') {
+      console.log(JSON.stringify(envCheck(projectRoot)));
+      process.exit(0);
+    } else if (cmd === 'mcp-config') {
+      const result = writeMcpConfig(projectRoot);
+      console.log(JSON.stringify(result));
+      process.exit(result.ok ? 0 : 1);
     } else {
-      emitFetch(`unknown subcommand: ${cmd ?? '(none)'} — expected analyze|weekly-load|weekly-patterns|rpe`);
+      emitFetch(`unknown subcommand: ${cmd ?? '(none)'}; expected analyze|weekly-load|weekly-patterns|rpe|env-check|mcp-config`);
     }
   } catch (e) {
     if (e instanceof StravaAuthError) emitAuth();

@@ -12,7 +12,7 @@ A fitness/training domain layer for `hermitd`: skills, a Strava data subagent, S
 
 ## Rules
 
-- Never commit real Strava OAuth credentials; `.env` and `.mcp.json` are gitignored. The hatch skill reads `.env` with the `Read` tool, never `cat`/`grep`/`echo` (`Bash(cat .env*)` is a seeded native deny, and credential values must not land in the transcript).
+- Never commit real Strava OAuth credentials; `.env` and `.mcp.json` are gitignored. The hatch skill never reads `.env` itself: `fitness-lab.ts env-check` and `mcp-config` check it and write `.mcp.json`, so credential values never land in the transcript (`Bash(cat .env*)` is also a seeded native deny).
 - The MCP server key is `strava` (written to `.mcp.json` by `hatch`, tool IDs `mcp__strava__*`); skill text and `state-templates/native-permissions.json` depend on that name. Provided by `@r-huijts/strava-mcp-server` via `npx`, unpinned; operators can pin in their own `.mcp.json`.
 - Every Strava workflow calls `mcp__strava__check-strava-connection` first.
 - No persona or agent name copy ships here; those come from the consumer's `config.json`.

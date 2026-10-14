@@ -15,6 +15,7 @@ export function helpInvocations(): string[][] {
     ['boot', '-h'],
     ['boot', 'status', '-h'],
     ['boot', 'store', '-h'],
+    ['boot', 'mcp-config', '-h'],
     ['ha', '-h'],
     ...HA_COMMANDS.map((command) => ['ha', command, '-h']),
   ];

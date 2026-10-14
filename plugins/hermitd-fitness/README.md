@@ -101,7 +101,7 @@ claude plugin update hermitd-fitness@hermitd --scope local
 - **Strava writes require approval:** `star-segment`, `connect-strava`, `disconnect-strava`.
 - **Credentials stay local** — `.env` and `.mcp.json` are gitignored. The four Strava credentials in `.env` are written as literal values into `.mcp.json` (required for the MCP server's child process) and never committed.
 - **No token leakage** — never logs, prints, or writes token values to session files, proposals, or memory.
-- **`.env` stays off the shell** — there is no `Bash(*TOKEN*)` substring deny. `Bash(cat .env*)` is a seeded native deny, and credential values must not land in the transcript. Hatch reads `.env` via the `Read` tool, not shell commands.
+- **`.env` stays off the shell**: there is no `Bash(*TOKEN*)` substring deny. `Bash(cat .env*)` is a seeded native deny, and credential values must not land in the transcript. Hatch never reads `.env` itself: `fitness-lab.ts env-check` and `mcp-config` check it and write `.mcp.json`, printing key names only.
 
 ---
 
