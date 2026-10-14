@@ -26,8 +26,9 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // harness-command stage could record them for the resident. A resident-owned thread
   // takes them as ordinary session commands, like any other chat.
   const harnessCommand = !!name && ['clear', 'compact', 'model', 'effort', 'advisor', 'permission-mode'].includes(name);
+  const records = threadRecords(ctx.dir);
   const record = inThreadChat(ctx, env.sourceKey, env.chatId)
-    ? threadRecords(ctx.dir).find(task => task.conversation === key)
+    ? records.find(task => task.conversation === key)
     : undefined;
   if (!record) {
     // `!help` is answerable anywhere, so it gets its annotation rather than the
@@ -35,7 +36,13 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     if (conversationCommand) {
       return { context: name === 'help' ? '[conversation command: help]' : '[conversation command outside a task thread]' };
     }
-    return;
+    // A message outside any task thread may continue work the sender's spawned
+    // session already holds, so name those tasks for the responder to route to.
+    if (env.userId === null) return;
+    const requester = `${env.sourceKey}:${env.userId}`;
+    const bound = records.filter(task => task.owner.startsWith('helper:') && task.requester === requester).slice(0, 5);
+    if (!bound.length) return;
+    return { context: `[bound tasks: ${bound.map(task => `${task.id} "${safeForLLM(task.title).slice(0, 80)}"`).join('; ')}]` };
   }
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';

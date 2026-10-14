@@ -731,6 +731,34 @@ describe('task thread admission', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).not.toContain('[task thread');
   });
+
+  for (const scenario of [
+    { name: 'guild channel names the sender\'s bound task', source: 'discord', chat: 'home', owner: 'helper:review', requester: 'discord:u1', bound: true },
+    { name: 'chat without a record names the sender\'s bound task on any channel', source: 'telegram', chat: '12345', owner: 'helper:review', requester: 'telegram:u1', bound: true },
+    { name: 'worker-owned task is not named', source: 'discord', chat: 'home', owner: 'worker:a1b2c3d4e5f6a7b8c', requester: 'discord:u1', bound: false },
+    { name: 'resident-owned task is not named', source: 'discord', chat: 'home', owner: 'resident', requester: 'discord:u1', bound: false },
+    { name: 'another requester\'s bound task is not named', source: 'discord', chat: 'home', owner: 'helper:review', requester: 'discord:u2', bound: false },
+    { name: 'the bound task\'s own thread gets no bound-task line', source: 'discord', chat: 'thread', owner: 'helper:review', requester: 'discord:u1', bound: false },
+  ]) {
+    test(scenario.name, async () => {
+      const wd = trackedWorkdir();
+      fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: {
+        discord: { allowed_users: ['u1', 'u2'], bot_user_id: '777' }, telegram: { allowed_users: ['u1'] },
+      } }));
+      fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: {
+        home: { type: 0, parent_id: null, guild_id: 'guild', fetched_at: new Date().toISOString() },
+        thread: { type: 11, parent_id: 'home', guild_id: 'guild', fetched_at: new Date().toISOString() },
+      } } }));
+      const conversation = scenario.source === 'discord' ? 'discord:thread' : 'telegram:67890';
+      expect((await openTask(wd.dir, hermit(wd.dir), ['--title', 'Refactor watch reports', '--owner', scenario.owner, '--requester', scenario.requester, '--conversation', conversation])).exitCode).toBe(0);
+      const result = await runScript('user-prompt-pipeline.ts', {
+        stdin: JSON.stringify({ prompt: `<channel source="${scenario.source}" chat_id="${scenario.chat}" user="u1">also cover unprompted reports</channel>` }), cwd: wd.dir,
+      });
+      expect(result.exitCode).toBe(0);
+      if (scenario.bound) expect(result.stdout).toMatch(/\[bound tasks: T-[\w-]+ "Refactor watch reports"\]/);
+      else expect(result.stdout).not.toContain('[bound tasks');
+    });
+  }
 });
 
 describe('conversation commands', () => {
