@@ -3768,7 +3768,7 @@ describe('pricing', () => {
   test('pricing.js: unknown model falls back to sonnet-5', () => {
     const t = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 1_000_000, output: 0 };
     expect(Math.abs(
-      calculateCost('unknown-model', t).total - calculateCost('sonnet', t).total,
+      calculateCost('unknown-model', t).total - calculateCost('claude-sonnet-5', t).total,
     )).toBeLessThan(1e-12);
   });
 });

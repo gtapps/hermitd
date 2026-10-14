@@ -82,6 +82,10 @@ describe('calculateCost', () => {
     expect(calculateCost('claude-opus-5', { ...empty, input: 1_000_000, fast: true }).total).toBeCloseTo(10, 9);
   });
 
+  test('Sonnet 5.5 1M reads = $0.10', () => {
+    expect(calculateCost('claude-sonnet-5-5', { ...empty, cacheRead: 1_000_000 }).total).toBeCloseTo(0.10, 9);
+  });
+
   test('Opus 5.5 1M reads = $0.20', () => {
     expect(calculateCost('claude-opus-5-5', { ...empty, cacheRead: 1_000_000 }).total).toBeCloseTo(0.20, 9);
   });
