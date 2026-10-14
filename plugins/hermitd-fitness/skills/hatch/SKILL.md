@@ -42,7 +42,7 @@ If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fi
 
 ## Step 2 — .env verification
 
-**IMPORTANT: Do NOT use `grep`, `cat`, `echo`, or any Bash command to read `.env`. `Bash(cat .env*)` is a seeded native deny, and the values would land in the transcript. Use the `Read` tool only.**
+**IMPORTANT: Do NOT read `.env` yourself (no `Read`, `grep`, `cat` or `echo`): the values would land in the transcript, and `Bash(cat .env*)` is a seeded native deny. Use `fitness-lab.ts env-check` only.**
 
 Tell the operator:
 
@@ -63,14 +63,13 @@ Use `AskUserQuestion`: "(done / abort)"
 - **abort** → stop.
 - **done** → continue.
 
-Use the **Read tool** to read `.env`. Parse each line of the form `KEY=VALUE`. Verify that all four of these keys are present and their values are not empty and not `replace_me`:
+Run:
 
-- `STRAVA_CLIENT_ID`
-- `STRAVA_CLIENT_SECRET`
-- `STRAVA_ACCESS_TOKEN`
-- `STRAVA_REFRESH_TOKEN`
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/fitness-lab.ts env-check
+```
 
-If any value is missing or still set to `replace_me`, report which ones and loop back to the `AskUserQuestion` above. Do not proceed until all four are valid.
+It prints `{"ok": ..., "missing": [...]}` with key names only, never values. A key counts as missing when it is absent, empty, or still `replace_me`. If `missing` is non-empty, report those names and loop back to the `AskUserQuestion` above. Do not proceed until `ok` is `true`.
 
 ---
 
@@ -85,18 +84,19 @@ If any value is missing or still set to `replace_me`, report which ones and loop
 
 This is a local reuse-vs-install choice only — do not attempt to reconcile or edit the operator's other MCP configs.
 
-Using the four values you parsed from `.env` in Step 2 (held in working context — do not re-read .env), write the Strava MCP server entry into the project's `.mcp.json`.
+Write the Strava MCP server entry into the project's `.mcp.json` with:
 
-**Do not embed `${VAR}` placeholders — substitute literal values.** Claude Code passes MCP `env` blocks as literal environment variables to the child process; it does not expand shell variable syntax.
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/fitness-lab.ts mcp-config
+```
 
-Read the project root `.mcp.json` (use the Read tool; treat as `{ "mcpServers": {} }` if the file does not exist).
+It reads `.env` itself, so the credentials never enter the conversation. Do not Read `.env` or `.mcp.json` to write this entry by hand. It prints JSON with no secret:
+- `action: "added"` → entry written.
+- `action: "replaced"` → an old entry with `${...}` placeholders was rewritten with literal values (Claude Code passes MCP `env` blocks literally; it does not expand shell variable syntax).
+- `action: "skipped"` → a `strava` entry with literal values already exists.
+- `ok: false` → relay `missing` (key names) or `message`, go back to Step 2, then re-run.
 
-Check if a `strava` key already exists under `mcpServers`:
-- **Absent** → add the entry.
-- **Present with `${...}` placeholders** → rewrite just the `strava` entry with literal values.
-- **Present with literal values** → skip (already configured).
-
-The `strava` entry shape:
+The entry it writes has this shape:
 
 ```json
 {
@@ -104,16 +104,14 @@ The `strava` entry shape:
     "command": "npx",
     "args": ["-y", "@r-huijts/strava-mcp-server"],
     "env": {
-      "STRAVA_CLIENT_ID": "<literal STRAVA_CLIENT_ID from .env>",
-      "STRAVA_CLIENT_SECRET": "<literal STRAVA_CLIENT_SECRET from .env>",
-      "STRAVA_ACCESS_TOKEN": "<literal STRAVA_ACCESS_TOKEN from .env>",
-      "STRAVA_REFRESH_TOKEN": "<literal STRAVA_REFRESH_TOKEN from .env>"
+      "STRAVA_CLIENT_ID": "<literal from .env>",
+      "STRAVA_CLIENT_SECRET": "<literal from .env>",
+      "STRAVA_ACCESS_TOKEN": "<literal from .env>",
+      "STRAVA_REFRESH_TOKEN": "<literal from .env>"
     }
   }
 }
 ```
-
-Write the updated `.mcp.json` using the Write tool.
 
 **Add `.mcp.json` and `.env` to `.gitignore`** if not already present. Read the project `.gitignore`, check for each entry; append any that are missing on new lines using Edit.
 

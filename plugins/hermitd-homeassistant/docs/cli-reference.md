@@ -34,6 +34,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha set-device-area <device_id> --area <ar
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha rename-device <device_id> --name <name>
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status [--probe]
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot store --language <locale> --url <url> [--token <token>]
+${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot mcp-config   # hatch: write the homeassistant entry into .mcp.json from .env
 ```
 
 The full current surface (dashboards, backups, blueprints, energy prefs, floors/labels, call-service, etc.) is larger — see `src/cli.ts` or `ha-agent-lab --help`.

@@ -76,6 +76,9 @@ const gatePath = path.join(PLUGIN_ROOT, 'state-templates/bin/fitness-weekly-patt
 ok('weekly patterns gate template exists', fs.existsSync(gatePath));
 const hatch = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/hatch/SKILL.md'), 'utf-8');
 ok('hatch installs weekly patterns gate', hatch.includes('install -m 755') && hatch.includes('state-templates/bin/fitness-weekly-patterns-gate'));
+ok('hatch checks and writes Strava credentials via fitness-lab, never by reading .env',
+  hatch.includes('fitness-lab.ts env-check') && hatch.includes('fitness-lab.ts mcp-config') &&
+  !hatch.includes('Use the **Read tool** to read `.env`') && !hatch.includes('held in working context'));
 
 const routineEntries = [...hatch.matchAll(/\{\n  "id": "([^"]+)",[\s\S]*?\n\}/g)]
   .map(([block]) => JSON.parse(block));

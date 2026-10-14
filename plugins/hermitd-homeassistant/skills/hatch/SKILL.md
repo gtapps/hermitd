@@ -75,20 +75,19 @@ Reference: https://www.home-assistant.io/integrations/mcp_server/
 
 **Step B — Write `.mcp.json`**
 
-Read the HA URL from the `boot status` JSON (`active_url` field, already fetched in §2). Read the token from `.env` using:
+Run:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status
+${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot mcp-config
 ```
 
-For the token value, use the **Read** tool on `.env` (not Bash — the deny-pattern hook blocks any Bash argument containing the literal string `TOKEN`, including via `bun -e`). Parse the `HOMEASSISTANT_TOKEN=...` line in-memory and use the value directly when writing `.mcp.json`. Do not echo the token to the conversation or log it.
+It writes the `homeassistant` entry from `.env` itself, so the token never enters the conversation. Do not Read `.env` or write this entry by hand. It prints JSON with no secret:
+- `action: "added"` → entry written.
+- `action: "replaced"` → an old `${...}` placeholder entry was rewritten with literal values; tell the user the stale entry was replaced.
+- `action: "skipped"` → an entry with literal values already exists.
+- `ok: false` → relay `missing` (key names) or `message`, return to §2, then re-run.
 
-Check the project root for `.mcp.json`:
-- If absent → write it with literal values substituted.
-- If present → read it and check the `homeassistant` entry:
-  - If absent → merge it in with literal values.
-  - If present **and** the `url` or `Authorization` value contains `${` (old placeholder format) → rewrite that entry with literal values and tell the user the stale entry was replaced.
-  - If present and already contains literal values → skip.
+The entry it writes has this shape:
 
 ```json
 {
@@ -102,7 +101,7 @@ Check the project root for `.mcp.json`:
 }
 ```
 
-Replace `<HOMEASSISTANT_URL>` with the `active_url` from `boot status` (resolves to `HOMEASSISTANT_URL`, or `HOMEASSISTANT_LOCAL_URL` for existing installs) and `<HOMEASSISTANT_TOKEN>` with the literal values read above.
+The URL is the `active_url` from `boot status` (`HOMEASSISTANT_URL`, or `HOMEASSISTANT_LOCAL_URL` for existing installs).
 
 The name `homeassistant` is required — skills and the safety hook match on `mcp__homeassistant__*` tool IDs.
 

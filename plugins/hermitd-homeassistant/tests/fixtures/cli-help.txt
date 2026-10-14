@@ -8,13 +8,13 @@ options:
   -h, --help  show this help message and exit
 
 $ ha_agent_lab boot -h
-usage: ha_agent_lab boot [-h] {status,store} ...
+usage: ha_agent_lab boot [-h] {status,store,mcp-config} ...
 
 positional arguments:
-  {status,store}
+  {status,store,mcp-config}
 
 options:
-  -h, --help      show this help message and exit
+  -h, --help            show this help message and exit
 
 $ ha_agent_lab boot status -h
 usage: ha_agent_lab boot status [-h] [--probe]
@@ -26,6 +26,12 @@ $ ha_agent_lab boot store -h
 usage: ha_agent_lab boot store [-h] [--language LANGUAGE] [--url URL]
                                [--local-url LOCAL_URL]
                                [--remote-url REMOTE_URL] [--token TOKEN]
+
+options:
+  -h, --help  show this help message and exit
+
+$ ha_agent_lab boot mcp-config -h
+usage: ha_agent_lab boot mcp-config [-h]
 
 options:
   -h, --help  show this help message and exit

@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `hatch` checks Strava credentials and writes the `strava` MCP entry with `fitness-lab.ts env-check` and `mcp-config`, so the credentials no longer pass through the conversation.
+
 ## [0.2.5] - 2026-10-10
 
 ### Fixed

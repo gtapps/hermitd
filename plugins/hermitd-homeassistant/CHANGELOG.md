@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `hatch` writes the `homeassistant` MCP entry with the new `ha-agent-lab boot mcp-config`, so the token no longer passes through the conversation.
+
 ## [0.4.22] - 2026-10-10
 
 ### Fixed

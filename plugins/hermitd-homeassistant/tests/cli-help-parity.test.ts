@@ -27,11 +27,12 @@ test('help output is byte-identical to the fixture', async () => {
   expect(await renderAllHelp()).toBe(readFileSync(FIXTURE, 'utf8'));
 });
 
-test('the fixture covers every ha command plus both boot commands', () => {
+test('the fixture covers every ha command plus every boot command', () => {
   const fixture = readFileSync(FIXTURE, 'utf8');
   for (const command of HA_COMMANDS) {
     expect(fixture).toContain(`$ ha_agent_lab ha ${command} -h\n`);
   }
   expect(fixture).toContain('$ ha_agent_lab boot status -h\n');
   expect(fixture).toContain('$ ha_agent_lab boot store -h\n');
+  expect(fixture).toContain('$ ha_agent_lab boot mcp-config -h\n');
 });

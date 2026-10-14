@@ -560,5 +560,58 @@ console.log('\ncontract: rpe validation:');
   fs.rmSync(proj, { recursive: true });
 }
 
+console.log('\ncontract: env-check + mcp-config (hatch):');
+{
+  const SECRET = 'strava-secret-value';
+  const fullEnv =
+    `STRAVA_CLIENT_ID=123\nSTRAVA_CLIENT_SECRET=${SECRET}\nSTRAVA_ACCESS_TOKEN=${SECRET}-a\nSTRAVA_REFRESH_TOKEN=${SECRET}-r\n`;
+  const mcpOf = (proj: string) => JSON.parse(fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'));
+
+  // env-check: names only
+  let proj = tmpProject();
+  fs.writeFileSync(path.join(proj, '.env'), `STRAVA_CLIENT_ID=123\nSTRAVA_CLIENT_SECRET=${SECRET}\nSTRAVA_ACCESS_TOKEN=replace_me\n`);
+  let r = await run(['env-check', '--project-root', proj]);
+  ok('env-check exit 0', r.code === 0);
+  eq('env-check missing names', JSON.parse(r.out).missing, ['STRAVA_ACCESS_TOKEN', 'STRAVA_REFRESH_TOKEN']);
+  ok('env-check prints no secret', !r.out.includes(SECRET));
+
+  // mcp-config refuses while incomplete
+  r = await run(['mcp-config', '--project-root', proj]);
+  ok('mcp-config exit 1 when incomplete', r.code === 1);
+  ok('mcp-config wrote nothing', !fs.existsSync(path.join(proj, '.mcp.json')));
+  fs.rmSync(proj, { recursive: true });
+
+  // added, other servers kept
+  proj = tmpProject();
+  fs.writeFileSync(path.join(proj, '.env'), fullEnv);
+  fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
+  r = await run(['mcp-config', '--project-root', proj]);
+  ok('mcp-config exit 0', r.code === 0);
+  eq('mcp-config added', JSON.parse(r.out), { ok: true, server: 'strava', action: 'added' });
+  ok('mcp-config prints no secret', !r.out.includes(SECRET));
+  eq('strava env literal', mcpOf(proj).mcpServers.strava.env.STRAVA_REFRESH_TOKEN, `${SECRET}-r`);
+  eq('other server kept', mcpOf(proj).mcpServers.other, { command: 'x' });
+
+  // literal entry skipped
+  r = await run(['mcp-config', '--project-root', proj]);
+  eq('mcp-config skipped', JSON.parse(r.out).action, 'skipped');
+
+  // placeholder entry replaced
+  fs.writeFileSync(
+    path.join(proj, '.mcp.json'),
+    JSON.stringify({ mcpServers: { strava: { command: 'npx', env: { STRAVA_CLIENT_ID: '${STRAVA_CLIENT_ID}' } } } }),
+  );
+  r = await run(['mcp-config', '--project-root', proj]);
+  eq('mcp-config replaced', JSON.parse(r.out).action, 'replaced');
+  eq('placeholder rewritten', mcpOf(proj).mcpServers.strava.env.STRAVA_CLIENT_ID, '123');
+
+  // invalid JSON left alone
+  fs.writeFileSync(path.join(proj, '.mcp.json'), '{ not json');
+  r = await run(['mcp-config', '--project-root', proj]);
+  ok('mcp-config exit 1 on invalid json', r.code === 1);
+  eq('invalid json untouched', fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'), '{ not json');
+  fs.rmSync(proj, { recursive: true });
+}
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

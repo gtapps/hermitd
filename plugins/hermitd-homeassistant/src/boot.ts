@@ -190,6 +190,42 @@ export function saveBootPreferences(
   return changes;
 }
 
+export type McpConfigResult =
+  | { ok: true; server: 'homeassistant'; action: 'added' | 'replaced' | 'skipped' }
+  | { ok: false; missing?: string[]; message?: string };
+
+/** Write the `homeassistant` entry into the project `.mcp.json` from config, so
+ *  hatch never has to hold the token. Adds a missing entry, replaces one still
+ *  carrying `${...}` placeholders, and skips one that already has literal
+ *  values. The result never carries the URL or token. */
+export function writeMcpConfig(config: AppConfig): McpConfigResult {
+  const missing = config.missingHaConfigurationFields();
+  if (missing.length > 0) return { ok: false, missing };
+
+  const mcpPath = join(config.root, '.mcp.json');
+  let doc: { mcpServers?: Record<string, unknown> } = {};
+  if (existsSync(mcpPath)) {
+    try {
+      doc = JSON.parse(readFileSync(mcpPath, 'utf8'));
+    } catch {
+      return { ok: false, message: '.mcp.json is not valid JSON; fix or remove it, then re-run.' };
+    }
+  }
+  const servers = (doc.mcpServers ??= {});
+  let action: 'added' | 'replaced';
+  if (servers.homeassistant === undefined) action = 'added';
+  else if (JSON.stringify(servers.homeassistant).includes('${')) action = 'replaced';
+  else return { ok: true, server: 'homeassistant', action: 'skipped' };
+
+  servers.homeassistant = {
+    type: 'http',
+    url: `${config.primaryUrl()!.replace(/\/+$/, '')}/api/mcp`,
+    headers: { Authorization: `Bearer ${config.haToken}` },
+  };
+  writeFileSync(mcpPath, `${JSON.stringify(doc, null, 2)}\n`);
+  return { ok: true, server: 'homeassistant', action };
+}
+
 export async function probeEndpoint(
   url: string | null,
   config: AppConfig,

@@ -24,3 +24,11 @@ test('knowledge-schema extension declares every HA type', () => {
     expect(skillText).toContain(`- ${type}:`);
   }
 });
+
+// --- MCP entry (§4 Step B) ---
+
+test('hatch writes the MCP entry via the CLI, never by reading .env', () => {
+  expect(skillText).toContain('ha-agent-lab boot mcp-config');
+  expect(skillText).not.toMatch(/\*\*Read\*\* tool on `\.env`/);
+  expect(skillText).not.toContain('HOMEASSISTANT_TOKEN=...');
+});
