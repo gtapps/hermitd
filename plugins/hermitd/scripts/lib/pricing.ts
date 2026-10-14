@@ -1,11 +1,11 @@
 // Per-1M-token pricing (USD). Source of truth for all cost calculations.
-// Verified 2026-09-29 against:
+// Verified 2026-10-14 against:
 //   https://platform.claude.com/docs/en/about-claude/models/overview.md
 //   https://platform.claude.com/docs/en/about-claude/pricing.md
 //   https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md
 // Change ONLY this file when Anthropic updates prices; bump the verified date to today.
 
-export const PRICING_VERIFIED = '2026-09-29';
+export const PRICING_VERIFIED = '2026-10-14';
 
 export const CACHE_WRITE_5M = 1.25;
 export const CACHE_WRITE_1H = 2;
@@ -41,7 +41,7 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-opus-4-7':  { input: 5, output: 25 },
   'claude-opus-4-6':  { input: 5, output: 25 },
   'claude-opus-4-5':  { input: 5, output: 25 },
-  'claude-sonnet-5-5': { input: 2, output: 10 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheReadMult: 0.05 },
   'claude-sonnet-5':  { input: 2, output: 10 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
   // Base tier only: Haiku 5.5 rates rise to $0.50 / $2.50 past 100k prompt tokens.
