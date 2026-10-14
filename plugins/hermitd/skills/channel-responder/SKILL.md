@@ -77,7 +77,7 @@ Precedence: hook-classified commands, then a pending micro answer, then an annot
 Invoke `/hermitd:task` for an assignment at or above the TASKS.md threshold, any message in an annotated task thread, a confirmation, cancel or changed definition of done for a selected record, a `[conversation command: ...]` annotation, or a `WORKER <task-id> ...` completion.
 Acknowledge first through the channel.
 A later message in an annotated task thread is steering, never a second record.
-A `[bound tasks: …]` annotation lists the sender's open tasks held by a spawned session. An assignment that continues one of them is steering for that record: reply naming that task, then invoke `/hermitd:task` to handle it as **Steer the bound session** on that record. Anything else opens a new task as usual.
+A `[bound tasks: …]` annotation lists the sender's open tasks held by a spawned session. An assignment that continues one of them is steering for that record: reply naming that task, then invoke `/hermitd:task` to handle it as **Steer the bound session** on that record. Anything else follows general classification.
 
 - **Task thread**, **Conversation command**, **New instruction**: invoke `/hermitd:task` through the task route above.
 
