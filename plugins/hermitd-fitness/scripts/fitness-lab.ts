@@ -116,13 +116,15 @@ export function parseEnv(projectRoot: string): Record<string, string> {
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq < 0) continue;
-    const key = line.slice(0, eq).trim();
+    const key = line.slice(0, eq).trim().replace(/^export\s+/, '');
     let val = line.slice(eq + 1).trim();
     if (
       (val.startsWith('"') && val.endsWith('"')) ||
       (val.startsWith("'") && val.endsWith("'"))
     ) {
       val = val.slice(1, -1);
+    } else {
+      val = val.replace(/\s+#.*$/, '');
     }
     out[key] = val;
   }
@@ -149,36 +151,46 @@ export function envCheck(projectRoot: string): { ok: boolean; missing: string[] 
 }
 
 export type McpConfigResult =
-  | { ok: true; server: 'strava'; action: 'added' | 'replaced' | 'skipped' }
+  | { ok: true; server: 'strava'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
   | { ok: false; missing?: string[]; message?: string };
 
 /** Adds a missing `strava` entry, replaces one still carrying `${...}`
- *  placeholders, and skips one that already has literal values. */
+ *  placeholders, refreshes only the four credentials of a literal entry when
+ *  they differ from `.env` (keeping a pinned command/args), and skips it
+ *  otherwise. */
 export function writeMcpConfig(projectRoot: string): McpConfigResult {
   const env = parseEnv(projectRoot);
   const missing = missingStravaKeys(env);
   if (missing.length > 0) return { ok: false, missing };
 
   const mcpPath = path.join(projectRoot, '.mcp.json');
-  let doc: { mcpServers?: Record<string, unknown> } = {};
+  let doc: unknown = {};
   if (fs.existsSync(mcpPath)) {
     try {
       doc = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
     } catch {
-      return { ok: false, message: '.mcp.json is not valid JSON; fix or remove it, then re-run.' };
+      doc = null;
     }
   }
-  const servers = (doc.mcpServers ??= {});
-  let action: 'added' | 'replaced';
-  if (servers.strava === undefined) action = 'added';
-  else if (JSON.stringify(servers.strava).includes('${')) action = 'replaced';
-  else return { ok: true, server: 'strava', action: 'skipped' };
-
-  servers.strava = {
-    command: 'npx',
-    args: ['-y', '@r-huijts/strava-mcp-server'],
-    env: Object.fromEntries(STRAVA_ENV_KEYS.map((k) => [k, env[k]])),
-  };
+  const isObject = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (!isObject(doc) || (doc.mcpServers != null && !isObject(doc.mcpServers))) {
+    return { ok: false, message: '.mcp.json is not a valid JSON object with an mcpServers object; fix or remove it, then re-run.' };
+  }
+  const servers: Record<string, unknown> = (doc.mcpServers ??= {});
+  const creds: Record<string, string> = Object.fromEntries(STRAVA_ENV_KEYS.map((k) => [k, env[k]]));
+  const existing = servers.strava;
+  let action: 'added' | 'replaced' | 'updated';
+  if (isObject(existing) && !JSON.stringify(existing).includes('${')) {
+    const current = isObject(existing.env) ? existing.env : {};
+    if (STRAVA_ENV_KEYS.every((k) => current[k] === creds[k])) {
+      return { ok: true, server: 'strava', action: 'skipped' };
+    }
+    servers.strava = { ...existing, env: { ...current, ...creds } };
+    action = 'updated';
+  } else {
+    action = existing === undefined ? 'added' : 'replaced';
+    servers.strava = { command: 'npx', args: ['-y', '@r-huijts/strava-mcp-server'], env: creds };
+  }
   fs.writeFileSync(mcpPath, `${JSON.stringify(doc, null, 2)}\n`);
   return { ok: true, server: 'strava', action };
 }
@@ -1054,7 +1066,7 @@ async function main() {
       console.log(JSON.stringify(result));
       process.exit(result.ok ? 0 : 1);
     } else {
-      emitFetch(`unknown subcommand: ${cmd ?? '(none)'} — expected analyze|weekly-load|weekly-patterns|rpe|env-check|mcp-config`);
+      emitFetch(`unknown subcommand: ${cmd ?? '(none)'}; expected analyze|weekly-load|weekly-patterns|rpe|env-check|mcp-config`);
     }
   } catch (e) {
     if (e instanceof StravaAuthError) emitAuth();

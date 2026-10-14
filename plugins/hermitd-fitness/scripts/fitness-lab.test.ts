@@ -596,6 +596,18 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   r = await run(['mcp-config', '--project-root', proj]);
   eq('mcp-config skipped', JSON.parse(r.out).action, 'skipped');
 
+  // literal entry with stale credentials: only the credentials refreshed, pinned args kept
+  fs.writeFileSync(
+    path.join(proj, '.mcp.json'),
+    JSON.stringify({ mcpServers: { strava: { command: 'npx', args: ['-y', '@r-huijts/strava-mcp-server@1.2.3'], env: { STRAVA_CLIENT_ID: '123', STRAVA_CLIENT_SECRET: 'old', STRAVA_ACCESS_TOKEN: 'old', STRAVA_REFRESH_TOKEN: 'old', EXTRA: 'keep' } } } }),
+  );
+  r = await run(['mcp-config', '--project-root', proj]);
+  eq('mcp-config updated', JSON.parse(r.out).action, 'updated');
+  ok('mcp-config updated prints no secret', !r.out.includes(SECRET));
+  eq('pinned args kept', mcpOf(proj).mcpServers.strava.args, ['-y', '@r-huijts/strava-mcp-server@1.2.3']);
+  eq('refresh token refreshed', mcpOf(proj).mcpServers.strava.env.STRAVA_REFRESH_TOKEN, `${SECRET}-r`);
+  eq('extra env kept', mcpOf(proj).mcpServers.strava.env.EXTRA, 'keep');
+
   // placeholder entry replaced
   fs.writeFileSync(
     path.join(proj, '.mcp.json'),
@@ -610,6 +622,21 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   r = await run(['mcp-config', '--project-root', proj]);
   ok('mcp-config exit 1 on invalid json', r.code === 1);
   eq('invalid json untouched', fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'), '{ not json');
+
+  // non-object mcpServers left alone (no silent drop of the entry)
+  fs.writeFileSync(path.join(proj, '.mcp.json'), '{"mcpServers": []}');
+  r = await run(['mcp-config', '--project-root', proj]);
+  ok('mcp-config exit 1 on array mcpServers', r.code === 1 && JSON.parse(r.out).ok === false);
+  eq('array mcpServers untouched', fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'), '{"mcpServers": []}');
+  fs.rmSync(proj, { recursive: true });
+
+  // `export KEY=value` and inline comments parse like dotenv
+  proj = tmpProject();
+  fs.writeFileSync(path.join(proj, '.env'), fullEnv.replace('STRAVA_CLIENT_ID=123', 'export STRAVA_CLIENT_ID=123 # app id'));
+  r = await run(['env-check', '--project-root', proj]);
+  eq('env-check accepts export prefix', JSON.parse(r.out).missing, []);
+  r = await run(['mcp-config', '--project-root', proj]);
+  eq('inline comment stripped', mcpOf(proj).mcpServers.strava.env.STRAVA_CLIENT_ID, '123');
   fs.rmSync(proj, { recursive: true });
 }
 

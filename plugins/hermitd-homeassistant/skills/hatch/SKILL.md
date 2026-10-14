@@ -84,7 +84,8 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot mcp-config
 It writes the `homeassistant` entry from `.env` itself, so the token never enters the conversation. Do not Read `.env` or write this entry by hand. It prints JSON with no secret:
 - `action: "added"` → entry written.
 - `action: "replaced"` → an old `${...}` placeholder entry was rewritten with literal values; tell the user the stale entry was replaced.
-- `action: "skipped"` → an entry with literal values already exists.
+- `action: "updated"` → an existing literal entry had a different URL or token than `.env`; only those values were refreshed.
+- `action: "skipped"` → the existing entry already matches `.env`.
 - `ok: false` → relay `missing` (key names) or `message`, return to §2, then re-run.
 
 The entry it writes has this shape:

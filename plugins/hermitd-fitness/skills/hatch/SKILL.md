@@ -93,7 +93,8 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/fitness-lab.ts mcp-config
 It reads `.env` itself, so the credentials never enter the conversation. Do not Read `.env` or `.mcp.json` to write this entry by hand. It prints JSON with no secret:
 - `action: "added"` → entry written.
 - `action: "replaced"` → an old entry with `${...}` placeholders was rewritten with literal values (Claude Code passes MCP `env` blocks literally; it does not expand shell variable syntax).
-- `action: "skipped"` → a `strava` entry with literal values already exists.
+- `action: "updated"` → an existing literal entry had different credentials than `.env`; only the four credential values were refreshed.
+- `action: "skipped"` → the existing `strava` entry already matches `.env`.
 - `ok: false` → relay `missing` (key names) or `message`, go back to Step 2, then re-run.
 
 The entry it writes has this shape:

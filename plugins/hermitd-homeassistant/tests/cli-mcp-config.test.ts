@@ -58,16 +58,37 @@ test('placeholder entry: replaced, other servers kept', async () => {
   expect(doc.mcpServers.homeassistant.headers.Authorization).toBe(`Bearer ${TOKEN}`);
 });
 
-test('literal entry: skipped and left untouched', async () => {
+test('literal entry matching config: skipped and left untouched', async () => {
   const root = tmpPath();
   const original = JSON.stringify({
-    mcpServers: { homeassistant: { type: 'http', url: 'http://old/api/mcp', headers: { Authorization: 'Bearer old' } } },
+    mcpServers: { homeassistant: { type: 'http', url: `${URL}/api/mcp`, headers: { Authorization: `Bearer ${TOKEN}` } } },
   });
   writeFileSync(join(root, '.mcp.json'), original);
   const { code, json } = await run(config(root));
   expect(code).toBe(0);
   expect(json.action).toBe('skipped');
   expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(original);
+});
+
+test('literal entry with a stale token: only url and token refreshed', async () => {
+  const root = tmpPath();
+  writeFileSync(
+    join(root, '.mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        homeassistant: { type: 'http', url: 'http://old/api/mcp', headers: { Authorization: 'Bearer old', 'X-Extra': 'keep' }, timeout: 5 },
+      },
+    }),
+  );
+  const { code, json } = await run(config(root));
+  expect(code).toBe(0);
+  expect(json.action).toBe('updated');
+  expect(readMcp(root).mcpServers.homeassistant).toEqual({
+    type: 'http',
+    url: `${URL}/api/mcp`,
+    headers: { Authorization: `Bearer ${TOKEN}`, 'X-Extra': 'keep' },
+    timeout: 5,
+  });
 });
 
 test('missing token: exit 1, names the key, writes nothing', async () => {
@@ -85,4 +106,15 @@ test('invalid .mcp.json: exit 1, file left as is', async () => {
   expect(code).toBe(1);
   expect(json.ok).toBe(false);
   expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe('{ not json');
+});
+
+test('non-object .mcp.json or mcpServers: exit 1, file left as is', async () => {
+  for (const body of ['null', '[]', '{"mcpServers": []}']) {
+    const root = tmpPath();
+    writeFileSync(join(root, '.mcp.json'), body);
+    const { code, json } = await run(config(root));
+    expect(code).toBe(1);
+    expect(json.ok).toBe(false);
+    expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(body);
+  }
 });
