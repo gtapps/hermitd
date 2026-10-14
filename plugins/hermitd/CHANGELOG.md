@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
+
 ## [1.4.14] - 2026-10-13
 
 ### Added
