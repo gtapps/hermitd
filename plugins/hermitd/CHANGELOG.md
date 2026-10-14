@@ -6,7 +6,7 @@
 - An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
 
 ### Fixed
-- Sonnet 5.5 cache reads are priced at $0.10 per million tokens, matching Anthropic's rate.
+- Sonnet 5.5 cache reads are priced at $0.10 per million tokens, matching Anthropic's rate. Rows logged before the upgrade keep their overstated figures.
 
 ## [1.4.14] - 2026-10-13
 
