@@ -153,7 +153,7 @@ const ROUTINE_CHAT_LEAF = /^routines\.(\d+)\.chat$/;
  * routine (the operator's own brief, another chat's digest) into it. Removing a
  * binding sends output home, which exposes nothing, so it stays silent.
  */
-export function chatBindingChanged(next: Json[], current: Json[], turn: string | null): boolean {
+export function chatBindingChanged(next: Json[], current: Json[], turn: () => string | null): boolean {
   const before = new Map<string, Json>();
   for (const r of Array.isArray(current) ? current : []) {
     if (r && r.id) before.set(String(r.id), r.chat ?? null);
@@ -163,7 +163,9 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: string |
     if (chat === null) continue;
     const prior = r?.id ? before.get(String(r.id)) : undefined;
     if (prior === chat) continue;
-    if (turn === null || chat !== turn || prior !== undefined) return true;
+    if (prior !== undefined) return true;
+    const asking = turn();
+    if (asking === null || chat !== asking) return true;
   }
   return false;
 }
@@ -195,11 +197,11 @@ function turnConversation(payload: Json): string | null {
 function routinesWriteAsks(value: string, turn: () => string | null): boolean {
   const current = currentRoutines();
   return precheckSetChanged(value, current)
-    || chatBindingChanged(parseRoutineWrite(value) ?? [], current, turn());
+    || chatBindingChanged(parseRoutineWrite(value) ?? [], current, turn);
 }
 
 /** `set routines.<n>.chat <value>`, judged against that routine as it stands on disk. */
-function chatLeafChanged(dotted: string, value: string, turn: string | null): boolean {
+function chatLeafChanged(dotted: string, value: string, turn: () => string | null): boolean {
   if (value === 'none' || value === 'clear') return false;
   const routine = currentRoutines()[Number(ROUTINE_CHAT_LEAF.exec(dotted)![1])];
   if (!routine) return true;
@@ -428,7 +430,7 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
     const needsAsk = ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
         && routinesWriteAsks(value, turn))
-      || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn()));
+      || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn));
     if (!needsAsk) continue;
     const label = value ? displayFor(dotted, value) : dotted;
     if (!shown.includes(label)) shown.push(label);

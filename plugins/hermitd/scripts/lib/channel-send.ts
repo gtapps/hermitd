@@ -21,6 +21,7 @@ import { readChannelToken } from './channel-token';
 import { recordChannelHealth } from './channel-health';
 import { appendJsonlLine } from './append-jsonl';
 import { isKey } from './conversation-key';
+import { getEnabledChannels } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 
 type Json = any;
@@ -295,15 +296,19 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     const owned = routineChat(config, notice.routine);
     const target = owned ?? clientTarget;
     // Drop the client leg when the maintainer text already landed in that same
-    // chat — either via the 'client' fallback to the home chat, or because
+    // chat: either via the 'client' fallback to the home chat, or because
     // maintainer_channel_id resolves to the same physical chat.
     const landedInClientChat =
       (out.maintainer?.route === 'client' && (!owned || sameChat(owned, clientTarget))) ||
       (out.maintainer?.route === 'maintainer_channel' && sameChat(maintainerTarget, target));
     if (!landedInClientChat) {
-      out.client = await sendToChannel(hermitDir, notice.client, {
-        target: target ?? undefined, timeoutMs: notice.timeoutMs, config,
-      });
+      // A disabled channel sends nothing, owned chat or not. An owned chat's
+      // outcome is not the home route's, so it leaves platform health alone.
+      out.client = owned && !getEnabledChannels(config).includes(owned.id)
+        ? { ok: false, error: 'channel_disabled' }
+        : await sendToChannel(hermitDir, notice.client, {
+          target: target ?? undefined, timeoutMs: notice.timeoutMs, config, recordHealth: !owned,
+        });
       if (!out.client.ok) {
         const error = appendMaintainerFindings(hermitDir, notice.client, 'undelivered-client-notice');
         out.client.undelivered_saved = error === null;

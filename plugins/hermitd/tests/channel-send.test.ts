@@ -482,6 +482,35 @@ describe('channel-send --notice --routine', () => {
     }
   });
 
+  test('an owning-chat send leaves the home route health alone', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({}, routines('telegram:-100777'));
+    try {
+      expect((await send(wd, { client: 'PLAIN' }, stub, 'weekly')).exitCode).toBe(0);
+      expect(readState(wd, 'channel-health.json')).toBe('');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('an owning chat on a disabled channel sends nothing there', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({}, routines('discord:42'));
+    try {
+      const cfgPath = hermit(wd.dir, 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      cfg.channels.discord = { enabled: false };
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+      const r = await send(wd, { client: 'TEAM ONLY' }, stub, 'weekly');
+      expect(JSON.parse(r.stdout).result.client).toMatchObject({ ok: false, error: 'channel_disabled' });
+      expect(stub.requests.every(q => q.body.text !== 'TEAM ONLY')).toBe(true);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('an untagged notice, or a routine with no chat, goes home', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir({}, routines('telegram:-100777'));
