@@ -23,8 +23,8 @@ import path from 'node:path';
 import { runSelfEval, type SelfEvalProposal } from './self-eval';
 import {
   readAlertState, defaultAlertState, quarantineAlertState, writeAlertState,
-  classifyTick, deriveMicroPendingKeys, deriveProposalPendingKeys, FiringItem,
-  MICRO_PREFIX, PROPOSAL_PREFIX, DOCTOR_PREFIX, isStructuredKey,
+  classifyTick, deriveMicroPendingKeys, deriveProposalPendingKeys, FiringItem, DecisionRefresh,
+  MICRO_PREFIX, PROPOSAL_PREFIX, DOCTOR_PREFIX, isStructuredKey, scrubInternalIds,
 } from '../alert-state';
 import { currentHHMM, todayYMD, resolveHermitNowMs } from '../time';
 import { readSettledConfig } from '../config-read';
@@ -62,6 +62,28 @@ function validateFiring(raw: Json): RawFiring[] | null {
     const item = typeof entry.item === 'string' && entry.item ? entry.item : undefined;
     if (!key && !item) return null;
     out.push({ key, item, text: entry.text });
+  }
+  return out;
+}
+
+// Lenient, unlike validateFiring: `refresh` only rewords the digest, so a bad
+// value degrades to no refresh instead of costing the tick. Only keys this
+// script derived from their source of truth are accepted; `open` needs no
+// entry because the queued text already stands.
+const REFRESH_TEXT_MAX = 300;
+function parseRefresh(raw: Json, derivedKeys: Set<string>): Map<string, DecisionRefresh> {
+  const out = new Map<string, DecisionRefresh>();
+  if (!Array.isArray(raw)) return out;
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { key, status, text } = entry;
+    if (typeof key !== 'string' || !derivedKeys.has(key) || out.has(key)) continue;
+    if (status !== 'done' && status !== 'partial') continue;
+    if (typeof text !== 'string') continue;
+    // One line in the digest; text that is only an internal id would scrub to nothing.
+    const line = text.replace(/\s+/g, ' ').trim();
+    if (!scrubInternalIds(line).replace(/[.;\s]+$/, '')) continue;
+    out.set(key, { status, text: line.slice(0, REFRESH_TEXT_MAX) });
   }
   return out;
 }
@@ -214,6 +236,7 @@ function apply(payloadJson: string): void {
     prevLastDigestDate: typeof state.last_digest_date === 'string' ? state.last_digest_date : null,
     silentOnNewKeys,
     structuredReadOk: !hasStructuredReadFailure,
+    refresh: parseRefresh(payload.refresh, silentOnNewKeys),
   });
 
   const alerts: Json = { ...result.alerts, ...frozen };
@@ -293,6 +316,7 @@ function apply(payloadJson: string): void {
     self_eval_proposals: selfEvalProposals,
     // Never OK when a structured pending decision couldn't be verified this tick.
     heartbeat_result: hasStructuredReadFailure ? 'ALERT' : result.heartbeatResult,
+    ...(result.digestDoneKeys.length > 0 ? { digest_done: result.digestDoneKeys } : {}),
   }) + '\n');
 
   process.exit(0);

@@ -25,6 +25,7 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'proposal-act -> docs/artifacts.md': 'commands',
     'hermit-settings -> docs/artifacts.md': 'commands',
     'brief -> docs/artifacts.md': 'commands',
+    'brief -> heartbeat/decision-refresh.md': 'prose-only',
     'hermit-dashboard-design -> docs/artifacts.md': 'commands',
     'hermit-routines -> channel-responder/SKILL.md': 'prose-only',
     'task -> channel-responder/SKILL.md': 'prose-only',

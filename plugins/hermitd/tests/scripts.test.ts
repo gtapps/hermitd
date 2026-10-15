@@ -1512,6 +1512,81 @@ describe('update-alert-state', () => {
     expect(state.last_digest_date).toBe('2026-07-10');
   }));
 
+  // Three pending decisions, all suppressed and still firing: one micro ask, two proposals.
+  function seedDecisionDigest(dir: string) {
+    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
+    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      { id: 'MP-20260701-0', tier: 1, status: 'pending', follow_up_count: 0, ts: '2026-07-01T08:00:00Z', question: 'Declare the report type in the schema?' },
+    ] }));
+    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
+    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-test-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Add retry logic\n---\nbody\n');
+    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-006-test-120000.md'), '---\nid: PROP-006\nstatus: proposed\ntitle: Route by area\n---\nbody\n');
+    const row = (first_seen: string, text: string) => ({ count: 9, consecutive_clean: 0, suppressed: true, first_seen, last_seen: '2026-07-09', text });
+    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
+      alerts: {
+        'micro-proposal-pending:MP-20260701-0': row('2026-07-01', "micro-proposal 'MP-20260701-0' awaiting operator input — Declare the report type in the schema?"),
+        'proposal-pending:PROP-005': row('2026-07-02', 'PROP-005 "Add retry logic"'),
+        'proposal-pending:PROP-006': row('2026-07-03', 'PROP-006 "Route by area"'),
+      },
+      self_eval: {}, total_ticks: 30, last_digest_date: null,
+    }));
+  }
+
+  test('update-alert-state (refresh: done items batch into one clear line, partial relabels, open keeps its queued text)', withDir(async (dir) => {
+    seedDecisionDigest(dir);
+    const { state, stdout } = await updateAlertState(dir, JSON.stringify({
+      firing: [],
+      refresh: [
+        { key: 'micro-proposal-pending:MP-20260701-0', status: 'done', text: 'Report type declared in the schema since Jul 3' },
+        // A stray internal id in model wording is scrubbed like any structured label.
+        { key: 'proposal-pending:PROP-006', status: 'partial', text: 'PROP-006 routing by area: the merged change covers the same requester only' },
+      ],
+    }));
+    const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
+    expect(digest).toBe(
+      'Suppressed alert digest: proposal "Add retry logic" awaiting review (first seen 2026-07-02); '
+      + 'routing by area: the merged change covers the same requester only (first seen 2026-07-03). '
+      + "Looks already done: Report type declared in the schema since Jul 3. Reply 'clear' to drop these.",
+    );
+    expect(stdout.notifications.join('\n')).not.toMatch(/PROP-\d+|MP-[\w-]+/);
+    expect(stdout.digest_done).toEqual(['micro-proposal-pending:MP-20260701-0']);
+    // Wording only: membership and stored state are untouched by the refresh.
+    expect(Object.keys(state.alerts).sort()).toEqual([
+      'micro-proposal-pending:MP-20260701-0', 'proposal-pending:PROP-005', 'proposal-pending:PROP-006',
+    ]);
+    expect(JSON.stringify(state.alerts)).not.toContain('since Jul 3');
+    expect(JSON.stringify(state.alerts)).not.toContain('same requester');
+  }));
+
+  test('update-alert-state (refresh: phantom, non-structured and malformed entries are ignored without costing the tick)', withDir(async (dir) => {
+    seedDecisionDigest(dir);
+    const { state, stdout } = await updateAlertState(dir, JSON.stringify({
+      firing: [{ key: 'custom:disk-full', text: 'Disk is full' }],
+      refresh: [
+        { key: 'proposal-pending:PROP-999', status: 'done', text: 'not a pending decision' },
+        { key: 'custom:disk-full', status: 'done', text: 'model key' },
+        { key: 'proposal-pending:PROP-005', status: 'open', text: 'open needs no entry' },
+        { key: 'proposal-pending:PROP-006', status: 'done', text: '   ' },
+        // Only an internal id: scrubbed to nothing, so it would leave an empty item.
+        { key: 'proposal-pending:PROP-006', status: 'done', text: 'PROP-006.' },
+        'garbage',
+      ],
+    }));
+    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.digest_done).toBeUndefined();
+    const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
+    expect(digest).not.toContain('Looks already done');
+    expect(digest).toContain('Add retry logic');
+    expect(digest).toContain('Route by area');
+    expect(state.alerts['proposal-pending:PROP-999']).toBeUndefined();
+
+    // A refresh that is not an array at all degrades to no refresh.
+    seedDecisionDigest(dir);
+    const second = await updateAlertState(dir, JSON.stringify({ firing: [], refresh: { nope: true } }));
+    expect(second.stdout.heartbeat_result).not.toBe('INDETERMINATE');
+    expect(second.stdout.notifications.some((n: string) => n.startsWith('Suppressed alert digest:'))).toBe(true);
+  }));
+
   test('update-alert-state (a suppressed entry whose source went quiet is not digested, but still stamps the day)', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
     // No proposals/ dir → the key stops firing → hysteresis keeps the row one

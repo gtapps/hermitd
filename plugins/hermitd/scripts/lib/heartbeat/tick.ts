@@ -6,9 +6,9 @@ import { runPrecheck } from './precheck';
 import { pendingQueue, type QueueNotice } from './queue';
 export { acknowledgeQueue } from './queue';
 import { readSettledConfig } from '../config-read';
-import { readMergedAlerts } from '../alert-state';
+import { readMergedAlerts, readAlertState, alertStatePath, activeSuppressedEntries, isStructuredKey } from '../alert-state';
 import { isPaused } from '../pause';
-import { resolveHermitNowMs } from '../time';
+import { resolveHermitNowMs, todayYMD } from '../time';
 import { resolveLocale } from '../messages';
 
 type Json = any;
@@ -17,6 +17,8 @@ type Notification = { text: string; mark_key?: string };
 
 type Notifications = { budget: Notification[]; queue?: QueueNotice };
 
+type DecisionItem = { key: string; text: string };
+
 type TickResult = {
   verdict: string;
   reason?: string;
@@ -24,7 +26,26 @@ type TickResult = {
   notifications: Notifications;
   model: string | null;
   effort: string | null;
+  decision_refresh?: DecisionItem[];
 };
+
+const DECISION_REFRESH_LIMIT = 5;
+
+/**
+ * Pending decisions today's digest will repeat, oldest first, for the evaluator to
+ * re-check before they are asked again. Same selection as the digest itself, so the
+ * list cannot drift from it; `text` keeps the internal id the check needs.
+ */
+function dueDecisionItems(hermitDir: string, timezone: string, nowMs: number): DecisionItem[] {
+  const r = readAlertState(alertStatePath(hermitDir));
+  if (r.kind !== 'ok') return [];
+  if (r.value.last_digest_date === todayYMD(timezone, new Date(nowMs))) return [];
+  return activeSuppressedEntries(r.value.alerts)
+    .filter(([k]) => isStructuredKey(k))
+    .sort(([, a], [, b]) => String(a.first_seen ?? '').localeCompare(String(b.first_seen ?? '')))
+    .slice(0, DECISION_REFRESH_LIMIT)
+    .map(([key, e]) => ({ key, text: typeof e.text === 'string' ? e.text : '' }));
+}
 
 /** Split the precheck's one-line grammar into the JSON fields the skill branches on. */
 function parseVerdict(raw: string): Omit<TickResult, 'model' | 'effort'> {
@@ -89,6 +110,8 @@ export async function run(args: string[]): Promise<void> {
       if (result.verdict === 'EVALUATE') {
         const queue = pendingQueue(hermitDir, nowMs);
         if (queue) result.notifications.queue = queue;
+        const due = dueDecisionItems(hermitDir, config.timezone ?? 'UTC', nowMs);
+        if (due.length > 0) result.decision_refresh = due;
       }
     }
   } catch { /* fail-open: the verdict still ships, minus the bookkeeping */ }

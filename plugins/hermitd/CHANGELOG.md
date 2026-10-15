@@ -7,6 +7,7 @@
 - Routines can belong to a chat: a routine added from a Discord or Telegram chat posts its notices there, and that chat lists and edits only its own routines. Set `chat` on a routine to bind it by hand.
 
 ### Changed
+- The daily alert digest and morning brief re-check each pending decision against the project before asking again. Decisions that look done are grouped on one line you can drop with "clear", and partly covered ones are reworded with today's facts.
 - `classifier-denials` in `/hermitd:hermit-doctor` fails only on a denial cluster from the last 24 hours and warns after that.
 
 ### Fixed

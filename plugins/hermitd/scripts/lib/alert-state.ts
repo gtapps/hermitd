@@ -173,6 +173,21 @@ export interface ClassifyTickResult {
   lastCleanEvalAt: string | null;
   lastDigestDate: string | null;
   heartbeatResult: 'OK' | 'ALERT';
+  // Structured keys the digest batched under "Looks already done"; a 'clear'
+  // reply resolves exactly these.
+  digestDoneKeys: string[];
+}
+
+// Evaluator's re-check of a pending decision before the digest repeats it.
+// Wording only: it never changes which keys the digest lists.
+export interface DecisionRefresh { status: 'done' | 'partial'; text: string; }
+
+// Suppressed rows still firing: exactly what the daily digest lists. The tick
+// uses the same rule to pick which decision items the evaluator re-checks.
+export function activeSuppressedEntries(alerts: Json): [string, Json][] {
+  if (!alerts || typeof alerts !== 'object') return [];
+  return Object.entries(alerts).filter(([, e]: [string, Json]) =>
+    e?.suppressed === true && (e.consecutive_clean ?? 0) === 0);
 }
 
 export function classifyTick(opts: {
@@ -193,6 +208,10 @@ export function classifyTick(opts: {
   // once the read succeeds, rather than consuming the day's digest on a partial
   // view. Defaults to true (a normal tick).
   structuredReadOk?: boolean;
+  // Fresh wording for structured keys the digest lists this tick. `partial`
+  // relabels an item; `done` moves it into one trailing "Looks already done"
+  // sentence. Every active key is still listed exactly once.
+  refresh?: Map<string, DecisionRefresh>;
 }): ClassifyTickResult {
   const { firing, nowIso, today, hhmm, silentOnNewKeys } = opts;
   const structuredReadOk = opts.structuredReadOk !== false;
@@ -262,17 +281,32 @@ export function classifyTick(opts: {
   // source went quiet is retained one extra tick for hysteresis (above), and
   // listing it re-announces something already settled — the operator reads the
   // digest as "these still need you".
-  const activeEntries = suppressedEntries.filter(([, e]: [string, Json]) => (e.consecutive_clean ?? 0) === 0);
+  const activeEntries = activeSuppressedEntries(alerts);
   let lastDigestDate = opts.prevLastDigestDate ?? null;
+  const digestDoneKeys: string[] = [];
   // structuredReadOk gate: don't emit or advance the digest on a partial view.
   if (structuredReadOk && suppressedEntries.length > 0 && lastDigestDate !== today) {
     if (activeEntries.length > 0) {
       // Age, not tick count: `count` counts evaluations, so rendering it invites
       // reading "8x" as eight messages sent when the ladder sent two.
-      const list = activeEntries
-        .map(([k, e]: [string, Json]) => `${channelLabel(k, e)} (first seen ${e.first_seen})`)
-        .join('; ');
-      notifications.push(`Suppressed alert digest: ${list}`);
+      const doneTexts: string[] = [];
+      const listed: string[] = [];
+      for (const [k, e] of activeEntries) {
+        const r = opts.refresh?.get(k);
+        if (r?.status === 'done') {
+          // Trailing punctuation would double up against the sentence's own.
+          doneTexts.push(channelLabel(k, r).replace(/[.;\s]+$/, ''));
+          digestDoneKeys.push(k);
+        } else {
+          listed.push(`${channelLabel(k, r ?? e)} (first seen ${e.first_seen})`);
+        }
+      }
+      const done = doneTexts.length > 0
+        ? `Looks already done: ${doneTexts.join('; ')}. Reply 'clear' to drop these.`
+        : '';
+      // A queued question can itself end in "Yes / No", so the done sentence
+      // needs a hard stop before it to read as separate.
+      notifications.push(`Suppressed alert digest: ${[listed.join('; '), done].filter(Boolean).join('. ')}`);
     }
     // Stamp the day even when nothing was active. precheck's digest gate wakes
     // on ANY suppressed entry, so an unstamped date would re-fire a paid
@@ -297,6 +331,7 @@ export function classifyTick(opts: {
     lastCleanEvalAt: isClean ? nowIso : null,
     lastDigestDate,
     heartbeatResult: isClean ? 'OK' : 'ALERT',
+    digestDoneKeys,
   };
 }
 

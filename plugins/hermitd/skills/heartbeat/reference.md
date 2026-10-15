@@ -41,7 +41,7 @@ Produce one firing entry per true item:
 
 Normalise: strip the list marker and any checkbox first, then lowercase, remove non-alphanumeric characters, truncate at the listed limit.
 
-**Never** emit a `micro-proposal-pending:*` or `proposal-pending:*` key.
+**Never** emit a `micro-proposal-pending:*` or `proposal-pending:*` key in `firing`.
 Those are derived and owned entirely by `heartbeat.ts alert-state` from
 `state/micro-proposals.json` and `proposals/*.md` frontmatter — an entry you emit under either
 prefix is dropped as a phantom and has no effect.
@@ -60,6 +60,7 @@ Return exactly this JSON object — no prose, no markdown fences:
 `{"firing": [{"item": "<HEARTBEAT.md line, verbatim>", "text": "<channel-voice one-liner>"} or {"key": "custom:<…>"|"waiting-timeout", "text": "<channel-voice one-liner>"}, ...]}`
 
 `firing` is required and is `[]` when nothing is currently true — this is the normal "clean tick"
-case; do not omit the key or return anything else in its place. Any other key you add is ignored.
+case; do not omit the key or return anything else in its place. Any other key you add is ignored,
+except `refresh` when the dispatch also names `decision-refresh.md`.
 
 **Report only; any fix is the main session's.**
