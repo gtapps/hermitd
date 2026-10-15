@@ -192,6 +192,37 @@ function turnConversation(payload: Json): string | null {
   }
 }
 
+/** `routines`, or one routine and any of its fields: `routines.<n>[.<field>]`. */
+const ROUTINE_PATH = /^routines(?:\.(\d+)(?:\..+)?)?$/;
+
+/** Is `key` the home or maintainer chat of its channel, where the operator talks? */
+function operatorChat(key: string): boolean {
+  const at = key.indexOf(':');
+  const ch = readConfigRaw(hermitDir())?.channels?.[key.slice(0, at)];
+  const chatId = key.slice(at + 1);
+  return [ch?.default_chat_id ?? ch?.dm_channel_id, ch?.maintainer_channel_id]
+    .some(id => id != null && String(id) === chatId);
+}
+
+/**
+ * From a channel turn, does this write reach a routine the asking chat does not
+ * own? A chat changes only the routines bound to it. Routines with no `chat` are
+ * the operator's and change silently only from the home or maintainer chat; so
+ * does a whole-array write, which can touch any routine. Appending at the first
+ * free index reaches no existing routine. A turn with no channel message is the
+ * operator's own write and adds no ask.
+ */
+function routineScopeAsks(dotted: string, turn: () => string | null): boolean {
+  const m = ROUTINE_PATH.exec(dotted);
+  if (!m) return false;
+  const asking = turn();
+  if (asking === null) return false;
+  if (m[1] === undefined) return !operatorChat(asking);
+  const routine = currentRoutines()[Number(m[1])];
+  if (!routine) return false;
+  const owner = routine.chat ?? null;
+  return owner === null ? !operatorChat(asking) : owner !== asking;
+}
 
 /** A routines container write that arms a precheck or binds a chat. Reads the baseline once. */
 function routinesWriteAsks(value: string, turn: () => string | null): boolean {
@@ -430,7 +461,8 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
     const needsAsk = ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
         && routinesWriteAsks(value, turn))
-      || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn));
+      || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn))
+      || routineScopeAsks(dotted, turn);
     if (!needsAsk) continue;
     const label = value ? displayFor(dotted, value) : dotted;
     if (!shown.includes(label)) shown.push(label);
@@ -454,7 +486,7 @@ function main(payload: any): void {
       deny('Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.');
       return;
     }
-    // Read lazily: only a routine chat write needs the transcript.
+    // Read lazily: only a routines write needs the transcript.
     let turn: string | null | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
       typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),

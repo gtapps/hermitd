@@ -271,7 +271,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
 - Removing a precheck through routine replacement stays silent; direct precheck or timeout leaf edits, including unset, still ask. Routine command changes gain no extra gate.
 - **Chat scope.** A routine's optional `chat` (`<sourceKey>:<chat_id>`) is the chat that owns it. On a channel turn, list only
   the routines whose `chat` is the asking chat, keeping their table numbers; edit, remove, enable and disable accept only a
-  number from that listing. The terminal, the maintainer chat and a technical-profile operator's home chat see every
+  number from that listing, and the settings gate asks for any write to a routine the asking chat does not own. The terminal, the maintainer chat and a technical-profile operator's home chat see every
   routine, with each one's `chat` (or `home`) shown beside its status.
 - Every write below names **one entry** — `routines.<index>`, 0-based, so table number − 1. Never write the
   whole `routines` array: the settings gate reads the value of a container write, and a value it cannot parse

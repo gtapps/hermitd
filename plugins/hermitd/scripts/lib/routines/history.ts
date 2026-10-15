@@ -325,17 +325,25 @@ export function lastRoutineFire(metricsPath: string, routineId: string): string 
 }
 
 /**
+ * A `chat-undelivered` row is a delivery note, not a step of an attempt, and can
+ * land after `finish`; the "latest event" readers below skip it.
+ */
+const deliveryNote = (e: any) => e.event === 'chat-undelivered';
+
+/**
  * Raw `event` string of the routine's most recent row, or null. Drives
  * event.ts's fired-dedup guard (issue #464), whose invariant is specifically
  * "the latest same-routine event is already `fired`" — so unlike
- * lastRoutineFire this must see every event kind, not just terminals.
+ * lastRoutineFire this must see every attempt event kind, not just terminals.
  */
 export function lastRoutineEvent(metricsPath: string, routineId: string): string | null {
-  return lastMatching(metricsPath, routineId, (e) => (typeof e.event === 'string' ? e.event : null));
+  return lastMatching(metricsPath, routineId, (e) =>
+    (deliveryNote(e) ? undefined : typeof e.event === 'string' ? e.event : null));
 }
 
 /** Event and timestamp of the routine's most recent row, or null. */
 export function lastRoutineEventWithTimestamp(metricsPath: string, routineId: string): string | null {
   return lastMatching(metricsPath, routineId, (e) =>
-    (typeof e.event === 'string' ? `${e.event}@${typeof e.ts === 'string' ? e.ts : 'unknown'}` : null));
+    (deliveryNote(e) ? undefined
+      : typeof e.event === 'string' ? `${e.event}@${typeof e.ts === 'string' ? e.ts : 'unknown'}` : null));
 }

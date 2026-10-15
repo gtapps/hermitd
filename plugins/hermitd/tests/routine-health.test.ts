@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { withDir, writeConfig } from './helpers/workdir';
 import { runScript } from './helpers/run';
-import { foldRoutineHistory, readRoutineHistory, lastRoutineFire } from '../scripts/lib/routines/history';
+import { foldRoutineHistory, readRoutineHistory, lastRoutineFire, lastRoutineEvent, lastRoutineEventWithTimestamp } from '../scripts/lib/routines/history';
 import { buildRoutineHealth } from '../scripts/lib/routines/health';
 
 const NOW = Date.parse('2026-08-14T00:00:00.000Z');
@@ -289,6 +289,14 @@ describe('readRoutineHistory / lastRoutineFire — source states', () => {
     writeMetrics(dir, [row('brief', 'fired', old), row('brief', 'started', daysAgo(1))]);
     expect(lastRoutineFire(p, 'brief')).toBe(old);
     expect(lastRoutineFire(p, 'absent')).toBeNull();
+  }));
+
+  test('the latest-event readers skip chat-undelivered delivery notes', withDir((dir) => {
+    const p = path.join(hermitOf(dir), 'state', 'routine-metrics.jsonl');
+    const at = daysAgo(1);
+    writeMetrics(dir, [row('brief', 'started', at), row('brief', 'fired', at), row('brief', 'chat-undelivered', at)]);
+    expect(lastRoutineEvent(p, 'brief')).toBe('fired');
+    expect(lastRoutineEventWithTimestamp(p, 'brief')).toBe(`fired@${at}`);
   }));
 });
 

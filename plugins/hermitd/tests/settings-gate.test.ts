@@ -493,7 +493,7 @@ describe('routine chat binding', () => {
 
   /** A gate run whose turn opened on a discord message from `chatId`, or a terminal turn when null. */
   async function runFrom(chatId: string | null, rest: string) {
-    const dir = fixture({ channels: { discord: { enabled: true } }, routines: ROUTINES });
+    const dir = fixture({ channels: { discord: { enabled: true, default_chat_id: '100' } }, routines: ROUTINES });
     let transcript: string | undefined;
     if (chatId !== null) {
       transcript = path.join(dir, 'transcript.jsonl');
@@ -529,9 +529,27 @@ describe('routine chat binding', () => {
     expect(asked(await runFrom('555', `set routines.1 '${JSON.stringify({ ...ROUTINES[1], chat: 'discord:555' })}'`))).toBe(true);
   });
 
-  test('removing a binding or leaving it unchanged stays silent', async () => {
-    expect(asked(await runFrom('555', 'set routines.1.chat none'))).toBe(false);
-    expect(asked(await runFrom('555', 'unset routines.1.chat'))).toBe(false);
-    expect(asked(await runFrom('555', `set routines.1 '${JSON.stringify({ ...ROUTINES[1], enabled: false })}'`))).toBe(false);
+  test('the owning chat removes a binding or edits its routine without a prompt', async () => {
+    expect(asked(await runFrom('777', 'set routines.1.chat none'))).toBe(false);
+    expect(asked(await runFrom('777', 'unset routines.1.chat'))).toBe(false);
+    expect(asked(await runFrom('777', `set routines.1 '${JSON.stringify({ ...ROUTINES[1], enabled: false })}'`))).toBe(false);
+    expect(asked(await runFrom('777', 'set routines.1.enabled false'))).toBe(false);
+    expect(asked(await runFrom('777', 'unset routines.1'))).toBe(false);
+  });
+
+  test('another chat touching a routine it does not own asks', async () => {
+    expect(asked(await runFrom('555', 'set routines.1.enabled false'))).toBe(true);
+    expect(asked(await runFrom('555', 'unset routines.1'))).toBe(true);
+    expect(asked(await runFrom('555', 'set routines.0.enabled false'))).toBe(true);
+    // Overwriting the operator's routine under a fresh id is still that routine.
+    const replaced = { id: 'brief2', schedule: '0 8 * * *', skill: 'hermitd:brief', enabled: true, chat: 'discord:555' };
+    expect(asked(await runFrom('555', `set routines.0 '${JSON.stringify(replaced)}'`))).toBe(true);
+    expect(asked(await runFrom('555', `set routines '${JSON.stringify(ROUTINES)}'`))).toBe(true);
+  });
+
+  test('the home chat and the terminal edit the operator routines without a prompt', async () => {
+    expect(asked(await runFrom('100', 'set routines.0.enabled false'))).toBe(false);
+    expect(asked(await runFrom(null, 'set routines.0.enabled false'))).toBe(false);
+    expect(asked(await runFrom(null, 'unset routines.1'))).toBe(false);
   });
 });
