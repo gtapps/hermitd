@@ -538,6 +538,9 @@ describe('hermitd-update host path', () => {
   test('duplicate ids keep per-scope versions and failure status in history and summary', async () => {
     const f = fixture({ listJson: listDuplicateScopes });
     try {
+      const rows = JSON.parse(listDuplicateScopes(f.proj));
+      rows[2].errors = ['no-matching-tag'];
+      write(path.join(f.proj, '.stub', 'list.json'), JSON.stringify(rows));
       write(path.join(f.proj, '.stub', 'claude'), `#!/usr/bin/env bash
 if [ "$1 $2" = "plugin list" ]; then cat "$HOST_STUB_LIST"; exit 0; fi
 if [ "$1 $2" = "plugin update" ]; then
@@ -555,11 +558,11 @@ exit 0
       const entry = readJson(hermit(f.proj, 'state', 'update-history.jsonl'));
       expect(entry.plugins).toEqual([
         { id: 'hermitd@hermitd', scope: 'local', before: '1.2.0', after: '1.2.0', status: 'failed' },
-        { id: 'hermitd@hermitd', scope: 'project', before: '1.2.14', after: '1.2.14', status: 'unchanged' },
+        { id: 'hermitd@hermitd', scope: 'project', before: '1.2.14', after: '1.2.14', status: 'blocked', error: 'no-matching-tag' },
         { id: 'hermitd-scribe@hermitd', scope: 'project', before: '0.0.5', after: '0.0.5', status: 'unchanged' },
       ]);
       expect(r.stdout).toContain('hermitd@hermitd (scope local): v1.2.0 -> v1.2.0 (FAILED');
-      expect(r.stdout).toContain('hermitd@hermitd (scope project): v1.2.14 -> v1.2.14 (unchanged)');
+      expect(r.stdout).toContain('hermitd@hermitd (scope project): v1.2.14 -> v1.2.14 (blocked');
     } finally { f.wd.cleanup(); }
   });
 
