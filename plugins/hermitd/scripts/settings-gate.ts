@@ -18,12 +18,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { getPath } from './settings-edit';
-import { hermitDir } from './lib/cc-compat';
 import { readConfigRaw } from './lib/config-read';
 import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
+import { isAllowedSender } from './lib/channel-auth';
+import { parseChannelEnvelope } from './lib/channel-envelope';
+import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
 
 type Json = any;
 
@@ -111,18 +113,7 @@ export function precheckSetChanged(value: string, current: Json[]): boolean {
   for (const r of Array.isArray(current) ? current : []) {
     if (r && r.id) before.set(String(r.id), gateOf(r));
   }
-  let parsed: Json;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return true;
-  }
-  // A lone routine object (the `routines.<n>` spelling) is judged as an array of
-  // one. It has to carry an `id` to be read that way: anything else is not a
-  // routine write this can reason about, so it takes the strict answer.
-  const next: Json[] | null = Array.isArray(parsed) ? parsed
-    : (parsed && typeof parsed === 'object' && parsed.id) ? [parsed]
-    : null;
+  const next = parseRoutineWrite(value);
   if (!next) return true;
   for (const r of next) {
     const gate = gateOf(r);
@@ -132,6 +123,94 @@ export function precheckSetChanged(value: string, current: Json[]): boolean {
   return false;
 }
 
+/**
+ * A routines container value as an array of routine objects, or null when it is
+ * not one. A lone routine object (the `routines.<n>` spelling) is judged as an
+ * array of one. It has to carry an `id` to be read that way: anything else is not
+ * a routine write the value rules can reason about, so they take the strict answer.
+ */
+function parseRoutineWrite(value: string): Json[] | null {
+  let parsed: Json;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  return Array.isArray(parsed) ? parsed
+    : (parsed && typeof parsed === 'object' && parsed.id) ? [parsed]
+    : null;
+}
+
+/** `routines.<n>.chat`: a direct write of one routine's owning chat. */
+const ROUTINE_CHAT_LEAF = /^routines\.(\d+)\.chat$/;
+
+/**
+ * Does this write point any routine at a chat other than the one asking?
+ *
+ * Silent only when each added or changed `chat` equals `turn`, the conversation
+ * the current turn arrived from, and its routine is new. A member may have a
+ * routine post back into the chat they are in, but never pull an existing
+ * routine (the operator's own brief, another chat's digest) into it. Removing a
+ * binding sends output home, which exposes nothing, so it stays silent.
+ */
+export function chatBindingChanged(next: Json[], current: Json[], turn: string | null): boolean {
+  const before = new Map<string, Json>();
+  for (const r of Array.isArray(current) ? current : []) {
+    if (r && r.id) before.set(String(r.id), r.chat ?? null);
+  }
+  for (const r of next) {
+    const chat = r?.chat ?? null;
+    if (chat === null) continue;
+    const prior = r?.id ? before.get(String(r.id)) : undefined;
+    if (prior === chat) continue;
+    if (turn === null || chat !== turn || prior !== undefined) return true;
+  }
+  return false;
+}
+
+const TURN_TAIL_BYTES = 512 * 1024;
+
+/**
+ * The conversation key (`<sourceKey>:<chat_id>`) of the allowed channel message
+ * that opened the current turn, or null for a terminal, Claude app, routine or
+ * heartbeat turn. Fail-closed: anything unreadable is null, and null asks.
+ */
+function turnConversation(payload: Json): string | null {
+  try {
+    const tPath = transcriptPath(payload);
+    if (!tPath) return null;
+    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
+    const prompt = turnPromptText(lines, lines.length);
+    if (!prompt.boundaryFound) return null;
+    const env = parseChannelEnvelope(prompt.text);
+    if (!env || !isAllowedSender(readConfigRaw(hermitDir()), env.source, env.userId)) return null;
+    return `${env.sourceKey}:${env.chatId}`;
+  } catch {
+    return null;
+  }
+}
+
+
+/** A routines container write that arms a precheck or binds a chat. Reads the baseline once. */
+function routinesWriteAsks(value: string, turn: () => string | null): boolean {
+  const current = currentRoutines();
+  return precheckSetChanged(value, current)
+    || chatBindingChanged(parseRoutineWrite(value) ?? [], current, turn());
+}
+
+/** `set routines.<n>.chat <value>`, judged against that routine as it stands on disk. */
+function chatLeafChanged(dotted: string, value: string, turn: string | null): boolean {
+  if (value === 'none' || value === 'clear') return false;
+  const routine = currentRoutines()[Number(ROUTINE_CHAT_LEAF.exec(dotted)![1])];
+  if (!routine) return true;
+  let chat: Json;
+  try {
+    chat = JSON.parse(value);
+  } catch {
+    chat = value;
+  }
+  return chatBindingChanged([{ ...routine, chat }], [routine], turn);
+}
 
 /**
  * `apply-known`'s registry arg name resolved to its dotted config path; every
@@ -296,7 +375,7 @@ function channelAccessAsks(command: string): string[] {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-function protectedMutation(command: string, cwd: string): string[] | null {
+function protectedMutation(command: string, cwd: string, turn: () => string | null = () => null): string[] | null {
   const listen = channelAccessAsks(command);
 
   // An opaque write of the whole file can replace any asked path, so it
@@ -348,7 +427,8 @@ function protectedMutation(command: string, cwd: string): string[] | null {
     }
     const needsAsk = ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
-        && precheckSetChanged(value, currentRoutines()));
+        && routinesWriteAsks(value, turn))
+      || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn()));
     if (!needsAsk) continue;
     const label = value ? displayFor(dotted, value) : dotted;
     if (!shown.includes(label)) shown.push(label);
@@ -372,8 +452,11 @@ function main(payload: any): void {
       deny('Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.');
       return;
     }
+    // Read lazily: only a routine chat write needs the transcript.
+    let turn: string | null | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
-      typeof payload.cwd === 'string' ? payload.cwd : process.cwd());
+      typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
+      () => (turn === undefined ? (turn = turnConversation(payload)) : turn));
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);

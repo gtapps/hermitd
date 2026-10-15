@@ -242,6 +242,18 @@ describe('foldRoutineHistory — dispatched / unhandled', () => {
     expect(e).toMatchObject({ unhandled: 0, unhandled_open: true });
   });
 
+  test('chat-undelivered is counted with its latest detail and closes nothing', () => {
+    const e = only([
+      row('brief', 'started', daysAgo(2)),
+      JSON.stringify({ ts: daysAgo(2), routine_id: 'brief', event: 'chat-undelivered', delivery: 'channel-send', detail: 'discord:42: missing_token' }),
+      row('brief', 'fired', daysAgo(2)),
+    ]);
+    expect(e).toMatchObject({
+      fires: 1, failure_total: 0, skips: 0, chat_undelivered: 1,
+      last_chat_undelivered: { detail: 'discord:42: missing_token' },
+    });
+  });
+
   test('a dispatched still open at the window edge is flagged, not counted', () => {
     const e = only([row('brief', 'dispatched', daysAgo(0.01))]);
     expect(e).toMatchObject({ unhandled: 0, unhandled_open: true });

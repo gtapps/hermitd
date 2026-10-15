@@ -484,3 +484,54 @@ test('quoted nickname alternation does not truncate enrollment approval values',
   } }), dir);
   expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason).toBe('Hermit setting: listen in discord chat 123: mention=no allow=anyone shared=yes passive=yes + nickname triggers (channel-wide) + seen-emoji off (channel-wide)');
 });
+
+describe('routine chat binding', () => {
+  const ROUTINES = [
+    { id: 'brief', schedule: '0 8 * * *', skill: 'hermitd:brief', enabled: true },
+    { id: 'digest', schedule: '0 9 * * 1', skill: 'feed:digest', enabled: true, chat: 'discord:777' },
+  ];
+
+  /** A gate run whose turn opened on a discord message from `chatId`, or a terminal turn when null. */
+  async function runFrom(chatId: string | null, rest: string) {
+    const dir = fixture({ channels: { discord: { enabled: true } }, routines: ROUTINES });
+    let transcript: string | undefined;
+    if (chatId !== null) {
+      transcript = path.join(dir, 'transcript.jsonl');
+      fs.writeFileSync(transcript, JSON.stringify({
+        type: 'user',
+        message: { content: `<channel source="plugin:discord:discord" chat_id="${chatId}" user_id="u1">every monday post the digest here</channel>` },
+      }) + '\n');
+    }
+    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }));
+    return runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
+  }
+
+  const asked = (r: { stdout: string }) =>
+    r.stdout.trim() !== '' && JSON.parse(r.stdout).hookSpecificOutput.permissionDecision === 'ask';
+  const added = (chat: string) =>
+    `set routines.2 '${JSON.stringify({ id: 'weekly', schedule: '0 9 * * 1', skill: 'hermitd:brief', enabled: true, chat })}'`;
+
+  test('a new routine bound to the asking chat applies without a prompt', async () => {
+    expect(asked(await runFrom('555', added('discord:555')))).toBe(false);
+  });
+
+  test('a new routine bound to another chat asks', async () => {
+    expect(asked(await runFrom('555', added('discord:999')))).toBe(true);
+  });
+
+  test('a binding written from a turn with no channel message asks', async () => {
+    expect(asked(await runFrom(null, added('discord:555')))).toBe(true);
+  });
+
+  test('binding an existing routine asks, even to the asking chat', async () => {
+    expect(asked(await runFrom('555', 'set routines.0.chat discord:555'))).toBe(true);
+    expect(asked(await runFrom('555', `set routines.0 '${JSON.stringify({ ...ROUTINES[0], chat: 'discord:555' })}'`))).toBe(true);
+    expect(asked(await runFrom('555', `set routines.1 '${JSON.stringify({ ...ROUTINES[1], chat: 'discord:555' })}'`))).toBe(true);
+  });
+
+  test('removing a binding or leaving it unchanged stays silent', async () => {
+    expect(asked(await runFrom('555', 'set routines.1.chat none'))).toBe(false);
+    expect(asked(await runFrom('555', 'unset routines.1.chat'))).toBe(false);
+    expect(asked(await runFrom('555', `set routines.1 '${JSON.stringify({ ...ROUTINES[1], enabled: false })}'`))).toBe(false);
+  });
+});

@@ -4,6 +4,10 @@
 // and whatever a marketplace channel plugin supplies. The charset stays free of
 // whitespace, colons, and markup so the key can still be interpolated into
 // model-facing context and split back apart on its single separator.
+export function isKey(key: unknown): key is string {
+  return typeof key === 'string' && /^[\w-]+:[\w.~+@;=-]{1,128}$/.test(key);
+}
+
 export function checkKey(key: string): void {
-  if (!/^[\w-]+:[\w.~+@;=-]{1,128}$/.test(key)) throw new Error('invalid-key');
+  if (!isKey(key)) throw new Error('invalid-key');
 }

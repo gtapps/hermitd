@@ -1,12 +1,13 @@
 // state/routine-metrics.jsonl → an ordered per-routine attempt projection.
 //
-// The ledger records six event kinds: `dispatched` (due.ts, at emit),
+// The ledger records seven event kinds: `dispatched` (due.ts, at emit),
 // `started` (precheck, at fire time),
 // `fired` / `failed-<reason>` (finish — exactly one terminal per attempt),
 // `skipped-*` (due.ts gates, which open no attempt at all), and `precheck-error`
 // (a declared wake gate that could not answer, so the fire woke anyway — the one
-// non-terminal row that means the opposite of a skip). Counting those
-// independently — the `errored = started − fired` arithmetic this replaces — is
+// non-terminal row that means the opposite of a skip), and `chat-undelivered`
+// (channel-send could not reach a routine's owning chat; only counted). Counting
+// those independently — the `errored = started − fired` arithmetic this replaces — is
 // wrong in three ways the fold below fixes:
 //
 //   - `finish` writes a terminal row with no preceding `started` when precheck
@@ -59,6 +60,10 @@ export type RoutineHistoryEntry = {
   precheck_errors: number;
   /** The most recent `precheck-error` detail in-window (timeout | exit:<n> | …). */
   last_precheck_error: { ts: string; detail: string } | null;
+  /** `chat-undelivered` rows: a notice could not reach the routine's owning chat. */
+  chat_undelivered: number;
+  /** The most recent `chat-undelivered` detail in-window (`<chat>: <error>`). */
+  last_chat_undelivered: { ts: string; detail: string } | null;
   last_fire: string | null;
   /** `dispatched` rows in-window: one per monitor emit, wrapper or not. */
   dispatches: number;
@@ -100,6 +105,8 @@ export function emptyEntry(id: string): RoutineHistoryEntry {
     precheck_skips: 0,
     precheck_errors: 0,
     last_precheck_error: null,
+    chat_undelivered: 0,
+    last_chat_undelivered: null,
     last_fire: null,
     dispatches: 0,
     unhandled: 0,
@@ -234,6 +241,9 @@ export function foldRoutineHistory(
     } else if (row.event === 'precheck-error') {
       entry.precheck_errors += 1;
       entry.last_precheck_error = { ts: row.tsRaw, detail: row.detail || 'unspecified' };
+    } else if (row.event === 'chat-undelivered') {
+      entry.chat_undelivered += 1;
+      entry.last_chat_undelivered = { ts: row.tsRaw, detail: row.detail || 'unspecified' };
     }
   }
 

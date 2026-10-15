@@ -6,7 +6,8 @@ import { safeForLLM } from './lib/sanitize';
 import * as ENUM from './lib/settings/enums';
 import { validateExpectArtifact } from './lib/routines/run-record';
 import { validatePrecheckValue, validatePrecheckTimeout } from './lib/routines/gate';
-import { ENV_VAR_RE } from './lib/channel-config';
+import { ENV_VAR_RE, DIRECT_SEND_CHANNELS, isDict } from './lib/channel-config';
+import { isKey } from './lib/conversation-key';
 import { toPushUrl } from './lib/backup';
 
 type Json = any;
@@ -273,6 +274,20 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           warnings.push(`routines[${i}]: effort on "heartbeat-restart" is ignored; re-arm must run in the session`);
         } else if (r.model === undefined || r.model === null) {
           warnings.push(`routines[${i}]: effort has no effect without "model"; it applies only to the model-override subagent`);
+        }
+      }
+      if (r.chat !== undefined && r.chat !== null) {
+        if (!isKey(r.chat)) {
+          errors.push(`routines[${i}]: chat must be "<channel>:<chat_id>"`);
+        } else if (r.id === 'heartbeat-restart') {
+          warnings.push(`routines[${i}]: chat on "heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
+        } else {
+          const channel = r.chat.slice(0, r.chat.indexOf(':'));
+          if (!isDict(config.channels?.[channel])) {
+            warnings.push(`routines[${i}]: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
+          } else if (!DIRECT_SEND_CHANNELS.includes(channel)) {
+            warnings.push(`routines[${i}]: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats can own a routine`);
+          }
         }
       }
       if (r.precheck !== undefined && r.precheck !== null) {

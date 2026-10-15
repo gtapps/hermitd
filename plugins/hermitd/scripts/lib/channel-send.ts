@@ -20,6 +20,8 @@ import { settleConfig, readConfigRaw, readSettledConfig } from './config-read';
 import { readChannelToken } from './channel-token';
 import { recordChannelHealth } from './channel-health';
 import { appendJsonlLine } from './append-jsonl';
+import { isKey } from './conversation-key';
+import { logRoutineEvent } from './routines/event';
 
 type Json = any;
 
@@ -132,6 +134,7 @@ async function sendDiscord(token: string, chatId: string, text: string, timeoutM
   }, sentText, timeoutMs);
 }
 
+// Keep in step with DIRECT_SEND_CHANNELS in lib/channel-config.ts.
 const SENDERS: Record<string, (token: string, chatId: string, text: string, timeoutMs: number) => Promise<PlatformSendResult>> = {
   telegram: sendTelegram,
   discord: sendDiscord,
@@ -203,6 +206,21 @@ export interface OperatorNotice {
   client?: string;
   maintainer?: { text: string; fallback: 'client' | 'primary' | 'findings'; sensitive?: boolean };
   timeoutMs?: number;
+  /** The routine whose fire sends this notice; its `chat`, when set, takes the client leg. */
+  routine?: string;
+}
+
+/** The owning chat of routine `id` as a send target, or null when it has none. */
+function routineChat(config: Json, id: string | undefined): { id: string; chat_id: string } | null {
+  if (!id || !Array.isArray(config.routines)) return null;
+  const chat = config.routines.find((r: Json) => r?.id === id)?.chat;
+  if (!isKey(chat)) return null;
+  const at = chat.indexOf(':');
+  return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
+}
+
+function sameChat(a: { id: string; chat_id: Json } | null, b: { id: string; chat_id: Json } | null): boolean {
+  return !!a && !!b && a.id === b.id && String(a.chat_id) === String(b.chat_id);
 }
 
 export interface OperatorNoticeResult {
@@ -272,22 +290,34 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   }
 
   if (notice.client) {
-    // Drop the client leg when the maintainer text already landed in the primary
-    // chat — either via the 'client' fallback, or because maintainer_channel_id
-    // resolves to the same physical chat as the client target.
+    // A routine's own chat takes the client leg; the maintainer leg above kept
+    // the home routing, so technical detail never reaches a team chat.
+    const owned = routineChat(config, notice.routine);
+    const target = owned ?? clientTarget;
+    // Drop the client leg when the maintainer text already landed in that same
+    // chat — either via the 'client' fallback to the home chat, or because
+    // maintainer_channel_id resolves to the same physical chat.
     const landedInClientChat =
-      out.maintainer?.route === 'client' ||
-      (out.maintainer?.route === 'maintainer_channel' && !!maintainerTarget && !!clientTarget &&
-        maintainerTarget.id === clientTarget.id &&
-        String(maintainerTarget.chat_id) === String(clientTarget.chat_id));
+      (out.maintainer?.route === 'client' && (!owned || sameChat(owned, clientTarget))) ||
+      (out.maintainer?.route === 'maintainer_channel' && sameChat(maintainerTarget, target));
     if (!landedInClientChat) {
       out.client = await sendToChannel(hermitDir, notice.client, {
-        target: clientTarget ?? undefined, timeoutMs: notice.timeoutMs, config,
+        target: target ?? undefined, timeoutMs: notice.timeoutMs, config,
       });
       if (!out.client.ok) {
         const error = appendMaintainerFindings(hermitDir, notice.client, 'undelivered-client-notice');
         out.client.undelivered_saved = error === null;
         if (error !== null) out.client.persistence_error = error;
+        if (owned && notice.routine) {
+          // Never reroute the content: it was meant for that chat's audience.
+          // Tell the operator the chat is unreachable, and record it for routine health.
+          const failure = `${owned.id}:${owned.chat_id}: ${out.client.error ?? 'send failed'}`;
+          logRoutineEvent(notice.routine, 'chat-undelivered', hermitDir, 'channel-send', failure);
+          await sendOperatorNotice(hermitDir, {
+            maintainer: { text: `Routine ${notice.routine} could not post to its chat ${failure}`, fallback: 'client' },
+            timeoutMs: notice.timeoutMs,
+          });
+        }
       }
     }
   }
