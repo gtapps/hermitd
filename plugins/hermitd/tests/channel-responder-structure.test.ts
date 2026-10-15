@@ -44,6 +44,17 @@ test('responder branches on every hook annotation the prompt stages emit', () =>
   expect(annotations.filter((a) => !skill.includes(a))).toEqual([]);
 });
 
+// A bare "clear" must not fall into the micro matcher (which would ask for
+// clarification or list MP ids), and must resolve only what the message listed.
+test('clear of already-done items precedes the micro answer and never guesses', () => {
+  expect(skill).toContain('then a done-items clear, then a pending micro answer');
+  expect(skill).toContain('§ Already-done items');
+  expect(approvals).toContain('## Already-done items');
+  expect(approvals).toContain('`digest_done`');
+  expect(approvals).toContain('--action answered --answer "already done"');
+  expect(approvals).toContain('resolve nothing');
+});
+
 // Channel-safe approvals: the micro-proposal resolver's reply grammar.
 test('resolver accepts numbered and label replies', () => {
   expect(approvals).toContain('match [<MP-id>] --reply');

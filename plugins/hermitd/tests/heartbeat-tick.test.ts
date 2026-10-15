@@ -216,6 +216,45 @@ describe('heartbeat tick', () => {
     });
     expect((await tick(hermit)).effort).toBeNull();
   });
+
+  // The evaluator re-checks what today's digest is about to repeat, so the list
+  // must match the digest's own selection: suppressed, still firing, file-backed.
+  const suppressedRow = (first_seen: string, extra: object = {}) =>
+    ({ count: 9, consecutive_clean: 0, suppressed: true, first_seen, last_seen: '2026-07-09', text: `item ${first_seen}`, ...extra });
+
+  test('decision_refresh lists due decision items oldest first, capped at 5', async () => {
+    const hermit = fixture({ alertState: {
+      alerts: {
+        'proposal-pending:PROP-007': suppressedRow('2026-07-07'),
+        'micro-proposal-pending:MP-20260701-0': suppressedRow('2026-07-01'),
+        'proposal-pending:PROP-003': suppressedRow('2026-07-03'),
+        'proposal-pending:PROP-006': suppressedRow('2026-07-06'),
+        'proposal-pending:PROP-002': suppressedRow('2026-07-02'),
+        'proposal-pending:PROP-004': suppressedRow('2026-07-04'),
+        'proposal-pending:PROP-005': suppressedRow('2026-06-30', { consecutive_clean: 1 }),
+        'custom:disk-full': suppressedRow('2026-06-01'),
+      },
+      self_eval: {}, total_ticks: 3, last_digest_date: '2026-07-09',
+    } });
+    const out = await tick(hermit);
+    expect(out.verdict).toBe('EVALUATE');
+    expect(out.decision_refresh.map((d: any) => d.key)).toEqual([
+      'micro-proposal-pending:MP-20260701-0', 'proposal-pending:PROP-002', 'proposal-pending:PROP-003',
+      'proposal-pending:PROP-004', 'proposal-pending:PROP-006',
+    ]);
+    expect(out.decision_refresh[0]).toEqual({ key: 'micro-proposal-pending:MP-20260701-0', text: 'item 2026-07-01', first_seen: '2026-07-01' });
+  });
+
+  test('decision_refresh is absent once today\'s digest has gone out', async () => {
+    // total_ticks 19 forces EVALUATE through the self-evaluation gate instead.
+    const hermit = fixture({ alertState: {
+      alerts: { 'proposal-pending:PROP-002': suppressedRow('2026-07-02') },
+      self_eval: {}, total_ticks: 19, last_digest_date: '2026-07-10',
+    } });
+    const out = await tick(hermit);
+    expect(out.verdict).toBe('EVALUATE');
+    expect(out.decision_refresh).toBeUndefined();
+  });
 });
 
 // -------------------------------------------------------

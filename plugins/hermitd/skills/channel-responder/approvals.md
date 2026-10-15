@@ -20,6 +20,15 @@
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action rejected`.
   - If no pending micro-proposals: classify as normal message (fall through to categories below).
 
+## Already-done items
+
+- A "clear" reply resolves exactly the decisions that message grouped under "Looks already done": the heartbeat's `digest_done` keys, or the brief's `done` refresh entries. Take them from that turn's output in this conversation; never guess them from the queue.
+- Resolve each key:
+  - A proposal (`proposal-pending:<PROP-NNN>`, or a micro entry whose `proposal_id` links one): `/hermitd:proposal-act resolve PROP-NNN`. Resolving the proposal retires a linked question too.
+  - Any other `micro-proposal-pending:<MP-id>`: run `proposal-micro` (Commands) with arguments `resolve <MP-id> --action answered --answer "already done"`, never `approved`, because the operator approved nothing.
+- Reply once, in plain voice, naming what was cleared without internal ids.
+- If that message's keys are no longer in this conversation, resolve nothing. Say those items will show again, still marked done, in the next reminder, where a "clear" can drop them.
+
 ## Proposal approval
 
 - **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified `YES`/`LATER`/`NO` reply to a Suggestion card — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)

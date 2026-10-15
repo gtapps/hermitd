@@ -12,7 +12,7 @@ Open, waiting and queued items come only from the `task-list` and `task-report` 
 
 ## Per-mode instructions
 
-For morning, run `proposal-index` (Commands), then read `state/proposals-index.json`; put proposed auto-detected entries in `pending_proposals`. Read `OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from runnable open resident records. If `context_recovery` is true, summarize the newest normalized record; otherwise `report_summary` is null.
+For morning, run `proposal-index` (Commands), then read `state/proposals-index.json`; put proposed auto-detected entries in `pending_proposals`. When the dispatch names `decision-refresh.md` and there is at least one `decision_items` or `pending_proposals` entry, read it and apply it to the `decision_items` followed by each `pending_proposals` entry as `proposal-pending:<PROP-NNN>`. Read `OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from runnable open resident records. If `context_recovery` is true, summarize the newest normalized record; otherwise `report_summary` is null.
 
 For evening and daily, select records whose `closed_at` date matches `today`, and open records whose `opened_at` date matches `today`. Populate `sessions_today` with task source paths as the compatibility `session` identifier and one-line title/outcome summaries. Populate `findings` from lessons and `tomorrow` from runnable open records, leaving waiting ones to `waiting`. Do not count `cancelled` or `unconfirmed` as done.
 

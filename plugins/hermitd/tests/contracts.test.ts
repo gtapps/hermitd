@@ -2019,6 +2019,16 @@ describe('brief delegation contract', () => {
     const block = (text: string) => extractBlock(text, '<!-- brief-eval-schema:start -->', '<!-- brief-eval-schema:end -->');
     expect(block(refFile)).toBe(block(skill));
   });
+
+  // The runner can only re-check the questions the brief will show if the queue
+  // is aged first, and a failed runner must never hide a pending question.
+  test('morning ages the queue before dispatch and re-checks decisions with the shared spec', () => {
+    expect(skill).toContain('Before the morning dispatch, age the micro-proposal queue');
+    expect(skill).not.toContain('After composing the morning brief, age');
+    expect(skill).toContain('skills/heartbeat/decision-refresh.md');
+    expect(skill).toContain('including every `new` and `renudged` entry when the runner fails or returns no `refresh`');
+    expect(refFile).toContain('When the dispatch names `decision-refresh.md`');
+  });
 });
 
 // ============================================================
@@ -3370,6 +3380,23 @@ describe('heartbeat eval-runner return contract', () => {
   // exact per-call cost this verb exists to remove.
   test('SKILL.md no longer receives monitoring lines to append', () => {
     expect(skill).not.toContain('monitoring_lines');
+  });
+
+  // The refresh rewords the digest; it must never become a way for the model to
+  // drop, invent or resolve a pending decision.
+  test('decision refresh: dispatched only with decision_refresh, wording only, never omits a key', () => {
+    const spec = read(path.join(SKILLS, 'heartbeat', 'decision-refresh.md'));
+    expect(skill).toContain('When the tick JSON carries `decision_refresh`');
+    expect(skill).toContain('skills/heartbeat/decision-refresh.md');
+    expect(skill).toContain('`digest_done`');
+    expect(spec).toContain('"refresh": [{"key": "<item key, verbatim>", "status": "open|done|partial", "text": "<channel-voice line>"}]');
+    expect(spec).toContain('Never drop or invent a key');
+    expect(spec).toContain('no `gh`, no web, no network');
+    expect(spec).toContain('Read only: write nothing');
+    expect(spec).toContain('a source is unavailable');
+    for (const field of REMOVED_MODEL_FIELDS) {
+      expect(spec).not.toContain(`\`${field}\``);
+    }
   });
 
   // `run` and `start` are the two paths the monitor and the daily anchor take on

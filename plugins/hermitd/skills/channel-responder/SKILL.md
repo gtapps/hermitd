@@ -72,7 +72,7 @@ This idempotent command resets the quiet window and defers monitor-mode routines
 
 ## 2. Classify the Message
 
-Precedence: hook-classified commands, then a pending micro answer, then an annotated task thread, then a bound-task continuation, then general classification.
+Precedence: hook-classified commands, then a done-items clear, then a pending micro answer, then an annotated task thread, then a bound-task continuation, then general classification.
 
 Invoke `/hermitd:task` for an assignment at or above the TASKS.md threshold, any message in an annotated task thread, a confirmation, cancel or changed definition of done for a selected record, a `[conversation command: ...]` annotation, or a `WORKER <task-id> ...` completion.
 Acknowledge first through the channel.
@@ -109,6 +109,8 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - **Task assignment** ("work on X", "next task: Z", "start Y", or any message describing work to be done)
   - Apply TASKS.md policy; an explicit marker like these, or several requests in one message, meets its threshold on any subject even when the work fits this turn. At or above it the message is a **Task thread**: handle it there, including the `--due <ISO>` flag on `task.ts open` when a date was given, and end the turn.
   - Below the threshold, answer in this turn and open no record.
+
+- **Clear** of "Looks already done": `approvals.md` § Already-done items.
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): only while a pending entry exists, read `approvals.md` § Micro-approval response. With no pending entry, fall through to general classification.
 

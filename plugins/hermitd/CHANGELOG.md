@@ -6,6 +6,7 @@
 - An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
 
 ### Changed
+- The daily alert digest and morning brief re-check each pending decision against the project before asking again. Decisions that look done are grouped on one line you can drop with "clear", and partly covered ones are reworded with today's facts.
 - `classifier-denials` in `/hermitd:hermit-doctor` fails only on a denial cluster from the last 24 hours and warns after that.
 
 ### Fixed
