@@ -316,30 +316,6 @@ function updateCostIndex(logPath: string, indexPath: string, timezone: string = 
   return _writeIndex(indexPath, index);
 }
 
-// Warn-only: surfaces tier-drift cost without a hard block. `timezone` (default 'UTC')
-// must match whatever produced `sinceDateInclusive` (the doctor's tz-aware "N days
-// ago"), or the cutoff comparison silently drifts against UTC-bucketed dates.
-function scanAutomatedOpus(costLogFile: string, sinceDateInclusive: string, timezone: string = 'UTC'): { count: number; cost: number } {
-  let count = 0;
-  let cost = 0;
-  if (!fs.existsSync(costLogFile)) return { count, cost };
-  for (const line of fs.readFileSync(costLogFile, 'utf8').split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const e = JSON.parse(line);
-      const ts = e.timestamp ? new Date(e.timestamp) : null;
-      const date = ts && !isNaN(ts.getTime()) ? todayYMD(timezone, ts) : '';
-      const src = e.source || 'other';
-      const automated = src === 'heartbeat' || src.startsWith('routine:');
-      if (date >= sinceDateInclusive && isOpusModel(e.model) && automated) {
-        count += 1;
-        cost += e.estimated_cost_usd || 0;
-      }
-    } catch { /* skip corrupt lines — checkCost already surfaces corruption */ }
-  }
-  return { count, cost };
-}
-
 // Per-source cost AND run count from the cost log alone, used by doctor-check.ts's
 // routine-cost check.
 //
@@ -560,13 +536,9 @@ function scanRoutineCostWindow(costLogFile: string, sinceMs: number, asOfMs: num
   return { perRoutine, multi };
 }
 
-function isOpusModel(model: unknown): boolean {
-  return typeof model === 'string' && model.toLowerCase().includes('opus');
-}
-
 // Counts JSONL lines flagged model_unpriced:true (cost-tracker.ts marks a turn this way
 // when resolvePricing(raw).exact is false; still priced via resolvePricing's fallback, but flagged
-// so the drift is auditable). Mirrors scanAutomatedOpus's date-filtered scan shape.
+// so the drift is auditable).
 function scanUnpricedModels(costLogFile: string, sinceDateInclusive: string, timezone: string = 'UTC'): { count: number; cost: number } {
   let count = 0;
   let cost = 0;
@@ -587,5 +559,5 @@ function scanUnpricedModels(costLogFile: string, sinceDateInclusive: string, tim
   return { count, cost };
 }
 
-export { costIndexPath, readCostIndex, computeIndex, updateCostIndex, rebuildCostIndex, scanAutomatedOpus, scanUnpricedModels, scanRoutineLedger, scanRoutineCostWindow, buildMainCostRow, buildSubagentCostRow, appendCostRows, SOURCE_ATTRIBUTION_VERSION };
+export { costIndexPath, readCostIndex, computeIndex, updateCostIndex, rebuildCostIndex, scanUnpricedModels, scanRoutineLedger, scanRoutineCostWindow, buildMainCostRow, buildSubagentCostRow, appendCostRows, SOURCE_ATTRIBUTION_VERSION };
 export type { MainCostObservation, SubagentCostObservation };

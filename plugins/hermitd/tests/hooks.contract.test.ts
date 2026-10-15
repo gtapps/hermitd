@@ -1438,7 +1438,7 @@ describe('doctor-check', () => {
     const report = await doctorReport(dir);
     expect(report.checks.map((c: any) => c.id)).toEqual([
       'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
-      'permissions', 'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age', 'opus-wake', 'routine-cost', 'heartbeat',
+      'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age', 'routine-cost', 'heartbeat',
       'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'model-pricing-known', 'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox', 'backup',
     ]);
   }));
@@ -1559,37 +1559,6 @@ describe('doctor-check', () => {
     fs.rmSync(hermit(dir, 'config.json'), { force: true });
     const c = checkById(await doctorReport(dir), 'config');
     expect(c.status).toBe('fail');
-  }));
-
-  test('doctor-check (opus-wake — ok when no cost-log)', withDir(async (dir) => {
-    seedDoctor(dir);
-    const c = checkById(await doctorReport(dir), 'opus-wake');
-    expect(c.status).toBe('ok');
-  }));
-
-  test('doctor-check (opus-wake — ok when only sonnet automated turns)', withDir(async (dir) => {
-    seedDoctor(dir);
-    const today = new Date().toISOString().slice(0, 10);
-    write(path.join(dir, '.claude', 'cost-log.jsonl'),
-      `{"timestamp":"${today}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"sonnet","total_tokens":100000,"estimated_cost_usd":0.05}\n`);
-    const c = checkById(await doctorReport(dir), 'opus-wake');
-    expect(c.status).toBe('ok');
-  }));
-
-  test('doctor-check (opus-wake — warn when automated turn runs on opus)', withDir(async (dir) => {
-    seedDoctor(dir);
-    const today = new Date().toISOString().slice(0, 10);
-    write(path.join(dir, '.claude', 'cost-log.jsonl'), [
-      `{"timestamp":"${today}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"opus","total_tokens":100000,"estimated_cost_usd":7.50}`,
-      `{"timestamp":"${today}T11:00:00.000Z","session_id":"s1","source":"routine:daily-review","model":"opus","total_tokens":5000,"estimated_cost_usd":1.00}`,
-      `{"timestamp":"${today}T12:00:00.000Z","session_id":"s1","source":"other","model":"opus","total_tokens":5000,"estimated_cost_usd":0.50}`,
-      '',
-    ].join('\n'));
-    const c = checkById(await doctorReport(dir), 'opus-wake');
-    expect(c.status).toBe('warn');
-    // Only the heartbeat + routine rows count — "other" is not automated
-    expect(c.detail).toContain('2');
-    expect(c.detail).toContain('8.50');
   }));
 
   // heartbeat check unit cases (subprocess via doctorReport + seedDoctor)

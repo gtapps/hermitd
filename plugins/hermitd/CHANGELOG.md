@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `/hermitd:hermit-doctor` drops the `opus-wake` and `permissions` checks, which warned on every normal install and could not be cleared.
+
 ## [1.4.15] - 2026-10-15
 
 ### Added
