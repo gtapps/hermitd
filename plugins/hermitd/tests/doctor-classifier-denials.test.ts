@@ -124,7 +124,7 @@ describe('doctor classifier-denials check', () => {
   test('a three-denial burst older than a day warns rather than failing', () => {
     const result = scenario(spread(3, 2, 25 * 60));
     expect(result.status).toBe('warn');
-    expect(result.detail).toContain('largest cluster 3 in 10 min');
+    expect(result.detail).toContain('largest cluster 3 in 10 min (last 24h: 0)');
     expect(result.detail).not.toContain('falls back to prompting');
   });
 

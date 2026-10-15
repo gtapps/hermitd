@@ -2238,6 +2238,7 @@ function checkVoiceCarrier(p: DoctorPaths = PATHS) {
   }
 }
 
+const CLASSIFIER_DENIALS_ID = 'classifier-denials';
 const CLASSIFIER_DENIALS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const CLASSIFIER_DENIALS_DETAIL_MAX = 200;
 const CLASSIFIER_DENIALS_TOOL_LIMIT = 3;
@@ -2284,7 +2285,7 @@ function largestDenialCluster(sortedMs: number[]): number {
 }
 
 function checkClassifierDenials(p: DoctorPaths = PATHS) {
-  const id = 'classifier-denials';
+  const id = CLASSIFIER_DENIALS_ID;
   // Tool names, shell program names and the terminal remedy are the same content the
   // `PermissionDenied` hook keeps off a client chat, so every return carries the tier
   // and doctor's notice puts the row on its maintainer leg only. Data, not prose: an
@@ -2336,6 +2337,7 @@ function checkClassifierDenials(p: DoctorPaths = PATHS) {
     // half — past the cap and truncate it away.
     const head = `${grand} denials in 7d — `;
     const tail = `; largest cluster ${cluster} in 10 min`
+      + (recentCluster !== cluster ? ` (last 24h: ${recentCluster})` : '')
       + damaged
       // A cluster is not the documented consecutive-denial count (see CLUSTER_MS),
       // so this correlates rather than asserting that the session actually stalled.
@@ -2579,7 +2581,7 @@ function writeReport(checks: Json[], escalation?: DoctorEscalation, p: DoctorPat
 // upgrade neither causes nor fixes, so counting it would break a post-upgrade claim at random.
 function verdictLine(checks: Json[]): string {
   const failures = checks
-    .filter((check) => check.status === 'fail' && check.id !== 'classifier-denials')
+    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID)
     .map((check) => check.id);
   return failures.length === 0 ? 'OK' : `FAIL ${failures.join(', ')}`;
 }
