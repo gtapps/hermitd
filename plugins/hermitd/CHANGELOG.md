@@ -4,6 +4,7 @@
 
 ### Added
 - An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
+- Routines can belong to a chat: a routine added from a Discord or Telegram chat posts its notices there, and that chat lists and edits only its own routines. Set `chat` on a routine to bind it by hand.
 
 ### Changed
 - `classifier-denials` in `/hermitd:hermit-doctor` fails only on a denial cluster from the last 24 hours and warns after that.

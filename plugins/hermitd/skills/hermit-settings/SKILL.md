@@ -269,6 +269,10 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
   `—` means the routine always wakes it. Adding or changing one raises the native permission prompt.
   ```
 - Removing a precheck through routine replacement stays silent; direct precheck or timeout leaf edits, including unset, still ask. Routine command changes gain no extra gate.
+- **Chat scope.** A routine's optional `chat` (`<sourceKey>:<chat_id>`) is the chat that owns it. On a channel turn, list only
+  the routines whose `chat` is the asking chat, keeping their table numbers; edit, remove, enable and disable accept only a
+  number from that listing, and the settings gate asks for any write to a routine the asking chat does not own. The terminal, the maintainer chat and a technical-profile operator's home chat see every
+  routine, with each one's `chat` (or `home`) shown beside its status.
 - Every write below names **one entry** — `routines.<index>`, 0-based, so table number − 1. Never write the
   whole `routines` array: the settings gate reads the value of a container write, and a value it cannot parse
   (`$(cat …)`, a heredoc, a shell variable) raises the native permission prompt even when nothing is gated.
@@ -289,6 +293,11 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
     - Custom → operator types raw cron
   - Skill to run (full slash-command name, e.g. `hermitd:brief` for plugin skills, `ha-refresh-context` for local project skills)
   - Enabled (yes/no, default yes)
+  - On a channel turn from a chat other than that channel's home chat (`default_chat_id`, else `dm_channel_id`), add
+    `"chat": "<sourceKey>:<chat_id>"` for the asking chat so the routine's notices post back there. Only Discord and
+    Telegram chats can own a routine; elsewhere, add it without `chat` and say its notices go to the home chat.
+    Binding a new routine to the asking chat applies without a prompt; any other `chat` value raises the native
+    permission prompt.
   - Append it with `set routines.<count> '<entry as JSON>'`, where `<count>` is the number of routines in the
     latest listing (the first free index). A duplicate id is only a warning, so check the id against the
     listed ones before writing; an invalid cron is refused by the script — relay its error rather than

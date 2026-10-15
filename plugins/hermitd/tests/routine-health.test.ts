@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { withDir, writeConfig } from './helpers/workdir';
 import { runScript } from './helpers/run';
-import { foldRoutineHistory, readRoutineHistory, lastRoutineFire } from '../scripts/lib/routines/history';
+import { foldRoutineHistory, readRoutineHistory, lastRoutineFire, lastRoutineEvent, lastRoutineEventWithTimestamp } from '../scripts/lib/routines/history';
 import { buildRoutineHealth } from '../scripts/lib/routines/health';
 
 const NOW = Date.parse('2026-08-14T00:00:00.000Z');
@@ -242,6 +242,18 @@ describe('foldRoutineHistory — dispatched / unhandled', () => {
     expect(e).toMatchObject({ unhandled: 0, unhandled_open: true });
   });
 
+  test('chat-undelivered is counted with its latest detail and closes nothing', () => {
+    const e = only([
+      row('brief', 'started', daysAgo(2)),
+      JSON.stringify({ ts: daysAgo(2), routine_id: 'brief', event: 'chat-undelivered', delivery: 'channel-send', detail: 'discord:42: missing_token' }),
+      row('brief', 'fired', daysAgo(2)),
+    ]);
+    expect(e).toMatchObject({
+      fires: 1, failure_total: 0, skips: 0, chat_undelivered: 1,
+      last_chat_undelivered: { detail: 'discord:42: missing_token' },
+    });
+  });
+
   test('a dispatched still open at the window edge is flagged, not counted', () => {
     const e = only([row('brief', 'dispatched', daysAgo(0.01))]);
     expect(e).toMatchObject({ unhandled: 0, unhandled_open: true });
@@ -277,6 +289,14 @@ describe('readRoutineHistory / lastRoutineFire — source states', () => {
     writeMetrics(dir, [row('brief', 'fired', old), row('brief', 'started', daysAgo(1))]);
     expect(lastRoutineFire(p, 'brief')).toBe(old);
     expect(lastRoutineFire(p, 'absent')).toBeNull();
+  }));
+
+  test('the latest-event readers skip chat-undelivered delivery notes', withDir((dir) => {
+    const p = path.join(hermitOf(dir), 'state', 'routine-metrics.jsonl');
+    const at = daysAgo(1);
+    writeMetrics(dir, [row('brief', 'started', at), row('brief', 'fired', at), row('brief', 'chat-undelivered', at)]);
+    expect(lastRoutineEvent(p, 'brief')).toBe('fired');
+    expect(lastRoutineEventWithTimestamp(p, 'brief')).toBe(`fired@${at}`);
   }));
 });
 

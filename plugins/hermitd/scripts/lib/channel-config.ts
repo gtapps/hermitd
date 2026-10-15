@@ -6,6 +6,9 @@ type Json = any;
 /** A valid POSIX shell / env-var identifier. Re-exported by validate-config.ts. */
 export const ENV_VAR_RE = /^[A-Z_][A-Z0-9_]*$/;
 
+/** Channels `lib/channel-send.ts` can POST to directly; keep in step with its SENDERS. */
+export const DIRECT_SEND_CHANNELS: readonly string[] = ['telegram', 'discord'];
+
 /** Python-style truthiness: empty arrays/objects/strings are falsy. */
 export function pyTruthy(v: Json): boolean {
   if (Array.isArray(v)) return v.length > 0;

@@ -1,12 +1,13 @@
 // state/routine-metrics.jsonl → an ordered per-routine attempt projection.
 //
-// The ledger records six event kinds: `dispatched` (due.ts, at emit),
+// The ledger records seven event kinds: `dispatched` (due.ts, at emit),
 // `started` (precheck, at fire time),
 // `fired` / `failed-<reason>` (finish — exactly one terminal per attempt),
 // `skipped-*` (due.ts gates, which open no attempt at all), and `precheck-error`
 // (a declared wake gate that could not answer, so the fire woke anyway — the one
-// non-terminal row that means the opposite of a skip). Counting those
-// independently — the `errored = started − fired` arithmetic this replaces — is
+// non-terminal row that means the opposite of a skip), and `chat-undelivered`
+// (channel-send could not reach a routine's owning chat; only counted). Counting
+// those independently — the `errored = started − fired` arithmetic this replaces — is
 // wrong in three ways the fold below fixes:
 //
 //   - `finish` writes a terminal row with no preceding `started` when precheck
@@ -59,6 +60,10 @@ export type RoutineHistoryEntry = {
   precheck_errors: number;
   /** The most recent `precheck-error` detail in-window (timeout | exit:<n> | …). */
   last_precheck_error: { ts: string; detail: string } | null;
+  /** `chat-undelivered` rows: a notice could not reach the routine's owning chat. */
+  chat_undelivered: number;
+  /** The most recent `chat-undelivered` detail in-window (`<chat>: <error>`). */
+  last_chat_undelivered: { ts: string; detail: string } | null;
   last_fire: string | null;
   /** `dispatched` rows in-window: one per monitor emit, wrapper or not. */
   dispatches: number;
@@ -100,6 +105,8 @@ export function emptyEntry(id: string): RoutineHistoryEntry {
     precheck_skips: 0,
     precheck_errors: 0,
     last_precheck_error: null,
+    chat_undelivered: 0,
+    last_chat_undelivered: null,
     last_fire: null,
     dispatches: 0,
     unhandled: 0,
@@ -234,6 +241,9 @@ export function foldRoutineHistory(
     } else if (row.event === 'precheck-error') {
       entry.precheck_errors += 1;
       entry.last_precheck_error = { ts: row.tsRaw, detail: row.detail || 'unspecified' };
+    } else if (row.event === 'chat-undelivered') {
+      entry.chat_undelivered += 1;
+      entry.last_chat_undelivered = { ts: row.tsRaw, detail: row.detail || 'unspecified' };
     }
   }
 
@@ -315,17 +325,25 @@ export function lastRoutineFire(metricsPath: string, routineId: string): string 
 }
 
 /**
+ * A `chat-undelivered` row is a delivery note, not a step of an attempt, and can
+ * land after `finish`; the "latest event" readers below skip it.
+ */
+const deliveryNote = (e: any) => e.event === 'chat-undelivered';
+
+/**
  * Raw `event` string of the routine's most recent row, or null. Drives
  * event.ts's fired-dedup guard (issue #464), whose invariant is specifically
  * "the latest same-routine event is already `fired`" — so unlike
- * lastRoutineFire this must see every event kind, not just terminals.
+ * lastRoutineFire this must see every attempt event kind, not just terminals.
  */
 export function lastRoutineEvent(metricsPath: string, routineId: string): string | null {
-  return lastMatching(metricsPath, routineId, (e) => (typeof e.event === 'string' ? e.event : null));
+  return lastMatching(metricsPath, routineId, (e) =>
+    (deliveryNote(e) ? undefined : typeof e.event === 'string' ? e.event : null));
 }
 
 /** Event and timestamp of the routine's most recent row, or null. */
 export function lastRoutineEventWithTimestamp(metricsPath: string, routineId: string): string | null {
   return lastMatching(metricsPath, routineId, (e) =>
-    (typeof e.event === 'string' ? `${e.event}@${typeof e.ts === 'string' ? e.ts : 'unknown'}` : null));
+    (deliveryNote(e) ? undefined
+      : typeof e.event === 'string' ? `${e.event}@${typeof e.ts === 'string' ? e.ts : 'unknown'}` : null));
 }

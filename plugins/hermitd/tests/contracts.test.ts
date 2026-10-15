@@ -738,6 +738,21 @@ describe('routine model validation', () => {
     expect(out.warnings.some((w: string) => w.includes('effort has no effect without'))).toBe(false);
   });
 
+  test('chat must be a conversation key on a configured direct-send channel', () => {
+    const channels = { discord: { enabled: true }, imessage: { enabled: true } };
+    const ok = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'discord:1287345098123456789' }] });
+    expect(ok.errors).toEqual([]);
+    expect(ok.warnings.some((w: string) => w.includes('chat'))).toBe(false);
+    const bad = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: '1287345098123456789' }] });
+    expect(bad.errors.some((e: string) => e.includes('chat must be'))).toBe(true);
+    const unknown = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'telegram:-100123' }] });
+    expect(unknown.warnings.some((w: string) => w.includes('not configured'))).toBe(true);
+    const unreachable = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'imessage:abc' }] });
+    expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached'))).toBe(true);
+    const anchor = runValidate({ channels, routines: [{ ...HB_ROUTINE, chat: 'discord:1' }] });
+    expect(anchor.warnings.some((w: string) => w.includes('chat on "heartbeat-restart" is ignored'))).toBe(true);
+  });
+
   test('a daily heartbeat-restart schedule produces no warning', () => {
     const out = runValidate({ routines: [HB_ROUTINE] });
     expect(out.errors).toEqual([]);
