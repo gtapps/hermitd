@@ -24,7 +24,7 @@ For default-no-session, summarize the most recent normalized record. Map `done` 
 
 ## Return value
 
-Keep the existing compatibility keys below; `sessions_today` contains task records. Every field is required; unused fields are null or empty arrays.
+Keep the existing compatibility keys below; `sessions_today` contains task records. Every field is required; unused fields are null or empty arrays. When you applied `decision-refresh.md`, also return its `refresh` key.
 
 <!-- brief-eval-schema:start -->
 ```json

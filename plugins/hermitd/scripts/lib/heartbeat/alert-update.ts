@@ -24,7 +24,7 @@ import { runSelfEval, type SelfEvalProposal } from './self-eval';
 import {
   readAlertState, defaultAlertState, quarantineAlertState, writeAlertState,
   classifyTick, deriveMicroPendingKeys, deriveProposalPendingKeys, FiringItem, DecisionRefresh,
-  MICRO_PREFIX, PROPOSAL_PREFIX, DOCTOR_PREFIX, isStructuredKey,
+  MICRO_PREFIX, PROPOSAL_PREFIX, DOCTOR_PREFIX, isStructuredKey, scrubInternalIds,
 } from '../alert-state';
 import { currentHHMM, todayYMD, resolveHermitNowMs } from '../time';
 import { readSettledConfig } from '../config-read';
@@ -79,8 +79,11 @@ function parseRefresh(raw: Json, derivedKeys: Set<string>): Map<string, Decision
     const { key, status, text } = entry;
     if (typeof key !== 'string' || !derivedKeys.has(key) || out.has(key)) continue;
     if (status !== 'done' && status !== 'partial') continue;
-    if (typeof text !== 'string' || !text.trim()) continue;
-    out.set(key, { status, text: text.trim().slice(0, REFRESH_TEXT_MAX) });
+    if (typeof text !== 'string') continue;
+    // One line in the digest; text that is only an internal id would scrub to nothing.
+    const line = text.replace(/\s+/g, ' ').trim();
+    if (!scrubInternalIds(line).replace(/[.;\s]+$/, '')) continue;
+    out.set(key, { status, text: line.slice(0, REFRESH_TEXT_MAX) });
   }
   return out;
 }

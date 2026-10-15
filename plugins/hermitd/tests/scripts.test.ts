@@ -1567,6 +1567,8 @@ describe('update-alert-state', () => {
         { key: 'custom:disk-full', status: 'done', text: 'model key' },
         { key: 'proposal-pending:PROP-005', status: 'open', text: 'open needs no entry' },
         { key: 'proposal-pending:PROP-006', status: 'done', text: '   ' },
+        // Only an internal id: scrubbed to nothing, so it would leave an empty item.
+        { key: 'proposal-pending:PROP-006', status: 'done', text: 'PROP-006.' },
         'garbage',
       ],
     }));

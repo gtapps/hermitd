@@ -27,7 +27,7 @@
   - A proposal (`proposal-pending:<PROP-NNN>`, or a micro entry whose `proposal_id` links one): `/hermitd:proposal-act resolve PROP-NNN`. Resolving the proposal retires a linked question too.
   - Any other `micro-proposal-pending:<MP-id>`: run `proposal-micro` (Commands) with arguments `resolve <MP-id> --action answered --answer "already done"`, never `approved`, because the operator approved nothing.
 - Reply once, in plain voice, naming what was cleared without internal ids.
-- If that message's keys are no longer in this conversation, resolve nothing. Say those items will show again, still marked done, in the next reminder, where a "clear" can drop them.
+- If no such message's keys are in this conversation, resolve nothing. Say any item still marked done will show again in the next reminder, where a "clear" can drop it.
 
 ## Proposal approval
 

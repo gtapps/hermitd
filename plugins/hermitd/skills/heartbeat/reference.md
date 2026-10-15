@@ -60,6 +60,7 @@ Return exactly this JSON object — no prose, no markdown fences:
 `{"firing": [{"item": "<HEARTBEAT.md line, verbatim>", "text": "<channel-voice one-liner>"} or {"key": "custom:<…>"|"waiting-timeout", "text": "<channel-voice one-liner>"}, ...]}`
 
 `firing` is required and is `[]` when nothing is currently true — this is the normal "clean tick"
-case; do not omit the key or return anything else in its place. Any other key you add is ignored.
+case; do not omit the key or return anything else in its place. Any other key you add is ignored,
+except `refresh` when the dispatch also names `decision-refresh.md`.
 
 **Report only; any fix is the main session's.**

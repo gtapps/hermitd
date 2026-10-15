@@ -242,7 +242,7 @@ describe('heartbeat tick', () => {
       'micro-proposal-pending:MP-20260701-0', 'proposal-pending:PROP-002', 'proposal-pending:PROP-003',
       'proposal-pending:PROP-004', 'proposal-pending:PROP-006',
     ]);
-    expect(out.decision_refresh[0]).toEqual({ key: 'micro-proposal-pending:MP-20260701-0', text: 'item 2026-07-01', first_seen: '2026-07-01' });
+    expect(out.decision_refresh[0]).toEqual({ key: 'micro-proposal-pending:MP-20260701-0', text: 'item 2026-07-01' });
   });
 
   test('decision_refresh is absent once today\'s digest has gone out', async () => {

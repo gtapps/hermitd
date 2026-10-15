@@ -17,7 +17,7 @@ type Notification = { text: string; mark_key?: string };
 
 type Notifications = { budget: Notification[]; queue?: QueueNotice };
 
-type DecisionItem = { key: string; text: string; first_seen: string };
+type DecisionItem = { key: string; text: string };
 
 type TickResult = {
   verdict: string;
@@ -44,7 +44,7 @@ function dueDecisionItems(hermitDir: string, timezone: string, nowMs: number): D
     .filter(([k]) => isStructuredKey(k))
     .sort(([, a], [, b]) => String(a.first_seen ?? '').localeCompare(String(b.first_seen ?? '')))
     .slice(0, DECISION_REFRESH_LIMIT)
-    .map(([key, e]) => ({ key, text: typeof e.text === 'string' ? e.text : '', first_seen: String(e.first_seen ?? '') }));
+    .map(([key, e]) => ({ key, text: typeof e.text === 'string' ? e.text : '' }));
 }
 
 /** Split the precheck's one-line grammar into the JSON fields the skill branches on. */
