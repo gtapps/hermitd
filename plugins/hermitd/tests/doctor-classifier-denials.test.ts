@@ -121,6 +121,13 @@ describe('doctor classifier-denials check', () => {
     expect(result.detail).toContain('largest cluster 2 in 10 min');
   });
 
+  test('a three-denial burst older than a day warns rather than failing', () => {
+    const result = scenario(spread(3, 2, 25 * 60));
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('largest cluster 3 in 10 min');
+    expect(result.detail).not.toContain('falls back to prompting');
+  });
+
   test('a cluster is cross-tool, which the old per-tool count could not see', () => {
     const result = scenario([
       { ts: minutesAgo(1), tool: 'Bash', prog: 'bun' },

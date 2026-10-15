@@ -417,6 +417,7 @@ describe('routine gate — doctor builtin', () => {
     const checks = [{ id: 'runtime', status: 'ok' }, { id: 'cost', status: 'warn' }];
     expect(verdictLine(checks)).toBe('OK');
     expect(verdictLine([...checks, { id: 'config', status: 'fail' }])).toBe('FAIL config');
+    expect(verdictLine([...checks, { id: 'classifier-denials', status: 'fail' }])).toBe('OK');
   });
 });
 
