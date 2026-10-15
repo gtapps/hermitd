@@ -5,7 +5,11 @@
 ### Added
 - An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
 
+### Changed
+- `classifier-denials` in `/hermitd:hermit-doctor` fails only on a denial cluster from the last 24 hours and warns after that.
+
 ### Fixed
+- The post-upgrade doctor claim no longer reports broken because of classifier denials.
 - Sonnet 5.5 cache reads are priced at $0.10 per million tokens, matching Anthropic's rate. Rows logged before the upgrade keep their overstated figures.
 
 ## [1.4.14] - 2026-10-13

@@ -2238,6 +2238,7 @@ function checkVoiceCarrier(p: DoctorPaths = PATHS) {
   }
 }
 
+const CLASSIFIER_DENIALS_ID = 'classifier-denials';
 const CLASSIFIER_DENIALS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const CLASSIFIER_DENIALS_DETAIL_MAX = 200;
 const CLASSIFIER_DENIALS_TOOL_LIMIT = 3;
@@ -2251,6 +2252,9 @@ const CLASSIFIER_DENIALS_PROG_LIMIT = 3;
 // nine minutes is one cluster of four.
 const CLASSIFIER_DENIALS_CLUSTER_MS = 10 * 60 * 1000;
 const CLASSIFIER_DENIALS_CLUSTER_FAIL = 3;
+// A burst is an incident while it is recent and part of the 7-day trend after that,
+// so only a cluster inside this span fails; an older one still warns.
+const CLASSIFIER_DENIALS_FAIL_RECENT_MS = 24 * 60 * 60 * 1000;
 // Reporting floor. Auto mode suspends every wildcarded interpreter allow rule
 // (docs/security.md § Auto-mode Classifier), so the hermit's own script calls
 // re-enter the classifier constantly and an occasional stochastic denial is the
@@ -2281,7 +2285,7 @@ function largestDenialCluster(sortedMs: number[]): number {
 }
 
 function checkClassifierDenials(p: DoctorPaths = PATHS) {
-  const id = 'classifier-denials';
+  const id = CLASSIFIER_DENIALS_ID;
   // Tool names, shell program names and the terminal remedy are the same content the
   // `PermissionDenied` hook keeps off a client chat, so every return carries the tier
   // and doctor's notice puts the row on its maintainer leg only. Data, not prose: an
@@ -2314,14 +2318,16 @@ function checkClassifierDenials(p: DoctorPaths = PATHS) {
     const counted = [...byTool.entries()].map(([tool, e]) => ({ tool, ...e }));
     counted.sort((a, b) => b.total - a.total || a.tool.localeCompare(b.tool));
     const grand = read.rows.length;
-    const cluster = largestDenialCluster(read.rows.map(r => Date.parse(r.ts)).sort((a, b) => a - b));
+    const times = read.rows.map(r => Date.parse(r.ts)).sort((a, b) => a - b);
+    const cluster = largestDenialCluster(times);
+    const recentCluster = largestDenialCluster(times.filter(t => t >= now - CLASSIFIER_DENIALS_FAIL_RECENT_MS));
 
     const shown = counted.slice(0, CLASSIFIER_DENIALS_TOOL_LIMIT);
     const extraTools = counted.length - shown.length;
     const parts = shown.map(c => formatDenyTool(c.tool, c.total, c.programs));
     if (extraTools > 0) parts.push(`+${extraTools} more`);
 
-    const status = cluster >= CLASSIFIER_DENIALS_CLUSTER_FAIL
+    const status = recentCluster >= CLASSIFIER_DENIALS_CLUSTER_FAIL
       ? 'fail'
       : (grand >= CLASSIFIER_DENIALS_WARN_MIN_TOTAL || cluster >= CLASSIFIER_DENIALS_WARN_MIN_CLUSTER)
         ? 'warn'
@@ -2331,6 +2337,7 @@ function checkClassifierDenials(p: DoctorPaths = PATHS) {
     // half — past the cap and truncate it away.
     const head = `${grand} denials in 7d — `;
     const tail = `; largest cluster ${cluster} in 10 min`
+      + (recentCluster !== cluster ? ` (last 24h: ${recentCluster})` : '')
       + damaged
       // A cluster is not the documented consecutive-denial count (see CLUSTER_MS),
       // so this correlates rather than asserting that the session actually stalled.
@@ -2570,8 +2577,12 @@ function writeReport(checks: Json[], escalation?: DoctorEscalation, p: DoctorPat
   }
 }
 
+// Install health only. classifier-denials reports how the model has been used, which an
+// upgrade neither causes nor fixes, so counting it would break a post-upgrade claim at random.
 function verdictLine(checks: Json[]): string {
-  const failures = checks.filter((check) => check.status === 'fail').map((check) => check.id);
+  const failures = checks
+    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID)
+    .map((check) => check.id);
   return failures.length === 0 ? 'OK' : `FAIL ${failures.join(', ')}`;
 }
 
