@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.15] - 2026-10-15
 
 ### Added
 - An assignment that continues work a spawned session already holds for the same requester goes to that session, and the reply names the task.
@@ -13,6 +13,16 @@
 ### Fixed
 - The post-upgrade doctor claim no longer reports broken because of classifier denials.
 - Sonnet 5.5 cache reads are priced at $0.10 per million tokens, matching Anthropic's rate. Rows logged before the upgrade keep their overstated figures.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Refresh the plugin version.** No file in the hermit needs editing.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.14] - 2026-10-13
 
