@@ -7,6 +7,8 @@
 
 ### Fixed
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
+- `hermitd-docker update` updates every installed plugin, not only the first one listed.
+- Update history and the update summary list each install scope separately.
 
 ## [1.4.15] - 2026-10-15
 
