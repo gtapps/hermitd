@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
-- Filing or commenting fails with an error naming `HERMIT_GH_REPO` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0. A stale repository name after a rename could previously report success while filing nothing.
+- Filing or commenting fails with an error naming `HERMIT_GH_REPO` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0.
 
 ### Upgrade Instructions
 
