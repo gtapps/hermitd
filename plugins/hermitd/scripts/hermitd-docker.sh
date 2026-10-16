@@ -220,7 +220,7 @@ _enumerate_plugins() {
     ' "$PROJECT_DIR" 2>/dev/null || true
 }
 
-# Emits id<TAB>errors for enumerated plugins currently reporting CLI errors (e.g.
+# Emits id<TAB>scope<TAB>errors for enumerated plugins currently reporting CLI errors (e.g.
 # dependency-version-unsatisfied, no-matching-tag). Read-only annotation — never drives
 # update logic, only explains an "unchanged" result in the summary/history.
 _enumerate_plugin_errors() {
@@ -235,7 +235,7 @@ _enumerate_plugin_errors() {
         if (!inProj && p.scope !== "user") continue;
         if (!Array.isArray(p.errors) || p.errors.length === 0) continue;
         const errs = p.errors.map(e => typeof e === "string" ? e : (e.code || e.message || JSON.stringify(e))).join(";");
-        console.log([p.id, errs].join("\t"));
+        console.log([p.id, p.scope ?? "", errs].join("\t"));
       }
     ' "$PROJECT_DIR" 2>/dev/null || true
 }
@@ -606,7 +606,7 @@ case "$CMD" in
       ')
       while IFS= read -r mp; do
         [ -z "$mp" ] && continue
-        cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin marketplace update "$mp" 2>/dev/null || \
+        cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin marketplace update "$mp" </dev/null 2>/dev/null || \
           echo "[hermit] Warning: could not refresh marketplace $mp — updates may resolve against a stale catalog" >&2
       done <<< "$MARKETPLACES"
 
@@ -614,10 +614,10 @@ case "$CMD" in
         [ -z "$pid" ] && continue
         echo "[hermit] Updating $pid (scope $pscope)..."
         if (cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            claude plugin update "$pid" --scope "$pscope"); then
-          PLUGINS_OK_IDS+=("$pid")
+            claude plugin update "$pid" --scope "$pscope" </dev/null); then
+          PLUGINS_OK_IDS+=("$pid"$'\t'"$pscope")
         else
-          PLUGINS_FAIL_IDS+=("$pid")
+          PLUGINS_FAIL_IDS+=("$pid"$'\t'"$pscope")
           echo "[hermit] Warning: update failed for $pid — run manually inside the container:" >&2
           echo "[hermit]          claude plugin update $pid --scope $pscope" >&2
         fi
@@ -725,7 +725,7 @@ const parseRows = (tsv) => {
   for (const line of (tsv || '').split('\n')) {
     if (!line.trim()) continue;
     const [id, scope, version] = line.split('\t');
-    if (id) m.set(id, { scope: scope || '', version: version || '' });
+    if (id) m.set(id + '\t' + (scope || ''), { id, scope: scope || '', version: version || '' });
   }
   return m;
 };
@@ -733,8 +733,8 @@ const parseErrors = (tsv) => {
   const m = new Map();
   for (const line of (tsv || '').split('\n')) {
     if (!line.trim()) continue;
-    const [id, errors] = line.split('\t');
-    if (id) m.set(id, errors || '');
+    const [id, scope, errors] = line.split('\t');
+    if (id) m.set(id + '\t' + (scope || ''), errors || '');
   }
   return m;
 };
@@ -743,13 +743,13 @@ const after = parseRows(afterTsv);
 const errors = parseErrors(errorsTsv);
 const failed = new Set(JSON.parse(failJson));
 const plugins = [];
-for (const [id, { scope, version }] of before) {
-  const a = after.get(id);
+for (const [key, { id, scope, version }] of before) {
+  const a = after.get(key);
   const afterVer = a ? a.version : version;
-  const err = errors.get(id);
+  const err = errors.get(key);
   const unchanged = afterVer === version;
   let status;
-  if (failed.has(id)) status = 'failed';
+  if (failed.has(key)) status = 'failed';
   else if (!unchanged) status = 'updated';
   else status = err ? 'blocked' : 'unchanged';
   const entry = { id, scope, before: version, after: afterVer, status };
@@ -776,17 +776,17 @@ JSEOF
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       echo "  Plugins:"
       bun -e '
-        const parse = (t) => { const m = new Map(); for (const l of (t||"").split("\n")) { if(!l.trim()) continue; const [id,scope,version]=l.split("\t"); if(id) m.set(id,{scope,version}); } return m; };
-        const parseErrors = (t) => { const m = new Map(); for (const l of (t||"").split("\n")) { if(!l.trim()) continue; const [id,errors]=l.split("\t"); if(id) m.set(id,errors||""); } return m; };
+        const parse = (t) => { const m = new Map(); for (const l of (t||"").split("\n")) { if(!l.trim()) continue; const [id,scope,version]=l.split("\t"); if(id) m.set(id+"\t"+(scope||""),{id,scope,version}); } return m; };
+        const parseErrors = (t) => { const m = new Map(); for (const l of (t||"").split("\n")) { if(!l.trim()) continue; const [id,scope,errors]=l.split("\t"); if(id) m.set(id+"\t"+(scope||""),errors||""); } return m; };
         const before = parse(process.argv[1]); const after = parse(process.argv[2]); const failed = new Set(JSON.parse(process.argv[3])); const errors = parseErrors(process.argv[4]);
-        for (const [id,{version}] of before) {
-          const a = after.get(id); const av = a ? a.version : version;
-          const err = errors.get(id);
+        for (const [key,{id,scope,version}] of before) {
+          const a = after.get(key); const av = a ? a.version : version;
+          const err = errors.get(key);
           let tag;
-          if (failed.has(id)) tag = " (FAILED — run manually)";
+          if (failed.has(key)) tag = " (FAILED: run manually)";
           else if (av !== version) tag = "";
           else tag = err ? ` (blocked — ${err})` : " (unchanged)";
-          console.log("    " + id + ": v" + version + " -> v" + av + tag);
+          console.log("    " + id + " (scope " + scope + "): v" + version + " -> v" + av + tag);
         }
       ' "$PLUGIN_ROWS" "$PLUGIN_ROWS_AFTER" "$FAIL_IDS_JSON" "$PLUGIN_ERRORS_AFTER" 2>/dev/null || true
     fi

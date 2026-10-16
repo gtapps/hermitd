@@ -428,8 +428,75 @@ exit 0
 });
 
 // -------------------------------------------------------
-// hermitd-update (host path, stubbed claude/tmux)
+// Plugin updates (stubbed docker and host claude/tmux)
 // -------------------------------------------------------
+
+// Duplicate ids must retain separate pins and outcomes for each install scope.
+const listDuplicateScopes = (proj: string) => JSON.stringify([
+  { id: 'hermitd-scribe@hermitd', scope: 'project', enabled: true, version: '0.0.5', projectPath: proj },
+  { id: 'hermitd@hermitd', scope: 'local', enabled: true, version: '1.2.0', projectPath: proj },
+  { id: 'hermitd@hermitd', scope: 'project', enabled: true, version: '1.2.14', projectPath: proj },
+]);
+
+describe('hermitd-docker update plugin loop', () => {
+  test('updates every row despite exec consuming stdin and records each scope', async () => {
+    const wd = setupWorkdir();
+    const proj = wd.dir;
+    try {
+      fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
+      for (const name of ['hermitd-docker', 'hermitd-run']) {
+        const dest = hermit(proj, 'bin', name);
+        fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', name), dest);
+        fs.chmodSync(dest, 0o755);
+      }
+      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test' }));
+      write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
+      const stub = path.join(proj, '.stub');
+      fs.mkdirSync(stub);
+      const callsFile = path.join(stub, 'docker-calls.txt');
+      write(path.join(stub, 'list.json'), listDuplicateScopes(proj));
+      write(path.join(stub, 'docker'), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
+if [[ " $* " == *" exec "* ]]; then
+  cat >/dev/null
+fi
+case "$*" in
+  *"ps --status running"*) echo hermit ;;
+  *"claude plugin list --json"*) cat "$DOCKER_STUB_LIST" ;;
+  *"claude --version"*) echo '2.1.301 (Claude Code)' ;;
+  *"tmux capture-pane"*) printf '❯ ────────\\n' ;;
+esac
+exit 0
+`);
+      fs.chmodSync(path.join(stub, 'docker'), 0o755);
+      const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
+        args: ['update', '--plugins-only', '--yes'], cwd: proj,
+        env: {
+          PATH: `${stub}:${process.env.PATH}`, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT,
+          HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'),
+          CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'),
+          DOCKER_STUB_CALLS: callsFile, DOCKER_STUB_LIST: path.join(stub, 'list.json'),
+        },
+      });
+      expect(r.exitCode).toBe(0);
+      const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
+      expect(calls.filter(l => l.includes('claude plugin update ')).map(l => l.slice(l.indexOf('claude plugin update ')))).toEqual([
+        'claude plugin update hermitd@hermitd --scope local',
+        'claude plugin update hermitd@hermitd --scope project',
+        'claude plugin update hermitd-scribe@hermitd --scope project',
+      ]);
+      expect(calls.filter(l => l.includes('claude plugin marketplace update '))).toHaveLength(1);
+      const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
+      expect(entry.plugins).toEqual([
+        { id: 'hermitd@hermitd', scope: 'local', before: '1.2.0', after: '1.2.0', status: 'unchanged' },
+        { id: 'hermitd@hermitd', scope: 'project', before: '1.2.14', after: '1.2.14', status: 'unchanged' },
+        { id: 'hermitd-scribe@hermitd', scope: 'project', before: '0.0.5', after: '0.0.5', status: 'unchanged' },
+      ]);
+      expect(r.stdout).toContain('hermitd@hermitd (scope local): v1.2.0');
+      expect(r.stdout).toContain('hermitd@hermitd (scope project): v1.2.14');
+    } finally { wd.cleanup(); }
+  });
+});
 
 describe('hermitd-update host path', () => {
   // Build a workdir with the wrapper installed at .hermit/bin, a config
@@ -467,6 +534,37 @@ describe('hermitd-update host path', () => {
 
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
+
+  test('duplicate ids keep per-scope versions and failure status in history and summary', async () => {
+    const f = fixture({ listJson: listDuplicateScopes });
+    try {
+      const rows = JSON.parse(listDuplicateScopes(f.proj));
+      rows[2].errors = ['no-matching-tag'];
+      write(path.join(f.proj, '.stub', 'list.json'), JSON.stringify(rows));
+      write(path.join(f.proj, '.stub', 'claude'), `#!/usr/bin/env bash
+if [ "$1 $2" = "plugin list" ]; then cat "$HOST_STUB_LIST"; exit 0; fi
+if [ "$1 $2" = "plugin update" ]; then
+  printf '%s\\n' "$*" >> "$HOST_STUB_CALLS"
+  [ "$3 $5" = "hermitd@hermitd local" ] && exit 1
+fi
+exit 0
+`);
+      const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
+        args: ['--yes'], cwd: f.proj,
+        env: { ...f.env, HOST_STUB_LIST: path.join(f.proj, '.stub', 'list.json'), HOST_STUB_CALLS: f.recFile },
+      });
+      expect(r.exitCode).toBe(0);
+      expect(fs.readFileSync(f.recFile, 'utf8').trim().split('\n')).toHaveLength(3);
+      const entry = readJson(hermit(f.proj, 'state', 'update-history.jsonl'));
+      expect(entry.plugins).toEqual([
+        { id: 'hermitd@hermitd', scope: 'local', before: '1.2.0', after: '1.2.0', status: 'failed' },
+        { id: 'hermitd@hermitd', scope: 'project', before: '1.2.14', after: '1.2.14', status: 'blocked', error: 'no-matching-tag' },
+        { id: 'hermitd-scribe@hermitd', scope: 'project', before: '0.0.5', after: '0.0.5', status: 'unchanged' },
+      ]);
+      expect(r.stdout).toContain('hermitd@hermitd (scope local): v1.2.0 -> v1.2.0 (FAILED');
+      expect(r.stdout).toContain('hermitd@hermitd (scope project): v1.2.14 -> v1.2.14 (blocked');
+    } finally { f.wd.cleanup(); }
+  });
 
   const listThreeScopes = (proj: string) => JSON.stringify([
     { id: 'hermitd@hermitd', scope: 'local', enabled: true, version: '1.2.0', projectPath: proj },
