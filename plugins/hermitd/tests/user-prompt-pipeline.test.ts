@@ -720,6 +720,24 @@ describe('task thread admission', () => {
     });
   }
 
+  for (const approver of [null, 'telegram:u2']) {
+    test(`a posted result ${approver ? 'with a named approver gets no' : 'offers the'} finishing hint`, async () => {
+      const wd = setupChannelWorkdir();
+      const dir = hermit(wd.dir);
+      expect((await openThreadTask(wd, 'telegram:12345', 'resident', false)).exitCode).toBe(0);
+      const record = readTasks(dir)[0];
+      Object.assign(record, { waiting_on: approver ?? 'telegram:u1', waiting_since: '2026-09-21T10:00:00Z', result_at: '2026-09-20T10:00:00Z', result_rev: 1, result: 'Finished work', approver });
+      fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
+      const result = await runScript('user-prompt-pipeline.ts', {
+        stdin: JSON.stringify({ prompt: envelope('approved, let me know when it lands') }), cwd: wd.dir,
+      });
+      expect(result.exitCode).toBe(0);
+      const hint = `add --check '<command>'`;
+      if (approver) expect(result.stdout).not.toContain(hint);
+      else expect(result.stdout).toContain(hint);
+    });
+  }
+
   test('guild text channel with a record is not labeled a task thread', async () => {
     const wd = trackedWorkdir();
     fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['parent'], bot_user_id: '777' } } }));

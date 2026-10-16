@@ -67,3 +67,24 @@ for (const owner of ['helper:review', 'worker:a1b2c3d4e5f6a7b8c']) it(`allows on
     await f.ok('note', [second.id, '--owner', owner]);
   } finally { f.cleanup(); }
 });
+it('an approved result waiting on a check lists as finishing, and late once its due date passes', async () => {
+  const f = taskFixture(); try {
+    const listing = async (id: string) => (await f.ok('list', ['--id', id])).rows[0].listing;
+    const { id } = await f.open();
+    await f.ok('block', [id, '--result-stdin'], 'Booked, awaiting the confirmation email');
+    await f.ok('note', [id, '--check', 'false']);
+    expect(await listing(id)).toEqual(['unconfirmed']);
+    await f.ok('note', [id, '--clear-waiting']);
+    expect(await listing(id)).toEqual(['finishing']);
+    await f.ok('note', [id, '--due', '2020-01-01T00:00:00Z']);
+    expect(await listing(id)).toEqual(['late', 'finishing']);
+    const { id: unchecked } = await f.open();
+    await f.ok('block', [unchecked, '--result-stdin'], 'Ready');
+    await f.ok('note', [unchecked, '--clear-waiting']);
+    expect(await listing(unchecked)).toEqual(['unconfirmed']);
+    const { id: approved } = await f.open(['--approver', 'discord:u2']);
+    await f.ok('block', [approved, '--result-stdin'], 'Ready');
+    await f.ok('note', [approved, '--check', 'false', '--clear-waiting']);
+    expect(await listing(approved)).toEqual(['unconfirmed']);
+  } finally { f.cleanup(); }
+});

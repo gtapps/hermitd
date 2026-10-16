@@ -324,7 +324,9 @@ export function taskListing(record: Task, records: Task[], shared = false): stri
   const labels: string[] = [];
   if (record.status === 'closed') return ['closed'];
   if (record.due && Date.parse(record.due) < Date.now()) labels.push('late');
-  if (record.result) labels.push('unconfirmed');
+  // An approved result whose outcome a check still has to observe needs nothing from anyone;
+  // a named approver still confirms in words, so that record stays unconfirmed.
+  if (record.result) labels.push(record.check && !record.waiting_on && !record.approver ? 'finishing' : 'unconfirmed');
   else if (record.waiting_on) labels.push(`waiting on ${record.waiting_on}`);
   if (isRunnable(record) && records.some(r => isRunnable(r) && (r.opened_at < record.opened_at || r.opened_at === record.opened_at && r.id < record.id))) labels.push('queued');
   if (shared) labels.push('shared');

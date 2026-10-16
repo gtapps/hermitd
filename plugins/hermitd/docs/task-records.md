@@ -20,7 +20,7 @@ Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State target
 | `standup` | Reports windowed costs and commitments by person, with closed records grouped by closure actor type. Supports `--days` and `--json`. |
 | `check-snapshot <id>` | Returns check, result revision and status for the gated runner. |
 
-A runnable record is open, resident-owned, without a result or waiting dependency. It is labelled queued only if an earlier runnable record exists. Close and cancel return `next_queued: {id, handle, title} | null`; continue with that record in the same turn. Heartbeat nudges a runnable record after `tasks.queue_nudge_minutes` (default 60). Its acknowledgement token hashes id, opened time and result revision; changing the record invalidates an old acknowledgement.
+A runnable record is open, resident-owned, without a result or waiting dependency. It is labelled queued only if an earlier runnable record exists. A record with a result, a check, no waiting dependency and no named approver is labelled finishing instead of unconfirmed: it was approved and closes by `check` once the daily run sees the outcome, or shows late after its due date. Close and cancel return `next_queued: {id, handle, title} | null`; continue with that record in the same turn. Heartbeat nudges a runnable record after `tasks.queue_nudge_minutes` (default 60). Its acknowledgement token hashes id, opened time and result revision; changing the record invalidates an old acknowledgement.
 
 ## Evidence commands
 
