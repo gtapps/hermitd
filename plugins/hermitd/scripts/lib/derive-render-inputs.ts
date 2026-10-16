@@ -63,14 +63,13 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     return null;
   }
 
+  // Any source counts: base and theirs render the template's default line, so
+  // the 3-way merge keeps an operator-chosen source as an ordinary local edit.
   const gitIdentityMounts = hermit.volumes.filter(
-    (line: string) => line.includes(':/home/claude/.gitconfig'),
+    (line: string) => /:\/home\/claude\/\.gitconfig(:|$)/.test(line),
   );
   if (gitIdentityMounts.length > 1) return null;
   const gitIdentityMount = gitIdentityMounts.length === 1;
-  if (gitIdentityMount && gitIdentityMounts[0] !== '${HOME}/.gitconfig:/home/claude/.gitconfig:ro') {
-    return null;
-  }
 
   return {
     packages: [...packages],

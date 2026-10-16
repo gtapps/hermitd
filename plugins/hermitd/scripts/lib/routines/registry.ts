@@ -112,7 +112,9 @@ function promptHash(r: Json, shiftedSchedule: string, pluginRoot: string): strin
     precheck: r.precheck ?? null,
     precheck_timeout_s: r.precheck_timeout_s ?? null,
     shifted_schedule: shiftedSchedule,
-    pluginRoot,
+    // Claude Code can cache one release as both `<ver>` and `<ver>-<sha12>` (see
+    // sameMonitorCommand); either copy is the same build, so the suffix is not drift.
+    pluginRoot: pluginRoot.replace(/-[0-9a-f]{12}$/, ''),
   }));
 }
 

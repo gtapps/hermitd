@@ -223,4 +223,38 @@ describe('doctor state check — JSONL validation', () => {
     );
     expect(result.status).toBe('fail');
   });
+
+  test('a corrupt row is cited by file and line', () => {
+    const row = JSON.stringify({ ts: '2026-08-28T10:00:00Z' });
+    const result = stateScenario('observations.jsonl', `${row}\n${row}\n{torn\n`);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('observations.jsonl:3');
+  });
+
+  test('NUL bytes ahead of an intact row warn with a repair that clears them', () => {
+    const row = JSON.stringify({ ts: '2026-08-28T10:00:00Z' });
+    const result = stateScenario('watchdog-events.jsonl', `${row}\n${'\0'.repeat(83)}${row}\n${row}\n`);
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('watchdog-events.jsonl:2');
+    const fix = result.detail.split('; fix: ')[1];
+    expect(fix).toContain("tr -d '\\000'");
+    const run = Bun.spawnSync(['sh', '-c', fix]);
+    expect(run.exitCode).toBe(0);
+    const file = path.join(fix.match(/^cd '([^']+)'/)![1], 'watchdog-events.jsonl');
+    expect(fs.existsSync(`${file}.bak`)).toBe(true);
+    for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  test('a corrupt row still fails when another ledger only has NUL leftovers', () => {
+    const projectRoot = freshDir();
+    const stateDir = path.join(projectRoot, '.hermit', 'state');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'watchdog-events.jsonl'), '\0\0{"a":1}\n');
+    fs.writeFileSync(path.join(stateDir, 'observations.jsonl'), '{"a":1}\n{torn\n');
+    const result = checkStateFiles(resolvePaths(path.join(projectRoot, '.hermit'), PLUGIN_ROOT));
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('observations.jsonl:2');
+  });
 });
