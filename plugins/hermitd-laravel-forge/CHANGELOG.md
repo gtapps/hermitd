@@ -1,5 +1,10 @@
 # Changelog — laravel-forge-hermit
 
+## [Unreleased]
+
+### Fixed
+- Scrubbed `forge.php` output redacts double-quoted values in JSON-encoded results, single-quoted values, and literal credentials on `composer config` auth lines.
+
 ## [0.0.19] - 2026-10-02
 
 ### Changed
