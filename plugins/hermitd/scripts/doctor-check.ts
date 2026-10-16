@@ -2527,9 +2527,10 @@ function writeReport(checks: Json[], escalation?: DoctorEscalation, p: DoctorPat
 
 // Install health only. classifier-denials reports how the model has been used, which an
 // upgrade neither causes nor fixes, so counting it would break a post-upgrade claim at random.
-function verdictLine(checks: Json[]): string {
+// `predates` leaves out failures that already existed before an upgrade.
+function verdictLine(checks: Json[], predates: (id: string) => boolean = () => false): string {
   const failures = checks
-    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID)
+    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID && !predates(check.id))
     .map((check) => check.id);
   return failures.length === 0 ? 'OK' : `FAIL ${failures.join(', ')}`;
 }
@@ -2575,7 +2576,13 @@ if (import.meta.main) {
       process.exit(0);
     }
     if (process.argv[3] === '--verdict') {
-      const line = verdictLine(checks);
+      // `--verdict --since <iso>`: a failure whose ledger entry was first seen before <iso>
+      // predates the upgrade. The ledger keeps `first_seen` across warn→fail, so a check that
+      // already warned is left out too; an unreadable ledger counts every failure.
+      const sinceMs = process.argv[4] === '--since' ? Date.parse(process.argv[5]) : NaN;
+      const ledger = Number.isFinite(sinceMs) ? readAlertState(doctorAlertsPath(PATHS.hermitDir)) : null;
+      const alerts = ledger?.kind === 'ok' ? ledger.value.alerts : undefined;
+      const line = verdictLine(checks, (id) => Date.parse(alerts?.[DOCTOR_PREFIX + id]?.first_seen) < sinceMs);
       process.stdout.write(line + '\n');
       process.exit(line === 'OK' ? 0 : 1);
     }
