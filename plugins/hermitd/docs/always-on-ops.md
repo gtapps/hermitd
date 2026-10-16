@@ -69,7 +69,7 @@ The resident process stays available while individual task records track commitm
 
 1. `hermitd-start` launches Claude Code in tmux and invokes `resident-start` for boot recovery and readiness, without selecting a task.
 2. An assignment opens a record when `TASKS.md` policy calls for one. Progress, waiting reasons and lessons are written through `task.ts`.
-3. A result stays open and unconfirmed until a check passes, a named person confirms it, or the requester clearly adopts it (acts on it, thanks for it as finished, or builds the next request on it). A named approver still confirms in words. Explicit cancellation closes it without claiming success. Check closure is prompt-free only under auto permission mode; on default mode each run raises the normal permission prompt.
+3. A result stays open and unconfirmed until a check passes, a named person confirms it, or the requester clearly accepts it in any wording or language. A named approver confirms in their own words. Explicit cancellation closes it without claiming success. Check closure is prompt-free only under auto permission mode; on default mode each run raises the normal permission prompt.
 4. Close or cancel returns the next runnable resident record. Continue that work in the same turn.
 5. `hermitd-stop` shuts down the resident process. Open commitments remain records for the next boot.
 

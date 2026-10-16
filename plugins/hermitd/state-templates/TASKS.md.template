@@ -4,7 +4,7 @@
 Record work that outlasts the turn or needs a human. Plain questions open nothing.
 
 ## Confirmation and cancel words
-A posted result at its current revision is confirmed by “ok”, “yes”, or “confirmed”, or by the requester clearly adopting it: acts on it, thanks for it as finished, or builds the next request on it. A message that defers review or asks for a correction does not confirm; a correction stays steering on the same record. A named approver confirms only by that approver's explicit word. Silence never confirms. Use “cancel” or “stop this task” to cancel with a reason. A pending micro-proposal takes precedence.
+Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. A pending micro-proposal is answered first. When unsure, ask. Say when you close or cancel so the requester can object.
 
 ## Card, notice and standup wording
 Keep cards concise: requester, definition of done, due date and outcome. State the queue position when accepting work for later. Show handles when two or more tasks are open in the conversation; in DMs also require tasks.handle_in_dm. A stall notice names the status and next step. Standup groups promised, late and waiting work by person.

@@ -176,7 +176,7 @@ Always-on Docker and tmux launches invoke it automatically.
 
 ## Does a finished answer close the task?
 
-Not by itself. A reported result stays unconfirmed until a named person confirms it, the requester clearly adopts it (acts on it, thanks for it as finished, or builds the next request on it), or its recorded check succeeds. A named approver still confirms in words. Explicit cancellation closes a commitment without reporting success. Ask "Confirm that task" or "Cancel it because the requirement changed" in the task's conversation.
+Not by itself. A reported result stays unconfirmed until a named person confirms it, the requester clearly accepts it in any wording or language, or its recorded check succeeds. A named approver confirms in their own words. Explicit cancellation closes a commitment without reporting success. Ask "Confirm that task" or "Cancel it because the requirement changed" in the task's conversation.
 
 ## Why did the conversation clear while tasks were open?
 
