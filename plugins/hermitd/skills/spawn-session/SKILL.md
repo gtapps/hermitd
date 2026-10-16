@@ -188,8 +188,9 @@ alternate invocation, or weaker permission mode. The exceptions are
    ```
 
 4. Invoke `/hermitd:watch session <n> "<first 40 chars of the operator prompt>" --id <bg-id>`.
-   When the watch reports the helper blocked on its `waitingFor`, give the operator
-   `claude attach <id>` to answer it (in Docker,
+   The watch handles a blocked helper with one rescue restart, then a chat
+   question the operator can answer. Give `claude attach <id>` only when the
+   watch reports the rescue could not run (in Docker,
    `docker exec -it <container> claude attach <id>`).
    Whenever step 3 bound or opened a record, also pass `--record <T-id>`.
    With `--proposal`, also pass `--proposal <PROP-id>`.
@@ -217,13 +218,16 @@ retries a blocked or declined follow-up once with that stored request.
 
 ### Resume with new instructions
 
-Inputs: helper name, instructions, watch note and flags. Return the outcome to
+Inputs: helper name, instructions, watch note and flags, and optional rescue
+input from watch's helper poll handler. Return the outcome to
 the caller so it can handle a resume that could not start.
 
 1. Read the helper's row in `claude agents --json`. Ready means `status` is
    `idle` and `state` is neither `working`, `blocked` nor `scheduled`. Take its
    `id` as the bg id and its `sessionId` as the resume handle. Not ready or no
-   row: end without resuming; never stop a busy helper.
+   row: end without resuming; never stop a busy helper. With the rescue input,
+   also accept `status: "waiting"` with `state: "blocked"`; use that row's same
+   id and resume handle. Without rescue, the readiness rule stays as above.
 2. Run `claude stop <bg-id>`, then in one bounded Bash call poll
    `claude agents --json` every 2s for up to 30s until no row has that `id`.
    Still listed at the deadline: end without resuming and report that outcome.
@@ -234,9 +238,12 @@ the caller so it can handle a resume that could not start.
    flags start a copy instead. Launch failure or any output other than a normal
    resume (for example "started a copy"): do not try again; tell the operator
    what it printed and end with that outcome.
-4. Remove the helper's old watch entry if still live and write the registry,
+4. Before removing the helper's old watch entry, call `TaskStop` on its
+   `poll_task_id` when present; an error means it already exited. Preserve its
+   `rescued` flag for the replacement. Remove the entry if still live and write the registry,
    then invoke `/hermitd:watch session <name> "<note>" --id <bg-id>` plus the
-   given flags. Use the resumed session's bg id (the first 8 characters of its
+   given flags, adding `--rescued` for a rescue or a previously rescued entry.
+   Use the resumed session's bg id (the first 8 characters of its
    session id). Do not store these prompt instructions as `followup`: they
    were delivered by resume, not by message. If the watch declines, return
    that the resumed helper runs unwatched; a launched resume counts as

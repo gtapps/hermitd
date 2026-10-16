@@ -4,9 +4,9 @@ Follow the shared rules in [SKILL.md](SKILL.md). Start a new watch with the firs
 section; after a caller has already armed a subscription, use
 [Registering an existing idle subscription](#registering-an-existing-idle-subscription).
 
-### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>]`)
+### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--rescued] [--id <bg-id>]`)
 
-1. Parse optional `--record <T-id>`, `--proposal <PROP-id>`, `--implement`, `--retry` and `--id <bg-id>`
+1. Parse optional `--record <T-id>`, `--proposal <PROP-id>`, `--implement`, `--retry`, `--rescued` and `--id <bg-id>`
    with the name and note. If `<name>` contains `*` or `?`, take the **glob branch** below instead of
    resolving an exact name. The glob branch ignores `--record`, `--proposal`, `--implement`, `--retry` and `--id`.
 
@@ -76,7 +76,7 @@ section; after a caller has already armed a subscription, use
 
 ### Registering an existing idle subscription
 
-Inputs: the target name, note, optional record/proposal/purpose/retry metadata, the
+Inputs: the target name, note, optional record/proposal/purpose/retry/rescue metadata and bg id, the
 sent message text when the send carried one, and the
 result of a successful `SendMessage` with `notify_when_idle: true`. This section
 only records that subscription; do not send another message or subscribe again.
@@ -95,12 +95,46 @@ only records that subscription; do not send another message or subscribe again.
    second do not collide. Append:
    `{id: "session-<name>-<epoch>-<rand>", description: <note or "session <name>">, target: <name>, started_at, source: "adhoc", class: "peer-idle"}`.
    Store a supplied record as `record`, proposal as `proposal`, implementation
-   purpose (`--implement`) as `purpose: "implement"`, and `--retry` as `retry: true`.
+   purpose (`--implement`) as `purpose: "implement"`, `--retry` as `retry: true`,
+   and `--rescued` as `rescued: true`.
    `switch` is an optional object with `record` and `model` and/or `effort`; only
    `/hermitd:spawn-session`'s switch procedure writes it.
    When the send carried a message, store its exact text as `followup: ["<text>"]`.
    Do not add `task_id` (`task_id` means a Monitor task and drives `TaskStop`).
    Write the registry back.
-4. Inside an open task record's turn, note the watch and its id through
+4. Resolve the helper's bg id from the supplied `--id`, otherwise from the `id`
+   of the row whose `name` equals the target in `claude agents --json`. No row:
+   keep the subscription, say no background poll was started, and skip to step 5.
+   Start one Bash call with `run_in_background: true`, substituting the resolved
+   id as a shell-quoted value for `<bg-id>`:
+   ```bash
+   while true; do
+     if agents=$(claude agents --json --all) &&
+        [[ -n "$agents" ]] &&
+        jq -e 'type == "array"' <<<"$agents" >/dev/null 2>&1; then
+       row=$(jq -c --arg id <bg-id> '.[] | select(.id==$id)' <<<"$agents")
+       if [[ -z "$row" ]]; then
+         printf 'ended gone\n'
+         exit 0
+       fi
+       status=$(jq -r '.status // ""' <<<"$row")
+       state=$(jq -r '.state // ""' <<<"$row")
+       if [[ "$status" == waiting && "$state" == blocked ]]; then
+         printf 'blocked %s\n' "$(jq -r '.waitingFor // "unknown"' <<<"$row")"
+         exit 0
+       fi
+       if [[ "$state" == failed || "$state" == stopped ]]; then
+         printf 'ended %s\n' "$state"
+         exit 0
+       fi
+     fi
+     sleep 60
+   done
+   ```
+   Failed, empty or invalid CLI reads are retried. `status: "idle"` with
+   `state: "blocked"` is a finished turn, not a block; keep polling.
+   Store the returned background task id as `poll_task_id` on the entry and
+   write the registry. The existing-entry return in step 2 starts no second poll.
+5. Inside an open task record's turn, note the watch and its id through
    `task-note` (Commands) with arguments `<id>` with
    `- [ACTIVE] <instruction> (started HH:MM)` on stdin. Otherwise skip the note.

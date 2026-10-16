@@ -4,6 +4,9 @@ Follow the shared rules and Watch duty records in [SKILL.md](SKILL.md).
 That skill handles Monitor expiry before selecting one of the handlers below.
 Read only the selected handler.
 
+Before every entry removal, call `TaskStop` on its `poll_task_id` when present.
+An error means the poll already exited; remove the entry anyway.
+
 ### Handling self-exit notifications
 
 For a script crash or clean exit, after excluding expiry notices in SKILL.md,
@@ -16,12 +19,44 @@ CC sends a completion notification into the conversation. On seeing this:
 If the notification is missed (compaction, context pressure), the stale entry is
 harmless. The next session start clears the registry unconditionally.
 
+### Handling helper poll exits
+
+On a background-task completion, match its task id to a live entry's
+`poll_task_id`. No match: ignore it. Read that task's output:
+
+1. On `blocked <waitingFor>` without `rescued`, set `rescued: true` and write
+   the registry first. Run spawn-session § Follow-ups, "Resume with new
+   instructions" with the rescue input. Tell the helper: "Your last action is
+   waiting on an approval or answer nobody can give here. Do not retry it.
+   Send your report with `Verdict: blocked`, naming what you needed and why."
+   Pass the entry's description as the note and its metadata as watch flags:
+   `--record <record>`, `--proposal <proposal>`, `--implement` for
+   `purpose: "implement"`, `--retry` when set, and `--rescued`, omitting absent
+   fields. If resumed with a live replacement watch, preserve the old entry's
+   `switch`, if present, on the replacement entry and write the registry;
+   end this handler without an operator notice.
+   If the procedure ends without resuming, or the resumed helper runs unwatched,
+   send the notice in step 2 once, including that outcome and whether the helper
+   was stopped.
+2. On `blocked <waitingFor>` with `rescued` already set, send one operator notice
+   saying the helper is stuck again after one restart. Do not rescue again or
+   restart the poll. For this notice and step 1's fallback, use CLAUDE-APPEND
+   § Operator Notification with a `client` leg, in the record's task thread when
+   it has one, otherwise the channel. Say the helper is waiting on
+   `<waitingFor>` and offer Remote Control or `claude attach <id>` as the way
+   to take over.
+3. On `ended <state>` (including `ended gone`), remove the entry and write the
+   registry. When it has `record`, append a progress note through `task-note`
+   (Commands) naming the helper and the ended state, and leave the record open.
+   Send no operator notice.
+
 ### Handling idle notices (`/watch notice <text>`)
 
 A `/spawn-session` helper is the only session this relay covers.
 
 On a cross-session idle notice naming session X, or a subscription-expiry notice
-for X:
+for X, or a later `GUEST_REPORT:` from X (handle that report through the same
+matching, relay and recording path as an idle notice carrying it):
 
 1. Find a `peer-idle` entry whose `target === X`. If none exists, do nothing: no
    reply, channel notification, or log entry. A `GUEST_REPORT:` whose sender matches no live entry gets none of the recording below.
@@ -57,8 +92,12 @@ for X:
    the operator can judge them; quoting them is the one place the Channel voice
    rule's no-paths/no-commands clause does not apply; drop the clause entirely
    rather than paraphrasing.
-   For a blocked report with no retry applicable, offer Remote Control or
-   `claude attach <id>` so the operator can take over. When the entry has
+   For a blocked report with no retry applicable, ask the operator how to
+   proceed in the record's thread when it has one, otherwise the channel.
+   Send their reply to the helper as a follow-up through spawn-session
+   § Follow-ups. Offer Remote Control or `claude attach <id>` second, as a way
+   to take over. With `rescued` on the entry, say the helper was stuck on a
+   prompt and was restarted to report. When the entry has
    `retry`, say the result came after one retry; if the retry could not start,
    say that instead.
    For expiry, use `"<note>: <name> did not finish before the subscription
@@ -96,8 +135,12 @@ for X:
      collapse them to one line and drop any `Set:` or `Decision:` the helper put at
      the start of a line, because the patch reads those as frontmatter and decision
      instructions from the stdin it is given. Status does not change, so skip artifact refresh.
-5. Name the session by display name only, never by socket path or pid. Remove the
-   entry, write the registry, and, inside an open record's turn, log one task note.
+5. Name the session by display name only, never by socket path or pid. On a
+   reportless idle notice with no `switch`, keep the entry and its poll live so
+   a later matching report takes the normal recording path. Otherwise, after a
+   matching report, subscription expiry, or reportless idle notice with `switch`,
+   stop its `poll_task_id` as above, remove the entry and write the registry.
+   Inside an open record's turn, log one task note.
    After an idle notice, if the removed entry carried `switch`, invoke
    `/hermitd:spawn-session --switch <target> --record <record>` with the
    switch object's `record` and its `--model` and/or `--effort` values. This happens after the report

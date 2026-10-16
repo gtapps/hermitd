@@ -186,6 +186,7 @@ describe('watch progressive disclosure', () => {
     for (const [file, heading] of [
       ['session-watch.md', '### Starting a session watch'],
       ['notices.md', '### Handling self-exit notifications'],
+      ['notices.md', '### Handling helper poll exits'],
       ['notices.md', '### Handling idle notices'],
     ]) {
       expect(watch).toContain(`](${file})`);
@@ -217,6 +218,7 @@ describe('watch progressive disclosure', () => {
     expect(registration).toContain('do not write the registry');
     expect(registration).toContain('class: "peer-idle"');
     expect(registration).toContain('Do not add `task_id`');
+    expect(registration).toContain('poll_task_id');
     expect(registration).toContain('`task-note` (Commands)');
     for (const body of [reuse, session]) {
       expect(body).not.toMatch(/steps [3-9][–-][3-9]/);
