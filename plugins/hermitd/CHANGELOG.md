@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
+
+### Fixed
+- Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
+
 ## [1.4.15] - 2026-10-15
 
 ### Added

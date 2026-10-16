@@ -414,3 +414,80 @@ describe('routine-due lateness', () => {
     expect(readMetricsRows(dir).map((r) => r.event)).toEqual(['skipped-late']);
   }));
 });
+
+describe('later-check ledger marks', () => {
+  const due = '2026-07-15T14:00:00Z';
+  function setupLater(dir: string, row: object | null = { kind: 'reminder', origin: 'hermit' }, enabled = true) {
+    writeConfig(dir, [ROUTINE({ id: 'later-check', skill: 'hermitd:later run', schedule: '5 9 * * *', precheck: 'later', enabled })]);
+    writeSchedule(dir, { 'later-check': { last_consumed_mark: '2026-07-15T13:59:00.000Z' } });
+    if (row) fs.writeFileSync(hermit(dir, 'state', 'hypotheses.jsonl'), JSON.stringify({ id: 'reminder', claim: 'pay invoice', cmd: null, state: 'pending', due, ...row }) + '\n');
+  }
+
+  test('reminder fires at due minute once', withDir(async dir => {
+    setupLater(dir);
+    const result = await run(dir, due);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+    expect(readSchedule(dir)['later-check'].last_consumed_mark).toBe('2026-07-15T14:00:00.000Z');
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout).toBe('');
+  }));
+
+  test('operator claims also fire, flooring due to its minute', withDir(async dir => {
+    setupLater(dir, { origin: 'operator', due: '2026-07-15T14:00:00.500Z' });
+    // Gate sees the row as due during this poll, within the same minute.
+    expect((await run(dir, '2026-07-15T14:00:30Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+  }));
+
+  test('hermit claims never create marks', withDir(async dir => {
+    setupLater(dir, { origin: 'hermit' });
+    expect((await run(dir, due)).stdout).toBe('');
+  }));
+
+  test('paused reminder consumes and stamps skipped-paused', withDir(async dir => {
+    setupLater(dir);
+    setPause(hermit(dir), { reason: 'operator', by: 'test' });
+    expect((await run(dir, due)).stdout).toBe('');
+    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'later-check', event: 'skipped-paused' }));
+  }));
+
+  test('open operator turn defers reminder until the turn closes', withDir(async dir => {
+    setupLater(dir);
+    writeTurnMarker(dir, due);
+    expect((await run(dir, due)).stdout).toBe('');
+    expect(readSchedule(dir)['later-check'].last_consumed_mark).toBe('2026-07-15T13:59:00.000Z');
+    fs.unlinkSync(turnMarkerPath(dir));
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+  }));
+
+  test('late reminder stamps skipped-late', withDir(async dir => {
+    setupLater(dir);
+    expect((await run(dir, '2026-07-15T15:01:00Z')).stdout).toBe('');
+    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'later-check', event: 'skipped-late' }));
+  }));
+
+  test('daily cron still fires without ledger rows', withDir(async dir => {
+    setupLater(dir, null);
+    writeConfig(dir, [ROUTINE({ id: 'later-check', schedule: '5 9 * * *' })]);
+    writeSchedule(dir, { 'later-check': { last_consumed_mark: '2026-07-15T09:04:00.000Z' } });
+    expect((await run(dir, '2026-07-15T09:05:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+  }));
+
+  test('disabled later-check emits nothing for reminders', withDir(async dir => {
+    setupLater(dir, { kind: 'reminder', origin: 'operator' }, false);
+    expect((await run(dir, due)).stdout).toBe('');
+  }));
+
+  test('missing and corrupt ledger behave as no rows', withDir(async dir => {
+    setupLater(dir, null);
+    expect((await run(dir, due)).stdout).toBe('');
+    fs.writeFileSync(hermit(dir, 'state', 'hypotheses.jsonl'), '{broken\nnull\n');
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout).toBe('');
+  }));
+
+  test('closed and future reminders never create marks', withDir(async dir => {
+    setupLater(dir, { kind: 'reminder', state: 'sent' });
+    expect((await run(dir, due)).stdout).toBe('');
+    setupLater(dir, { kind: 'reminder', due: '2026-07-15T14:02:00Z' });
+    expect((await run(dir, due)).stdout).toBe('');
+  }));
+});
