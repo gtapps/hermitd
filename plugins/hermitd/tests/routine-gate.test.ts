@@ -433,6 +433,9 @@ describe('routine gate — doctor builtin', () => {
     const r = await runDoctor(dir, ['--verdict', '--since', new Date(Date.now() + 60_000).toISOString()]);
     expect(r.stdout.trim()).toBe('OK');
     expect(r.exitCode).toBe(0);
+    const after = await runDoctor(dir, ['--verdict', '--since', new Date(Date.now() - 3_600_000).toISOString()]);
+    expect(after.stdout.trim()).toContain('config');
+    expect(after.exitCode).toBe(1);
   }), 30000);
 });
 

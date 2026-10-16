@@ -26,7 +26,7 @@ Every run of this skill (interactive or unattended) delegates steps 0–9 to the
      Only the explicit `unattended` argument authorizes a proactive maintainer notification. A
      direct channel request must answer the channel that invoked it.
   2. **Check the runner reference:** run `test -f "${CLAUDE_PLUGIN_ROOT}/skills/hermit-evolve/reference.md"`. If it fails, **abort** — log `"hermit-evolve aborted: plugin root unresolved; cannot dispatch evolve-runner."` and stop. Do not dispatch with a broken path.
-  3. **Dispatch** the `hermitd:evolve-runner` subagent via the Agent tool. Pass the report contract (below); the runner body supplies its own plugin root and Commands entries. Do **not** execute steps 0–9 yourself.
+  3. **Record `<now>`** for step 10 as the current UTC time (`date -u +%FT%TZ`), then **dispatch** the `hermitd:evolve-runner` subagent via the Agent tool. Pass the report contract (below); the runner body supplies its own plugin root and Commands entries. Do **not** execute steps 0–9 yourself.
   4. **Go to step 10** with the subagent's returned report.
 
 ## Delegated mode
@@ -38,7 +38,7 @@ Steps 0–9 (in `reference.md`, read only by the `evolve-runner` subagent) are e
 
 ### 10. Report
 
-After a successful upgrade, arm `/hermitd:later add 1d "doctor has no new failures after upgrading to <version>" | .hermit/bin/hermitd-run doctor-check .hermit --verdict --since <now>` (hermit origin, `--timeout-s 120`: the doctor run probes credentials and docker and gets the same budget as its routine). `<now>` is the current UTC time in ISO 8601 (`date -u +%FT%TZ`), so a failure that already existed before the upgrade does not count against it. The resolver form survives the next plugin update; a baked plugin path points at a cache directory that may be gone by the time the claim is checked.
+After a successful upgrade, arm `/hermitd:later add 1d "doctor has no new failures after upgrading to <version>" | .hermit/bin/hermitd-run doctor-check .hermit --verdict --since <now>` (hermit origin, `--timeout-s 120`: the doctor run probes credentials and docker and gets the same budget as its routine). `<now>` is the time recorded before dispatch, so a failure that already existed before the upgrade does not count against it while one first seen during the runner's steps still does. The resolver form survives the next plugin update; a baked plugin path points at a cache directory that may be gone by the time the claim is checked.
 
 **Step 10 runs in the main loop** (not the subagent), consuming the `evolve-runner`'s returned report. The subagent's report is the single source for what follows.
 
