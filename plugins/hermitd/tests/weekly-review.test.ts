@@ -58,7 +58,7 @@ describe('weekly-review Duties', () => {
       ].map(row => JSON.stringify(row)).join('\n') + '\n');
       expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
       const { body } = readReview(dir);
-      expect(body).toContain('last_fired=2026-09-20T23:00:00Z, last_event=in progress (this review)');
+      expect(body).toContain('last_woke=2026-09-20T23:00:00Z, last_event=in progress (this review)');
       expect(body).not.toContain('last_event=started@');
     }));
   }

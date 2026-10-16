@@ -88,6 +88,6 @@ Use `close <id> --by check --actor hermit --claim <linked claim>` only when the 
 Duties open deduplicated records only when a human must act and `config.tasks.duties_open_records` permits it. Otherwise post plain messages. An ambiguous duty read never closes a record.
 
 ## Lessons and executable checks
-Before closing, pipe any lesson into `task.ts lesson .hermit <id>`. Omit this operation when there is no lesson.
+Before closing, pipe any lesson into `task.ts lesson .hermit <id>`. Omit this operation when there is no lesson. When a lesson recorded earlier on the record turned out wrong, add a lesson that names the correction.
 
 Set a command with `open --check '<command>'` or `note <id> --check '<command>'`; `--check clear` removes it. The command exits 0 only when the whole definition of done holds (a pull request is merged, not merely fetchable). It only observes and never writes, deletes, sends or deploys. A record with a named approver gets no check. A changed definition of done clears the check, so the same `note` supplies a replacement when one still applies. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-check.ts <id>` to evaluate it from the project root, subject to the normal command permission gate. Exit 0 closes by `check`; a nonzero exit records progress.

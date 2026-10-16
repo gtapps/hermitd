@@ -39,7 +39,13 @@ describe('weekly-review reflect vital-signs', () => {
     fs.mkdirSync(path.join(hermitDir, 'sessions'), { recursive: true });
     fs.mkdirSync(path.join(hermitDir, 'state'), { recursive: true });
     fs.mkdirSync(path.join(workdir, '.claude'), { recursive: true });
-    fs.writeFileSync(path.join(hermitDir, 'config.json'), '{"timezone":"UTC"}\n');
+    fs.writeFileSync(path.join(hermitDir, 'config.json'), JSON.stringify({
+      timezone: 'UTC',
+      routines: [
+        { id: 'reflect', skill: 'hermitd:reflect', schedule: '0 12 * * *', enabled: true },
+        { id: 'other', skill: 'hermitd:doctor', schedule: '0 12 * * *', enabled: true },
+      ],
+    }));
 
     const TODAY_TS = `${todayYmd()}T12:00:00Z`;
     const task = async (verb: string, args: string[], stdin = '') => {
@@ -49,12 +55,15 @@ describe('weekly-review reflect vital-signs', () => {
       expect(result.exitCode).toBe(0);
       return JSON.parse(result.stdout);
     };
-    for (const lesson of [
-      '- [10:00] reflect (adult) \u2014 2 candidates; verdicts: accept=1 downgrade=0 suppress=1; outcomes: none; suppressed: [cost-spike: no-sessions]',
-      '- [11:00] reflect (quick, post-routine) \u2014 0 candidates; verdicts: accept=0 downgrade=0 suppress=0; outcomes: none',
-    ]) {
-      const { id } = await task('open', ['--title', 'Work', '--requester', 'operator', '--done', 'Verified']);
-      await task('lesson', [id], lesson);
+    fs.writeFileSync(path.join(hermitDir, 'state/routine-metrics.jsonl'), [
+      { routine_id: 'reflect', event: 'fired', ts: `${todayYmd()}T10:00:00Z` },
+      { routine_id: 'reflect', event: 'fired', ts: `${todayYmd()}T11:00:00Z` },
+      { routine_id: 'reflect', event: 'fired', ts: '2020-01-01T12:00:00Z' },
+      { routine_id: 'reflect', event: 'skipped-precheck', ts: TODAY_TS },
+      { routine_id: 'other', event: 'fired', ts: TODAY_TS },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
+    for (const title of ['First work', 'Second work']) {
+      const { id } = await task('open', ['--title', title, '--requester', 'operator', '--done', 'Verified']);
       await task('block', [id, '--result-stdin'], 'Complete');
       await task('close', [id, '--by', 'confirmed', '--actor', 'operator', '--result-rev', '1', '--reason-stdin'], 'Verified');
     }
@@ -84,12 +93,11 @@ describe('weekly-review reflect vital-signs', () => {
     try { fs.rmSync(workdir, { recursive: true, force: true }); } catch {}
   });
 
-  test('weekly-review: reflect_runs counts both phases incl quick', () => {
+  test('weekly-review: reflect_runs counts only in-week fires of reflect routines', () => {
     expect(review).toContain('reflect_runs: 2');
-  });
-
-  test('weekly-review: reflect_candidates summed', () => {
-    expect(review).toContain('reflect_candidates: 2');
+    expect(review).toContain('reflect: 2 runs, 1 surfaced, 1 accepted, ~$0.50; obs:');
+    expect(review).not.toContain('candidates');
+    expect(review).not.toContain('suppressed:');
   });
 
   test('weekly-review: reflect_surfaced counts micro-queued only (excludes shared created)', () => {
@@ -102,10 +110,6 @@ describe('weekly-review reflect vital-signs', () => {
 
   test('weekly-review: reflect_cost_usd from routine:reflect sources in-week', () => {
     expect(review).toContain('reflect_cost_usd: 0.50');
-  });
-
-  test('weekly-review: suppression digest normalized slug:code', () => {
-    expect(review).toContain('suppressed: cost-spike:no-sessions');
   });
 
   test('weekly-review: record count includes both closed tasks', () => {

@@ -9,6 +9,9 @@ import { todayYMD } from './time';
 export interface TaskReport {
   source_path: string;
   outcome: 'done' | 'cancelled' | 'unconfirmed' | 'open';
+  result: string | null;
+  result_at: string | null;
+  closed_reason: string | null;
   title: string;
   opened_at: string;
   closed_at: string | null;
@@ -24,6 +27,7 @@ export function taskReport(dir: string, record: Task, cost = 0): TaskReport {
   return {
     source_path: path.join(dir, 'tasks', `${record.id}.md`),
     outcome: record.status === 'closed' ? (['check', 'confirmed'].includes(record.closed_by ?? '') ? 'done' : 'cancelled') : record.result ? 'unconfirmed' : 'open',
+    result: record.result, result_at: record.result_at, closed_reason: record.closed_reason,
     title: record.title, opened_at: record.opened_at, closed_at: record.closed_at,
     requester: record.requester, due: record.due, waiting_on: record.waiting_on,
     cost,
