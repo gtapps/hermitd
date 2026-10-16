@@ -459,6 +459,17 @@ foreach (['raw' => $satisScript, 'JSON-encoded' => json_encode($satisScript)] as
 }
 check(scrubSecrets(json_encode('composer config bearer.satis.acme.dev B3arerTok')) === '"composer config bearer.satis.acme.dev [REDACTED]"',
     'a composer auth redaction keeps the JSON string closing quote');
+check(scrubSecrets(json_encode('APP_KEY=base64:Ab/Cd+Ef/Gh12/Ij34Kl\\Mn')) === '"APP_KEY=[REDACTED]"',
+    'a JSON-encoded value is masked through its \/ and \\\\ escapes');
+foreach ([
+    'composer config http-basic.satis.acme.dev "deployer" "L1teralPw"',
+    'composer global config http-basic.satis.acme.dev deployer L1teralPw',
+    'php composer.phar config http-basic.satis.acme.dev deployer L1teralPw',
+] as $line) {
+    foreach ([$line, json_encode($line)] as $input) {
+        check(!str_contains(scrubSecrets($input), 'L1teralPw'), "a composer auth line leaks no credential: $input");
+    }
+}
 
 $ordinaryLog = "Cloning into '/home/forge/app'...\nHEAD is now at 4f2a1b9c8d3e5f6a7b8c9d0e1f2a3b4c5d6e7f80 Fix pagination\nnpm WARN deprecated";
 check(scrubSecrets($ordinaryLog) === $ordinaryLog,
