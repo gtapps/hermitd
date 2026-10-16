@@ -68,8 +68,21 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const TELEGRAM_MAX_LEN = 4096;
 const DISCORD_MAX_LEN = 2000;
 
-interface PlatformSendResult extends SendResult {
-  sentText?: string;
+/** Split `text` into ordered parts of at most `limit` chars, breaking at the last
+ * blank line, then line break, then space, then a hard cut that never separates
+ * a surrogate pair. Leading whitespace of each following part is dropped. */
+export function splitMessage(text: string, limit: number): string[] {
+  const parts: string[] = [];
+  let rest = text;
+  while (rest.length > limit) {
+    let cut = [rest.lastIndexOf('\n\n', limit), rest.lastIndexOf('\n', limit), rest.lastIndexOf(' ', limit)]
+      .find((i) => i > 0) ?? limit;
+    if (cut === limit && /[\uD800-\uDBFF]/.test(rest[cut - 1])) cut--;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\s+/, '');
+  }
+  if (rest || !parts.length) parts.push(rest);
+  return parts;
 }
 
 /** Map a fetch rejection to a stable error string (timeouts read as 'request timeout'). */
@@ -88,14 +101,14 @@ function retryDelayMs(platform: 'telegram' | 'discord', resp: Response, body: Js
 }
 
 async function sendPlatform(
-  platform: 'telegram' | 'discord', url: string, request: RequestInit, sentText: string, timeoutMs: number,
-): Promise<PlatformSendResult> {
+  platform: 'telegram' | 'discord', url: string, request: RequestInit, timeoutMs: number,
+): Promise<SendResult> {
   try {
     const deadline = performance.now() + timeoutMs;
     const signal = AbortSignal.timeout(timeoutMs);
     for (let attempt = 0; ; attempt++) {
       const resp = await fetch(url, { ...request, signal });
-      if (resp.ok) return { ok: true, status: resp.status, sentText };
+      if (resp.ok) return { ok: true, status: resp.status };
       let body: Json;
       try { body = await resp.json(); } catch { signal.throwIfAborted(); }
       const error = (platform === 'telegram' ? body?.description : body?.message) || `${platform}_http_${resp.status}`;
@@ -115,31 +128,30 @@ async function sendPlatform(
   }
 }
 
-async function sendTelegram(token: string, chatId: string, text: string, timeoutMs: number): Promise<PlatformSendResult> {
+async function sendTelegram(token: string, chatId: string, text: string, timeoutMs: number): Promise<SendResult> {
   const base = process.env.HERMIT_TELEGRAM_API_URL || 'https://api.telegram.org';
-  const sentText = text.slice(0, TELEGRAM_MAX_LEN);
   return sendPlatform('telegram', `${base}/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: sentText }),
-  }, sentText, timeoutMs);
+    body: JSON.stringify({ chat_id: chatId, text }),
+  }, timeoutMs);
 }
 
-async function sendDiscord(token: string, chatId: string, text: string, timeoutMs: number): Promise<PlatformSendResult> {
+async function sendDiscord(token: string, chatId: string, text: string, timeoutMs: number): Promise<SendResult> {
   const base = process.env.HERMIT_DISCORD_API_URL || 'https://discord.com/api/v10';
-  const sentText = text.slice(0, DISCORD_MAX_LEN);
   return sendPlatform('discord', `${base}/channels/${chatId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
-    body: JSON.stringify({ content: sentText }),
-  }, sentText, timeoutMs);
+    body: JSON.stringify({ content: text }),
+  }, timeoutMs);
 }
 
 // Keep in step with DIRECT_SEND_CHANNELS in lib/channel-config.ts.
-const SENDERS: Record<string, (token: string, chatId: string, text: string, timeoutMs: number) => Promise<PlatformSendResult>> = {
+const SENDERS: Record<string, (token: string, chatId: string, text: string, timeoutMs: number) => Promise<SendResult>> = {
   telegram: sendTelegram,
   discord: sendDiscord,
 };
+const MAX_LEN: Record<string, number> = { telegram: TELEGRAM_MAX_LEN, discord: DISCORD_MAX_LEN };
 
 /**
  * POST `text` to a channel and log the send (direction:'out') on success. By
@@ -165,7 +177,13 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
     const token = readChannelToken(hermitDir, channelId, config.channels?.[channelId] || {});
     if (!token) return { ok: false, error: 'missing_token' };
 
-    const result = await send(token, chatId, text, opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    // Text over the platform limit goes out as ordered parts. The first failed
+    // part stops the send; parts already posted stay posted.
+    let result!: SendResult;
+    for (const part of splitMessage(text, MAX_LEN[channelId])) {
+      result = await send(token, chatId, part, opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+      if (!result.ok) break;
+    }
     // Record reachability for ask-gate's redirect-target check (advisory, never
     // throws). Skipped for maintainer-chat sends: a failure there must not flip
     // the platform-keyed health that ask-gate/permission-denied read for the
@@ -181,7 +199,7 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
         source: channelId,
         chat_id: chatId,
         direction: 'out',
-        text: result.sentText ?? text,
+        text,
       });
       if (!logResult.ok) {
         process.stderr.write(`[channel-log] outbound capture failed: ${logResult.error}\n`);
