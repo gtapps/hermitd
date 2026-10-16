@@ -35,9 +35,13 @@ On a background-task completion, match its task id to a live entry's
    fields. If resumed with a live replacement watch, preserve the old entry's
    `switch`, if present, on the replacement entry and write the registry;
    end this handler without an operator notice.
-   If the procedure ends without resuming, or the resumed helper runs unwatched,
-   send the notice in step 2 once, including that outcome and whether the helper
-   was stopped.
+   If the procedure ends without resuming because the helper is no longer
+   blocked, clear `rescued`, restart the poll as session-watch § Registering an
+   existing idle subscription step 4 does, and send no notice. If it ends without
+   resuming for another reason, or the resumed helper runs unwatched, send the
+   notice in step 2 once, including that outcome and whether the helper was
+   stopped. When the helper was stopped and no replacement watch exists, remove
+   the entry and write the registry.
 2. On `blocked <waitingFor>` with `rescued` already set, send one operator notice
    saying the helper is stuck again after one restart. Do not rescue again or
    restart the poll. For this notice and step 1's fallback, use CLAUDE-APPEND
@@ -55,8 +59,10 @@ On a background-task completion, match its task id to a live entry's
 A `/spawn-session` helper is the only session this relay covers.
 
 On a cross-session idle notice naming session X, or a subscription-expiry notice
-for X, or a later `GUEST_REPORT:` from X (handle that report through the same
-matching, relay and recording path as an idle notice carrying it):
+for X, or a `GUEST_REPORT:` from X arriving after this handler already relayed
+a reportless idle notice for X's kept entry (handle that report through the same
+matching, relay and recording path as an idle notice carrying it; a report sent
+before its turn's idle notice waits for that notice):
 
 1. Find a `peer-idle` entry whose `target === X`. If none exists, do nothing: no
    reply, channel notification, or log entry. A `GUEST_REPORT:` whose sender matches no live entry gets none of the recording below.

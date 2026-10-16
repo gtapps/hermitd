@@ -8,7 +8,7 @@ section; after a caller has already armed a subscription, use
 
 1. Parse optional `--record <T-id>`, `--proposal <PROP-id>`, `--implement`, `--retry`, `--rescued` and `--id <bg-id>`
    with the name and note. If `<name>` contains `*` or `?`, take the **glob branch** below instead of
-   resolving an exact name. The glob branch ignores `--record`, `--proposal`, `--implement`, `--retry` and `--id`.
+   resolving an exact name. The glob branch ignores `--record`, `--proposal`, `--implement`, `--retry`, `--rescued` and `--id`.
 
    With `--id`, first poll the bg id in one Bash call every 2s for up to 30s.
    A busy, blocked or done row is started; null or idle status with working
@@ -87,9 +87,9 @@ only records that subscription; do not send another message or subscribe again.
    plainly instead of claiming the watch is live, and do not write the registry.
 2. Read `.hermit/state/monitors.runtime.json`; create it if missing
    with `{"monitors": [], "last_cleared": null}`. When a live `peer-idle` entry
-   already targets this name and the send carried a message, append that exact
-   text to its `followup` array (create the array if absent), write the registry,
-   and end registration without writing a second entry.
+   already targets this name, end registration without writing a second entry;
+   if the send carried a message, first append that exact text to its `followup`
+   array (create the array if absent) and write the registry.
 3. Generate id `session-<name>-<epoch>-<4char-random>` — same timestamp + random
    suffix convention as an ad-hoc id, so two watches on one name in the same
    second do not collide. Append:
@@ -109,22 +109,18 @@ only records that subscription; do not send another message or subscribe again.
    id as a shell-quoted value for `<bg-id>`:
    ```bash
    while true; do
-     if agents=$(claude agents --json --all) &&
-        [[ -n "$agents" ]] &&
-        jq -e 'type == "array"' <<<"$agents" >/dev/null 2>&1; then
-       row=$(jq -c --arg id <bg-id> '.[] | select(.id==$id)' <<<"$agents")
-       if [[ -z "$row" ]]; then
-         printf 'ended gone\n'
-         exit 0
-       fi
-       status=$(jq -r '.status // ""' <<<"$row")
-       state=$(jq -r '.state // ""' <<<"$row")
-       if [[ "$status" == waiting && "$state" == blocked ]]; then
-         printf 'blocked %s\n' "$(jq -r '.waitingFor // "unknown"' <<<"$row")"
-         exit 0
-       fi
-       if [[ "$state" == failed || "$state" == stopped ]]; then
-         printf 'ended %s\n' "$state"
+     if agents=$(claude agents --json --all); then
+       verdict=$(jq -r --arg id <bg-id> '
+         select(type == "array") | (map(select(.id == $id)) | first) as $r
+         | if $r == null then "ended gone"
+           elif $r.status == "waiting" and $r.state == "blocked"
+             then "blocked \($r.waitingFor // "unknown")"
+           elif $r.state == "failed" or $r.state == "stopped" or
+                (($r.status // "") == "" and $r.state == "done")
+             then "ended \($r.state)"
+           else empty end' <<<"$agents" 2>/dev/null)
+       if [[ -n "$verdict" ]]; then
+         printf '%s\n' "$verdict"
          exit 0
        fi
      fi
@@ -132,7 +128,9 @@ only records that subscription; do not send another message or subscribe again.
    done
    ```
    Failed, empty or invalid CLI reads are retried. `status: "idle"` with
-   `state: "blocked"` is a finished turn, not a block; keep polling.
+   `state: "blocked"` is a finished turn, not a block; keep polling. `--all`
+   keeps a completed helper listed with null status and `state: "done"`; that
+   row ends the poll.
    Store the returned background task id as `poll_task_id` on the entry and
    write the registry. The existing-entry return in step 2 starts no second poll.
 5. Inside an open task record's turn, note the watch and its id through

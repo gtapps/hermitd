@@ -228,7 +228,8 @@ the caller so it can handle a resume that could not start.
    row: end without resuming; never stop a busy helper. With the rescue input,
    also accept `status: "waiting"` with `state: "blocked"`; use that row's same
    id and resume handle. Without rescue, the readiness rule stays as above.
-2. Run `claude stop <bg-id>`, then in one bounded Bash call poll
+2. Call `TaskStop` on the old watch entry's `poll_task_id` when present; an
+   error means it already exited. Run `claude stop <bg-id>`, then in one bounded Bash call poll
    `claude agents --json` every 2s for up to 30s until no row has that `id`.
    Still listed at the deadline: end without resuming and report that outcome.
 3. From the project root, run
@@ -238,9 +239,7 @@ the caller so it can handle a resume that could not start.
    flags start a copy instead. Launch failure or any output other than a normal
    resume (for example "started a copy"): do not try again; tell the operator
    what it printed and end with that outcome.
-4. Before removing the helper's old watch entry, call `TaskStop` on its
-   `poll_task_id` when present; an error means it already exited. Preserve its
-   `rescued` flag for the replacement. Remove the entry if still live and write the registry,
+4. Remove the helper's old watch entry if still live and write the registry,
    then invoke `/hermitd:watch session <name> "<note>" --id <bg-id>` plus the
    given flags, adding `--rescued` for a rescue or a previously rescued entry.
    Use the resumed session's bg id (the first 8 characters of its
