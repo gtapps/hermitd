@@ -56,6 +56,13 @@ async function ghRequest(method: string, path: string, auth: string, body?: Json
   return json;
 }
 
+// A 301 on a renamed repo turns the POST into a GET that returns 2xx, so a
+// missing html_url is the only sign nothing was written.
+function requireUrl(res: Json): string {
+  if (!res?.html_url) throw new Error("GitHub returned no html_url (check HERMIT_GH_REPO)");
+  return res.html_url;
+}
+
 function loadEnv(): Json {
   const {
     HERMIT_GH_APP_ID,
@@ -189,7 +196,7 @@ async function commentMode() {
     { body }
   );
 
-  process.stdout.write(comment.html_url + "\n");
+  process.stdout.write(requireUrl(comment) + "\n");
 }
 
 function buildLabels(extra: string[] = []): string[] {
@@ -346,10 +353,10 @@ async function main() {
     { title, body: issueBody, labels: buildLabels(extraLabels) }
   );
 
-  process.stdout.write(issue.html_url + "\n");
+  process.stdout.write(requireUrl(issue) + "\n");
 }
 
-export { buildLabels, deriveType, resolveScope, deriveLabels, buildTitleLine };
+export { buildLabels, requireUrl, deriveType, resolveScope, deriveLabels, buildTitleLine };
 
 if (import.meta.main) {
   main().catch((err: any) => {
