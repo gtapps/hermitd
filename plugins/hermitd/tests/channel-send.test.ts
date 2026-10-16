@@ -876,6 +876,10 @@ describe('splitMessage', () => {
     expect(splitMessage('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij']);
   });
 
+  test('drops only the separator, keeping the next part\'s indentation', () => {
+    expect(splitMessage('aaa\n  bb', 6)).toEqual(['aaa', '  bb']);
+  });
+
   test('never cuts a surrogate pair in half', () => {
     const parts = splitMessage('abc😀def', 4);
     expect(parts).toEqual(['abc', '😀de', 'f']);

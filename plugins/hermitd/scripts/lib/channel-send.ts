@@ -70,7 +70,7 @@ const DISCORD_MAX_LEN = 2000;
 
 /** Split `text` into ordered parts of at most `limit` chars, breaking at the last
  * blank line, then line break, then space, then a hard cut that never separates
- * a surrogate pair. Leading whitespace of each following part is dropped. */
+ * a surrogate pair. The separator itself is dropped; indentation is kept. */
 export function splitMessage(text: string, limit: number): string[] {
   const parts: string[] = [];
   let rest = text;
@@ -79,7 +79,7 @@ export function splitMessage(text: string, limit: number): string[] {
       .find((i) => i > 0) ?? limit;
     if (cut === limit && /[\uD800-\uDBFF]/.test(rest[cut - 1])) cut--;
     parts.push(rest.slice(0, cut));
-    rest = rest.slice(cut).replace(/^\s+/, '');
+    rest = rest.slice(cut).replace(/^(\n+| )/, '');
   }
   if (rest || !parts.length) parts.push(rest);
   return parts;
@@ -147,11 +147,13 @@ async function sendDiscord(token: string, chatId: string, text: string, timeoutM
 }
 
 // Keep in step with DIRECT_SEND_CHANNELS in lib/channel-config.ts.
-const SENDERS: Record<string, (token: string, chatId: string, text: string, timeoutMs: number) => Promise<SendResult>> = {
-  telegram: sendTelegram,
-  discord: sendDiscord,
+const SENDERS: Record<string, {
+  send: (token: string, chatId: string, text: string, timeoutMs: number) => Promise<SendResult>;
+  maxLen: number;
+}> = {
+  telegram: { send: sendTelegram, maxLen: TELEGRAM_MAX_LEN },
+  discord: { send: sendDiscord, maxLen: DISCORD_MAX_LEN },
 };
-const MAX_LEN: Record<string, number> = { telegram: TELEGRAM_MAX_LEN, discord: DISCORD_MAX_LEN };
 
 /**
  * POST `text` to a channel and log the send (direction:'out') on success. By
@@ -171,17 +173,18 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
     if (!target) return { ok: false, error: 'no_reachable_channel' };
     const { id: channelId, chat_id: chatId } = target;
 
-    const send = SENDERS[channelId];
-    if (!send) return { ok: false, error: 'unsupported_platform' };
+    const sender = SENDERS[channelId];
+    if (!sender) return { ok: false, error: 'unsupported_platform' };
 
     const token = readChannelToken(hermitDir, channelId, config.channels?.[channelId] || {});
     if (!token) return { ok: false, error: 'missing_token' };
 
-    // Text over the platform limit goes out as ordered parts. The first failed
-    // part stops the send; parts already posted stay posted.
+    // Text over the platform limit goes out as ordered parts sharing one timeout
+    // budget. The first failed part stops the send; parts already posted stay posted.
+    const deadline = performance.now() + (opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
     let result!: SendResult;
-    for (const part of splitMessage(text, MAX_LEN[channelId])) {
-      result = await send(token, chatId, part, opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    for (const part of splitMessage(text, sender.maxLen)) {
+      result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())));
       if (!result.ok) break;
     }
     // Record reachability for ask-gate's redirect-target check (advisory, never
