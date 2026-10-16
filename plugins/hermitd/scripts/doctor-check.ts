@@ -180,7 +180,7 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
     }
     const stateFiles = globDir(stateDir, /\.jsonl?$/);
     const broken: string[] = [];
-    const residue: { file: string; cite: string }[] = [];
+    const residue: { name: string; cite: string }[] = [];
     // `name:3,7,9 (+2 more)`; bounded so a badly torn ledger stays digest-sized.
     const cite = (name: string, nums: number[]) =>
       `${name}:${nums.slice(0, 3).join(',')}${nums.length > 3 ? ` (+${nums.length - 3} more)` : ''}`;
@@ -210,7 +210,7 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
             (intact ? nul : bad).push(i + 1);
           });
           if (bad.length > 0) broken.push(cite(name, bad));
-          if (nul.length > 0) residue.push({ file: f, cite: cite(name, nul) });
+          if (nul.length > 0) residue.push({ name, cite: cite(name, nul) });
         } else {
           JSON.parse(raw);
         }
@@ -222,11 +222,13 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
     if (residue.length > 0) {
       // Valid JSON text never contains a raw NUL, so deleting every one is safe;
       // writing back through `>` keeps the ledger's 0600 mode.
-      const fixes = residue.map(r => `cp -p '${r.file}' '${r.file}.bak' && tr -d '\\000' < '${r.file}.bak' > '${r.file}'`);
+      const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+      // State dir once, then a loop over the names, so the notice stays short however many ledgers are hit.
+      const fix = `cd ${q(stateDir)} && for f in ${residue.map(r => q(r.name)).join(' ')}; do cp -p "$f" "$f.bak" && tr -d '\\000' < "$f.bak" > "$f"; done`;
       return {
         id: 'state',
         status: 'warn',
-        detail: `crash leftovers (NUL bytes) at ${residue.map(r => r.cite).join(', ')}; fix: ${fixes.join('; ')}`,
+        detail: `crash leftovers (NUL bytes) at ${residue.map(r => r.cite).join(', ')}; fix: ${fix}`,
       };
     }
     const missing = EXPECTED_STATE_FILES.filter(

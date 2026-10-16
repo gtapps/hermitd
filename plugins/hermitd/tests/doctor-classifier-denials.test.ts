@@ -240,7 +240,7 @@ describe('doctor state check — JSONL validation', () => {
     expect(fix).toContain("tr -d '\\000'");
     const run = Bun.spawnSync(['sh', '-c', fix]);
     expect(run.exitCode).toBe(0);
-    const file = fix.match(/^cp -p '([^']+)'/)![1];
+    const file = path.join(fix.match(/^cd '([^']+)'/)![1], 'watchdog-events.jsonl');
     expect(fs.existsSync(`${file}.bak`)).toBe(true);
     for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
       expect(() => JSON.parse(line)).not.toThrow();
