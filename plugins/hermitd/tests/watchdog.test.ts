@@ -337,7 +337,7 @@ describe('staged credential commit', () => {
     // Remote MCP sign-ins share the file; a renewal must not sign them out.
     expect(live.mcpOAuth['trello|abc'].refreshToken).toBe('mcp-r');
     expect(fs.statSync(path.join(configDir, '.credentials.json')).mode & 0o777).toBe(0o600);
-    // Backed up, not destroyed — a deliberate rollback has something to go back to.
+    // Backed up, not destroyed: a deliberate rollback has something to go back to.
     expect(readJson(path.join(configDir, '.credentials.json.pre-login.bak')).claudeAiOauth.accessToken).toBe('old-one');
     // `claude auth status` reads the identity from .claude.json, not the credential
     // file, so a commit that moved only the credential would report the old account.
@@ -1435,6 +1435,23 @@ test('usable stored login returns → record cleared', withHermit(async (h) => {
   expect(r.exitCode).toBe(0);
   expect(readJson(state(h, 'watchdog-state.json')).lapsed_login_notified_at).toBeUndefined();
   expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('lapsed-login-recovered');
+}));
+
+// A token hermit keeps its old stored login on the volume. That file reading usable
+// says nothing about the token, so it must not re-arm the lapse notice.
+test('token mode: a usable stored login beside the token → record kept', withHermit(async (h) => {
+  writeConfig(h);
+  writeFakeTmux(h, 0, 'tmux pane content');
+  writeFakePgrep(h, 1);
+  const configDir = writeStoredLogin(h);
+  fs.writeFileSync(path.join(configDir, '.hermit-setup-token'), 'sk-ant-oat01-testtesttesttesttest\n', { mode: 0o600 });
+  fs.writeFileSync(
+    state(h, 'watchdog-state.json'),
+    JSON.stringify({ lapsed_login_notified_at: isoAgo(2) }) + '\n',
+  );
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  expect(readJson(state(h, 'watchdog-state.json')).lapsed_login_notified_at).toBeTruthy();
 }));
 
 // An API-key hermit sees the same 401 for a cause no sign-in fixes.

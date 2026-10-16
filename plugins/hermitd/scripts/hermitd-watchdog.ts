@@ -2042,7 +2042,11 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
       appendEvent('env-auth-failure-recovered', 'pane no longer shows an auth failure', world);
       recovered = true;
     }
-    const loginUsable = storedLoginUsable(defaultConfigDir());
+    // Login mode only: a token hermit keeps its old stored login on the volume, and
+    // that file reading usable says nothing about the token the hermit runs on.
+    const configDir = defaultConfigDir();
+    const loginUsable = resolveAuthMode(config, configDir, envAuthOwnsCredential(sessionEnvAuth)) === 'login'
+      && storedLoginUsable(configDir);
     if (ws.lapsed_login_notified_at && loginUsable) {
       delete ws.lapsed_login_notified_at;
       appendEvent('lapsed-login-recovered', 'usable stored login present again', world);
