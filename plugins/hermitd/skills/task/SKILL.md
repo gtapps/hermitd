@@ -47,10 +47,7 @@ Inspect each command's result. If delivery or recording fails, report what remai
   - Terminal assignments never go through here; they follow § Complete a task turn.
 
 - **Conversation command**: execute only the hook's `[conversation command: <name>]` annotation after the caller's authorization check has passed (`channel-responder/SKILL.md` § 1c for a channel turn). A `[conversation command refused: …]` annotation gets that plain refusal; never invoke the harness command. A `[conversation command outside a task thread]` annotation gets a short explanation that the command needs an open task thread, and starts nothing.
-  - `helper-switch`: invoke `/hermitd:spawn-session --switch <n> --record <id>` with the annotation's flags; `<n>` is the owner minus `helper:`.
-  - `!help`: list `!help`, `!mute`, `!unmute`, and `!restart`. `!model` and `!effort` switch the helper on a helper thread and are unsupported per conversation elsewhere. Global controls still affect the resident.
-  - `!mute` / `!unmute`: run `task.ts note .hermit <id> --muted true|false`, then acknowledge. Muting suppresses unmentioned steering.
-  - `!restart`: when the record's `owner` names a listed agent, stop it with `TaskStop`; no match means it is already gone. On a stop failure, report it and start nothing. Then dispatch a fresh worker as **Replace an unreachable worker** does, history file included, and run `task.ts note .hermit <id> --owner worker:<agentId>`.
+  - For `helper-switch`, `!help`, `!mute`, `!unmute` or `!restart`, Read [branches.md](branches.md) § Conversation command and follow it.
   - Return after the command; do not mutate another record or continue into another classification.
 
 All conversation script arguments are shell-quoted values. `history`, `chat-lookup`, `thread-create`, and `is-trusted` take no key, only `--source`, `--chat-id`, `--user-id`, `--message-id`, `--name`, and `--limit` options. Parse each command's `OK|`/`ERROR|` result before moving on; pass message text as quoted arguments, never interpolate it into executable code.
