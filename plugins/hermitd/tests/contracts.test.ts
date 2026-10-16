@@ -3577,6 +3577,12 @@ describe('task-worker agent contract', () => {
     expect(agent).toContain('edit_message');
   });
 
+  // The resident routes an `Unreachable:` note to the maintainer on needs-input.
+  test('an unreachable dependency stops the worker and reaches the maintainer', () => {
+    expect(agent).toContain('Unreachable:');
+    expect(read(path.join(SKILLS, 'task', 'SKILL.md'))).toContain('maintainer-only notice and wait on `maintainer`');
+  });
+
   // Consumer half of the WORKER lines and of conversation.ts's task-thread annotation.
   test('the task skill parses both WORKER lines and the task-thread annotation', () => {
     const task = read(path.join(SKILLS, 'task', 'SKILL.md'));
