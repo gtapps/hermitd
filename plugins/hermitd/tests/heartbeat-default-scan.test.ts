@@ -308,7 +308,7 @@ describe('default credential-expiry resolution', () => {
   });
 
   test('4. probe healthy, lingering checklist key → EVALUATE', async () => {
-    expect(credKey).toBe('checklist:readstat');
+    expect(credKey).toMatch(/^checklist:readstate[a-z0-9]*-[0-9a-f]{8}$/);
     const dir = build({
       ...both,
       alertState: { alerts: { [credKey]: { suppressed: true, consecutive_clean: 0, count: 6 } } },

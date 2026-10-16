@@ -10,9 +10,18 @@
 ### Changed
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 ### Fixed
+- Heartbeat checklist items that begin with the same words keep separate alert state, so a noisy item no longer silences an unrelated one.
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. Preserve `HEARTBEAT.md` and config unchanged; neither needs an edit.
+2. Tell the operator each checklist alert starts over once: an item firing now alerts once more and then goes quiet again after 5 fires.
+3. List open task records whose dedupe key starts with `duty:heartbeat:checklist:` and does not end in `-<8 hex>` (matching `-[0-9a-f]{8}$`). Tell the operator these tasks will not close on their own, and close them only with the operator's agreement.
 
 ## [1.4.15] - 2026-10-15
 

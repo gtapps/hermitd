@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { normalizeItemKey } from '../scripts/lib/heartbeat-items';
 import { runScript } from './helpers/run';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -133,7 +134,7 @@ describe('update-alert-state durability', () => {
   // Post-#594 contract: the eval subagent returns a `firing` set, not raw
   // alert entries — the script itself derives the entry shape (count,
   // consecutive_clean, suppressed, first_seen, last_seen, text).
-  const FIRING = { firing: [{ key: 'checklist:checksys', text: 'k fired' }], self_eval_updates: {} };
+  const FIRING = { firing: [{ key: normalizeItemKey(HEARTBEAT_MD.split('\n')[2])!, text: 'k fired' }], self_eval_updates: {} };
 
   test('quarantines a present-but-corrupt file instead of merging onto a blank state', withTmp(async (dir) => {
     fs.writeFileSync(alertPath(dir), CORRUPT);
@@ -145,7 +146,7 @@ describe('update-alert-state durability', () => {
     expect(fs.readFileSync(hermit(dir, 'state', backups[0]), 'utf-8')).toBe(CORRUPT);
 
     const written = JSON.parse(fs.readFileSync(alertPath(dir), 'utf-8'));
-    expect(written.alerts['checklist:checksys']).toMatchObject({ count: 1, suppressed: false, text: 'k fired' });
+    expect(written.alerts[normalizeItemKey(HEARTBEAT_MD.split('\n')[2])!]).toMatchObject({ count: 1, suppressed: false, text: 'k fired' });
   }));
 
   test('transient read error (EISDIR) declines to write, does not clobber', withTmp(async (dir) => {
@@ -164,13 +165,13 @@ describe('update-alert-state durability', () => {
 
     // Off-boundary firing evidence is script-owned. A subagent that still emits
     // self_eval_updates cannot insert its own counters or entries.
-    await updateAlertState(dir, { firing: [{ key: 'checklist:checksys', text: 'k fired' }], self_eval_updates: { b: 2 } });
+    await updateAlertState(dir, { firing: [{ key: normalizeItemKey(HEARTBEAT_MD.split('\n')[2])!, text: 'k fired' }], self_eval_updates: { b: 2 } });
 
     const written = JSON.parse(fs.readFileSync(alertPath(dir), 'utf-8'));
     expect(written.total_ticks).toBe(686);
     expect(written.last_micro_corrupt_wake_at).toBe('2026-05-19T00:00:00Z');
-    expect(written.self_eval).toEqual({ a: 1, 'checklist:checksys': { fired_since_self_eval: true } });
-    expect(written.alerts['checklist:checksys']).toMatchObject({ count: 1, suppressed: false, text: 'k fired' });
+    expect(written.self_eval).toEqual({ a: 1, [normalizeItemKey(HEARTBEAT_MD.split('\n')[2])!]: { fired_since_self_eval: true } });
+    expect(written.alerts[normalizeItemKey(HEARTBEAT_MD.split('\n')[2])!]).toMatchObject({ count: 1, suppressed: false, text: 'k fired' });
     expect(stateFiles(dir).some(f => f.endsWith('.tmp'))).toBe(false);
   }));
 });
