@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const script = join(import.meta.dir, '../scripts/source-fetch-result.ts');
@@ -30,14 +30,23 @@ afterEach(() => {
 });
 
 test('new-run emits distinct UUIDs without candidate data', () => {
-  const first = run('new-run');
-  const second = run('new-run');
+  const missing = `${fixture('')}.missing`;
+  const first = run('new-run', missing);
+  const second = run('new-run', missing);
   for (const result of [first, second]) {
     expect(result.code).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout.trim()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   }
   expect(first.stdout).not.toBe(second.stdout);
+});
+
+test('new-run deletes the previous output before dispatch', () => {
+  const path = fixture(JSON.stringify({ run_id: 'earlier-run', sources: [], pad: 'x'.repeat(100_000) }));
+  const result = run('new-run', path);
+  expect(result.code).toBe(0);
+  expect(existsSync(path)).toBe(false);
+  expectRejected('verify', path, result.stdout.trim());
 });
 
 test('an unsuccessful replacement leaves an old file rejected and untouched', () => {
@@ -84,7 +93,7 @@ test('malformed, missing, and unreadable file targets emit no candidate data', (
   expectRejected('verify', fixtures[0], 'current-run');
 });
 
-for (const args of [[], ['unknown'], ['new-run', 'extra'], ['verify'], ['verify', 'relative.json', 'run'],
+for (const args of [[], ['unknown'], ['new-run'], ['new-run', 'relative.json'], ['new-run', '/file.json', 'extra'], ['verify'], ['verify', 'relative.json', 'run'],
   ['verify', '/file.json', ''], ['verify', '/file.json', 'run', 'extra']]) {
   test(`rejects invalid invocation ${JSON.stringify(args)}`, () => expectRejected(...args));
 }
