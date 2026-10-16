@@ -1107,6 +1107,7 @@ describe('channel-send rate limits', () => {
 
 test('project send script receives text and only its declared environment', async () => {
   const wd = setupWorkdir();
+  process.env.HERMIT_SEND_LEAK_PROBE = '1';
   try {
     write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > text.out\nenv > env.out\n');
     fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
@@ -1118,9 +1119,12 @@ test('project send script receives text and only its declared environment', asyn
     expect(env.HERMIT_CHAT_ID).toBe('C1');
     expect(env.HERMIT_THREAD_ID).toBe('T1');
     expect(env.CHANNEL_STATE_DIR).toBe(path.join(wd.dir, 'custom-state'));
-    expect(Object.keys(env).filter(key => !['PATH', 'HERMIT_DIR', 'HERMIT_CHAT_ID', 'HERMIT_THREAD_ID', 'CHANNEL_STATE_DIR', 'PWD'].includes(key))).toEqual([]);
+    expect(env.HERMIT_SEND_LEAK_PROBE).toBeUndefined();
+    // PWD, OLDPWD, SHLVL and _ are set by /bin/sh itself (bash on macOS, dash on Linux/WSL), not passed in.
+    const shellSet = ['PWD', 'OLDPWD', 'SHLVL', '_'];
+    expect(Object.keys(env).filter(key => ![...shellSet, 'PATH', 'HERMIT_DIR', 'HERMIT_CHAT_ID', 'HERMIT_THREAD_ID', 'CHANNEL_STATE_DIR'].includes(key))).toEqual([]);
     expect(unconsolidated(hermit(wd.dir)).rows[0]).toMatchObject({ source: 'custom', direction: 'out' });
-  } finally { wd.cleanup(); }
+  } finally { delete process.env.HERMIT_SEND_LEAK_PROBE; wd.cleanup(); }
 });
 
 test('unsendable configured primary stays on its route', async () => {
