@@ -139,7 +139,7 @@ describe('Entrypoint: setup-token auth gates', () => {
   test('entrypoint: defines the token file path and gates on the FILE', () => {
     expect(entrypoint).toContain('SETUP_TOKEN_FILE="${CLAUDE_CONFIG_DIR}/.hermit-setup-token"');
     const gate = entrypoint.slice(entrypoint.indexOf('# --- 0. Wait for auth credentials'));
-    const zeroGate = gate.slice(0, gate.indexOf('# --- 0c.'));
+    const zeroGate = gate.slice(0, gate.indexOf('# --- 0d.'));
     expect(zeroGate).toContain('[ ! -f "$SETUP_TOKEN_FILE" ]');
   });
 
@@ -154,7 +154,7 @@ describe('Entrypoint: setup-token auth gates', () => {
   test('entrypoint: the credential wait does not exit on a timeout', () => {
     const zeroGate = entrypoint.slice(
       entrypoint.indexOf('# --- 0. Wait for auth credentials'),
-      entrypoint.indexOf('# --- 0c.'),
+      entrypoint.indexOf('# --- 0d.'),
     );
     expect(zeroGate).not.toContain('exit 1');
     expect(zeroGate).toContain('Still waiting for credentials');
@@ -172,54 +172,13 @@ describe('Entrypoint: setup-token auth gates', () => {
     expect(entrypoint).not.toContain('Still waiting for fresh credentials');
   });
 
-  // §0c parks a stale /login credential when a setup-token is present: interactive
-  // sessions prefer .credentials.json over the env token, so an unparked stored
-  // login 401s the hermit ~8h after its token lapses. Guards hermits converted
-  // before install-time parking shipped.
-  test('entrypoint: §0c parks a stale credential in token mode', () => {
-    const guard = entrypoint.slice(entrypoint.indexOf('# --- 0c.'));
-    const block = guard.slice(0, guard.indexOf('# --- 0d.'));
-    expect(block).toContain('[ -f "$SETUP_TOKEN_FILE" ] && [ -f "$CRED_FILE" ]');
-    expect(block).toContain('mv -f "$CRED_FILE" "${CRED_FILE}.pre-token.bak"');
-  });
-
-  // A login-mode hermit's live credential IS .credentials.json. Parking it on a
-  // stray token file would take that hermit dark on its next boot, so §0c reads
-  // the mode from config rather than inferring it from file presence alone.
-  test('entrypoint: §0c reads auth_mode from config and never parks unconditionally', () => {
-    const guard = entrypoint.slice(entrypoint.indexOf('# --- 0c.'));
-    const block = guard.slice(0, guard.indexOf('# --- 0d.'));
-    expect(block).toContain('auth_mode');
-    expect(block).toContain('${AGENT_DIR}/config.json');
-    expect(block).toContain('[ "$AUTH_MODE" = "token" ]');
-    // Every `mv` in the block is behind the mode test — the mv must not appear in
-    // any line that the gate does not dominate.
-    const mvLine = block.indexOf('mv -f "$CRED_FILE"');
-    expect(block.indexOf('[ "$AUTH_MODE" = "token" ]')).toBeLessThan(mvLine);
-  });
-
-  // Unset auth_mode has to keep behaving exactly as it did before this key existed,
-  // or every already-running token hermit changes behavior on its next boot.
-  test.each([
-    [{ auth_mode: 'login' }, true, 'login'],
-    [{ auth_mode: 'token' }, false, 'token'],
-    [{}, true, 'token'],
-    [{}, false, 'login'],
-  ])('entrypoint: auth_mode resolution %j (token file: %s) → %s', (config, tokenFileExists, expected) => {
-    const guard = entrypoint.slice(entrypoint.indexOf('# --- 0c.'));
-    const block = guard.slice(0, guard.indexOf('# --- 0d.'));
-    const script = block.slice(block.indexOf('const fs = require'), block.indexOf('" "${AGENT_DIR}'));
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-entrypoint-auth-'));
-    try {
-      const configPath = path.join(dir, 'config.json');
-      const tokenPath = path.join(dir, '.hermit-setup-token');
-      fs.writeFileSync(configPath, JSON.stringify(config));
-      if (tokenFileExists) fs.writeFileSync(tokenPath, 'sk-ant-oat01-fixture\n');
-      const r = spawnSync(process.execPath, ['-e', script, configPath, tokenPath], { encoding: 'utf8' });
-      expect(r.stdout.trim()).toBe(expected);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+  // The boot never moves .credentials.json aside. Claude Code keeps a user-supplied
+  // CLAUDE_CODE_OAUTH_TOKEN ahead of a stored /login, so a token hermit needs no
+  // park, and the file also holds remote MCP servers' OAuth tokens (`mcpOAuth`)
+  // that a move would sign out on every boot.
+  test('entrypoint: never moves the credentials file at boot', () => {
+    expect(entrypoint).not.toContain('mv -f "$CRED_FILE"');
+    expect(entrypoint).not.toContain('.pre-token.bak');
   });
 });
 

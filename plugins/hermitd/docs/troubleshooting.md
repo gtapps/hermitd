@@ -199,8 +199,6 @@ Notes:
 - **Never run `/logout` inside the container.** It wipes the stored credentials *and* resets first-launch state, after which the interactive wizard demands a login and refuses the token — turning a two-minute renewal into a rebuild. Renewal never needs it.
 - If the relay never messages you, the hermit has no reachable channel. It stops rather than minting a link it can't deliver; renew from the terminal with `hermitd-docker setup-token`.
 - `hermitd-docker login` on a running token-mode hermit switches it to a claude.ai sign-in through the staged relay (see [Remote Endpoint](remote-endpoint.md)); a container with no session yet still opens the interactive REPL. To stay on the token, use `hermitd-docker setup-token` instead.
-- The original login's `.credentials.json` is parked to `.credentials.json.pre-token.bak` when the token installs (and at boot). This matters: an interactive session prefers a stored `/login` credential over the token, so a hermit that kept the file would 401 once that stored login lapsed (~8h), even with a valid year-long token. If you converted before this behavior shipped and the hermit is dark, park it by hand (`mv .../.credentials.json .../.credentials.json.pre-token.bak`) and restart.
-
 ## Permission Denied Inside Container
 
 Usually a UID mismatch between the host and the container user. The generated Dockerfile creates a `claude` user matching your host UID. If you changed your system user or are running on a different machine:

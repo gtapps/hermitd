@@ -306,7 +306,10 @@ describe('staged credential commit', () => {
     fs.mkdirSync(stagedDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, '.credentials.json'),
-      JSON.stringify({ claudeAiOauth: { accessToken: 'old-one', refreshToken: 'r' } }),
+      JSON.stringify({
+        claudeAiOauth: { accessToken: 'old-one', refreshToken: 'r' },
+        mcpOAuth: { 'trello|abc': { accessToken: 'mcp-a', refreshToken: 'mcp-r' } },
+      }),
     );
     fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'old@x' } }));
     fs.writeFileSync(
@@ -321,7 +324,7 @@ describe('staged credential commit', () => {
     return { configDir, stagedDir };
   }
 
-  test('a usable staged sign-in replaces the live credential and parks the old one', withHermit(async (h) => {
+  test('a usable staged sign-in replaces the live login, keeps other credentials, and backs up the old file', withHermit(async (h) => {
     writeConfig(h);
     writeFakeTmux(h, 1); // dead session → restart path
     writeFakePgrep(h, 1);
@@ -331,7 +334,10 @@ describe('staged credential commit', () => {
 
     const live = readJson(path.join(configDir, '.credentials.json'));
     expect(live.claudeAiOauth.accessToken).toBe('sk-ant-oat01-freshfreshfresh');
-    // Parked, not destroyed — a deliberate rollback has something to go back to.
+    // Remote MCP sign-ins share the file; a renewal must not sign them out.
+    expect(live.mcpOAuth['trello|abc'].refreshToken).toBe('mcp-r');
+    expect(fs.statSync(path.join(configDir, '.credentials.json')).mode & 0o777).toBe(0o600);
+    // Backed up, not destroyed — a deliberate rollback has something to go back to.
     expect(readJson(path.join(configDir, '.credentials.json.pre-login.bak')).claudeAiOauth.accessToken).toBe('old-one');
     // `claude auth status` reads the identity from .claude.json, not the credential
     // file, so a commit that moved only the credential would report the old account.

@@ -13,6 +13,20 @@
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+- Remote MCP servers that sign in with OAuth stay signed in across token installs, container restarts and updates. A setup-token hermit leaves `.credentials.json` in place instead of moving it to `.credentials.json.pre-token.bak`.
+- A claude.ai sign-in renewal replaces only the login in `.credentials.json`, so remote MCP sign-ins survive it.
+- `credential-expiry` in `/hermitd:hermit-doctor` no longer warns that a stored login shadows the setup-token.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Refresh the Docker entrypoint** (Docker hermits only). The boot no longer moves `.credentials.json` aside. Step 5c refreshes `docker-entrypoint.hermit.sh`; tell the operator to rebuild with `hermitd-docker update` so the container runs the new file.
+2. **Tell the operator about remote MCP sign-ins.** If a remote MCP server that signs in with OAuth shows "requires authentication", reconnect it once with `/mcp`. A leftover `.credentials.json.pre-token.bak` is not read by anything and can stay or be removed.
+
+**Operator action required:** Docker: `hermitd-docker update` after the evolve. Otherwise `hermitd-stop && hermitd-start`.
+
+No `config.json` changes required.
 
 ## [1.4.15] - 2026-10-15
 

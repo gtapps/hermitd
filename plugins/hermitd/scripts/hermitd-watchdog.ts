@@ -718,11 +718,13 @@ function clearPendingCredential(stagedDir?: string): void {
  * kill→verify→start boundary and nowhere else, because that is the only window in
  * which no session is refreshing `.credentials.json` underneath the write.
  *
- * Rollback is real, not "do nothing": the previous credential is parked before the
- * staged one lands, and put back if that move fails — a half-committed dir with the
- * live file parked and no replacement would boot the hermit with no credential at
- * all. A staged file that did not survive the wait is dropped and the restart
- * proceeds on whatever the live dir already holds.
+ * Only the sign-in changes hands. The live file also holds other credentials Claude
+ * Code keeps there, such as remote MCP servers' OAuth tokens under `mcpOAuth`, so the
+ * staged `claudeAiOauth` is merged into it rather than replacing it: a whole-file swap
+ * would sign every one of those servers out. The previous file is copied aside first
+ * and the merge lands atomically, so the live file is never missing. An unreadable
+ * live file is replaced by the staged one. A staged file that did not survive the
+ * wait is dropped and the restart proceeds on whatever the live dir already holds.
  *
  * Never throws: this runs between the kill and the spawn inside doRestart, where an
  * exception would abort the restart with the session already dead.
@@ -739,7 +741,7 @@ function commitPendingCredential(): void {
   // survivors, the lock was held, requestRestart never landed) must not be committed
   // by some unrelated restart days later: `usable` only means the file carries a
   // token, so an abandoned sign-in still reads usable long after it stopped working,
-  // and committing it would park a working credential and take the hermit dark.
+  // and committing it would replace a working credential and take the hermit dark.
   const stagedAge = ageSecs(pending.staged_at ?? '');
   if (stagedAge === null || stagedAge * 1000 > PENDING_CREDENTIAL_MAX_AGE_MS) {
     clear();
@@ -756,15 +758,24 @@ function commitPendingCredential(): void {
   }
 
   const live = credentialsFilePath(configDir);
-  const parked = `${live}.pre-login.bak`;
-  let didPark = false;
   try {
     fs.mkdirSync(configDir, { recursive: true });
-    if (fs.existsSync(live)) {
-      fs.renameSync(live, parked);
-      didPark = true;
+    const staged = JSON.parse(fs.readFileSync(credentialsFilePath(stagedDir), 'utf8'));
+    let raw: string | null = null;
+    try {
+      raw = fs.readFileSync(live, 'utf8');
+    } catch {}
+    let current: Json = null;
+    if (raw !== null) {
+      writeFileAtomic(`${live}.pre-login.bak`, raw, 0o600);
+      try {
+        current = JSON.parse(raw);
+      } catch {}
     }
-    fs.renameSync(credentialsFilePath(stagedDir), live);
+    const merged = current && typeof current === 'object' && !Array.isArray(current)
+      ? { ...current, claudeAiOauth: staged.claudeAiOauth }
+      : staged;
+    writeFileAtomic(live, JSON.stringify(merged), 0o600);
     copyOauthAccount(stagedDir);
     clear();
     // Recorded now rather than by the mint: the mode is only true once the
@@ -774,13 +785,8 @@ function commitPendingCredential(): void {
     });
     appendEvent('credential-committed', 'login');
   } catch (e) {
-    // Put the old credential back if it was parked but never replaced, so the
+    // The write is atomic, so a failure leaves the live file as it was and the
     // restart proceeds on the credential the hermit already had.
-    if (didPark && !fs.existsSync(live)) {
-      try {
-        fs.renameSync(parked, live);
-      } catch {}
-    }
     appendEvent('credential-commit-skipped', `commit failed: ${e}`);
     clear();
   }
@@ -2049,7 +2055,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     // Keyed on the reauth verdict rather than on a stored login: 'idle' means the
     // credential this hermit actually runs on is neither expired nor lapsed, in
     // whatever mode. storedLoginUsable() alone would never clear it in token mode,
-    // where the login file is parked by construction.
+    // where the stored login is not the credential the hermit runs on.
     if (reauth === 'idle') {
       try {
         world.files.rm(path.join(world.paths.stateDir, 'relay-unreachable.json'));
