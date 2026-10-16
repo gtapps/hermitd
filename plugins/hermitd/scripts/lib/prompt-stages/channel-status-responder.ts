@@ -1,4 +1,3 @@
-import { envelopeAttr } from '../channel-envelope';
 // UserPromptSubmit stage — deterministic status responder.
 //
 // When the inbound prompt is a <channel> envelope whose body is exactly
@@ -197,10 +196,8 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // outbound channel — so a status asked in a group or a non-primary channel is
   // answered where it was asked. This also keeps the destination aligned with the
   // allowed_users gate above. A tight timeout bounds this hook's blocking.
-  const threadAttr = config?.channels?.[envelope.sourceKey]?.attributes?.thread_id;
-  const thread = threadAttr ? { thread: envelopeAttr(envelope, threadAttr) } : {};
   const result = await sendToChannel(dir, reply, {
-    target: { id: envelope.sourceKey, chat_id: envelope.chatId, ...thread },
+    target: { id: envelope.sourceKey, chat_id: envelope.chatId, thread: envelope.thread },
     timeoutMs: 6000,
     config, // already loaded by the pipeline — don't make the sender re-read it
   });

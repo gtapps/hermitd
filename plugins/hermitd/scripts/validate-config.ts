@@ -5,7 +5,7 @@ import path from 'node:path';
 import { safeForLLM } from './lib/sanitize';
 import * as ENUM from './lib/settings/enums';
 import { validateExpectArtifact } from './lib/routines/run-record';
-import { validatePrecheckValue, validatePrecheckTimeout } from './lib/routines/gate';
+import { validatePrecheckValue, validatePrecheckTimeout, BUILTIN_REFLECT, BUILTIN_DOCTOR, BUILTIN_LATER } from './lib/routines/gate';
 import { ENV_VAR_RE, DIRECT_SEND_CHANNELS, isDict } from './lib/channel-config';
 import { isKey } from './lib/conversation-key';
 import { toPushUrl } from './lib/backup';
@@ -286,7 +286,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           if (!isDict(config.channels?.[channel])) {
             warnings.push(`routines[${i}]: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
           } else if (!DIRECT_SEND_CHANNELS.includes(channel) && !config.channels[channel].send_script) {
-            warnings.push(`routines[${i}]: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats can own a routine`);
+            warnings.push(`routines[${i}]: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats, or a channel with send_script, can own a routine`);
           }
         }
       }
@@ -401,7 +401,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       }
       if (ch.send_script !== undefined) {
         const error = validatePrecheckValue(ch.send_script);
-        if (error || ['reflect', 'doctor', 'later'].includes(String(ch.send_script).trim())) {
+        if (error || [BUILTIN_REFLECT, BUILTIN_DOCTOR, BUILTIN_LATER].includes(String(ch.send_script).trim())) {
           errors.push(`channels.${name}.send_script: ${error || 'must be a project-relative script, not a builtin'}`);
         }
       }

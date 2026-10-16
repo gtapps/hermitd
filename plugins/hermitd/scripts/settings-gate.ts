@@ -25,7 +25,7 @@ import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
 import { isAllowedSender } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
-import { parseChannelEnvelope, envelopeAttr } from './lib/channel-envelope';
+import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
 
 type Json = any;
@@ -188,8 +188,7 @@ function turnConversation(payload: Json): string | null {
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
     if (!env || !isAllowedSender(config, env.source, env.userId)) return null;
-    const threadAttr = config?.channels?.[env.sourceKey]?.attributes?.thread_id;
-    return conversationKey(env.sourceKey, env.chatId, threadAttr ? envelopeAttr(env, threadAttr) : null);
+    return conversationKey(env.sourceKey, env.chatId, env.thread);
   } catch {
     return null;
   }

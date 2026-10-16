@@ -1,5 +1,4 @@
 import { conversationKey } from '../conversation-key';
-import { envelopeAttr } from '../channel-envelope';
 import { threadRecords } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
@@ -15,14 +14,13 @@ import type { StageContext, StageResult } from './types';
 const inThreadChat = (ctx: StageContext, sourceKey: string, chatId: string) => {
   if (sourceKey === 'discord') return ![0, 5].includes(cachedChat(ctx.dir, chatId)?.type ?? -1);
   const threadAttr = ctx.config()?.channels?.[sourceKey]?.attributes?.thread_id;
-  return !threadAttr || !!(ctx.envelope && envelopeAttr(ctx.envelope, threadAttr));
+  return !threadAttr || ctx.envelope?.thread != null;
 };
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
   const env = ctx.envelope;
   if (!env || !isAllowedSender(ctx.config(), env.source, env.userId)) return;
-  const threadAttr = ctx.config()?.channels?.[env.sourceKey]?.attributes?.thread_id;
-  const key = conversationKey(env.sourceKey, env.chatId, threadAttr ? envelopeAttr(env, threadAttr) : null);
+  const key = conversationKey(env.sourceKey, env.chatId, env.thread);
   const addressed = resolveSlashCommand(env.body, channelBotIdentity(ctx.config(), env.source));
   const name = addressed?.command.slice(1);
   const args = addressed?.rest.trim() ?? '';

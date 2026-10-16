@@ -53,12 +53,14 @@ async function main(): Promise<void> {
       return;
     }
     case 'thread-open': {
-      require(['source', 'chat_id', 'message_id']);
+      require(['source', 'chat_id', 'message_id'], ['thread_id']);
       const attribute = config.channels?.[opts.source]?.attributes?.thread_id;
       if (!attribute) throw new Error('no-thread-attribute');
-      const key = conversationKey(opts.source, opts.chat_id, opts.message_id);
+      // A message already inside a thread keeps that thread, or later replies there miss the record.
+      const thread = opts.thread_id || opts.message_id;
+      const key = conversationKey(opts.source, opts.chat_id, thread);
       checkKey(key);
-      console.log(`OK|${key}|${attribute}=${opts.message_id}`);
+      console.log(`OK|${key}|${attribute}=${thread}`);
       return;
     }
     case 'thread-create': {

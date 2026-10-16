@@ -1,7 +1,7 @@
 // Prompt admission for native mod commands and the remaining Stop-hook command.
 
 import { safeForLLM } from '../sanitize';
-import { senderLabel, envelopeAttr } from '../channel-envelope';
+import { senderLabel } from '../channel-envelope';
 import { isTrustedController, channelBotIdentity } from '../channel-auth';
 import { parseHarnessCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
 import { resolveSlashCommand } from '../channel-slash-address';
@@ -27,8 +27,7 @@ export function run(ctx: StageContext): StageResult | void {
 
   if (ctx.harnessMode) {
     const reply_to: ReplyTarget = { source: env.sourceKey, chat_id: env.chatId };
-    const threadAttr = config?.channels?.[env.sourceKey]?.attributes?.thread_id;
-    if (threadAttr) reply_to.thread = envelopeAttr(env, threadAttr);
+    if (env.thread !== null) reply_to.thread = env.thread;
     // A recovery restart or reset is mid-flight; a command now would race it.
     if (ctx.runtime()?.transition) {
       return { harness: { decision: 'refuse', reason: 'A restart or context reset is in progress. Resend the command once it finishes.', reply_to } };

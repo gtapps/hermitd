@@ -167,7 +167,7 @@ export function persistIntakeAck(
 // <channel> envelope from the SAME chat this reply is going to. A routine
 // wake, heartbeat, or scheduled brief opens its turn on something else
 // entirely (or nothing at all within the window) and is correctly ineligible.
-export function isEligibleInboundReply(event: Json, channelKey: string, chatId: Json): boolean {
+export function isEligibleInboundReply(event: Json, channelKey: string, chatId: Json, config: Json = readConfig()): boolean {
   try {
     const tPath = transcriptPath(event);
     if (!tPath) return false;
@@ -185,7 +185,7 @@ export function isEligibleInboundReply(event: Json, channelKey: string, chatId: 
       return false;
     }
 
-    const envelope = parseChannelEnvelope(prompt.text, readConfig());
+    const envelope = parseChannelEnvelope(prompt.text, config);
     if (!envelope) return false;
 
     return envelope.sourceKey === channelKey && envelope.chatId === String(chatId ?? '');
@@ -242,7 +242,7 @@ function main() {
       // Snapshot before persistDmChannelId mutates in place, so the audit ledger
       // can attribute the learned dm_channel_id to this hook.
       const configBefore = structuredClone(config);
-      const isInboundReply = isEligibleInboundReply(event, channelKey, chatId);
+      const isInboundReply = isEligibleInboundReply(event, channelKey, chatId, config);
       dirty = persistDmChannelId(config, channelKey, chatId, isInboundReply) || dirty;
       if (dirty) writeConfig(config, configBefore);
 

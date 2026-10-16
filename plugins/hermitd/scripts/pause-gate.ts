@@ -34,7 +34,8 @@ function isExempt(toolName: string): boolean {
 
 function main(payload: any): void {
   const toolName = payload && typeof payload.tool_name === 'string' ? payload.tool_name : '';
-  if (!toolName || isExempt(toolName)) return; // allow
+  // Pause first: the exemption reads config.json, which an unpaused tool call never needs.
+  if (!toolName || !isPaused(hermitDir()).paused || isExempt(toolName)) return; // allow
   denyIfPaused();
 }
 

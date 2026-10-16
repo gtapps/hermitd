@@ -29,6 +29,8 @@ export interface ChannelEnvelope {
   /** Raw `user` attribute — human-readable display name, never an auth input. */
   userName: string | null;
   messageId: string | null;
+  /** The mapped `attributes.thread_id` value when the channel maps one and the tag carries exactly one. */
+  thread: string | null;
   ts: string | null;
   body: string;
 }
@@ -92,6 +94,7 @@ export function parseChannelEnvelope(prompt: string, config?: any): ChannelEnvel
   const userName = users.length === 1 ? users[0] || null : null;
   const userId = userIds.length > 1 ? null : userIds[0] || userName;
   const messageIds = attrValues(attrs, mapping?.message_id ?? 'message_id');
+  const threads = mapping?.thread_id ? attrValues(attrs, mapping.thread_id) : [];
   const tsMatch = attrs.match(/\bts="([^"]*)"/);
 
   let body = prompt.slice(tagMatch[0].length);
@@ -106,6 +109,7 @@ export function parseChannelEnvelope(prompt: string, config?: any): ChannelEnvel
     userId,
     userName,
     messageId: messageIds[0] ?? null,
+    thread: threads.length === 1 ? threads[0] : null,
     ts: tsMatch ? tsMatch[1] : null,
     body: body.trim(),
   };

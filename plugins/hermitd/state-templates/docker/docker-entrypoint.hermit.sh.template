@@ -244,7 +244,8 @@ if (changed) fs.writeFileSync(claudeJson, JSON.stringify(d));
 // container-only privilege escalation into the shared project config.
 
 // Emit channel list on stdout line 1, recommended plugins as JSON on line 2
-console.log(channels.filter((ch) => ch !== "imessage" && !cfg.channels?.[ch]?.marketplace).map(ch => cfg.channels?.[ch]?.plugin ?? ch).join(" "));
+// Built-in channels boot from claude-plugins-official whatever their marketplace (hermitd-start CHANNEL_PLUGINS).
+console.log(channels.filter((ch) => ch !== "imessage" && (ch === "discord" || ch === "telegram" || !cfg.channels?.[ch]?.marketplace)).map(ch => cfg.channels?.[ch]?.plugin ?? ch).join(" "));
 const rec = configExists ? (cfg.docker ?? {}).recommended_plugins ?? [] : [];
 console.log(JSON.stringify(rec.filter((e) => e.enabled)));
 
@@ -449,9 +450,11 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 try {
   const cfg = JSON.parse(fs.readFileSync(path.join(process.argv[2], ".hermit", "config.json"), "utf8"));
-  const installed = spawnSync("claude", ["plugin", "list"], { encoding: "utf8" }).stdout ?? "";
-  for (const [key, channel] of Object.entries(cfg.channels ?? {})) {
-    if (!channel || typeof channel !== "object" || Array.isArray(channel) || !(channel.enabled ?? true) || !channel.marketplace) continue;
+  const thirdParty = Object.entries(cfg.channels ?? {}).filter(([key, channel]) =>
+    channel && typeof channel === "object" && !Array.isArray(channel) && (channel.enabled ?? true)
+    && channel.marketplace && !["discord", "telegram", "imessage"].includes(key));
+  const installed = thirdParty.length ? spawnSync("claude", ["plugin", "list"], { encoding: "utf8" }).stdout ?? "" : "";
+  for (const [key, channel] of thirdParty) {
     const target = `${channel.plugin ?? key}@${channel.marketplace}`;
     if (!installed.includes(`❯ ${target}`)) {
       console.log(`[docker-entrypoint] Channel ${key}: add ${target} to docker.recommended_plugins to install it.`);
