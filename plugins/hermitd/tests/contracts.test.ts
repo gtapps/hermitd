@@ -3599,10 +3599,9 @@ test('skill command strings match the script verbs and flags they call', () => {
     [path.join(TEMPLATES, 'CLAUDE-APPEND.md'), ['hermitd-run observations observe .hermit skill-preference-applied']],
     [path.join(SKILLS, 'reflect', 'SKILL.md'), ['observations.ts graduate .hermit', '--graduation-cursor']],
     [path.join(SKILLS, 'task', 'SKILL.md'), [
-      "chat-lookup --chat-id '<chat_id>'",
-      "thread-create --chat-id '<chat_id>' --message-id '<message_id>' --name '<title>'",
-      "conversation.ts .hermit history --source '<source>' --chat-id '<chat_id>' --limit 100",
+      "conversation.ts .hermit thread-open --source '<sourceKey>' --chat-id '<chat_id>' --message-id '<message_id>' --name '<title>'",
     ]],
+    [path.join(SKILLS, 'task', 'branches.md'), ["history --source '<source>' --chat-id '<chat_id>' --limit 100"]],
   ];
   const missing = pins.flatMap(([file, commands]) => {
     const text = read(file);

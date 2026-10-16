@@ -2,7 +2,7 @@ import { conversationKey } from '../conversation-key';
 import { threadRecords } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
-import { cachedChat } from '../channel-chats';
+import { cachedChat, isGuildChannelType } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
@@ -12,7 +12,7 @@ import type { StageContext, StageResult } from './types';
 // record's conversation key is that thread. A message in the parent channel therefore
 // belongs to no task thread, whatever record the channel's key might match.
 const inThreadChat = (ctx: StageContext, sourceKey: string, chatId: string) => {
-  if (sourceKey === 'discord') return ![0, 5].includes(cachedChat(ctx.dir, chatId)?.type ?? -1);
+  if (sourceKey === 'discord') return !isGuildChannelType(cachedChat(ctx.dir, chatId));
   const threadAttr = ctx.config()?.channels?.[sourceKey]?.attributes?.thread_id;
   return !threadAttr || ctx.envelope?.thread != null;
 };

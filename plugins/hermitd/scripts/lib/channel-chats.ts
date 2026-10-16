@@ -49,10 +49,10 @@ export function cachedGuildRoles(hermitDir: string, guildId: string): GuildRoles
   return entry && 'role_ids' in entry ? entry as GuildRoles : null;
 }
 
-async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: string): Promise<Entry | null> {
+async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: string, retryError = false): Promise<Entry | null> {
   try {
     const cached = cachedEntry(hermitDir, bucket, id);
-    if (cached) return 'error' in cached ? null : cached;
+    if (cached && !('error' in cached && retryError)) return 'error' in cached ? null : cached;
     let entry: Entry;
     const fetched_at = new Date().toISOString();
     try {
@@ -85,8 +85,10 @@ async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: strin
   } catch { return null; }
 }
 
-export async function lookupChat(hermitDir: string, config: Json, chatId: string): Promise<Chat | null> {
-  return await lookup(hermitDir, config, 'chats', chatId) as Chat | null;
+// `retryError` refetches past a cached failure. A task open asks for it, since a day-long
+// cached timeout would otherwise refuse every task in that chat.
+export async function lookupChat(hermitDir: string, config: Json, chatId: string, retryError = false): Promise<Chat | null> {
+  return await lookup(hermitDir, config, 'chats', chatId, retryError) as Chat | null;
 }
 
 export async function lookupGuildRoles(hermitDir: string, config: Json, guildId: string): Promise<GuildRoles | null> {
@@ -94,8 +96,9 @@ export async function lookupGuildRoles(hermitDir: string, config: Json, guildId:
   return await lookup(hermitDir, config, 'guilds', guildId) as GuildRoles | null;
 }
 
-export function isThreadType(chat: Pick<Chat, 'type'> | null): boolean {
-  return chat?.type === 10 || chat?.type === 11 || chat?.type === 12;
+// A guild text or announcement channel, where a task opens a native thread.
+export function isGuildChannelType(chat: Pick<Chat, 'type'> | null | undefined): boolean {
+  return chat?.type === 0 || chat?.type === 5;
 }
 
 // Unlike the cached lookups above this is a non-idempotent write, so it takes the

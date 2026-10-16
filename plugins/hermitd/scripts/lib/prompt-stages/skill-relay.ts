@@ -12,7 +12,7 @@ export function run(ctx: StageContext): StageResult | void {
 
   clearSkillRelay(ctx.dir);
 
-  // Same `<attribute>=<value>` reply parameter thread-open prints, so the outcome stays in the asking thread.
+  // Same reply parameter thread-open prints under `reply`, so the outcome stays in the asking thread.
   const { source, chat_id, thread } = relay.reply_to;
   const threadAttr = thread ? ctx.config()?.channels?.[source]?.attributes?.thread_id : null;
   const where = threadAttr ? `${source} chat ${chat_id} with reply parameter ${threadAttr}=${thread}` : `${source} chat ${chat_id}`;

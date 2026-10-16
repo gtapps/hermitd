@@ -459,6 +459,21 @@ foreach (['raw' => $satisScript, 'JSON-encoded' => json_encode($satisScript)] as
 }
 check(scrubSecrets(json_encode('composer config bearer.satis.acme.dev B3arerTok')) === '"composer config bearer.satis.acme.dev [REDACTED]"',
     'a composer auth redaction keeps the JSON string closing quote');
+foreach ([
+    'composer config http-basic.repo.example.com deploy s3cr/et+Tok' => 'composer config http-basic.repo.example.com [REDACTED]',
+    'composer config http-basic.repo.example.com deploy "pa/ss word"' => 'composer config http-basic.repo.example.com [REDACTED]',
+    'composer config --global bearer.repo.example.com abc/def' => 'composer config --global bearer.repo.example.com [REDACTED]',
+    "composer config http-basic.repo.example.com deploy\ts3cr/et" => 'composer config http-basic.repo.example.com [REDACTED]',
+    'composer config http-basic.repo.example.com deploy "pa\\"ss word"' => 'composer config http-basic.repo.example.com [REDACTED]',
+    'composer config http-basic.repo.example.com deploy pa\\"ss' => 'composer config http-basic.repo.example.com [REDACTED]',
+] as $line => $expected) {
+    check(scrubSecrets(json_encode($line)) === json_encode($expected),
+        "a JSON-encoded composer credential is fully redacted: $line");
+    if (!str_contains($line, '\\"')) {
+        check(scrubSecrets($line) === $expected,
+            "a raw composer credential is fully redacted: $line");
+    }
+}
 check(scrubSecrets(json_encode('APP_KEY=base64:Ab/Cd+Ef/Gh12/Ij34Kl\\Mn')) === '"APP_KEY=[REDACTED]"',
     'a JSON-encoded value is masked through its \/ and \\\\ escapes');
 foreach ([

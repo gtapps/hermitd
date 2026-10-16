@@ -7,7 +7,8 @@
 
 ### Upgrade Instructions
 
-No automatic step. If `HERMIT_GH_REPO` still names a renamed repository, update it to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. Remove any `gh_issue: undefined` line from proposal frontmatter left by an earlier failed filing, then file that proposal again.
+1. Use the Edit tool, as in the scribe skill's back-write, to remove every `gh_issue: undefined` line from `.hermit/proposals/*.md` frontmatter. Preserve all other content. List those proposals to the operator as never filed and ready to file again.
+2. Tell the operator: if filing fails with `GitHub returned no html_url (check HERMIT_GH_REPO)`, set `HERMIT_GH_REPO` to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. The variable lives in `.env` or settings env, which evolve does not read.
 
 ## [0.1.9] - 2026-10-07
 
