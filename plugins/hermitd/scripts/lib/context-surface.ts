@@ -44,8 +44,7 @@ export function readContextSurface(hermitDir: string): ContextSurface | null {
 
 /** Atomic write via lib/alert-state.ts's generic atomic-JSON writer: PID-specific
  *  temp (a shared temp name lets two concurrent writers publish a zero-length
- *  record — see lib/runtime.ts), chmod 0600 before rename (doctor's permissions
- *  check warns on any world-readable state/*.json). Fail-open: cost tracking must
+ *  record — see lib/runtime.ts), chmod 0600 before rename. Fail-open: cost tracking must
  *  never break on a surface-write failure, and writeAlertState swallows errors. */
 export function writeContextSurface(hermitDir: string, data: ContextSurface): void {
   writeAlertState(contextSurfacePath(hermitDir), data);

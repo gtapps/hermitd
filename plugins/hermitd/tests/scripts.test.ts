@@ -28,7 +28,7 @@ import {
   extractUsage, costLogPath, ccVersion, lastAssistantModel,
 } from '../scripts/lib/cc-compat';
 import * as costLog from '../scripts/lib/cost-log';
-import { costIndexPath, readCostIndex, updateCostIndex, scanAutomatedOpus } from '../scripts/lib/cost-log';
+import { costIndexPath, readCostIndex, updateCostIndex } from '../scripts/lib/cost-log';
 import * as pricing from '../scripts/lib/pricing';
 import { calculateCost } from '../scripts/lib/pricing';
 import { search } from '../scripts/lib/search';
@@ -3868,50 +3868,6 @@ describe('cost-log', () => {
     expect(idx.total_cost_usd).toBeLessThanOrEqual(10);
   });
 
-  // scanAutomatedOpus: counts only heartbeat/routine:* rows with model=opus
-  // within the given date window. Used by cost-summary and doctor-check.
-  describe('scanAutomatedOpus', () => {
-    test('returns zero count when log absent', () => {
-      const result = scanAutomatedOpus('/tmp/no-such-cost-log.jsonl', '2020-01-01');
-      expect(result.count).toBe(0);
-      expect(result.cost).toBe(0);
-    });
-
-    test('counts heartbeat+routine opus rows, excludes other/sonnet/haiku', withDir((dir) => {
-      const logFile = path.join(dir, '.claude', 'cost-log.jsonl');
-      const inWindow = localDate(new Date());        // today
-      const outWindow = '2020-01-01';                // old date — outside window
-      write(logFile, [
-        // counted: automated + opus + in window
-        `{"timestamp":"${inWindow}T10:00:00.000Z","source":"heartbeat","model":"opus","total_tokens":100,"estimated_cost_usd":5.00}`,
-        `{"timestamp":"${inWindow}T11:00:00.000Z","source":"routine:daily-review","model":"opus","total_tokens":50,"estimated_cost_usd":2.50}`,
-        // excluded: not automated
-        `{"timestamp":"${inWindow}T12:00:00.000Z","source":"other","model":"opus","total_tokens":50,"estimated_cost_usd":0.50}`,
-        // excluded: wrong model
-        `{"timestamp":"${inWindow}T13:00:00.000Z","source":"heartbeat","model":"sonnet","total_tokens":50,"estimated_cost_usd":0.10}`,
-        `{"timestamp":"${inWindow}T14:00:00.000Z","source":"routine:reflect","model":"haiku","total_tokens":50,"estimated_cost_usd":0.01}`,
-        // excluded: out of date window
-        `{"timestamp":"${outWindow}T10:00:00.000Z","source":"heartbeat","model":"opus","total_tokens":100,"estimated_cost_usd":8.50}`,
-        '',
-      ].join('\n'));
-      const result = scanAutomatedOpus(logFile, inWindow);
-      expect(result.count).toBe(2);
-      expect(result.cost).toBeCloseTo(7.50, 9);
-    }));
-
-    test('skips corrupt lines silently', withDir((dir) => {
-      const logFile = path.join(dir, '.claude', 'cost-log.jsonl');
-      const today = localDate(new Date());
-      write(logFile, [
-        `{"timestamp":"${today}T10:00:00.000Z","source":"heartbeat","model":"opus","estimated_cost_usd":3.00}`,
-        'NOT VALID JSON',
-        '',
-      ].join('\n'));
-      const result = scanAutomatedOpus(logFile, today);
-      expect(result.count).toBe(1);
-      expect(result.cost).toBeCloseTo(3.00, 9);
-    }));
-  });
 });
 
 // -------------------------------------------------------

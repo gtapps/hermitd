@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { globDir, readFrontmatter } from './lib/frontmatter';
 import { validate } from './validate-config';
 import { kStr } from './lib/format';
-import { costIndexPath, readCostIndex, scanAutomatedOpus, scanRoutineLedger } from './lib/cost-log';
+import { costIndexPath, readCostIndex, scanRoutineLedger } from './lib/cost-log';
 import { costLogPath, transcriptDirFor, memoryDirFor } from './lib/cc-compat';
 import { readSettledConfig, readConfigRaw, configExists } from './lib/config-read';
 import { resolvePricing, PRICING_VERIFIED } from './lib/pricing';
@@ -691,41 +691,6 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
   }
 }
 
-function checkPermissions(p: DoctorPaths = PATHS) {
-  const { configPath, stateDir, proposalsDir } = p;
-  try {
-    const looseFiles: string[] = [];
-    const targets: string[] = [configPath];
-    if (fs.existsSync(stateDir)) {
-      // `.json` only. The append-only `.jsonl` ledgers are created 0600 by
-      // lib/append-jsonl.ts and hatch-scaffold.ts, but they carry no secrets
-      // (timestamps, counts, tool and program names), so inspecting pre-existing
-      // ones would warn on every install upgraded from before that default and
-      // buy a chmod migration for a finding with no operational consequence.
-      for (const f of globDir(stateDir, /\.json$/)) targets.push(f);
-    }
-    for (const target of targets) {
-      if (!fs.existsSync(target)) continue;
-      const mode = fs.statSync(target).mode & 0o777;
-      if (mode & 0o004) looseFiles.push(`${path.basename(target)} (${mode.toString(8)})`);
-    }
-    if (fs.existsSync(proposalsDir)) {
-      const mode = fs.statSync(proposalsDir).mode & 0o777;
-      if (mode & 0o004) looseFiles.push(`proposals/ (${mode.toString(8)})`);
-    }
-    if (looseFiles.length > 0) {
-      return {
-        id: 'permissions',
-        status: 'warn',
-        detail: `world-readable: ${looseFiles.slice(0, 3).join(', ')}${looseFiles.length > 3 ? '…' : ''}`,
-      };
-    }
-    return { id: 'permissions', status: 'ok', detail: `${targets.length} sensitive path(s) not world-readable` };
-  } catch (e: any) {
-    return { id: 'permissions', status: 'fail', detail: `check failed: ${e.message}` };
-  }
-}
-
 // Seeded `ask` rules are inert under bypassPermissions: Claude Code consults no
 // permission rule that would prompt, so a hermit that hatched Standard and then
 // moved to bypass is running with no guard at all on the very commands the seed
@@ -1276,21 +1241,6 @@ function checkContextAge(p: DoctorPaths = PATHS) {
     return { id: 'context-age', status: 'ok', detail: `context ${kStr(prompt)} tokens (~${kStr(compactible)} compactible) over threshold, hygiene fired ${ageHours.toFixed(1)}h ago` };
   } catch (e: any) {
     return { id: 'context-age', status: 'fail', detail: `check failed: ${e.message}` };
-  }
-}
-
-function checkOpusWake(p: DoctorPaths = PATHS) {
-  const { costLog } = p;
-  try {
-    const since = new Date(Date.now() - 7 * MS_PER_DAY).toISOString().slice(0, 10);
-    const { count, cost } = scanAutomatedOpus(costLog, since);
-    if (count > 0) {
-      return { id: 'opus-wake', status: 'warn',
-        detail: `${count} automated wake(s) on Opus in last 7d ($${cost.toFixed(2)}) — lower the session model to cut tier-drift cost` };
-    }
-    return { id: 'opus-wake', status: 'ok', detail: 'no Opus automated wakes in last 7d' };
-  } catch (e: any) {
-    return { id: 'opus-wake', status: 'fail', detail: `check failed: ${e.message}` };
   }
 }
 
@@ -2365,14 +2315,12 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkProposals(p),
     checkDependencies(p),
     checkVersionCurrency(p),
-    checkPermissions(p),
     checkPermissionRules(p),
     checkDockerSecurity(p),
     checkReflectLoop(p),
     checkScheduler(p),
     checkWatchdog(p),
     checkContextAge(p),
-    checkOpusWake(p),
     checkRoutineCost(p),
     checkHeartbeat(p),
     checkRoutineMonitor(p),
@@ -2591,9 +2539,9 @@ export {
   checkPassiveChats,
   checkPermissionRules,
   checkRuntime, checkConfig, checkHooks, checkStateFiles,
-  checkCost, checkProposals, checkDependencies, checkVersionCurrency, checkPermissions,
+  checkCost, checkProposals, checkDependencies, checkVersionCurrency,
   checkDockerSecurity, checkReflectLoop, checkScheduler,
-  checkWatchdog, checkContextAge, checkOpusWake, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
+  checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
   checkCredentialExpiry, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
   satisfiesRange, cidrOverlap,
