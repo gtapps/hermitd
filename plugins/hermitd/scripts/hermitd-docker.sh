@@ -429,11 +429,17 @@ case "$CMD" in
       echo "[hermit] → Paste the code back into this terminal when prompted"
       echo "[hermit] → Type /exit when done — the hermit will start automatically"
       echo ""
+      # A token hermit keeps its old sign-in on the volume, so the file existing after
+      # the REPL proves nothing. Only a file the REPL rewrote with a usable login does.
+      CRED_MTIME=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" sh -c \
+        'bun -e "try{console.log(require(\"fs\").statSync((process.env.CLAUDE_CONFIG_DIR||\"/home/claude/.claude\")+\"/.credentials.json\").mtimeMs)}catch{console.log(0)}"' \
+        2>/dev/null || echo 0)
       cd "$PROJECT_DIR" && "${DC[@]}" exec -it "$SERVICE" claude
-      if ! cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-          sh -c 'test -f "${CLAUDE_CONFIG_DIR:-/home/claude/.claude}/.credentials.json"' 2>/dev/null; then
+      if ! cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" sh -c \
+          'bun -e "const fs=require(\"fs\");const f=(process.env.CLAUDE_CONFIG_DIR||\"/home/claude/.claude\")+\"/.credentials.json\";try{const ok=fs.statSync(f).mtimeMs!==Number(process.argv[1])&&!!JSON.parse(fs.readFileSync(f,\"utf8\")).claudeAiOauth?.accessToken;process.exit(ok?0:1)}catch{process.exit(1)}" "$1"' \
+          _ "$CRED_MTIME" 2>/dev/null; then
         echo "" >&2
-        echo "[hermit] Login may not have completed — .credentials.json not found." >&2
+        echo "[hermit] Login may not have completed: .credentials.json not found or unchanged." >&2
         echo "[hermit] Re-run hermitd docker login to try again." >&2
         exit 1
       fi

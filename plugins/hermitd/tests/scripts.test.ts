@@ -272,6 +272,48 @@ describe('static file checks', () => {
     expect(writeIdx).toBeGreaterThan(checkIdx);
   });
 
+  // A token hermit keeps its old sign-in on the volume, so the REPL path accepts only
+  // a credential file the REPL rewrote with a usable login, never one that merely exists.
+  test('hermitd-docker login REPL check needs a rewritten, usable sign-in', () => {
+    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-docker.sh'), 'utf8');
+    const snippet = (start: string) => {
+      const from = src.indexOf(`'bun -e "${start}`);
+      return src.slice(from + 1, src.indexOf(`'`, from + 1));
+    };
+    const before = snippet('try{console.log(require');
+    const after = snippet('const fs=require');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-login-check-'));
+    const cred = (dir: string, token: string) =>
+      fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: token } }));
+    const run = (name: string, seed: string | null, repl: string | null): number => {
+      const dir = path.join(root, name);
+      fs.mkdirSync(dir);
+      if (seed !== null) cred(dir, seed);
+      const env = { ...process.env, CLAUDE_CONFIG_DIR: dir };
+      const mtime = execFileSync('sh', ['-c', before], { env, encoding: 'utf8' }).trim();
+      if (repl !== null) {
+        cred(dir, repl);
+        const t = new Date(Date.now() + 5000);
+        fs.utimesSync(path.join(dir, '.credentials.json'), t, t);
+      }
+      try {
+        execFileSync('sh', ['-c', after, '_', mtime], { env, stdio: 'ignore' });
+        return 0;
+      } catch (e: any) {
+        return e.status;
+      }
+    };
+    try {
+      expect(run('absent', null, null)).toBe(1);
+      expect(run('stale-unchanged', 'old', null)).toBe(1);
+      expect(run('rewritten-stub', 'old', '')).toBe(1);
+      expect(run('rewritten-usable', 'old', 'new')).toBe(0);
+      expect(run('fresh-install', null, 'new')).toBe(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('hermitd-exec reports version skew, not corruption, on a missing script', () => {
     const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-exec.sh'), 'utf8');
     expect(src).not.toContain('may be corrupted');
