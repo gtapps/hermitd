@@ -24,7 +24,7 @@ A runnable record is open, resident-owned, without a result or waiting dependenc
 
 ## Evidence commands
 
-`bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-check.ts <id>` snapshots an open record with a check, scans the command for injection, then runs it from the project root with a 30-second default timeout and bounded output. It never holds the task lock across the subprocess. The internal result mutation rechecks command, status and result revision under the lock. Changed evidence returns `stale-check`. Exit 0 closes by `check`, actor `hermit`, reason `check:exit-0: <output>` (or `check:exit-0` when the check printed nothing); on a record with a named approver it instead records progress and clears the check, leaving the record open; other exits append progress.
+`bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-check.ts <id>` snapshots an open record with a check, scans the command for injection, then runs it from the project root with a 30-second default timeout and bounded output. It never holds the task lock across the subprocess. The internal result mutation rechecks command, status and result revision under the lock. Changed evidence returns `stale-check`. Exit 0 closes by `check`, actor `hermit`, reason `check:exit-0: <first 200 characters of output>` (or `check:exit-0` when the check printed nothing), with the full output in the Outcome section; on a record with a named approver it instead records progress and clears the check, leaving the record open; other exits append progress.
 
 The result mutation is not exposed by the pre-approved task CLI. The command runner has no permission allow-list entry. The daily later check lists open records with checks and results and invokes the gated runner.
 

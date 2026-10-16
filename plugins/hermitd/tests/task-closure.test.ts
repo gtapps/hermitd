@@ -71,10 +71,14 @@ it('check close keeps a posted result and leaves an empty output out of the reas
     const lib = await taskLib();
     const posted = (await f.open(['--check', 'true'])).id;
     await f.ok('block', [posted, '--result-stdin'], 'PR opened');
-    lib.mutateTask(f.dir, 'check-result', posted, { 'result-rev': '1', exit: '0', 'output-stdin': true }, 'MERGED');
-    expect(lib.decodeTask(f.text(posted))).toMatchObject({ closed_by: 'check', result: 'PR opened', closed_reason: 'check:exit-0: MERGED' });
+    lib.mutateTask(f.dir, 'check-result', posted, { 'result-rev': '1', exit: '0', 'output-stdin': true }, 'MERGED by ci');
+    expect(lib.decodeTask(f.text(posted))).toMatchObject({ closed_by: 'check', result: 'PR opened', closed_reason: 'check:exit-0: MERGED by ci' });
     const silent = (await f.open(['--check', 'true'])).id;
     lib.mutateTask(f.dir, 'check-result', silent, { 'result-rev': '0', exit: '0', 'output-stdin': true }, '');
     expect(lib.decodeTask(f.text(silent))).toMatchObject({ closed_by: 'check', result: null, closed_reason: 'check:exit-0' });
+    const long = (await f.open(['--check', 'true'])).id;
+    lib.mutateTask(f.dir, 'check-result', long, { 'result-rev': '0', exit: '0', 'output-stdin': true }, 'x'.repeat(300));
+    expect(lib.decodeTask(f.text(long)).closed_reason).toBe('check:exit-0: ' + 'x'.repeat(200));
+    expect(f.text(long)).toContain('x'.repeat(300));
   } finally { f.cleanup(); }
 });
