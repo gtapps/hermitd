@@ -134,8 +134,8 @@ describe('observations ledger phrases', () => {
     expect(reflect).toContain('observations.ts observe .hermit quick-deferral');
   });
 
-  test('reflect: quick-mode Progress Log carries suppressed suffix for the weekly digest', () => {
-    expect(reflect).toContain('so quick-run suppressions reach the weekly digest');
+  test('reflect: quick-mode Progress Log carries suppressed suffix', () => {
+    expect(reflect).toContain('when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry).');
   });
 
   // The row is written by reflect-precheck.ts, which computes the spike — the skill

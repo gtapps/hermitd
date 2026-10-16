@@ -181,9 +181,9 @@ const openLoops = allProposals
 // Weekly runs come from routine fires; surfaced and accepted counts come from
 // reflect-exclusive micro-proposal events. All reads fail open to zeros.
 const reflectRoutineIds = new Set(readSettledConfig(hermitDir).routines
-  .filter((routine: any) => routine.skill === 'hermitd:reflect')
+  .filter((routine: any) => String(routine.skill ?? '').split(/\s+/)[0] === 'hermitd:reflect')
   .map((routine: any) => routine.id));
-const reflectRuns = readRoutineHistory(path.join(hermitDir, 'state', 'routine-metrics.jsonl'), 7, weekEnd)
+const reflectRuns = readRoutineHistory(path.join(hermitDir, 'state', 'routine-metrics.jsonl'), 7, new Date(weekEnd.getTime() - 1))
   .routines.filter(routine => reflectRoutineIds.has(routine.id))
   .reduce((sum, routine) => sum + routine.fires, 0);
 
