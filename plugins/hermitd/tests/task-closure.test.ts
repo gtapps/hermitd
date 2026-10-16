@@ -59,9 +59,22 @@ it('check-result closes only on zero and refuses a closed record', async () => {
     result('1', 'not yet');
     expect(lib.decodeTask(f.text(id)).closed_by).toBeNull();
     result('0', 'verified');
-    expect(lib.decodeTask(f.text(id))).toMatchObject({ status: 'closed', closed_by: 'check', closed_reason: 'check:exit-0' });
+    expect(lib.decodeTask(f.text(id))).toMatchObject({ status: 'closed', closed_by: 'check', closed_reason: 'check:exit-0: verified', result: null });
     const closed = f.text(id);
     expect(() => result('0', 'again')).toThrow('stale-check');
     expect(f.text(id)).toBe(closed);
+  } finally { f.cleanup(); }
+});
+it('check close keeps a posted result and leaves an empty output out of the reason', async () => {
+  const f = taskFixture();
+  try {
+    const lib = await taskLib();
+    const posted = (await f.open(['--check', 'true'])).id;
+    await f.ok('block', [posted, '--result-stdin'], 'PR opened');
+    lib.mutateTask(f.dir, 'check-result', posted, { 'result-rev': '1', exit: '0', 'output-stdin': true }, 'MERGED');
+    expect(lib.decodeTask(f.text(posted))).toMatchObject({ closed_by: 'check', result: 'PR opened', closed_reason: 'check:exit-0: MERGED' });
+    const silent = (await f.open(['--check', 'true'])).id;
+    lib.mutateTask(f.dir, 'check-result', silent, { 'result-rev': '0', exit: '0', 'output-stdin': true }, '');
+    expect(lib.decodeTask(f.text(silent))).toMatchObject({ closed_by: 'check', result: null, closed_reason: 'check:exit-0' });
   } finally { f.cleanup(); }
 });

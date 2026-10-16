@@ -22,6 +22,7 @@
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
 - Evening briefs describe finished tasks from their final result and skip lessons the result contradicts.
+- A task closed by its check keeps the check output as the close reason, so briefs say what the check proved instead of only the title.
 - Duty lines label the last session wake `last_woke`, so a routine that checked and found nothing to do no longer reads as not run.
 - Weekly reviews count reflect runs from the routine log; the always-empty candidate and suppression counts are removed.
 - Remote MCP servers that sign in with OAuth stay signed in across token installs, container restarts and updates. A setup-token hermit leaves `.credentials.json` in place instead of moving it to `.credentials.json.pre-token.bak`.

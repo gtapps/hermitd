@@ -262,10 +262,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           // Clearing the passed check is what ends the daily run: the record stays open with its
           // result, and a still-set check would re-execute the command on every later wake forever.
           if (record.approver) { record.check = null; append(record, 'Progress', 'hermit', `check passed; approver confirmation still required${line ? ' ' + line : ''}`, now); }
-          else {
-            finish(record, 'check', 'hermit', 'check:exit-0', now);
-            if (line) append(record, 'Outcome', 'hermit', line, now);
-          }
+          else finish(record, 'check', 'hermit', line ? `check:exit-0: ${line}` : 'check:exit-0', now);
         } else append(record, 'Progress', 'hermit', `check:exit-${exit} ${line}`, now);
         digest = { id, closed_by: record.closed_by, result_rev: record.result_rev };
       } else if (verb === 'block') {
