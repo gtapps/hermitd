@@ -180,7 +180,13 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
     }
     const stateFiles = globDir(stateDir, /\.jsonl?$/);
     const broken: string[] = [];
+    const residue: { file: string; cite: string }[] = [];
+    // `name:3,7,9 (+2 more)`; bounded so a badly torn ledger stays digest-sized.
+    const cite = (name: string, nums: number[]) =>
+      `${name}:${nums.slice(0, 3).join(',')}${nums.length > 3 ? ` (+${nums.length - 3} more)` : ''}`;
+    const parses = (s: string) => { try { JSON.parse(s); return true; } catch { return false; } };
     for (const f of stateFiles) {
+      const name = path.basename(f);
       try {
         const raw = fs.readFileSync(f, 'utf8');
         // A JSONL ledger has no whole-file JSON shape, and a torn trailing line is
@@ -192,16 +198,36 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
         if (f.endsWith('.jsonl')) {
           const lines = raw.split('\n');
           const complete = raw.endsWith('\n') ? lines : lines.slice(0, -1);
-          for (const line of complete) {
-            if (line.trim()) JSON.parse(line);
-          }
+          const bad: number[] = [];
+          const nul: number[] = [];
+          complete.forEach((line, i) => {
+            if (!line.trim() || parses(line)) return;
+            // A crash mid-append can leave NUL bytes ahead of an intact row (the
+            // filesystem zero-fills the extended size). The row itself is fine, so
+            // that is a mechanical repair, not corruption.
+            const stripped = line.replace(/^\0+/, '');
+            const intact = stripped !== line && (!stripped.trim() || parses(stripped));
+            (intact ? nul : bad).push(i + 1);
+          });
+          if (bad.length > 0) broken.push(cite(name, bad));
+          if (nul.length > 0) residue.push({ file: f, cite: cite(name, nul) });
         } else {
           JSON.parse(raw);
         }
-      } catch (e) { broken.push(path.basename(f)); }
+      } catch (e) { broken.push(name); }
     }
     if (broken.length > 0) {
       return { id: 'state', status: 'fail', detail: `unparseable: ${broken.join(', ')}` };
+    }
+    if (residue.length > 0) {
+      // Valid JSON text never contains a raw NUL, so deleting every one is safe;
+      // writing back through `>` keeps the ledger's 0600 mode.
+      const fixes = residue.map(r => `cp -p '${r.file}' '${r.file}.bak' && tr -d '\\000' < '${r.file}.bak' > '${r.file}'`);
+      return {
+        id: 'state',
+        status: 'warn',
+        detail: `crash leftovers (NUL bytes) at ${residue.map(r => r.cite).join(', ')}; fix: ${fixes.join('; ')}`,
+      };
     }
     const missing = EXPECTED_STATE_FILES.filter(
       f => !fs.existsSync(path.join(stateDir, f))

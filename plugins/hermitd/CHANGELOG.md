@@ -9,6 +9,7 @@
 
 ### Changed
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
+- `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 ### Fixed
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
