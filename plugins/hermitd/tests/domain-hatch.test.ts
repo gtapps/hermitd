@@ -13,7 +13,7 @@ import { runScript, SCRIPTS_DIR, PLUGIN_ROOT } from './helpers/run';
 import { satisfiesFloor, preflight } from '../scripts/lib/domain-hatch/preflight';
 import { resolvePlugin, isResolveError } from '../scripts/lib/domain-hatch/resolve';
 import { ensureHatchTarget, readTargetState, optionsPath } from '../scripts/lib/domain-hatch/target';
-import { planBlock, applyBlock, splitResident, planResidentRemoval } from '../scripts/lib/domain-hatch/block';
+import { planBlock, applyBlock, splitResident, planResidentRemoval, templatePath } from '../scripts/lib/domain-hatch/block';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-domain-hatch-');
 afterAll(cleanup);
@@ -313,9 +313,8 @@ describe('ensureHatchTarget', () => {
 describe('sync-block', () => {
   // Claude Code reads a leading "---" as frontmatter and drops the block up to the next sibling's "---".
   test('core block written into an empty target does not open with a frontmatter fence', () => {
-    const s = scaffold();
-    const target = path.join(s.root, 'CLAUDE.local.md');
-    const template = fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
+    const target = path.join(freshDir(), 'CLAUDE.local.md');
+    const template = fs.readFileSync(templatePath(PLUGIN_ROOT), 'utf8');
 
     const res = applyBlock(planBlock(PLUGIN_ROOT, 'hermitd', target, [], splitResident(template).shared, false));
     expect(res.action).toBe('append');

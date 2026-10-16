@@ -19,7 +19,7 @@
 
 Run `/hermitd:hermit-evolve`. The evolve skill handles:
 
-1. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add `hermitd` to `context_reload_targets`. Skip silently otherwise.
+1. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add the plugin named in that marker to `context_reload_targets`. Skip silently otherwise.
 
 ## [1.4.15] - 2026-10-15
 
