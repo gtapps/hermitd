@@ -25,6 +25,12 @@ describe('task-based reader instructions', () => {
     }
   });
 
+  test('brief uses final results to judge lessons and distinguishes session wakes from prechecks', () => {
+    const ref = read('skills/brief/reference.md');
+    expect(ref).toContain('contradict');
+    expect(ref).toContain('last_woke');
+  });
+
   test('reflection and weekly evaluation consume bounded normalized records', () => {
     for (const path of ['skills/reflect/reference.md', 'skills/weekly-review/reference.md']) {
       const text = read(path);

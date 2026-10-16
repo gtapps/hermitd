@@ -3,6 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { sha256 } from './hash';
 
 // Does a HEARTBEAT.md checklist item represent the default proposal-scan item?
 // Matches the shipped default ("Review `proposals/` for any with `status:
@@ -47,10 +48,13 @@ function alnumSlug(text: string, maxLen: number): string {
 }
 
 // Normalises a HEARTBEAT.md checklist item to its dedup key.
-// Key format: 'checklist:<first-8-chars-normalized>'.
+// Key format: 'checklist:<first-32-chars-normalized>-<first-8-hex-of-body-hash>'.
 export function normalizeItemKey(itemText: string): string | null {
-  const text = alnumSlug(itemText, 8);
-  return text ? `checklist:${text}` : null;
+  const body = itemText.trim().replace(/^[-*+]\s*(\[.\]\s*)?/, '')
+    .replace(/\s*\[(ask|act|note)\]\s*$/i, '')
+    .trim().toLowerCase().replace(/\s+/g, ' ');
+  const slug = body.replace(/[^a-z0-9]/g, '').slice(0, 32);
+  return slug ? `checklist:${slug}-${sha256(body).slice(0, 8)}` : null;
 }
 
 // Fallback key for unresolvable / freeform firing entries.

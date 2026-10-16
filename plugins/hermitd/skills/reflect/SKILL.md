@@ -41,7 +41,7 @@ If `$ARGUMENTS` contains `--quick`:
   ```
   **Exception:** a `current-session` candidate with `Evidence Origin: external-content` is **not** deferred — send it to the judge; Tier-3 escalation routes it to `proposal-create`.
 - If any eligible candidate remains: Read branches.md § Candidate processing. Triage all candidates passing the evidence integrity rule in one `hermitd:proposal-triage` batch call, judge the CREATE survivors in one `hermitd:reflection-judge` call, route ACCEPT/DOWNGRADE through branches.md § Outcomes; unrecognized gate output fails closed per branches.md § Gate failure handling. **Track whether anything hit the gate-failed/SUPPRESS path** — it gates the cursor write.
-- Append one Progress Log line: `[HH:MM] reflect (quick, post-routine) — N candidates; verdicts: accept=A downgrade=D suppress=S; outcomes: <list or "none">`; when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry) so quick-run suppressions reach the weekly digest.
+- Append one Progress Log line: `[HH:MM] reflect (quick, post-routine) — N candidates; verdicts: accept=A downgrade=D suppress=S; outcomes: <list or "none">`; when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry).
 - **Advance the quick-hash cursor only on a clean run** (no gate-failed/SUPPRESS); otherwise skip this call — an unchanged `last_quick_hash` makes the next `reflect_after` fire re-read the same Findings/Blockers (the "re-surfaces next cycle" contract; deferred candidates are already durable in the ledger):
   ```
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/update-reflection-state.ts .hermit/state/reflection-state.json --quick-hash '<hash>'

@@ -7,6 +7,7 @@ import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import {
   buildLabels,
+  requireUrl,
   deriveType,
   resolveScope,
   deriveLabels,
@@ -202,6 +203,20 @@ if (process.env.HERMIT_GH_CHECK_LIVE) {
 
 test("whitespace-only title file is rejected after trim", () => {
   assertFails(fullEnv, ["--publish", wsTitleFile, bodyFile], /Title file is empty/);
+});
+
+// --- requireUrl unit tests ---
+
+test("requireUrl returns html_url from a created issue or comment", () => {
+  const url = "https://github.com/o/r/issues/1";
+  assertEqual(requireUrl({ html_url: url }), url, "url");
+});
+
+test("requireUrl rejects a redirected GET's list response", () => {
+  // A 301 on a renamed repo turns the POST into a GET that answers 200 [].
+  let msg = "";
+  try { requireUrl([]); } catch (err: any) { msg = err.message; }
+  assertEqual(msg, "GitHub returned no html_url (check HERMIT_GH_REPO)", "error");
 });
 
 // --- buildLabels unit tests ---

@@ -19,6 +19,6 @@ export function dutySummary(dir: string): string[] {
     const lastEvent = routine
       ? lastRoutineEventWithTimestamp(path.join(dir, 'state/routine-metrics.jsonl'), routine.id)
       : duty.last_verdict;
-    return `${duty.name}: requested ${requested}; observed pid=${typeof live?.pid === 'number' ? live.pid : 'unknown'}, last_fired=${duty.last_run ?? 'unknown'}, last_event=${lastEvent ?? 'unknown'}`;
+    return `${duty.name}: requested ${requested}; observed pid=${typeof live?.pid === 'number' ? live.pid : 'unknown'}, last_woke=${duty.last_run ?? 'unknown'}, last_event=${lastEvent ?? 'unknown'}`;
   });
 }

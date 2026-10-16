@@ -9,7 +9,7 @@ Renews this hermit's Claude credential (token or claude.ai sign-in, per `auth_mo
 
 Use this when doctor warns that the credential is expiring, or the operator asks to renew. If the hermit is *already* dead from an expired token, this skill is not the path — the watchdog runs the same flow deterministically without a model (`setup-token-mint.ts relay`), because a dead hermit can't run a skill.
 
-**Never run `/logout`.** Renewal never needs it. Retiring the old `.credentials.json` is fine — the install does it for you (see Notes) — but `/logout` *also* resets first-launch state, after which the interactive wizard demands a login and refuses the env token. That reset is the hazard, not the credential removal.
+**Never run `/logout`.** Renewal never needs it, and `/logout` resets first-launch state, after which the interactive wizard demands a login and refuses the env token.
 
 ## Step 0 — Preflight
 
@@ -71,7 +71,6 @@ It fires the restart detached and returns immediately. Anything you write after 
 
 - The one-time link and the login code cross the channel; the credential never does.
 - **In `login` mode nothing is installed by this skill.** The sign-in is written to a staging config dir and `await-token-and-install` only records a pointer to it; the watchdog moves it into place inside the restart in Step 3, where no session is refreshing the file underneath the write. So "signed in" and "in effect" are one restart apart, which is why the confirmation says nothing else is needed.
-- Installing a *token* parks any stored `/login` credential (`.credentials.json` → `.credentials.json.pre-token.bak`). Interactive sessions prefer a stored login over the env token, so an unparked file would 401 the hermit once its old access token lapsed. The rename is restorable; nothing is deleted.
 - Where expiry lives differs by mode: a token's is hermit-tracked in `state/setup-token.json` (the CLI exposes no expiry surface for those), a login's is `refreshTokenExpiresAt` inside `.credentials.json` — the one field a silent refresh does not move. Doctor's `credential-expiry` check reads whichever applies and warns 3 days out.
 - Switching modes is an intent, not an action: setting `auth_mode` records which credential the hermit *should* use, and nothing changes until this skill (or `hermitd-docker login` / `setup-token`) actually signs in with it.
 - Renewal is container-internal on purpose: the token lives on the persistent config volume, not in `.env`, so nothing on the host has to be recreated.

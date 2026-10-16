@@ -31,7 +31,9 @@ Resolve `<slot>` from the flag before starting. All filenames below use that res
 
 ### Phase 1 — Web/RSS sources
 
-Before dispatch, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/source-fetch-result.ts new-run`.
+Before dispatch, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/source-fetch-result.ts new-run "<absolute-output-path>"`.
+The path is the output-path contract's `<absolute-project-root>/tmp/feed-source-items-<slot>.json`.
+It deletes the previous output so a fetch that writes nothing surfaces as a missing file.
 Keep its returned UUID as the expected `run_id` for this invocation; never infer it from an
 existing file or the agent's reply. If generation fails, follow the wholesale fetch-failure
 path below without dispatching.

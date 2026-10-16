@@ -1,5 +1,3 @@
----
-
 <!-- hermitd: Session Discipline -->
 
 <!-- resident-only -->

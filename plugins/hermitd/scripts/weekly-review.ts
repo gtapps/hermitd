@@ -12,6 +12,7 @@ import path from 'node:path';
 import { readFrontmatter, readFileWithFrontmatter, parseFrontmatter, newestByType, globDir } from './lib/frontmatter';
 import { costLogPath, hermitDir as resolveHermitRoot } from './lib/cc-compat';
 import { readSettledConfig } from './lib/config-read';
+import { readRoutineHistory } from './lib/routines/history';
 import { formatTokens } from './lib/format';
 import { writeFileAtomic } from './lib/md-write';
 import { shortPropId } from './lib/dashboard';
@@ -177,28 +178,14 @@ const openLoops = allProposals
   .sort((a, b) => (a.p.fm.created || '').localeCompare(b.p.fm.created || ''));
 
 // --- Reflect vital-signs ---
-// Week-scoped on purpose: reflection-state.json counters are cumulative since
-// hatch, so weekly numbers come from the week's session-report Progress Log
-// lines (runs, candidates, suppressions) and reflect-exclusive micro-proposal
-// events in proposal-metrics.jsonl (surfaced, accepted). All reads fail open to zeros.
-const REFLECT_LINE_RE = /reflect \((?:newborn|juvenile|adult|quick[^)]*)\) — (\d+) candidates?; verdicts: accept=\d+ downgrade=\d+ suppress=\d+/;
-let reflectRuns = 0;
-let reflectCandidates = 0;
-const reflectSuppressed = new Set<string>();
-for (const s of weekSessions) {
-  for (const line of (s.content || '').split('\n')) {
-    const m = line.match(REFLECT_LINE_RE);
-    if (!m) continue;
-    reflectRuns++;
-    reflectCandidates += parseInt(m[1], 10);
-    const sup = line.match(/suppressed: \[([^\]]*)\]/);
-    if (!sup) continue;
-    for (const entry of sup[1].split(',')) {
-      const t = entry.trim();
-      if (t && !t.startsWith('+')) reflectSuppressed.add(t.replace(/:\s+/, ':'));
-    }
-  }
-}
+// Weekly runs come from routine fires; surfaced and accepted counts come from
+// reflect-exclusive micro-proposal events. All reads fail open to zeros.
+const reflectRoutineIds = new Set(readSettledConfig(hermitDir).routines
+  .filter((routine: any) => String(routine.skill ?? '').split(/\s+/)[0] === 'hermitd:reflect')
+  .map((routine: any) => routine.id));
+const reflectRuns = readRoutineHistory(path.join(hermitDir, 'state', 'routine-metrics.jsonl'), 7, new Date(weekEnd.getTime() - 1))
+  .routines.filter(routine => reflectRoutineIds.has(routine.id))
+  .reduce((sum, routine) => sum + routine.fires, 0);
 
 // micro-queued / micro-resolved are reflect-exclusive event types: only the
 // reflect loop queues micro-proposals, so approving one is approving reflect
@@ -432,7 +419,6 @@ const frontmatter = [
   `avg_task_cost_usd: ${avgCost.toFixed(2)}`,
   `avg_task_tokens: ${avgTokens}`,
   `reflect_runs: ${reflectRuns}`,
-  `reflect_candidates: ${reflectCandidates}`,
   `reflect_surfaced: ${reflectSurfaced}`,
   `reflect_accepted: ${reflectAccepted}`,
   `reflect_cost_usd: ${reflectCost.toFixed(2)}`,
@@ -524,13 +510,8 @@ if (openLoops.length > 0) {
 // telling the operator to prune it.
 {
   body += `### Reflect\n`;
-  let line = `reflect: ${reflectRuns} run${reflectRuns !== 1 ? 's' : ''}, ${reflectCandidates} candidates, ${reflectSurfaced} surfaced, ${reflectAccepted} accepted, ~$${reflectCost.toFixed(2)}`;
+  let line = `reflect: ${reflectRuns} run${reflectRuns !== 1 ? 's' : ''}, ${reflectSurfaced} surfaced, ${reflectAccepted} accepted, ~$${reflectCost.toFixed(2)}`;
   line += `; obs: ${reflectObsTotal} ledger${reflectObsWeek > 0 ? ` (+${reflectObsWeek} this week)` : ''}`;
-  if (reflectSuppressed.size > 0) {
-    const list = [...reflectSuppressed];
-    const more = list.length > 5 ? `, +${list.length - 5} more` : '';
-    line += `; suppressed: ${list.slice(0, 5).join(', ')}${more}`;
-  }
   body += `${line}.\n\n`;
 }
 
