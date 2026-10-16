@@ -290,7 +290,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         let reason = line;
         if (by === 'confirmed') {
           if (record.approver && closer !== record.approver) throw new Error('approver-required');
-          if (record.result && (!/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale-result');
+          if ((record.result || 'result-rev' in flags) && (!/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale-result');
           if (!flags['reason-stdin'] || !reason) throw new Error('empty-reason');
         } else {
           if (record.approver) throw new Error('approver-required');
