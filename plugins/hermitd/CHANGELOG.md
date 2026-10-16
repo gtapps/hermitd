@@ -4,6 +4,9 @@
 
 ### Changed
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
+### Fixed
+- `hermitd-docker update` updates every installed plugin, not only the first one listed.
+- Update history and the update summary list each install scope separately.
 
 ## [1.4.15] - 2026-10-15
 
