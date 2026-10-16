@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { replyToolChannel } from './lib/channel-config';
 import { safe } from './lib/sanitize';
 import { hermitDir, transcriptPath, readTailLines, turnPromptText, sessionId } from './lib/cc-compat';
 import { readConfigRaw } from './lib/config-read';
@@ -44,22 +45,6 @@ const MAX_STDIN = 64 * 1024;
 // this hook is the only writer of dm_channel_id and default_chat_id, that
 // silently leaves proactive outbound unconfigured.
 const TAIL_BYTES = 512 * 1024;
-
-const SERVER_TO_CHANNEL: Record<string, string> = {
-  discord: 'discord',
-  telegram: 'telegram',
-  imessage: 'imessage',
-};
-
-function resolveChannel(toolName: string): string | null {
-  // The hooks.json matcher already filters to channel reply tools.
-  // Just extract the channel name from anywhere in the tool name —
-  // covers all formats: mcp__discord__reply, plugin_discord_discord_reply,
-  // mcp__plugin_discord_discord__reply, etc.
-  const match = (toolName || '').match(/(discord|telegram|imessage)/);
-  if (!match) return null;
-  return SERVER_TO_CHANNEL[match[1]] || null;
-}
 
 function readConfig(): Json | null {
   return readConfigRaw(HERMIT_DIR);
@@ -200,7 +185,7 @@ export function isEligibleInboundReply(event: Json, channelKey: string, chatId: 
       return false;
     }
 
-    const envelope = parseChannelEnvelope(prompt.text);
+    const envelope = parseChannelEnvelope(prompt.text, readConfig());
     if (!envelope) return false;
 
     return envelope.sourceKey === channelKey && envelope.chatId === String(chatId ?? '');
@@ -222,12 +207,13 @@ function main() {
       const toolName = event.tool_name || '';
       const input = event.tool_input || {};
 
-      const channelKey = resolveChannel(toolName);
+      const config = readConfig();
+      const channelKey = replyToolChannel(toolName, config);
       if (!channelKey) return;
 
-      const config = readConfig();
+      const chatId = input[config?.channels?.[channelKey]?.attributes?.chat_id ?? 'chat_id'];
 
-      persistIntakeAck(HERMIT_DIR, input.text, channelKey, input.chat_id, sessionId(event));
+      persistIntakeAck(HERMIT_DIR, input.text, channelKey, chatId, sessionId(event));
 
       // Episodic capture (PROP-010) — deliberately before the "channel
       // configured" gate below, so replies on not-yet-configured channels
@@ -237,7 +223,7 @@ function main() {
         if (isLoggingEnabled(config, channelKey) && typeof text === 'string' && text) {
           const result = logMessage(HERMIT_DIR, {
             source: channelKey,
-            chat_id: input.chat_id != null ? String(input.chat_id) : '',
+            chat_id: chatId != null ? String(chatId) : '',
             direction: 'out',
             text,
           });
@@ -256,8 +242,8 @@ function main() {
       // Snapshot before persistDmChannelId mutates in place, so the audit ledger
       // can attribute the learned dm_channel_id to this hook.
       const configBefore = structuredClone(config);
-      const isInboundReply = isEligibleInboundReply(event, channelKey, input.chat_id);
-      dirty = persistDmChannelId(config, channelKey, input.chat_id, isInboundReply) || dirty;
+      const isInboundReply = isEligibleInboundReply(event, channelKey, chatId);
+      dirty = persistDmChannelId(config, channelKey, chatId, isInboundReply) || dirty;
       if (dirty) writeConfig(config, configBefore);
 
       const ts = new Date().toISOString();

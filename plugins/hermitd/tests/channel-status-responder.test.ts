@@ -410,3 +410,23 @@ describe('channel-status-responder', () => {
     }
   });
 });
+
+
+test('mapped threaded status is sent through the project script in the asking thread', async () => {
+  const wd = setupWorkdir();
+  try {
+    write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > status.out\nprintf "%s" "$HERMIT_THREAD_ID" > thread.out\n');
+    fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+    write(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { custom: {
+      send_script: 'send.sh', allowed_users: ['U1'], attributes: { chat_id: 'channel_id', thread_id: 'thread_ts' },
+    } } }));
+    const result = await runScript('user-prompt-pipeline.ts', {
+      cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
+      stdin: JSON.stringify({ prompt: '<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">!status</channel>' }),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).decision).toBe('block');
+    expect(fs.readFileSync(path.join(wd.dir, 'thread.out'), 'utf8')).toBe('T1');
+    expect(fs.readFileSync(path.join(wd.dir, 'status.out'), 'utf8').length).toBeGreaterThan(0);
+  } finally { wd.cleanup(); }
+});

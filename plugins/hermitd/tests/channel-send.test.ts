@@ -11,7 +11,7 @@ import { runScript, runPinnedScript, type RunOptions } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
-import { sendOperatorNotice, splitMessage } from '../scripts/lib/channel-send';
+import { sendOperatorNotice, splitMessage, sendToChannel } from '../scripts/lib/channel-send';
 import { channelHealthPath } from '../scripts/lib/channel-health';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -1102,4 +1102,34 @@ describe('channel-send rate limits', () => {
     expect(r.rows).toHaveLength(0);
     expect(r.health.consecutive_failures).toBe(1);
   });
+});
+
+
+test('project send script receives text and only its declared environment', async () => {
+  const wd = setupWorkdir();
+  try {
+    write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > text.out\nenv > env.out\n');
+    fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+    const config = { channels: { custom: { send_script: 'send.sh', state_dir: 'custom-state' } } };
+    const result = await sendToChannel(hermit(wd.dir), 'hello script', { config, target: { id: 'custom', chat_id: 'C1', thread: 'T1' } });
+    expect(result.ok).toBe(true);
+    expect(fs.readFileSync(path.join(wd.dir, 'text.out'), 'utf8')).toBe('hello script');
+    const env = Object.fromEntries(fs.readFileSync(path.join(wd.dir, 'env.out'), 'utf8').trim().split('\n').map(line => { const at = line.indexOf('='); return [line.slice(0, at), line.slice(at + 1)]; }));
+    expect(env.HERMIT_CHAT_ID).toBe('C1');
+    expect(env.HERMIT_THREAD_ID).toBe('T1');
+    expect(env.CHANNEL_STATE_DIR).toBe(path.join(wd.dir, 'custom-state'));
+    expect(Object.keys(env).filter(key => !['PATH', 'HERMIT_DIR', 'HERMIT_CHAT_ID', 'HERMIT_THREAD_ID', 'CHANNEL_STATE_DIR', 'PWD'].includes(key))).toEqual([]);
+    expect(unconsolidated(hermit(wd.dir)).rows[0]).toMatchObject({ source: 'custom', direction: 'out' });
+  } finally { wd.cleanup(); }
+});
+
+test('unsendable configured primary stays on its route', async () => {
+  const stub = startHttpStub();
+  const wd = setupWorkdir();
+  try {
+    const config = { channels: { primary: 'custom', custom: { dm_channel_id: 'C1' }, discord: { dm_channel_id: 'D1' } } };
+    expect(await sendToChannel(hermit(wd.dir), 'private', { config })).toEqual({ ok: false, error: 'no_send_path' });
+    expect(stub.requests).toHaveLength(0);
+    expect(await sendToChannel(hermit(wd.dir), 'private', { config, target: { id: 'unknown', chat_id: 'X' } })).toEqual({ ok: false, error: 'unsupported_platform' });
+  } finally { stub.stop(); wd.cleanup(); }
 });

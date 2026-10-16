@@ -193,3 +193,23 @@ test('doctor intake runs on a non-technical install and relay writes the reply t
   await call(wd, 'finalize', JSON.stringify({ ...request, outcomes: [{ command: '/doctor', arg: null, status: 'failed', text: 'no command' }] }));
   expect(fs.existsSync(path.join(dir, 'state/pending-skill-relay.json'))).toBe(false);
 });
+
+
+test('threaded harness requests preserve their reply target through finalize and shutdown', async () => {
+  const { wd, dir } = fixture();
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { custom: {
+    allowed_users: ['U1'], send_script: 'send.sh', attributes: { thread_id: 'thread_ts' },
+  } } }));
+  fs.writeFileSync(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > reply.out\nprintf "%s" "$HERMIT_THREAD_ID" > thread.out\n', { mode: 0o755 });
+  const prompt = '<channel source="custom" chat_id="C1" user_id="U1" thread_ts="T1">!model sonnet</channel>';
+  const request = await call(wd, 'intake', prompt);
+  expect(request.reply_to).toEqual({ source: 'custom', chat_id: 'C1', thread: 'T1' });
+  expect(await call(wd, 'finalize', JSON.stringify({ reply_to: request.reply_to, reason: 'Done' }))).toEqual({ decision: 'ok' });
+  expect(fs.readFileSync(path.join(wd.dir, 'thread.out'), 'utf8')).toBe('T1');
+  const runtimeFile = path.join(dir, 'state/runtime.json');
+  const runtime = JSON.parse(fs.readFileSync(runtimeFile, 'utf8'));
+  fs.writeFileSync(runtimeFile, JSON.stringify({ ...runtime, shutdown_requested_at: new Date().toISOString() }));
+  const refused = await call(wd, 'intake', prompt);
+  expect(refused.decision).toBe('refuse');
+  expect(refused.reply_to).toEqual(request.reply_to);
+});

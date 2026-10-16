@@ -54,3 +54,28 @@ for (const [dotted, invalid] of [
     expect(validate(configAt(dotted, invalid)).errors.some(error => error.includes(dotted))).toBe(true);
   });
 }
+
+
+test('optional channel plugin, send script and attribute mappings validate', () => {
+  const errors = (ch: unknown) => validate({ channels: { custom: ch } }).errors.filter(e => e.startsWith('channels.custom'));
+  expect(errors({})).toEqual([]);
+  expect(errors({ plugin: 'custom-plugin', send_script: 'scripts/send.sh', attributes: {
+    chat_id: 'channel_id', message_id: 'ts', user_id: 'user', user: 'user_name', thread_id: 'thread_ts', mentioned: 'event=mention',
+  } })).toEqual([]);
+  for (const plugin of [null, 1, '', 'a@b', 'a b']) expect(errors({ plugin }).some(e => e.includes('.plugin'))).toBe(true);
+  for (const send_script of [null, 1, '', '/tmp/send', '../send', 'reflect', 'doctor', 'later']) {
+    expect(errors({ send_script }).some(e => e.includes('.send_script'))).toBe(true);
+  }
+  for (const attributes of [null, [], 'chat_id']) expect(errors({ attributes }).some(e => e.includes('.attributes'))).toBe(true);
+  for (const key of ['chat_id', 'message_id', 'user_id', 'user', 'thread_id', 'unknown']) {
+    expect(errors({ attributes: { [key]: 'bad-name' } }).some(e => e.includes(`.attributes.${key}`))).toBe(true);
+    expect(errors({ attributes: { [key]: 1 } }).some(e => e.includes(`.attributes.${key}`))).toBe(true);
+  }
+  for (const mentioned of ['event=', 'event=a=b', 'event=bad value', 'bad-name']) {
+    expect(errors({ attributes: { mentioned } }).some(e => e.includes('.attributes.mentioned'))).toBe(true);
+  }
+  expect(errors({ attributes: { mentioned: 'mentioned' } })).toEqual([]);
+  for (const attributes of [{ user_id: 'user' }, { user: 'user_id' }, { user_id: 'id', user: 'id' }]) {
+    expect(errors({ attributes }).some(e => e.includes('.attributes.user_id'))).toBe(true);
+  }
+});

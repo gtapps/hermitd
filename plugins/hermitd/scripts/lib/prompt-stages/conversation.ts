@@ -1,3 +1,5 @@
+import { conversationKey } from '../conversation-key';
+import { envelopeAttr } from '../channel-envelope';
 import { threadRecords } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
@@ -10,13 +12,17 @@ import type { StageContext, StageResult } from './types';
 // An assignment on a Discord guild channel (type 0 or 5) gets its own thread, and the
 // record's conversation key is that thread. A message in the parent channel therefore
 // belongs to no task thread, whatever record the channel's key might match.
-const inThreadChat = (ctx: StageContext, sourceKey: string, chatId: string) =>
-  sourceKey !== 'discord' || ![0, 5].includes(cachedChat(ctx.dir, chatId)?.type ?? -1);
+const inThreadChat = (ctx: StageContext, sourceKey: string, chatId: string) => {
+  if (sourceKey === 'discord') return ![0, 5].includes(cachedChat(ctx.dir, chatId)?.type ?? -1);
+  const threadAttr = ctx.config()?.channels?.[sourceKey]?.attributes?.thread_id;
+  return !threadAttr || !!(ctx.envelope && envelopeAttr(ctx.envelope, threadAttr));
+};
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
   const env = ctx.envelope;
   if (!env || !isAllowedSender(ctx.config(), env.source, env.userId)) return;
-  const key = `${env.sourceKey}:${env.chatId}`;
+  const threadAttr = ctx.config()?.channels?.[env.sourceKey]?.attributes?.thread_id;
+  const key = conversationKey(env.sourceKey, env.chatId, threadAttr ? envelopeAttr(env, threadAttr) : null);
   const addressed = resolveSlashCommand(env.body, channelBotIdentity(ctx.config(), env.source));
   const name = addressed?.command.slice(1);
   const args = addressed?.rest.trim() ?? '';
@@ -91,7 +97,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // Mute silences ordinary steering, not an addressed command: pause/resume/snooze
   // and status are documented as always reachable from chat, and blocking here
   // settles the disposition before their stages ever run.
-  if (record.muted && !addressed && !await isSelfMentioned(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.body)) {
+  if (record.muted && !addressed && !await isSelfMentioned(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.body, env)) {
     capture(ctx, env, true);
     return { block: 'muted conversation: recorded' };
   }

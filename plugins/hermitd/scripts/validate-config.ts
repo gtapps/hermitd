@@ -285,7 +285,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           const channel = r.chat.slice(0, r.chat.indexOf(':'));
           if (!isDict(config.channels?.[channel])) {
             warnings.push(`routines[${i}]: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
-          } else if (!DIRECT_SEND_CHANNELS.includes(channel)) {
+          } else if (!DIRECT_SEND_CHANNELS.includes(channel) && !config.channels[channel].send_script) {
             warnings.push(`routines[${i}]: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats can own a routine`);
           }
         }
@@ -395,6 +395,31 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (typeof ch !== 'object' || ch === null) {
         errors.push(`channels.${name}: must be an object`);
         continue;
+      }
+      if (ch.plugin !== undefined && (typeof ch.plugin !== 'string' || !/^[\w-]+$/.test(ch.plugin))) {
+        errors.push(`channels.${name}.plugin: must be a plugin name matching ^[\\w-]+$`);
+      }
+      if (ch.send_script !== undefined) {
+        const error = validatePrecheckValue(ch.send_script);
+        if (error || ['reflect', 'doctor', 'later'].includes(String(ch.send_script).trim())) {
+          errors.push(`channels.${name}.send_script: ${error || 'must be a project-relative script, not a builtin'}`);
+        }
+      }
+      if (ch.attributes !== undefined) {
+        if (!isDict(ch.attributes)) {
+          errors.push(`channels.${name}.attributes: must be an object`);
+        } else {
+          const keys = ['chat_id', 'message_id', 'user_id', 'user', 'thread_id', 'mentioned'];
+          for (const [key, value] of Object.entries(ch.attributes)) {
+            const pattern = key === 'mentioned' ? /^[A-Za-z0-9_]+(=[A-Za-z0-9_-]+)?$/ : /^[A-Za-z0-9_]+$/;
+            if (!keys.includes(key) || typeof value !== 'string' || !pattern.test(value)) {
+              errors.push(`channels.${name}.attributes.${key}: invalid attribute mapping`);
+            }
+          }
+          if ((ch.attributes.user_id ?? 'user_id') === (ch.attributes.user ?? 'user')) {
+            errors.push(`channels.${name}.attributes.user_id: must differ from attributes.user`);
+          }
+        }
       }
       if (ch.allowed_users !== undefined) {
         if (!Array.isArray(ch.allowed_users)) {

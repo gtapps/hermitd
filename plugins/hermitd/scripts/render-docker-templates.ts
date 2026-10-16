@@ -56,6 +56,7 @@ export interface Inputs {
   packages?: string[];
   auth: 'setup-token' | 'oauth-token' | 'api-key';
   channels?: Channels;
+  channelPlugins?: Array<{ marketplace: string; plugin: string }>;
   agentHookProfile: string;
   networkMode: 'bridge' | 'host';
   gitIdentityMount: boolean;
@@ -81,6 +82,13 @@ function packagesBlock(packages: string[]): string {
 
 function indentedLines(bodies: string[]): string {
   return bodies.map((b) => ENV_INDENT + b).join('\n');
+}
+
+function channelAllowlistBlock(plugins: NonNullable<Inputs['channelPlugins']>): string {
+  if (!plugins.some(entry => entry.marketplace !== 'claude-plugins-official')) return '';
+  const policy = JSON.stringify({ channelsEnabled: true, allowedChannelPlugins: plugins });
+  const quoted = "'" + policy.replaceAll("'", "'\\''") + "'";
+  return `RUN mkdir -p /etc/claude-code/managed-settings.d && printf '%s\\n' ${quoted} > /etc/claude-code/managed-settings.d/hermitd-channels.json`;
 }
 
 /** Build every rendered file from supplied template sources. */
@@ -119,6 +127,7 @@ export function renderSources(
 
   const dockerfile = renderTemplate(dockerfileTemplate, {
     PACKAGES_BLOCK: packagesBlock(packages),
+    CHANNEL_ALLOWLIST_BLOCK: channelAllowlistBlock(inputs.channelPlugins ?? []),
   });
 
   // AUTH_ENV_LINE carries a trailing newline (api-key) so CHANNEL_ENV_LINES,

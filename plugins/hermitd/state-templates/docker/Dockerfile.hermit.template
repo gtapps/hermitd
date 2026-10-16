@@ -33,6 +33,8 @@ RUN userdel -r ubuntu 2>/dev/null; \
     chown claude:claude /run/hermit-fleet && \
     chmod 0700 /run/hermit-fleet
 
+{{CHANNEL_ALLOWLIST_BLOCK}}
+
 USER claude
 
 # Pre-create the config dirs so named volumes inherit claude ownership on first mount

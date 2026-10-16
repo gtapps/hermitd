@@ -14,7 +14,7 @@ import path from 'node:path';
 import { runScript } from './helpers/run';
 import { verdictLine } from '../scripts/doctor-check';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
-import { validatePrecheckValue, validatePrecheckTimeout, resolveGate } from '../scripts/lib/routines/gate';
+import { validatePrecheckValue, validatePrecheckTimeout, resolveGate, resolveProjectScript } from '../scripts/lib/routines/gate';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const schedulePath = (dir: string) => hermit(dir, 'state', 'routine-schedule.json');
@@ -485,4 +485,18 @@ test('later builtin skips an empty ledger and wakes once for a past-due claim', 
   expect(due.exitCode).toBe(0);
   expect(due.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
   expect((await runDue(dir)).stdout.trim()).toBe('');
+}));
+
+
+test('project scripts reject a symlink outside the project', withDir((dir) => {
+  const outside = fs.mkdtempSync('/tmp/hermit-script-');
+  try {
+    const script = path.join(outside, 'send.sh');
+    fs.writeFileSync(script, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    fs.symlinkSync(script, path.join(dir, 'send.sh'));
+    expect(resolveProjectScript('send.sh', dir)).toEqual({ kind: 'invalid', detail: 'outside-project' });
+    expect(resolveGate('send.sh', dir)).toEqual({ kind: 'invalid', detail: 'outside-project' });
+  } finally {
+    fs.rmSync(outside, { recursive: true });
+  }
 }));

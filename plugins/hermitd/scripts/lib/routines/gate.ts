@@ -106,10 +106,19 @@ export function resolveGate(
   const raw = String(precheck).trim();
   if (BUILTINS.has(raw)) return { kind: 'builtin', name: raw };
 
-  const root = path.resolve(projectRoot);
-  const abs = path.resolve(root, raw);
-  if (abs !== root && !abs.startsWith(root + path.sep)) return { kind: 'invalid', detail: 'outside-project' };
+  return resolveProjectScript(raw, projectRoot);
+}
+
+/** Resolve an executable contained in the real project root. */
+export function resolveProjectScript(
+  raw: unknown,
+  projectRoot: string,
+): { kind: 'script'; abs: string } | { kind: 'invalid'; detail: string } {
+  if (validatePrecheckValue(raw) || BUILTINS.has(String(raw).trim())) return { kind: 'invalid', detail: 'bad-config' };
   try {
+    const root = fs.realpathSync(projectRoot);
+    const abs = path.resolve(root, String(raw).trim());
+    if (abs !== root && !abs.startsWith(root + path.sep)) return { kind: 'invalid', detail: 'outside-project' };
     const real = fs.realpathSync(abs);
     if (real !== root && !real.startsWith(root + path.sep)) return { kind: 'invalid', detail: 'outside-project' };
     if (!fs.statSync(real).isFile()) return { kind: 'invalid', detail: 'not-a-file' };

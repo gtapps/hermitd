@@ -50,7 +50,7 @@ test('a passive chat without a bot identity or an allowlist warns on both', () =
   } finally { wd.cleanup(); }
 });
 
-test('no passive chats is ok; unsupported channel cannot be verified', () => {
+test('no passive chats is ok; custom channels refer to plugin access settings', () => {
   const wd = setupWorkdir();
   const dir = path.join(wd.dir, '.hermit');
   const paths = resolvePaths(dir, path.resolve(import.meta.dir, '..'));
@@ -59,7 +59,7 @@ test('no passive chats is ok; unsupported channel cannot be verified', () => {
     expect(checkPassiveChats(paths).status).toBe('ok');
     fs.writeFileSync(paths.configPath, JSON.stringify({ channels: { custom: { passive_chats: ['1'] } } }));
     expect(checkPassiveChats(paths).status).toBe('warn');
-    expect(checkPassiveChats(paths).detail).toContain('could not verify');
+    expect(checkPassiveChats(paths).detail).toContain("verify in the plugin's own access settings");
   } finally { wd.cleanup(); }
 });
 

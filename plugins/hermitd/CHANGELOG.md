@@ -12,9 +12,12 @@
 - `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 
 ### Added
+- Configured channel plugins support mapped message fields, reply capture, pause-safe replies, task threads, mention markers and project send scripts.
 - Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
 
 ### Fixed
+- Script replies to threaded channel messages stay in the asking thread.
+- Docker channel approval and installation use configured plugin names and marketplaces.
 - Helpers stuck on a permission prompt or question are announced in chat, and a reply goes back to them as new instructions.
 - Late helper reports reach their task and proposal after a reportless idle notice.
 - Scheduled-check questions reach the operator when queued for micro-approval.
@@ -36,6 +39,9 @@
 - The session discipline block no longer opens with `---`, which Claude Code read as frontmatter, hiding the Knowledge Discipline and Rules sections.
 
 ### Upgrade Instructions
+
+- Docker hermits run `/hermitd:hermit-evolve`, then `hermitd-docker update` to merge the Docker templates and rebuild with channel approval support. Preserve operator edits during the merge.
+- An operator whose primary channel is a third-party plugin without `send_script` sets `channels.primary` to `discord` or `telegram` so proactive notices have a send path.
 
 Run `/hermitd:hermit-evolve`. The evolve skill handles:
 

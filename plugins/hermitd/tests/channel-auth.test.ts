@@ -7,7 +7,7 @@
 // Usage: bun test tests/channel-auth.test.ts   (from the plugin root)
 
 import { describe, test, expect } from 'bun:test';
-import { normalizeChannelSource } from '../scripts/lib/channel-envelope';
+import { normalizeChannelSource, parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import {
   isAllowedSender, isTrustedController, recallScope, audienceVisible,
 } from '../scripts/lib/channel-auth';
@@ -249,4 +249,21 @@ describe('audienceVisible', () => {
     const scope = recallScope({ channels: { discord: {} } }, 'discord', 'C:1');
     expect(audienceVisible(scope, 'discord:C:1')).toBe(true);
   });
+});
+
+
+test('plugin mention markers match only an unambiguous attribute value', async () => {
+  for (const [marker, attrs, expected] of [
+    ['mentioned', 'mentioned="true"', true],
+    ['event=mention', 'event="mention"', true],
+    ['event=mention', 'event="message"', false],
+    ['event=mention', 'event="mention" event="mention"', false],
+    ['mentioned', 'mentioned="false"', false],
+    ['mentioned', '', false],
+  ] as const) {
+    const config = { channels: { custom: { attributes: { mentioned: marker } } } };
+    const envelope = parseChannelEnvelope(`<channel source="custom" chat_id="C1" ${attrs}>hello</channel>`)!;
+    expect(isSelfMentionedSync('/unused', config, 'custom', 'C1', envelope.body, envelope)).toBe(expected);
+    expect(await isSelfMentioned('/unused', config, 'custom', 'C1', envelope.body, envelope)).toBe(expected);
+  }
 });

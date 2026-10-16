@@ -114,13 +114,17 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     let configRead = false;
     let runtimeCache: any;
     let runtimeRead = false;
+    let envelopeCache: ReturnType<typeof parseChannelEnvelope> | undefined;
 
     const ctx: StageContext = {
       dir,
       harnessMode,
       sessionId,
       prompt,
-      envelope: parseChannelEnvelope(prompt),
+      get envelope() {
+        if (envelopeCache === undefined) envelopeCache = parseChannelEnvelope(prompt, this.config());
+        return envelopeCache;
+      },
       transcriptPath: transcript,
       config() {
         // Raw, not settled: shutdown-gate and channel-status-responder treat a

@@ -5,7 +5,7 @@
 // A single copy so the allowlist rule can't drift out of sync between callers.
 
 import { iterChannelConfigs } from './channel-config';
-import { normalizeChannelSource } from './channel-envelope';
+import { normalizeChannelSource, envelopeAttr, type ChannelEnvelope } from './channel-envelope';
 import { cachedChat, cachedGuildRoles, lookupChat, lookupGuildRoles } from './channel-chats';
 import { escapeRegExp } from './md-write';
 
@@ -178,8 +178,17 @@ function directMention(config: Json, sourceKey: string, body: string): boolean {
     || (userId && new RegExp(`(?<!\\d)${escapeRegExp(userId)}(?!\\d)`).test(body)));
 }
 
-export function isSelfMentionedSync(hermitDir: string, config: Json, sourceKey: string, chatId: string, body: string): boolean {
-  if (directMention(config, sourceKey, body)) return true;
+function pluginMention(config: Json, sourceKey: string, envelope?: ChannelEnvelope | null): boolean {
+  const marker = channelEntry(config, sourceKey)?.attributes?.mentioned;
+  if (!marker || !envelope) return false;
+  const at = marker.indexOf('=');
+  const attribute = at === -1 ? marker : marker.slice(0, at);
+  const expected = at === -1 ? 'true' : marker.slice(at + 1);
+  return envelopeAttr(envelope, attribute) === expected;
+}
+
+export function isSelfMentionedSync(hermitDir: string, config: Json, sourceKey: string, chatId: string, body: string, envelope?: ChannelEnvelope | null): boolean {
+  if (pluginMention(config, sourceKey, envelope) || directMention(config, sourceKey, body)) return true;
   if (normalizeChannelSource(sourceKey) !== 'discord') return false;
   const mentions = [...body.matchAll(/<@&(\d+)>/g)];
   if (!mentions.length) return false;
@@ -188,8 +197,8 @@ export function isSelfMentionedSync(hermitDir: string, config: Json, sourceKey: 
   return mentions.some(match => roles?.includes(match[1]) === true);
 }
 
-export async function isSelfMentioned(hermitDir: string, config: Json, sourceKey: string, chatId: string, body: string): Promise<boolean> {
-  if (directMention(config, sourceKey, body)) return true;
+export async function isSelfMentioned(hermitDir: string, config: Json, sourceKey: string, chatId: string, body: string, envelope?: ChannelEnvelope | null): Promise<boolean> {
+  if (pluginMention(config, sourceKey, envelope) || directMention(config, sourceKey, body)) return true;
   if (normalizeChannelSource(sourceKey) !== 'discord') return false;
   const mentions = [...body.matchAll(/<@&(\d+)>/g)];
   if (!mentions.length) return false;

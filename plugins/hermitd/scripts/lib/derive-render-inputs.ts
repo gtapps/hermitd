@@ -75,6 +75,10 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     packages: [...packages],
     auth,
     channels: { envLines, volumeLines },
+    channelPlugins: getEnabledChannels(config).map(key => ({
+      marketplace: config.channels[key].marketplace ?? 'claude-plugins-official',
+      plugin: config.channels[key].plugin ?? key,
+    })),
     agentHookProfile: 'strict',
     networkMode,
     gitIdentityMount,

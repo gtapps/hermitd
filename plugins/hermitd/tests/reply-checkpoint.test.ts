@@ -184,3 +184,13 @@ describe('stop-pipeline — channel reply checkpoint', () => {
     expect(gone.stdout.trim()).toBe('');
   }));
 });
+
+
+test('threaded worker handoff clears the reply checkpoint for its conversation key', withDir(async (dir) => {
+  const { mutateTask } = await import('../scripts/lib/tasks');
+  const { replyBlockReason } = await import('../scripts/lib/reply-checkpoint');
+  writeConfig(dir, { channels: { custom: { attributes: { thread_id: 'thread_ts' } } } });
+  mutateTask(hermit(dir), 'open', undefined, { owner: 'worker:a1b2c3d4', requester: 'custom:U1', conversation: 'custom:C1~T1', title: 'Thread task', done: 'Complete' }, '');
+  const transcript = writeTranscript(dir, [{ type: 'user', message: { content: '<channel source="custom" chat_id="C1" thread_ts="T1">hello</channel>' } }, assistantText()]);
+  expect(replyBlockReason(hermit(dir), { transcript_path: transcript })).toBeNull();
+}));

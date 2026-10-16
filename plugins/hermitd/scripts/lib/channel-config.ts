@@ -51,3 +51,20 @@ export function channelStateDirKey(chName: string): string | null {
   const key = `${chName.toUpperCase()}_STATE_DIR`;
   return ENV_VAR_RE.test(key) ? key : null;
 }
+
+
+/** Resolve reply tools against built-in and configured server names, longest first. */
+export function replyToolChannel(toolName: string, config: Json): string | null {
+  const match = /^(.*?)(?:__|_)reply$/i.exec(toolName);
+  if (!match) return null;
+  const segment = match[1].split('__').pop()!.replaceAll('-', '_').toLowerCase();
+  const keys = [...new Set([
+    'discord', 'telegram', 'imessage',
+    ...[...iterChannelConfigs(config ?? {})].map(([key]) => key),
+  ])];
+  for (const key of keys.sort((a, b) => b.length - a.length)) {
+    const normalized = key.replaceAll('-', '_').toLowerCase();
+    if (segment === normalized || segment.endsWith(`_${normalized}`)) return key;
+  }
+  return null;
+}

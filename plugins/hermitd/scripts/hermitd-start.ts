@@ -679,7 +679,7 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
           // plugins (custom marketplaces, forks, operator-built channels).
           const marketplace = (channelCfgs[channel] ?? {}).marketplace;
           if (pyTruthy(marketplace)) {
-            pluginId = `plugin:${channel}@${marketplace}`;
+            pluginId = `plugin:${channelCfgs[channel]?.plugin ?? channel}@${marketplace}`;
           }
         }
 

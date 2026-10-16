@@ -53,6 +53,7 @@ describe('skill-relay prompt stage', () => {
     writeRelay(dir);
     const ctx = context(dir);
     ctx.envelope = {
+      attributes: '',
       source: 'telegram',
       sourceKey: 'telegram',
       chatId: 'chat-123',

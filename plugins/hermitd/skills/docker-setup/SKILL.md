@@ -127,9 +127,10 @@ The render script derives every `{{PLACEHOLDER}}` internally and fails loud (wri
 - `packages` — the finalized `docker.packages` array (Step 7b.packages). Empty array → no project-package layer.
 - `auth` — `"oauth-token"` for subscription, or `"api-key"` (Step 2). The mint-or-keep decision at Step 8 does not affect rendering — both subscription outcomes render as `oauth-token` and add no auth env line, since their credential lives on the named volume (`.hermit-setup-token` if minted, `.credentials.json` otherwise). The setup-token deliberately never goes in `.env`: compose applies `env_file` only at container creation, so an `.env`-stored token would force a host-side recreate on every renewal.
 - `channels` — `{ envLines: [...], volumeLines: [...] }`, one entry per enabled channel (Step 7). Pass the line **bodies** (the script owns the `      - ` indent):
-  - env body: `<VAR>_STATE_DIR=${PWD}/.claude.local/channels/<plugin>` (VAR = `DISCORD` / `TELEGRAM`)
+  - env body: `<VAR>_STATE_DIR=${PWD}/.claude.local/channels/<plugin>` (VAR = channel key uppercased, only when `<VAR>_STATE_DIR` matches `^[A-Z_][A-Z0-9_]*$`; omit state env and volume lines for invalid keys)
   - volume body: `${PWD}/.claude.local/channels/<plugin>:/home/claude/.claude/channels/<plugin>` (keeps channel writes inside the project tree — no permission prompts under `bypassPermissions`)
   - No channels → both arrays empty.
+- `channelPlugins` — for every enabled channel key, `{ marketplace: channels[key].marketplace ?? 'claude-plugins-official', plugin: channels[key].plugin ?? key }`. The renderer writes the managed channel approval drop-in when third-party marketplaces are present. Installation of those plugins uses `docker.recommended_plugins` in Step 7b.
 - `agentHookProfile` — always `"strict"` for Docker (the profile the remaining hooks read; permission rules are native `permissions.deny` / `permissions.ask`, not profile-gated).
 - `networkMode` — `docker.network_mode` (`"bridge"` or `"host"`, Step 2).
 - `gitIdentityMount` — the Step 1 preflight `gitconfigExists`. When **false**, the `.gitconfig` bind-mount is dropped and you must add to the summary: "No ~/.gitconfig found — git commits inside the container will have no author identity. Create one on the host and re-run docker-setup, or set git config manually inside the container."
