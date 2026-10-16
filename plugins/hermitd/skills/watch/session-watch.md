@@ -4,11 +4,11 @@ Follow the shared rules in [SKILL.md](SKILL.md). Start a new watch with the firs
 section; after a caller has already armed a subscription, use
 [Registering an existing idle subscription](#registering-an-existing-idle-subscription).
 
-### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--rescued] [--id <bg-id>]`)
+### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>]`)
 
-1. Parse optional `--record <T-id>`, `--proposal <PROP-id>`, `--implement`, `--retry`, `--rescued` and `--id <bg-id>`
+1. Parse optional `--record <T-id>`, `--proposal <PROP-id>`, `--implement`, `--retry` and `--id <bg-id>`
    with the name and note. If `<name>` contains `*` or `?`, take the **glob branch** below instead of
-   resolving an exact name. The glob branch ignores `--record`, `--proposal`, `--implement`, `--retry`, `--rescued` and `--id`.
+   resolving an exact name. The glob branch ignores `--record`, `--proposal`, `--implement`, `--retry` and `--id`.
 
    With `--id`, first poll the bg id in one Bash call every 2s for up to 30s.
    A busy, blocked or done row is started; null or idle status with working
@@ -76,7 +76,7 @@ section; after a caller has already armed a subscription, use
 
 ### Registering an existing idle subscription
 
-Inputs: the target name, note, optional record/proposal/purpose/retry/rescue metadata and bg id, the
+Inputs: the target name, note, optional record/proposal/purpose/retry metadata and bg id, the
 sent message text when the send carried one, and the
 result of a successful `SendMessage` with `notify_when_idle: true`. This section
 only records that subscription; do not send another message or subscribe again.
@@ -86,8 +86,10 @@ only records that subscription; do not send another message or subscribe again.
    for approval, e.g. under `bypassPermissions`), no relay is possible — say so
    plainly instead of claiming the watch is live, and do not write the registry.
 2. Read `.hermit/state/monitors.runtime.json`; create it if missing
-   with `{"monitors": [], "last_cleared": null}`. When a live `peer-idle` entry
-   already targets this name, end registration without writing a second entry;
+   with `{"monitors": [], "last_cleared": null}`. A live `peer-idle` entry
+   for this name with `reportless` belongs to a finished turn: `TaskStop` its
+   `poll_task_id` when present, remove it, and continue. Any other live entry
+   for this name ends registration without writing a second entry;
    if the send carried a message, first append that exact text to its `followup`
    array (create the array if absent) and write the registry.
 3. Generate id `session-<name>-<epoch>-<4char-random>` — same timestamp + random
@@ -95,8 +97,7 @@ only records that subscription; do not send another message or subscribe again.
    second do not collide. Append:
    `{id: "session-<name>-<epoch>-<rand>", description: <note or "session <name>">, target: <name>, started_at, source: "adhoc", class: "peer-idle"}`.
    Store a supplied record as `record`, proposal as `proposal`, implementation
-   purpose (`--implement`) as `purpose: "implement"`, `--retry` as `retry: true`,
-   and `--rescued` as `rescued: true`.
+   purpose (`--implement`) as `purpose: "implement"`, and `--retry` as `retry: true`.
    `switch` is an optional object with `record` and `model` and/or `effort`; only
    `/hermitd:spawn-session`'s switch procedure writes it.
    When the send carried a message, store its exact text as `followup: ["<text>"]`.
