@@ -16,6 +16,9 @@
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+- Evening briefs describe finished tasks from their final result and skip lessons the result contradicts.
+- Duty lines label the last session wake `last_woke`, so a routine that checked and found nothing to do no longer reads as not run.
+- Weekly reviews count reflect runs from the routine log; the always-empty candidate and suppression counts are removed.
 - Remote MCP servers that sign in with OAuth stay signed in across token installs, container restarts and updates. A setup-token hermit leaves `.credentials.json` in place instead of moving it to `.credentials.json.pre-token.bak`.
 - A claude.ai sign-in renewal replaces only the login in `.credentials.json`, so remote MCP sign-ins survive it.
 - `credential-expiry` in `/hermitd:hermit-doctor` no longer warns that a stored login shadows the setup-token.
