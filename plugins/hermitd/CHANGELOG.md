@@ -4,6 +4,8 @@
 
 ### Changed
 - A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
+- A task that hits a broken login, service or tool stops instead of filling the gap. The person is told plainly to ask again once it's fixed, and the maintainer gets the exact error.
+- Background helpers name a missing repository, secret, API or tool and stop instead of substituting.
 ### Added
 - Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
 
