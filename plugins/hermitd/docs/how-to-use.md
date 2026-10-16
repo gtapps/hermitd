@@ -92,7 +92,7 @@ Tell the hermit what outcome you need, for example: "Add request validation to t
 
 The record in `tasks/T-*.md` keeps the requester, owner, definition of done, progress and lessons together. The hermit updates it through `task.ts`, rather than editing the file by hand. In a guild channel, the assignment can also get its own resident-owned thread.
 
-Ask "What are you working on?" for a brief or "Show open tasks" for the queue. A result awaiting confirmation remains open. A passing recorded check, named human confirmation, or the requester clearly adopting the result closes it as done; a named approver still confirms in words. Cancellation closes it without claiming completion. Closing a task can continue the next runnable record immediately.
+Ask "What are you working on?" for a brief or "Show open tasks" for the queue. A result awaiting confirmation remains open. A passing recorded check, named human confirmation, or the requester clearly accepting the result closes it as done; a named approver confirms in their own words. Cancellation closes it without claiming completion. Closing a task can continue the next runnable record immediately.
 
 For boot recovery and readiness, run:
 

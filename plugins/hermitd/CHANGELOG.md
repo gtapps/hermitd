@@ -5,6 +5,7 @@
 ### Changed
 - Approved tasks waiting on an outcome a check can observe show as finishing up, not waiting on you.
 - A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
+- Task confirmation and cancellation accept any wording or language instead of a fixed word list.
 - A task that hits a broken login, service or tool stops instead of filling the gap. The person is told plainly to ask again once it's fixed, and the maintainer gets the exact error.
 - Background helpers name a missing repository, secret, API or tool and stop instead of substituting.
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
@@ -40,6 +41,21 @@ Run `/hermitd:hermit-evolve`. The evolve skill handles:
 
 1. **Refresh the Docker entrypoint** (Docker hermits only). The boot no longer moves `.credentials.json` aside. Step 5c refreshes `docker-entrypoint.hermit.sh`; tell the operator to rebuild with `hermitd-docker update` so the container runs the new file.
 2. **Tell the operator about remote MCP sign-ins.** If a remote MCP server that signs in with OAuth shows "requires authentication", reconnect it once with `/mcp`. A leftover `.credentials.json.pre-token.bak` is not read by anything and can stay or be removed.
+3. **Confirmation and cancel words.** In `.hermit/TASKS.md`, look only at the section `## Confirmation and cancel words`. Other sections are never touched. Compare that section's body (the text after the heading, up to the next `## ` heading) to these three outcomes:
+
+   - It equals this previous template text, quoted verbatim:
+
+     A posted result at its current revision is confirmed by “ok”, “yes”, or “confirmed”, or by the requester clearly adopting it: acts on it, thanks for it as finished, or builds the next request on it. A message that defers review or asks for a correction does not confirm; a correction stays steering on the same record. A named approver confirms only by that approver's explicit word. Silence never confirms. Use “cancel” or “stop this task” to cancel with a reason. A pending micro-proposal takes precedence.
+
+     Replace the section with the same-named section from `${CLAUDE_PLUGIN_ROOT}/state-templates/TASKS.md.template`.
+
+   - It already equals the current template's same-named section: do nothing.
+
+   - Anything else: keep the file and **defer per SKILL.md Step 10** with `options: ["Adopt the new policy", "Keep my wording"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+     - *Adopt the new policy*: replace that section with the current template section; leave every other section as-is.
+     - *Keep my wording*: leave the file unchanged.
+
+   TASKS.md is part of the watchdog's policy hash (`scripts/lib/context-policy.ts` → `contextPolicyHash`). Replacing the section makes the install eligible for a context clear under the usual conditions in `docs/task-records.md`; this step promises none.
 
 **Operator action required:** Docker: `hermitd-docker update` after the evolve. Otherwise `hermitd-stop && hermitd-start`.
 
