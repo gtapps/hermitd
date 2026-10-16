@@ -63,7 +63,9 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     // An envelope carrying more than one user_id resolves to a null userId, and an
     // install with no allowed_users still admits it, leaving no identity to close under.
     const actor = env.userId === null ? null : safeForLLM(`${env.sourceKey}:${env.userId}`).slice(0, 160);
-    const confirmed = actor ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --result-rev ${record.result_rev} --reason-stdin` : '';
+    const confirmed = !actor ? '' : record.result
+      ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --result-rev ${record.result_rev} --reason-stdin`
+      : `; requester explicitly says the work is done: ${taskCommand} close ${target} --by confirmed --actor ${actor} --reason-stdin`;
     context += `\n[waiting task ${record.id}: ${reason}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}; nothing is owed when this message does not change the task]`;
   }
   if (harnessCommand && owner !== 'resident') {

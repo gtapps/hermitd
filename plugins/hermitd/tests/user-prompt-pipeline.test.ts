@@ -667,7 +667,7 @@ describe('task thread admission', () => {
     expect(result.stdout).toContain(`[waiting task ${id}: Need input; next: Answer`);
     expect(result.stdout).toContain(`hermitd-run task block .hermit ${id} --result-stdin`);
     expect(result.stdout).toContain(`hermitd-run task note .hermit ${id} --clear-waiting`);
-    expect(result.stdout).toContain(`hermitd-run task close .hermit ${id} --by confirmed --actor discord:u1 --result-rev 0 --reason-stdin`);
+    expect(result.stdout).toContain(`requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit ${id} --by confirmed --actor discord:u1 --reason-stdin`);
     expect(result.stdout).toContain('nothing is owed when this message does not change the task');
 
   });

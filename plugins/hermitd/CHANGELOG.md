@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+### Changed
+- A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
 ### Added
 - Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
 
