@@ -38,8 +38,14 @@ test('responder sibling procedure references exist', () => {
 
 test('task points its rare conversation commands at the branches sibling', () => {
   const dir = path.join(PLUGIN_ROOT, 'skills', 'task');
-  expect(fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf-8')).toContain('[branches.md](branches.md) § Conversation command');
-  expect(fs.readFileSync(path.join(dir, 'branches.md'), 'utf-8')).toContain('## Conversation command');
+  const task = fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf-8');
+  const branches = fs.readFileSync(path.join(dir, 'branches.md'), 'utf-8');
+  for (const section of ['Conversation command', 'Replace an unreachable worker', 'Standup and duties']) {
+    expect(task).toContain(`[branches.md](branches.md) § ${section}`);
+    expect(branches).toContain(`## ${section}`);
+  }
+  // branches.md is read raw, so every command it names must be a SKILL.md Commands entry.
+  for (const name of branches.matchAll(/`([a-z-]+)` \(Commands\)/g)) expect(task).toContain(`- \`${name[1]}\`: \`bun `);
 });
 
 // Consumer half of the annotations the UserPromptSubmit stages inject

@@ -4,7 +4,7 @@
 // returns null.
 import fs from 'node:fs';
 import path from 'node:path';
-import { cachedChat } from './channel-chats';
+import { cachedChat, isGuildChannelType } from './channel-chats';
 import { readJson } from './cli';
 import { readTasks } from './tasks';
 
@@ -52,8 +52,7 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
     if (tasks.some(task => {
       if (!openedThisTurn(task) || task.owner !== 'resident' || typeof task.conversation !== 'string') return false;
       const chatId = task.conversation.slice(task.conversation.indexOf(':') + 1);
-      const type = cachedChat(dir, chatId)?.type;
-      return type === 0 || type === 5;
+      return isGuildChannelType(cachedChat(dir, chatId));
     })) {
       return 'task skill resident guild thread is still open. The task record is keyed to a guild channel; open a thread and key the record to it.';
     }

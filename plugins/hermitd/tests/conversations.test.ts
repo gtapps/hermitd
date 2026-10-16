@@ -109,9 +109,11 @@ test('thread-open keys bind threaded messages without binding the top-level chat
   const dir = freshDir();
   const config = { channels: { slack: { attributes: { thread_id: 'thread_ts' } } } };
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
-  const opened = await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'C0123', '--message-id', '1712345678.123456']);
-  expect(opened).toEqual({ code: 0, stdout: 'OK|slack:C0123~1712345678.123456|thread_ts=1712345678.123456\n' });
-  const key = opened.stdout.split('|')[1];
+  const opened = await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'C0123', '--message-id', '1712345678.123456', '--name', 'Threaded task']);
+  expect(opened.code).toBe(0);
+  const { key, ...rest } = JSON.parse(opened.stdout);
+  expect(key).toBe('slack:C0123~1712345678.123456');
+  expect(rest).toEqual({ chat_id: 'C0123', reply: { thread_ts: '1712345678.123456' } });
   expect(isKey(key)).toBe(true);
   mutateTask(dir, 'open', undefined, { owner: 'resident', requester: 'slack:U1', conversation: key, title: 'Threaded task', done: 'Task complete' }, '');
   const makeContext = (thread: string) => ({
@@ -121,5 +123,60 @@ test('thread-open keys bind threaded messages without binding the top-level chat
   const threaded = makeContext('thread_ts="1712345678.123456"');
   expect((await run(threaded))?.context).toContain(`task thread ${key}`);
   expect(await run(makeContext(''))).toBeUndefined();
-  expect(await cli(dir, ['thread-open', '--source', 'other', '--chat-id', 'C1', '--message-id', 'M1'])).toEqual({ code: 1, stdout: 'ERROR|no-thread-attribute\n' });
+  expect(await cli(dir, ['thread-open', '--source', 'other', '--chat-id', 'C1', '--message-id', 'M1', '--name', 'x'])).toEqual({ code: 0, stdout: '{"key":"other:C1","chat_id":"C1"}\n' });
+});
+
+test('thread-open routes every channel to the key its later thread messages carry', async () => {
+  const { parseChannelEnvelope } = await import('../scripts/lib/channel-envelope');
+  const { conversationKey } = await import('../scripts/lib/conversation-key');
+  const dir = freshDir();
+  const tokenDir = path.join(dir, 'discord');
+  fs.mkdirSync(tokenDir, { recursive: true });
+  fs.writeFileSync(path.join(tokenDir, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+  const config = { channels: {
+    discord: { state_dir: tokenDir },
+    telegram: { attributes: { thread_id: 'message_thread_id' } },
+    imessage: {},
+    slack: { attributes: { thread_id: 'thread_ts' } },
+  } };
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+  const server = Bun.serve({ port: 0, fetch(req) {
+    const route = new URL(req.url).pathname;
+    if (route === '/channels/100') return Response.json({ parent_id: null, guild_id: '2', type: 0 });
+    if (route === '/channels/200') return Response.json({ parent_id: null, guild_id: '2', type: 5 });
+    if (route === '/channels/300') return Response.json({ parent_id: null, guild_id: null, type: 1 });
+    if (route === '/channels/100/messages/9/threads' && req.method === 'POST') return Response.json({ id: '789' });
+    return new Response('', { status: 404 });
+  } });
+  const env = { HERMIT_DISCORD_API_URL: server.url.toString().replace(/\/$/, ''), DISCORD_STATE_DIR: tokenDir };
+  const open = async (...args: string[]) => {
+    const { stdout, code } = await cli(dir, ['thread-open', ...args], env);
+    return { code, out: JSON.parse(stdout) };
+  };
+  const envelopeKey = (source: string, attrs: string) => {
+    const e = parseChannelEnvelope(`<channel source="${source}" ${attrs} user_id="U1">hi</channel>`, config)!;
+    return conversationKey(e.sourceKey, e.chatId, e.thread);
+  };
+  try {
+    expect(await open('--source', 'discord', '--chat-id', '100', '--message-id', '9', '--name', 'Task')).toEqual({ code: 0, out: { key: 'discord:789', chat_id: '789' } });
+    expect(await open('--source', 'discord', '--chat-id', '300', '--message-id', '9', '--name', 'Task')).toEqual({ code: 0, out: { key: 'discord:300', chat_id: '300' } });
+    expect(await open('--source', 'discord', '--chat-id', '200', '--message-id', '8', '--name', 'Task')).toEqual({ code: 1, out: { error: 'thread-failed' } });
+    expect(await open('--source', 'discord', '--chat-id', '404', '--message-id', '9', '--name', 'Task')).toEqual({ code: 1, out: { error: 'lookup-failed' } });
+
+    const telegram = await open('--source', 'telegram', '--chat-id', '-1001', '--message-id', '55', '--thread-id', '7', '--name', 'Task');
+    expect(telegram).toEqual({ code: 0, out: { key: 'telegram:-1001~7', chat_id: '-1001', reply: { message_thread_id: '7' } } });
+    expect(telegram.out.key).toBe(envelopeKey('telegram', 'chat_id="-1001" message_thread_id="7"'));
+
+    const imessage = await open('--source', 'imessage', '--chat-id', 'iMessage;-;+1555', '--message-id', 'M1', '--name', 'Task');
+    expect(imessage).toEqual({ code: 0, out: { key: 'imessage:iMessage;-;+1555', chat_id: 'iMessage;-;+1555' } });
+    expect(imessage.out.key).toBe(envelopeKey('imessage', 'chat_id="iMessage;-;+1555"'));
+
+    const slack = await open('--source', 'slack', '--chat-id', 'C1', '--message-id', '1.2', '--thread-id', '0.9', '--name', 'Task');
+    expect(slack.out).toEqual({ key: 'slack:C1~0.9', chat_id: 'C1', reply: { thread_ts: '0.9' } });
+    expect(slack.out.key).toBe(envelopeKey('slack', 'chat_id="C1" thread_ts="0.9"'));
+
+    expect(await open('--source', 'slack', '--chat-id', 'C1', '--message-id', '1.2')).toEqual({ code: 1, out: { error: 'missing-name' } });
+  } finally {
+    server.stop(true);
+  }
 });

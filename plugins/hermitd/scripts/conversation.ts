@@ -1,7 +1,7 @@
 import { conversationKey, checkKey } from './lib/conversation-key';
 import { isTrustedController } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
-import { createThread, isThreadType, lookupChat } from './lib/channel-chats';
+import { createThread, isGuildChannelType, isThreadType, lookupChat } from './lib/channel-chats';
 import { conversationHistory } from './lib/channel-log';
 import { readSettledConfig } from './lib/config-read';
 
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const [argvDir, verb, key, ...args] = process.argv.slice(2);
   if (!argvDir || !verb) throw new Error('usage');
   // The sealed grant covers every argument, so pin the state dir before any verb.
-  // thread-create reads the bot token from that dir.
+  // thread-open and thread-create read the bot token from that dir.
   // See cc-compat.ts for the shared project pin.
   const dir = pinStateDirOrExit(argvDir, 'conversation.ts');
   // Thin wrappers for the channel library calls channel-responder makes around a
@@ -53,14 +53,34 @@ async function main(): Promise<void> {
       return;
     }
     case 'thread-open': {
-      require(['source', 'chat_id', 'message_id'], ['thread_id']);
-      const attribute = config.channels?.[opts.source]?.attributes?.thread_id;
-      if (!attribute) throw new Error('no-thread-attribute');
-      // A message already inside a thread keeps that thread, or later replies there miss the record.
-      const thread = opts.thread_id || opts.message_id;
-      const key = conversationKey(opts.source, opts.chat_id, thread);
+      // One routing decision for every channel, printed as JSON: `key` is the task
+      // thread's conversation key, `chat_id` the reply destination, and `reply` the
+      // parameter every reply in the thread carries.
+      require(['source', 'chat_id', 'message_id', 'name'], ['thread_id']);
+      let chatId = opts.chat_id;
+      let thread: string | undefined;
+      let reply: Record<string, string> | undefined;
+      if (opts.source === 'discord') {
+        // Server text and announcement channels get a native thread, which is a chat
+        // of its own; DMs and existing threads are their own thread.
+        const chat = await lookupChat(dir, config, opts.chat_id);
+        if (!chat) throw new Error('lookup-failed');
+        if (isGuildChannelType(chat)) {
+          const id = await createThread(dir, config, opts.chat_id, opts.message_id, opts.name);
+          if (!id) throw new Error('thread-failed');
+          chatId = id;
+        }
+      } else {
+        const attribute = config.channels?.[opts.source]?.attributes?.thread_id;
+        // A message already inside a thread keeps that thread, or later replies there miss the record.
+        if (attribute) {
+          thread = opts.thread_id || opts.message_id;
+          reply = { [attribute]: thread };
+        }
+      }
+      const key = conversationKey(opts.source, chatId, thread);
       checkKey(key);
-      console.log(`OK|${key}|${attribute}=${thread}`);
+      console.log(JSON.stringify({ key, chat_id: chatId, reply }));
       return;
     }
     case 'thread-create': {
@@ -84,7 +104,9 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch(error => {
     const token = error instanceof Error && /^[a-z-]+$/.test(error.message) ? error.message : 'operation-failed';
-    console.log(`ERROR|${token}`);
+    // thread-open is the one JSON-only verb, so its errors are JSON too.
+    const jsonVerb = process.argv[3] === 'thread-open';
+    console.log(jsonVerb ? JSON.stringify({ error: token }) : `ERROR|${token}`);
     process.exitCode = 1;
   });
 }

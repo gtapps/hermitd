@@ -50,7 +50,7 @@ Use names from the installed plugin, not these placeholder marketplace names. `a
 
 ## Threads and notices
 
-With `attributes.thread_id`, tasks use `<server>:<chat>~<thread>` keys. `conversation.ts .hermit thread-open --source <server> --chat-id <chat> --message-id <message>` derives the key and reply parameter without calling a platform API. A top-level message, including a DM with no thread attribute, is outside that thread. Status, shutdown and harness replies keep the incoming thread. Routine, heartbeat and alert notices target the configured chat, not a thread. Discord retains its native thread-create behavior; Telegram forum topics remain one chat.
+With `attributes.thread_id`, tasks use `<server>:<chat>~<thread>` keys. `conversation.ts .hermit thread-open --source <server> --chat-id <chat> --message-id <message> --name <title>` prints the task's key, destination chat and any reply parameter as JSON for every channel. It calls a platform API only to create a native Discord thread in a server channel; a mapped thread attribute applies on any other channel, built-in ones included. A top-level message, including a DM with no thread attribute, is outside that thread. Status, shutdown and harness replies keep the incoming thread. Routine, heartbeat and alert notices target the configured chat, not a thread. Without a mapping, Telegram forum topics remain one chat.
 
 Model replies use the channel's tools. Script-owned notices on a third-party channel require `send_script`, an executable project-relative path with no `..` segments. The real executable must stay inside the real project root, including through symlinks. Official Discord and Telegram senders keep their direct API paths.
 
