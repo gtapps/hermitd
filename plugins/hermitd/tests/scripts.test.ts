@@ -22,6 +22,7 @@ import { logRoutineEvent } from '../scripts/lib/routines/event';
 
 // In-process imports — pure libs with no import-time CWD dependence.
 import { safeForLLM, safeForLLMMultiline } from '../scripts/lib/sanitize';
+import { normalizeItemKey } from '../scripts/lib/heartbeat-items';
 import * as ccCompat from '../scripts/lib/cc-compat';
 import {
   sessionId, transcriptPath, sessionCrons, backgroundTasks,
@@ -1417,8 +1418,17 @@ describe('update-alert-state', () => {
     const { state } = await updateAlertState(dir, firingPayload([
       { item: CREDENTIAL_ITEM, text: 'claude-subscription needs re-auth' },
     ]));
-    expect(state.alerts['checklist:readstat']).toMatchObject({ text: 'claude-subscription needs re-auth', count: 1 });
+    expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toMatchObject({ text: 'claude-subscription needs re-auth', count: 1 });
     expect(Object.keys(state.alerts).some(k => k.startsWith('custom:'))).toBe(false);
+  }));
+
+  test('update-alert-state (indented or backtick-less item echo snaps to the checklist key)', withDir(async (dir) => {
+    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
+    writeHeartbeat(dir);
+    const { state } = await updateAlertState(dir, firingPayload([
+      { item: `  ${CREDENTIAL_ITEM.replace(/`/g, '')}`, text: 'claude-subscription needs re-auth' },
+    ]));
+    expect(Object.keys(state.alerts)).toEqual([normalizeItemKey(CREDENTIAL_ITEM)!]);
   }));
 
   test('update-alert-state (custom:* and waiting-timeout keep their key)', withDir(async (dir) => {
@@ -1430,7 +1440,7 @@ describe('update-alert-state', () => {
     ]));
     expect(state.alerts['custom:diskfull']).toBeDefined();
     expect(state.alerts['waiting-timeout']).toBeDefined();
-    expect(state.alerts['checklist:readstat']).toBeUndefined();
+    expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
   }));
 
   test('update-alert-state (a model-authored derived key is dropped, never remapped to custom:)', withDir(async (dir) => {
@@ -1463,7 +1473,7 @@ describe('update-alert-state', () => {
       { item: 'Totally paraphrased credential check', key: 'checklist:totallyp', text: 'needs re-auth' },
     ]));
     expect(state.alerts['checklist:totallyp']).toBeUndefined();
-    expect(state.alerts['checklist:readstat']).toBeUndefined();
+    expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
     const customKeys = Object.keys(state.alerts).filter(k => k.startsWith('custom:'));
     expect(customKeys).toHaveLength(1);
   }));
@@ -1497,8 +1507,8 @@ describe('update-alert-state', () => {
       ]), {});
     }
     const after = readJson(hermit(dir, 'state', 'alert-state.json'));
-    expect(after.alerts['checklist:readstat'].count).toBe(6);
-    expect(after.alerts['checklist:readstat'].suppressed).toBe(true);
+    expect(after.alerts[normalizeItemKey(CREDENTIAL_ITEM)!].count).toBe(6);
+    expect(after.alerts[normalizeItemKey(CREDENTIAL_ITEM)!].suppressed).toBe(true);
 
     const r = await runScript('heartbeat.ts', {
       args: ['precheck', hermit(dir)],
@@ -2676,7 +2686,7 @@ describe('heartbeat-precheck', () => {
   // 19. OK — all items suppressed and stable, structural checks clear
   test('heartbeat-precheck (OK: all items suppressed and stable)', withDir(async (dir) => {
     seedHeartbeat(dir, {
-      alertState: `{"alerts":{"checklist:reviewpr":{"count":6,"suppressed":true,"consecutive_clean":0,"first_seen":"2026-04-01","last_seen":"2026-04-28","text":"Review proposals"}},"last_digest_date":"${utcDate(new Date())}","self_eval":{},"total_ticks":5}`,
+      alertState: `{"alerts":{"${normalizeItemKey(DEFAULT_CHECKLIST.split('\n')[1])}":{"count":6,"suppressed":true,"consecutive_clean":0,"first_seen":"2026-04-01","last_seen":"2026-04-28","text":"Review proposals"}},"last_digest_date":"${utcDate(new Date())}","self_eval":{},"total_ticks":5}`,
       checklist: DEFAULT_CHECKLIST,
     });
     expect(await precheckOut(dir)).toBe('OK');
