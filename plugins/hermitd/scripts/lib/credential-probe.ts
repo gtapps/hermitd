@@ -5,8 +5,7 @@ import { siblingPluginDirs, readHermitMeta, readCoreName } from './plugin-siblin
 import { pyTruthy } from './channel-config';
 import {
   resolveAuthMode, readTokenValue, tokenFilePath, defaultConfigDir,
-  credentialsFilePath, parkedCredentialsFilePath, storedLoginUsable,
-  CREDENTIALS_FILENAME, TOKEN_FILENAME, envAuthPresent,
+  TOKEN_FILENAME, envAuthPresent,
 } from './setup-token';
 
 // Probe timeout: 5s default; env override exists solely so tests can exercise
@@ -110,32 +109,20 @@ export function probeDeclaredCredentials(pluginRoot: string): { okCount: number;
   return { okCount, badNotes };
 }
 
-// Two credentials on one volume, and which one is the hazard depends on the mode.
-//
-// In token mode a stored /login sitting next to the token is a live hazard, not an
-// expiry question: interactive Claude Code sessions prefer .credentials.json over
-// CLAUDE_CODE_OAUTH_TOKEN, so the hermit 401s when that stored access token lapses
-// (~8h) even though the year-long token is valid. Only a credential that still
-// carries a token shadows — a parked file or a /logout stub is inert.
-//
-// In login mode the leftover token file is the confusing artifact rather than a
-// hazard: nothing reads it, but its presence is why an operator thinks a renewal
-// "did nothing". External mode has no file this hermit owns, so it says nothing.
+// Two credentials on one volume. In login mode the leftover token file is the
+// confusing artifact: nothing reads it, but its presence is why an operator thinks a
+// renewal "did nothing". In token mode a stored /login next to the token is inert,
+// because Claude Code keeps a user-supplied CLAUDE_CODE_OAUTH_TOKEN ahead of it.
+// External mode has no file this hermit owns, so it says nothing.
 //
 // No expiry_probe reports this — it is a property of the volume, not of any one
 // credential — so both the doctor check and the heartbeat precheck fold it in
 // alongside probeDeclaredCredentials.
-export function shadowingCredentialNote(config: any = {}): string | null {
+export function strayTokenNote(config: any = {}): string | null {
   const configDir = defaultConfigDir();
-  const mode = resolveAuthMode(config, configDir);
-  if (mode === 'external') return null;
-  if (mode === 'login') {
-    if (readTokenValue(configDir) === null) return null;
-    return `stray ${TOKEN_FILENAME} is ignored in login mode — remove it (rm ${tokenFilePath(configDir)}) or set auth_mode: token`;
-  }
-  // absent, unreadable, or an inert stub (parked file, /logout) — nothing to shadow
-  if (!storedLoginUsable(configDir)) return null;
-  return `stored ${CREDENTIALS_FILENAME} will shadow the login token in interactive sessions — park it (mv ${credentialsFilePath(configDir)} ${parkedCredentialsFilePath(configDir)}) and restart`;
+  if (resolveAuthMode(config, configDir) !== 'login') return null;
+  if (readTokenValue(configDir) === null) return null;
+  return `stray ${TOKEN_FILENAME} is ignored in login mode — remove it (rm ${tokenFilePath(configDir)}) or set auth_mode: token`;
 }
 
 // Chrome requires a claude.ai login; setup-tokens and environment credentials

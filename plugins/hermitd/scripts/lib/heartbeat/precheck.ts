@@ -23,7 +23,7 @@ import { readAlertState, defaultAlertState, quarantineAlertState, writeAlertStat
 import { readFrontmatter, listProposalFiles } from '../frontmatter';
 import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChecklistItems } from '../heartbeat-items';
 import { isPaused } from '../pause';
-import { probeDeclaredCredentials, shadowingCredentialNote } from '../credential-probe';
+import { probeDeclaredCredentials, strayTokenNote } from '../credential-probe';
 import { readMicroProposals } from '../micro-proposals-io';
 import { scanForInjection } from '../injection-scan';
 import { sha256 } from '../hash';
@@ -127,16 +127,16 @@ function resolveMicroPendingScan(dir: string, alertMap: Json): 'clean' | 'evalua
 // lingering alerts[key] on an otherwise-healthy credential is SKILL.md-owned
 // resolution, so defer. Read-only, identical under --peek.
 //
-// The shadowing note rides along for the same reason doctor's credential-expiry
-// check folds it in: a stored /login next to a token 401s the hermit and no
-// expiry_probe reports it, so probing alone would resolve that item clean and
+// The stray-token note rides along for the same reason doctor's credential-expiry
+// check folds it in: a stray token file in login mode is a property of the volume
+// that no expiry_probe reports, so probing alone would resolve that item clean and
 // the operator would never hear about it.
 function resolveCredentialExpiryItem(config: Json, alerts: Json, key: string): 'clean' | 'evaluate' {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '../../..');
   let healthy = false;
   try {
     const { okCount, badNotes } = probeDeclaredCredentials(pluginRoot);
-    healthy = okCount > 0 && badNotes.length === 0 && shadowingCredentialNote(config) === null;
+    healthy = okCount > 0 && badNotes.length === 0 && strayTokenNote(config) === null;
   } catch {
     healthy = false;
   }

@@ -41,7 +41,7 @@ import { routineHealth } from './lib/routines/arm';
 import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
 import { effectiveHeartbeatMode } from './lib/heartbeat/control';
 import { readBootId } from './lib/routines/registry';
-import { probeDeclaredCredentials, shadowingCredentialNote, chromeAuthNote } from './lib/credential-probe';
+import { probeDeclaredCredentials, strayTokenNote, chromeAuthNote } from './lib/credential-probe';
 
 type Json = any;
 
@@ -180,7 +180,13 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
     }
     const stateFiles = globDir(stateDir, /\.jsonl?$/);
     const broken: string[] = [];
+    const residue: { name: string; cite: string }[] = [];
+    // `name:3,7,9 (+2 more)`; bounded so a badly torn ledger stays digest-sized.
+    const cite = (name: string, nums: number[]) =>
+      `${name}:${nums.slice(0, 3).join(',')}${nums.length > 3 ? ` (+${nums.length - 3} more)` : ''}`;
+    const parses = (s: string) => { try { JSON.parse(s); return true; } catch { return false; } };
     for (const f of stateFiles) {
+      const name = path.basename(f);
       try {
         const raw = fs.readFileSync(f, 'utf8');
         // A JSONL ledger has no whole-file JSON shape, and a torn trailing line is
@@ -192,16 +198,38 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
         if (f.endsWith('.jsonl')) {
           const lines = raw.split('\n');
           const complete = raw.endsWith('\n') ? lines : lines.slice(0, -1);
-          for (const line of complete) {
-            if (line.trim()) JSON.parse(line);
-          }
+          const bad: number[] = [];
+          const nul: number[] = [];
+          complete.forEach((line, i) => {
+            if (!line.trim() || parses(line)) return;
+            // A crash mid-append can leave NUL bytes ahead of an intact row (the
+            // filesystem zero-fills the extended size). The row itself is fine, so
+            // that is a mechanical repair, not corruption.
+            const stripped = line.replace(/^\0+/, '');
+            const intact = stripped !== line && (!stripped.trim() || parses(stripped));
+            (intact ? nul : bad).push(i + 1);
+          });
+          if (bad.length > 0) broken.push(cite(name, bad));
+          if (nul.length > 0) residue.push({ name, cite: cite(name, nul) });
         } else {
           JSON.parse(raw);
         }
-      } catch (e) { broken.push(path.basename(f)); }
+      } catch (e) { broken.push(name); }
     }
     if (broken.length > 0) {
       return { id: 'state', status: 'fail', detail: `unparseable: ${broken.join(', ')}` };
+    }
+    if (residue.length > 0) {
+      // Valid JSON text never contains a raw NUL, so deleting every one is safe;
+      // writing back through `>` keeps the ledger's 0600 mode.
+      const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+      // State dir once, then a loop over the names, so the notice stays short however many ledgers are hit.
+      const fix = `cd ${q(stateDir)} && for f in ${residue.map(r => q(r.name)).join(' ')}; do cp -p "$f" "$f.bak" && tr -d '\\000' < "$f.bak" > "$f"; done`;
+      return {
+        id: 'state',
+        status: 'warn',
+        detail: `crash leftovers (NUL bytes) at ${residue.map(r => r.cite).join(', ')}; fix: ${fix}`,
+      };
     }
     const missing = EXPECTED_STATE_FILES.filter(
       f => !fs.existsSync(path.join(stateDir, f))
@@ -1538,10 +1566,10 @@ function checkCredentialExpiry(p: DoctorPaths = PATHS) {
     // The mode is a config question, so the note needs the config. An unreadable one
     // resolves from the volume, which is the same answer the probe itself used.
     const config = readConfigRaw(p.hermitDir) ?? {};
-    const shadow = shadowingCredentialNote(config);
+    const stray = strayTokenNote(config);
     const chrome = chromeAuthNote(config);
     const parts = [...sib.badNotes];
-    if (shadow) parts.push(shadow);
+    if (stray) parts.push(stray);
     if (chrome) parts.push(chrome);
     const status = parts.length > 0 ? 'warn' : 'ok';
     if (sib.okCount > 0) parts.push(`${sib.okCount} plugin credential(s) ok`);
@@ -2527,9 +2555,10 @@ function writeReport(checks: Json[], escalation?: DoctorEscalation, p: DoctorPat
 
 // Install health only. classifier-denials reports how the model has been used, which an
 // upgrade neither causes nor fixes, so counting it would break a post-upgrade claim at random.
-function verdictLine(checks: Json[]): string {
+// `predates` leaves out failures that already existed before an upgrade.
+function verdictLine(checks: Json[], predates: (id: string) => boolean = () => false): string {
   const failures = checks
-    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID)
+    .filter((check) => check.status === 'fail' && check.id !== CLASSIFIER_DENIALS_ID && !predates(check.id))
     .map((check) => check.id);
   return failures.length === 0 ? 'OK' : `FAIL ${failures.join(', ')}`;
 }
@@ -2575,7 +2604,13 @@ if (import.meta.main) {
       process.exit(0);
     }
     if (process.argv[3] === '--verdict') {
-      const line = verdictLine(checks);
+      // `--verdict --since <iso>`: a failure whose ledger entry was first seen before <iso>
+      // predates the upgrade. The ledger keeps `first_seen` across warn→fail, so a check that
+      // already warned is left out too; an unreadable ledger counts every failure.
+      const sinceMs = process.argv[4] === '--since' ? Date.parse(process.argv[5]) : NaN;
+      const ledger = Number.isFinite(sinceMs) ? readAlertState(doctorAlertsPath(PATHS.hermitDir)) : null;
+      const alerts = ledger?.kind === 'ok' ? ledger.value.alerts : undefined;
+      const line = verdictLine(checks, (id) => Date.parse(alerts?.[DOCTOR_PREFIX + id]?.first_seen) < sinceMs);
       process.stdout.write(line + '\n');
       process.exit(line === 'OK' ? 0 : 1);
     }

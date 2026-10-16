@@ -103,6 +103,13 @@ function resolveEntryKey(entry: RawFiring, canonical: Set<string>): string | nul
   if (entry.item) {
     const derived = normalizeItemKey(entry.item);
     if (derived && canonical.has(derived)) return derived;
+    // A near-verbatim echo (dropped backticks, swapped arrow) misses the hash but
+    // keeps the slug: snap it when exactly one checklist item shares that slug.
+    const prefix = derived ? derived.slice(0, derived.lastIndexOf('-') + 1) : '';
+    if (prefix.length > 'checklist:-'.length) {
+      const matches = [...canonical].filter(k => k.startsWith(prefix));
+      if (matches.length === 1) return matches[0];
+    }
   }
   if (entry.key && canonical.has(entry.key)) return entry.key;
   // `key` before `text`: text is a channel-voice one-liner the eval subagent

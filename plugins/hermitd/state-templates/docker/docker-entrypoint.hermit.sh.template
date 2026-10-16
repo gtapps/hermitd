@@ -105,36 +105,6 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] \
   echo "[docker-entrypoint] Credentials detected! Continuing startup..."
 fi
 
-# --- 0c. Park a stale /login credential when a setup-token is present ---
-# Interactive Claude Code sessions authenticate with .credentials.json whenever
-# it holds a token, ahead of CLAUDE_CODE_OAUTH_TOKEN — the reverse of the
-# documented precedence (confirmed live on CC 2.1.218). A converted hermit that
-# keeps its old /login file therefore 401s the moment that stored access token
-# lapses (~8h), while the valid year-long token sits unused in the env.
-# hermitd-start's token install parks it too; this covers hermits converted before
-# that shipped, and any stray /login left behind on a token-mode hermit.
-# Renamed (not deleted) so a deliberate return to /login can restore it.
-#
-# Gated on the resolved auth mode, not on file presence alone: a hermit running
-# `auth_mode: login` may legitimately still have a stray token file on the volume,
-# and parking its live credential there would take it dark on the next boot. An
-# unset auth_mode resolves the same way it does everywhere else — token iff the
-# token file exists — so hermits that predate the key behave exactly as before.
-AUTH_MODE=$(bun -e "
-const fs = require('fs');
-let config = {};
-try { config = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); } catch {}
-const declared = config.auth_mode;
-if (declared === 'login' || declared === 'token') console.log(declared);
-else console.log(fs.existsSync(process.argv[2]) ? 'token' : 'login');
-" "${AGENT_DIR}/config.json" "$SETUP_TOKEN_FILE" 2>/dev/null || echo token)
-
-if [ "$AUTH_MODE" = "token" ] && [ -f "$SETUP_TOKEN_FILE" ] && [ -f "$CRED_FILE" ]; then
-  if mv -f "$CRED_FILE" "${CRED_FILE}.pre-token.bak" 2>/dev/null; then
-    echo "[docker-entrypoint] Parked stale .credentials.json (login token is authoritative; stored /login creds would shadow it in an interactive session)."
-  fi
-fi
-
 # --- 0d. Plugin install audit log helper ---
 # Gated on HERMIT_PLUGIN_INSTALL_AUDIT=1, which the security overlay
 # (/hermitd:docker-security toggle 4) sets when the audit-log
