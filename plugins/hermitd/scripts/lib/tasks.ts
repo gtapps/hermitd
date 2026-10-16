@@ -60,7 +60,7 @@ export function decodeTask(text: string): Task {
     // The generic parser intentionally leaves JSON escapes alone. Decode only the
     // raw quoted scalar here, keeping all existing readers' behavior unchanged.
     for (const line of text.slice(4, end).split('\n')) {
-      const match = line.match(/^(\w+):\s*(".*")\s*$/);
+      const match = line.match(/^(\w+):\s*(".*")\s*$/s);
       if (match) fm[match[1]] = JSON.parse(match[2]);
     }
     if (!/^\d+$/.test(String(fm.result_rev))) throw new Error();
@@ -263,7 +263,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           // result, and a still-set check would re-execute the command on every later wake forever.
           if (record.approver) { record.check = null; append(record, 'Progress', 'hermit', `check passed; approver confirmation still required${line ? ' ' + line : ''}`, now); }
           else {
-            finish(record, 'check', 'hermit', 'check:exit-0', now);
+            // The reason is surfaced by every task report, so it carries a bounded proof; the body keeps the full output.
+            finish(record, 'check', 'hermit', line ? `check:exit-0: ${line.slice(0, 200)}` : 'check:exit-0', now);
             if (line) append(record, 'Outcome', 'hermit', line, now);
           }
         } else append(record, 'Progress', 'hermit', `check:exit-${exit} ${line}`, now);
