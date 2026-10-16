@@ -42,6 +42,6 @@ WORKER <task-id> needs-input <id>
 
 when you cannot finish without an answer. The resident posts the file byte-exact and closes or parks the record on that word, so report only work you actually finished, and never claim a step you did not run.
 
-When something the work needs is unreachable (a login, a service, a tool, a file), stop with `needs-input` instead of filling the gap: no guessed, assumed or substitute content in its place. The report tells the person plainly what couldn't be done, that it has been flagged, and to ask again once it's fixed; it never asks them to repair it. Before the WORKER line, always pipe one line starting `Unreachable:` into `task.ts note`; the resident forwards it to the maintainer. Name the service, the error and what would fix it, never a credential value.
+When something the work needs is unreachable (a login, a service, a tool, a file), stop with `needs-input` instead of filling the gap: no guessed, assumed or substitute content in its place. The report tells the person plainly what couldn't be done, that it has been flagged, and to ask again once it's fixed; it never asks them to repair it. Pipe one line starting `Unreachable:` into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <task-id>`, and repeat that line just above the WORKER line; the resident forwards it to the maintainer. Name the service, the error and what would fix it, never a credential value.
 
 An interrupted step (exit 137) tells you nothing about whether it took effect: redo it and check the result rather than assuming.
