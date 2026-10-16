@@ -259,10 +259,19 @@ function scrubSecrets(string $text): string
     $text = preg_replace('/-----BEGIN [^-\n]*-----.*?-----END [^-\n]*-----/s', '[REDACTED]', $text) ?? $text;
 
     // KEY= / SECRET= / PASSWORD= / *_TOKEN= / CREDENTIAL= assignments, including
-    // JSON-ish "key": "value" forms.
+    // JSON-ish "key": "value" forms, single-quoted values, and the \" escapes a
+    // string gets once printResult JSON-encodes it (a deploy script, an env file).
     $text = preg_replace(
-        '/([A-Za-z0-9_.\-]*(?:KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL)[A-Za-z0-9_.\-]*"?\s*[:=]\s*"?)[^\s"\',]+/i',
+        '/([A-Za-z0-9_.\-]*(?:KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL)[A-Za-z0-9_.\-]*(?:\\\\?")?\s*[:=]\s*(?:\\\\?["\'])?)[^\s"\'\\\\,]+/i',
         '$1[REDACTED]',
+        $text
+    ) ?? $text;
+
+    // Literal credentials on a `composer config` auth line (a private Satis or
+    // Packagist repository). Everything after the host is masked, username included.
+    $text = preg_replace(
+        '/(composer\s+config\s+(?:-\S+\s+)*(?:http-basic|bearer|github-oauth|gitlab-token|gitlab-oauth|bitbucket-oauth)\.[^\s"\\\\]+)(?:[ \t]+[^\s"\\\\]+)+/i',
+        '$1 [REDACTED]',
         $text
     ) ?? $text;
 

@@ -445,6 +445,21 @@ check(scrubSecrets('Authorization: Bearer abcdef1234567890') === 'Authorization:
 check(str_contains(scrubSecrets('postgres://app:s3cr3t@db.internal/prod'), '[REDACTED]@'),
     'credentials in a connection URL are redacted');
 
+// A deploy script reaches the scrubber JSON-encoded by printResult, so quotes
+// arrive as \" and newlines as \n.
+$satisScript = "export SATIS_TOKEN=\"Xy7kq2PzW9mLr4Tb\"\nAPI_SECRET='s1ngleQuoted'\n"
+    . "composer config --global --auth http-basic.satis.acme.dev deployer L1teralPw\n"
+    . "composer config bearer.satis.acme.dev B3arerTok\ncomposer install";
+foreach (['raw' => $satisScript, 'JSON-encoded' => json_encode($satisScript)] as $shape => $input) {
+    $out = scrubSecrets($input);
+    check(!preg_match('/Xy7kq2PzW9mLr4Tb|s1ngleQuoted|L1teralPw|B3arerTok/', $out),
+        "a Satis-style deploy script ($shape) leaks no quoted or composer credential");
+    check(str_contains($out, 'composer install'),
+        "a Satis-style deploy script ($shape) keeps its non-secret lines");
+}
+check(scrubSecrets(json_encode('composer config bearer.satis.acme.dev B3arerTok')) === '"composer config bearer.satis.acme.dev [REDACTED]"',
+    'a composer auth redaction keeps the JSON string closing quote');
+
 $ordinaryLog = "Cloning into '/home/forge/app'...\nHEAD is now at 4f2a1b9c8d3e5f6a7b8c9d0e1f2a3b4c5d6e7f80 Fix pagination\nnpm WARN deprecated";
 check(scrubSecrets($ordinaryLog) === $ordinaryLog,
     'an ordinary deploy log survives untouched, git SHA included');
