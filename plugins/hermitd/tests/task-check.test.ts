@@ -47,3 +47,16 @@ test('task.ts exposes no check-result verb, so only a real check run closes by c
     expect(decodeTask(f.text(id)).status).toBe('open');
   } finally { f.cleanup(); }
 });
+
+test('a finishing record closes by check once its outcome is observed', async () => {
+  const f = taskFixture();
+  try {
+    const { id } = await f.open();
+    await f.ok('block', [id, '--result-stdin'], 'Approved, waiting for the merge');
+    await f.ok('note', [id, '--check', 'printf merged', '--clear-waiting']);
+    expect((await f.ok('list', ['--id', id])).rows[0].listing).toEqual(['finishing']);
+    const result = await runScript('task-check.ts', { cwd: f.dir + '/..', env: { AGENT_DIR: f.dir }, args: [id] });
+    expect(result.exitCode).toBe(0);
+    expect(decodeTask(f.text(id)).closed_by).toBe('check');
+  } finally { f.cleanup(); }
+});

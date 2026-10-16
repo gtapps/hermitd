@@ -16,7 +16,7 @@ For morning, run `proposal-index` (Commands), then read `state/proposals-index.j
 
 For evening and daily, select records whose `closed_at` date matches `today`, and open records whose `opened_at` date matches `today`. Populate `sessions_today` with task source paths as the compatibility `session` identifier and one-line summaries from `closed_reason` for a cancelled record, otherwise from the record's `result` when set, otherwise from title and outcome. Populate `findings` from the selected records' lessons, skipping any lesson the record's `result` contradicts, without filtering lessons by date. Populate `tomorrow` from runnable open records, leaving waiting ones to `waiting`. Do not count `cancelled` or `unconfirmed` as done.
 
-For morning, evening and daily, populate `waiting` from `task-list` rows with a non-null `result` or `waiting_on`, one entry per row: `<title>: result awaiting confirmation from <waiting_on>` when `result` is set, otherwise `<title>: waiting on <waiting_on>`.
+For morning, evening and daily, populate `waiting` from `task-list` rows with a non-null `result` or `waiting_on`, one entry per row: `<title>: finishing up, nothing needed from you` when `listing` includes `finishing`, `<title>: result awaiting confirmation from <waiting_on>` when `result` is otherwise set, otherwise `<title>: waiting on <waiting_on>`.
 
 For morning, evening and daily, populate `decisions` from report rows' decision lines stamped within the last day as `<task title>: <what changed, why>`, dropping timestamp and actor; otherwise an empty array.
 
