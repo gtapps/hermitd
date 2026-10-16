@@ -75,9 +75,8 @@ export function quarantineAlertState(p: string, stamp: number): void {
 export function writeAlertState(p: string, obj: Json): boolean {
   try {
     const tmp = `${p}.${process.pid}.tmp`;
-    // 0600 like doctor-check's writeReport: doctor's own `permissions` check warns on any
-    // world-readable state/*.json, and these files are rewritten on every tick — a default
-    // 0644 creation makes that warn permanent and un-chmod-able.
+    // 0600 like doctor-check's writeReport: these files are rewritten on every tick, so a
+    // default 0644 creation would undo any chmod the operator applies.
     fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 });
     fs.chmodSync(tmp, 0o600); // mode is only honored on create; a reused tmp path would keep its old bits
     fs.renameSync(tmp, p);

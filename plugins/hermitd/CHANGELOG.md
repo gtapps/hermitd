@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- `/hermitd:hermit-doctor` drops the `opus-wake` and `permissions` checks, which warned on every normal install and could not be cleared.
+- `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 
 ## [1.4.15] - 2026-10-15
 
