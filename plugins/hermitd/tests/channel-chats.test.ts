@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
-import { lookupChat, lookupGuildRoles, isThreadType, createThread } from '../scripts/lib/channel-chats';
+import { lookupChat, lookupGuildRoles, createThread } from '../scripts/lib/channel-chats';
 
 test.serial('Discord metadata caches success, errors, and retries errors after 24 hours', async () => {
   const wd = setupWorkdir();
@@ -58,14 +58,6 @@ test.serial('Discord metadata caches success, errors, and retries errors after 2
     server.stop(true);
     wd.cleanup();
   }
-});
-
-test('thread types exclude text channels with a category parent', () => {
-  const categoryChild = { type: 0, parent_id: 'category', guild_id: 'guild', fetched_at: '' };
-  expect(isThreadType(categoryChild)).toBe(false);
-  for (const type of [10, 11, 12]) expect(isThreadType({ type })).toBe(true);
-  for (const type of [1, 3, 5, 15]) expect(isThreadType({ type })).toBe(false);
-  expect(isThreadType(null)).toBe(false);
 });
 
 test.serial('thread creation posts the name and returns null on HTTP or network failure', async () => {
