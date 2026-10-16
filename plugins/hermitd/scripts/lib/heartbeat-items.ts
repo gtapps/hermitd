@@ -50,10 +50,10 @@ function alnumSlug(text: string, maxLen: number): string {
 // Normalises a HEARTBEAT.md checklist item to its dedup key.
 // Key format: 'checklist:<first-32-chars-normalized>-<first-8-hex-of-body-hash>'.
 export function normalizeItemKey(itemText: string): string | null {
-  const body = itemText.replace(/^[-*+]\s*(\[.\]\s*)?/, '')
+  const body = itemText.trim().replace(/^[-*+]\s*(\[.\]\s*)?/, '')
     .replace(/\s*\[(ask|act|note)\]\s*$/i, '')
     .trim().toLowerCase().replace(/\s+/g, ' ');
-  const slug = alnumSlug(body, 32);
+  const slug = body.replace(/[^a-z0-9]/g, '').slice(0, 32);
   return slug ? `checklist:${slug}-${sha256(body).slice(0, 8)}` : null;
 }
 

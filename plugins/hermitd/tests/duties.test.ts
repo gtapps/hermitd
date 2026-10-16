@@ -12,6 +12,7 @@ it('trailing act leaves the heartbeat item key stable', () => { expect(normalize
 it('sqlite checklist items keep separate keys', () => { expect(normalizeItemKey('- Run sqlite3 bills.db: any bill due? [act]')).not.toBe(normalizeItemKey('- Run sqlite3 reviews.db: any review stale?')); });
 it('symbol differences keep separate checklist keys', () => { expect(normalizeItemKey('- review stale >7d')).not.toBe(normalizeItemKey('- review stale <7d')); });
 it('note and list markers leave the heartbeat item key stable', () => { expect(normalizeItemKey('Check disk [note]')).toBe(normalizeItemKey('- Check disk')); expect(normalizeItemKey('- Check disk')).toBe(normalizeItemKey('- [ ] Check disk')); });
+it('indented item keeps the heartbeat item key', () => { expect(normalizeItemKey('  - Check disk')).toBe(normalizeItemKey('- Check disk')); });
 it('duties foreign root exits 2', async () => { const f = taskFixture(); try { expect((await runScript('duties.ts', { args: ['list', '/foreign'], env: { AGENT_DIR: f.dir } })).exitCode).toBe(2); } finally { f.cleanup(); } });
 
 

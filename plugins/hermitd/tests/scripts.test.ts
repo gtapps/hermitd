@@ -1380,6 +1380,15 @@ describe('update-alert-state', () => {
     expect(Object.keys(state.alerts).some(k => k.startsWith('custom:'))).toBe(false);
   }));
 
+  test('update-alert-state (indented or backtick-less item echo snaps to the checklist key)', withDir(async (dir) => {
+    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
+    writeHeartbeat(dir);
+    const { state } = await updateAlertState(dir, firingPayload([
+      { item: `  ${CREDENTIAL_ITEM.replace(/`/g, '')}`, text: 'claude-subscription needs re-auth' },
+    ]));
+    expect(Object.keys(state.alerts)).toEqual([normalizeItemKey(CREDENTIAL_ITEM)!]);
+  }));
+
   test('update-alert-state (custom:* and waiting-timeout keep their key)', withDir(async (dir) => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
     writeHeartbeat(dir);
@@ -1389,7 +1398,7 @@ describe('update-alert-state', () => {
     ]));
     expect(state.alerts['custom:diskfull']).toBeDefined();
     expect(state.alerts['waiting-timeout']).toBeDefined();
-    expect(state.alerts['checklist:readstat']).toBeUndefined();
+    expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
   }));
 
   test('update-alert-state (a model-authored derived key is dropped, never remapped to custom:)', withDir(async (dir) => {
@@ -1422,7 +1431,7 @@ describe('update-alert-state', () => {
       { item: 'Totally paraphrased credential check', key: 'checklist:totallyp', text: 'needs re-auth' },
     ]));
     expect(state.alerts['checklist:totallyp']).toBeUndefined();
-    expect(state.alerts['checklist:readstat']).toBeUndefined();
+    expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
     const customKeys = Object.keys(state.alerts).filter(k => k.startsWith('custom:'));
     expect(customKeys).toHaveLength(1);
   }));
