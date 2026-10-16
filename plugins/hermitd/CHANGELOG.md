@@ -6,12 +6,12 @@
 - A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
 - A task that hits a broken login, service or tool stops instead of filling the gap. The person is told plainly to ask again once it's fixed, and the maintainer gets the exact error.
 - Background helpers name a missing repository, secret, API or tool and stop instead of substituting.
+- `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
+- `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
+
 ### Added
 - Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
 
-### Changed
-- `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
-- `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 ### Fixed
 - Helpers stuck on a permission prompt or question are announced in chat, and a reply goes back to them as new instructions.
 - Late helper reports reach their task and proposal after a reportless idle notice.

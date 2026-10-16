@@ -36,6 +36,12 @@ test('responder sibling procedure references exist', () => {
   }
 });
 
+test('task points its rare conversation commands at the branches sibling', () => {
+  const dir = path.join(PLUGIN_ROOT, 'skills', 'task');
+  expect(fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf-8')).toContain('[branches.md](branches.md) § Conversation command');
+  expect(fs.readFileSync(path.join(dir, 'branches.md'), 'utf-8')).toContain('## Conversation command');
+});
+
 // Consumer half of the annotations the UserPromptSubmit stages inject
 // (pause-keyword.ts, harness-command.ts, conversation.ts).
 test('responder branches on every hook annotation the prompt stages emit', () => {
