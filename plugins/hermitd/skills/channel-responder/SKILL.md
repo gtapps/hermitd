@@ -39,7 +39,7 @@ attachments; it does not change the tool's rendering mode or add mention support
 
 Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file.
 
-Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/record-operator-action.ts --force` after authorization. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
+Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and §1d's `record-operator-action.ts --force` after authorization. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
 Apply **Micro-approval response** before treating a bare yes/ok/no as task confirmation. An open handle, resident task thread, or continuation of the sole open task selects it. With multiple open tasks and neither handle nor thread, ask one short question naming the handles and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
 
@@ -85,7 +85,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Harness command** (exactly `!compact`, `!clear`, `!model <arg>`, `!effort <arg>`, `!permission-mode <mode>`, `!advisor <model>`, or `!doctor` (alias `!checkup`))
   - The core mod handles `!model`, `!effort`, `!compact`, `!clear`, `!advisor`, and `!doctor` before an agent turn, using the prompt pipeline's gates and audit. Do not run them yourself or treat them as skill invocations. Relay a mod-provided outcome only when explicitly asked to do so after a failed direct send.
-  - `!permission-mode` still uses the Stop hook. A `[harness-command] … requested` line means make no tool call and no reply on that turn. A `[harness-command] refused "…"` line means relay the reason.
+  - `!permission-mode` still uses the Stop hook; its `[harness-command]` lines follow §0's exception.
   - In a worker-owned task thread `!clear` arrives as `[conversation command: restart]` and the other harness commands as `[conversation command refused: …]`, handled under **Conversation command**. A resident-owned thread takes session commands like any other chat.
   - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback. For permission-mode without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
   - For model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
@@ -137,7 +137,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - **Emergency** ("abort", "revert", "rollback", or "stop")
   - Bare "stop" is **cooperative, not binding**. `!stop` or `!pause` blocks every tool except channel reply.
   - Halt current work immediately
-  - When a record is selected, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on operator --status-line "Halted on operator request" --next "Await operator direction"`.
+  - When a record is selected, run §1's `task.ts block .hermit <id> --waiting-on operator --status-line "Halted on operator request" --next "Await operator direction"`.
   - Confirm the halt and ask for next steps
 
 ## 3. Response Guidelines
