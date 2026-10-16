@@ -622,6 +622,31 @@ test('docker templates: verified pristine bytes expose a rendered base_path', wi
   expect(fs.existsSync(compose.theirs_path)).toBe(true);
 }));
 
+test('docker templates: a custom git identity source merges and survives the 3-way merge', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const current = realDockerSources();
+  const baseCompose = current.compose.replace('# Defense in depth', '# Previous defense in depth');
+  const baseRendered = renderSources(DOCKER_INPUTS, { ...current, compose: baseCompose });
+  const customLine = '${PWD}/.claude.local/gitconfig:/home/claude/.gitconfig:ro';
+  deployDocker(proj, {
+    compose: baseRendered.compose.replace('${HOME}/.gitconfig:/home/claude/.gitconfig:ro', customLine),
+    dockerfile: baseRendered.dockerfile,
+  });
+  writePristineCompose(proj, baseCompose);
+
+  const entries = classifyRealDockerTemplates(proj, sha256(Buffer.from(baseCompose)));
+  const compose = entries.find((entry: any) => entry.name === 'docker-compose.hermit.yml');
+  expect(compose.class).toBe('conflict');
+  expect(compose.base_path).toBeDefined();
+
+  const ours = path.join(proj, 'docker-compose.hermit.yml');
+  const merged = Bun.spawnSync({ cmd: ['git', 'merge-file', ours, compose.base_path, compose.theirs_path] });
+  expect(merged.exitCode).toBe(0);
+  const result = fs.readFileSync(ours, 'utf8');
+  expect(result).toContain(customLine);
+  expect(result).toContain('# Defense in depth');
+}));
+
 test('docker templates: stale pristine bytes force bootstrap without base_path', withProj((proj) => {
   writeDerivableDockerConfig(proj);
   const current = realDockerSources();

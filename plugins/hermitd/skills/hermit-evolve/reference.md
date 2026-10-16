@@ -211,7 +211,7 @@ Use one UTC timestamp for every path created while handling an entry. First copy
 `git merge-file` returns the conflict count on a merge (capped at 127) and 128 or higher on its own failure, so read the status against those bands — a status of 128+ is an error, never a conflict count. The checks below run on `<tmp>` before anything is installed, in each of the three status branches that follow.
 
 - Exit 0: run the checks. Green → install `<tmp>` over the project file, report `<name> merged(3-way)`. Red → unsettled.
-- Exit 1-127: edit `<tmp>` only between `<<<<<<<` and `>>>>>>>` markers, in interactive and unattended runs alike. Every region settled and the checks green → install `<tmp>` over the project file, report `<name> merged(3-way; <n> conflicts resolved)`. Any region unsettled or a check red → unsettled.
+- Exit 1-127: edit `<tmp>` only between `<<<<<<<` and `>>>>>>>` markers, in interactive and unattended runs alike. In a region holding the `/home/claude/.gitconfig` volume line, keep the operator's mount source when it differs from the one in `<base_path>`. Every region settled and the checks green → install `<tmp>` over the project file, report `<name> merged(3-way; <n> conflicts resolved)`. Any region unsettled or a check red → unsettled.
 - Exit 128 or higher: the merge itself failed and `<tmp>` still holds the operator's bytes with no markers to resolve. Never install it → unsettled, with `n` unknown.
 - **Unsettled**: project file untouched, `cp <theirs_path> .hermit/state/<name>.<UTC-timestamp>.upstream`, report `<name> conflict(<n>): upstream copy at <path>`.
 
