@@ -149,6 +149,7 @@ On error, surface the stderr. Common causes:
 - `GH 401: Bad credentials` → wrong App ID, install ID, or key file.
 - `GH 404` → App not installed on target repo, or repo name typo.
 - `GH 422` → empty title or GH validation error.
+- `GitHub returned no html_url (check HERMIT_GH_REPO)` → nothing was filed; `HERMIT_GH_REPO` likely names a renamed repository. Update it to the current `owner/repo`.
 
 ## How to comment
 
@@ -199,7 +200,7 @@ Capture stdout: it is the comment URL on success. Stderr has any error message.
 
 On success: output `Commented: {url}`. No back-write to any proposal frontmatter.
 
-On error, surface the stderr (same causes as filing: missing key file, bad credentials, 404, 422).
+On error, surface the stderr (same causes as filing: missing key file, bad credentials, 404, 422, no html_url).
 
 ## Notes
 

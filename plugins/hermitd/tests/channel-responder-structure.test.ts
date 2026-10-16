@@ -24,7 +24,7 @@ for (const name of ['channel-responder', 'task', 'proposal-act']) {
   test(`${name} fits the rendered retention budget`, () => {
     const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md'), 'utf-8');
     const rendered = text.replaceAll('${CLAUDE_PLUGIN_ROOT}', '/' + 'p'.repeat(99));
-    expect(rendered.length).toBeLessThanOrEqual(19_000);
+    expect(rendered.length).toBeLessThanOrEqual(18_500);
   });
 }
 

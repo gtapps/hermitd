@@ -85,7 +85,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Harness command** (exactly `!compact`, `!clear`, `!model <arg>`, `!effort <arg>`, `!permission-mode <mode>`, `!advisor <model>`, or `!doctor` (alias `!checkup`))
   - The core mod handles `!model`, `!effort`, `!compact`, `!clear`, `!advisor`, and `!doctor` before an agent turn, using the prompt pipeline's gates and audit. Do not run them yourself or treat them as skill invocations. Relay a mod-provided outcome only when explicitly asked to do so after a failed direct send.
-  - `!permission-mode` still uses the Stop hook. A `[harness-command] … requested` line means make no tool call and no reply on that turn. A `[harness-command] refused "…"` line means relay the reason.
+  - `!permission-mode` still uses the Stop hook; its `[harness-command]` lines follow §0's exception.
   - In a worker-owned task thread `!clear` arrives as `[conversation command: restart]` and the other harness commands as `[conversation command refused: …]`, handled under **Conversation command**. A resident-owned thread takes session commands like any other chat.
   - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback. For permission-mode without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
   - For model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
