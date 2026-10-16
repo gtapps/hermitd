@@ -137,11 +137,12 @@ const dueIds: string[] = [];
 // must not leave a skipped-* row whose cursor advance was rolled back (phantom ledger rows).
 const pendingStamps: Array<[string, string, string?]> = [];
 
-// Read once per poll; only later-check consumes ledger marks.
+// Read once per poll; only later-check consumes ledger marks. A due with seconds rounds up:
+// the `later` gate and run compare the exact due, so an earlier poll in that minute would SKIP and consume it.
 const laterMarks = eligible.some(r => r.id === 'later-check')
   ? readRows(path.join(stateDir, 'hypotheses.jsonl'))
     .filter(row => row?.state === 'pending' && (row.kind === 'reminder' || row.origin === 'operator'))
-    .map(row => floorToMinute(new Date(row.due)).getTime())
+    .map(row => Math.ceil(new Date(row.due).getTime() / MINUTE_MS) * MINUTE_MS)
   : [];
 
 for (const routine of eligible) {

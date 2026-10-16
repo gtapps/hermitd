@@ -432,10 +432,11 @@ describe('later-check ledger marks', () => {
     expect((await run(dir, '2026-07-15T14:01:00Z')).stdout).toBe('');
   }));
 
-  test('operator claims also fire, flooring due to its minute', withDir(async dir => {
-    setupLater(dir, { origin: 'operator', due: '2026-07-15T14:00:00.500Z' });
-    // Gate sees the row as due during this poll, within the same minute.
-    expect((await run(dir, '2026-07-15T14:00:30Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+  test('operator claims also fire, rounding a due with seconds up to the next minute', withDir(async dir => {
+    setupLater(dir, { origin: 'operator', due: '2026-07-15T14:00:30.500Z' });
+    // A poll early in the due minute must not consume the mark before the gate sees the row as due.
+    expect((await run(dir, '2026-07-15T14:00:10Z')).stdout).toBe('');
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
   }));
 
   test('hermit claims never create marks', withDir(async dir => {

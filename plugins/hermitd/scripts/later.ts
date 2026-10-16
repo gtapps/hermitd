@@ -39,7 +39,6 @@ function isLate(dir: string, row: Row, date: Date): boolean {
   return second ? date.getTime() >= second.getTime() : date.getTime() > due.getTime() + DAY_MS;
 }
 
-
 function withLedgerLock<T>(file: string, fn: () => T): T {
   const lock = `${file}.lock`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -105,6 +104,7 @@ async function main() {
     const config = readConfigRaw(dir);
     const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
     const exact = (row.kind === 'reminder' || row.origin === 'operator')
+      && new Date(row.due) > date
       && config?.routines?.some((r: any) => r?.id === 'later-check' && r.enabled === true)
       && monitor?.mode === 'monitor';
     console.log(`OK|${row.id}|next_fire=${exact ? row.due : laterCheckFire(dir, date)?.toISOString() ?? 'none'}`);

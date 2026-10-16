@@ -242,6 +242,13 @@ for (const mode of ['monitor', 'croncreate-fallback']) {
   }
 }
 
+test('past-due reminder in monitor mode reports the next later-check fire', withDir(async dir => {
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '5 9 * * *' }] });
+  fs.writeFileSync(path.join(dir, '.hermit/state/routine-monitor.runtime.json'), JSON.stringify({ mode: 'monitor' }));
+  const result = await call(dir, 'add', ['--claim', 'pay invoice', '--due', '2026-10-16T16:58:00Z', '--origin', 'operator', '--remind'], '', '2026-10-16T17:00:00Z');
+  expect(result.stdout.trim()).toEndWith('next_fire=2026-10-17T09:05:00.000Z');
+}));
+
 test('reminder rejects a command or missing claim without writing a ledger', withDir(async dir => {
   for (const extra of [['--claim', 'pay invoice', '--cmd', 'x'], []]) {
     const result = await call(dir, 'add', ['--remind', '--due', NOW, '--origin', 'operator', ...extra]);

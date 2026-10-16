@@ -9,7 +9,6 @@ export interface Row {
   checked_at?: string; late?: boolean; exit?: number | null; output?: string; reason?: string;
 }
 
-
 /** A truncated trailing line (crash mid-append) must not brick every verb; it is dropped on the next rewrite. */
 export function readRows(file: string): Row[] {
   if (!fs.existsSync(file)) return [];
@@ -20,4 +19,3 @@ export function readRows(file: string): Row[] {
   }
   return rows;
 }
-
