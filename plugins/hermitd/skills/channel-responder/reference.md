@@ -45,7 +45,7 @@ Relay the `settings-edit ... show` row for the setting: saved value, what change
 
 ### Access question
 
-From config: channels with `enabled !== false` and whether each has an allowlist, `permission_mode`, `remote`, enabled artifact pages, `auth_mode`. From `state/doctor-report.json`: the last `channel-liveness`, `credential-expiry`, and `permissions` results with their timestamp. Configured is not verified; say which is which. No credentials, chat ids, or file paths in the reply. In a group, or for a sender who is not the trusted controller, give only the coarse shape (the same audience rule as `!status`).
+From config: channels with `enabled !== false` and whether each has an allowlist, `permission_mode`, `remote`, enabled artifact pages, `auth_mode`. From `state/doctor-report.json`: the last `channel-liveness` and `credential-expiry` results with their timestamp. Configured is not verified; say which is which. No credentials, chat ids, or file paths in the reply. In a group, or for a sender who is not the trusted controller, give only the coarse shape (the same audience rule as `!status`).
 
 ## Standing role
 
