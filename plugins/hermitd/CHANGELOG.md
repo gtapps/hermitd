@@ -13,6 +13,8 @@
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+- `/hermitd:hermit-doctor` no longer reports `routine-monitor anchor-drift` when routines were registered from the other cache copy of the same release.
+- The post-upgrade doctor check counts only failures that started after the upgrade, so a standing failure is not blamed on every release.
 
 ## [1.4.15] - 2026-10-15
 

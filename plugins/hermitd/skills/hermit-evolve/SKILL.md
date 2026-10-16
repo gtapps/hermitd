@@ -38,7 +38,7 @@ Steps 0–9 (in `reference.md`, read only by the `evolve-runner` subagent) are e
 
 ### 10. Report
 
-After a successful upgrade, arm `/hermitd:later add 1d "doctor stays green after upgrading to <version>" | .hermit/bin/hermitd-run doctor-check .hermit --verdict` (hermit origin, `--timeout-s 120`: the doctor run probes credentials and docker and gets the same budget as its routine). The resolver form survives the next plugin update; a baked plugin path points at a cache directory that may be gone by the time the claim is checked.
+After a successful upgrade, arm `/hermitd:later add 1d "doctor has no new failures after upgrading to <version>" | .hermit/bin/hermitd-run doctor-check .hermit --verdict --since <now>` (hermit origin, `--timeout-s 120`: the doctor run probes credentials and docker and gets the same budget as its routine). `<now>` is the current UTC time in ISO 8601 (`date -u +%FT%TZ`), so a failure that already existed before the upgrade does not count against it. The resolver form survives the next plugin update; a baked plugin path points at a cache directory that may be gone by the time the claim is checked.
 
 **Step 10 runs in the main loop** (not the subagent), consuming the `evolve-runner`'s returned report. The subagent's report is the single source for what follows.
 

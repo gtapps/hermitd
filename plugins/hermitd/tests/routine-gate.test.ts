@@ -419,6 +419,21 @@ describe('routine gate — doctor builtin', () => {
     expect(verdictLine([...checks, { id: 'config', status: 'fail' }])).toBe('FAIL config');
     expect(verdictLine([...checks, { id: 'classifier-denials', status: 'fail' }])).toBe('OK');
   });
+
+  test('verdictLine leaves out failures that predate the upgrade', () => {
+    const checks = [{ id: 'state', status: 'fail' }, { id: 'config', status: 'fail' }];
+    expect(verdictLine(checks, (id) => id === 'state')).toBe('FAIL config');
+    expect(verdictLine([checks[0]], (id) => id === 'state')).toBe('OK');
+  });
+
+  test('--verdict --since ignores a failure the ledger saw before the upgrade', withDir(async (dir) => {
+    writeConfig(dir, [ROUTINE({ id: 'doctor', precheck: 'doctor' })]);
+    const before = (await runDoctor(dir, ['--verdict'])).stdout.trim();
+    expect(before).toContain('config');
+    const r = await runDoctor(dir, ['--verdict', '--since', new Date(Date.now() + 60_000).toISOString()]);
+    expect(r.stdout.trim()).toBe('OK');
+    expect(r.exitCode).toBe(0);
+  }), 30000);
 });
 
 describe('precheck validation (pure)', () => {
