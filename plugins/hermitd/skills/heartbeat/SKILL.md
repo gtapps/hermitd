@@ -73,19 +73,20 @@ Start the heartbeat as a native plugin monitor.
    ```
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts start-check .hermit --session-id "${CLAUDE_SESSION_ID}"
    ```
-   - `GUEST|native-monitors-resident-only`: log the line and stop.
-   - `FRESH|interval=<s>`: log the line and stop without further tools or file writes.
-   - `RESTART_REQUIRED|<reason>`: report that the resident must be restarted to pick up the new plugin path. Stop without arming anything.
-   - `REARM|<reason>`: follow the plan. `FIRST_START:1` marks the first registration; `INTERVAL:<s>` reports the configured cadence.
+   It prints one JSON object; branch on `status`:
+   - `guest`: log the line and stop.
+   - `fresh`: log the line and stop without further tools or file writes.
+   - `restart_required`: report that the resident must be restarted to pick up the new plugin path. Stop without arming anything.
+   - `rearm` (`reason`): follow the plan. `first_start` marks the first registration; `interval` is the configured cadence in seconds.
 2. Delete any CronCreate entry whose `prompt` matches `/hermitd:heartbeat run` (`CronList` then `CronDelete`).
-3. On `ACTIVATE:/hermitd:monitor-activate`, invoke that named skill once through the `Skill` tool. The host starts the resident-guarded supervisors on dispatch.
+3. Invoke the skill named in `activate` once through the `Skill` tool. The host starts the resident-guarded supervisors on dispatch.
 4. Record activation:
    ```
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts start-commit .hermit native
    ```
    The verb accepts a live supervisor PID or waits up to 10 seconds for a tick, records the runtime.
-   - `OK|registered|interval=<s>`: log it.
-   - `DEAD|liveness-absent`: report that the heartbeat will not run this session.
+   - `registered`: log it.
+   - `dead`: report that the heartbeat will not run this session.
 
 The poller resolves `heartbeat.every` each iteration. Explicit start enables a session-only heartbeat even when `heartbeat.enabled` is false.
 

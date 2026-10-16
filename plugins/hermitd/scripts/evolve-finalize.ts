@@ -34,6 +34,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { assertStateDir, pinStateDirOrExit } from './lib/cc-compat';
+import { emitJson } from './lib/cli';
 import { auditConfigChange, SNAPSHOT_FILE, SNAPSHOT_MAX_AGE_MS } from './lib/config-audit';
 import { cmpSemver } from './lib/semver';
 import { utcISOStamp } from './lib/time';
@@ -76,10 +77,10 @@ function snapshotPath(hermitDir: string): string {
 /**
  * Write the pre-migration snapshot. Fail-open by contract: a snapshot that can't
  * be written degrades the audit to version-only, and must never block an upgrade.
- * Returns a human-readable status line for stdout.
+ * Returns the stdout object: `{path}` on success, a skip status otherwise.
  */
-export function writeSnapshot(hermitDir: string, core: string | null): string {
-  if (!core || core.trim() === '') return 'SKIP|--core=<version> is required';
+export function writeSnapshot(hermitDir: string, core: string | null): Record<string, string> {
+  if (!core || core.trim() === '') return { status: 'skip', reason: 'core_required' };
   try {
     const config = JSON.parse(fs.readFileSync(path.join(hermitDir, 'config.json'), 'utf8'));
     const file = snapshotPath(hermitDir);
@@ -94,10 +95,10 @@ export function writeSnapshot(hermitDir: string, core: string | null): string {
     });
     fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, file);
-    return `OK|${file}`;
+    return { path: file };
   } catch (e: any) {
     try { fs.unlinkSync(snapshotPath(hermitDir) + '.tmp'); } catch {}
-    return `SKIP|${e.message}`;
+    return { status: 'skip', reason: 'snapshot_failed', detail: e.message };
   }
 }
 
@@ -391,16 +392,13 @@ if (import.meta.main) {
     // Fail-open, unlike the finalize path below: a missing snapshot degrades the
     // audit to version-only (reported as audit_scope), and must never stop an upgrade.
     // Same state-dir pin — the sealed grant covers every argument to this script —
-    // but a foreign dir SKIPs instead of exiting 1: declining to write is already the
+    // but a foreign dir skips instead of exiting 1: declining to write is already the
     // outcome the pin exists to force, and a non-zero exit here would read to the
     // runner as an upgrade failure.
     const pinned = assertStateDir(hermitDir);
-    process.stdout.write(
-      (pinned
-        ? writeSnapshot(pinned, core)
-        : `SKIP|state dir must be this project's; got ${hermitDir}`) + '\n',
-    );
-    process.exit(0);
+    emitJson(pinned
+      ? writeSnapshot(pinned, core)
+      : { status: 'skip', reason: 'foreign_state_dir', detail: `state dir must be this project's; got ${hermitDir}` });
   }
 
   let result: FinalizeResult;

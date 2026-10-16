@@ -280,9 +280,17 @@ function seedMonitor(hermit: string, opts: { interval?: number; startedAt?: stri
   }
 }
 
-const lines = (s: string) => s.trimEnd().split('\n');
+const json = (s: string) => JSON.parse(s);
 
 describe('heartbeat control verbs', () => {
+  // heartbeat-monitor.sh always passes its dir and falls back to 1800 on any
+  // non-integer `interval` output, so a missing dir is a plain usage failure.
+  test('a missing hermit dir is a usage failure', async () => {
+    const r = await runScript('heartbeat.ts', { args: ['start-check'] });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'usage' });
+  });
+
   test('interval resolves a twelve-hour heartbeat to seconds', async () => {
     const dir = fixture({ config: { heartbeat: { every: '12h' } } });
     expect(await run('interval', [dir])).toBe('43200\n');
@@ -305,10 +313,10 @@ describe('heartbeat control verbs', () => {
 });
 
 describe('heartbeat start-check', () => {
-  test('guest start-check emits only GUEST and writes no control record', async () => {
+  test('guest start-check emits only the guest verdict and writes no control record', async () => {
     const dir = fixture();
     fs.writeFileSync(path.join(dir, 'state/.guest-test-guest'), NOW);
-    expect(await run('start-check', [dir, '--session-id', 'test-guest'])).toBe('GUEST|native-monitors-resident-only\n');
+    expect(await run('start-check', [dir, '--session-id', 'test-guest'])).toBe('{"status":"guest","reason":"native_monitors_resident_only"}\n');
     expect(fs.existsSync(path.join(dir, 'state/heartbeat-monitor.control.json'))).toBe(false);
   });
 
@@ -318,7 +326,7 @@ describe('heartbeat start-check', () => {
     const file = path.join(dir, 'state/heartbeat-monitor.runtime.json');
     write(dir, 'state/heartbeat-monitor.runtime.json', { ...read(file), command: 'old-command' });
     write(dir, 'state/heartbeat-liveness.json', { pid: process.pid });
-    expect(await run('start-check', [dir])).toBe('RESTART_REQUIRED|command-drift\n');
+    expect(json(await run('start-check', [dir]))).toEqual({ status: 'restart_required', reason: 'command_drift' });
   });
 
   test('native re-arm preserves the liveness record', async () => {
@@ -330,47 +338,47 @@ describe('heartbeat start-check', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
   });
 
-  test('FRESH short-circuits a healthy monitor — no re-arm plan at all', async () => {
+  test('fresh short-circuits a healthy monitor: no re-arm plan at all', async () => {
     const hermit = fixture();
     seedMonitor(hermit);
-    expect(lines(await run('start-check', [hermit]))).toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit]))).toEqual({ status: 'fresh', interval: 1800 });
   });
 
-  test('a registration from the sha-suffixed sibling cache dir reads FRESH', async () => {
+  test('a registration from the sha-suffixed sibling cache dir reads fresh', async () => {
     const hermit = fixture();
     seedMonitor(hermit);
     const file = path.join(hermit, 'state/heartbeat-monitor.runtime.json');
     write(hermit, 'state/heartbeat-monitor.runtime.json',
       { ...read(file), command: monitorCommand(hermit).replace('"/scripts/', '-5954e0f6849a"/scripts/') });
-    expect(lines(await run('start-check', [hermit]))).toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit]))).toEqual({ status: 'fresh', interval: 1800 });
   });
 
   test('interval drift plans activation with the config interval', async () => {
     const hermit = fixture({ config: { timezone: 'UTC', heartbeat: { every: '10m', active_hours: ALWAYS_ON } } });
     seedMonitor(hermit); // registered at 1800s, config now says 600s
-    const out = lines(await run('start-check', [hermit]));
-    expect(out[0]).toBe('REARM|interval-drift');
-    expect(out.some(l => l.startsWith('OLD_TASK:'))).toBe(false);
-    expect(out).toContain('INTERVAL:600');
-    expect(out).toContain('ACTIVATE:/hermitd:monitor-activate');
-    expect(out).not.toContain('FIRST_START:1');
+    const out = json(await run('start-check', [hermit]));
+    expect(out).toMatchObject({ status: 'rearm', reason: 'interval_drift' });
+    expect(JSON.stringify(out)).not.toContain('OLD_TASK');
+    expect(out.interval).toBe(600);
+    expect(out.activate).toBe('/hermitd:monitor-activate');
+    expect(out.first_start).toBeUndefined();
   });
 
-  test('no prior registration is a FIRST_START re-arm', async () => {
-    const out = lines(await run('start-check', [fixture()]));
-    expect(out[0]).toBe('REARM|runtime-missing');
-    expect(out).toContain('FIRST_START:1');
-    expect(out.some(l => l.startsWith('OLD_TASK:'))).toBe(false);
+  test('no prior registration is a first_start re-arm', async () => {
+    const out = json(await run('start-check', [fixture()]));
+    expect(out).toMatchObject({ status: 'rearm', reason: 'runtime_missing' });
+    expect(out.first_start).toBe(true);
+    expect(JSON.stringify(out)).not.toContain('OLD_TASK');
   });
 
   // An arm abandoned before start-commit leaves no `started_at` behind. That is still
   // "never registered", not a drifted interval.
-  test('an abandoned arm still reads as a FIRST_START re-arm', async () => {
+  test('an abandoned arm still reads as a first_start re-arm', async () => {
     const hermit = fixture();
     await run('start-check', [hermit]);
-    const out = lines(await run('start-check', [hermit]));
-    expect(out[0]).toBe('REARM|runtime-missing');
-    expect(out).toContain('FIRST_START:1');
+    const out = json(await run('start-check', [hermit]));
+    expect(out).toMatchObject({ status: 'rearm', reason: 'runtime_missing' });
+    expect(out.first_start).toBe(true);
   });
 
   // A trusted tick (later than started_at) that has since aged past 3× the interval.
@@ -380,14 +388,14 @@ describe('heartbeat start-check', () => {
       startedAt: new Date(NOW_MS - 5 * 3600_000).toISOString(),
       lastPeek: new Date(NOW_MS - 4 * 3600_000).toISOString(),
     });
-    expect(lines(await run('start-check', [hermit]))[0]).toBe('REARM|liveness-stale');
+    expect(json(await run('start-check', [hermit]))).toMatchObject({ status: 'rearm', reason: 'liveness_stale' });
   });
 
   // A tick left by a PRIOR monitor is not evidence this one is alive.
   test('a liveness record predating the registration re-arms', async () => {
     const hermit = fixture();
     seedMonitor(hermit, { lastPeek: new Date(NOW_MS - 4 * 3600_000).toISOString() });
-    expect(lines(await run('start-check', [hermit]))[0]).toBe('REARM|liveness-predates-start');
+    expect(json(await run('start-check', [hermit]))).toMatchObject({ status: 'rearm', reason: 'liveness_predates_start' });
   });
 
   // A Monitor dies with the session that registered it, but its last tick is only
@@ -397,27 +405,27 @@ describe('heartbeat start-check', () => {
     const hermit = fixture();
     seedMonitor(hermit, { bootId: 'boot-old' });
     fs.writeFileSync(path.join(hermit, 'state', '.boot-id'), 'boot-new\n');
-    const out = lines(await run('start-check', [hermit]));
-    expect(out[0]).toBe('REARM|boot-mismatch');
+    const out = json(await run('start-check', [hermit]));
+    expect(out).toMatchObject({ status: 'rearm', reason: 'boot_mismatch' });
     // That task died with the process that registered it, so a TaskStop on it is a
     // guaranteed `No task found` error call — one per boot, on every hermit.
-    expect(out.some(l => l.startsWith('OLD_TASK:'))).toBe(false);
+    expect(JSON.stringify(out)).not.toContain('OLD_TASK');
   });
 
   test('a re-arm within the same boot never stops a task', async () => {
     const hermit = fixture({ config: { timezone: 'UTC', heartbeat: { every: '10m', active_hours: ALWAYS_ON } } });
     seedMonitor(hermit, { bootId: 'boot-a' }); // registered at 1800s, config now says 600s
     fs.writeFileSync(path.join(hermit, 'state', '.boot-id'), 'boot-a\n');
-    const out = lines(await run('start-check', [hermit]));
-    expect(out[0]).toBe('REARM|interval-drift');
-    expect(out.some(l => l.startsWith('OLD_TASK:'))).toBe(false);
+    const out = json(await run('start-check', [hermit]));
+    expect(out).toMatchObject({ status: 'rearm', reason: 'interval_drift' });
+    expect(JSON.stringify(out)).not.toContain('OLD_TASK');
   });
 
-  test('a matching boot marker still reads FRESH', async () => {
+  test('a matching boot marker still reads fresh', async () => {
     const hermit = fixture();
     seedMonitor(hermit, { bootId: 'boot-a' });
     fs.writeFileSync(path.join(hermit, 'state', '.boot-id'), 'boot-a\n');
-    expect(lines(await run('start-check', [hermit]))).toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit]))).toEqual({ status: 'fresh', interval: 1800 });
   });
 
   // `disabled` reads healthy to the daily anchor, which must leave a deliberately
@@ -425,7 +433,7 @@ describe('heartbeat start-check', () => {
   test('heartbeat.enabled=false still re-arms on an explicit start', async () => {
     const hermit = fixture({ config: { timezone: 'UTC', heartbeat: { enabled: false, every: '30m', active_hours: ALWAYS_ON } } });
     seedMonitor(hermit);
-    expect(lines(await run('start-check', [hermit]))[0]).toBe('REARM|disabled');
+    expect(json(await run('start-check', [hermit]))).toMatchObject({ status: 'rearm', reason: 'disabled' });
   });
 });
 
@@ -433,7 +441,7 @@ describe('heartbeat start-commit', () => {
   test('a live supervisor proves liveness without a tick', async () => {
     const dir = fixture();
     write(dir, 'state/heartbeat-liveness.json', { pid: process.pid });
-    expect(await run('start-commit', [dir, 'native'])).toBe('OK|registered|interval=1800\n');
+    expect(json(await run('start-commit', [dir, 'native']))).toEqual({ status: 'registered', interval: 1800 });
   });
 
   test('records the registration without writing the frozen Monitoring section', async () => {
@@ -441,7 +449,7 @@ describe('heartbeat start-commit', () => {
     write(hermit, 'state/heartbeat-liveness.json', { last_peek_at: NOW });
     fs.writeFileSync(path.join(hermit, 'state', '.boot-id'), 'boot-a\n');
 
-    expect(lines(await run('start-commit', [hermit, 'native']))).toEqual(['OK|registered|interval=1800']);
+    expect(json(await run('start-commit', [hermit, 'native']))).toEqual({ status: 'registered', interval: 1800 });
     const runtime = read(path.join(hermit, 'state', 'heartbeat-monitor.runtime.json'));
     expect(runtime).toMatchObject({
       description: 'heartbeat-monitor',
@@ -455,9 +463,9 @@ describe('heartbeat start-commit', () => {
 
   // A subprocess blocked by seccomp / nested-userns never writes liveness. The
   // registration is still recorded so `stop` and the doctor can inspect its state.
-  test('a monitor that never ticks reports DEAD and writes no Monitoring line', async () => {
+  test('a monitor that never ticks reports dead and writes no Monitoring line', async () => {
     const hermit = fixture();
-    expect(lines(await run('start-commit', [hermit, 'native']))).toEqual(['DEAD|liveness-absent']);
+    expect(json(await run('start-commit', [hermit, 'native']))).toEqual({ status: 'dead', reason: 'liveness_absent' });
     const runtime = read(path.join(hermit, 'state', 'heartbeat-monitor.runtime.json'));
     expect(runtime.launch).toBe('native');
     expect(runtime.task_id).toBeUndefined();
@@ -476,8 +484,8 @@ describe('heartbeat start-commit', () => {
     await run('start-commit', [hermit, 'native']);
     const runtime = read(path.join(hermit, 'state', 'heartbeat-monitor.runtime.json'));
     expect(Date.parse(runtime.started_at)).toBe(NOW_MS);
-    expect(lines(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:05:00Z' })))
-      .toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:05:00Z' })))
+      .toEqual({ status: 'fresh', interval: 1800 });
   });
 
   // A tick predating started_at is tolerated for one interval (1800 + 60 = 1860s here),
@@ -489,11 +497,11 @@ describe('heartbeat start-commit', () => {
     expect(Date.parse(read(path.join(hermit, 'state', 'heartbeat-monitor.runtime.json')).started_at))
       .toBe(NOW_MS);
     // 12:30:00 — inside the 1860s grace.
-    expect(lines(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:30:00Z' })))
-      .toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:30:00Z' })))
+      .toEqual({ status: 'fresh', interval: 1800 });
     // 12:35:00 — past it.
-    expect(lines(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:35:00Z' }))[0])
-      .toBe('REARM|liveness-predates-start');
+    expect(json(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:35:00Z' })))
+      .toMatchObject({ status: 'rearm', reason: 'liveness_predates_start' });
   });
 
   // The split that keeps the wider grace honest: no tick at all means the subprocess
@@ -503,11 +511,11 @@ describe('heartbeat start-commit', () => {
     const hermit = fixture();
     seedMonitor(hermit, { startedAt: NOW, lastPeek: null });
     // 12:01:00 — inside the spawn grace.
-    expect(lines(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:01:00Z' })))
-      .toEqual(['FRESH|interval=1800']);
+    expect(json(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:01:00Z' })))
+      .toEqual({ status: 'fresh', interval: 1800 });
     // 12:05:00 — past it, and well short of the 1860s predates-grace.
-    expect(lines(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:05:00Z' }))[0])
-      .toBe('REARM|liveness-absent');
+    expect(json(await run('start-check', [hermit], { HERMIT_NOW: '2026-07-10T12:05:00Z' })))
+      .toMatchObject({ status: 'rearm', reason: 'liveness_absent' });
   });
 
   test('the record it writes reads as healthy to the routine anchor', async () => {

@@ -94,18 +94,20 @@ describe('rebuildIndex', () => {
 });
 
 describe('CLI verdict', () => {
-  test('OK|<n> proposals with a proposals dir', async () => {
+  test('count with a proposals dir', async () => {
     const dir = makeDir();
     writeProposal(dir, 'PROP-001-a-120000.md', fm({ status: 'proposed' }) + '# Proposal: PROP-001 — A\n');
     const r = await runScript('proposal.ts', { args: ['index', '.hermit'], cwd: dir });
-    expect(r.stdout.trim()).toBe('OK|1 proposals');
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ count: 1 });
   });
 
-  test('SKIP|no proposals dir when absent', async () => {
+  test('skip when the proposals dir is absent', async () => {
     const dir = freshNoProp();
     fs.mkdirSync(hermit(dir, 'state'), { recursive: true });
     const r = await runScript('proposal.ts', { args: ['index', '.hermit'], cwd: dir });
-    expect(r.stdout.trim()).toBe('SKIP|no proposals dir');
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'no_proposals_dir' });
   });
 });
 

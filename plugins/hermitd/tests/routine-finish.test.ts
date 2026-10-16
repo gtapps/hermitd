@@ -62,14 +62,14 @@ describe('routines.ts finish — routines with no artifact contract', () => {
     await precheck(dir, 'plain');
     const r = await finish(dir, 'plain');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'plain')).toEqual(['started', 'fired']);
   }));
 
   test('logs fired even with no run record and no config at all', withDir(async (dir) => {
     const r = await finish(dir, 'orphan');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'orphan')).toEqual(['fired']);
   }));
 });
@@ -85,7 +85,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     await precheck(dir, 'cal');
     writeArtifact(dir, `raw/snapshot-calendar-${todayUTC()}.md`, 'fresh events\n');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'fired']);
   }));
 
@@ -93,7 +93,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     writeConfig(dir, declared());
     await precheck(dir, 'cal');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe(`failed|artifact-missing|raw/snapshot-calendar-${todayUTC()}.md`);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'failed', reason: 'artifact_missing', detail: `raw/snapshot-calendar-${todayUTC()}.md` });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing']);
     expect(events(dir, 'cal')).not.toContain('fired');
   }));
@@ -105,7 +105,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     writeArtifact(dir, `raw/snapshot-calendar-${todayUTC()}.md`, 'yesterday-ish content\n');
     await precheck(dir, 'cal');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe(`failed|artifact-unchanged|raw/snapshot-calendar-${todayUTC()}.md`);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'failed', reason: 'artifact_unchanged', detail: `raw/snapshot-calendar-${todayUTC()}.md` });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-unchanged']);
   }));
 
@@ -116,7 +116,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     await precheck(dir, 'cal');
     writeArtifact(dir, rel, 'new content, different size\n');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'fired']);
   }));
 
@@ -126,7 +126,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     const real = writeArtifact(dir, 'raw/elsewhere.md', 'content\n');
     fs.symlinkSync(real, hermit(dir, `raw/snapshot-calendar-${todayUTC()}.md`));
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toContain('failed|artifact-missing');
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'failed', reason: 'artifact_missing' });
   }));
 
   test('missing run record for a declared contract → verification-error, never fired', withDir(async (dir) => {
@@ -135,7 +135,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     // not be enough, because nothing proves this run produced it.
     writeArtifact(dir, `raw/snapshot-calendar-${todayUTC()}.md`, 'unattributable\n');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toContain('failed|verification-error|');
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'failed', reason: 'verification_error' });
     expect(events(dir, 'cal')).toEqual(['failed-verification-error']);
   }));
 
@@ -145,8 +145,8 @@ describe('routines.ts finish — declared artifact contract', () => {
     writeArtifact(dir, `raw/snapshot-calendar-${todayUTC()}.md`, 'written\n');
     const first = await finish(dir, 'cal');
     const second = await finish(dir, 'cal');
-    expect(first.stdout.trim()).toBe('fired');
-    expect(second.stdout.trim()).toBe('fired');
+    expect(first.stdout.trim()).toBe('{"status":"fired"}');
+    expect(second.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'fired']);
   }));
 
@@ -155,7 +155,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     await precheck(dir, 'cal');
     await finish(dir, 'cal');
     const second = await finish(dir, 'cal');
-    expect(second.stdout.trim()).toContain('failed|artifact-missing');
+    expect(JSON.parse(second.stdout)).toMatchObject({ status: 'failed', reason: 'artifact_missing' });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing']);
   }));
 
@@ -171,7 +171,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     writeConfig(dir, [{ id: 'cal', schedule: '0 6 * * *', skill: 'calendar-fetch-light', enabled: true }]);
     await precheck(dir, 'cal');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing', 'started', 'fired']);
     expect(JSON.parse(fs.readFileSync(hermit(dir, 'state', 'routine-run.json'), 'utf-8')).cal).toBeUndefined();
   }));
@@ -184,7 +184,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     await precheck(dir, 'cal');
     expect(fs.existsSync(hermit(dir, 'state', 'routine-run.json'))).toBe(false);
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toContain('failed|verification-error|');
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'failed', reason: 'verification_error' });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-verification-error']);
   }));
 
@@ -196,7 +196,7 @@ describe('routines.ts finish — declared artifact contract', () => {
     await precheck(dir, 'cal');
     writeArtifact(dir, rel, 'this time it wrote\n');
     const r = await finish(dir, 'cal');
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing', 'started', 'fired']);
   }));
 });
@@ -204,7 +204,7 @@ describe('routines.ts finish — declared artifact contract', () => {
 describe('routines.ts finish — outcome line on stdin', () => {
   test('finishes with an open stdin pipe without an outcome flag', withDir(async (dir) => {
     const r = await runScript('routines.ts', { args: ['finish', 'plain', 'monitor'], cwd: dir, openStdin: true });
-    expect(r.stdout.trim()).toBe('fired');
+    expect(r.stdout.trim()).toBe('{"status":"fired"}');
     expect(r.exitCode).toBe(0);
   }));
 
@@ -216,10 +216,10 @@ describe('routines.ts finish — outcome line on stdin', () => {
     await precheck(dir, 'cal');
     writeArtifact(dir, `raw/s-${todayUTC()}.md`, 'fresh content\n');
 
-    expect((await finish(dir, 'cal', 'calendar snapshot refreshed\n')).stdout.trim()).toBe('fired');
+    expect((await finish(dir, 'cal', 'calendar snapshot refreshed\n')).stdout.trim()).toBe('{"status":"fired"}');
 
     // The re-triggered fire replays the recorded outcome; it is not a second fire.
-    expect((await finish(dir, 'cal', 'calendar snapshot refreshed\n')).stdout.trim()).toBe('fired');
+    expect((await finish(dir, 'cal', 'calendar snapshot refreshed\n')).stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'fired']);
     expect(fs.existsSync(hermit(dir, 'sessions', 'SHELL.md'))).toBe(false);
   }));
@@ -231,14 +231,14 @@ describe('routines.ts finish — outcome line on stdin', () => {
     writeConfig(dir, [{ id: 'plain', schedule: '0 9 * * *', skill: 'x', enabled: true }]);
     await precheck(dir, 'plain');
 
-    expect((await finish(dir, 'plain', 'plain routine did the thing\n')).stdout.trim()).toBe('fired');
+    expect((await finish(dir, 'plain', 'plain routine did the thing\n')).stdout.trim()).toBe('{"status":"fired"}');
 
-    expect((await finish(dir, 'plain', 'plain routine did the thing\n')).stdout.trim()).toBe('fired');
+    expect((await finish(dir, 'plain', 'plain routine did the thing\n')).stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'plain').filter((e) => e === 'fired')).toHaveLength(1);
 
     // A genuine next fire still lands its own row: precheck's `started` clears the replay.
     await precheck(dir, 'plain');
-    expect((await finish(dir, 'plain', 'plain routine ran again\n')).stdout.trim()).toBe('fired');
+    expect((await finish(dir, 'plain', 'plain routine ran again\n')).stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'plain').filter((e) => e === 'fired')).toHaveLength(2);
   }));
 
@@ -247,7 +247,7 @@ describe('routines.ts finish — outcome line on stdin', () => {
     await precheck(dir, 'plain');
 
     const r = await finish(dir, 'plain', '   \n');
-    expect(r.stdout).toBe('fired\n');
+    expect(r.stdout).toBe('{"status":"fired"}\n');
     expect(fs.existsSync(hermit(dir, 'sessions', 'SHELL.md'))).toBe(false);
   }));
 
@@ -257,7 +257,7 @@ describe('routines.ts finish — outcome line on stdin', () => {
     ]);
     await precheck(dir, 'cal');
     const r = await finish(dir, 'cal', 'calendar fetch produced nothing\n');
-    expect(r.stdout.trim()).toMatch(/^failed\|artifact-missing\|/);
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'failed', reason: 'artifact_missing' });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing']);
   }));
 });
@@ -292,7 +292,13 @@ describe('routines.ts finish — run record', () => {
     ]);
     setPause(hermit(dir), { reason: 'operator', by: 'test' });
     const r = await runScript('routines.ts', { args: ['precheck', 'cal'], cwd: dir });
-    expect(r.stdout.trim()).toBe('SKIP');
+    expect(r.stdout.trim()).toBe('{"status":"skip"}');
     expect(fs.existsSync(hermit(dir, 'state', 'routine-run.json'))).toBe(false);
   }));
 });
+
+test('finish without a routine id is a usage failure', withDir(async (dir) => {
+  const r = await runScript('routines.ts', { args: ['finish'], cwd: dir });
+  expect(r.exitCode).toBe(1);
+  expect(JSON.parse(r.stdout)).toEqual({ error: 'usage' });
+}));

@@ -30,21 +30,6 @@ describe('hermitd-pause CLI', () => {
     expect(r.stdout).toContain('not paused');
   }));
 
-  // --quiet: a single deterministic token (PAUSED/OK) for scripted/prompt-template
-  // checks — mirrors heartbeat-precheck's SKIP|OK|EVALUATE and reflect-precheck's
-  // EMPTY|RUN convention. Consumed by hermit-routines/SKILL.md's pause consult.
-  test('status --quiet — OK when unpaused', withDir(async (dir) => {
-    const r = await run(['status', '--quiet'], dir);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('OK');
-  }));
-
-  test('status --quiet — PAUSED when paused', withDir(async (dir) => {
-    await run(['on'], dir);
-    const r = await run(['status', '--quiet'], dir);
-    expect(r.stdout.trim()).toBe('PAUSED');
-  }));
-
   test('on — pauses indefinitely', withDir(async (dir) => {
     const r = await run(['on'], dir);
     expect(r.exitCode).toBe(0);

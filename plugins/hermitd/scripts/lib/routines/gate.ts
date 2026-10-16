@@ -9,9 +9,9 @@
 //
 // Providers:
 //   "reflect"      — the shipped reflect cadence check (scripts/reflect-precheck.ts),
-//                    which already decides EMPTY vs RUN|<phases> from state on disk.
-//                    Its RUN phases are cached in state/reflect-gate.json so the
-//                    awake skill does not re-run it (that would double the script's
+//                    which already decides empty vs run from state on disk. Its run
+//                    verdict JSON is cached in state/reflect-gate.json so the awake
+//                    skill does not re-run it (that would double the script's
 //                    observation-ledger append).
 //   "doctor"       — runs doctor-check.ts --gate: SKIP when escalation.new is empty
 //                    and the ledger is healthy, WAKE otherwise. The gate run IS the
@@ -41,8 +41,8 @@ export type GateVerdict = {
   verdict: 'skip' | 'wake' | 'error';
   /** Present on `error`: timeout | exit:<code> | bad-verdict | spawn | <config reason>. */
   detail?: string;
-  /** Present on a reflect `wake`: the RUN|<phases-json> line for the skill. */
-  phases?: string;
+  /** Present on a reflect `wake`: reflect-precheck's parsed run verdict for the skill. */
+  reflect?: Json;
 };
 
 export const BUILTIN_REFLECT = 'reflect';
@@ -220,12 +220,12 @@ function spawnGate(
 }
 
 /**
- * Where the reflect provider parks its RUN phases for the awake skill.
+ * Where the reflect provider parks its run verdict for the awake skill.
  *
  * Keyed by routine id, not by cron mark alone: nothing stops two routines from both
  * declaring `precheck: "reflect"` and coming due in the same minute, and a flat
- * `{ mark, phases }` file would let the second overwrite the first — the mark check
- * in precheck.ts passes for both, so one routine would consume the other's phases.
+ * `{ mark, reflect }` file would let the second overwrite the first: the mark check
+ * in precheck.ts passes for both, so one routine would consume the other's verdict.
  */
 export function reflectGatePath(hermitDir: string): string {
   return path.join(hermitDir, 'state', 'reflect-gate.json');
@@ -240,18 +240,18 @@ function readReflectGateFile(hermitDir: string): Json {
   }
 }
 
-export function readReflectGate(hermitDir: string, routineId: string): { mark?: string; phases?: string } | null {
+export function readReflectGate(hermitDir: string, routineId: string): { mark?: string; reflect?: Json } | null {
   const entry = readReflectGateFile(hermitDir)?.[routineId];
   return entry && typeof entry === 'object' ? entry : null;
 }
 
-function writeReflectGate(hermitDir: string, routineId: string, mark: string, phases: string): void {
+function writeReflectGate(hermitDir: string, routineId: string, mark: string, reflect: Json): void {
   try {
     const p = reflectGatePath(hermitDir);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     // Read-modify-write is safe here: the routine monitor polls its due routines
     // sequentially in one process, so there is no second writer to race.
-    const next = { ...(readReflectGateFile(hermitDir) || {}), [routineId]: { mark, phases } };
+    const next = { ...(readReflectGateFile(hermitDir) || {}), [routineId]: { mark, reflect } };
     writeFileAtomic(p, JSON.stringify(next, null, 2) + '\n');
   } catch { /* the wake still happens; the skill falls back to running the precheck itself */ }
 }
@@ -272,10 +272,12 @@ function runReflectGate(hermitDir: string, routineId: string, timeoutMs: number,
     path.join(hermitDir, 'state'),
   );
   if (!ok) return { verdict: 'error', detail: detail || 'spawn' };
-  if (firstLine === 'EMPTY') return { verdict: 'skip' };
-  if (firstLine.startsWith('RUN|')) {
-    writeReflectGate(hermitDir, routineId, mark, firstLine);
-    return { verdict: 'wake', phases: firstLine };
+  let reflect: Json = null;
+  try { reflect = JSON.parse(firstLine); } catch { /* bad-verdict below */ }
+  if (reflect?.status === 'empty') return { verdict: 'skip' };
+  if (reflect?.status === 'run') {
+    writeReflectGate(hermitDir, routineId, mark, reflect);
+    return { verdict: 'wake', reflect };
   }
   return { verdict: 'error', detail: 'bad-verdict' };
 }

@@ -9,7 +9,7 @@ for (const cmd of ["printf evidence; test -d .hermit", "printf failure >&2; exit
     const env = { LATER_CHECK_TIMEOUT_MS: '100' };
     const added = await runScript('later.ts', { cwd: dir, args: ['add', path.join(dir, '.hermit'), '--claim', 'fixture check', '--cmd', cmd, '--due', '2026-09-16T00:00:00Z', '--origin', 'operator'] });
     expect(added.exitCode).toBe(0);
-    const id = added.stdout.trim().split('|')[1];
+    const id = JSON.parse(added.stdout).id;
     const checked = await runScript('later.ts', { cwd: dir, env, args: ['check', path.join(dir, '.hermit'), id] });
     expect(checked.exitCode).toBe(0);
     const { exit, output, timed_out } = JSON.parse(checked.stdout);

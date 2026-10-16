@@ -287,13 +287,13 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toBe('EMPTY');
+      expect(verdict).toBe('{"status":"empty"}');
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
     }
   });
 
-  test('RUN|{observations_fresh:true} when ledger has row newer than last_run_at', async () => {
+  test('run with observations_fresh when ledger has row newer than last_run_at', async () => {
     const lastRunAt = new Date(Date.now() - 3600_000).toISOString(); // 1h ago
     const freshTs = new Date().toISOString();
 
@@ -303,8 +303,8 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toMatch(/^RUN\|/);
-      const phases = JSON.parse(verdict.slice(4));
+      expect(JSON.parse(verdict).status).toBe('run');
+      const phases = JSON.parse(verdict).phases;
       expect(phases.observations_fresh).toBe(true);
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
@@ -321,7 +321,7 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toBe('EMPTY');
+      expect(verdict).toBe('{"status":"empty"}');
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
     }
@@ -334,8 +334,8 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toMatch(/^RUN\|/);
-      const phases = JSON.parse(verdict.slice(4));
+      expect(JSON.parse(verdict).status).toBe('run');
+      const phases = JSON.parse(verdict).phases;
       expect(phases.observations_fresh).toBe(true);
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
@@ -352,7 +352,7 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toBe('EMPTY');
+      expect(verdict).toBe('{"status":"empty"}');
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
     }
@@ -368,8 +368,8 @@ describe('reflect-precheck: freshness RUN gate', () => {
     });
     try {
       const verdict = await runPrecheck(hermitDir);
-      expect(verdict).toMatch(/^RUN\|/);
-      const phases = JSON.parse(verdict.slice(4));
+      expect(JSON.parse(verdict).status).toBe('run');
+      const phases = JSON.parse(verdict).phases;
       expect(phases.observations_fresh).toBe(true);
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
@@ -384,7 +384,7 @@ describe('reflect-precheck: freshness RUN gate', () => {
 
       const verdict = await runPrecheck(hermitDir);
       // Should be RUN (either from observations_fresh or other phases)
-      expect(verdict).toMatch(/^RUN\|/);
+      expect(JSON.parse(verdict).status).toBe('run');
     } finally {
       fs.rmSync(hermitDir, { recursive: true, force: true });
     }
@@ -542,24 +542,24 @@ describe('reflect-precheck: behavior phase', () => {
 
   test('fires when the behavior cursor is unset (first run)', async () => {
     const verdict = await runPrecheck(withBehaviorCursor(undefined));
-    expect(verdict.startsWith('RUN|')).toBe(true);
-    expect(JSON.parse(verdict.slice(4)).behavior).toBe(true);
+    expect(JSON.parse(verdict).status).toBe('run');
+    expect(JSON.parse(verdict).phases.behavior).toBe(true);
   });
 
   test('fires when the behavior cursor is older than 7 days', async () => {
     const verdict = await runPrecheck(withBehaviorCursor(daysAgo(10)));
-    expect(verdict.startsWith('RUN|')).toBe(true);
-    expect(JSON.parse(verdict.slice(4)).behavior).toBe(true);
+    expect(JSON.parse(verdict).status).toBe('run');
+    expect(JSON.parse(verdict).phases.behavior).toBe(true);
   });
 
   test('does not fire when the behavior cursor is within 7 days', async () => {
     const verdict = await runPrecheck(withBehaviorCursor(daysAgo(2)));
     // Other phases stay quiet (recent last_run_at, no proposals/costs/observations),
     // so this collapses to EMPTY; behavior must not be present either way.
-    if (verdict.startsWith('RUN|')) {
-      expect(JSON.parse(verdict.slice(4)).behavior).toBeUndefined();
+    if (JSON.parse(verdict).status === 'run') {
+      expect(JSON.parse(verdict).phases.behavior).toBeUndefined();
     } else {
-      expect(verdict).toBe('EMPTY');
+      expect(verdict).toBe('{"status":"empty"}');
     }
   });
 });
@@ -675,7 +675,7 @@ describe('reflect-precheck: cost-spike observation', () => {
   });
 
   // A whole-day total stays above the baseline for the rest of the day, so the
-  // measurement alone can't gate the phase — it would emit RUN|{cost_spike} on every
+  // measurement alone can't gate the phase: it would emit a cost_spike run on every
   // tick until midnight, each one an LLM run whose cost_spike step has nothing to read
   // (the row is already written). The phase is gated on the row's absence instead.
   test('a spike day costs exactly one RUN, not one per tick', async () => {
@@ -691,11 +691,11 @@ describe('reflect-precheck: cost-spike observation', () => {
 
     bumpLastRun();
     const first = await runPinnedScript('reflect-precheck.ts', hermitDir, [hermitDir, PLUGIN_ROOT]);
-    expect(JSON.parse(first.stdout.trim().slice(4)).cost_spike).toBe(true);
+    expect(JSON.parse(first.stdout).phases.cost_spike).toBe(true);
 
     bumpLastRun();
     const second = await runPinnedScript('reflect-precheck.ts', hermitDir, [hermitDir, PLUGIN_ROOT]);
-    expect(second.stdout.trim()).toBe('EMPTY');
+    expect(second.stdout.trim()).toBe('{"status":"empty"}');
   });
 
   test('no row when the measured day is not a spike', async () => {

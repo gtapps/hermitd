@@ -42,7 +42,7 @@ async function pin(dir: string, bunVersion = '1.4.2', pluginVersion = '1.2.46') 
     cwd: dir,
     env: { AGENT_DIR: stateDir },
   });
-  return { ...r, verdict: r.stdout.trim() };
+  return { ...r, verdict: r.stdout ? JSON.parse(r.stdout) : null };
 }
 
 const dockerfile = (dir: string) => fs.readFileSync(path.join(dir, 'Dockerfile.hermit'), 'utf8');
@@ -54,7 +54,7 @@ describe('docker-bun-pin.ts', () => {
     const dir = project(LEGACY);
     const r = await pin(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.verdict).toBe('OK|converged');
+    expect(r.verdict).toEqual({ status: 'converged' });
 
     const out = dockerfile(dir);
     // bun leaves the npm line; Claude Code stays on it.
@@ -83,7 +83,7 @@ describe('docker-bun-pin.ts', () => {
   ])('converges %s', async (_label, contents, expectedLine) => {
     const dir = project(contents);
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|converged');
+    expect(r.verdict).toEqual({ status: 'converged' });
     expect(dockerfile(dir)).not.toMatch(/npm install -g bun/);
     expect(dockerfile(dir)).toContain(expectedLine);
   });
@@ -99,23 +99,23 @@ describe('docker-bun-pin.ts', () => {
   test('repins an older ARG pin, matching on the key not the value', async () => {
     const dir = project(TEMPLATE.replace('ARG BUN_VERSION=1.4.2', 'ARG BUN_VERSION=1.3.11'));
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|repinned 1.3.11->1.4.2');
+    expect(r.verdict).toEqual({ status: 'repinned', from: '1.3.11', to: '1.4.2' });
     expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.2');
   });
 
   test('leaves an already-pinned file untouched', async () => {
     const dir = project(TEMPLATE);
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|already-pinned');
+    expect(r.verdict).toEqual({ status: 'already_pinned' });
     expect(dockerfile(dir)).toBe(TEMPLATE);
   });
 
-  test('is idempotent — a second run reports already-pinned and changes nothing', async () => {
+  test('is idempotent: a second run reports already_pinned and changes nothing', async () => {
     const dir = project(LEGACY);
     await pin(dir);
     const once = dockerfile(dir);
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|already-pinned');
+    expect(r.verdict).toEqual({ status: 'already_pinned' });
     expect(dockerfile(dir)).toBe(once);
   });
 
@@ -123,7 +123,7 @@ describe('docker-bun-pin.ts', () => {
     const dir = project(null);
     const r = await pin(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.verdict).toBe('SKIP|absent');
+    expect(r.verdict).toEqual({ status: 'skip', reason: 'absent' });
   });
 
   // The genuine "operator restructured how bun is installed" case the 1.2.45
@@ -136,7 +136,7 @@ describe('docker-bun-pin.ts', () => {
     const dir = project(custom);
     const r = await pin(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.verdict).toBe('DEFER|unrecognized bun install shape');
+    expect(r.verdict).toEqual({ status: 'defer', reason: 'unrecognized_bun_install_shape' });
     expect(dockerfile(dir)).toBe(custom);
   });
 
@@ -146,7 +146,7 @@ describe('docker-bun-pin.ts', () => {
   test('converges a dead ARG that no native installer reads', async () => {
     const dir = project(LEGACY.replace(/^ARG CLAUDE_CODE_VERSION=.*$/m, (l) => `ARG BUN_VERSION=1.4.2\n${l}`));
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|converged');
+    expect(r.verdict).toEqual({ status: 'converged' });
 
     const out = dockerfile(dir);
     expect(out).not.toMatch(/npm install -g bun/);
@@ -163,7 +163,7 @@ describe('docker-bun-pin.ts', () => {
     );
     const dir = project(custom);
     const r = await pin(dir);
-    expect(r.verdict).toBe('DEFER|unrecognized bun install shape');
+    expect(r.verdict).toEqual({ status: 'defer', reason: 'unrecognized_bun_install_shape' });
     expect(dockerfile(dir)).toBe(custom);
   });
 
@@ -177,7 +177,7 @@ describe('docker-bun-pin.ts', () => {
       cwd: freshDir(),
       env: { AGENT_DIR: stateDir },
     });
-    expect(r.stdout.trim()).toBe('OK|converged');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'converged' });
     expect(dockerfile(dir)).toContain('ARG BUN_VERSION=1.4.2');
   });
 
@@ -206,12 +206,12 @@ describe('docker-bun-pin.ts', () => {
   const STALE_TEMPLATE = TEMPLATE + '\n# generation behind\n';
   test.each([
     [
-      'OK|repinned',
+      'repinned',
       TEMPLATE.replace('ARG BUN_VERSION=1.4.2', 'ARG BUN_VERSION=1.3.11'),
       sha256(TEMPLATE),
     ],
     [
-      'OK|converged',
+      'converged',
       LEGACY,
       sha256(STALE_TEMPLATE),
     ],
@@ -234,7 +234,7 @@ describe('docker-bun-pin.ts', () => {
 
     const r = await pin(dir);
 
-    expect(r.verdict).toStartWith(verdict);
+    expect(r.verdict.status).toBe(verdict);
     const recorded = manifest(dir).files['docker/Dockerfile.hermit.template'].sha256;
     expect(recorded).toBe(expectedRecorded);
     expect(sha256(fs.readFileSync(pristinePath))).toBe(recorded);
@@ -247,7 +247,7 @@ describe('docker-bun-pin.ts', () => {
     const stale = { sha256: 'b'.repeat(64), plugin_version: '1.2.40' };
     const dir = project(LEGACY, { version: 1, files: { 'docker/Dockerfile.hermit.template': stale } });
     const r = await pin(dir);
-    expect(r.verdict).toBe('OK|converged');
+    expect(r.verdict).toEqual({ status: 'converged' });
     expect(manifest(dir).files['docker/Dockerfile.hermit.template']).toEqual(stale);
   });
 
@@ -260,7 +260,7 @@ describe('docker-bun-pin.ts', () => {
       files: { 'docker/Dockerfile.hermit.template': stale },
     });
     const r = await pin(dir);
-    expect(r.verdict).toBe('DEFER|unrecognized bun install shape');
+    expect(r.verdict).toEqual({ status: 'defer', reason: 'unrecognized_bun_install_shape' });
     expect(manifest(dir).files['docker/Dockerfile.hermit.template']).toEqual(stale);
   });
 

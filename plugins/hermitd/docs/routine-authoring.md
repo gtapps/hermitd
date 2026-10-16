@@ -70,7 +70,7 @@ produce a report.
    the skill body on the branch that needs it. The shipped archetypes:
    - `scripts/heartbeat.ts precheck`; emits `SKIP|<reason>`, `OK`, or `EVALUATE`.
      Only `EVALUATE` loads the heartbeat skill body.
-   - `scripts/reflect-precheck.ts` — emits `EMPTY` or `RUN|<phases-json>`. On `EMPTY` the precheck itself
+   - `scripts/reflect-precheck.ts`: emits status `empty` or `run` with its due `phases`. On `empty` the precheck itself
      owns the audit trail (updates `reflection-state.json`, appends the Progress Log line) so
      reflect's skill body never loads on a no-op day.
 

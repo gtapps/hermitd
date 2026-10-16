@@ -1585,7 +1585,7 @@ describe('hermit-routines plugin-root resolution contract', () => {
 //
 // Guards the `load` success path against regressing back to an unconditional
 // CronList/CronDelete-all/CronCreate-all sweep on every call. That sweep was
-// replaced by cron-registry.ts's plan/commit diff (see scripts/cron-registry.ts
+// replaced by the `routines.ts arm` plan/commit diff (see lib/routines/registry.ts
 // and its own test file, tests/cron-registry.test.ts, for the planner's pure
 // logic); `load --reset` keeps the old unconditional sweep as an explicit,
 // operator-invoked escape hatch — only the *default* path must not silently
@@ -1602,13 +1602,13 @@ describe('hermit-routines diff-registration contract', () => {
 
   // The saving is entirely in this branch: a healthy monitor must cost one script
   // call and a log line, not a teardown-and-rebuild the operator pays for daily.
-  test('SKILL.md documents the HEALTHY fast path as a full stop', () => {
-    expect(skillContent).toContain('HEALTHY|routines=');
+  test('SKILL.md documents the healthy fast path as a full stop', () => {
+    expect(skillContent).toContain('**`healthy`**');
     expect(skillContent).toContain('**Log that one line and stop.**');
   });
 
-  test('SKILL.md documents the KEEP-only fast path (no CronList/CronCreate/CronDelete)', () => {
-    expect(skillContent).toContain('KEEP:<n>');
+  test('SKILL.md documents the keep-only fast path (no CronList/CronCreate/CronDelete)', () => {
+    expect(skillContent).toContain('Empty `delete` and `create`');
     expect(skillContent).toContain('No `CronList`, no `CronCreate`, no `CronDelete` this run');
   });
 
@@ -1621,8 +1621,8 @@ describe('hermit-routines diff-registration contract', () => {
   // planner's promptHash is computed over the rendered text — a model-composed
   // one drifts and re-registers the anchor every day.
   test('SKILL.md uses the script-rendered anchor prompt verbatim', () => {
-    expect(skillContent).toContain('ANCHOR_PROMPT_BEGIN');
-    expect(skillContent).toContain('ANCHOR_PROMPT_END');
+    expect(skillContent).toContain('`anchor_prompt`');
+    expect(skillContent).toContain('used verbatim');
   });
 
   // Fallback-mode operational detail lives in reference.md, which `load` does not
@@ -1700,7 +1700,7 @@ describe('hermit-evolve delegation contract', () => {
 
   // Consumer half of `routines.ts arm`'s restart verdict.
   test('SKILL.md branches on the arm restart verdict', () => {
-    expect(skill).toContain('RESTART_REQUIRED|command-drift');
+    expect(skill).toContain('- `restart_required`: arm nothing');
   });
 
   test('evolve-runner omits Agent, web, and channel/MCP tools', () => {
@@ -3165,19 +3165,21 @@ describe('proposal-triage batch contract', () => {
   });
 
   test('reflect/branches.md parses the title-tagged triage verdict grammar', () => {
-    // Routed via the gate verb's PROCEED/DROP tokens rather than the raw agent
+    // Routed via the gate verb's JSON status rather than the raw agent
     // grammar directly — the raw `CREATE: <title>` line still flows into the
     // script's stdin (see the gate-verb invocation just above these lines).
-    expect(branches).toContain('PROCEED|CREATE');
-    expect(branches).toContain('DROP|DUPLICATE:<PROP-ID>');
-    expect(branches).toContain('DROP|SUPPRESS:<code>');
+    expect(branches).toContain('- `create`: proceed');
+    expect(branches).toContain('- `duplicate`: link to the existing proposal `id`');
+    expect(branches).toContain('- `suppress`: drop silently');
+    expect(branches).toContain('`{"error":"gate_failed"}`');
   });
 
   test('proposal-create/SKILL.md documents its call as a batch of one and parses the new grammar', () => {
     expect(proposalCreate).toContain('batch of one');
-    expect(proposalCreate).toContain('PROCEED|CREATE');
-    expect(proposalCreate).toContain('DROP|DUPLICATE:<PROP-ID>');
-    expect(proposalCreate).toContain('DROP|SUPPRESS:<code>');
+    expect(proposalCreate).toContain('- `create`: proceed');
+    expect(proposalCreate).toContain('- `duplicate`: stop');
+    expect(proposalCreate).toContain('- `suppress`: stop');
+    expect(proposalCreate).toContain('`{"error":"gate_failed"}`');
   });
 
   test('capability-brainstorm/SKILL.md parses proposal-create outcome with the title-tagged grammar', () => {
@@ -3384,10 +3386,10 @@ describe('heartbeat eval-runner return contract', () => {
     expect(skill).toContain('--mark-budget-notified <mark_key>');
   });
 
-  test('SKILL.md start short-circuits on FRESH and commits the task id', () => {
+  test('SKILL.md start short-circuits on fresh and commits the task id', () => {
     expect(skill).toContain('scripts/heartbeat.ts start-check');
     expect(skill).toContain('scripts/heartbeat.ts start-commit');
-    expect(skill).toContain('FRESH|interval=');
+    expect(skill).toContain('- `fresh`: log the line and stop');
   });
 
   // Issue #690: this guard used to read only heartbeat's two files, so when

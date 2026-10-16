@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readFileWithFrontmatter, globDir } from '../frontmatter';
-import { emit } from '../cli';
+import { emitJson } from '../cli';
 
 type Json = any;
 
@@ -140,8 +140,9 @@ export function rebuildIndex(stateDir: string, bodyOut?: Map<string, string>): P
   return index;
 }
 
-// `proposal.ts index <stateDir>` — full rebuild, one bounded verdict line.
+// `proposal.ts index <stateDir>`: full rebuild, one bounded verdict line:
+// `{"count":<n>}`, or `{"status":"skip","reason":"no_proposals_dir"}`.
 export function run(stateDir: string): never {
   const index = rebuildIndex(stateDir);
-  emit(index ? `OK|${index.count} proposals` : 'SKIP|no proposals dir');
+  emitJson(index ? { count: index.count } : { status: 'skip', reason: 'no_proposals_dir' });
 }

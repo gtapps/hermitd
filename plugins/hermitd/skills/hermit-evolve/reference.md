@@ -76,7 +76,7 @@ Before entering either the full or sibling-only path, initialize `context_reload
 
 Run `evolve-snapshot` (Commands) with arguments `--core=<to>`.
 
-Step 2b migrations write `config.json` (through settings-edit) before the finalizer runs; without this snapshot, the finalizer's audit `before` is taken after those writes and the ledger could only ever show the version stamp and its own defaults merge. It always exits 0 — if it prints `SKIP|…`, continue the upgrade anyway. The finalizer reports which happened as `audit_scope` in Step 9.
+Step 2b migrations write `config.json` (through settings-edit) before the finalizer runs; without this snapshot, the finalizer's audit `before` is taken after those writes and the ledger could only ever show the version stamp and its own defaults merge. It always exits 0; on a `skip` status, continue the upgrade anyway. The finalizer reports which happened as `audit_scope` in Step 9.
 
 ### 2. Read the changelog
 

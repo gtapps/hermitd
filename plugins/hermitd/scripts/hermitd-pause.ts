@@ -22,21 +22,16 @@ const HERMIT_ROOT = hermitDir();
 const BY = 'operator-cli';
 
 function usage(): never {
-  console.log('Usage: hermitd-pause on|off|snooze <duration>|status [--quiet]');
+  console.log('Usage: hermitd-pause on|off|snooze <duration>|status');
   console.log('  on               pause indefinitely');
   console.log('  off              resume');
   console.log('  snooze <dur>     pause for a duration, e.g. 30m, 2h, 1d');
   console.log('  status           print current pause state');
-  console.log('  status --quiet   print exactly PAUSED or OK — for scripted/prompt-template checks');
   process.exit(1);
 }
 
-function printStatus(quiet: boolean): void {
+function printStatus(): void {
   const status = isPaused(HERMIT_ROOT);
-  if (quiet) {
-    console.log(status.paused ? 'PAUSED' : 'OK');
-    return;
-  }
   if (!status.paused) {
     console.log('[hermitd-pause] not paused');
     return;
@@ -65,7 +60,7 @@ function main(): void {
     setPause(HERMIT_ROOT, { reason: 'operator', by: BY, until });
     console.log(`[hermitd-pause] paused until ${until}`);
   } else if (cmd === 'status') {
-    printStatus(process.argv[3] === '--quiet');
+    printStatus();
   } else {
     usage();
   }

@@ -296,10 +296,10 @@ describe('routine gate — ordering against the other gates', () => {
 });
 
 describe('routine gate — reflect provider', () => {
-  // A fresh hermit has cadence phases due, so reflect-precheck answers RUN here.
-  // That is the interesting half anyway: EMPTY is just the skip path already
-  // covered above, while RUN is the one that has to hand phases across the wake.
-  test('RUN wakes the routine and parks the phases under this fire mark', withDir(async (dir) => {
+  // A fresh hermit has cadence phases due, so reflect-precheck answers run here.
+  // That is the interesting half anyway: empty is just the skip path already
+  // covered above, while run is the one that has to hand phases across the wake.
+  test('run wakes the routine and parks the verdict under this fire mark', withDir(async (dir) => {
     writeConfig(dir, [ROUTINE({ id: 'reflect', skill: 'hermitd:reflect', precheck: 'reflect' })]);
     writeSchedule(dir, { reflect: { last_consumed_mark: '2026-07-15T08:00:00.000Z' } });
 
@@ -309,7 +309,7 @@ describe('routine gate — reflect provider', () => {
 
     const parked = JSON.parse(fs.readFileSync(hermit(dir, 'state', 'reflect-gate.json'), 'utf-8')).reflect;
     expect(parked.mark).toBe(MARK);
-    expect(parked.phases.startsWith('RUN|')).toBe(true);
+    expect(parked.reflect).toMatchObject({ status: 'run', phases: expect.any(Object) });
     // The parked mark is what `routines.ts precheck` matches against before
     // handing the phases to the skill, so it must equal the consumed cursor.
     expect(readSchedule(dir).reflect.last_consumed_mark).toBe(parked.mark);
@@ -324,24 +324,24 @@ describe('routine gate — reflect provider', () => {
       args: ['precheck', 'reflect', 'monitor'],
       cwd: dir,
     });
-    const lines = r.stdout.trim().split('\n');
-    expect(lines[0]).toBe('PROCEED');
-    expect(lines[1].startsWith('REFLECT RUN|')).toBe(true);
+    const verdict = JSON.parse(r.stdout);
+    expect(verdict.status).toBe('proceed');
+    expect(verdict.reflect).toMatchObject({ status: 'run', phases: expect.any(Object) });
   }), 30000);
 
-  test('a stale parked verdict (different fire) is ignored, leaving a bare PROCEED', withDir(async (dir) => {
+  test('a stale parked verdict (different fire) is ignored, leaving a bare proceed', withDir(async (dir) => {
     writeConfig(dir, [ROUTINE({ id: 'reflect', skill: 'hermitd:reflect', precheck: 'reflect' })]);
     writeSchedule(dir, { reflect: { last_consumed_mark: '2026-07-16T09:00:00.000Z' } });
     fs.writeFileSync(
       hermit(dir, 'state', 'reflect-gate.json'),
-      JSON.stringify({ reflect: { mark: '2026-07-15T09:00:00.000Z', phases: 'RUN|{"compute":true}' } }),
+      JSON.stringify({ reflect: { mark: '2026-07-15T09:00:00.000Z', reflect: { status: 'run', phases: { compute: true } } } }),
     );
 
     const r = await runScript('routines.ts', {
       args: ['precheck', 'reflect', 'monitor'],
       cwd: dir,
     });
-    expect(r.stdout.trim()).toBe('PROCEED');
+    expect(r.stdout.trim()).toBe('{"status":"proceed"}');
   }), 30000);
 
   test('another routine on the same mark cannot consume this one\'s phases', withDir(async (dir) => {
@@ -353,14 +353,14 @@ describe('routine gate — reflect provider', () => {
     writeSchedule(dir, { reflect: { last_consumed_mark: '2026-07-16T09:00:00.000Z' } });
     fs.writeFileSync(
       hermit(dir, 'state', 'reflect-gate.json'),
-      JSON.stringify({ 'other-reflect': { mark: '2026-07-16T09:00:00.000Z', phases: 'RUN|{"compute":true}' } }),
+      JSON.stringify({ 'other-reflect': { mark: '2026-07-16T09:00:00.000Z', reflect: { status: 'run', phases: { compute: true } } } }),
     );
 
     const r = await runScript('routines.ts', {
       args: ['precheck', 'reflect', 'monitor'],
       cwd: dir,
     });
-    expect(r.stdout.trim()).toBe('PROCEED');
+    expect(r.stdout.trim()).toBe('{"status":"proceed"}');
   }), 30000);
 });
 

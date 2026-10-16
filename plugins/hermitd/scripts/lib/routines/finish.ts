@@ -10,11 +10,11 @@
 // dispatched subagent's self-report. This script decides, so the ledger reflects
 // what is on disk. Same idiom as reflect-precheck.ts owning its own audit trail.
 //
-// Output (stdout, one line):
-//   fired
-//   failed|artifact-missing|<path>
-//   failed|artifact-unchanged|<path>
-//   failed|verification-error|<detail>
+// Output (stdout, one JSON line):
+//   {"status":"fired"}
+//   {"status":"failed","reason":"artifact_missing","detail":"<path>"}
+//   {"status":"failed","reason":"artifact_unchanged","detail":"<path>"}
+//   {"status":"failed","reason":"verification_error","detail":"<detail>"}
 //
 // The failure reason is encoded in the event string (failed-artifact-missing, …)
 // rather than a separate column, because routine-metrics.jsonl's row shape is
@@ -29,21 +29,22 @@
 
 import path from 'node:path';
 import { hermitDir } from '../cc-compat';
+import { emitJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
 import { readRunRecord, markOutcome, statIdentity, identityChanged } from './run-record';
 
 type Json = any;
 
-const USAGE = 'Usage: routines.ts finish <routine-id> [delivery] [--outcome-stdin]';
 const OUTCOME_FLAG = '--outcome-stdin';
 
-// Function declaration, not an arrow: TS only uses a `never` return for
-// control-flow narrowing when the callee is a declared name (same shape as
-// precheck.ts's emit).
-function emit(line: string): never {
-  process.stdout.write(line + '\n');
-  process.exit(0);
+/**
+ * The single exit path: emits `fired`, or a failure reason (as markOutcome records
+ * it) with its detail. A function declaration, not an arrow: TS only uses a `never`
+ * return for control-flow narrowing when the callee is a declared name.
+ */
+function report(outcome: string, detail?: string): never {
+  return emitJson(outcome === 'fired' ? { status: 'fired' } : { status: 'failed', reason: snakeToken(outcome), detail });
 }
 
 /** true/false when config is readable, null when it is not (caller falls back to the run record). */
@@ -62,8 +63,7 @@ export function run(args: string[], outcome = ''): void {
   const [id, deliveryArg] = args.filter(arg => arg !== OUTCOME_FLAG);
   const delivery = deliveryArg || 'cron-create';
   if (!id) {
-    process.stderr.write(`${USAGE}\n`);
-    process.exit(1);
+    emitJson({ error: 'usage' });
   }
 
   let hermit: string;
@@ -71,7 +71,7 @@ export function run(args: string[], outcome = ''): void {
     hermit = hermitDir();
   } catch {
     // Nothing to verify against and nowhere to log — never claim success.
-    emit('failed|verification-error|hermit dir unresolvable');
+    report('verification-error', 'hermit dir unresolvable');
   }
 
   const stamp = (event: string): void => {
@@ -81,10 +81,10 @@ export function run(args: string[], outcome = ''): void {
   };
 
   /** Writes the terminal row, records the outcome for replay, and emits. */
-  const terminal = (reason: string | null, detail: string): never => {
-    stamp(reason ? `failed-${reason}` : 'fired');
-    markOutcome(hermit, id, reason ?? 'fired');
-    return emit(reason ? `failed|${reason}|${detail}` : 'fired');
+  const terminal = (outcome: string, detail: string): never => {
+    stamp(outcome === 'fired' ? 'fired' : `failed-${outcome}`);
+    markOutcome(hermit, id, outcome);
+    return report(outcome, detail);
   };
 
   const declared = declaresContract(hermit, id);
@@ -92,7 +92,7 @@ export function run(args: string[], outcome = ''): void {
   // Config says this routine has no contract, so any record on disk is a leftover
   // from a fire made under an older config. Ignore it: replaying its `outcome`
   // would suppress this routine's terminal row on every future fire, leaving an
-  // unbounded run of `started` rows and re-emitting a stale `failed|…` line the
+  // unbounded run of `started` rows and re-emitting a stale `failed` verdict the
   // skill escalates to the operator. Config unreadable (`null`) is not proof of
   // absence, so a record still applies there.
   const record = declared === false ? null : readRunRecord(hermit, id);
@@ -100,9 +100,7 @@ export function run(args: string[], outcome = ''): void {
   // Already finalized — a re-triggered fire (the #464 case documented in
   // event.ts). Report the recorded outcome; write no second terminal row.
   if (record?.outcome) {
-    return emit(
-      record.outcome === 'fired' ? 'fired' : `failed|${record.outcome}|${record.resolved_path}`,
-    );
+    return report(record.outcome, record.resolved_path);
   }
 
   if (!record) {
@@ -112,14 +110,14 @@ export function run(args: string[], outcome = ''): void {
     // holding every routine hostage to a transient read failure.
     if (declared === true) {
       stamp('failed-verification-error');
-      return emit('failed|verification-error|no run record for a declared contract');
+      return report('verification-error', 'no run record for a declared contract');
     }
     stamp('fired');
-    return emit('fired');
+    return report('fired');
   }
 
   const current = statIdentity(path.join(hermit, record.resolved_path));
   if (!current) return terminal('artifact-missing', record.resolved_path);
   if (!identityChanged(record.baseline, current)) return terminal('artifact-unchanged', record.resolved_path);
-  return terminal(null, record.resolved_path);
+  return terminal('fired', record.resolved_path);
 }

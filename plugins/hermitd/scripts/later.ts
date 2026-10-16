@@ -3,7 +3,7 @@ import { runEvidence } from './lib/evidence-runner';
 import { readTasks } from './lib/tasks';
 import path from 'node:path';
 import { appendJsonlLine } from './lib/append-jsonl';
-import { flagValue, readJson, readStdinIfFlagged } from './lib/cli';
+import { failJson, flagValue, printJson, readJson, readStdinIfFlagged } from './lib/cli';
 import { checkKey } from './lib/conversation-key';
 import { scanForInjection } from './lib/injection-scan';
 import { readConfigRaw } from './lib/config-read';
@@ -42,7 +42,7 @@ function isLate(dir: string, row: Row, date: Date): boolean {
 function withLedgerLock<T>(file: string, fn: () => T): T {
   const lock = `${file}.lock`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (!acquireLockWithWait(lock, 2000)) throw new Error('ledger lock unavailable; retry');
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('ledger_lock_unavailable');
   try { return fn(); } finally { releaseLock(lock); }
 }
 
@@ -72,7 +72,7 @@ function chatFlag(args: string[]): string | undefined {
 
 async function main() {
   const [verb, dirArg, ...args] = process.argv.slice(2);
-  if (!dirArg) throw new Error('expected verb and hermit directory');
+  if (!dirArg) throw new Error('usage');
   const dir = path.resolve(dirArg);
   const file = path.join(dir, 'state', 'hypotheses.jsonl');
   const rows = readRows(file);
@@ -86,28 +86,28 @@ async function main() {
     const claim = flagValue(args, '--claim');
     const cmd = flagValue(args, '--cmd') ?? null;
     const remind = args.includes('--remind');
-    if (remind && args.includes('--cmd')) throw new Error('invalid add arguments');
+    if (remind && args.includes('--cmd')) throw new Error('invalid_add_arguments');
     const chat = chatFlag(args);
     const due = flagValue(args, '--due');
     const origin = flagValue(args, '--origin');
-    if (!claim || !due || !Number.isFinite(Date.parse(due)) || (origin !== 'operator' && origin !== 'hermit')) throw new Error('invalid add arguments');
+    if (!claim || !due || !Number.isFinite(Date.parse(due)) || (origin !== 'operator' && origin !== 'hermit')) throw new Error('invalid_add_arguments');
     const timeoutRaw = flagValue(args, '--timeout-s');
     const timeoutS = timeoutRaw === undefined ? DEFAULT_TIMEOUT_S : Number(timeoutRaw);
-    if (!Number.isInteger(timeoutS) || timeoutS < 1 || timeoutS > MAX_TIMEOUT_S) throw new Error(`--timeout-s must be an integer between 1 and ${MAX_TIMEOUT_S}`);
+    if (!Number.isInteger(timeoutS) || timeoutS < 1 || timeoutS > MAX_TIMEOUT_S) throw new Error('invalid_timeout');
     const row: Row = { id: crypto.randomUUID(), claim, cmd, due: new Date(due).toISOString(), origin,
       session: flagValue(args, '--session') ?? null, created_at: date.toISOString(), state: 'pending',
       ...(remind ? { kind: 'reminder' as const } : {}),
       ...(chat !== undefined ? { chat } : {}),
       ...(timeoutS !== DEFAULT_TIMEOUT_S ? { timeout_s: timeoutS } : {}) };
     const error = withLedgerLock(file, () => appendJsonlLine(file, JSON.stringify(row)));
-    if (error) throw new Error(error);
+    if (error) throw new Error('ledger_append_failed');
     const config = readConfigRaw(dir);
     const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
     const exact = (row.kind === 'reminder' || row.origin === 'operator')
       && new Date(row.due) > date
       && config?.routines?.some((r: any) => r?.id === 'later-check' && r.enabled === true)
       && monitor?.mode === 'monitor';
-    console.log(`OK|${row.id}|next_fire=${exact ? row.due : laterCheckFire(dir, date)?.toISOString() ?? 'none'}`);
+    printJson({ id: row.id, next_fire: exact ? row.due : laterCheckFire(dir, date)?.toISOString() ?? null });
     return;
   }
   if (verb === 'list') {
@@ -119,24 +119,23 @@ async function main() {
     }
     return;
   }
-  if (!['cancel', 'check', 'verdict'].includes(verb)) throw new Error('unknown verb');
+  if (!['cancel', 'check', 'verdict'].includes(verb)) throw new Error('unknown_verb');
   const chat = chatFlag(args);
   const row = rows.find(row => row.id === args[0] && (chat === undefined || row.chat === chat));
-  if (!row) throw new Error('unknown id');
+  if (!row) throw new Error('unknown_id');
   // The row can close between the read above and the locked update (a concurrent cancel or verdict).
-  const noop = () => console.log(`NOOP|${readRows(file).find(r => r.id === row.id)?.state ?? row.state}`);
+  const noop = () => printJson({ status: 'noop', state: readRows(file).find(r => r.id === row.id)?.state ?? row.state });
   if (row.state !== 'pending') { noop(); return; }
   if (verb === 'cancel') {
     if (!updatePending(file, row.id, { state: 'cancelled' })) { noop(); return; }
-    console.log(`OK|${row.id}|cancelled`);
+    printJson({ id: row.id, state: 'cancelled' });
     return;
   }
   if (verb === 'check') {
     const hit = scanForInjection(row.claim) || (row.cmd != null && scanForInjection(row.cmd));
     if (hit) {
-      const reason = `injection-suspect:${hit.cls}`;
-      if (!updatePending(file, row.id, { state: 'indeterminate', reason, checked_at: date.toISOString(), late: isLate(dir, row, date) })) { noop(); return; }
-      console.log(reason);
+      if (!updatePending(file, row.id, { state: 'indeterminate', reason: `injection-suspect:${hit.cls}`, checked_at: date.toISOString(), late: isLate(dir, row, date) })) { noop(); return; }
+      printJson({ status: 'injection_suspect', class: hit.cls });
       return;
     }
     const result = row.kind === 'reminder' || row.cmd == null
@@ -147,11 +146,13 @@ async function main() {
     return;
   }
   const state = args[1];
-  if ((!['held', 'broken', 'indeterminate'].includes(state) && !(state === 'sent' && row.kind === 'reminder')) || !args.includes('--reason-stdin')) throw new Error('invalid verdict arguments');
+  if ((!['held', 'broken', 'indeterminate'].includes(state) && !(state === 'sent' && row.kind === 'reminder')) || !args.includes('--reason-stdin')) throw new Error('invalid_verdict_arguments');
   const reason = (await readStdinIfFlagged(args, '--reason-stdin')).trim().split(/\r?\n/)[0];
-  if (!reason) throw new Error('reason required');
+  if (!reason) throw new Error('reason_required');
   if (!updatePending(file, row.id, { state: state as State, reason, checked_at: date.toISOString(), late: isLate(dir, row, date) })) { noop(); return; }
-  console.log(`OK|${row.id}|${state}`);
+  printJson({ id: row.id, state });
 }
 
-if (import.meta.main) main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (import.meta.main) {
+  main().catch(error => failJson(error));
+}

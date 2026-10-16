@@ -9,7 +9,7 @@ import fs from 'node:fs';
 /**
  * Validates `eventJson` is non-empty parseable JSON, then appends it (+ newline)
  * to `filePath`. Returns null on success, or an error message on failure (no write).
- * Error strings are surfaced verbatim as the `<reason>` in a caller's `ERROR|<reason>`.
+ * The message is prose: callers carry it as detail after their own error token.
  */
 function appendJsonlLine(filePath: string, eventJson: string): string | null {
   if (!eventJson) return 'Error: event payload is empty';

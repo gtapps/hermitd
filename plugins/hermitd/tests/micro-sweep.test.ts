@@ -1,7 +1,8 @@
-// Contract tests for `proposal.ts micro <dir> sweep` — retiring asks whose
-// linked proposal reached a terminal status. The queue and the proposals dir
-// are two stores with one relationship; these cases pin when the sweep is
-// allowed to act on it and, more importantly, when it must not.
+// Contract tests for `sweepMoot` (lib/proposals/micro.ts): retiring asks whose
+// linked proposal reached a terminal status. The proposal-status writers run it
+// in-process. The queue and the proposals dir are two stores with one
+// relationship; these cases pin when the sweep is allowed to act on it and,
+// more importantly, when it must not.
 
 import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
@@ -9,6 +10,7 @@ import path from 'node:path';
 
 import { runProposal } from './helpers/run';
 import { withDir } from './helpers/workdir';
+import { sweepMoot } from '../scripts/lib/proposals/micro';
 
 function stateArg(dir: string): string {
   return path.join(dir, '.hermit');
@@ -50,15 +52,13 @@ function ask(id: string, extra: Record<string, any> = {}): any {
 
 const LINKED = { proposal_id: 'PROP-005', on_resolve: '/hermitd:proposal-act accept PROP-005 --answer {answer}' };
 
-describe('micro sweep — retires asks whose proposal settled', () => {
+describe('sweepMoot: retires asks whose proposal settled', () => {
   for (const status of ['resolved', 'dismissed', 'deferred']) {
     test(`${status} proposal sweeps its linked ask`, withDir(async (dir) => {
       seedProposal(dir, 'PROP-005-seeded-013132.md', status);
       seedQueue(dir, [ask('MP-20260821-0', LINKED)]);
 
-      const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-      expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe('SWEPT|MP-20260821-0');
+      expect(sweepMoot(stateArg(dir), 'PROP-005')).toEqual({ ok: true, swept: ['MP-20260821-0'] });
       expect(readQueue(dir)).toHaveLength(0);
 
       const events = ledger(dir).filter(e => e.type === 'micro-resolved');
@@ -69,17 +69,17 @@ describe('micro sweep — retires asks whose proposal settled', () => {
     }));
   }
 
-  test('sweeps several asks in one pass, one ledger line each', withDir(async (dir) => {
+  test('sweeps every ask linked to the proposal, one ledger line each', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-a-013132.md', 'resolved');
     seedProposal(dir, 'PROP-006-b-013132.md', 'dismissed');
     seedQueue(dir, [
       ask('MP-1', LINKED),
-      ask('MP-2', { proposal_id: 'PROP-006' }),
+      ask('MP-2', { proposal_id: 'PROP-005', question: 'Another ask?' }),
+      ask('MP-3', { proposal_id: 'PROP-006' }),
     ]);
 
-    const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-    expect(r.stdout.trim()).toBe('SWEPT|MP-1,MP-2');
-    expect(readQueue(dir)).toHaveLength(0);
+    expect(sweepMoot(stateArg(dir), 'PROP-005').swept).toEqual(['MP-1', 'MP-2']);
+    expect(readQueue(dir).map(e => e.id)).toEqual(['MP-3']);
     expect(ledger(dir).filter(e => e.action === 'moot')).toHaveLength(2);
   }));
 
@@ -87,30 +87,27 @@ describe('micro sweep — retires asks whose proposal settled', () => {
     seedProposal(dir, 'PROP-005-seeded-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-legacy', { on_resolve: '/hermitd:proposal-act accept PROP-005 --answer {answer}' })]);
 
-    const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-    expect(r.stdout.trim()).toBe('SWEPT|MP-legacy');
+    expect(sweepMoot(stateArg(dir), 'PROP-005').swept).toEqual(['MP-legacy']);
   }));
 
   test('legacy slug-less PROP-NNN.md filename still matches', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005.md', 'resolved');
     seedQueue(dir, [ask('MP-1', LINKED)]);
 
-    expect((await runProposal(stateArg(dir), ['micro', 'sweep'])).stdout.trim()).toBe('SWEPT|MP-1');
+    expect(sweepMoot(stateArg(dir), 'PROP-005').swept).toEqual(['MP-1']);
   }));
 
   test('an unpadded legacy id resolves to the padded filename', withDir(async (dir) => {
     seedProposal(dir, 'PROP-019-seeded-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-1', { on_resolve: '/hermitd:proposal-act accept PROP-19 --answer {answer}' })]);
 
-    expect((await runProposal(stateArg(dir), ['micro', 'sweep'])).stdout.trim()).toBe('SWEPT|MP-1');
+    expect(sweepMoot(stateArg(dir), 'PROP-019').swept).toEqual(['MP-1']);
   }));
 });
 
-describe('micro sweep — leaves everything else alone', () => {
-  const untouched = async (dir: string) => {
-    const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('NONE|no-moot');
+describe('sweepMoot: leaves everything else alone', () => {
+  const untouched = (dir: string, proposalId = 'PROP-005') => {
+    expect(sweepMoot(stateArg(dir), proposalId)).toEqual({ ok: true, swept: [] });
     expect(readQueue(dir)).toHaveLength(1);
     expect(ledger(dir).filter(e => e.type === 'micro-resolved')).toHaveLength(0);
   };
@@ -119,14 +116,14 @@ describe('micro sweep — leaves everything else alone', () => {
     test(`a ${status} proposal keeps its ask pending`, withDir(async (dir) => {
       seedProposal(dir, 'PROP-005-seeded-013132.md', status);
       seedQueue(dir, [ask('MP-1', LINKED)]);
-      await untouched(dir);
+      untouched(dir);
     }));
   }
 
   test('an unlinked ask is never swept', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-seeded-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-1')]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   // on_resolve is free-form (channel-responder lets any skill set it), so a
@@ -134,26 +131,26 @@ describe('micro sweep — leaves everything else alone', () => {
   test('a PROP id outside the accept callback is not a link', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-seeded-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-1', { on_resolve: '/hermitd:hermit-settings quality-gate --answer {answer} # see PROP-005' })]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   test('PROP-1 does not match PROP-12', withDir(async (dir) => {
     seedProposal(dir, 'PROP-012-other-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-1', { proposal_id: 'PROP-1' })]);
-    await untouched(dir);
+    untouched(dir, 'PROP-1');
   }));
 
   test('an ambiguous double match is never destructive', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-first-013132.md', 'resolved');
     seedProposal(dir, 'PROP-005-second-013133.md', 'resolved');
     seedQueue(dir, [ask('MP-1', LINKED)]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   test('a missing proposal file leaves the ask pending', withDir(async (dir) => {
     fs.mkdirSync(path.join(stateArg(dir), 'proposals'), { recursive: true });
     seedQueue(dir, [ask('MP-1', LINKED)]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   test('a frontmatterless proposal leaves the ask pending', withDir(async (dir) => {
@@ -161,13 +158,13 @@ describe('micro sweep — leaves everything else alone', () => {
     fs.mkdirSync(dest, { recursive: true });
     fs.writeFileSync(path.join(dest, 'PROP-005-seeded-013132.md'), '# no frontmatter here\n');
     seedQueue(dir, [ask('MP-1', LINKED)]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   test('an already-resolved row is left for brief-cycle to prune', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-seeded-013132.md', 'resolved');
     seedQueue(dir, [ask('MP-1', { ...LINKED, status: 'answered' })]);
-    await untouched(dir);
+    untouched(dir);
   }));
 
   test('a corrupt queue is refused, not overwritten', withDir(async (dir) => {
@@ -177,16 +174,13 @@ describe('micro sweep — leaves everything else alone', () => {
     const corrupt = '{"pending": [ {"id": "MP-1",} ]}\n';
     fs.writeFileSync(qp, corrupt);
 
-    const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-    expect(r.exitCode).toBe(1);
+    expect(sweepMoot(stateArg(dir), 'PROP-005').ok).toBe(false);
     expect(fs.readFileSync(qp, 'utf-8')).toBe(corrupt);
   }));
 
   test('no queue file at all is a clean no-op', withDir(async (dir) => {
     seedProposal(dir, 'PROP-005-seeded-013132.md', 'resolved');
-    const r = await runProposal(stateArg(dir), ['micro', 'sweep']);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('NONE|no-moot');
+    expect(sweepMoot(stateArg(dir), 'PROP-005')).toEqual({ ok: true, swept: [] });
   }));
 });
 
@@ -200,8 +194,9 @@ describe('queue-micro — proposal_id link and dedup', () => {
       tier: 1, question: 'Suggestion #1 accepted — how should it be implemented?',
       on_resolve: '/hermitd:proposal-act accept PROP-005 --answer {answer}', proposal_id: 'PROP-005',
     });
-    expect(first.stdout.trim()).toMatch(/^QUEUED\|MP-/);
-    const id = first.stdout.trim().split('|')[1];
+    const { status, id } = JSON.parse(first.stdout);
+    expect(status).toBe('queued');
+    expect(id).toMatch(/^MP-/);
     expect(readQueue(dir)[0].proposal_id).toBe('PROP-005');
 
     // Same proposal, different display index — the old exact-question dedup
@@ -210,16 +205,16 @@ describe('queue-micro — proposal_id link and dedup', () => {
       tier: 1, question: 'Suggestion #4 accepted — how should it be implemented?',
       on_resolve: '/hermitd:proposal-act accept PROP-005 --answer {answer}', proposal_id: 'PROP-005',
     });
-    expect(second.stdout.trim()).toBe(`DUPLICATE|${id}`);
+    expect(JSON.parse(second.stdout)).toEqual({ status: 'duplicate', id });
     expect(readQueue(dir)).toHaveLength(1);
   }));
 
   test('unlinked asks keep exact-question dedup', withDir(async (dir) => {
     fs.writeFileSync(path.join(stateArg(dir), 'config.json'), JSON.stringify({ timezone: 'UTC' }));
     const first = await queue(dir, { tier: 2, question: 'Same question?' });
-    const id = first.stdout.trim().split('|')[1];
-    expect((await queue(dir, { tier: 2, question: 'Same question?' })).stdout.trim()).toBe(`DUPLICATE|${id}`);
-    expect((await queue(dir, { tier: 2, question: 'Different question?' })).stdout.trim()).toMatch(/^QUEUED\|MP-/);
+    const { id } = JSON.parse(first.stdout);
+    expect(JSON.parse((await queue(dir, { tier: 2, question: 'Same question?' })).stdout)).toEqual({ status: 'duplicate', id });
+    expect(JSON.parse((await queue(dir, { tier: 2, question: 'Different question?' })).stdout).status).toBe('queued');
     expect(readQueue(dir)).toHaveLength(2);
   }));
 
@@ -227,7 +222,7 @@ describe('queue-micro — proposal_id link and dedup', () => {
     fs.writeFileSync(path.join(stateArg(dir), 'config.json'), JSON.stringify({ timezone: 'UTC' }));
     const r = await queue(dir, { tier: 1, question: 'q?', proposal_id: 'not-an-id' });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toMatch(/^QUEUED\|MP-/);
+    expect(JSON.parse(r.stdout).status).toBe('queued');
     expect(readQueue(dir)[0].proposal_id).toBeUndefined();
   }));
 });

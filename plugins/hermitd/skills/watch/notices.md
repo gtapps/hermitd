@@ -114,9 +114,9 @@ before its turn's idle notice waits for that notice):
    - If the entry has `proposal`, resolve it through `proposal.ts resolve-id`
      (proposal-act § Resolving a Proposal ID):
      Run `proposal-resolve-id` (Commands) with arguments `"<PROP-id>"`.
-     Anything but `MATCH|<filename>` skips the patch and reports the resolver's
-     reason. On MATCH, append one Decision line with
-     `proposal-patch` (Commands) with arguments `<filename> --stdin`
+     Anything but `status` `match` skips the patch and reports the resolver's
+     reason. On a match, append one Decision line with
+     `proposal-patch` (Commands) with arguments `<file> --stdin`
      and no `--set`; the script reads the file, so do not Read the proposal body.
      Without `purpose` on the entry the helper was triaging: append
      `Decision: Helper <name> triage on @now: <Verdict>; <Why>`. A verdict that

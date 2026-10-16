@@ -36,13 +36,13 @@ test('the channel library wrappers answer history and is-trusted', async () => {
     expect(history.code).toBe(0);
     expect(JSON.parse(history.stdout).map((r: { text: string }) => r.text)).toEqual(['second', 'third']);
     expect(JSON.parse((await run('history', '--source', 'discord', '--chat-id', '999')).stdout)).toEqual([]);
-    expect(await run('history', '--source', 'discord')).toEqual({ stdout: 'ERROR|missing-chat-id\n', code: 1 });
-    expect(await run('history', '--source', 'discord', '--chat-id', '123', '--limit', '0')).toEqual({ stdout: 'ERROR|invalid-limit\n', code: 1 });
-    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123')).toEqual({ stdout: 'OK|trusted\n', code: 0 });
-    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u2', '--chat-id', '123')).toEqual({ stdout: 'ERROR|untrusted\n', code: 1 });
-    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123', '--name', 'x')).toEqual({ stdout: 'ERROR|invalid-options\n', code: 1 });
+    expect(await run('history', '--source', 'discord')).toEqual({ stdout: '{"error":"missing_chat_id"}\n', code: 1 });
+    expect(await run('history', '--source', 'discord', '--chat-id', '123', '--limit', '0')).toEqual({ stdout: '{"error":"invalid_limit"}\n', code: 1 });
+    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123')).toEqual({ stdout: 'OK\n', code: 0 });
+    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u2', '--chat-id', '123')).toEqual({ stdout: '{"error":"untrusted"}\n', code: 1 });
+    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123', '--name', 'x')).toEqual({ stdout: '{"error":"invalid_options"}\n', code: 1 });
     for (const verb of ['bind', 'update', 'unbind', 'lookup', 'list', 'prune', 'helper-status', 'await-agent', 'chat-lookup', 'thread-create']) {
-      expect(await run(verb, '--chat-id', '123')).toEqual({ stdout: 'ERROR|unknown-verb\n', code: 1 });
+      expect(await run(verb, '--chat-id', '123')).toEqual({ stdout: '{"error":"unknown_verb"}\n', code: 1 });
     }
   } finally {
     server.stop(true);
@@ -155,10 +155,10 @@ test('thread-open routes every channel to the key its later thread messages carr
   try {
     expect(await open('--source', 'discord', '--chat-id', '100', '--message-id', '9', '--name', 'Task')).toEqual({ code: 0, out: { key: 'discord:789', chat_id: '789' } });
     expect(await open('--source', 'discord', '--chat-id', '300', '--message-id', '9', '--name', 'Task')).toEqual({ code: 0, out: { key: 'discord:300', chat_id: '300' } });
-    expect(await open('--source', 'discord', '--chat-id', '200', '--message-id', '8', '--name', 'Task')).toEqual({ code: 1, out: { error: 'thread-failed' } });
-    expect(await open('--source', 'discord', '--chat-id', '404', '--message-id', '9', '--name', 'Task')).toEqual({ code: 1, out: { error: 'lookup-failed' } });
+    expect(await open('--source', 'discord', '--chat-id', '200', '--message-id', '8', '--name', 'Task')).toEqual({ code: 1, out: { error: 'thread_failed' } });
+    expect(await open('--source', 'discord', '--chat-id', '404', '--message-id', '9', '--name', 'Task')).toEqual({ code: 1, out: { error: 'lookup_failed' } });
     // A cached failure does not hold task opens back once Discord answers again.
-    expect(await open('--source', 'discord', '--chat-id', '600', '--message-id', '9', '--name', 'Task')).toEqual({ code: 1, out: { error: 'lookup-failed' } });
+    expect(await open('--source', 'discord', '--chat-id', '600', '--message-id', '9', '--name', 'Task')).toEqual({ code: 1, out: { error: 'lookup_failed' } });
     dmReachable = true;
     expect(await open('--source', 'discord', '--chat-id', '600', '--message-id', '9', '--name', 'Task')).toEqual({ code: 0, out: { key: 'discord:600', chat_id: '600' } });
 
@@ -174,7 +174,7 @@ test('thread-open routes every channel to the key its later thread messages carr
     expect(slack.out).toEqual({ key: 'slack:C1~0.9', chat_id: 'C1', reply: { thread_ts: '0.9' } });
     expect(slack.out.key).toBe(envelopeKey('slack', 'chat_id="C1" thread_ts="0.9"'));
 
-    expect(await open('--source', 'slack', '--chat-id', 'C1', '--message-id', '1.2')).toEqual({ code: 1, out: { error: 'missing-name' } });
+    expect(await open('--source', 'slack', '--chat-id', 'C1', '--message-id', '1.2')).toEqual({ code: 1, out: { error: 'missing_name' } });
   } finally {
     server.stop(true);
   }

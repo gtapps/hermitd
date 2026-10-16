@@ -1,42 +1,34 @@
-// `routines.ts cron-registry` — diff-based plan/commit for hermit-routines CronCreate registration.
+// Diff-based plan/commit for hermit-routines CronCreate registration, behind
+// `routines.ts arm begin` / `arm commit` (lib/routines/arm.ts owns the CLI).
 //
-// Usage:
-//   bun routines.ts cron-registry plan   <hermit-state-dir> <plugin-root> [--force]
-//   bun routines.ts cron-registry commit <hermit-state-dir> <plugin-root> <created-id-csv>
-//
-// --force (used by `load --reset`) skips every mirror/hash/age comparison and
-// returns every enabled routine as CREATE with no DELETE lines — the caller is
+// forceReset (used by `load --reset`) skips every mirror/hash/age comparison and
+// returns every enabled routine as a create with no deletes: the caller is
 // expected to do its own unconditional CronList-based sweep for deletes first.
 //
-// plan (stdout, one line per entry):
-//   DELETE:<id>              existing CronCreate to tear down before recreating
-//   CREATE:<id>|<schedule>   to register, with the timezone-shifted schedule already computed
-//   WARN:<id>|<reason>       only for CREATE ids whose tz-shift fell back to the unshifted schedule
-//   KEEP:<n>                 count of routines needing no registration change this round
+// The plan lists deletes (existing CronCreates to tear down before recreating),
+// creates (with the timezone-shifted schedule already computed, plus a `warn` for
+// ids whose tz-shift fell back to the unshifted schedule) and the keep count.
 //
-// A CREATE with no matching DELETE is a brand-new or never-registered routine.
-// On boot mismatch (or a missing/corrupt mirror) every enabled routine is CREATE
+// A create with no matching delete is a brand-new or never-registered routine.
+// On boot mismatch (or a missing/corrupt mirror) every enabled routine is a create
 // with NO deletes — durable:false crons already died with the prior process, so
 // there is nothing live to tear down; deleting anyway would just be a wasted
 // CronDelete call on an id CC has already forgotten.
 //
-// commit rewrites state/cron-registry.json from the last plan's explicit KEEP set:
-// every id in <created-id-csv> is stamped registered_at=now (resetting its age
-// clock); only the plan's KEEP ids carry forward, with their registered_at
-// UNCHANGED (no CronCreate happened for them); every other id is dropped — a
-// skipped or failed CronCreate is NOT recorded as live (that would let a real
-// failure hide behind a "KEEP" next run), and nothing from a dead prior process
-// (boot mismatch → empty KEEP set) is resurrected as a ghost.
-//
-// Exit 0 always (fail-open: a mirror problem must never block routine registration;
-// `load --reset`'s unconditional CronList/CronDelete/CronCreate sweep remains the
-// self-healing recovery path for any mirror/reality drift).
+// commitCron rebuilds state/cron-registry.json from the last plan's explicit keep
+// set: every created id is stamped registered_at=now (resetting its age clock);
+// only the plan's keep ids carry forward, with their registered_at UNCHANGED (no
+// CronCreate happened for them); every other id is dropped: a skipped or failed
+// CronCreate is NOT recorded as live (that would let a real failure hide behind a
+// keep next run), and nothing from a dead prior process (boot mismatch → empty keep
+// set) is resurrected as a ghost. `load --reset`'s unconditional
+// CronList/CronDelete/CronCreate sweep remains the self-healing recovery path for
+// any mirror/reality drift.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { sha256 } from '../hash';
 import { shiftCron } from '../cron-shift';
-import { readConfigRaw } from '../config-read';
 import { parseCronField } from '../../validate-config';
 
 type Json = any;
@@ -80,10 +72,6 @@ function readBootId(hermitDir: string): string | null {
   } catch {
     return null;
   }
-}
-
-function resolveMachineTz(): string | null {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; }
 }
 
 // Wraps cron-tz-shift's shiftCron for a single routine. Returns the schedule
@@ -275,16 +263,9 @@ function commitCron(
   return next;
 }
 
-function writeMirror(mirrorPath: string, mirror: Mirror): void {
-  fs.mkdirSync(path.dirname(mirrorPath), { recursive: true });
-  const tmp = mirrorPath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(mirror, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, mirrorPath);
-}
-
-// --ids <csv>: restrict planning/committing to a subset of routines by id (used to
-// register the heartbeat-restart anchor alone in monitor mode — planCron then emits
-// DELETE for every previously-tracked routine outside the subset, which is what
+// Restrict planning/committing to a subset of routines by id csv (used to
+// register the heartbeat-restart anchor alone in monitor mode: planCron then plans
+// a delete for every previously-tracked routine outside the subset, which is what
 // sweeps stale non-anchor CronCreates). null/empty idsCsv → routines unchanged.
 function filterRoutinesByIds(routines: Json[], idsCsv: string | null): Json[] {
   if (!idsCsv) return routines;
@@ -294,63 +275,3 @@ function filterRoutinesByIds(routines: Json[], idsCsv: string | null): Json[] {
 
 export { planCron, commitCron, computeWakeSpread, readMirror, readBootId, promptHash, REREGISTER_AGE_MS, filterRoutinesByIds };
 export type { Mirror, MirrorEntry, PlanResult, PlanCreate, ShiftedRoutine };
-
-// --- CLI ---
-// A named export, not an `import.meta.main` guard: this module is no longer an
-// entry point (routines.ts's cron-registry verb calls runCli()), and under that
-// dynamic import `import.meta.main` is false, so a guard would silently never
-// fire. tests/cron-registry.test.ts imports the pure helpers above, which is why
-// this cannot simply run at module scope.
-export function runCli(): void {
-  const mode = process.argv[2];
-  const hermitDir = process.argv[3];
-  const pluginRoot = process.argv[4];
-
-  if ((mode !== 'plan' && mode !== 'commit') || !hermitDir || !pluginRoot) {
-    process.stdout.write('SKIP|usage: routines.ts cron-registry <plan|commit> <hermit-dir> <plugin-root> [created-csv] [--force] [--ids <csv>]\n');
-    process.exit(0);
-  }
-
-  try {
-    const mirrorPath = path.join(hermitDir, 'state', 'cron-registry.json');
-    // Raw, not settled: an unreadable config must throw into the outer catch so
-    // the cron registry is left untouched (settled routines [] would wipe it).
-    const config = readConfigRaw(hermitDir);
-    if (config === null) throw new Error('config.json unreadable');
-    const allRoutines: Json[] = Array.isArray(config.routines) ? config.routines : [];
-    const idsFlagIndex = process.argv.indexOf('--ids');
-    const idsFilter = idsFlagIndex !== -1 ? process.argv[idsFlagIndex + 1] : null;
-    const routines: Json[] = filterRoutinesByIds(allRoutines, idsFilter);
-    const configTz = typeof config.timezone === 'string' ? config.timezone : null;
-    const machineTz = resolveMachineTz();
-    const mirror = readMirror(mirrorPath);
-    const bootId = readBootId(hermitDir);
-    const nowMs = Date.now();
-    const forceReset = process.argv.includes('--force');
-
-    const plan = planCron(routines, mirror, bootId, pluginRoot, configTz, machineTz, nowMs, forceReset);
-
-    if (mode === 'plan') {
-      for (const id of plan.deletes) process.stdout.write(`DELETE:${id}\n`);
-      for (const c of plan.creates) process.stdout.write(`CREATE:${c.id}|${c.schedule}\n`);
-      for (const c of plan.creates) if (c.warn) process.stdout.write(`WARN:${c.id}|${c.warn}\n`);
-      process.stdout.write(`KEEP:${plan.keepCount}\n`);
-      try {
-        const mw = config?.routine_wake_lint?.max_windows;
-        const maxWindows = Number.isFinite(mw) && mw > 0 ? mw : 6;
-        const spread = computeWakeSpread(plan.enabledShifted, maxWindows);
-        if (spread) process.stdout.write(`WAKESPREAD:${spread.distinct}|${maxWindows}|${spread.loneliest.join(',')}\n`);
-      } catch { /* fail-open: a lint calc must never block routine registration */ }
-    } else {
-      const createdCsv = process.argv[5] || '';
-      const createdIds = new Set(createdCsv.split(',').map(s => s.trim()).filter(Boolean));
-      const routineById = new Map(routines.map((r: Json) => [r.id, r]));
-      const next = commitCron(mirror, plan, createdIds, routineById, pluginRoot, bootId, nowMs);
-      writeMirror(mirrorPath, next);
-      process.stdout.write(`OK|${createdIds.size} committed\n`);
-    }
-  } catch (e: any) {
-    process.stdout.write(`SKIP|${e.message}\n`);
-  }
-  process.exit(0);
-}

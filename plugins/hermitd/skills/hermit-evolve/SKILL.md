@@ -115,17 +115,17 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts arm check .hermit ${CLAUDE_PLUGIN_
 ```
 
 `arm check` is the read-only twin of the daily anchor's verdict — it stamps no fire, so asking
-costs one Bash call instead of loading the routines skill. Route on its single line:
+costs one Bash call instead of loading the routines skill. Route on its JSON `status`:
 
-- `HEALTHY|…` — both legs are registered and current. Log that line; invoke nothing.
-- `ARM|<legs>|…` including `routines` — invoke `/hermitd:hermit-routines load`, which
+- `healthy`: both legs are registered and current. Log it; invoke nothing.
+- `arm` with `routines` in `legs`: invoke `/hermitd:hermit-routines load`, which
   makes exact-match routine migrations active immediately in CronCreate fallback mode (a migration
-  that changed routines shows up here as `fallback-drift`) and re-arms the heartbeat leg with it.
-- `ARM|heartbeat|…` alone — invoke `/hermitd:heartbeat start`.
-- `SKIP|paused` — the hermit is paused and fires nothing until resumed. Log the line; invoke nothing.
-- `SKIP|restart-required:<legs>` or `RESTART_REQUIRED|command-drift`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself to finish the upgrade at its next idle moment; otherwise, restart the resident with `hermitd restart`.
-- `ARM|…|check-error:<reason>` — state was unreadable, so nothing is safe to re-arm. Append that
-  line and the manual `hermit-routines load` next action to the report.
+  that changed routines shows up in `reasons` as `fallback_drift`) and re-arms the heartbeat leg with it.
+- `arm` with only `heartbeat`: invoke `/hermitd:heartbeat start`.
+- `skip`, reason `paused`: the hermit is paused and fires nothing until resumed. Log it; invoke nothing.
+- `restart_required`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself to finish the upgrade at its next idle moment; otherwise, restart the resident with `hermitd restart`.
+- An `error` (`check_error:<reason>`): state was unreadable, so nothing is safe to re-arm. Append
+  it and the manual `hermit-routines load` next action to the report.
 
 If reconciliation fails, append that failure and the manual `hermit-routines load` next action to
 the report.

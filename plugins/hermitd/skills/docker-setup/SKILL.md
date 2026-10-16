@@ -476,19 +476,19 @@ If the token is present, ask if already paired. If not:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" pair <plugin> <code>
    ```
-   `OK|pair|...|file=state` confirms the access write and approval marker. If `file=home` or `file=home+state`, retain that result for sub-step 5. On `ERROR|`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
+   `"file":"state"` confirms the access write and approval marker. Retain a `home` or `home+state` result for sub-step 5. On `{"error"}`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
 3. Set policy after successful pairing:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" policy <plugin> allowlist
    ```
-   Relay the `OK|policy|` result or stop on `ERROR|`.
+   Relay the result or stop on `{"error"}`.
 4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose -f docker-compose.hermit.yml exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
-5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `file=home` (not `file=home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `/hermitd:channel-setup` from the host to complete its home-to-state location check before proceeding.
+5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `/hermitd:channel-setup` from the host to complete its home-to-state location check before proceeding.
 6. **Default delivery settings** (skip if pairing was skipped this run):
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <plugin>
    ```
-   Relay `OK|ack=set` or `OK|ack=kept`; an empty string or custom reaction stays unchanged. Stop this channel on `ERROR|`.
+   Relay `ack` (`set` or `kept`); an empty string or custom reaction stays unchanged. Stop this channel on `{"error"}`.
 7. **Server channel / group chat (optional)** (run even if "Already paired" was chosen; skip only if `imessage`, if "Skip this channel" was chosen, or if pairing returned "No response"):
    Run [the group questionnaire](../channel-setup/references/group-enrollment.md) with the channel key, absolute `<project_path>/.hermit` state directory, and native `AskUserQuestion` prompts. Then continue to sub-step 8.
 8. **Capture the bot's own identity** (host-side, like `channel-access.ts` — `config.json` and the channel `.env` are both on the host):

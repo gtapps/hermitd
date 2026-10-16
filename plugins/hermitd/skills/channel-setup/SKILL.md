@@ -209,7 +209,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <c
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy <channel> allowlist
 ```
 
-Run the policy command only after pairing succeeds. Relay the `OK|` result, retaining `file=state`, `file=home` or `file=home+state` for §6. On `ERROR|`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
+Run the policy command only after pairing succeeds. Relay the result, retaining pairing's `file` (`state`, `home` or `home+state`) for §6. On `{"error"}`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
 
 If Skip: "DM the bot later, then run `/hermitd:channel-setup` from a normal host session." Stop.
 
@@ -226,7 +226,7 @@ Check if `access.json` exists at `<state_dir>/access.json`.
   Confirm: "Moved access.json to `<state_dir>/`."
 - If found in neither location: note — "access.json not found. Pairing may not have completed. Run `/hermitd:channel-setup` after DMing your bot."
 
-After `file=home` or `file=home+state`, the bot that handed out the code still reads `~/.claude`; the hermit reads the state directory, which `file=home+state` already updated and the move above covers otherwise. Use `${CLAUDE_CONFIG_DIR}` instead of `~/.claude` when that environment override is set.
+After `file` `home` or `home+state`, the bot that handed out the code still reads `~/.claude`; the hermit reads the state directory, which `home+state` already updated and the move above covers otherwise. Use `${CLAUDE_CONFIG_DIR}` instead of `~/.claude` when that environment override is set.
 
 If access.json is verified, continue to step 6a.
 
@@ -256,7 +256,7 @@ Once §6 verifies the channel state, skip iMessage; otherwise run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" ensure-defaults <channel>
 ```
 
-Relay `OK|ack=set` or `OK|ack=kept`. The default is `👀` only when `ackReaction` is absent; an empty string and customized values are preserved. On `ERROR|`, report the token and stop.
+Relay `ack` (`set` or `kept`). The default is `👀` only when `ackReaction` is absent; an empty string and customized values are preserved. On `{"error"}`, report the token and stop.
 
 ### 6c. Server channel / group chat (optional)
 

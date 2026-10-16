@@ -107,7 +107,7 @@ function apply(stateDir: string, stdin: string): Json {
       // proposal.ts's patch verb runs, since this path writes frontmatter
       // itself rather than going through it. A miss is reported, never fatal:
       // the proposal really was resolved.
-      const swept = sweepMoot(stateDir, { proposalId: a.proposal_id });
+      const swept = sweepMoot(stateDir, a.proposal_id);
       if (!swept.ok) errors.push(`${a.proposal_id}: pending-ask reconciliation: ${swept.error}`);
       applied.auto_resolve++;
     } else {

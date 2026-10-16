@@ -9,7 +9,7 @@ export function isKey(key: unknown): key is string {
 }
 
 export function checkKey(key: string): void {
-  if (!isKey(key)) throw new Error('invalid-key');
+  if (!isKey(key)) throw new Error('invalid_key');
 }
 
 

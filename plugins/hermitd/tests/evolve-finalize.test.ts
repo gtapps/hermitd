@@ -393,7 +393,7 @@ const plantSnapshot = (dir: string, snap: unknown) => {
 test('snapshot mode writes {ts,to,config} at 0600', withProj(async (dir) => {
   writeConfig(dir, '{"heartbeat":{"every":"2h"},"_hermit_versions":{"hermitd":"1.2.5"}}');
 
-  expect(writeSnapshot(dir, '1.2.6').startsWith('OK|')).toBe(true);
+  expect(writeSnapshot(dir, '1.2.6')).toEqual({ path: snapFile(dir) });
 
   const snap = JSON.parse(fs.readFileSync(snapFile(dir), 'utf8'));
   expect(snap.to).toBe('1.2.6');
@@ -404,7 +404,8 @@ test('snapshot mode writes {ts,to,config} at 0600', withProj(async (dir) => {
 }));
 
 test('snapshot mode is fail-open: no config, no snapshot, no throw', withProj(async (dir) => {
-  expect(writeSnapshot(dir, '1.2.6').startsWith('SKIP|')).toBe(true);
+  expect(writeSnapshot(dir, '1.2.6')).toMatchObject({ status: 'skip', reason: 'snapshot_failed' });
+  expect(writeSnapshot(dir, null)).toEqual({ status: 'skip', reason: 'core_required' });
   expect(fs.existsSync(snapFile(dir))).toBe(false);
 }));
 
@@ -415,7 +416,7 @@ test('snapshot mode exits 0 through the CLI and leaves config.json untouched', w
   const r = await runPinnedScript('evolve-finalize.ts', dir, [dir, 'snapshot', '--core=1.2.6']);
 
   expect(r.exitCode).toBe(0);
-  expect(r.stdout.startsWith('OK|')).toBe(true);
+  expect(JSON.parse(r.stdout).path).toBe(snapFile(dir));
   expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf8')).toBe(before);
   expect(JSON.parse(fs.readFileSync(snapFile(dir), 'utf8')).to).toBe('1.2.6');
 }));
@@ -553,16 +554,16 @@ test('a failed run keeps the snapshot, so the retry still attributes the migrati
   expect(fs.existsSync(snapFile(dir))).toBe(false);
 }));
 
-test('snapshot mode SKIPs a foreign state dir instead of exiting non-zero', withProj(async (dir) => {
+test('snapshot mode skips a foreign state dir instead of exiting non-zero', withProj(async (dir) => {
   writeConfig(dir, '{"_hermit_versions":{"hermitd":"1.2.5"}}');
   const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-foreign-'));
   try {
-    // Readable config, so the only reason to SKIP is the pin.
+    // Readable config, so the only reason to skip is the pin.
     writeConfig(foreign, '{"_hermit_versions":{"hermitd":"9.9.9"}}');
     const r = await runPinnedScript('evolve-finalize.ts', dir, [foreign, 'snapshot', '--core=1.2.6']);
 
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.startsWith('SKIP|')).toBe(true);
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'skip', reason: 'foreign_state_dir' });
     expect(fs.existsSync(snapFile(foreign))).toBe(false);
   } finally {
     try { fs.rmSync(foreign, { recursive: true, force: true }); } catch {}

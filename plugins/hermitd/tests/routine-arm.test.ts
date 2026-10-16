@@ -72,10 +72,12 @@ async function arm(hermit: string, args: string[], env: Record<string, string> =
   return runScript('routines.ts', { args: ['arm', subverb, hermit, pluginRoot, ...flags], env });
 }
 
+const out = (result: { stdout: string }) => JSON.parse(result.stdout);
+
 test('native commit accepts a live supervisor with a stale tick', async () => {
   const f = fixture();
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ pid: process.pid, last_peek_at: iso(0) }));
-  expect((await arm(f.hermit, ['commit', 'native'])).stdout).toStartWith('OK|monitor|');
+  expect(out(await arm(f.hermit, ['commit', 'native'])).status).toBe('armed');
   const runtime = JSON.parse(fs.readFileSync(path.join(f.state, 'routine-monitor.runtime.json'), 'utf8'));
   expect(runtime.launch).toBe('native');
   expect(runtime.task_id).toBeUndefined();
@@ -84,7 +86,7 @@ test('native commit accepts a live supervisor with a stale tick', async () => {
 test('native commit with a dead supervisor and no tick falls back', async () => {
   const f = fixture();
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ pid: 2147483647 }));
-  expect((await arm(f.hermit, ['commit', 'native'])).stdout).toBe('FALLBACK|liveness-absent\n');
+  expect(out(await arm(f.hermit, ['commit', 'native']))).toEqual({ status: 'fallback', reason: 'liveness_absent' });
 }, 20_000);
 
 test('begin preserves native liveness', async () => {
@@ -106,13 +108,13 @@ function driftRoutineLeg(f: ReturnType<typeof fixture>, pid: number) {
 test('command drift with a live supervisor requires restart', async () => {
   const f = fixture();
   driftRoutineLeg(f, process.pid);
-  expect((await arm(f.hermit, ['begin'])).stdout).toBe('RESTART_REQUIRED|command-drift\n');
+  expect(out(await arm(f.hermit, ['begin']))).toEqual({ status: 'restart_required', reason: 'command_drift' });
 });
 
 test('anchor skips instead of arming when a restart is required', async () => {
   const f = fixture();
   driftRoutineLeg(f, process.pid);
-  expect((await arm(f.hermit, ['anchor'])).stdout).toBe('SKIP|restart-required:routines\n');
+  expect(out(await arm(f.hermit, ['anchor']))).toEqual({ status: 'restart_required', legs: ['routines'] });
 });
 
 test('anchor names every leg that needs a restart', async () => {
@@ -121,13 +123,13 @@ test('anchor names every leg that needs a restart', async () => {
   const file = path.join(f.state, 'heartbeat-monitor.runtime.json');
   fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), command: 'old-command' }));
   fs.writeFileSync(path.join(f.state, 'heartbeat-liveness.json'), JSON.stringify({ pid: process.pid }));
-  expect((await arm(f.hermit, ['check'])).stdout).toBe('SKIP|restart-required:routines,heartbeat\n');
+  expect(out(await arm(f.hermit, ['check']))).toEqual({ status: 'restart_required', legs: ['routines', 'heartbeat'] });
 });
 
 test('command drift with a dead supervisor still arms', async () => {
   const f = fixture();
   driftRoutineLeg(f, 2147483647);
-  expect((await arm(f.hermit, ['check'])).stdout).toBe('ARM|routines|routines:command-drift\n');
+  expect(out(await arm(f.hermit, ['check']))).toEqual({ status: 'arm', legs: ['routines'], reasons: ['routines:command_drift'] });
 });
 
 test('both legs registered from the sha-suffixed sibling cache dir check healthy', async () => {
@@ -138,21 +140,22 @@ test('both legs registered from the sha-suffixed sibling cache dir check healthy
     runtime.command = runtime.command.replace('"/scripts/', '-5954e0f6849a"/scripts/');
     fs.writeFileSync(file, JSON.stringify(runtime));
   }
-  const result = await arm(f.hermit, ['check']);
-  expect(result.stdout).toMatch(/^HEALTHY\|.*\|heartbeat=ok$/m);
+  const result = out(await arm(f.hermit, ['check']));
+  expect(result).toMatchObject({ status: 'healthy', heartbeat: 'ok' });
 });
 
 test('guest begin only reports the guest verdict', async () => {
   const f = fixture();
   fs.writeFileSync(path.join(f.state, '.guest-test-guest'), iso());
-  expect((await arm(f.hermit, ['begin', '--session-id', 'test-guest'])).stdout).toBe('GUEST|native-monitors-resident-only\n');
+  expect((await arm(f.hermit, ['begin', '--session-id', 'test-guest'])).stdout)
+    .toBe('{"status":"guest","reason":"native_monitors_resident_only"}\n');
 });
 
 test('anchor HEALTHY stamps started and fired', async () => {
   const f = fixture();
   const result = await arm(f.hermit, ['anchor']);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout).toMatch(/^HEALTHY\|routines=monitor:1\|anchor_age=0\.0d\|heartbeat=ok$/m);
+  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, anchor_age_days: 0, heartbeat: 'ok' });
   const events = fs.readFileSync(path.join(f.state, 'routine-metrics.jsonl'), 'utf8')
     .trim().split('\n').map(line => JSON.parse(line).event);
   expect(events).toEqual(['started', 'fired']);
@@ -166,7 +169,7 @@ test('anchor arms only the stale leg and stamps started without fired', async ()
   fs.writeFileSync(runtimePath, JSON.stringify(runtime));
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ last_peek_at: iso(now - 700_000) }));
   const result = await arm(f.hermit, ['anchor']);
-  expect(result.stdout).toContain('ARM|routines|routines:liveness-stale');
+  expect(out(result)).toEqual({ status: 'arm', legs: ['routines'], reasons: ['routines:liveness_stale'] });
   const events = fs.readFileSync(path.join(f.state, 'routine-metrics.jsonl'), 'utf8')
     .trim().split('\n').map(line => JSON.parse(line).event);
   expect(events).toEqual(['started']);
@@ -182,7 +185,7 @@ test('anchor re-arms a routine monitor registered by a previous boot', async () 
   runtime.boot_id = 'boot-old';
   fs.writeFileSync(runtimePath, JSON.stringify(runtime));
   const result = await arm(f.hermit, ['anchor']);
-  expect(result.stdout).toContain('routines:boot-mismatch');
+  expect(out(result).reasons).toContain('routines:boot_mismatch');
 });
 
 test('anchor pause short-circuits and stamps skipped-paused', async () => {
@@ -191,7 +194,7 @@ test('anchor pause short-circuits and stamps skipped-paused', async () => {
     paused: true, paused_until: null, reason: 'operator', by: 'test', ts: iso(),
   }));
   const result = await arm(f.hermit, ['anchor']);
-  expect(result.stdout).toBe('SKIP|paused\n');
+  expect(out(result)).toEqual({ status: 'skip', reason: 'paused' });
   expect(fs.readFileSync(path.join(f.state, 'routine-metrics.jsonl'), 'utf8')).toContain('skipped-paused');
 });
 
@@ -199,13 +202,14 @@ test('begin reset always plans, removes cursor, and renders the anchor prompt', 
   const f = fixture();
   fs.writeFileSync(path.join(f.state, 'routine-schedule.json'), '{}');
   const result = await arm(f.hermit, ['begin', '--reset']);
-  expect(result.stdout).toContain('ARM|routines,heartbeat|reset');
+  const plan = out(result);
+  expect(plan).toMatchObject({ status: 'arm', legs: ['routines', 'heartbeat'], mode: 'reset', activate: '/hermitd:monitor-activate' });
   expect(result.stdout).not.toContain('OLD_TASK:');
-  expect(result.stdout).toContain('ACTIVATE:/hermitd:monitor-activate');
-  expect(result.stdout).toContain('ANCHOR_PROMPT_BEGIN\n[hermit-routine:heartbeat-restart]');
-  expect(result.stdout).toContain('arm anchor');
-  expect(result.stdout).toContain('SKIP|paused, report that the resident is paused');
-  expect(result.stdout).toContain('finish heartbeat-restart cron-create');
+  expect(plan.create.map((item: { id: string }) => item.id).sort()).toEqual(['heartbeat-restart']);
+  expect(plan.anchor_prompt).toStartWith('[hermit-routine:heartbeat-restart]\n');
+  expect(plan.anchor_prompt).toContain('arm anchor');
+  expect(plan.anchor_prompt).toContain('reason "paused": report that the resident is paused');
+  expect(plan.anchor_prompt).toContain('finish heartbeat-restart cron-create');
   expect(fs.existsSync(path.join(f.state, 'routine-schedule.json'))).toBe(false);
 });
 
@@ -234,7 +238,7 @@ test('commit none writes monitor runtime and commits the anchor mirror', async (
   const f = fixture({ scheduled: false, heartbeat: false });
   fs.writeFileSync(path.join(f.state, 'cron-registry.json'), JSON.stringify({ boot_id: null, routines: {} }));
   const result = await arm(f.hermit, ['commit', 'none', '--created', 'heartbeat-restart']);
-  expect(result.stdout).toBe('OK|monitor|0 scheduled|anchor created\n');
+  expect(out(result)).toEqual({ status: 'armed', scheduled: 0, anchor: 'created' });
   const runtime = JSON.parse(fs.readFileSync(path.join(f.state, 'routine-monitor.runtime.json'), 'utf8'));
   expect(runtime).toMatchObject({ mode: 'monitor', routines: 0, boot_id: 'boot-a' });
   const mirror = JSON.parse(fs.readFileSync(path.join(f.state, 'cron-registry.json'), 'utf8'));
@@ -251,13 +255,13 @@ test('daily HEALTHY verdicts cannot carry registration past the 5-day planner cl
     fs.writeFileSync(path.join(f.state, 'routine-metrics.jsonl'), JSON.stringify({
       ts: iso(dayNow - 86400000), routine_id: 'heartbeat-restart', event: 'fired', delivery: 'cron-create',
     }) + '\n');
-    const result = await arm(f.hermit, ['anchor'], { HERMIT_NOW: iso(dayNow) });
-    if (result.stdout.startsWith('ARM|')) {
+    const result = out(await arm(f.hermit, ['anchor'], { HERMIT_NOW: iso(dayNow) }));
+    if (result.status === 'arm') {
       sawArm = true;
       expect(day).toBeLessThanOrEqual(6);
       break;
     }
-    expect(result.stdout).toStartWith('HEALTHY|');
+    expect(result.status).toBe('healthy');
   }
   expect(sawArm).toBe(true);
 });
@@ -272,25 +276,20 @@ function staleHeartbeat(f: { state: string }) {
   fs.writeFileSync(p, JSON.stringify(runtime));
 }
 
-const hbLines = (stdout: string) => stdout.split('\n').filter(line => line.startsWith('HB_'));
-
-test('begin plans the heartbeat leg with the same lines start-check would print', async () => {
+test('begin plans the heartbeat leg with the same plan start-check would print', async () => {
   const f = fixture();
   staleHeartbeat(f);
   const g = fixture();
   staleHeartbeat(g);
 
-  const begun = await arm(f.hermit, ['begin']);
-  const checked = await runScript('heartbeat.ts', { args: ['start-check', g.hermit] });
-
-  // Same plan, modulo each fixture's own tmp dir.
-  const expected = checked.stdout.split('\n')
-    .filter(line => line && !line.startsWith('REARM|') && !line.startsWith('ACTIVATE:'))
-    .map(line => `HB_${line.split(g.hermit).join(f.hermit)}`);
-  expect(expected).toEqual([
-    'HB_INTERVAL:1800',
-  ]);
-  expect(hbLines(begun.stdout)).toEqual(expected);
+  const begun = out(await arm(f.hermit, ['begin']));
+  const { status, reason, activate, ...expected } = out(await runScript('heartbeat.ts', { args: ['start-check', g.hermit] }));
+  expect({ status, reason, activate }).toEqual({ status: 'rearm', reason: 'interval_drift', activate: '/hermitd:monitor-activate' });
+  expect(expected).toEqual({ interval: 1800 });
+  expect(begun.heartbeat).toEqual(expected);
+  expect(begun.activate).toBe(activate);
+  expect(begun.create).toEqual([]);
+  expect(begun.anchor_prompt).toBeUndefined();
 });
 
 test('begin preserves the first-start marker without carrying old heartbeat tasks', async () => {
@@ -301,7 +300,7 @@ test('begin preserves the first-start marker without carrying old heartbeat task
   );
   const result = await arm(f.hermit, ['begin']);
   expect(result.stdout).not.toContain('OLD_TASK:');
-  expect(hbLines(result.stdout)).toContain('HB_FIRST_START:1');
+  expect(out(result).heartbeat.first_start).toBe(true);
 });
 
 test('a disabled heartbeat is never planned by begin', async () => {
@@ -311,7 +310,7 @@ test('a disabled heartbeat is never planned by begin', async () => {
   config.heartbeat = { enabled: false, every: '30m' };
   fs.writeFileSync(configPath, JSON.stringify(config));
   const result = await arm(f.hermit, ['begin', '--reset']);
-  expect(hbLines(result.stdout)).toEqual([]);
+  expect(out(result).heartbeat).toBeUndefined();
 });
 
 // The fallback pass is the second half of a load whose first pass already
@@ -319,10 +318,12 @@ test('a disabled heartbeat is never planned by begin', async () => {
 test('the fallback pass never plans the heartbeat leg', async () => {
   const f = fixture();
   staleHeartbeat(f);
-  const result = await arm(f.hermit, ['begin', '--fallback']);
-  expect(result.stdout).toContain('ARM|routines|fallback');
-  expect(result.stdout).toContain('WARN:routines|routine_max_lateness_minutes is not enforced in CronCreate fallback');
-  expect(hbLines(result.stdout)).toEqual([]);
+  const result = out(await arm(f.hermit, ['begin', '--fallback']));
+  expect(result).toMatchObject({ status: 'arm', legs: ['routines'], mode: 'fallback' });
+  expect(result.warnings[0].id).toBe('routines');
+  expect(result.warnings[0].message).toStartWith('routine_max_lateness_minutes is not enforced in CronCreate fallback');
+  expect(result.heartbeat).toBeUndefined();
+  expect(result.activate).toBeUndefined();
 });
 
 test('commit --heartbeat records the heartbeat monitor after the routine leg', async () => {
@@ -332,10 +333,9 @@ test('commit --heartbeat records the heartbeat monitor after the routine leg', a
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ last_peek_at: iso() }));
   fs.writeFileSync(path.join(f.state, 'heartbeat-liveness.json'), JSON.stringify({ last_peek_at: iso(Date.now() + 1000) }));
 
-  const result = await arm(f.hermit, ['commit', 'native', '--heartbeat', 'native']);
-  const lines = result.stdout.trim().split('\n');
-  expect(lines[0]).toStartWith('OK|monitor|');
-  expect(lines[1]).toBe('HEARTBEAT:OK|registered|interval=1800');
+  const result = out(await arm(f.hermit, ['commit', 'native', '--heartbeat', 'native']));
+  expect(result.status).toBe('armed');
+  expect(result.heartbeat).toEqual({ status: 'registered', interval: 1800 });
   const runtime = JSON.parse(fs.readFileSync(path.join(f.state, 'heartbeat-monitor.runtime.json'), 'utf8'));
   expect(runtime).toMatchObject({ launch: 'native', interval: 1800 });
 });
@@ -351,7 +351,7 @@ test('a symlinked plugin root writes the same heartbeat command as start-commit'
 
   await runScript('routines.ts', { args: ['arm', 'commit', f.hermit, pluginLink, 'native', '--heartbeat', 'native'] });
   const checked = await runScript('heartbeat.ts', { args: ['start-check', f.hermit] });
-  expect(checked.stdout).toStartWith('FRESH|interval=1800');
+  expect(out(checked)).toEqual({ status: 'fresh', interval: 1800 });
 });
 
 // The two legs are independent: a routine subprocess that never ticked says
@@ -364,8 +364,7 @@ test('a routine fallback still commits the heartbeat leg', async () => {
   fs.writeFileSync(path.join(f.state, 'heartbeat-liveness.json'), JSON.stringify({ last_peek_at: iso(Date.now() + 1000) }));
 
   const result = await arm(f.hermit, ['commit', 'native', '--heartbeat', 'native']);
-  expect(result.stdout).toContain('FALLBACK|liveness-absent');
-  expect(result.stdout).toContain('HEARTBEAT:OK|registered|interval=1800');
+  expect(out(result)).toEqual({ status: 'fallback', reason: 'liveness_absent', heartbeat: { status: 'registered', interval: 1800 } });
   // The absent routine liveness file costs waitForFirstTick its full ~10s poll.
 }, 30_000);
 
@@ -374,7 +373,7 @@ test('commit without --heartbeat leaves the heartbeat runtime untouched', async 
   const before = fs.readFileSync(path.join(f.state, 'heartbeat-monitor.runtime.json'), 'utf8');
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ last_peek_at: iso() }));
   const result = await arm(f.hermit, ['commit', 'native']);
-  expect(result.stdout).not.toContain('HEARTBEAT:');
+  expect(out(result).heartbeat).toBeUndefined();
   expect(fs.readFileSync(path.join(f.state, 'heartbeat-monitor.runtime.json'), 'utf8')).toBe(before);
 });
 
@@ -412,7 +411,7 @@ test('begin writes no armed_at fence', async () => {
 test('check reports the healthy verdict and writes nothing', async () => {
   const f = fixture();
   const result = await arm(f.hermit, ['check']);
-  expect(result.stdout).toMatch(/^HEALTHY\|routines=monitor:1\|anchor_age=0\.0d\|heartbeat=ok$/m);
+  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, anchor_age_days: 0, heartbeat: 'ok' });
   expect(fs.existsSync(path.join(f.state, 'routine-metrics.jsonl'))).toBe(false);
 });
 
@@ -424,7 +423,7 @@ test('check reports a stale leg without stamping a fire', async () => {
   fs.writeFileSync(runtimePath, JSON.stringify(runtime));
   fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ last_peek_at: iso(now - 700_000) }));
   const result = await arm(f.hermit, ['check']);
-  expect(result.stdout).toContain('ARM|routines|routines:liveness-stale');
+  expect(out(result)).toEqual({ status: 'arm', legs: ['routines'], reasons: ['routines:liveness_stale'] });
   expect(fs.existsSync(path.join(f.state, 'routine-metrics.jsonl'))).toBe(false);
 });
 
@@ -434,6 +433,19 @@ test('check reports pause without consuming the fire', async () => {
     paused: true, paused_until: null, reason: 'operator', by: 'test', ts: iso(),
   }));
   const result = await arm(f.hermit, ['check']);
-  expect(result.stdout).toBe('SKIP|paused\n');
+  expect(out(result)).toEqual({ status: 'skip', reason: 'paused' });
   expect(fs.existsSync(path.join(f.state, 'routine-metrics.jsonl'))).toBe(false);
+});
+
+// Every caller stops and reports a check error, so it is a failure, not a verdict.
+test('a usage error or unreadable state is a check_error failure', async () => {
+  const usage = await runScript('routines.ts', { args: ['arm', 'check'] });
+  expect(usage.exitCode).toBe(1);
+  expect(out(usage)).toEqual({ error: 'check_error:usage' });
+
+  const f = fixture();
+  fs.writeFileSync(path.join(f.hermit, 'config.json'), '{not json');
+  const broken = await arm(f.hermit, ['check']);
+  expect(broken.exitCode).toBe(1);
+  expect(out(broken).error).toStartWith('check_error:');
 });

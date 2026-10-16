@@ -1,9 +1,8 @@
-// Tests for `routines.ts cron-registry` — the diff-based plan/commit planner behind
+// Tests for lib/routines/registry.ts: the diff-based plan/commit planner behind
 // hermit-routines `load`. planCron/commitCron are pure (no fs, no Date.now()), so
 // these are in-process unit tests, not subprocess runs — the real boundary
-// (reading config.json/the mirror file, writing the mirror) is exercised by the
-// CLI wiring, which the hermit-routines content-contract tests below pin at the
-// SKILL.md-prose level instead of re-implementing a fs harness here.
+// (reading config.json/the mirror file, writing the mirror) is `routines.ts arm`,
+// which tests/routine-arm.test.ts exercises as a subprocess.
 //
 // Coverage mirrors the acceptance criteria from the audit-driven design: unchanged
 // config is a no-op; a metadata/schedule edit forces exactly that routine's

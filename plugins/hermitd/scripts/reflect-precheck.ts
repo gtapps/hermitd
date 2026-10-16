@@ -1,16 +1,19 @@
 import { readTaskReports } from './lib/task-report';
 // reflect-precheck.ts — determines which reflect phases are due before invoking LLM.
 // Usage: bun reflect-precheck.ts <hermit-state-dir> <plugin-root> [--quick [--force]]
-// Output (stdout, one line): EMPTY  |  RUN|<phases-json>  |  RUN|<sha256-hash> (--quick)
-// <phases-json> carries one boolean per due phase plus `phase`: the install's age bucket
+// Output (stdout, one JSON line):
+//   {"status":"empty"}
+//   {"status":"run","phases":{<phase>:true,...},"phase":"<age bucket>"}
+//   {"status":"run","hash":"<sha256>"}   (--quick)
+// `phases` carries one boolean per due phase; `phase` is the install's age bucket
 // (newborn/juvenile/adult) that the skill binds to $PHASE.
 //
-// On EMPTY this script updates reflection-state counters before exiting.
+// On empty this script updates reflection-state counters before exiting.
 //
 // --quick gates the event-driven `reflect --quick` chain (reflect_after routines) against
 // a hash of recent record lessons and waiting dependencies, isolated from the scheduled
 // cadence state above (never touches last_run_at/counters). --force (only meaningful with
-// --quick) skips the EMPTY decision entirely and always returns RUN|<hash> — used by manual
+// --quick) skips the empty decision entirely and always returns a run hash: used by manual
 // `/reflect --quick` invocations, which need a deterministic hash to commit after processing,
 // not a gating decision (the skill is already loaded by the time this runs).
 //
@@ -28,13 +31,9 @@ import { pinStateDirOrExit, hermitDir as resolveHermitRoot } from './lib/cc-comp
 import { readSettledConfig } from './lib/config-read';
 import { costIndexPath, readCostIndex } from './lib/cost-log';
 import { ensureLedgerFile } from './lib/append-jsonl';
+import { emitJson } from './lib/cli';
 
 type Json = any;
-
-function emit(verdict: string): never {
-  process.stdout.write(verdict + '\n');
-  process.exit(0);
-}
 
 const stateDirArg = process.argv[2];
 const pluginRoot = process.argv[3];
@@ -43,13 +42,13 @@ const quickMode = flags.includes('--quick');
 const forceMode = flags.includes('--force');
 
 // Missing is fail-open (existing behaviour); foreign is not — see header.
-if (!stateDirArg) emit('RUN|{}');
+if (!stateDirArg) emitJson({ status: 'run', phases: {} });
 
 // The state dir is not caller-chosen. Reachable through a pre-approved
 // `Bash(bun */scripts/reflect-precheck.ts*)` grant that covers every argument,
 // and forwards it to archive-raw.ts and update-reflection-state.ts, so an
 // unvalidated root would have reached both. Deliberately a usage error (stderr, exit 1), not a stdout verdict —
-// callers branch on the EMPTY|RUN|... grammar.
+// callers branch on the stdout status.
 const stateDir = pinStateDirOrExit(stateDirArg, 'reflect-precheck.ts');
 
 const readJSON = (p: string): Json => {
@@ -63,10 +62,10 @@ function runQuickPrecheck(stateDir: string, force: boolean): never {
   const blockers = records.filter(record => record.waiting_on).map(record => `${record.title}: ${record.waiting_on}`).join('\n');
   const hash = sha256(`${findings}\n---\n${blockers}`);
 
-  if (force) emit('RUN|' + hash);
+  if (force) emitJson({ status: 'run', hash });
 
   if (!findings && !blockers) {
-    emit('EMPTY');
+    emitJson({ status: 'empty' });
   }
 
   const reflectionState = readJSON(path.join(stateDir, 'state', 'reflection-state.json')) ?? {};
@@ -75,10 +74,10 @@ function runQuickPrecheck(stateDir: string, force: boolean): never {
   // No prior cursor (storedHash undefined) never equals a hex hash, so first-run
   // correctly falls through to RUN below without a separate branch.
   if (storedHash === hash) {
-    emit('EMPTY');
+    emitJson({ status: 'empty' });
   }
 
-  emit('RUN|' + hash);
+  emitJson({ status: 'run', hash });
 }
 
 if (quickMode) runQuickPrecheck(stateDir, forceMode);
@@ -363,9 +362,9 @@ if (wroteNewRows) {
   if (hasFresh) phases.observations_fresh = true;
 }
 
-if (Object.keys(phases).length > 0) emit('RUN|' + JSON.stringify({ ...phases, phase }));
+if (Object.keys(phases).length > 0) emitJson({ status: 'run', phases, phase });
 
-// EMPTY path: update reflection-state.json.
+// Empty path: update reflection-state.json.
 if (pluginRoot) {
   const updateScript = path.join(pluginRoot, 'scripts', 'update-reflection-state.ts');
   try {
@@ -377,4 +376,4 @@ if (pluginRoot) {
   } catch { /* fail-open */ }
 }
 
-emit('EMPTY');
+emitJson({ status: 'empty' });
