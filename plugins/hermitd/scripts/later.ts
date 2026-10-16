@@ -3,22 +3,17 @@ import { runEvidence } from './lib/evidence-runner';
 import { readTasks } from './lib/tasks';
 import path from 'node:path';
 import { appendJsonlLine } from './lib/append-jsonl';
-import { flagValue, readStdinIfFlagged } from './lib/cli';
+import { flagValue, readJson, readStdinIfFlagged } from './lib/cli';
 import { checkKey } from './lib/conversation-key';
 import { scanForInjection } from './lib/injection-scan';
 import { readConfigRaw } from './lib/config-read';
+import { maxLatenessMinutes } from './lib/routines/lateness';
 import { nextFire } from './lib/cron';
 import { acquireLockWithWait, releaseLock } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { resolveHermitNowMs } from './lib/time';
 
-type State = 'pending' | 'held' | 'broken' | 'indeterminate' | 'cancelled';
-interface Row {
-  id: string; claim: string; cmd: string | null; chat?: string; due: string; origin: 'operator' | 'hermit';
-  session: string | null; created_at: string; state: State;
-  timeout_s?: number;
-  checked_at?: string; late?: boolean; exit?: number | null; output?: string; reason?: string;
-}
+import { readRows, type Row, type State } from './lib/later-ledger';
 
 const DAY_MS = 86400000;
 /** Long enough for a monthly schedule to resolve; a rarer one falls back to `due` + 1 day. */
@@ -33,23 +28,15 @@ function laterCheckFire(dir: string, after: Date): Date | null {
   return fire && fire.getTime() - after.getTime() < HORIZON_MS ? fire : null;
 }
 
-/** Late means the first fire after `due` was missed: checked at or after the second one. */
+/** Operator rows use monitor lateness; hermit claims allow the first daily check. */
 function isLate(dir: string, row: Row, date: Date): boolean {
   const due = new Date(row.due);
+  if (row.kind === 'reminder' || row.origin === 'operator') {
+    return date.getTime() - due.getTime() > maxLatenessMinutes(readConfigRaw(dir)?.routine_max_lateness_minutes) * 60000;
+  }
   const first = laterCheckFire(dir, due);
   const second = first && laterCheckFire(dir, first);
   return second ? date.getTime() >= second.getTime() : date.getTime() > due.getTime() + DAY_MS;
-}
-
-/** A truncated trailing line (crash mid-append) must not brick every verb; it is dropped on the next rewrite. */
-function readRows(file: string): Row[] {
-  if (!fs.existsSync(file)) return [];
-  const rows: Row[] = [];
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-    if (!line.trim()) continue;
-    try { rows.push(JSON.parse(line)); } catch { /* skip */ }
-  }
-  return rows;
 }
 
 function withLedgerLock<T>(file: string, fn: () => T): T {
@@ -98,6 +85,8 @@ async function main() {
   if (verb === 'add') {
     const claim = flagValue(args, '--claim');
     const cmd = flagValue(args, '--cmd') ?? null;
+    const remind = args.includes('--remind');
+    if (remind && args.includes('--cmd')) throw new Error('invalid add arguments');
     const chat = chatFlag(args);
     const due = flagValue(args, '--due');
     const origin = flagValue(args, '--origin');
@@ -107,11 +96,18 @@ async function main() {
     if (!Number.isInteger(timeoutS) || timeoutS < 1 || timeoutS > MAX_TIMEOUT_S) throw new Error(`--timeout-s must be an integer between 1 and ${MAX_TIMEOUT_S}`);
     const row: Row = { id: crypto.randomUUID(), claim, cmd, due: new Date(due).toISOString(), origin,
       session: flagValue(args, '--session') ?? null, created_at: date.toISOString(), state: 'pending',
+      ...(remind ? { kind: 'reminder' as const } : {}),
       ...(chat !== undefined ? { chat } : {}),
       ...(timeoutS !== DEFAULT_TIMEOUT_S ? { timeout_s: timeoutS } : {}) };
     const error = withLedgerLock(file, () => appendJsonlLine(file, JSON.stringify(row)));
     if (error) throw new Error(error);
-    console.log(`OK|${row.id}|next_fire=${laterCheckFire(dir, date)?.toISOString() ?? 'none'}`);
+    const config = readConfigRaw(dir);
+    const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
+    const exact = (row.kind === 'reminder' || row.origin === 'operator')
+      && new Date(row.due) > date
+      && config?.routines?.some((r: any) => r?.id === 'later-check' && r.enabled === true)
+      && monitor?.mode === 'monitor';
+    console.log(`OK|${row.id}|next_fire=${exact ? row.due : laterCheckFire(dir, date)?.toISOString() ?? 'none'}`);
     return;
   }
   if (verb === 'list') {
@@ -143,7 +139,7 @@ async function main() {
       console.log(reason);
       return;
     }
-    const result = row.cmd == null
+    const result = row.kind === 'reminder' || row.cmd == null
       ? { exit: null, output: '', timed_out: false }
       : await runEvidence(row.cmd, path.dirname(dir), row.timeout_s ?? DEFAULT_TIMEOUT_S);
     if (!updatePending(file, row.id, { exit: result.exit, output: result.output })) { noop(); return; }
@@ -151,7 +147,7 @@ async function main() {
     return;
   }
   const state = args[1];
-  if (!['held', 'broken', 'indeterminate'].includes(state) || !args.includes('--reason-stdin')) throw new Error('invalid verdict arguments');
+  if ((!['held', 'broken', 'indeterminate'].includes(state) && !(state === 'sent' && row.kind === 'reminder')) || !args.includes('--reason-stdin')) throw new Error('invalid verdict arguments');
   const reason = (await readStdinIfFlagged(args, '--reason-stdin')).trim().split(/\r?\n/)[0];
   if (!reason) throw new Error('reason required');
   if (!updatePending(file, row.id, { state: state as State, reason, checked_at: date.toISOString(), late: isLate(dir, row, date) })) { noop(); return; }

@@ -31,6 +31,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { maxLatenessMinutes } from './lateness';
 import { isPaused } from '../pause';
 import { validateCronSchedule, ROUTINE_ID_RE } from '../../validate-config';
 import { latestFires } from '../cron';
@@ -38,6 +39,7 @@ import { readJson as readJSON } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
 import { runGate } from './gate';
+import { readRows } from '../later-ledger';
 import { operatorTurnOpen } from '../operator-turn';
 
 type Json = any;
@@ -111,9 +113,7 @@ const windowFloor = new Date(nowMinute.getTime() - WINDOW_MS);
 const config = readConfigRaw(hermitDir);
 if (!config) finish([]);
 
-const configuredLateness = config.routine_max_lateness_minutes;
-const maxLatenessMinutes = Number.isInteger(configuredLateness) && configuredLateness >= 1 && configuredLateness <= 1440
-  ? configuredLateness : 60;
+const latenessMinutes = maxLatenessMinutes(config.routine_max_lateness_minutes);
 
 // A bad tz finds no match (fail-soft), but cursor init/reset and pruning below still run.
 const timezone: string | null = typeof config.timezone === 'string' ? config.timezone : null;
@@ -136,6 +136,14 @@ const dueIds: string[] = [];
 // Skip stamps are deferred and flushed only after the schedule persists — a failed persist
 // must not leave a skipped-* row whose cursor advance was rolled back (phantom ledger rows).
 const pendingStamps: Array<[string, string, string?]> = [];
+
+// Read once per poll; only later-check consumes ledger marks. A due with seconds rounds up:
+// the `later` gate and run compare the exact due, so an earlier poll in that minute would SKIP and consume it.
+const laterMarks = eligible.some(r => r.id === 'later-check')
+  ? readRows(path.join(stateDir, 'hypotheses.jsonl'))
+    .filter(row => row?.state === 'pending' && (row.kind === 'reminder' || row.origin === 'operator'))
+    .map(row => Math.ceil(new Date(row.due).getTime() / MINUTE_MS) * MINUTE_MS)
+  : [];
 
 for (const routine of eligible) {
   const id: string = routine.id;
@@ -161,7 +169,14 @@ for (const routine of eligible) {
 
   const from = cursor.getTime() < windowFloor.getTime() ? windowFloor : cursor;
 
-  const latestMatch: Date | null = latestFires(routine.schedule, timezone, from, nowMinute, 1)[0] ?? null;
+  let latestMatch: Date | null = latestFires(routine.schedule, timezone, from, nowMinute, 1)[0] ?? null;
+  if (id === 'later-check') {
+    for (const mark of laterMarks) {
+      if (mark > from.getTime() && mark <= nowMinute.getTime() && (!latestMatch || mark > latestMatch.getTime())) {
+        latestMatch = new Date(mark);
+      }
+    }
+  }
 
   if (!latestMatch) {
     // No match in (from, now]: advance the cursor to nowMinute so the next poll re-scans only
@@ -190,7 +205,7 @@ for (const routine of eligible) {
   const latenessFrom = !isNaN(heldAt) && heldAt <= nowMinute.getTime()
     ? Math.max(heldAt, latestMatch.getTime())
     : latestMatch.getTime();
-  if (nowMinute.getTime() - latenessFrom > maxLatenessMinutes * MINUTE_MS) {
+  if (nowMinute.getTime() - latenessFrom > latenessMinutes * MINUTE_MS) {
     schedule[id] = { last_consumed_mark: latestMatch.toISOString() };
     scheduleChanged = true;
     pendingStamps.push([id, 'skipped-late']);

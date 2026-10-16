@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkClassifierDenials, checkPermissions, checkStateFiles, resolvePaths } from '../scripts/doctor-check';
+import { checkClassifierDenials, checkStateFiles, resolvePaths } from '../scripts/doctor-check';
 import { freshDirFactory } from './helpers/workdir';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
@@ -222,35 +222,5 @@ describe('doctor state check — JSONL validation', () => {
       '{torn\n' + JSON.stringify({ ts: '2026-08-28T11:00:00Z' }) + '\n',
     );
     expect(result.status).toBe('fail');
-  });
-});
-
-describe('doctor permissions check — .jsonl ledgers are out of scope', () => {
-  /** Seed state/ with the given files at the given modes and run the permissions check. */
-  function permsScenario(files: Record<string, number>) {
-    const projectRoot = freshDir();
-    const hermitDir = path.join(projectRoot, '.hermit');
-    const stateDir = path.join(hermitDir, 'state');
-    fs.mkdirSync(stateDir, { recursive: true });
-    fs.writeFileSync(path.join(hermitDir, 'config.json'), '{}', { mode: 0o600 });
-    for (const [name, mode] of Object.entries(files)) {
-      const dest = path.join(stateDir, name);
-      fs.writeFileSync(dest, name.endsWith('.jsonl') ? '' : '{}');
-      fs.chmodSync(dest, mode);
-    }
-    return checkPermissions(resolvePaths(hermitDir, PLUGIN_ROOT));
-  }
-
-  test('a world-readable .jsonl ledger does not warn', () => {
-    // 0644 is what every install upgraded from before the 0600 default still has.
-    const result = permsScenario({ 'usage-metrics.jsonl': 0o644, 'alert-state.json': 0o600 });
-    expect(result.status).toBe('ok');
-  });
-
-  test('a world-readable .json state file still warns', () => {
-    const result = permsScenario({ 'usage-metrics.jsonl': 0o644, 'alert-state.json': 0o644 });
-    expect(result.status).toBe('warn');
-    expect(result.detail).toContain('alert-state.json');
-    expect(result.detail).not.toContain('usage-metrics.jsonl');
   });
 });

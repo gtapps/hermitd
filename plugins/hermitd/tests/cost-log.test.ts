@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  updateCostIndex, readCostIndex, computeIndex, scanUnpricedModels, scanAutomatedOpus, scanRoutineLedger,
+  updateCostIndex, readCostIndex, computeIndex, scanUnpricedModels, scanRoutineLedger,
   scanRoutineCostWindow, buildMainCostRow, buildSubagentCostRow, appendCostRows,
 } from '../scripts/lib/cost-log';
 
@@ -211,19 +211,6 @@ describe('week/month pruning', () => {
     expect(idx.by_month['2020-01']).toBeUndefined();
     // ...but total_cost_usd (all-time) still includes it.
     expect(idx.total_cost_usd).toBeCloseTo(1.1, 5);
-  }));
-});
-
-describe('scanAutomatedOpus', () => {
-  test('counts a claude-opus-5 automated row as an opus wake', withTmpdir((dir) => {
-    const logPath = writeLog(dir, [
-      { timestamp: '2026-07-04T12:00:00Z', source: 'heartbeat', model: 'claude-opus-5', estimated_cost_usd: 1.5 },
-      { timestamp: '2026-07-04T13:00:00Z', source: 'routine:demo', model: 'claude-opus-4-8', estimated_cost_usd: 0.5 },
-      { timestamp: '2026-07-04T14:00:00Z', source: 'heartbeat', model: 'claude-sonnet-5', estimated_cost_usd: 9 },
-    ]);
-    const result = scanAutomatedOpus(logPath, '2026-07-01', 'UTC');
-    expect(result.count).toBe(2);
-    expect(result.cost).toBeCloseTo(2.0, 9);
   }));
 });
 

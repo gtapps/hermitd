@@ -4,7 +4,13 @@
 
 ### Changed
 - A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
+### Added
+- Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
+
+### Changed
+- `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 ### Fixed
+- Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
 
