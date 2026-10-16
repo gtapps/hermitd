@@ -181,7 +181,7 @@ if (configExists) {
     channels = [...channelsRaw];
   } else {
     channels = Object.entries(channelsRaw)
-      .filter(([, entry]) => typeof entry !== "object" || entry === null || (entry.enabled ?? true))
+      .filter(([, entry]) => entry && typeof entry === "object" && !Array.isArray(entry) && (entry.enabled ?? true))
       .map(([name]) => name);
   }
 }
@@ -202,10 +202,7 @@ if (mcpJsonServers.length > 0) {
 }
 
 if (channels.length > 0 || mcpJsonServers.length > 0) {
-  const pluginIds = {
-    discord: "plugin:discord:discord",
-    telegram: "plugin:telegram:telegram",
-  };
+
   d.projects = d.projects ?? {};
   const proj = (d.projects[project] = d.projects[project] ?? {});
   const enabled = proj.enabledMcpjsonServers ?? [];
@@ -215,7 +212,7 @@ if (channels.length > 0 || mcpJsonServers.length > 0) {
   // infrastructure, and a disabled one takes the operator's own chat down. A
   // project .mcp.json server is the operator's call, enrolled through the
   // project's .claude/settings.json.
-  const approveIds = channels.map((ch) => pluginIds[ch]).filter(Boolean);
+  const approveIds = channels.map((ch) => `plugin:${cfg.channels?.[ch]?.plugin ?? ch}:${ch}`);
   for (const pid of approveIds) {
     if (!enabled.includes(pid)) {
       enabled.push(pid);
@@ -247,7 +244,8 @@ if (changed) fs.writeFileSync(claudeJson, JSON.stringify(d));
 // container-only privilege escalation into the shared project config.
 
 // Emit channel list on stdout line 1, recommended plugins as JSON on line 2
-console.log(channels.filter((ch) => ch !== "imessage").join(" "));
+// Built-in channels boot from claude-plugins-official whatever their marketplace (hermitd-start CHANNEL_PLUGINS).
+console.log(channels.filter((ch) => ch !== "imessage" && (ch === "discord" || ch === "telegram" || !cfg.channels?.[ch]?.marketplace)).map(ch => cfg.channels?.[ch]?.plugin ?? ch).join(" "));
 const rec = configExists ? (cfg.docker ?? {}).recommended_plugins ?? [] : [];
 console.log(JSON.stringify(rec.filter((e) => e.enabled)));
 
@@ -264,7 +262,7 @@ RECOMMENDED_PLUGINS_JSON=$(echo "$INIT_OUTPUT" | sed -n '2p')
 # Channel state is bind-mounted from the project-local dir into ~/.claude/channels/
 # so that channel plugin writes stay inside the project tree (no permission prompts)
 # and persist across container restarts without sync logic.
-for var_name in DISCORD_STATE_DIR TELEGRAM_STATE_DIR; do
+for var_name in $(compgen -e | sed -n '/^[A-Z_][A-Z0-9_]*_STATE_DIR$/p'); do
   local_dir="${!var_name:-}"
   if [ -n "$local_dir" ]; then
     mkdir -p "$local_dir"
@@ -444,6 +442,26 @@ for (const entry of plugins) {
 }
 JSEOF
 fi
+
+# Third-party channels use the operator-selected recommended-plugins install path.
+bun - "$PROJECT_DIR" <<'JSEOF'
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+try {
+  const cfg = JSON.parse(fs.readFileSync(path.join(process.argv[2], ".hermit", "config.json"), "utf8"));
+  const thirdParty = Object.entries(cfg.channels ?? {}).filter(([key, channel]) =>
+    channel && typeof channel === "object" && !Array.isArray(channel) && (channel.enabled ?? true)
+    && channel.marketplace && !["discord", "telegram", "imessage"].includes(key));
+  const installed = thirdParty.length ? spawnSync("claude", ["plugin", "list"], { encoding: "utf8" }).stdout ?? "" : "";
+  for (const [key, channel] of thirdParty) {
+    const target = `${channel.plugin ?? key}@${channel.marketplace}`;
+    if (!installed.includes(`❯ ${target}`)) {
+      console.log(`[docker-entrypoint] Channel ${key}: add ${target} to docker.recommended_plugins to install it.`);
+    }
+  }
+} catch { /* absent config is handled by boot */ }
+JSEOF
 
 # --- Plugin updates are NOT run on boot ---
 # Auto-updates would pull unreviewed code that runs with the configured permission_mode.

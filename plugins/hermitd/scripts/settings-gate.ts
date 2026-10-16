@@ -24,6 +24,7 @@ import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
 import { isAllowedSender } from './lib/channel-auth';
+import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
 
@@ -184,9 +185,10 @@ function turnConversation(payload: Json): string | null {
     const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
     const prompt = turnPromptText(lines, lines.length);
     if (!prompt.boundaryFound) return null;
-    const env = parseChannelEnvelope(prompt.text);
-    if (!env || !isAllowedSender(readConfigRaw(hermitDir()), env.source, env.userId)) return null;
-    return `${env.sourceKey}:${env.chatId}`;
+    const config = readConfigRaw(hermitDir());
+    const env = parseChannelEnvelope(prompt.text, config);
+    if (!env || !isAllowedSender(config, env.source, env.userId)) return null;
+    return conversationKey(env.sourceKey, env.chatId, env.thread);
   } catch {
     return null;
   }

@@ -204,6 +204,7 @@ describe('render-docker-templates.ts', () => {
     const dir = freshDir();
     const input = {
       packages: ['libsqlite3-dev', 'ffmpeg'],
+      channelPlugins: [{ marketplace: 'claude-plugins-official', plugin: 'discord' }],
       auth: 'api-key' as const,
       channels: {
         envLines: ['DISCORD_STATE_DIR=${PWD}/.claude.local/channels/discord'],
@@ -322,4 +323,33 @@ describe('render-docker-templates.ts', () => {
     expect(fs.existsSync(path.join(outputDir, 'docker-entrypoint.hermit.sh'))).toBe(true);
     expect(fs.readdirSync(projectRoot)).toEqual([]);
   });
+});
+
+
+test('marketplace channel renders an approval drop-in for all enabled channel plugins', async () => {
+  const dir = freshDir();
+  const channelPlugins = [
+    { marketplace: 'claude-plugins-official', plugin: 'discord' },
+    { marketplace: 'custom-market', plugin: 'custom-plugin' },
+  ];
+  expect((await render(dir, { channelPlugins })).exitCode).toBe(0);
+  const df = dockerfile(dir);
+  expect(df).toContain('/etc/claude-code/managed-settings.d/hermitd-channels.json');
+  expect(df).toContain(JSON.stringify({ channelsEnabled: true, allowedChannelPlugins: channelPlugins }));
+  expect(df.indexOf('hermitd-channels.json')).toBeLessThan(df.indexOf('USER claude'));
+  const configPath = path.join(dir, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    docker: { packages: [] },
+    channels: { discord: {}, custom: { marketplace: 'custom-market', plugin: 'custom-plugin' }, disabled: { enabled: false } },
+  }));
+  const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
+  expect(derived?.channelPlugins).toEqual(channelPlugins);
+  expect((await render(dir, { ...derived! })).exitCode).toBe(0);
+  expect(dockerfile(dir)).toContain(JSON.stringify({ channelsEnabled: true, allowedChannelPlugins: channelPlugins }));
+});
+
+test('official-only channel plugins need no managed approval drop-in', async () => {
+  const dir = freshDir();
+  expect((await render(dir, { channelPlugins: [{ marketplace: 'claude-plugins-official', plugin: 'discord' }] })).exitCode).toBe(0);
+  expect(dockerfile(dir)).not.toContain('hermitd-channels.json');
 });

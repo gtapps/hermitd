@@ -99,3 +99,27 @@ test('the literal .hermit from the project root passes the pin', async () => {
   const [stdout, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
   expect({ stdout, code }).toEqual({ stdout: '[]\n', code: 0 });
 });
+
+
+test('thread-open keys bind threaded messages without binding the top-level chat', async () => {
+  const { parseChannelEnvelope } = await import('../scripts/lib/channel-envelope');
+  const { isKey } = await import('../scripts/lib/conversation-key');
+  const { mutateTask } = await import('../scripts/lib/tasks');
+  const { run } = await import('../scripts/lib/prompt-stages/conversation');
+  const dir = freshDir();
+  const config = { channels: { slack: { attributes: { thread_id: 'thread_ts' } } } };
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+  const opened = await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'C0123', '--message-id', '1712345678.123456']);
+  expect(opened).toEqual({ code: 0, stdout: 'OK|slack:C0123~1712345678.123456|thread_ts=1712345678.123456\n' });
+  const key = opened.stdout.split('|')[1];
+  expect(isKey(key)).toBe(true);
+  mutateTask(dir, 'open', undefined, { owner: 'resident', requester: 'slack:U1', conversation: key, title: 'Threaded task', done: 'Task complete' }, '');
+  const makeContext = (thread: string) => ({
+    dir, prompt: '', envelope: parseChannelEnvelope(`<channel source="slack" chat_id="C0123" user_id="U1" ${thread}>hello</channel>`, config),
+    transcriptPath: null, config: () => config, runtime: () => ({}),
+  });
+  const threaded = makeContext('thread_ts="1712345678.123456"');
+  expect((await run(threaded))?.context).toContain(`task thread ${key}`);
+  expect(await run(makeContext(''))).toBeUndefined();
+  expect(await cli(dir, ['thread-open', '--source', 'other', '--chat-id', 'C1', '--message-id', 'M1'])).toEqual({ code: 1, stdout: 'ERROR|no-thread-attribute\n' });
+});

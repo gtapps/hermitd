@@ -2,6 +2,7 @@
 // prompt is a <channel> envelope, with no channel tool call this turn, holds
 // once so the operator is not left with silence. Fail-open: any error returns null.
 import { isAllowedSender } from './channel-auth';
+import { conversationKey } from './conversation-key';
 import { parseChannelEnvelope } from './channel-envelope';
 import { readConfigRaw } from './config-read';
 import { threadRecords } from './tasks';
@@ -22,11 +23,12 @@ export function replyBlockReason(dir: string, payload: Json): string | null {
     const prompt = turnPromptText(lines, lines.length);
     if (!prompt.boundaryFound) return null;
 
-    const env = parseChannelEnvelope(prompt.text);
+    const config = readConfigRaw(dir);
+    const env = parseChannelEnvelope(prompt.text, config);
     if (!env) return null;
 
-    if (!isAllowedSender(readConfigRaw(dir), env.source, env.userId)) return null;
-    const key = `${env.sourceKey}:${env.chatId}`;
+    if (!isAllowedSender(config, env.source, env.userId)) return null;
+    const key = conversationKey(env.sourceKey, env.chatId, env.thread);
     // A worker-owned thread ends its turn on a SendMessage to the worker, so no
     // reply is owed there; a resident-owned thread still owes one like any chat.
     if (threadRecords(dir).some(task => task.conversation === key && task.owner !== 'resident')) return null;

@@ -11,3 +11,8 @@ export function isKey(key: unknown): key is string {
 export function checkKey(key: string): void {
   if (!isKey(key)) throw new Error('invalid-key');
 }
+
+
+export function conversationKey(sourceKey: string, chatId: string, thread?: string | null): string {
+  return `${sourceKey}:${chatId}${thread == null ? '' : `~${thread}`}`;
+}

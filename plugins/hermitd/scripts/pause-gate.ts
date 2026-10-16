@@ -14,6 +14,8 @@ process.stdout.on('error', () => {});
 // fails closed would brick the hermit with no recovery but manual file surgery.
 
 import { hermitDir } from './lib/cc-compat';
+import { replyToolChannel } from './lib/channel-config';
+import { readConfigRaw } from './lib/config-read';
 import { isPaused } from './lib/pause';
 import { runHook } from './lib/hook-input';
 
@@ -26,21 +28,14 @@ function denyIfPaused(): void {
   process.exit(2);
 }
 
-// Channel reply tools surface in several shapes across CC versions —
-// mcp__discord__reply, plugin_discord_discord_reply, mcp__plugin_discord_discord__reply
-// (see channel-hook.ts and the loose hooks.json PostToolUse matcher
-// "(discord|telegram|imessage).*reply"). Match all of them, not just one strict
-// form: a stricter regex would deny the reply tool in an alternate shape and
-// trap a paused hermit with no way to acknowledge the pause.
-const REPLY_TOOL_RE = /(discord|telegram|imessage).*reply$/i;
-
 function isExempt(toolName: string): boolean {
-  return toolName === 'PushNotification' || REPLY_TOOL_RE.test(toolName);
+  return toolName === 'PushNotification' || replyToolChannel(toolName, readConfigRaw(hermitDir())) !== null;
 }
 
 function main(payload: any): void {
   const toolName = payload && typeof payload.tool_name === 'string' ? payload.tool_name : '';
-  if (!toolName || isExempt(toolName)) return; // allow
+  // Pause first: the exemption reads config.json, which an unpaused tool call never needs.
+  if (!toolName || !isPaused(hermitDir()).paused || isExempt(toolName)) return; // allow
   denyIfPaused();
 }
 

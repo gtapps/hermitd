@@ -751,6 +751,14 @@ describe('buildClaudeCommand channel resolution', () => {
     }
   }, 15000);
 
+  test('third-party channel uses its configured plugin name', async () => {
+    const stateDir = stateDirWithEnv('custom');
+    const { cmd } = await runBuildClaudeCommand({ channels: { custom: {
+      enabled: true, state_dir: stateDir, marketplace: 'custom-market', plugin: 'custom-plugin',
+    } } }, CLAUDE_FETCH_FAILS);
+    expect(cmd).toContain('plugin:custom-plugin@custom-market');
+  }, 15000);
+
   test('unknown channel without marketplace falls through as bare name', async () => {
     // No CHANNEL_PLUGINS entry, no channels.<name>.marketplace → bare name appended.
     // This preserves prior behaviour (claude will reject it) but is now accompanied

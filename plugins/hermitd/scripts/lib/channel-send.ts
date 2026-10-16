@@ -17,11 +17,12 @@ import path from 'node:path';
 import { resolve as resolveOutboundChannel, resolveMaintainerTarget } from '../resolve-outbound-channel';
 import { logMessage, isLoggingEnabled } from './channel-log';
 import { settleConfig, readConfigRaw, readSettledConfig } from './config-read';
-import { readChannelToken } from './channel-token';
+import { resolveProjectScript, projectRootOf } from './routines/gate';
+import { readChannelToken, channelStateDir } from './channel-token';
 import { recordChannelHealth } from './channel-health';
 import { appendJsonlLine } from './append-jsonl';
 import { isKey } from './conversation-key';
-import { getEnabledChannels } from './channel-config';
+import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 
 type Json = any;
@@ -55,7 +56,7 @@ export interface SendResult {
  * for maintainer-chat sends, whose failures must not mark the client route
  * down). */
 export interface SendOptions {
-  target?: { id: string; chat_id: string };
+  target?: { id: string; chat_id: string; thread?: string | null };
   timeoutMs?: number;
   sensitive?: boolean;
   recordHealth?: boolean;
@@ -155,6 +156,32 @@ const SENDERS: Record<string, {
   discord: { send: sendDiscord, maxLen: DISCORD_MAX_LEN },
 };
 
+async function sendScript(
+  hermitDir: string, channelId: string, channel: Json,
+  target: { chat_id: string; thread?: string | null }, text: string, deadline: number,
+): Promise<SendResult> {
+  try {
+    const root = projectRootOf(hermitDir);
+    const script = resolveProjectScript(channel.send_script, root);
+    if (script.kind === 'invalid') return { ok: false, error: script.detail };
+    const env: Record<string, string> = {
+      PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+      HERMIT_DIR: path.resolve(hermitDir),
+      HERMIT_CHAT_ID: target.chat_id,
+      CHANNEL_STATE_DIR: path.resolve(channelStateDir(hermitDir, channelId, channel)),
+    };
+    if (target.thread != null) env.HERMIT_THREAD_ID = target.thread;
+    const child = Bun.spawn([script.abs], {
+      cwd: root, env, stdin: new Blob([text]), stdout: 'ignore', stderr: 'ignore',
+      timeout: Math.max(1, Math.ceil(deadline - performance.now())), killSignal: 'SIGKILL',
+    });
+    const code = await child.exited;
+    return code === 0 ? { ok: true } : { ok: false, error: `exit:${code}` };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 /**
  * POST `text` to a channel and log the send (direction:'out') on success. By
  * default resolves the eligible outbound channel (for unsolicited pushes);
@@ -174,18 +201,26 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
     const { id: channelId, chat_id: chatId } = target;
 
     const sender = SENDERS[channelId];
-    if (!sender) return { ok: false, error: 'unsupported_platform' };
-
-    const token = readChannelToken(hermitDir, channelId, config.channels?.[channelId] || {});
-    if (!token) return { ok: false, error: 'missing_token' };
-
-    // Text over the platform limit goes out as ordered parts sharing one timeout
-    // budget. The first failed part stops the send; parts already posted stay posted.
+    const channel = config.channels?.[channelId];
     const deadline = performance.now() + (opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
-    let result!: SendResult;
-    for (const part of splitMessage(text, sender.maxLen)) {
-      result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())));
-      if (!result.ok) break;
+    let result: SendResult;
+    if (!sender) {
+      if (!isDict(channel)) {
+        result = { ok: false, error: 'unsupported_platform' };
+      } else if (!channel.send_script) {
+        result = { ok: false, error: 'no_send_path' };
+      } else {
+        result = await sendScript(hermitDir, channelId, channel, target, text, deadline);
+      }
+    } else {
+      const token = readChannelToken(hermitDir, channelId, channel || {});
+      if (!token) return { ok: false, error: 'missing_token' };
+      // Ordered parts share one timeout budget; stop at the first failed part.
+      result = { ok: false };
+      for (const part of splitMessage(text, sender.maxLen)) {
+        result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())));
+        if (!result.ok) break;
+      }
     }
     // Record reachability for ask-gate's redirect-target check (advisory, never
     // throws). Skipped for maintainer-chat sends: a failure there must not flip

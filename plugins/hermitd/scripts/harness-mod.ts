@@ -63,7 +63,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       ).join('\n');
       if (!input.reply_to) return { decision: 'ok' };
       const sent = await sendToChannel(dir, text, {
-        target: { id: input.reply_to.source, chat_id: input.reply_to.chat_id }, timeoutMs: 6000,
+        target: { id: input.reply_to.source, chat_id: input.reply_to.chat_id, thread: input.reply_to.thread }, timeoutMs: 6000,
       });
       return sent.ok ? { decision: 'ok' } : { decision: 'send_failed', text, reply_to: input.reply_to };
     }

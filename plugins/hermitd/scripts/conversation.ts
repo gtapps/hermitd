@@ -1,3 +1,4 @@
+import { conversationKey, checkKey } from './lib/conversation-key';
 import { isTrustedController } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { createThread, isThreadType, lookupChat } from './lib/channel-chats';
@@ -29,7 +30,7 @@ async function main(): Promise<void> {
   // task thread. A CLI verb rides the script's allow-list grant; the
   // `bun -e` import the skill used to name draws a classifier denial and matches
   // no prefix rule (apply-settings.ts), so on a live hermit the call never ran.
-  if (!['history', 'chat-lookup', 'thread-create', 'is-trusted'].includes(verb)) throw new Error('unknown-verb');
+  if (!['history', 'chat-lookup', 'thread-create', 'thread-open', 'is-trusted'].includes(verb)) throw new Error('unknown-verb');
   const opts = options(key ? [key, ...args] : args);
   const require = (names: string[], optional: string[] = []) => {
     if (Object.keys(opts).some(k => !names.includes(k) && !optional.includes(k))) throw new Error('invalid-options');
@@ -49,6 +50,17 @@ async function main(): Promise<void> {
       const chat = await lookupChat(dir, config, opts.chat_id);
       if (!chat) throw new Error('not-found');
       console.log(JSON.stringify({ ...chat, thread: isThreadType(chat) }));
+      return;
+    }
+    case 'thread-open': {
+      require(['source', 'chat_id', 'message_id'], ['thread_id']);
+      const attribute = config.channels?.[opts.source]?.attributes?.thread_id;
+      if (!attribute) throw new Error('no-thread-attribute');
+      // A message already inside a thread keeps that thread, or later replies there miss the record.
+      const thread = opts.thread_id || opts.message_id;
+      const key = conversationKey(opts.source, opts.chat_id, thread);
+      checkKey(key);
+      console.log(`OK|${key}|${attribute}=${thread}`);
       return;
     }
     case 'thread-create': {

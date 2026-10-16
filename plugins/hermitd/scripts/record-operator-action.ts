@@ -115,14 +115,14 @@ function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
   // An unparseable `<channel` prefix keeps the old blanket skip — it carries no
   // identity to check, so it cannot be attributed to the operator.
   if (t.startsWith('<channel')) {
-    const envelope = channel ? channel.envelope : parseChannelEnvelope(t);
+    const config = channel ? channel.config : readConfigRaw(AGENT_DIR);
+    const envelope = channel ? channel.envelope : parseChannelEnvelope(t, config);
     if (!envelope) return true;
     // Presence of `channel`, not truthiness of its config: an unreadable config
     // is a legitimate null the caller already resolved (fail-open → accept-all),
     // and re-reading it here would just repeat that read.
-    const config = channel ? channel.config : readConfigRaw(AGENT_DIR);
     if (isPassiveChatSync(AGENT_DIR, config, envelope.sourceKey, envelope.chatId)
-      && !isSelfMentionedSync(AGENT_DIR, config, envelope.sourceKey, envelope.chatId, envelope.body)) return true;
+      && !isSelfMentionedSync(AGENT_DIR, config, envelope.sourceKey, envelope.chatId, envelope.body, envelope)) return true;
     return !isAllowedSender(config, envelope.source, envelope.userId);
   }
   if (INJECTED_EXACT.has(t)) return true;

@@ -205,7 +205,7 @@ export type SkillRelay = {
   command: string;
   arg: string | null;
   by: string;
-  reply_to: { source: string; chat_id: string };
+  reply_to: { source: string; chat_id: string; thread?: string | null };
   delivered_at: string;
 };
 

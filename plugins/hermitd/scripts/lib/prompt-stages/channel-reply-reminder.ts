@@ -118,7 +118,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
 
   const addressed = passive
     && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
-    && await isSelfMentioned(ctx.dir, ctx.config(), sourceKey, chatIdRaw, envelope.body);
+    && await isSelfMentioned(ctx.dir, ctx.config(), sourceKey, chatIdRaw, envelope.body, envelope);
 
   if (addressed && isLoggingEnabled(ctx.config(), envelope.source)) {
     // inbound ts is the platform's timestamp while outbound ts is the host clock,

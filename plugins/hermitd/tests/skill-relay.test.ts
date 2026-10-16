@@ -40,6 +40,19 @@ describe('skill-relay prompt stage', () => {
     expect(readSkillRelay(dir)).toBeNull();
   }));
 
+  test('a threaded relay names the mapped thread reply parameter', withDir((projectDir) => {
+    const dir = path.join(projectDir, '.hermit');
+    writeSkillRelay(dir, {
+      command: '/doctor', arg: null, by: 'operator',
+      reply_to: { source: 'slack-channel', chat_id: 'C1', thread: '1.2' },
+      delivered_at: new Date().toISOString(),
+    });
+    const ctx = context(dir);
+    ctx.config = () => ({ channels: { 'slack-channel': { attributes: { thread_id: 'thread_ts' } } } });
+
+    expect(run(ctx)?.context).toContain('slack-channel chat C1 with reply parameter thread_ts=1.2 through');
+  }));
+
   test('mismatched prompt leaves the relay untouched', withDir((projectDir) => {
     const dir = path.join(projectDir, '.hermit');
     writeRelay(dir);
@@ -53,6 +66,8 @@ describe('skill-relay prompt stage', () => {
     writeRelay(dir);
     const ctx = context(dir);
     ctx.envelope = {
+      attributes: '',
+      thread: null,
       source: 'telegram',
       sourceKey: 'telegram',
       chatId: 'chat-123',

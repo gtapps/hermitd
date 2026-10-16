@@ -156,3 +156,21 @@ describe('pause-gate', () => {
     expect(r.exitCode).toBe(0);
   }));
 });
+
+
+test('paused configured third-party replies are exempt and unconfigured replies denied', withDir(async (dir) => {
+  setPauseFile(dir);
+  write(hermit(dir, 'config.json'), JSON.stringify({ channels: { 'slack-channel': {} } }));
+  for (const tool_name of ['mcp__plugin_slack_slack-channel__reply', 'mcp__plugin_slack_slack_channel__reply']) {
+    expect((await run({ tool_name }, dir)).exitCode).toBe(0);
+  }
+  expect((await run({ tool_name: 'mcp__claude_ai_Gmail__reply' }, dir)).exitCode).toBe(2);
+}));
+
+test('paused built-in replies stay exempt with only a third-party channel configured', withDir(async (dir) => {
+  setPauseFile(dir);
+  write(hermit(dir, 'config.json'), JSON.stringify({ channels: { 'slack-channel': {} } }));
+  for (const tool_name of ['mcp__discord__reply', 'mcp__plugin_telegram_telegram__reply']) {
+    expect((await run({ tool_name }, dir)).exitCode).toBe(0);
+  }
+}));

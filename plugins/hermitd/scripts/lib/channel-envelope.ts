@@ -11,6 +11,7 @@
 // episodic capture) use them as-is, matching pre-extraction behavior.
 
 export interface ChannelEnvelope {
+  attributes: string;
   source: string;
   /** `source` normalized to the config-key form — see normalizeChannelSource(). */
   sourceKey: string;
@@ -28,6 +29,8 @@ export interface ChannelEnvelope {
   /** Raw `user` attribute — human-readable display name, never an auth input. */
   userName: string | null;
   messageId: string | null;
+  /** The mapped `attributes.thread_id` value when the channel maps one and the tag carries exactly one. */
+  thread: string | null;
   ts: string | null;
   body: string;
 }
@@ -68,15 +71,17 @@ function attrValues(attrs: string, name: string): string[] {
  * The attribute regex handles `>` inside quoted attribute values (e.g.
  * adversarial chat_id values containing XML-like tags).
  */
-export function parseChannelEnvelope(prompt: string): ChannelEnvelope | null {
+export function parseChannelEnvelope(prompt: string, config?: any): ChannelEnvelope | null {
   const tagMatch = prompt.match(/^\s*<channel\s+((?:"[^"]*"|[^>])*)\s*>/);
   if (!tagMatch) return null;
 
   const attrs = tagMatch[1];
-  const chatIdMatch = attrs.match(/\bchat_id="([^"]*)"/);
-  if (!chatIdMatch) return null;
-
   const sourceMatch = attrs.match(/\bsource="([^"]*)"/);
+  const source = sourceMatch ? sourceMatch[1] : '';
+  const sourceKey = normalizeChannelSource(source);
+  const mapping = config?.channels?.[sourceKey]?.attributes;
+  const chatIds = attrValues(attrs, mapping?.chat_id ?? 'chat_id');
+  if (!chatIds.length) return null;
   // `user` is an attacker-chosen display name, so on a channel that doesn't
   // escape it a name containing a quote can close its own attribute and inject a
   // second `user_id="<allowlisted id>"`. A duplicated attribute therefore voids
@@ -84,26 +89,27 @@ export function parseChannelEnvelope(prompt: string): ChannelEnvelope | null {
   // copy, and falling back to `user` would hand it the very name that smuggled
   // it in. An empty (not duplicated) `user_id` is just a missing id, so it still
   // falls back.
-  const userIds = attrValues(attrs, 'user_id');
-  const users = attrValues(attrs, 'user');
+  const userIds = attrValues(attrs, mapping?.user_id ?? 'user_id');
+  const users = attrValues(attrs, mapping?.user ?? 'user');
   const userName = users.length === 1 ? users[0] || null : null;
   const userId = userIds.length > 1 ? null : userIds[0] || userName;
-  const messageIdMatch = attrs.match(/\bmessage_id="([^"]*)"/);
+  const messageIds = attrValues(attrs, mapping?.message_id ?? 'message_id');
+  const threads = mapping?.thread_id ? attrValues(attrs, mapping.thread_id) : [];
   const tsMatch = attrs.match(/\bts="([^"]*)"/);
 
   let body = prompt.slice(tagMatch[0].length);
   const closeIdx = body.indexOf('</channel>');
   if (closeIdx !== -1) body = body.slice(0, closeIdx);
 
-  const source = sourceMatch ? sourceMatch[1] : '';
-
   return {
+    attributes: attrs,
     source,
-    sourceKey: normalizeChannelSource(source),
-    chatId: chatIdMatch[1],
+    sourceKey,
+    chatId: chatIds[0],
     userId,
     userName,
-    messageId: messageIdMatch ? messageIdMatch[1] : null,
+    messageId: messageIds[0] ?? null,
+    thread: threads.length === 1 ? threads[0] : null,
     ts: tsMatch ? tsMatch[1] : null,
     body: body.trim(),
   };
@@ -118,4 +124,11 @@ export function senderLabel(env: ChannelEnvelope): string {
   // `source` is '' (not null) when the attribute is absent, so the last leg has
   // to be `||` — `??` would hand callers an empty label.
   return env.userName ?? env.userId ?? (env.source || 'channel');
+}
+
+
+/** Read one unambiguous attribute from the original channel tag. */
+export function envelopeAttr(env: ChannelEnvelope, name: string): string | null {
+  const values = attrValues(env.attributes, name);
+  return values.length === 1 ? values[0] : null;
 }

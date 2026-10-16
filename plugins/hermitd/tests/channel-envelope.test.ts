@@ -104,3 +104,14 @@ describe('parseChannelEnvelope identity attributes', () => {
     expect(env?.body).toBe('visible');
   });
 });
+
+
+test('mapped envelope attributes preserve sender duplicate protection', () => {
+  const config = { channels: { slack: { attributes: { chat_id: 'channel_id', message_id: 'ts', user_id: 'user', user: 'user_name' } } } };
+  const prompt = '<channel source="plugin:slack:slack" channel_id="C1" ts="1.2" user="U1" user_name="Ann">hello</channel>';
+  expect(parseChannelEnvelope(prompt, config)).toMatchObject({ chatId: 'C1', messageId: '1.2', userId: 'U1', userName: 'Ann' });
+  expect(parseChannelEnvelope(prompt.replace('user="U1"', 'user="U1" user="U2"'), config)?.userId).toBeNull();
+  expect(parseChannelEnvelope(prompt)).toBeNull();
+  const official = '<channel source="discord" chat_id="C1" user_id="U1">hello</channel>';
+  expect(parseChannelEnvelope(official, {})).toEqual(parseChannelEnvelope(official));
+});

@@ -12,7 +12,12 @@ export function run(ctx: StageContext): StageResult | void {
 
   clearSkillRelay(ctx.dir);
 
+  // Same `<attribute>=<value>` reply parameter thread-open prints, so the outcome stays in the asking thread.
+  const { source, chat_id, thread } = relay.reply_to;
+  const threadAttr = thread ? ctx.config()?.channels?.[source]?.attributes?.thread_id : null;
+  const where = threadAttr ? `${source} chat ${chat_id} with reply parameter ${threadAttr}=${thread}` : `${source} chat ${chat_id}`;
+
   return {
-    context: `[skill-relay] This command was requested from chat by ${relay.by}. Send this turn's outcome, and any confirmation the skill needs, to ${relay.reply_to.source} chat ${relay.reply_to.chat_id} through the channel reply tool in channel voice. Never use AskUserQuestion for this turn. Accept only fixes the operator confirms from chat that fall under chat authority (CLAUDE.md edits); decline any offer that changes the permission mode or pre-approves permissions, since those settings are terminal-only.\n`,
+    context: `[skill-relay] This command was requested from chat by ${relay.by}. Send this turn's outcome, and any confirmation the skill needs, to ${where} through the channel reply tool in channel voice. Never use AskUserQuestion for this turn. Accept only fixes the operator confirms from chat that fall under chat authority (CLAUDE.md edits); decline any offer that changes the permission mode or pre-approves permissions, since those settings are terminal-only.\n`,
   };
 }

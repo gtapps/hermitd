@@ -320,3 +320,19 @@ test('recall captures a full 8192-character helper report with multi-byte unicod
     db.close();
   }
 }));
+
+
+test('configured mapped reply learns the inbound chat and logs outbound text', withDir(async (dir) => {
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ channels: { custom: { attributes: { chat_id: 'channel_id' } } } }));
+  const transcript = path.join(dir, 'transcript.jsonl');
+  fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: '<channel source="plugin:custom:custom" channel_id="C1">hello</channel>' } }) + '\n');
+  const result = await runScript('channel-hook.ts', { cwd: dir, env: { AGENT_DIR: hermit(dir) }, stdin: JSON.stringify({
+    tool_name: 'mcp__plugin_custom_custom__reply', tool_input: { channel_id: 'C1', text: 'hello back' }, transcript_path: transcript,
+  }) });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(hermit(dir, 'config.json'), 'utf8')).channels.custom.dm_channel_id).toBe('C1');
+  const db = new Database(hermit(dir, 'state', 'channel-log.sqlite'), { readonly: true });
+  try {
+    expect(db.query("SELECT direction FROM messages WHERE source = 'custom' AND chat_id = 'C1'").all()).toEqual([{ direction: 'out' }]);
+  } finally { db.close(); }
+}));

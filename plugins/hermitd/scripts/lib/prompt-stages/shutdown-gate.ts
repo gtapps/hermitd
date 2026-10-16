@@ -40,12 +40,13 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
 
   const locale = resolveLocale(config?.language);
   const reply = SHUTDOWN[locale].inProgress();
+  const thread = envelope.thread === null ? {} : { thread: envelope.thread };
   if (ctx.harnessMode) return { harness: {
     decision: 'refuse', reason: reply,
-    reply_to: { source: envelope.sourceKey, chat_id: envelope.chatId },
+    reply_to: { source: envelope.sourceKey, chat_id: envelope.chatId, ...thread },
   } };
   const result = await sendToChannel(dir, reply, {
-    target: { id: envelope.sourceKey, chat_id: envelope.chatId },
+    target: { id: envelope.sourceKey, chat_id: envelope.chatId, ...thread },
     timeoutMs: 6000,
     config, // already loaded by the pipeline — don't make the sender re-read it
   });

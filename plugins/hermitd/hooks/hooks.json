@@ -72,7 +72,7 @@
         ]
       },
       {
-        "matcher": "(discord|telegram|imessage).*reply",
+        "matcher": ".*reply$",
         "hooks": [
           {
             "type": "command",

@@ -197,7 +197,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // answered where it was asked. This also keeps the destination aligned with the
   // allowed_users gate above. A tight timeout bounds this hook's blocking.
   const result = await sendToChannel(dir, reply, {
-    target: { id: envelope.sourceKey, chat_id: envelope.chatId },
+    target: { id: envelope.sourceKey, chat_id: envelope.chatId, thread: envelope.thread },
     timeoutMs: 6000,
     config, // already loaded by the pipeline — don't make the sender re-read it
   });

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { ARG_RE, COMMAND_MARKER_TTL_SECS, type ParsedCommand } from './harness-command';
 
-export type ReplyTarget = { source: string; chat_id: string };
+export type ReplyTarget = { source: string; chat_id: string; thread?: string | null };
 export type HarnessRequest = {
   commands: ParsedCommand[];
   by: string;

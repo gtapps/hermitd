@@ -75,6 +75,10 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     packages: [...packages],
     auth,
     channels: { envLines, volumeLines },
+    // Built-in channels boot from claude-plugins-official whatever their config says (hermitd-start).
+    channelPlugins: getEnabledChannels(config).map(key => ['discord', 'telegram', 'imessage'].includes(key)
+      ? { marketplace: 'claude-plugins-official', plugin: key }
+      : { marketplace: config.channels[key].marketplace ?? 'claude-plugins-official', plugin: config.channels[key].plugin ?? key }),
     agentHookProfile: 'strict',
     networkMode,
     gitIdentityMount,

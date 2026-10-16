@@ -5,6 +5,7 @@ import { senderLabel } from '../channel-envelope';
 import { isTrustedController, channelBotIdentity } from '../channel-auth';
 import { parseHarnessCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
 import { resolveSlashCommand } from '../channel-slash-address';
+import type { ReplyTarget } from '../harness-mod';
 import type { StageContext, StageResult } from './types';
 
 export function resolveCommand(ctx: StageContext) {
@@ -25,7 +26,8 @@ export function run(ctx: StageContext): StageResult | void {
   if (!authorized) return; // unauthorized — silent no-op
 
   if (ctx.harnessMode) {
-    const reply_to = { source: env.sourceKey, chat_id: env.chatId };
+    const reply_to: ReplyTarget = { source: env.sourceKey, chat_id: env.chatId };
+    if (env.thread !== null) reply_to.thread = env.thread;
     // A recovery restart or reset is mid-flight; a command now would race it.
     if (ctx.runtime()?.transition) {
       return { harness: { decision: 'refuse', reason: 'A restart or context reset is in progress. Resend the command once it finishes.', reply_to } };
