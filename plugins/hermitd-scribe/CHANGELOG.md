@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Filing or commenting fails with an error naming `HERMIT_GH_REPO` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0. A stale repository name after a rename could previously report success while filing nothing.
+
+### Upgrade Instructions
+
+No automatic step. If `HERMIT_GH_REPO` still names a renamed repository, update it to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. Remove any `gh_issue: undefined` line from proposal frontmatter left by an earlier failed filing, then file that proposal again.
+
 ## [0.1.9] - 2026-10-07
 
 ### Fixed
