@@ -192,7 +192,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | --- | --- |
   | Identity and execution | `permission_mode`, `operator_profile`, `voice.prose`, `env`, `monitors`, `boot_skill`, `shutdown_skill`, `backup` |
   | Channel routing | `channels.primary` |
-  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `default_chat_id`, `dm_channel_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled` |
+  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `default_chat_id`, `dm_channel_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
   | Tools and credentials | `docker.packages`, `docker.recommended_plugins`, `docker.fleet_mesh`, `remote`, `chrome`, `auth_mode` |
 

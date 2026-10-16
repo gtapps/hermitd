@@ -272,7 +272,7 @@ function scrubSecrets(string $text): string
     // Literal credentials on a `composer config` auth line (a private Satis or
     // Packagist repository). Everything after the host is masked, username included.
     $text = preg_replace(
-        '/(composer(?:\.phar)?\s+(?:global\s+)?config\s+(?:-\S+\s+)*(?:http-basic|bearer|github-oauth|gitlab-token|gitlab-oauth|bitbucket-oauth)\.[^\s"\\\\]+)(?:[ \t]+(?:\\\\?"[^"\\\\\n]*\\\\?"|[^\s"\\\\]+))+/i',
+        '/(composer(?:\.phar)?\s+(?:global\s+)?config\s+(?:-\S+\s+)*(?:http-basic|bearer|github-oauth|gitlab-token|gitlab-oauth|bitbucket-oauth)\.[^\s"\\\\]+)(?:[ \t]+(?:\\\\?"(?:[^"\\\\\n]|\\\\[^"n])*\\\\?"|(?:[^\s"\\\\]|\\\\[^"nrt\s])+))+/i',
         '$1 [REDACTED]',
         $text
     ) ?? $text;

@@ -71,7 +71,7 @@ exec teamchat-send --state-dir "$CHANNEL_STATE_DIR" \
 
 Text arrives on stdin. The environment contains only `PATH`, `HERMIT_DIR`, `HERMIT_CHAT_ID`, `CHANNEL_STATE_DIR`, and `HERMIT_THREAD_ID` when the target carries a thread. The script runs from the project root within the send timeout; exit 0 means delivery succeeded. Successful sends enter the outbound chat log unless marked sensitive or logging is disabled. Routine `chat` ownership is supported when the channel has a send script.
 
-A configured channel without a send script returns `no_send_path`. Routing stays on that channel; core never sends its message to another app or person. If a third-party primary has no send script, set `channels.primary` to Discord or Telegram so proactive notices have a send path. No doctor or boot warning detects unapproved channels or missing send scripts.
+A configured channel without a send script returns `no_send_path`. Routing stays on that channel; core never sends its message to another app or person. Proactive notices fail when a third-party channel without a send script resolves first: it is `channels.primary`, or, when `channels.primary` is unset, it comes before Discord and Telegram in config order once it has a chat. Set `channels.primary` to `discord` or `telegram` so proactive notices have a send path. No doctor or boot warning detects unapproved channels or missing send scripts.
 
 ## Approval and installation
 

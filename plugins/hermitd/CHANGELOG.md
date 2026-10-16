@@ -3,27 +3,26 @@
 ## [Unreleased]
 
 ### Changed
+- Operator-origin `later` rows count as late after `routine_max_lateness_minutes` instead of after a missed daily check.
 - Approved tasks waiting on an outcome a check can observe show as finishing up, not waiting on you.
 - A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
-- Task confirmation and cancellation accept any wording or language instead of a fixed word list.
-- A task that hits a broken login, service or tool stops instead of filling the gap. The person is told plainly to ask again once it's fixed, and the maintainer gets the exact error.
+- Task confirmation and cancellation are judged by what the requester means, in any wording or language; a named approver still confirms in words.
+- Tasks that hit a broken login, service or tool stop and tell the requester to ask again once it's fixed; the maintainer gets the exact error.
 - Background helpers name a missing repository, secret, API or tool and stop instead of substituting.
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 - `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 
 ### Added
-- Configured channel plugins support mapped message fields, reply capture, pause-safe replies, task threads, mention markers and project send scripts.
-- Exact-minute reminders in monitor mode survive restarts through the durable `later` ledger.
+- Docker approves configured third-party channel plugins through a managed `allowedChannelPlugins` drop-in; install them through `docker.recommended_plugins`.
+- `channels.<name>` takes `plugin`, `send_script` and `attributes`, giving a configured channel plugin reply capture, pause-safe replies, proactive notices and routine chats through a project script, one task record per thread with replies kept in it, and mention markers; changing them from chat raises the native permission prompt.
+- `/hermitd:later` takes one-time reminders (`--remind`), delivered to the asking chat at the due minute in monitor mode and kept in the `later` ledger across restarts.
 
 ### Fixed
-- Script replies to threaded channel messages stay in the asking thread.
-- Docker channel approval and installation use configured plugin names and marketplaces.
 - Helpers stuck on a permission prompt or question are announced in chat, and a reply goes back to them as new instructions.
 - Late helper reports reach their task and proposal after a reportless idle notice.
 - Scheduled-check questions reach the operator when queued for micro-approval.
 - Heartbeat checklist items that begin with the same words keep separate alert state, so a noisy item no longer silences an unrelated one.
 - Long channel notices on Discord and Telegram arrive in full as ordered parts split at paragraph breaks, instead of being cut off at the platform's length limit.
-- Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
 - Evening briefs describe finished tasks from their final result and skip lessons the result contradicts.
@@ -39,9 +38,6 @@
 - The session discipline block no longer opens with `---`, which Claude Code read as frontmatter, hiding the Knowledge Discipline and Rules sections.
 
 ### Upgrade Instructions
-
-- Docker hermits run `/hermitd:hermit-evolve`, then `hermitd-docker update` to merge the Docker templates and rebuild with channel approval support. Preserve operator edits during the merge.
-- An operator whose primary channel is a third-party plugin without `send_script` sets `channels.primary` to `discord` or `telegram` so proactive notices have a send path.
 
 Run `/hermitd:hermit-evolve`. The evolve skill handles:
 
@@ -62,20 +58,14 @@ Run `/hermitd:hermit-evolve`. The evolve skill handles:
      - *Keep my wording*: leave the file unchanged.
 
    TASKS.md is part of the watchdog's policy hash (`scripts/lib/context-policy.ts` → `contextPolicyHash`). Replacing the section makes the install eligible for a context clear under the usual conditions in `docs/task-records.md`; this step promises none.
+4. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add the plugin named in that marker to `context_reload_targets`. Skip silently otherwise.
+5. **Check third-party channels without a send path.** For each `channels.<key>` other than `discord`, `telegram`, `imessage` and `primary`, not `enabled: false`, with no `send_script`: if `channels.primary` names it, or `channels.primary` is unset and it comes before every configured `discord` and `telegram` entry, tell the operator that proactive notices (routines, alerts, briefs) go to that channel once it has a chat and fail there for lack of a send path. Defer per SKILL.md Step 10 with `options: ["Send notices to Discord or Telegram", "Keep the route"]`, no `on_resolve`; *Send notices to Discord or Telegram*: set `channels.primary` to the first configured of `discord`, `telegram` with `settings-set`; *Keep the route*: change nothing. Skip silently when no channel matches.
+6. Preserve `HEARTBEAT.md` and the heartbeat config unchanged; neither needs an edit.
+7. Tell the operator each checklist alert starts over once: an item firing now alerts once more and then goes quiet again after 5 fires.
+8. List open task records whose dedupe key starts with `duty:heartbeat:checklist:` and does not end in `-<8 hex>` (matching `-[0-9a-f]{8}$`). Tell the operator these tasks will not close on their own, and close them only with the operator's agreement.
+9. List open proposals whose `self_eval_key` starts with `checklist:` and does not match `-[0-9a-f]{8}$`. Tell the operator these checklist suggestions are no longer linked to their item, so the same suggestion may come up again later.
 
-**Operator action required:** Docker: `hermitd-docker update` after the evolve. Otherwise `hermitd-stop && hermitd-start`.
-
-No `config.json` changes required.
-1. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add the plugin named in that marker to `context_reload_targets`. Skip silently otherwise.
-
-### Upgrade Instructions
-
-Run `/hermitd:hermit-evolve`. The evolve skill handles:
-
-1. Preserve `HEARTBEAT.md` and config unchanged; neither needs an edit.
-2. Tell the operator each checklist alert starts over once: an item firing now alerts once more and then goes quiet again after 5 fires.
-3. List open task records whose dedupe key starts with `duty:heartbeat:checklist:` and does not end in `-<8 hex>` (matching `-[0-9a-f]{8}$`). Tell the operator these tasks will not close on their own, and close them only with the operator's agreement.
-4. List open proposals whose `self_eval_key` starts with `checklist:` and does not match `-[0-9a-f]{8}$`. Tell the operator these checklist suggestions are no longer linked to their item, so the same suggestion may come up again later.
+**Operator action required:** Docker: `hermitd-docker update` after the evolve, to merge the Docker templates and rebuild with channel approval support. Otherwise `hermitd-stop && hermitd-start`.
 
 ## [1.4.15] - 2026-10-15
 

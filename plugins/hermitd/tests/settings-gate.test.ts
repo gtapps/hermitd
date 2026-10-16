@@ -90,6 +90,9 @@ describe('settings-gate ask list', () => {
       ['set monitors \'[]\'', 'Hermit setting: monitors=[]'],
       ['set channels.discord.allowed_users \'["u"]\'', 'Hermit setting: channels.discord.allowed_users=["u"]'],
       ['set routines.0.precheck tools/x.sh', 'Hermit setting: routines.0.precheck=tools/x.sh'],
+      ['set channels.slack.send_script tools/s.sh', 'Hermit setting: channels.slack.send_script=tools/s.sh'],
+      ['set channels.discord.attributes.user_id user', 'Hermit setting: channels.discord.attributes.user_id=user'],
+      ['set channels.slack.plugin x', 'Hermit setting: channels.slack.plugin=x'],
       ['set permission_mode default', 'Hermit setting: permission_mode=default'],
       ['set boot_skill /x:boot', 'Hermit setting: boot_skill=/x:boot'],
       ['set shutdown_skill /x:stop', 'Hermit setting: shutdown_skill=/x:stop'],
@@ -101,6 +104,18 @@ describe('settings-gate ask list', () => {
       expect(r.exitCode).toBe(0);
       expectAsk(r.stdout, reason);
     }
+  });
+
+  test('channel replacement gates send paths but allows brief changes', async () => {
+    const dir = fixture({ channels: { slack: { send_script: 'tools/old.sh', morning_brief: { time: '07:00' } } } });
+    const changedScript = await runGate(payload({ dir, tool: 'Bash', input: {
+      command: cmd(`set channels.slack '{"send_script":"tools/s.sh","morning_brief":{"time":"07:00"}}'`),
+    } }), dir);
+    expect(changedScript.exitCode).toBe(0);
+    expect(JSON.parse(changedScript.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+    expectSilent(await runGate(payload({ dir, tool: 'Bash', input: {
+      command: cmd(`set channels.slack '{"send_script":"tools/old.sh","morning_brief":{"time":"08:00"}}'`),
+    } }), dir));
   });
 
   test('apply-known permissions asks', async () => {
