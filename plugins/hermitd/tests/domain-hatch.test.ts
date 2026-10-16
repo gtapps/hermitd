@@ -9,7 +9,7 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { freshDirFactory } from './helpers/workdir';
-import { runScript, SCRIPTS_DIR } from './helpers/run';
+import { runScript, SCRIPTS_DIR, PLUGIN_ROOT } from './helpers/run';
 import { satisfiesFloor, preflight } from '../scripts/lib/domain-hatch/preflight';
 import { resolvePlugin, isResolveError } from '../scripts/lib/domain-hatch/resolve';
 import { ensureHatchTarget, readTargetState, optionsPath } from '../scripts/lib/domain-hatch/target';
@@ -311,6 +311,17 @@ describe('ensureHatchTarget', () => {
 });
 
 describe('sync-block', () => {
+  // Claude Code reads a leading "---" as frontmatter and drops the block up to the next sibling's "---".
+  test('core block written into an empty target does not open with a frontmatter fence', () => {
+    const s = scaffold();
+    const target = path.join(s.root, 'CLAUDE.local.md');
+    const template = fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
+
+    const res = applyBlock(planBlock(PLUGIN_ROOT, 'hermitd', target, [], splitResident(template).shared, false));
+    expect(res.action).toBe('append');
+    expect(fs.readFileSync(target, 'utf8').trimStart().startsWith('---')).toBe(false);
+  });
+
   test('appends when the marker is absent, then skips once present', () => {
     const s = scaffold();
     const target = path.join(s.root, 'CLAUDE.md');

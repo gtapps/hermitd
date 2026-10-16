@@ -13,6 +13,13 @@
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+- The session discipline block no longer opens with `---`, which Claude Code read as frontmatter, hiding the Knowledge Discipline and Rules sections.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add `hermitd` to `context_reload_targets`. Skip silently otherwise.
 
 ## [1.4.15] - 2026-10-15
 
