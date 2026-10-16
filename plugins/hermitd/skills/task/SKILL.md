@@ -47,7 +47,7 @@ Inspect each command's result. If delivery or recording fails, report what remai
   - Terminal assignments never go through here; they follow § Complete a task turn.
 
 - **Conversation command**: execute only the hook's `[conversation command: <name>]` annotation after the caller's authorization check has passed (`channel-responder/SKILL.md` § 1c for a channel turn). A `[conversation command refused: …]` annotation gets that plain refusal; never invoke the harness command. A `[conversation command outside a task thread]` annotation gets a short explanation that the command needs an open task thread, and starts nothing.
-  - For `helper-switch`, `!help`, `!mute`, `!unmute` or `!restart`, Read [branches.md](branches.md) § Conversation command and follow it.
+  - For `helper-switch`, `help`, `mute`, `unmute` or `restart`, Read [branches.md](branches.md) § Conversation command and follow it.
   - Return after the command; do not mutate another record or continue into another classification.
 
 All conversation script arguments are shell-quoted values. `history`, `chat-lookup`, `thread-create`, and `is-trusted` take no key, only `--source`, `--chat-id`, `--user-id`, `--message-id`, `--name`, and `--limit` options. Parse each command's `OK|`/`ERROR|` result before moving on; pass message text as quoted arguments, never interpolate it into executable code.
