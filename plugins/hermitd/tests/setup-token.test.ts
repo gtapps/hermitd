@@ -15,8 +15,6 @@ import {
   msUntilLoginExpiry,
   resolveAuthMode,
   storedLoginUsable,
-  parkCredentialsFile,
-  parkedCredentialsFilePath,
   readTokenRecord,
   readTokenValue,
   tokenFilePath,
@@ -97,34 +95,19 @@ describe('token storage', () => {
   }));
 });
 
-describe('parking a stored /login credential on install', () => {
-  const CRED = JSON.stringify({ claudeAiOauth: { accessToken: 'stored', expiresAt: 1 } });
-
-  test('install parks an existing .credentials.json, preserving its contents', withDirs((hermitDir, configDir) => {
-    fs.writeFileSync(credentialsFilePath(configDir), CRED);
+describe('stored credentials on install', () => {
+  // Claude Code keeps a user-supplied env token ahead of a stored /login, and the
+  // same file carries remote MCP servers' OAuth tokens, so installing a token
+  // leaves it exactly as it was.
+  test('install leaves an existing .credentials.json untouched', withDirs((hermitDir, configDir) => {
+    const cred = JSON.stringify({
+      claudeAiOauth: { accessToken: 'stored', expiresAt: 1 },
+      mcpOAuth: { 'trello|abc': { accessToken: 'mcp-a', refreshToken: 'mcp-r' } },
+    });
+    fs.writeFileSync(credentialsFilePath(configDir), cred);
     installToken(hermitDir, configDir, VALID);
-    // The live credential is gone from the path the CLI reads...
-    expect(fs.existsSync(credentialsFilePath(configDir))).toBe(false);
-    // ...but preserved verbatim under the parked name, so /login can be restored.
-    expect(fs.readFileSync(parkedCredentialsFilePath(configDir), 'utf8')).toBe(CRED);
+    expect(fs.readFileSync(credentialsFilePath(configDir), 'utf8')).toBe(cred);
     expect(readTokenValue(configDir)).toBe(VALID);
-  }));
-
-  test('install with no stored credential leaves no parked file behind', withDirs((hermitDir, configDir) => {
-    installToken(hermitDir, configDir, VALID);
-    expect(fs.existsSync(parkedCredentialsFilePath(configDir))).toBe(false);
-  }));
-
-  test('a second park replaces the previous backup rather than failing', withDirs((hermitDir, configDir) => {
-    fs.writeFileSync(parkedCredentialsFilePath(configDir), '{"old":true}');
-    fs.writeFileSync(credentialsFilePath(configDir), CRED);
-    expect(parkCredentialsFile(configDir)).toBe(true);
-    expect(fs.readFileSync(parkedCredentialsFilePath(configDir), 'utf8')).toBe(CRED);
-    expect(fs.existsSync(credentialsFilePath(configDir))).toBe(false);
-  }));
-
-  test('park is a no-op (returns false) when there is nothing to park', withDirs((_hermitDir, configDir) => {
-    expect(parkCredentialsFile(configDir)).toBe(false);
   }));
 });
 
@@ -338,9 +321,9 @@ describe('resolveAuthMode', () => {
     });
   }));
 
-  // installToken() parks .credentials.json, so a macOS token hermit has no
-  // credential file by construction — the token has to outrank the Keychain
-  // heuristic or hermitd-start exports nothing and the hermit boots credential-less.
+  // A macOS token hermit usually has no credential file (any login lives in the
+  // Keychain), so the token has to outrank the Keychain heuristic or hermitd-start
+  // exports nothing and the hermit boots credential-less.
   test('unset + token file → token, on either platform', withDirs((hermitDir, configDir) => {
     withoutEnvToken(() => {
       installToken(hermitDir, configDir, VALID);
@@ -387,7 +370,7 @@ describe('resolveAuthMode', () => {
       expect(detectAuthModeFromVolume(configDir)).toBeNull();
       usableLogin(configDir);
       expect(detectAuthModeFromVolume(configDir)).toBe('login');
-      installToken(hermitDir, configDir, VALID); // parks the login on the way in
+      installToken(hermitDir, configDir, VALID); // the login stays; the token outranks it
       expect(detectAuthModeFromVolume(configDir)).toBe('token');
     });
   }));

@@ -1,16 +1,18 @@
 #!/usr/bin/env bun
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
 function main(args: string[]): void {
-  if (args.length === 1 && args[0] === 'new-run') {
+  if (args.length === 2 && args[0] === 'new-run' && isAbsolute(args[1])) {
+    // A prior payload too large to Read cannot be overwritten by the fetcher's Write.
+    rmSync(args[1], { force: true });
     console.log(crypto.randomUUID());
     return;
   }
 
   const [command, path, runId] = args;
   if (args.length !== 3 || command !== 'verify' || !path || !isAbsolute(path) || !runId?.trim()) {
-    throw new Error('Usage: source-fetch-result.ts new-run | verify <absolute-output-path> <expected-run-id>');
+    throw new Error('Usage: source-fetch-result.ts new-run <absolute-output-path> | verify <absolute-output-path> <expected-run-id>');
   }
 
   const result: unknown = JSON.parse(readFileSync(path, 'utf8'));

@@ -203,8 +203,9 @@ using the ID it generated before dispatch. The helper reads once and prints the 
 JSON only when the top-level object has the matching `run_id` and a `sources` array.
 The caller reconciles that returned payload, not a second file read or the agent's reply.
 Run ID generation or verification failure sends every web/RSS source to `sources_skipped`,
-then Phase 2 continues without redispatch. Existing scratch files without `run_id` are
-rejected until a new fetch replaces them; no migration is needed.
+then Phase 2 continues without redispatch. Run ID generation deletes the previous output
+file before dispatch, so a stale or oversized file never outlives the next run; no migration
+is needed.
 
 Matching run identity permits unchanged articles, quiet sources, and partial failures.
 It does not prove network fetching or enforce the model's invocation of the verifier.

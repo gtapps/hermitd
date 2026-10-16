@@ -243,6 +243,36 @@ describe('render-docker-templates.ts', () => {
     expect(derived?.networkMode).toBe('bridge');
   });
 
+  async function deriveWithGitMount(from: string, to: string) {
+    const dir = freshDir();
+    await render(dir, { channels: { envLines: [], volumeLines: [] } });
+    const composePath = path.join(dir, 'docker-compose.hermit.yml');
+    fs.writeFileSync(composePath, compose(dir).replace(from, to));
+    const configPath = path.join(dir, 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      channels: {},
+      docker: { packages: [], fleet_mesh: false },
+    }));
+    return deriveRenderInputs(configPath, composePath);
+  }
+
+  test('a custom git identity mount source derives as gitIdentityMount', async () => {
+    const derived = await deriveWithGitMount(
+      '${HOME}/.gitconfig:/home/claude/.gitconfig:ro',
+      '${PWD}/.claude.local/gitconfig:/home/claude/.gitconfig:ro',
+    );
+    expect(derived?.gitIdentityMount).toBe(true);
+  });
+
+  test('two git identity mounts stay underivable', async () => {
+    const line = '      - ${HOME}/.gitconfig:/home/claude/.gitconfig:ro\n';
+    const derived = await deriveWithGitMount(
+      line,
+      line + '      - ${PWD}/.claude.local/gitconfig:/home/claude/.gitconfig:ro\n',
+    );
+    expect(derived).toBeNull();
+  });
+
   test('no channels leaves no channel state-dir wiring', async () => {
     const dir = freshDir();
     await render(dir, { channels: { envLines: [], volumeLines: [] } });

@@ -253,6 +253,12 @@ describe('commitCron', () => {
     expect(next.routines.a.prompt_hash).toBe(promptHash(routines[0], plan.creates[0].schedule, PLUGIN_ROOT));
   });
 
+  test('the <ver> and <ver>-<sha12> cache copies of one release hash the same', () => {
+    const plain = promptHash(r('a'), '0 9 * * *', '/c/1.4.15');
+    expect(promptHash(r('a'), '0 9 * * *', '/c/1.4.15-b9c377356f9e')).toBe(plain);
+    expect(promptHash(r('a'), '0 9 * * *', '/c/1.4.16')).not.toBe(plain);
+  });
+
   test('KEEP entries carry forward with registered_at unchanged (not restamped)', () => {
     const routines = [r('a'), r('b')];
     const mirror = seedMirror(routines, {}, T0 - 1000);

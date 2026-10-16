@@ -9,11 +9,32 @@
 
 ### Changed
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
+- `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 ### Fixed
 - Heartbeat checklist items that begin with the same words keep separate alert state, so a noisy item no longer silences an unrelated one.
+- Long channel notices on Discord and Telegram arrive in full as ordered parts split at paragraph breaks, instead of being cut off at the platform's length limit.
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
 - `hermitd-docker update` updates every installed plugin, not only the first one listed.
 - Update history and the update summary list each install scope separately.
+- Remote MCP servers that sign in with OAuth stay signed in across token installs, container restarts and updates. A setup-token hermit leaves `.credentials.json` in place instead of moving it to `.credentials.json.pre-token.bak`.
+- A claude.ai sign-in renewal replaces only the login in `.credentials.json`, so remote MCP sign-ins survive it.
+- `credential-expiry` in `/hermitd:hermit-doctor` no longer warns that a stored login shadows the setup-token.
+- `hermit-evolve` merges Docker template changes when the git identity mount uses a custom source, instead of leaving both Docker files report-only.
+- `/hermitd:hermit-doctor` no longer reports `routine-monitor anchor-drift` when routines were registered from the other cache copy of the same release.
+- The post-upgrade doctor check counts only failures that started after the upgrade, so a standing failure is not blamed on every release.
+- The session discipline block no longer opens with `---`, which Claude Code read as frontmatter, hiding the Knowledge Discipline and Rules sections.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Refresh the Docker entrypoint** (Docker hermits only). The boot no longer moves `.credentials.json` aside. Step 5c refreshes `docker-entrypoint.hermit.sh`; tell the operator to rebuild with `hermitd-docker update` so the container runs the new file.
+2. **Tell the operator about remote MCP sign-ins.** If a remote MCP server that signs in with OAuth shows "requires authentication", reconnect it once with `/mcp`. A leftover `.credentials.json.pre-token.bak` is not read by anything and can stay or be removed.
+
+**Operator action required:** Docker: `hermitd-docker update` after the evolve. Otherwise `hermitd-stop && hermitd-start`.
+
+No `config.json` changes required.
+1. **Remove the frontmatter fence above the session discipline block.** In the hatch-target CLAUDE file (`CLAUDE.local.md` or `CLAUDE.md`), if the first non-blank line is `---` and the next non-blank line is a plugin opening marker such as `<!-- hermitd: Session Discipline -->`, delete that `---` line and leave everything else untouched. When the line was removed, add the plugin named in that marker to `context_reload_targets`. Skip silently otherwise.
 
 ### Upgrade Instructions
 

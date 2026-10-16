@@ -2661,56 +2661,17 @@ describe('doctor credential-expiry check', () => {
     expect(credCheck(report).status).toBe('ok');
   }), 20000);
 
-  // In token mode, a stored .credentials.json that still holds a live token is a
-  // hazard, not an expiry question: interactive sessions prefer it over the env
-  // token, so the hermit 401s ~8h after the stored token lapses. Doctor must warn
-  // to park it. A token FILE in the config dir is what makes token mode active.
-  const writeSetupTokenFile = (credDir: string) => {
+  // In token mode a stored .credentials.json is inert: Claude Code keeps a
+  // user-supplied env token ahead of it, so doctor has nothing to warn about. A
+  // token FILE in the config dir is what makes token mode active.
+  test('token mode + stored credential with a live token → ok, no shadow warning', withTmpdir(async (dir) => {
+    writeConfig(dir, {});
+    writeTokenRecord(dir, 300);
+    const credDir = path.join(dir, 'creds');
     fs.mkdirSync(credDir, { recursive: true });
     fs.writeFileSync(path.join(credDir, '.hermit-setup-token'), `${VALID_OAT}\n`);
-  };
-
-  test('token mode + stored credential with a live token → warn to park it', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
-    writeTokenRecord(dir, 300); // probe stays ok; the shadow is the only warn source
-    const credDir = path.join(dir, 'creds');
-    writeSetupTokenFile(credDir);
     fs.writeFileSync(path.join(credDir, '.credentials.json'), JSON.stringify({
       claudeAiOauth: { accessToken: 'live', expiresAt: Date.now() - 3600000 },
-    }));
-    const r = await runScript('doctor-check.ts', {
-      args: ['.hermit'], cwd: dir,
-      env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: credDir, ANTHROPIC_API_KEY: '', CLAUDE_CODE_OAUTH_TOKEN: '' },
-    });
-    const c = credCheck(JSON.parse(r.stdout));
-    expect(c.status).toBe('warn');
-    expect(c.detail).toContain('shadow');
-  }), 20000);
-
-  test('token mode + /logout stub (empty accessToken) → ok, no shadow warning', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
-    writeTokenRecord(dir, 300);
-    const credDir = path.join(dir, 'creds');
-    writeSetupTokenFile(credDir);
-    fs.writeFileSync(path.join(credDir, '.credentials.json'), JSON.stringify({
-      claudeAiOauth: { accessToken: '', expiresAt: 0 },
-    }));
-    const r = await runScript('doctor-check.ts', {
-      args: ['.hermit'], cwd: dir,
-      env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: credDir, ANTHROPIC_API_KEY: '', CLAUDE_CODE_OAUTH_TOKEN: '' },
-    });
-    const c = credCheck(JSON.parse(r.stdout));
-    expect(c.status).toBe('ok');
-    expect(c.detail).not.toContain('shadow');
-  }), 20000);
-
-  test('token mode with the credential already parked → ok', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
-    writeTokenRecord(dir, 300);
-    const credDir = path.join(dir, 'creds');
-    writeSetupTokenFile(credDir);
-    fs.writeFileSync(path.join(credDir, '.credentials.json.pre-token.bak'), JSON.stringify({
-      claudeAiOauth: { accessToken: 'live', expiresAt: 1 },
     }));
     const r = await runScript('doctor-check.ts', {
       args: ['.hermit'], cwd: dir,
