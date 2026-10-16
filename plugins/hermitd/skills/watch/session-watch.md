@@ -76,7 +76,7 @@ section; after a caller has already armed a subscription, use
 
 ### Registering an existing idle subscription
 
-Inputs: the target name, note, optional record/proposal/purpose/retry metadata, the
+Inputs: the target name, note, optional record/proposal/purpose/retry metadata and bg id, the
 sent message text when the send carried one, and the
 result of a successful `SendMessage` with `notify_when_idle: true`. This section
 only records that subscription; do not send another message or subscribe again.
@@ -86,10 +86,12 @@ only records that subscription; do not send another message or subscribe again.
    for approval, e.g. under `bypassPermissions`), no relay is possible — say so
    plainly instead of claiming the watch is live, and do not write the registry.
 2. Read `.hermit/state/monitors.runtime.json`; create it if missing
-   with `{"monitors": [], "last_cleared": null}`. When a live `peer-idle` entry
-   already targets this name and the send carried a message, append that exact
-   text to its `followup` array (create the array if absent), write the registry,
-   and end registration without writing a second entry.
+   with `{"monitors": [], "last_cleared": null}`. A live `peer-idle` entry
+   for this name with `reportless` belongs to a finished turn: `TaskStop` its
+   `poll_task_id` when present, remove it, and continue. Any other live entry
+   for this name ends registration without writing a second entry;
+   if the send carried a message, first append that exact text to its `followup`
+   array (create the array if absent) and write the registry.
 3. Generate id `session-<name>-<epoch>-<4char-random>` — same timestamp + random
    suffix convention as an ad-hoc id, so two watches on one name in the same
    second do not collide. Append:
@@ -101,6 +103,37 @@ only records that subscription; do not send another message or subscribe again.
    When the send carried a message, store its exact text as `followup: ["<text>"]`.
    Do not add `task_id` (`task_id` means a Monitor task and drives `TaskStop`).
    Write the registry back.
-4. Inside an open task record's turn, note the watch and its id through
+4. Resolve the helper's bg id from the supplied `--id`, otherwise from the `id`
+   of the row whose `name` equals the target in `claude agents --json`. No row:
+   keep the subscription, say no background poll was started, and skip to step 5.
+   Start one Bash call with `run_in_background: true`, substituting the resolved
+   id as a shell-quoted value for `<bg-id>`:
+   ```bash
+   while true; do
+     if agents=$(claude agents --json --all); then
+       verdict=$(jq -r --arg id <bg-id> '
+         select(type == "array") | (map(select(.id == $id)) | first) as $r
+         | if $r == null then "ended gone"
+           elif $r.status == "waiting" and $r.state == "blocked"
+             then "blocked \($r.waitingFor // "unknown")"
+           elif $r.state == "failed" or $r.state == "stopped" or
+                (($r.status // "") == "" and $r.state == "done")
+             then "ended \($r.state)"
+           else empty end' <<<"$agents" 2>/dev/null)
+       if [[ -n "$verdict" ]]; then
+         printf '%s\n' "$verdict"
+         exit 0
+       fi
+     fi
+     sleep 60
+   done
+   ```
+   Failed, empty or invalid CLI reads are retried. `status: "idle"` with
+   `state: "blocked"` is a finished turn, not a block; keep polling. `--all`
+   keeps a completed helper listed with null status and `state: "done"`; that
+   row ends the poll.
+   Store the returned background task id as `poll_task_id` on the entry and
+   write the registry. The existing-entry return in step 2 starts no second poll.
+5. Inside an open task record's turn, note the watch and its id through
    `task-note` (Commands) with arguments `<id>` with
    `- [ACTIVE] <instruction> (started HH:MM)` on stdin. Otherwise skip the note.

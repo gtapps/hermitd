@@ -26,7 +26,7 @@ nothing across sessions), with two changes:
 **Delivery.**
 
 First read `.hermit/state/monitors.runtime.json`. A `peer-idle`
-entry whose `target` is `<n>` means the helper is still on an earlier turn:
+entry whose `target` is `<n>` and that has no `reportless` means the helper is still on an earlier turn:
 triage without `purpose`, or implementation with `purpose: "implement"`.
 Send nothing: no `SendMessage`, no resume, and no Fallback. Keep the record from step (a) open. Tell the operator which of the two the helper is still doing and that
 they can ask again to implement once its report lands (that re-entry is

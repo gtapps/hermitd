@@ -13,6 +13,9 @@
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 - `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 ### Fixed
+- Helpers stuck on a permission prompt or question are announced in chat, and a reply goes back to them as new instructions.
+- Late helper reports reach their task and proposal after a reportless idle notice.
+- Scheduled-check questions reach the operator when queued for micro-approval.
 - Heartbeat checklist items that begin with the same words keep separate alert state, so a noisy item no longer silences an unrelated one.
 - Long channel notices on Discord and Telegram arrive in full as ordered parts split at paragraph breaks, instead of being cut off at the platform's length limit.
 - Reminders more than a day out arrive at their due minute in monitor mode instead of waiting for the next daily check.
