@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- A task can be confirmed done without a posted result, so work you finished yourself no longer closes as cancelled.
+
 ## [1.4.15] - 2026-10-15
 
 ### Added
