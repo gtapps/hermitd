@@ -67,7 +67,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --result-rev ${record.result_rev} --reason-stdin`
       : `; requester explicitly says the work is done: ${taskCommand} close ${target} --by confirmed --actor ${actor} --reason-stdin`;
     // A named approver confirms in words, so only an approver-free result can finish by a check.
-    const finishing = record.result && !record.approver && !record.check
+    const finishing = record.result && !latestIsStall && !record.approver && !record.check
       ? `; approved, outcome pending a command can observe: add --check '<command>' [--due <iso>] to the --clear-waiting note`
       : '';
     context += `\n[waiting task ${record.id}: ${reason}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
