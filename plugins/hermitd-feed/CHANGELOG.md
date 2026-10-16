@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Briefs no longer skip every web and RSS source after one oversized fetch result; the previous `tmp/feed-source-items-<slot>.json` is deleted before each fetch.
+
 ## [0.2.4] - 2026-10-02
 
 ### Changed

@@ -34,7 +34,7 @@ test('scratch producer and schema agree on caller-supplied run identity', () => 
   expect(agent).toContain('After writing, `Read` the same absolute path');
   expect(agent).toContain('Report a failed write');
   expect(scratch).toContain('source-fetch-result.ts verify');
-  expect(scratch).toContain('Existing scratch files without `run_id`');
+  expect(scratch).toContain('deletes the previous output');
   expect(scratch).toContain('`sources_skipped`');
   expect(scratch).toContain('`sources_quiet`');
 });

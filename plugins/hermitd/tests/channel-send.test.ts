@@ -11,7 +11,7 @@ import { runScript, runPinnedScript, type RunOptions } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
-import { sendOperatorNotice } from '../scripts/lib/channel-send';
+import { sendOperatorNotice, splitMessage } from '../scripts/lib/channel-send';
 import { channelHealthPath } from '../scripts/lib/channel-health';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -68,17 +68,22 @@ describe('channel-send CLI', () => {
     }
   });
 
-  test('truncates text over the telegram 4096-char limit', async () => {
+  test('sends text over the telegram 4096-char limit as ordered parts and logs it whole', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
-      const longText = 'x'.repeat(5000);
+      const first = 'a'.repeat(3000);
+      const second = 'b'.repeat(3000);
       const r = await runChannelSend({
-        args: [hermit(wd.dir), longText],
+        args: [hermit(wd.dir), '-'],
+        stdin: `${first}\n\n${second}`,
         env: { HERMIT_TELEGRAM_API_URL: stub.url },
       });
       expect(r.exitCode).toBe(0);
-      expect(stub.requests[0].body.text.length).toBe(4096);
+      expect(stub.requests.map((q) => q.body.text)).toEqual([first, second]);
+      const rows = unconsolidated(hermit(wd.dir)).rows;
+      expect(rows.length).toBe(1);
+      expect(rows[0].text).toBe(`${first}\n\n${second}`);
     } finally {
       stub.stop();
       wd.cleanup();
@@ -858,6 +863,30 @@ describe('channel-send CLI --notice', () => {
   });
 });
 
+describe('splitMessage', () => {
+  test('keeps text within the limit as one part', () => {
+    expect(splitMessage('short', 10)).toEqual(['short']);
+    expect(splitMessage('', 10)).toEqual(['']);
+  });
+
+  test('prefers a blank line, then a line break, then a space, then a hard cut', () => {
+    expect(splitMessage('aaa\n\nbb\ncc dd', 10)).toEqual(['aaa', 'bb\ncc dd']);
+    expect(splitMessage('aaa\nbbb cc', 8)).toEqual(['aaa', 'bbb cc']);
+    expect(splitMessage('aaa bbbbbb', 8)).toEqual(['aaa', 'bbbbbb']);
+    expect(splitMessage('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij']);
+  });
+
+  test('drops only the separator, keeping the next part\'s indentation', () => {
+    expect(splitMessage('aaa\n  bb', 6)).toEqual(['aaa', '  bb']);
+  });
+
+  test('never cuts a surrogate pair in half', () => {
+    const parts = splitMessage('abc😀def', 4);
+    expect(parts).toEqual(['abc', '😀de', 'f']);
+    expect(parts.join('')).toBe('abc😀def');
+  });
+});
+
 describe('channel-send rate limits', () => {
   type Platform = 'discord' | 'telegram';
   interface Reply {
@@ -870,7 +899,9 @@ describe('channel-send rate limits', () => {
     disconnect?: boolean;
   }
 
-  async function exercise(platform: Platform, replies: Reply[], opts: { timeoutMs?: number; recordHealth?: boolean } = {}) {
+  async function exercise(
+    platform: Platform, replies: Reply[], opts: { timeoutMs?: number; recordHealth?: boolean } = {}, text = 'rate-limited notice',
+  ) {
     const wd = setupWorkdir();
     const stateDir = path.join(wd.dir, '.claude.local', 'channels', platform);
     fs.mkdirSync(stateDir, { recursive: true });
@@ -910,7 +941,7 @@ describe('channel-send rate limits', () => {
       const proc = Bun.spawn([process.execPath, '-e', `
         import { sendToChannel } from ${JSON.stringify(modulePath)};
         const started = performance.now();
-        const result = await sendToChannel(${JSON.stringify(hermit(wd.dir))}, 'rate-limited notice', ${JSON.stringify(opts)});
+        const result = await sendToChannel(${JSON.stringify(hermit(wd.dir))}, ${JSON.stringify(text)}, ${JSON.stringify(opts)});
         console.log(JSON.stringify({ result, elapsed: performance.now() - started }));
       `], {
         env: { ...process.env, [`HERMIT_${platform.toUpperCase()}_API_URL`]: `http://127.0.0.1:${server.port}` },
@@ -1054,4 +1085,21 @@ describe('channel-send rate limits', () => {
       expect(r.requests).toHaveLength(1);
     });
   }
+
+  test('discord: sends a long notice as ordered parts and logs it once', async () => {
+    const text = `${'a'.repeat(1500)}\n\n${'b'.repeat(1500)}`;
+    const r = await exercise('discord', [], {}, text);
+    expect(r.result).toEqual({ ok: true, status: 200 });
+    expect(r.requests.map((q) => q.body.content)).toEqual(['a'.repeat(1500), 'b'.repeat(1500)]);
+    expect(r.rows.map((row: any) => row.text)).toEqual([text]);
+  });
+
+  test('discord: stops at the first failed part and logs nothing', async () => {
+    const text = ['a', 'b', 'c'].map((c) => c.repeat(1500)).join('\n\n');
+    const r = await exercise('discord', [{}, { status: 500, body: { message: 'boom' } }], {}, text);
+    expect(r.result).toEqual({ ok: false, status: 500, error: 'boom' });
+    expect(r.requests).toHaveLength(2);
+    expect(r.rows).toHaveLength(0);
+    expect(r.health.consecutive_failures).toBe(1);
+  });
 });

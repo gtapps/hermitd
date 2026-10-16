@@ -87,7 +87,7 @@ test("feed notification skills defer to the core push-format owner", () => {
 test('feed-brief binds dispatch and verification to the original run ID', () => {
   const body = readFileSync(join(ROOT, 'skills', 'feed-brief', 'SKILL.md'), 'utf8');
   const phase = body.split('### Phase 1')[1].split('### Phase 2')[0];
-  const generate = phase.indexOf('source-fetch-result.ts new-run');
+  const generate = phase.indexOf('source-fetch-result.ts new-run "<absolute-output-path>"');
   const dispatch = phase.indexOf('Dispatch the `@hermitd-feed:source-fetcher`');
   const verify = phase.indexOf('source-fetch-result.ts verify "<absolute-output-path>" "<expected-run-id>"');
   expect(generate).toBeGreaterThanOrEqual(0);
