@@ -9,7 +9,7 @@
 
 ## Watches
 
-Config watches auto-register on session start; ad-hoc via `/watch <instruction>`, `/watch status` / `/watch stop`. Registry is `state/monitors.runtime.json`. Watches die with the session; scheduled work goes through `/hermitd:hermit-routines`.
+Config watches auto-register on session start; ad-hoc via `/watch <instruction>`, `/watch status` / `/watch stop`. Registry is `state/monitors.runtime.json`. Watches die with the session; scheduled work goes through `/hermitd:hermit-routines`, and a one-time reminder promised to the operator through `/hermitd:later`, not `CronCreate`.
 
 - `HEARTBEAT_EVALUATE` notification, or a peer message whose entire body is that token → invoke `/hermitd:heartbeat run`.
 - `ROUTINE_DUE` notification, or a peer message whose entire body is that token → invoke `/hermitd:hermit-routines run` with the bracketed ids.

@@ -211,6 +211,7 @@ Reflection runs at eligible task or session pauses, daily, and after routines co
 | “Tell me when my session in `~/code/web` finishes.” | Watches your other Claude Code sessions. |
 | `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
 | “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
+| “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
 | “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
 
