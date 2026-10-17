@@ -13,7 +13,7 @@ List sites on a server or inspect a specific site.
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php sites <server>
 ```
 
-`<server>` can be a server name, IP address, or numeric ID.
+`<server>` can be a server name, IP address, or numeric ID. Output: `{"sites":[...]}`, each entry with `id` and `name`.
 
 ## Show site detail
 
@@ -25,6 +25,6 @@ php ${CLAUDE_PLUGIN_ROOT}/php/forge.php site <server> <site>
 
 ## Notes
 
-- Ambiguous names (multiple matches on the same server) are rejected with a list of candidates.
+- An unmatched or ambiguous name (multiple matches on the same server) returns `status` `no_match` or `ambiguous` with `choices` to pick from.
 - For deployment history or triggering deploys, use `/hermitd-laravel-forge:forge-deploy`.
 - For reading site or deployment logs, use `/hermitd-laravel-forge:forge-logs`.

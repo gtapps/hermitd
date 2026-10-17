@@ -13,7 +13,7 @@ List and inspect servers in the Forge estate, or reboot a server with approval.
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php servers
 ```
 
-Output: one line per server with ID, name, and IP address.
+Output: `{"servers":[...]}`, each entry with `id`, `name`, and `ip_address`.
 
 ## Show server detail
 
@@ -21,7 +21,7 @@ Output: one line per server with ID, name, and IP address.
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php server <server>
 ```
 
-`<server>` can be a server name, IP address, or numeric ID. Ambiguous names are rejected with a list of collisions.
+`<server>` can be a server name, IP address, or numeric ID. An unmatched or ambiguous name returns `status` `no_match` or `ambiguous` with `choices` to pick from.
 
 ## Reboot a server (surface-then-approve)
 
@@ -31,7 +31,7 @@ php ${CLAUDE_PLUGIN_ROOT}/php/forge.php server <server>
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php preview-reboot <server>
 ```
 
-Resolves `<server>` to the canonical record and prints the server name, IP, and ID. Exit 0, no mutation.
+Resolves `<server>` to the canonical record and prints `{"server":{"id","name","ip_address"}}`. No mutation.
 
 **Step 2: Relay to operator.** Show the canonical target.
 
@@ -60,9 +60,9 @@ echo '[<server-id>, {"type":"cpu_load","operator":"gte","threshold":90,"notify":
   | php ${CLAUDE_PLUGIN_ROOT}/php/forge.php preview createMonitor
 ```
 
-Prints the canonical server, `POST /orgs/<org>/servers/<id>/monitors`, the payload, and a plan id.
+Prints `plan_id`, `expires_at`, `verb` and `path` (`POST /orgs/<org>/servers/<id>/monitors`), the `body` payload, and the canonical `server`. A `status` of `denied` means policy blocks the method: relay its `reason` and `lift` entries to the operator, who alone can edit `.env`.
 
-**Step 2: Preview.** Show the canonical server and payload.
+**Step 2: Relay.** Show the canonical server and payload.
 
 **Step 3: Execute.**
 
@@ -70,7 +70,7 @@ Prints the canonical server, `POST /orgs/<org>/servers/<id>/monitors`, the paylo
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php execute <plan-id>
 ```
 
-Plans are single use and expire 15 minutes after the preview. If approval arrives later, the plan is gone — re-run the preview and relay the new one. Do not treat that as an error to work around: it is the mechanism refusing to fire something the operator did not just look at.
+It prints `{"result": ...}`, or `OK` when the write returns nothing. Plans are single use and expire 15 minutes after the preview. If approval arrives later, the plan is gone and `execute` returns `{"status":"refused","reason":"missing"}` (or `expired`, `mismatch`): re-run the preview and relay the new one. Do not treat that as an error to work around: it is the mechanism refusing to fire something the operator did not just look at.
 
 Payload fields, for reference only — there is no client-side validation, so a bad payload comes back as a Forge 422 with per-field errors: `type` is one of `cpu_load`, `disk`, `free_memory`, `used_memory`; `operator` is `gte` or `lte`; `threshold` is a number; `minutes` is optional; `notify` is an email address.
 

@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- `forge.php` commands print one JSON object; errors are `{"error":"<token>"}` on stdout, and policy denials, plan refusals and unmatched or ambiguous names are `status` outcomes at exit 0
+- `native-permissions.ts` prints `OK` or one JSON object instead of prose and uncaught throws
+
 ### Fixed
+- `forge.php --help` exits 0
 - Scrubbed `forge.php` output redacts double-quoted values in JSON-encoded results, single-quoted values, and literal credentials on `composer config` auth lines.
 
 ## [0.0.19] - 2026-10-02

@@ -43,10 +43,13 @@ final class CaptureComplete extends \Exception
     }
 }
 
-/** A gateway refusal. `$reason` is the machine-readable cause, for exit messages. */
+/**
+ * A gateway refusal. `$reason` is the machine-readable cause; a `policy`
+ * refusal also carries the policyRefusal() denial it was built from.
+ */
 final class PlanRefusal extends \RuntimeException
 {
-    public function __construct(public readonly string $reason, string $message)
+    public function __construct(public readonly string $reason, string $message, public readonly ?array $denial = null)
     {
         parent::__construct($message);
     }
@@ -276,7 +279,7 @@ function executePlan(string $stateDir, string $id, Forge $real, ?array $policy =
     }
 
     if ($policy !== null && ($refusal = policyRefusal($method, $recaptured, $policy)) !== null) {
-        throw new PlanRefusal('policy', $refusal . "\nNothing was sent.");
+        throw new PlanRefusal('policy', "Plan '$id' is denied by policy ({$refusal['reason']}). Nothing was sent.", $refusal);
     }
 
     consumePlan($stateDir, $id);

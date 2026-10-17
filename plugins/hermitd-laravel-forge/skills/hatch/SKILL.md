@@ -103,7 +103,7 @@ Append any missing patterns via Edit.
 
 ## Step 4 — CLI probe (credential check)
 
-Run: `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php check`
+Run: `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php check` and branch on `status`. A `policy_lift` field lists `.env` lifts of the shipped deny tiers; mention it in the final report.
 
 - **`missing`** → tell the operator to add `FORGE_API_TOKEN` to `.env` and re-run Step 3.
 - **`invalid`** → token found but API rejected it; tell the operator to check the token at https://forge.laravel.com/profile/api.
@@ -174,7 +174,7 @@ Write the updated `config.json` via Write tool (full file replacement for valid 
 
 Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
 
-Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`.
+Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. It prints `OK`; `{"status":"installed","deny_conflicts":[...]}` means existing operator denies override those asks, so name them in the final report. On `{"error":...}`, surface the error and stop.
 
 ## Step 8 — Final report
 

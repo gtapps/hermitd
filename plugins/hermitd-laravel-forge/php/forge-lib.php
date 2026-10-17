@@ -16,6 +16,11 @@ declare(strict_types=1);
 // ---------------------------------------------------------------------------
 
 use Laravel\Forge\Forge;
+use Laravel\Forge\Exceptions\FailedActionException;
+use Laravel\Forge\Exceptions\ForbiddenException;
+use Laravel\Forge\Exceptions\NotFoundException;
+use Laravel\Forge\Exceptions\RateLimitExceededException;
+use Laravel\Forge\Exceptions\TimeoutException;
 use Laravel\Forge\Exceptions\ValidationException;
 use Psr\Http\Message\RequestInterface;
 
@@ -134,43 +139,42 @@ function returnsSecretResource(string $method): bool
 
 /**
  * Applied to the CAPTURED request, never to a prediction of what a method will
- * do. Returns null when the call is allowed, or a refusal that names the tier
- * AND the lift — the refusal text is what an agent relays to the operator
+ * do. Returns null when the call is allowed, or a denial that names the tier
+ * AND the lift: the `lift` entries are what an agent relays to the operator
  * instead of improvising an escalation.
+ *
+ * @return array{reason: string, lift?: list<string>}|null
  */
-function policyRefusal(string $method, RequestInterface $captured, array $policy): ?string
+function policyRefusal(string $method, RequestInterface $captured, array $policy): ?array
 {
     // Structural, and never liftable: these are not Forge API operations.
     if (!isEndpointMethod($method)) {
-        return "Refused: $method is not a Forge API operation (client plumbing or raw transport). "
-             . "This is structural and cannot be lifted.";
+        return ['reason' => 'not_an_operation'];
     }
 
     $lifted = fn(string $tier) => in_array($tier, $policy['tiers_lifted'], true)
         || in_array($method, $policy['methods_lifted'], true);
 
     if ((matchesPattern($method, SECRET_METHODS) || returnsSecretResource($method)) && !$lifted('secrets')) {
-        return policyLiftHint("Refused: $method — denied by shipped tier 'secrets' "
-            . "(returns credential material into the transcript).", 'secrets', $method);
+        return policyLiftHint('secrets', $method);
     }
 
     if (in_array(strtoupper($captured->getMethod()), DESTRUCTIVE_VERBS, true) && !$lifted('destructive')) {
-        return policyLiftHint("Refused: $method — denied by shipped tier 'destructive' "
-            . "(captured verb {$captured->getMethod()}).", 'destructive', $method);
+        return policyLiftHint('destructive', $method);
     }
 
     // Project denials are operator convenience, not a boundary — see loadPolicy().
     if (matchesPattern($method, $policy['project_deny'])) {
-        return "Refused: $method — denied by this project's .hermit/forge-policy.json.";
+        return ['reason' => 'project_policy'];
     }
 
     return null;
 }
 
-function policyLiftHint(string $refusal, string $tier, string $method): string
+/** Either .env entry lifts the denial; only the operator can edit .env. */
+function policyLiftHint(string $tier, string $method): array
 {
-    return $refusal . "\nLift with FORGE_POLICY_ALLOW_TIERS=$tier or FORGE_POLICY_ALLOW=$method "
-         . "in .env — operator-only; the agent cannot edit .env.";
+    return ['reason' => "{$tier}_tier", 'lift' => ["FORGE_POLICY_ALLOW_TIERS=$tier", "FORGE_POLICY_ALLOW=$method"]];
 }
 
 /**
@@ -293,16 +297,26 @@ function scrubSecrets(string $text): string
 }
 
 /**
- * Keep the SDK summary and the complete validation response, including nested
- * field errors. Scrub after rendering so API-provided details get the same
- * protection as successful output.
+ * One `{"error":"<token>:<summary>"}` line. Keep the SDK summary and the
+ * complete validation response, including nested field errors. Scrub after
+ * rendering so API-provided details get the same protection as successful output.
  */
 function formatSdkError(\Throwable $error): string
 {
-    $message = 'SDK error: ' . $error->getMessage();
+    $token = match (true) {
+        $error instanceof ValidationException => 'sdk_http_422',
+        $error instanceof FailedActionException => 'sdk_http_400',
+        $error instanceof ForbiddenException => 'sdk_http_403',
+        $error instanceof NotFoundException => 'sdk_http_404',
+        $error instanceof RateLimitExceededException => 'rate_limited',
+        $error instanceof TimeoutException => 'timeout',
+        default => 'sdk_error',
+    };
+    $out = ['error' => $error->getMessage() === '' ? $token : "$token:{$error->getMessage()}"];
     if ($error instanceof ValidationException && $error->errors() !== []) {
-        $message .= "\n" . json_encode($error->errors(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $out['errors'] = $error->errors();
     }
+    $message = (string) json_encode($out, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 
     return scrubSecrets($message) . "\n";
 }

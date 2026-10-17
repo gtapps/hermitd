@@ -34,7 +34,7 @@ if (file_exists($prodAutoload)) {
 } elseif (file_exists($devAutoload)) {
     require_once $devAutoload;
 } else {
-    fwrite(STDERR, "Forge SDK not installed. Run /hermitd-laravel-forge:hatch to install it.\n");
+    echo "{\"error\":\"sdk_not_installed:run /hermitd-laravel-forge:hatch\"}\n";
     exit(1);
 }
 
@@ -78,15 +78,39 @@ require_once __DIR__ . '/forge-operation.php';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function check(bool $cond, string $msg): void {
-    if (!$cond) {
-        fwrite(STDERR, "Error: $msg\n");
-        exit(1);
-    }
+/**
+ * Print one JSON object on stdout, scrubbed, and exit. Every SDK value reaches
+ * the operator's transcript through here, including free-form log strings,
+ * which is why the scrubber sits at the output boundary.
+ */
+function emit(array $data, int $code = 0): never {
+    $out = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    echo scrubSecrets((string) $out) . "\n";
+    exit($code);
+}
+
+/** A check or write with nothing to report. */
+function ok(): never {
+    echo "OK\n";
+    exit(0);
+}
+
+function fail(string $error): never {
+    emit(['error' => $error], 1);
+}
+
+/** An SDK exception as its `{"error":...}` line (see formatSdkError()). */
+function failSdk(\Throwable $e): never {
+    echo formatSdkError($e);
+    exit(1);
+}
+
+function check(bool $cond, string $error): void {
+    if (!$cond) fail($error);
 }
 
 function requireToken(string $token): void {
-    check($token !== '', "FORGE_API_TOKEN is not set. Add it to .env in the project root.");
+    check($token !== '', 'missing_env:FORGE_API_TOKEN');
 }
 
 function requireOrg(string $org, Forge $forge): string {
@@ -97,41 +121,35 @@ function requireOrg(string $org, Forge $forge): string {
     try {
         $orgs = iterator_to_array($forge->organizations()->lazy());
     } catch (\Throwable $e) {
-        fwrite(STDERR, "Could not list organizations: " . $e->getMessage() . "\n");
-        fwrite(STDERR, "Set FORGE_ORG in .env to specify your organization slug.\n");
-        exit(1);
+        failSdk($e);
     }
     $count = count($orgs);
     if ($count === 1) return $orgs[0]->slug;
-    if ($count === 0) {
-        fwrite(STDERR, "No organizations found for this token. Check the token at https://forge.laravel.com/profile/api.\n");
-        exit(1);
-    }
-    fwrite(STDERR, "Multiple organizations found. Set FORGE_ORG in .env to one of:\n");
-    foreach ($orgs as $o) {
-        fwrite(STDERR, "  {$o->slug}  ({$o->name})\n");
-    }
-    exit(1);
+    check($count > 0, 'no_organizations');
+    // Several orgs: the operator sets FORGE_ORG in .env to one of the slugs.
+    emit(['status' => 'ambiguous', 'reason' => 'forge_org_unset',
+        'choices' => array_map(fn($o) => ['slug' => $o->slug, 'name' => $o->name], $orgs)]);
 }
 
+function serverRow(object $s): array {
+    return ['id' => $s->id, 'name' => $s->name, 'ip_address' => $s->ipAddress];
+}
+
+function siteRow(object $s): array {
+    return ['id' => $s->id, 'name' => $s->name];
+}
+
+/** No match or several matches end the command with the candidates to choose from. */
 function resolveServer(Forge $forge, string $org, string $serverQuery): object {
     // servers() returns a CursorPaginator — materialize all pages to a plain
     // array so name/IP resolution sees the full estate, not just page 1.
     $servers = iterator_to_array($forge->servers($org)->lazy());
     $candidates = matchServer($servers, $serverQuery);
     if (count($candidates) === 0) {
-        fwrite(STDERR, "No server matching '$serverQuery'. Available servers:\n");
-        foreach ($servers as $s) {
-            fwrite(STDERR, "  {$s->id}  {$s->name}  ({$s->ipAddress})\n");
-        }
-        exit(1);
+        emit(['status' => 'no_match', 'reason' => 'server', 'choices' => array_map('serverRow', $servers)]);
     }
     if (count($candidates) > 1) {
-        fwrite(STDERR, "Ambiguous server '$serverQuery' — multiple matches:\n");
-        foreach ($candidates as $s) {
-            fwrite(STDERR, "  {$s->id}  {$s->name}  ({$s->ipAddress})\n");
-        }
-        exit(1);
+        emit(['status' => 'ambiguous', 'reason' => 'server', 'choices' => array_map('serverRow', $candidates)]);
     }
     return $candidates[0];
 }
@@ -141,55 +159,33 @@ function resolveSite(Forge $forge, string $org, object $server, string $siteQuer
     $sites = iterator_to_array($forge->serverSites($org, $server->id)->lazy());
     $candidates = matchSite($sites, $siteQuery);
     if (count($candidates) === 0) {
-        fwrite(STDERR, "No site matching '$siteQuery' on server {$server->name}. Available sites:\n");
-        foreach ($sites as $s) {
-            fwrite(STDERR, "  {$s->id}  {$s->name}\n");
-        }
-        exit(1);
+        emit(['status' => 'no_match', 'reason' => 'site', 'choices' => array_map('siteRow', $sites)]);
     }
     if (count($candidates) > 1) {
-        fwrite(STDERR, "Ambiguous site '$siteQuery' on server {$server->name} — multiple matches:\n");
-        foreach ($candidates as $s) {
-            fwrite(STDERR, "  {$s->id}  {$s->name}\n");
-        }
-        exit(1);
+        emit(['status' => 'ambiguous', 'reason' => 'site', 'choices' => array_map('siteRow', $candidates)]);
     }
     return $candidates[0];
 }
 
-function printCanonicalServer(object $server): void {
-    echo "Server: {$server->name} (ID: {$server->id}, IP: {$server->ipAddress})\n";
-}
-
-function printCanonicalSite(object $server, object $site): void {
-    echo "Server: {$server->name} (ID: {$server->id}, IP: {$server->ipAddress})\n";
-    echo "Site:   {$site->name} (ID: {$site->id})\n";
-}
-
-/**
- * Print an SDK return value, scrubbed. Every generic result reaches the operator's
- * transcript through here — including free-form log strings, which is why the
- * scrubber sits at the output boundary rather than in the method-name policy.
- */
-function printResult(mixed $result): void {
+/** Print an SDK return value as `{"result": ...}`, or bare `OK` when the call returns nothing. */
+function printResult(mixed $result): never {
     // A CursorPaginator iterates page 1 only; ->lazy() walks every page, which is
     // what the curated read commands already do. Without this a `call servers` on
     // an estate larger than one page silently reports a truncated list.
     if ($result instanceof \Laravel\Forge\CursorPaginator) {
         $result = $result->lazy();
     }
+    if ($result === null) ok();
     if (is_iterable($result)) {
         $rows = [];
         foreach ($result as $item) {
             $rows[] = is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : (array) $item;
         }
-        $out = json_encode($rows, JSON_PRETTY_PRINT);
+        $result = $rows;
     } elseif (is_object($result)) {
-        $out = json_encode(method_exists($result, 'toArray') ? $result->toArray() : (array) $result, JSON_PRETTY_PRINT);
-    } else {
-        $out = json_encode($result, JSON_PRETTY_PRINT);
+        $result = method_exists($result, 'toArray') ? $result->toArray() : (array) $result;
     }
-    echo scrubSecrets((string) $out) . "\n";
+    emit(['result' => $result]);
 }
 
 /**
@@ -207,8 +203,7 @@ function signatureHint(string $method): string {
         return $type . ' $' . $p->getName() . ($p->isOptional() ? ' (optional)' : '');
     }, $params);
 
-    return "Expected stdin JSON array: [" . implode(', ', $shown) . "]\n"
-         . "The org slug is prepended automatically — do not include it.\n";
+    return 'expected stdin [' . implode(', ', $shown) . '] without the org slug';
 }
 
 /**
@@ -226,11 +221,13 @@ function stdinArgs(): array {
     if (!is_array($decoded)) {
         // Catches both decode failure (null) and valid-but-non-array JSON
         // (a bare string/number would crash the ...spread at the call site).
-        fwrite(STDERR, "stdin must be a JSON array of arguments (e.g. '[12]').\n");
-        exit(1);
+        fail('invalid_args:stdin must be a JSON array, e.g. [12]');
     }
     return $decoded;
 }
+
+// An SDK exception a command does not handle itself still ends as one error line.
+set_exception_handler('failSdk');
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -289,7 +286,7 @@ if ($cmd === '' || $cmd === '--help' || $cmd === 'help') {
     still matches. Plans are single use and expire after {$ttl} minutes.
 
     USAGE;
-    exit(1);
+    exit(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -299,30 +296,26 @@ if ($cmd === 'check') {
     // Report any active policy lift alongside the credential state, so the hatch
     // and the doctor can see that this install has widened its own reach.
     $lifts = loadPolicy($projectRoot);
-    if ($lifts['tiers_lifted'] !== [] || $lifts['methods_lifted'] !== []) {
-        echo 'policy-lift: ' . implode(' ', array_merge(
-            array_map(fn($t) => "tier:$t", $lifts['tiers_lifted']),
-            array_map(fn($m) => "method:$m", $lifts['methods_lifted']),
-        )) . "\n";
-    }
+    $lift = $lifts['tiers_lifted'] !== [] || $lifts['methods_lifted'] !== []
+        ? ['policy_lift' => ['tiers' => $lifts['tiers_lifted'], 'methods' => $lifts['methods_lifted']]]
+        : [];
 
     if ($token === '') {
-        echo "missing\n";
-        exit(0);
+        emit(['status' => 'missing'] + $lift);
     }
     try {
         $forge = new Forge($token);
         $forge->organizations();
-        echo "ok\n";
+        $status = 'ok';
     } catch (\Throwable $e) {
         $msg = $e->getMessage();
         if (str_contains($msg, '401') || str_contains($msg, 'Unauthorized') || str_contains($msg, 'unauthenticated')) {
-            echo "invalid\n";
+            $status = 'invalid';
         } else {
-            echo "unreachable\n"; // network/egress error, not an auth rejection
+            $status = 'unreachable'; // network/egress error, not an auth rejection
         }
     }
-    exit(0);
+    emit(['status' => $status] + $lift);
 }
 
 // ---------------------------------------------------------------------------
@@ -385,12 +378,8 @@ $resolveOrg = function () use (&$org, $forge): string {
 // ---------------------------------------------------------------------------
 if ($cmd === 'call' || $cmd === 'preview') {
     $method = $positional[0] ?? '';
-    check($method !== '', "$cmd requires a method name. Usage: forge.php $cmd <method>");
-
-    if (!isEndpointMethod($method)) {
-        fwrite(STDERR, "'$method' is not a Forge API operation. Run forge.php policy to see what is reachable.\n");
-        exit(1);
-    }
+    check($method !== '', "usage:forge.php $cmd <method>");
+    check(isEndpointMethod($method), "not_an_operation:$method");
 
     $callArgs = stdinArgs();
     if (takesOrgFirst($method)) {
@@ -402,62 +391,46 @@ if ($cmd === 'call' || $cmd === 'preview') {
     } catch (\TypeError $e) {
         // With 271 methods reachable, a wrong argument shape is the likely
         // mistake — print the real signature instead of an SDK stack trace.
-        fwrite(STDERR, "Argument mismatch for '$method'.\n" . signatureHint($method));
-        exit(1);
+        fail("argument_mismatch:" . signatureHint($method));
     }
 
     $isRead = $captured->getMethod() === 'GET';
-    if ($cmd === 'call' && !$isRead) {
-        fwrite(STDERR, "'$method' is a write ({$captured->getMethod()}). Use: forge.php preview $method\n");
-        exit(1);
-    }
-    if ($cmd === 'preview' && $isRead) {
-        fwrite(STDERR, "'$method' is a read. Use: forge.php call $method\n");
-        exit(1);
-    }
+    check($cmd !== 'call' || $isRead, "not_a_read:use forge.php preview $method");
+    check($cmd !== 'preview' || !$isRead, "not_a_write:use forge.php call $method");
 
     $refusal = policyRefusal($method, $captured, loadPolicy($projectRoot));
     if ($refusal !== null) {
-        fwrite(STDERR, $refusal . "\n");
-        exit(1);
+        emit(['status' => 'denied'] + $refusal);
     }
 
     if ($cmd === 'call') {
-        try {
-            printResult($forge->$method(...$callArgs));
-        } catch (\Throwable $e) {
-            fwrite(STDERR, formatSdkError($e));
-            exit(1);
-        }
-        exit(0);
+        printResult($forge->$method(...$callArgs));
     }
 
     // --- preview: show the operator the real request, then store it under a hash
     $path = canonicalPath($captured);
+    $preview = ['method' => $method, 'verb' => $captured->getMethod(), 'path' => $path];
 
-    echo "--- $method preview (no action taken) ---\n";
     // The canonical target comes from the CAPTURED URI, so it is right for every
     // method rather than for the ones whose signature we happened to know.
     //
     // This lookup is decoration, not the preview: the request is already captured
-    // and its id is printed on the next line. resolveServer() exits on a miss and
+    // and its id is printed with it. resolveServer() exits on a miss and
     // lets SDK errors escape, so it is deliberately NOT reused here — an expired
     // token, a rate limit or a server absent from the listing must not abort a
-    // preview with an uncaught fatal.
+    // preview.
     if (preg_match('#/servers/(\d+)#', $path, $m) === 1) {
         try {
             $match = matchServer(iterator_to_array($forge->servers($resolveOrg())->lazy()), $m[1]);
-            if ($match !== []) printCanonicalServer($match[0]);
+            if ($match !== []) $preview['server'] = serverRow($match[0]);
         } catch (\Throwable $e) {
             fwrite(STDERR, "Note: could not resolve server {$m[1]} for display: {$e->getMessage()}\n");
         }
     }
-    echo "{$captured->getMethod()} $path\n";
 
     $body = (string) $captured->getBody();
     if ($body !== '') {
-        $pretty = json_encode(json_decode($body, true), JSON_PRETTY_PRINT);
-        echo scrubSecrets($pretty === false ? $body : $pretty) . "\n";
+        $preview['body'] = json_decode($body, true) ?? $body;
     }
 
     $stateDir = $projectRoot . '/.hermit';
@@ -471,11 +444,8 @@ if ($cmd === 'call' || $cmd === 'preview') {
         'hash'   => planHash($captured),
     ]);
 
-    $mins = intdiv(PLAN_TTL_SECONDS, 60);
-    echo "Plan: $planId   expires " . gmdate('H:i', time() + PLAN_TTL_SECONDS) . " UTC ($mins min, single use)\n";
-    echo "Relay the target and payload above, wait for the operator's approval, then run:\n";
-    echo "  forge.php execute $planId\n";
-    exit(0);
+    $preview = ['plan_id' => $planId, 'expires_at' => gmdate('c', time() + PLAN_TTL_SECONDS)] + $preview;
+    emit($preview);
 }
 
 // ---------------------------------------------------------------------------
@@ -487,18 +457,14 @@ if ($cmd === 'call' || $cmd === 'preview') {
 // ---------------------------------------------------------------------------
 if ($cmd === 'execute') {
     $planId = $positional[0] ?? '';
-    check($planId !== '', "execute requires a plan id. Usage: forge.php execute <plan-id>");
+    check($planId !== '', 'usage:forge.php execute <plan-id>');
 
     try {
-        printResult(executePlan($projectRoot . '/.hermit', $planId, $forge, loadPolicy($projectRoot)));
+        $result = executePlan($projectRoot . '/.hermit', $planId, $forge, loadPolicy($projectRoot));
     } catch (PlanRefusal $e) {
-        fwrite(STDERR, $e->getMessage() . "\n");
-        exit(1);
-    } catch (\Throwable $e) {
-        fwrite(STDERR, formatSdkError($e));
-        exit(1);
+        emit($e->denial !== null ? ['status' => 'denied'] + $e->denial : ['status' => 'refused', 'reason' => $e->reason]);
     }
-    exit(0);
+    printResult($result);
 }
 
 // Everything below this line is a curated command, and all of them are
@@ -509,50 +475,42 @@ $resolveOrg();
 // servers
 // ---------------------------------------------------------------------------
 if ($cmd === 'servers') {
-    foreach ($forge->servers($org)->lazy() as $s) {
-        printf("%-6s  %-30s  %s\n", $s->id, $s->name, $s->ipAddress);
-    }
-    exit(0);
+    emit(['servers' => array_map('serverRow', iterator_to_array($forge->servers($org)->lazy()))]);
 }
 
 // ---------------------------------------------------------------------------
 // server <id>
 // ---------------------------------------------------------------------------
 if ($cmd === 'server') {
-    check(isset($positional[0]), "Usage: forge.php server <server>");
+    check(isset($positional[0]), 'usage:forge.php server <server>');
     $server = resolveServer($forge, $org, $positional[0]);
-    echo json_encode((array)$server, JSON_PRETTY_PRINT) . "\n";
-    exit(0);
+    emit(['server' => (array)$server]);
 }
 
 // ---------------------------------------------------------------------------
 // sites <server>
 // ---------------------------------------------------------------------------
 if ($cmd === 'sites') {
-    check(isset($positional[0]), "Usage: forge.php sites <server>");
+    check(isset($positional[0]), 'usage:forge.php sites <server>');
     $server = resolveServer($forge, $org, $positional[0]);
-    foreach ($forge->serverSites($org, $server->id)->lazy() as $s) {
-        printf("%-6s  %s\n", $s->id, $s->name);
-    }
-    exit(0);
+    emit(['sites' => array_map('siteRow', iterator_to_array($forge->serverSites($org, $server->id)->lazy()))]);
 }
 
 // ---------------------------------------------------------------------------
 // site <server> <site>
 // ---------------------------------------------------------------------------
 if ($cmd === 'site') {
-    check(isset($positional[1]), "Usage: forge.php site <server> <site>");
+    check(isset($positional[1]), 'usage:forge.php site <server> <site>');
     $server = resolveServer($forge, $org, $positional[0]);
     $site   = resolveSite($forge, $org, $server, $positional[1]);
-    echo json_encode((array)$site, JSON_PRETTY_PRINT) . "\n";
-    exit(0);
+    emit(['site' => (array)$site]);
 }
 
 // ---------------------------------------------------------------------------
 // logs <server> <site> [--log-type deploy|site]
 // ---------------------------------------------------------------------------
 if ($cmd === 'logs') {
-    check(isset($positional[1]), "Usage: forge.php logs <server> <site>");
+    check(isset($positional[1]), 'usage:forge.php logs <server> <site>');
     $server = resolveServer($forge, $org, $positional[0]);
     $site   = resolveSite($forge, $org, $server, $positional[1]);
 
@@ -562,19 +520,16 @@ if ($cmd === 'logs') {
     foreach ($deployments as $d) { $latest = $d; break; }
 
     if ($latest === null) {
-        echo "(no deployments found)\n";
-        exit(0);
+        emit(['status' => 'none', 'reason' => 'no_deployments']);
     }
-    $log = $forge->deploymentLog($org, $server->id, $site->id, $latest->id);
-    echo $log . "\n";
-    exit(0);
+    emit(['log' => (string) $forge->deploymentLog($org, $server->id, $site->id, $latest->id)]);
 }
 
 // ---------------------------------------------------------------------------
 // server-log <server> <key>
 // ---------------------------------------------------------------------------
 if ($cmd === 'server-log') {
-    check(isset($positional[1]), "Usage: forge.php server-log <server> <key>");
+    check(isset($positional[1]), 'usage:forge.php server-log <server> <key>');
     $server = resolveServer($forge, $org, $positional[0]);
     $key    = $positional[1];
 
@@ -589,18 +544,17 @@ if ($cmd === 'server-log') {
     try {
         $log = $forge->serverLog($org, $server->id, $key);
     } catch (NotFoundException $e) {
-        fwrite(STDERR, "No log found for key '$key' on server {$server->name}. Either this key is wrong, or Forge doesn't track a log path for this service (common on servers with a custom, non-Forge-provisioned install of it). Check the server's installed services.\n");
-        exit(1);
+        // A wrong key, or a service Forge tracks no log path for.
+        emit(['status' => 'none', 'reason' => 'no_log', 'key' => $key]);
     }
-    echo $log . "\n";
-    exit(0);
+    emit(['log' => (string) $log]);
 }
 
 // ---------------------------------------------------------------------------
 // site-log <server> <site> <type>
 // ---------------------------------------------------------------------------
 if ($cmd === 'site-log') {
-    check(isset($positional[2]), "Usage: forge.php site-log <server> <site> <application|nginx-access|nginx-error>");
+    check(isset($positional[2]), 'usage:forge.php site-log <server> <site> <application|nginx-access|nginx-error>');
 
     $methods = [
         'application'  => 'siteApplicationLog',
@@ -608,10 +562,7 @@ if ($cmd === 'site-log') {
         'nginx-error'  => 'siteNginxErrorLog',
     ];
     $type = $positional[2];
-    if (!isset($methods[$type])) {
-        fwrite(STDERR, "Unknown log type '$type'. Valid types: " . implode(', ', array_keys($methods)) . "\n");
-        exit(1);
-    }
+    check(isset($methods[$type]), "usage:log type is one of " . implode(', ', array_keys($methods)));
 
     $server = resolveServer($forge, $org, $positional[0]);
     $site   = resolveSite($forge, $org, $server, $positional[1]);
@@ -619,82 +570,68 @@ if ($cmd === 'site-log') {
     try {
         $log = $forge->{$methods[$type]}($org, $server->id, $site->id);
     } catch (NotFoundException $e) {
-        fwrite(STDERR, "No $type log found for site {$site->name} on server {$server->name}.\n");
-        exit(1);
+        emit(['status' => 'none', 'reason' => 'no_log']);
     }
-    echo $log . "\n";
-    exit(0);
+    emit(['log' => (string) $log]);
 }
 
 // ---------------------------------------------------------------------------
 // deploy-history <server> <site>
 // ---------------------------------------------------------------------------
 if ($cmd === 'deploy-history') {
-    check(isset($positional[1]), "Usage: forge.php deploy-history <server> <site>");
+    check(isset($positional[1]), 'usage:forge.php deploy-history <server> <site>');
     $server      = resolveServer($forge, $org, $positional[0]);
     $site        = resolveSite($forge, $org, $server, $positional[1]);
-    $deployments = $forge->deployments($org, $server->id, $site->id);
-    foreach ($deployments as $d) {
-        $commitMsg = $d->commit->message ?? '(no commit)';
-        $short     = substr($commitMsg, 0, 60);
-        printf("%-8s  %-12s  %s\n", $d->id, $d->status, $short);
+    $rows        = [];
+    foreach ($forge->deployments($org, $server->id, $site->id) as $d) {
+        $commitMsg = $d->commit->message ?? null;
+        $rows[] = ['id' => $d->id, 'status' => $d->status, 'commit' => $commitMsg === null ? null : substr($commitMsg, 0, 60)];
     }
-    exit(0);
+    emit(['deployments' => $rows]);
 }
 
 // ---------------------------------------------------------------------------
 // deploy-log <server> <site> <deploy-id>
 // ---------------------------------------------------------------------------
 if ($cmd === 'deploy-log') {
-    check(isset($positional[2]), "Usage: forge.php deploy-log <server> <site> <deploy-id>");
+    check(isset($positional[2]), 'usage:forge.php deploy-log <server> <site> <deploy-id>');
     $server   = resolveServer($forge, $org, $positional[0]);
     $site     = resolveSite($forge, $org, $server, $positional[1]);
     $deployId = (int)$positional[2];   // SDK param is int; argv gives a string under strict_types
-    $log      = $forge->deploymentLog($org, $server->id, $site->id, $deployId);
-    echo $log . "\n";
-    exit(0);
+    emit(['log' => (string) $forge->deploymentLog($org, $server->id, $site->id, $deployId)]);
 }
 
 // ---------------------------------------------------------------------------
 // background-process-log <server> <process-id>
 // ---------------------------------------------------------------------------
 if ($cmd === 'background-process-log') {
-    check(isset($positional[1]), "Usage: forge.php background-process-log <server> <process-id>");
+    check(isset($positional[1]), 'usage:forge.php background-process-log <server> <process-id>');
     $server    = resolveServer($forge, $org, $positional[0]);
     $processId = (int)$positional[1];   // SDK param is int; argv gives a string under strict_types
     try {
         $log = $forge->backgroundProcessLog($org, $server->id, $processId);
     } catch (NotFoundException $e) {
-        fwrite(STDERR, "No background process $processId on server {$server->name}. List processes with: echo '[{$server->id}]' | forge.php call backgroundProcesses\n");
-        exit(1);
+        emit(['status' => 'none', 'reason' => 'no_process']);
     }
-    echo $log . "\n";
-    exit(0);
+    emit(['log' => (string) $log]);
 }
 
 // ---------------------------------------------------------------------------
 // preview-deploy <server> <site>  (read-only, no hook gate needed)
 // ---------------------------------------------------------------------------
 if ($cmd === 'preview-deploy') {
-    check(isset($positional[1]), "Usage: forge.php preview-deploy <server> <site>");
+    check(isset($positional[1]), 'usage:forge.php preview-deploy <server> <site>');
     $server = resolveServer($forge, $org, $positional[0]);
     $site   = resolveSite($forge, $org, $server, $positional[1]);
-    echo "--- Deploy preview (no action taken) ---\n";
-    printCanonicalSite($server, $site);
-    echo "Run: forge.php deploy {$positional[0]} {$positional[1]}\n";
-    exit(0);
+    emit(['server' => serverRow($server), 'site' => siteRow($site)]);
 }
 
 // ---------------------------------------------------------------------------
 // preview-reboot <server>  (read-only)
 // ---------------------------------------------------------------------------
 if ($cmd === 'preview-reboot') {
-    check(isset($positional[0]), "Usage: forge.php preview-reboot <server>");
-    $server = resolveServer($forge, $org, $positional[0]);
-    echo "--- Reboot preview (no action taken) ---\n";
-    printCanonicalServer($server);
-    echo "Run: forge.php server-reboot {$positional[0]}\n";
-    exit(0);
+    check(isset($positional[0]), 'usage:forge.php preview-reboot <server>');
+    emit(['server' => serverRow(resolveServer($forge, $org, $positional[0]))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -706,35 +643,27 @@ if ($cmd === 'preview-reboot') {
 // Bash call (which the tool would kill at its timeout).
 // ---------------------------------------------------------------------------
 if ($cmd === 'deploy') {
-    check(isset($positional[1]), "Usage: forge.php deploy <server> <site>");
+    check(isset($positional[1]), 'usage:forge.php deploy <server> <site>');
     $server = resolveServer($forge, $org, $positional[0]);
     $site   = resolveSite($forge, $org, $server, $positional[1]);
 
     $deployment = $forge->createDeployment($org, $server->id, $site->id, []);
-    echo "Deployment started: deploy-id={$deployment->id} server-id={$server->id} site-id={$site->id} status={$deployment->status}\n";
-    echo "Watch with: forge.php deploy-watch {$server->id} {$site->id} {$deployment->id}\n";
-    exit(0);
+    emit(['deploy_id' => $deployment->id, 'server_id' => $server->id, 'site_id' => $site->id, 'deploy_status' => $deployment->status]);
 }
 
 // ---------------------------------------------------------------------------
 // deploy-status <server-id> <site-id> <deploy-id>
 //
-// Prints just the deployment status string. Takes raw numeric IDs (no
+// Prints just the deployment status. Takes raw numeric IDs (no
 // name/IP resolution), so it is a single API call per invocation — cheap
 // enough for a Monitor poll loop to call every few seconds.
 // ---------------------------------------------------------------------------
 if ($cmd === 'deploy-status') {
-    check(isset($positional[2]), "Usage: forge.php deploy-status <server-id> <site-id> <deploy-id>");
+    check(isset($positional[2]), 'usage:forge.php deploy-status <server-id> <site-id> <deploy-id>');
     [$serverId, $siteId, $deployId] = $positional;
-    try {
-        // SDK params are int; argv gives strings and forge.php is strict_types=1.
-        $d = $forge->deployment($org, (int)$serverId, (int)$siteId, (int)$deployId);
-    } catch (\Throwable $e) {
-        fwrite(STDERR, "Status error: " . $e->getMessage() . "\n");
-        exit(1);
-    }
-    echo ($d->status ?? 'unknown') . "\n";
-    exit(0);
+    // SDK params are int; argv gives strings and forge.php is strict_types=1.
+    $d = $forge->deployment($org, (int)$serverId, (int)$siteId, (int)$deployId);
+    emit(['deploy_status' => $d->status ?? 'unknown']);
 }
 
 // ---------------------------------------------------------------------------
@@ -746,7 +675,7 @@ if ($cmd === 'deploy-status') {
 // which would break the space-delimited fields.
 // ---------------------------------------------------------------------------
 if ($cmd === 'deploy-watch') {
-    check(isset($positional[2]), "Usage: forge.php deploy-watch <server-id> <site-id> <deploy-id>");
+    check(isset($positional[2]), 'usage:forge.php deploy-watch <server-id> <site-id> <deploy-id>');
     [$serverId, $siteId, $deployId] = $positional;
     $prev    = null;
     $prevErr = null;
@@ -788,11 +717,10 @@ if ($cmd === 'deploy-watch') {
 // server-reboot <server>
 // ---------------------------------------------------------------------------
 if ($cmd === 'server-reboot') {
-    check(isset($positional[0]), "Usage: forge.php server-reboot <server>");
+    check(isset($positional[0]), 'usage:forge.php server-reboot <server>');
     $server = resolveServer($forge, $org, $positional[0]);
     $forge->createServerAction($org, $server->id, ['action' => 'reboot']);
-    echo "Reboot initiated for server {$server->name} (ID: {$server->id}).\n";
-    exit(0);
+    ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -849,17 +777,11 @@ if ($cmd === 'failed-deploys') {
             }
         }
     } catch (\Throwable $e) {
-        if (str_contains($e->getMessage(), '429')) {
-            fwrite(STDERR, "Rate limited. Try again in a minute.\n");
-            exit(1);
-        }
-        fwrite(STDERR, "Error scanning sites: " . $e->getMessage() . "\n");
-        exit(1);
+        failSdk($e);   // a 429 here is {"error":"rate_limited:..."}
     }
 
     if ($hasJson) {
-        echo json_encode($failures, JSON_PRETTY_PRINT) . "\n";
-        exit(0);
+        emit(['failures' => $failures]);
     }
 
     if (count($failures) === 0) {
@@ -878,5 +800,4 @@ if ($cmd === 'failed-deploys') {
 // ---------------------------------------------------------------------------
 // Unknown command
 // ---------------------------------------------------------------------------
-fwrite(STDERR, "Unknown command '$cmd'. Run forge.php --help for usage.\n");
-exit(1);
+fail("unknown_command:$cmd");

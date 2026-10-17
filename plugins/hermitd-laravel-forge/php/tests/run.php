@@ -211,6 +211,16 @@ file_put_contents($tamperedFile, json_encode($rec));
 [$reason, $left] = refusalOf($tmpState, $tamperedId);
 check($reason === 'mismatch' && $left === 2, 'payload edited after approval refuses as mismatch, sends nothing');
 
+$deniedId = planFor($tmpState, ['acme', 12, MONITOR_PAYLOAD]);
+[$forge, $mock] = makeMockForge(monitorResponses());
+try {
+    executePlan($tmpState, $deniedId, $forge, ['tiers_lifted' => [], 'methods_lifted' => [], 'project_deny' => ['createMonitor'], 'warnings' => []]);
+    check(false, 'a plan denied by policy at execution refuses');
+} catch (PlanRefusal $e) {
+    check($e->reason === 'policy' && $e->denial === ['reason' => 'project_policy'] && $mock->count() === 2,
+        'a plan denied by policy at execution carries the denial and sends nothing');
+}
+
 // Happy path.
 [$forge, $mock] = makeMockForge(monitorResponses());
 executePlan($tmpState, $planId, $forge);
@@ -326,7 +336,7 @@ function emptyPolicy(array $over = []): array {
 }
 
 /** Runs the real gate: capture the request, then apply the policy to it. */
-function refusalFor(string $method, array $args, ?array $policy = null): ?string {
+function refusalFor(string $method, array $args, ?array $policy = null): ?array {
     return policyRefusal($method, captureRequest($method, $args), $policy ?? emptyPolicy());
 }
 
@@ -349,8 +359,12 @@ check(refusalFor('disablePushToDeploy', ['acme', 12, 34]) !== null, 'disablePush
 check(refusalFor('deleteServer', ['acme', 12]) !== null, 'deleteServer denied (destructive)');
 
 $refusal = refusalFor('deleteServer', ['acme', 12]);
-check(str_contains((string) $refusal, "tier 'destructive'") && str_contains((string) $refusal, 'FORGE_POLICY_ALLOW_TIERS'),
+check($refusal === ['reason' => 'destructive_tier', 'lift' => ['FORGE_POLICY_ALLOW_TIERS=destructive', 'FORGE_POLICY_ALLOW=deleteServer']],
     'a tier refusal names both the tier and how to lift it');
+check(refusalFor('monitors', ['acme', 12], emptyPolicy(['project_deny' => ['monitors']])) === ['reason' => 'project_policy'],
+    'a project denial names its reason and offers no lift');
+check(policyRefusal('setApiKey', new Request('GET', '/x'), emptyPolicy()) === ['reason' => 'not_an_operation'],
+    'a structural refusal names its reason and offers no lift');
 
 check(refusalFor('deleteServer', ['acme', 12], emptyPolicy(['tiers_lifted' => ['destructive']])) === null,
     'destructive lifts with FORGE_POLICY_ALLOW_TIERS=destructive');
@@ -507,22 +521,24 @@ try {
     $validationForge->createSite('acme', 12, ['type' => 'php', 'name' => 'example.invalid']);
     check(false, '422 raises a validation exception');
 } catch (\Laravel\Forge\Exceptions\ValidationException $e) {
-    $output = formatSdkError($e);
-    check(str_starts_with($output, "SDK error: The given data failed to pass validation.\n"),
-        'validation output retains the generic SDK summary');
-    $details = json_decode(substr($output, strpos($output, "\n") + 1), true);
-    check($details === $validationBody, '422 output retains the envelope, fields and every validation message');
+    $output = json_decode(formatSdkError($e), true);
+    check($output['error'] === 'sdk_http_422:The given data failed to pass validation.',
+        'validation output retains the generic SDK summary under its HTTP token');
+    check($output['errors'] === $validationBody, '422 output retains the envelope, fields and every validation message');
 }
 
 $flatErrors = ['name' => ['The name is required.']];
 $flatOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException($flatErrors));
-check(json_decode(substr($flatOutput, strpos($flatOutput, "\n") + 1), true) === $flatErrors,
+check(json_decode($flatOutput, true)['errors'] === $flatErrors,
     'flat validation details retain their structure');
 check(formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([]))
-    === "SDK error: The given data failed to pass validation.\n",
+    === "{\"error\":\"sdk_http_422:The given data failed to pass validation.\"}\n",
     'empty validation details retain the summary without an empty appendix');
-check(formatSdkError(new \RuntimeException('Connection failed.')) === "SDK error: Connection failed.\n",
+check(formatSdkError(new \RuntimeException('Connection failed.')) === "{\"error\":\"sdk_error:Connection failed.\"}\n",
     'ordinary exceptions retain their message and trailing newline');
+check(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\NotFoundException()), true)['error'] === 'sdk_http_404:The resource you are looking for could not be found.'
+    && str_starts_with(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\RateLimitExceededException(null)), true)['error'], 'rate_limited'),
+    'SDK exception classes map to their HTTP token');
 $secretOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([
     'errors' => ['name' => ['Invalid DB_PASSWORD=hunter2trombone', 'Invalid https://app:s3cr3t@example.invalid/path']],
 ]));
