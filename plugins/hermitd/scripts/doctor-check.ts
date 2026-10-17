@@ -1,5 +1,5 @@
 import { readSeedPatterns } from './lib/settings/seed-patterns';
-import { readTargetState } from './lib/domain-hatch/target';
+import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 import { isLoggingEnabled } from './lib/channel-log';
 import { markerOnward } from './evolve-plan';
 // Fail-open: a failing check records "fail" in its own entry; the orchestrator
@@ -778,7 +778,7 @@ function checkPermissionRules(p: DoctorPaths = PATHS) {
     const count = new Set(carrying.flatMap(s => s.inert)).size;
     const { target } = readTargetState(p.hermitDir, { core_scope: null, target: 'local' });
     const fixFiles = target
-      ? [path.join(projectRoot, '.claude', target === 'committed' ? 'settings.json' : 'settings.local.json')]
+      ? [path.join(projectRoot, '.claude', settingsFile(target))]
       : carrying.map(s => s.file);
     const fixes = fixFiles
       .map(file => `bun ${p.pluginRoot}/scripts/apply-settings.ts ${file} deny hardened`)

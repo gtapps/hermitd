@@ -67,7 +67,7 @@ import { writeFileAtomic } from './lib/md-write';
 import { SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from './lib/settings/automode-entries';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { emitJson, exitError, printJson } from './lib/cli';
-import { readTargetState } from './lib/domain-hatch/target';
+import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 
@@ -420,10 +420,8 @@ if (['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)) {
   const resolvedTarget = path.resolve(targetFile);
   const projectRoot = path.dirname(path.dirname(resolvedTarget));
   const { target } = readTargetState(path.join(projectRoot, '.hermit'), { core_scope: null, target: 'local' });
-  const settingsFile = target === 'committed' ? 'settings.json' : 'settings.local.json';
-  const otherFile = target === 'committed' ? 'settings.local.json' : 'settings.json';
-  if (target && path.basename(resolvedTarget) === otherFile) {
-    printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile}` });
+  if (target && path.basename(resolvedTarget) === settingsFile(target === 'local' ? 'committed' : 'local')) {
+    printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(target)}` });
     process.exit(0);
   }
 }

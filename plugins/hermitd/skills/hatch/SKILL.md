@@ -266,9 +266,7 @@ Periodic plugin checks are registered as ordinary routines by domain hatches, fo
 
 `tmux_session_name` is derived from `project_name` on fresh hatch only (`hermit-<project_name>`) — re-init never re-substitutes it.
 
-### 5c. Persist hatch options
-
-After Step 5 writes config.json, before any settings or CLAUDE write, run:
+**Persist hatch options.** After config.json is written, before any settings or CLAUDE write, run:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd --target <local|committed>
@@ -698,7 +696,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 |---|---|---|
 | Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
 | Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
-| Step 5c | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
+| Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
 | Step 5b | artifact chrome localization | run verbatim — generate the translated table only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + dm_channel_id=null + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
