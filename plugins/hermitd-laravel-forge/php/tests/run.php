@@ -555,6 +555,15 @@ check(formatSdkError(new \RuntimeException('Connection failed.')) === "{\"error\
 check(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\NotFoundException()), true)['error'] === 'sdk_http_404:The resource you are looking for could not be found.'
     && str_starts_with(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\RateLimitExceededException(null)), true)['error'], 'rate_limited'),
     'SDK exception classes map to their HTTP token');
+check(checkStatusFor(new \Exception('{"message":"Unauthenticated."}')) === 'invalid',
+    'check maps the Forge 401 body to invalid');
+check(checkStatusFor(new \RuntimeException('cURL error 6: Could not resolve host: forge.laravel.com')) === 'unreachable',
+    'check maps a network error to unreachable');
+check(checkStatusFor(new \RuntimeException('cURL error 28: Operation timed out after 30401 milliseconds')) === 'unreachable'
+    && checkStatusFor(new \Exception('<html>502 Bad Gateway, Ray ID: 8d4012ab</html>')) === 'unreachable',
+    'check does not read a stray 401 in a transport error or 5xx body as invalid');
+check(checkStatusFor(new \Laravel\Forge\Exceptions\ForbiddenException('Forbidden')) === 'invalid',
+    'check maps a 403 to invalid');
 $secretOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([
     'errors' => ['name' => ['Invalid DB_PASSWORD=hunter2trombone', 'Invalid https://app:s3cr3t@example.invalid/path']],
 ]));

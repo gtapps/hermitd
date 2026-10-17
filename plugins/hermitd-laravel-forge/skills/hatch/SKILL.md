@@ -106,7 +106,7 @@ Append any missing patterns via Edit.
 Run: `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php check` and branch on `status`. A `policy_lift` field lists `.env` lifts of the shipped deny tiers; mention it in the final report.
 
 - **`missing`** → tell the operator to add `FORGE_API_TOKEN` to `.env` and re-run Step 3.
-- **`invalid`** → token found but API rejected it; tell the operator to check the token at https://forge.laravel.com/profile/api.
+- **`invalid`** → token found but API rejected it; tell the operator to check the token at https://forge.laravel.com/profile/api. If the token is freshly created, the API may be refusing this server's IP instead.
 - **`unreachable`** → token present but the API could not be reached (network/egress blocked). In Docker, verify the DNS allowlist in DOCKER.md (`forge.laravel.com`). Re-run once connectivity is confirmed.
 - **`ok`** → continue.
 

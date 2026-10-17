@@ -343,6 +343,23 @@ function formatSdkError(\Throwable $error): string
     return json_encode(scrubValue($out), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
 }
 
+/**
+ * `check` status for a failed probe call. The SDK throws a bare Exception
+ * carrying the response body on 401 (Forge answers `Unauthenticated.`), so
+ * auth rejection is matched case-insensitively on that body only: transport
+ * errors and typed SDK exceptions are never classified by message text.
+ */
+function checkStatusFor(\Throwable $error): string
+{
+    if ($error instanceof ForbiddenException) return 'invalid';
+    if ($error::class === \Exception::class) {
+        foreach (['unauthorized', 'unauthenticated'] as $needle) {
+            if (stripos($error->getMessage(), $needle) !== false) return 'invalid';
+        }
+    }
+    return 'unreachable'; // network/egress error, not an auth rejection
+}
+
 // ---------------------------------------------------------------------------
 // Deployment status enums.
 // Terminal states are authoritative (deploy-watch keys off isTerminalStatus()
