@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.24] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
@@ -9,6 +9,7 @@
 - `boot mcp-config` reports missing keys as `{"status":"missing_keys"}` at exit 0; `native-permissions.ts` prints `OK` or one JSON object instead of throwing.
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor. A refused block sync names the file with the duplicate marker.
 - `domain-brainstorm` parses the proposal triage outcome in the current `CREATE:`/`SUPPRESS:`/`DUPLICATE:` form.
 
 ### Upgrade Instructions
