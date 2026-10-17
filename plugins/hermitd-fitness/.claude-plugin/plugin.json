@@ -4,7 +4,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.15"
+      "version": "^1.4.16"
     }
   ],
   "description": "Fitness coaching for Hermit, with read-only Strava access, activity analysis, training plans, and recovery flags.",

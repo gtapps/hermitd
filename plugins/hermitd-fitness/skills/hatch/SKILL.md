@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-fitness:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade-core-package` / `upgrade-core-applied`** → relay the `remedy` string verbatim to the operator and stop.
+- **`upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop.
 - **`verify`** → say:
 
   > "hermitd-fitness {self_version} is already installed. Skip to Step 7 to re-verify the installation, or reply 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 7; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`ok: false`** → relay `message` and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
 
 ---
 
@@ -144,6 +144,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-fitness
 ```
+
+If it prints `status` `refused`, tell the operator and stop.
 
 It appends the `<!-- hermitd-fitness: Fitness Workflow -->` block when the marker is absent (creating `target_file` if needed) and skips when it is already present; `hermit-evolve` handles block replacement on upgrade.
 

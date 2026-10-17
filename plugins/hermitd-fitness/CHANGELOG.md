@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
 - `fitness-lab.ts` and `native-permissions.ts` print one JSON object or bare `OK`, with failures as `{"error":"<token>[:detail]"}`; missing Strava keys exit 0 with `status: "missing_keys"`.
 - `weekly-patterns` reports `trend: "insufficient_data"`.
 

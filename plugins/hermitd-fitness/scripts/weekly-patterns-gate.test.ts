@@ -18,6 +18,7 @@ try {
     ['garbage', 0, null],
     ['{"trend":"unknown"}', 0, null],
     ['{"trend":"none"}', 2, null],
+    ['{"error":"no_sibling:hermitd-fitness"}', 1, null],
   ] as const) {
     fs.writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "$HERMIT_DIR/args.txt"\nprintf '%s\\n' '${output}'\nexit ${code}\n`, { mode: 0o755 });
     const child = Bun.spawn([gate], {
