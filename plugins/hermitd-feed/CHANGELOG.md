@@ -1,12 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.5] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
 - `source-fetch-result.ts` and `reddit-fetch.ts` print one JSON object; a rejected verify and an unavailable subreddit exit 0 with `status` and `reason`.
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor. A refused block sync names the file with the duplicate marker.
 - Briefs no longer skip every web and RSS source after one oversized fetch result; the previous `tmp/feed-source-items-<slot>.json` is deleted before each fetch.
 - `feed-sources.md` table violations now reach Claude: the `validate-sources` hook returns a PostToolUse block decision instead of exiting 1.
 
