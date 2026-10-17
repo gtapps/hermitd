@@ -25,7 +25,7 @@ Routine skill: reads the last 4 `compiled/activity-*.md` artifacts for steady se
    {"steady_sessions_found": <int>, "series": [{"file": "…", "date": "…", "drift": <signed int>}], "trend": "upward" | "none" | "insufficient_data"}
    ```
 
-   `series` is ordered oldest-to-newest. `trend: "upward"` means the 4-value bpm series is strictly increasing (the deliberately strict v1 bar — avoids false positives from noisy week-to-week variation). `"none"` = 4 values but not monotonic; `"insufficient_data"` = fewer than 4 drift values (expected on interval/strength-heavy weeks — not an error).
+   `series` is ordered oldest-to-newest. `trend: "upward"` means the 4-value bpm series is strictly increasing (the deliberately strict v1 bar, which avoids false positives from noisy week-to-week variation). `"none"` = 4 values but not monotonic; `"insufficient_data"` = fewer than 4 drift values (expected on interval/strength-heavy weeks, not an error).
 
    **Anti-duplication guard:** emit a finding ONLY on `trend: "upward"` (the quantitative numeric rise). Do NOT emit on label recurrence alone.
 

@@ -21,7 +21,7 @@ Routine skill: scans the org-wide site list and flags any sites whose latest dep
 
    This pages through the org-wide site list via `organizationSites()->lazy()` and fetches the `deployment_status` field on each site. For sites in a failure state it fetches the latest `deployments()` detail. Rate limiting (429) is handled internally with conservative pacing.
 
-2. **Parse the JSON output.** It prints `{"failures":[...]}`; on `{"error":...}`, report `Scan skipped: <error>` in place of `No actionable findings.`. Each entry has: `site_id`, `site_name`, `server_id`, `status`, optionally `deploy_id`, `deploy_status`, `commit`. An entry whose detail fetch was rate-limited instead carries an `error` key (and no `deploy_id`/`commit`) — treat those as "failure, detail unavailable" and omit the commit line. Never assume all keys are present.
+2. **Parse the JSON output.** It prints `{"failures":[...]}`; on `{"error":...}`, report `Scan skipped: <error>` in place of `No actionable findings.`. Each entry has: `site_id`, `site_name`, `server_id`, `status`, optionally `deploy_id`, `deploy_status`, `commit`. An entry whose detail fetch was rate-limited instead carries an `error` key (and no `deploy_id`/`commit`): treat those as "failure, detail unavailable" and omit the commit line. Never assume all keys are present.
 
 3. **Output the findings block.** Always output to stdout, regardless of outcome. `reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys` classifies the result.
 
