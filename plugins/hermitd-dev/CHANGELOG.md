@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.22] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor. A refused block sync names the file with the duplicate marker.
 - `domain-brainstorm` parses the proposal triage verdict in the grammar `proposal-triage` prints.
 
 ## [0.4.21] - 2026-10-10
