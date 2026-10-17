@@ -6,11 +6,11 @@
 // opened, so this module assumes the gate has already passed — it only validates
 // inputs and executes. Read functions return WsReadResult; mutations return
 // WsMutationResult. Validation problems (unknown helper type, bad JSON) come back
-// as ok:false results; only transport/HA failures throw HomeAssistantError, which
-// the CLI's per-command catch already handles.
+// as ok:false results carrying an `error` token; only transport/HA failures throw
+// HomeAssistantError, which the CLI's per-command catch already handles.
 
 import { currentSessionId, slugify, standardMetadata, writeMarkdownArtifact } from './artifacts';
-import { HomeAssistantError } from './ha-api';
+import { HomeAssistantError, haErrorToken } from './ha-api';
 
 /** Minimal WS surface (HomeAssistantWsClient satisfies it; tests inject a fake). */
 export interface WsCommandClient {
@@ -30,18 +30,21 @@ export const HELPER_TYPES = [
 ] as const;
 export type HelperType = (typeof HELPER_TYPES)[number];
 
-export interface WsReadResult {
-  ok: boolean;
+/** A failed result always carries its `{"error"}` token. */
+type WsOutcome = { ok: true } | { ok: false; error: string };
+
+export type WsReadResult = WsOutcome & {
   data: unknown;
   message: string;
-}
+  /** Helper types whose list command failed; the others still came back. */
+  unavailable?: string[];
+};
 
-export interface WsMutationResult {
-  ok: boolean;
+export type WsMutationResult = WsOutcome & {
   data: unknown;
   message: string;
   reportPath: string | null;
-}
+};
 
 function isHelperType(value: string): value is HelperType {
   return (HELPER_TYPES as readonly string[]).includes(value);
@@ -60,18 +63,17 @@ async function runMutation(
   type: string,
   payload: Record<string, unknown>,
 ): Promise<WsMutationResult> {
-  let ok: boolean;
   let data: unknown = null;
-  let message: string;
+  let message = 'ok';
+  let error: string | undefined;
   try {
     data = await client.command(type, payload);
-    ok = true;
-    message = 'ok';
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    ok = false;
     message = exc.message;
+    error = haErrorToken(exc, 'ha_command_failed');
   }
+  const ok = error === undefined;
 
   // Never let a report-write failure (disk full, permissions) escape as a
   // non-HomeAssistantError and crash the CLI past its per-command catch — the
@@ -82,7 +84,9 @@ async function runMutation(
   } catch {
     // intentionally empty: mutation already landed, reportPath stays null
   }
-  return { ok, data, message, reportPath };
+  return error === undefined
+    ? { ok: true, data, message, reportPath }
+    : { ok: false, error, data, message, reportPath };
 }
 
 function writeMutationReport(
@@ -121,7 +125,8 @@ function writeMutationReport(
 
 export async function listHelpers(client: WsCommandClient, type?: string): Promise<WsReadResult> {
   if (type !== undefined && !isHelperType(type)) {
-    return { ok: false, data: null, message: unknownHelperType(type) };
+    const message = unknownHelperType(type);
+    return { ok: false, error: `usage:${message}`, data: null, message };
   }
   const types = type ? [type as HelperType] : [...HELPER_TYPES];
   // Fan out concurrently — the WS client correlates responses by id, so all
@@ -134,7 +139,7 @@ export async function listHelpers(client: WsCommandClient, type?: string): Promi
   );
   const unavailable = settled.flatMap((s, i) => (s.status === 'rejected' ? [types[i]!] : []));
   const message = unavailable.length ? `ok; unavailable: ${unavailable.join(', ')}` : 'ok';
-  return { ok: true, data, message };
+  return { ok: true, data, message, ...(unavailable.length ? { unavailable } : {}) };
 }
 
 export async function createHelper(
@@ -417,6 +422,7 @@ export async function importBlueprint(
       ok: false,
       data,
       message: `Blueprint validation failed: ${errors}`,
+      error: `blueprint_invalid:${errors}`,
       reportPath: imported.reportPath,
     };
   }
@@ -464,7 +470,7 @@ function unknownHelperType(type: string): string {
 }
 
 function invalidPayload(message: string): WsMutationResult {
-  return { ok: false, data: null, message, reportPath: null };
+  return { ok: false, data: null, message, error: `usage:${message}`, reportPath: null };
 }
 
 /** Parse `json` as a JSON object, or a validation-error fragment (e.g. "is not valid JSON"). */

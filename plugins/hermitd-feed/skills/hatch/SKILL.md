@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-feed:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-feed` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade-core-package` / `upgrade-core-applied`** → relay the `remedy` string verbatim to the operator and stop.
+- **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
   > "hermitd-feed {self_version} is already installed. Skip to Step 6 to re-verify, or reply 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 6; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`ok: false`** → relay `message` and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ---
 
@@ -86,6 +86,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-feed
 ```
+
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 It appends the `<!-- hermitd-feed: Feed Workflow -->` block when the marker is absent (creating `target_file` if needed) and skips when it is already present; `hermit-evolve` handles block replacement on upgrade.
 

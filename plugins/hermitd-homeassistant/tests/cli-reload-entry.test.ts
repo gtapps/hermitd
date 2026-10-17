@@ -33,9 +33,10 @@ function runCli(argv: string[], client: FakeClient, config: AppConfig) {
 test('reload-entry blocked under strict, no REST call sent', async () => {
   const client = fakeClient();
   const { code, out } = await runCli(['ha', 'reload-entry', 'entry1'], client, cfg('strict'));
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
+  expect(parsed.status).toBe('blocked');
+  expect(parsed.reason).toBe('strict_mode');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -45,7 +46,7 @@ test('reload-entry under ask posts the reload endpoint and writes a report', asy
   const { code, out } = await runCli(['ha', 'reload-entry', 'entry1'], client, cfg('ask'));
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.data).toEqual({ require_restart: false });
   expect(parsed.report_path).toBeTruthy();
   expect(client.calls.post).toEqual([['/api/config/config_entries/entry/entry1/reload', null]]);
@@ -60,7 +61,5 @@ test('reload-entry surfaces HA error verbatim', async () => {
   const { code, out } = await runCli(['ha', 'reload-entry', 'entry1'], client, cfg('ask'));
   expect(code).toBe(1);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toBe('Entry not found. (status=404)');
-  expect(parsed.report_path).toBeNull();
+  expect(parsed).toEqual({ error: 'ha_http_404:Entry not found. (status=404)' });
 });

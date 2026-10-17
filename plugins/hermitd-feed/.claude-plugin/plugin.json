@@ -4,7 +4,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.8"
+      "version": "^1.4.16"
     }
   ],
   "description": "Scheduled briefs for Hermit from sources you choose, with story tracking, weekly summaries, and source-quality checks.",

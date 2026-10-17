@@ -22,11 +22,11 @@ function runCli(argv: string[], client: FakeClient) {
   );
 }
 
-test('error-log prints the raw log text', async () => {
+test('error-log prints the raw log text under log', async () => {
   const client = fakeClient({ getText: () => '2026-07-01 12:00:00 ERROR (MainThread) [x] boom\n' });
   const { code, out } = await runCli(['ha', 'error-log'], client);
   expect(code).toBe(0);
-  expect(out).toBe('2026-07-01 12:00:00 ERROR (MainThread) [x] boom\n\n');
+  expect(JSON.parse(out)).toEqual({ log: '2026-07-01 12:00:00 ERROR (MainThread) [x] boom\n' });
   expect(client.calls.get).toEqual(['/api/error_log']);
 });
 
@@ -38,14 +38,14 @@ test('error-log surfaces a 404 when logging is not registered', async () => {
   });
   const { code, out } = await runCli(['ha', 'error-log'], client);
   expect(code).toBe(1);
-  expect(out).toContain('404');
+  expect(JSON.parse(out).error).toStartWith('ha_http_404:');
 });
 
 test('logbook defaults to a 1-day window with no entity filter', async () => {
   const client = fakeClient({ get: () => [{ entity_id: 'sun.sun', state: 'above_horizon' }] });
   const { code, out } = await runCli(['ha', 'logbook'], client);
   expect(code).toBe(0);
-  expect(JSON.parse(out)).toEqual([{ entity_id: 'sun.sun', state: 'above_horizon' }]);
+  expect(JSON.parse(out)).toEqual({ entries: [{ entity_id: 'sun.sun', state: 'above_horizon' }] });
   expect(client.calls.get.length).toBe(1);
   expect(client.calls.get[0]).toMatch(/^\/api\/logbook\//);
   expect(client.calls.get[0]).not.toContain('entity=');
@@ -82,8 +82,6 @@ test('system-log reads via WS', async () => {
     main(['ha', 'system-log'], { loadConfig: () => cfg, createWsClient: async () => ws }),
   );
   expect(code).toBe(0);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.data).toEqual([{ name: 'x', level: 'ERROR', message: ['boom'] }]);
+  expect(JSON.parse(out)).toEqual({ data: [{ name: 'x', level: 'ERROR', message: ['boom'] }] });
   expect(wsCalls).toEqual([{ type: 'system_log/list', payload: {} }]);
 });

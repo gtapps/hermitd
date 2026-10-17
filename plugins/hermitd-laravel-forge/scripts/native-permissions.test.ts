@@ -18,7 +18,8 @@ function run(root: string) {
 test('install preserves unrelated settings and denies; repeated seeding is stable', () => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
   writeFileSync(file, JSON.stringify({ env: { KEEP: 'yes' }, permissions: { deny: ['Bash(custom *)'], ask: ['Read(private)'] } }));
-  expect(run(root).exitCode).toBe(0);
+  const first = run(root);
+  expect(first.exitCode).toBe(0); expect(first.stdout.toString()).toBe('OK\n');
   const once = readFileSync(file, 'utf8'), data = JSON.parse(once);
   expect(data.env.KEEP).toBe('yes'); expect(data.permissions.deny).toEqual(['Bash(custom *)', 'Edit(.env)']);
   for (const rule of rules) expect(data.permissions.ask).toContain(rule);
@@ -41,12 +42,24 @@ test('fresh installation reports target denies and writes nothing outside the ta
   writeFileSync(file, JSON.stringify({ permissions: { deny: rules } }));
   const result = run(root);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toContain('Existing denies remain:');
+  expect(JSON.parse(result.stdout.toString())).toEqual({ status: 'installed', deny_conflicts: rules });
   expect(JSON.parse(readFileSync(file, 'utf8')).permissions.deny).toEqual([...rules, ...template.deny]);
   expect(existsSync(join(root, '.hermit/state'))).toBe(false);
 });
 test('malformed permission arrays are not overwritten', () => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
   const original = '{"permissions":{"ask":"bad"}}'; writeFileSync(file, original);
-  expect(run(root).exitCode).not.toBe(0); expect(readFileSync(file, 'utf8')).toBe(original);
+  const result = run(root);
+  expect(result.exitCode).toBe(1); expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'invalid_permissions:ask' });
+  expect(readFileSync(file, 'utf8')).toBe(original);
+});
+test('unparseable settings and a non-project target fail with an error token', () => {
+  const root = fixture(), file = join(root, '.claude/settings.local.json');
+  writeFileSync(file, '{ not json');
+  const broken = run(root);
+  expect(broken.exitCode).toBe(1); expect(JSON.parse(broken.stdout.toString())).toEqual({ error: 'invalid_settings' });
+  const outside = Bun.spawnSync(['bun', script, join(root, 'settings.json')]);
+  expect(outside.exitCode).toBe(1); expect(JSON.parse(outside.stdout.toString())).toEqual({ error: 'not_project_settings' });
+  const usage = Bun.spawnSync(['bun', script]);
+  expect(usage.exitCode).toBe(1); expect(JSON.parse(usage.stdout.toString())).toEqual({ error: 'usage' });
 });

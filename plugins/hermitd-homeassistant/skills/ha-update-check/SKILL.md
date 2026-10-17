@@ -24,11 +24,11 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates
 The CLI:
 - Fetches live entity states and filters to `update.*` entities where `state == "on"` (an update is pending) and the pending version hasn't been skipped in HA.
 - Classifies each into a tier: `core` (HA Core), `os` (Operating System), `supervisor`, `addon`, or `hacs`. Core/OS/Supervisor are recognized by their well-known entity_ids; add-ons are recognized by the native backup capability they advertise (HA's `supported_features` BACKUP bit), which HACS/custom-integration updates lack; anything without it aggregates into the `hacs` bucket rather than risking noise.
-- Prints the findings block to stdout in the documented format below.
+- Prints one JSON object: `date`, `total`, `updates` (each individual update's `tier`, `title`, `installed_version`, `latest_version`, `release_url`) and `hacs_pending`, or `{"date","status":"skipped","reason","detail"}` when HA is unreachable (`ha_unreachable`) or answers with an error (`ha_http_<status>`).
 
 ## Output contract
 
-`reflect --check-id ha-update-check --check hermitd-homeassistant:ha-update-check` routes the findings block through the proposal pipeline. The stdout shape is fixed:
+`reflect --check-id ha-update-check --check hermitd-homeassistant:ha-update-check` routes the findings block through the proposal pipeline. Render it from the JSON in this fixed shape: `Updates pending:` carries `total`, one line per `updates` entry (a null version renders as `?`; omit ` — <release_url>` when it is null), and one `[hacs]` line when `hacs_pending` is above 0:
 
 ```
 ha-update-check findings — <date>
@@ -38,10 +38,10 @@ Updates pending: N
 - [hacs] 7 HACS updates pending
 ```
 
-If nothing is pending: `No actionable findings. (no updates pending)`.
-If HA is unreachable: `No actionable findings. (skipped: <error>)`.
+If `total` is 0: `No actionable findings. (no updates pending)`.
+If `status` is `skipped`: `No actionable findings. (skipped: <detail>)`.
 
-Keep stdout to this shape — no prose, no extra sections. Each proposal title should carry the concrete target version (e.g. `[ha-update] HA Core → 2026.7.1`) — that keeps same-version re-emits byte-identical so proposal-triage reliably suppresses repeats; Core/OS/Supervisor and each add-on become individual proposals, all pending HACS updates aggregate into one.
+Keep the output to this shape: no prose, no extra sections. Each proposal title should carry the concrete target version (e.g. `[ha-update] HA Core → 2026.7.1`): that keeps same-version re-emits byte-identical so proposal-triage reliably suppresses repeats; Core/OS/Supervisor and each add-on become individual proposals, all pending HACS updates aggregate into one.
 
 ## On accept
 

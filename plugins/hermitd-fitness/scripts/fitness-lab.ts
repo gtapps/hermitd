@@ -9,7 +9,7 @@
  * Shape mirrors docker-preflight.ts: pure exported functions + an
  * `if (import.meta.main)` CLI. Zero runtime deps — only node:*, Bun/global fetch.
  *
- * Subcommands (all emit one JSON object to stdout):
+ * Subcommands (each prints one JSON object, or bare OK, to stdout):
  *   analyze <activity-id|latest>   per-activity metrics
  *   weekly-load [--weeks N]         summary-activity load aggregation (default 4)
  *   weekly-patterns                 filesystem-only cardiac-drift trend (no token)
@@ -35,8 +35,9 @@
  * Error contract (deliberately NOT docker-preflight's always-exit-0 — the skill
  * must branch on hard auth failure):
  *   success                    → exit 0
- *   HTTP 401/403 or no token   → {"error":"strava_auth","message":"<recovery>"} exit 1
- *   any other fetch/parse fail → {"error":"fetch","message":...} exit 1
+ *   HTTP 401/403 or no token   → {"error":"strava_auth:<recovery>"} exit 1
+ *   bad arguments              → {"error":"usage:<usage>"} or {"error":"invalid_activity_id:<arg>"} exit 1
+ *   any other fetch/parse fail → {"error":"fetch:<detail>"} exit 1
  */
 
 import fs from 'node:fs';
@@ -145,14 +146,15 @@ export const STRAVA_ENV_KEYS = [
 const missingStravaKeys = (env: Record<string, string>): string[] =>
   STRAVA_ENV_KEYS.filter((k) => !env[k] || env[k] === 'replace_me');
 
-export function envCheck(projectRoot: string): { ok: boolean; missing: string[] } {
+export function envCheck(projectRoot: string): 'OK' | { status: 'missing_keys'; missing: string[] } {
   const missing = missingStravaKeys(parseEnv(projectRoot));
-  return { ok: missing.length === 0, missing };
+  return missing.length === 0 ? 'OK' : { status: 'missing_keys', missing };
 }
 
 export type McpConfigResult =
-  | { ok: true; server: 'strava'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
-  | { ok: false; missing?: string[]; message?: string };
+  | { server: 'strava'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
+  | { status: 'missing_keys'; missing: string[] }
+  | { error: 'invalid_mcp_json' };
 
 /** Adds a missing `strava` entry, replaces one still carrying `${...}`
  *  placeholders, refreshes only the four credentials of a literal entry when
@@ -161,7 +163,7 @@ export type McpConfigResult =
 export function writeMcpConfig(projectRoot: string): McpConfigResult {
   const env = parseEnv(projectRoot);
   const missing = missingStravaKeys(env);
-  if (missing.length > 0) return { ok: false, missing };
+  if (missing.length > 0) return { status: 'missing_keys', missing };
 
   const mcpPath = path.join(projectRoot, '.mcp.json');
   let doc: unknown = {};
@@ -174,7 +176,7 @@ export function writeMcpConfig(projectRoot: string): McpConfigResult {
   }
   const isObject = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
   if (!isObject(doc) || (doc.mcpServers != null && !isObject(doc.mcpServers))) {
-    return { ok: false, message: '.mcp.json is not a valid JSON object with an mcpServers object; fix or remove it, then re-run.' };
+    return { error: 'invalid_mcp_json' };
   }
   const servers: Record<string, unknown> = (doc.mcpServers ??= {});
   const creds: Record<string, string> = Object.fromEntries(STRAVA_ENV_KEYS.map((k) => [k, env[k]]));
@@ -183,7 +185,7 @@ export function writeMcpConfig(projectRoot: string): McpConfigResult {
   if (isObject(existing) && !JSON.stringify(existing).includes('${')) {
     const current = isObject(existing.env) ? existing.env : {};
     if (STRAVA_ENV_KEYS.every((k) => current[k] === creds[k])) {
-      return { ok: true, server: 'strava', action: 'skipped' };
+      return { server: 'strava', action: 'skipped' };
     }
     servers.strava = { ...existing, env: { ...current, ...creds } };
     action = 'updated';
@@ -192,7 +194,7 @@ export function writeMcpConfig(projectRoot: string): McpConfigResult {
     servers.strava = { command: 'npx', args: ['-y', '@r-huijts/strava-mcp-server'], env: creds };
   }
   fs.writeFileSync(mcpPath, `${JSON.stringify(doc, null, 2)}\n`);
-  return { ok: true, server: 'strava', action };
+  return { server: 'strava', action };
 }
 
 function mcpConfigPath(): string {
@@ -619,14 +621,14 @@ export function isStrictlyIncreasing(values: number[]): boolean {
 export function weeklyPatterns(projectRoot: string): {
   steady_sessions_found: number;
   series: { file: string; date: string; drift: number }[];
-  trend: 'upward' | 'none' | 'insufficient-data';
+  trend: 'upward' | 'none' | 'insufficient_data';
 } {
   const dir = path.join(projectRoot, '.hermit', 'compiled');
   let files: string[] = [];
   try {
     files = fs.readdirSync(dir).filter((f) => /^activity-.*\.md$/.test(f));
   } catch {
-    return { steady_sessions_found: 0, series: [], trend: 'insufficient-data' };
+    return { steady_sessions_found: 0, series: [], trend: 'insufficient_data' };
   }
   const steady: { file: string; created: string; drift: number | null }[] = [];
   for (const f of files) {
@@ -653,8 +655,8 @@ export function weeklyPatterns(projectRoot: string): {
     drift: number;
   }[];
   const series = withDrift.map((s) => ({ file: s.file, date: s.created, drift: s.drift }));
-  let trend: 'upward' | 'none' | 'insufficient-data';
-  if (series.length < 4) trend = 'insufficient-data';
+  let trend: 'upward' | 'none' | 'insufficient_data';
+  if (series.length < 4) trend = 'insufficient_data';
   else trend = isStrictlyIncreasing(series.map((s) => s.drift)) ? 'upward' : 'none';
   return { steady_sessions_found, series, trend };
 }
@@ -998,14 +1000,13 @@ function parseArgs(argv: string[]): { positionals: string[]; flags: Record<strin
   return { positionals, flags };
 }
 
-function emitAuth(): never {
-  console.log(JSON.stringify({ error: 'strava_auth', message: AUTH_RECOVERY_MESSAGE }));
+function emitError(token: string): never {
+  console.log(JSON.stringify({ error: token }));
   process.exit(1);
 }
 
-function emitFetch(message: string): never {
-  console.log(JSON.stringify({ error: 'fetch', message }));
-  process.exit(1);
+function emitAuth(): never {
+  emitError(`strava_auth:${AUTH_RECOVERY_MESSAGE}`);
 }
 
 async function main() {
@@ -1016,11 +1017,11 @@ async function main() {
   try {
     if (cmd === 'analyze') {
       const arg = positionals[0];
-      if (!arg) emitFetch('usage: analyze <activity-id|latest>');
+      if (!arg) emitError('usage:analyze <activity-id|latest>');
       const token = getAccessToken(projectRoot);
       if (!token) emitAuth();
       const id = arg === 'latest' ? await resolveLatestId(token) : parseInt(arg, 10);
-      if (!Number.isFinite(id)) emitFetch(`invalid activity id: ${arg}`);
+      if (!Number.isFinite(id)) emitError(`invalid_activity_id:${arg}`);
       console.log(JSON.stringify(await analyze(token, id)));
       process.exit(0);
     } else if (cmd === 'weekly-load') {
@@ -1045,7 +1046,7 @@ async function main() {
       const notes = notesJoined.length ? notesJoined : null;
       const rpe = parseInt(rpeRaw, 10);
       if (!arg || rpeRaw === undefined || !Number.isFinite(rpe) || rpe < 1 || rpe > 10)
-        emitFetch('usage: rpe <activity-id|latest> <rpe:1-10> [notes...]');
+        emitError('usage:rpe <activity-id|latest> <rpe:1-10> [notes...]');
       let id: number;
       if (arg === 'latest') {
         const token = getAccessToken(projectRoot);
@@ -1053,24 +1054,26 @@ async function main() {
         id = await resolveLatestId(token);
       } else {
         id = parseInt(arg, 10);
-        if (!Number.isFinite(id)) emitFetch(`invalid activity id: ${arg}`);
+        if (!Number.isFinite(id)) emitError(`invalid_activity_id:${arg}`);
       }
       const result = upsertRpe(projectRoot, id, rpe, notes, new Date().toISOString());
       console.log(JSON.stringify(result));
       process.exit(0);
     } else if (cmd === 'env-check') {
-      console.log(JSON.stringify(envCheck(projectRoot)));
+      const result = envCheck(projectRoot);
+      console.log(result === 'OK' ? result : JSON.stringify(result));
       process.exit(0);
     } else if (cmd === 'mcp-config') {
       const result = writeMcpConfig(projectRoot);
+      if ('error' in result) emitError(result.error);
       console.log(JSON.stringify(result));
-      process.exit(result.ok ? 0 : 1);
+      process.exit(0);
     } else {
-      emitFetch(`unknown subcommand: ${cmd ?? '(none)'}; expected analyze|weekly-load|weekly-patterns|rpe|env-check|mcp-config`);
+      emitError(`usage:unknown subcommand ${cmd ?? '(none)'}; expected analyze|weekly-load|weekly-patterns|rpe|env-check|mcp-config`);
     }
   } catch (e) {
     if (e instanceof StravaAuthError) emitAuth();
-    emitFetch((e as Error).message || String(e));
+    emitError(`fetch:${(e as Error).message || String(e)}`);
   }
 }
 

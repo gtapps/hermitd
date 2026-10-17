@@ -5,7 +5,7 @@ description: Read site deployment logs, server logs, site application/nginx logs
 
 # Forge Logs
 
-Read deployment and server logs from Forge.
+Read deployment and server logs from Forge. Every log command prints `{"log":"..."}`, or `{"status":"none","reason":...}` when there is nothing to read (`no_deployments`, `no_log`, `no_process`).
 
 ---
 
@@ -31,7 +31,7 @@ Use `deploy-history` first to find the deployment ID.
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php server-log <server> <key>
 ```
 
-Common keys: `php`, `mysql`, `cron`, `daemon`, `nginx-error`, `nginx-access`. Nginx keys are hyphenated; `nginx_error` (underscored) returns a 404. The PHP-FPM log key is dot-version notation matching the server's installed PHP (`php-8.3`, not `php`) — passing the literal `php` key auto-resolves it against the server's `php_version`. `mysql`/`cron`/`daemon` may 404 outright on servers with a custom, non-Forge-provisioned install of that service (no Forge-tracked log path) — a 404 there isn't necessarily a wrong key. Key list depends on the server's installed services.
+Common keys: `php`, `mysql`, `cron`, `daemon`, `nginx-error`, `nginx-access`. Nginx keys are hyphenated; `nginx_error` (underscored) returns a 404. The PHP-FPM log key is dot-version notation matching the server's installed PHP (`php-8.3`, not `php`); passing the literal `php` key auto-resolves it against the server's `php_version`. `mysql`/`cron`/`daemon` may 404 outright on servers with a custom, non-Forge-provisioned install of that service (no Forge-tracked log path), so a 404 there isn't necessarily a wrong key. A 404 prints `no_log` with the resolved key as `log_name`. Key list depends on the server's installed services.
 
 ## Site logs
 
@@ -80,4 +80,4 @@ When the operator says something like "what's wrong with myapp.com" or "triage t
 
 - `<server>` and `<site>` accept name, hostname, or numeric ID.
 - For a failed deployment you triggered via `forge-deploy`, the `deploy-incident` artifact (written by `forge-deploy` when its watch Monitor sees a failed terminal status) already contains the scrubbed log tail — check `compiled/deploy-incident-<site>-<date>.md` before re-fetching.
-- Other output reads (`commandOutput`, `scheduledJobOutput`, `siteScheduledJobOutput`, `serverEventOutput`) are reachable via `call <method>` with JSON args on stdin; their content comes back JSON-encoded.
+- Other output reads (`commandOutput`, `scheduledJobOutput`, `siteScheduledJobOutput`, `serverEventOutput`) are reachable via `call <method>` with JSON args on stdin; their content comes back under `result`.

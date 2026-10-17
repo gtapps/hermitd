@@ -194,6 +194,6 @@ test('policy-check YAML exposes native decision values without legacy aliases', 
     expect(result.decision).toBe(expected);
     expect(result).not.toHaveProperty('severity');
     expect(result).not.toHaveProperty('blocked');
-    expect(code).toBe(expected === 'deny' ? 1 : 0);
+    expect(code).toBe(0);
   }
 });

@@ -19,19 +19,23 @@ test.each(['settings.json', 'settings.local.json'])('install into %s preserves o
   writeFileSync(file, JSON.stringify({ env: { KEEP: 'yes' }, permissions: { allow: ['Read(public)'], deny: [rules[0], 'Bash(custom *)'], ask: ['Read(private)'] } }));
   const result = run(root, [], target);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toContain(`Existing denies remain: ${rules[0]}`);
+  expect(JSON.parse(result.stdout.toString())).toEqual({ status: 'installed', deny_conflicts: [rules[0]] });
   const once = readFileSync(file, 'utf8'), data = JSON.parse(once);
   expect(data.env.KEEP).toBe('yes'); expect(data.permissions.deny).toEqual([rules[0], 'Bash(custom *)']);
   expect(data.permissions.allow).toEqual(['Read(public)']);
   expect(data.permissions.ask).toContain('Read(private)');
   for (const rule of rules) expect(data.permissions.ask).toContain(rule);
   expect(run(root, [], target).exitCode).toBe(0); expect(readFileSync(file, 'utf8')).toBe(once);
+  writeFileSync(file, JSON.stringify({ permissions: { deny: ['Bash(custom *)'] } }));
+  expect(run(root, [], target).stdout.toString().trim()).toBe('OK');
   expect(existsSync(join(root, '.hermit/state'))).toBe(false);
   expect(existsSync(join(root, '.hermit/config.json'))).toBe(false);
 });
 test.each([['--migrate'], ['--unknown'], ['extra'], [''], ['--migrate', 'extra']].map(args => ({ args })))('extra arguments fail without writes: $args', ({ args }) => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
-  expect(run(root, args).exitCode).not.toBe(0);
+  const first = run(root, args);
+  expect(first.exitCode).toBe(1);
+  expect(JSON.parse(first.stdout.toString())).toEqual({ error: 'usage' });
   expect(existsSync(file)).toBe(false);
   const original = '{}';
   writeFileSync(file, original);
@@ -43,10 +47,27 @@ test.each([['--migrate'], ['--unknown'], ['extra'], [''], ['--migrate', 'extra']
   expect(readFileSync(config, 'utf8')).toBe(strict);
   expect(existsSync(join(root, '.hermit/state'))).toBe(false);
 });
-test.each(['{bad', '[]', '{"permissions":null}', '{"permissions":{"ask":"bad"}}', '{"permissions":{"deny":[1]}}'])('invalid settings are not overwritten: %s', (original) => {
+test.each([
+  ['{bad', 'invalid_settings'],
+  ['[]', 'invalid_settings'],
+  ['{"permissions":null}', 'invalid_permissions:permissions'],
+  ['{"permissions":{"ask":"bad"}}', 'invalid_permissions:ask'],
+  ['{"permissions":{"deny":[1]}}', 'invalid_permissions:deny'],
+])('invalid settings are not overwritten: %s', (original, error) => {
   const root = fixture(), file = join(root, '.claude/settings.local.json');
   writeFileSync(file, original);
-  expect(run(root).exitCode).not.toBe(0); expect(readFileSync(file, 'utf8')).toBe(original);
+  const result = run(root);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout.toString())).toEqual({ error });
+  expect(readFileSync(file, 'utf8')).toBe(original);
+});
+
+test('a settings file outside .claude fails without writes', () => {
+  const root = fixture();
+  const result = Bun.spawnSync(['bun', script, join(root, '.hermit', 'settings.json')]);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'not_project_settings' });
+  expect(existsSync(join(root, '.hermit', 'settings.json'))).toBe(false);
 });
 
 test('ordinary upgrades preserve safety configuration and other scopes', () => {

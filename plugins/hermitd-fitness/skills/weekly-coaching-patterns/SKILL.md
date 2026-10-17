@@ -22,10 +22,10 @@ Routine skill: reads the last 4 `compiled/activity-*.md` artifacts for steady se
    The script does the whole deterministic pass — filesystem only, no Strava token: globs `.hermit/compiled/activity-*.md`, keeps entries whose frontmatter has `type: activity-note` AND `session_kind: steady`, takes the 4 most recent by `created`, reads each note's **signed** drift from the `cardiac_drift_bpm` frontmatter field, falling back to the body's `Cardiac drift:` line for notes written before that field existed (neither present → excluded; a negative value compares as smaller than any positive — the sign is never stripped), and evaluates a strict oldest-to-newest monotonic rise across all 3 adjacent pairs. It emits:
 
    ```json
-   {"steady_sessions_found": <int>, "series": [{"file": "…", "date": "…", "drift": <signed int>}], "trend": "upward" | "none" | "insufficient-data"}
+   {"steady_sessions_found": <int>, "series": [{"file": "…", "date": "…", "drift": <signed int>}], "trend": "upward" | "none" | "insufficient_data"}
    ```
 
-   `series` is ordered oldest-to-newest. `trend: "upward"` means the 4-value bpm series is strictly increasing (the deliberately strict v1 bar — avoids false positives from noisy week-to-week variation). `"none"` = 4 values but not monotonic; `"insufficient-data"` = fewer than 4 drift values (expected on interval/strength-heavy weeks — not an error).
+   `series` is ordered oldest-to-newest. `trend: "upward"` means the 4-value bpm series is strictly increasing (the deliberately strict v1 bar, which avoids false positives from noisy week-to-week variation). `"none"` = 4 values but not monotonic; `"insufficient_data"` = fewer than 4 drift values (expected on interval/strength-heavy weeks, not an error).
 
    **Anti-duplication guard:** emit a finding ONLY on `trend: "upward"` (the quantitative numeric rise). Do NOT emit on label recurrence alone.
 
@@ -39,7 +39,7 @@ Routine skill: reads the last 4 `compiled/activity-*.md` artifacts for steady se
    ```
    Replace `<V1>`…`<V4>` with the four `series[].drift` values in order (oldest-to-newest, each rendered with its sign, e.g. `+6`), and `<YYYY-MM-DD>` with today's date.
 
-   **`trend: "none"` or `"insufficient-data"`:**
+   **`trend: "none"` or `"insufficient_data"`:**
    ```
    weekly-coaching-patterns findings — <YYYY-MM-DD>
    No actionable findings.

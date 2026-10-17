@@ -23,7 +23,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `morning-brief
 
 1. **Time & context** — Call `GetDateTime` for current time. Read `.hermit/OPERATOR.md` for priorities and language preferences.
 
-2. **Fetch overnight history**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha fetch-history --window-days 1`. On non-zero exit, pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`history fetch failed: <stderr first line>`) and skip the `Overnight:` section entirely: no fallback wording in the brief. On success, read `.hermit/raw/snapshot-ha-history-1d-latest.json`.
+2. **Fetch overnight history**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha fetch-history --window-days 1`. When it prints `{"error"}` (exit 1), pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`history fetch failed: <error>`) and skip the `Overnight:` section entirely: no fallback wording in the brief. On success, read `.hermit/raw/snapshot-ha-history-1d-latest.json`.
 
 3. **Live house snapshot** — Call `GetLiveContext`. Extract and organize:
    - Presence (who is home/away)
@@ -46,10 +46,10 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `morning-brief
 
 8. **Cost-spike check** — Read `.hermit/state/reflection-state.json` if it exists. Look for any `cost_spike` entry with a timestamp within the last 24 hours. If found, include a "Cost alert" bullet in the brief with the flagged amount.
 
-8a. **Pending updates**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates --digest` and capture stdout. Branch on its content (the command always exits 0 — never branch on exit code):
-   - Contains `(skipped:`: pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`updates fetch failed: <detail after "skipped:">`) and omit the `Updates:` section entirely.
-   - Contains `(no updates pending)` — omit the `Updates:` section entirely.
-   - Otherwise — render the digest lines as the `Updates:` section, translating tier labels into the operator's language. For each `[tier] Title: installed → latest` line (skip the `+ N more …` collapse line and the `[hacs]` aggregate line), `Glob` `.hermit/proposals/PROP-*.md` for a `[ha-update]` proposal whose title carries the same tier and target version (e.g. `[ha-update] HA Core → 2026.7.1`) and append `(PROP-NNN)`; if none matches yet, render the line without an id. Step 9 reuses this glob result when this branch ran it.
+8a. **Pending updates**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates --digest`. It prints one JSON object and exits 0:
+   - `status` is `skipped`: pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`updates fetch failed: <detail>`) and omit the `Updates:` section entirely.
+   - `total` is 0: omit the `Updates:` section entirely.
+   - Otherwise: render the `Updates:` section, translating tier labels into the operator's language. `updates` holds the top updates in tier order, one `[tier] Title: installed → latest` line each (a null version renders as `?`); add `+ N more updates pending` when `more` is above 0 and `[hacs] N HACS updates pending` when `hacs_pending` is above 0. For each `updates` entry, `Glob` `.hermit/proposals/PROP-*.md` for a `[ha-update]` proposal whose title carries the same tier and target version (e.g. `[ha-update] HA Core → 2026.7.1`) and append `(PROP-NNN)`; if none matches yet, render the line without an id. Step 9 reuses this glob result when this branch ran it.
 
 9. **Pending work** — Scan for:
    - `Glob` `.hermit/proposals/PROP-*.md` (reuse step 8a's glob result if its `Otherwise` branch already ran it; otherwise run the `Glob` here) — read status from each, list any `pending` proposals. Exclude a `pending` proposal whose title starts with `[ha-update]` **only when the `Updates:` section is present** (it surfaces there instead); when step 8a omitted the `Updates:` section (skipped fetch or no updates pending), keep `[ha-update]` proposals in this list so they are not lost
@@ -57,11 +57,11 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `morning-brief
    - Pending tasks come only from that list, never from an earlier brief (`compiled/brief-*`, `state/last-brief.json`) or earlier conversation.
 
 <!-- keep in sync with plugins/hermitd/skills/brief/SKILL.md — same MP lifecycle protocol -->
-9a. **Micro-proposals lifecycle** — age the queue in one call: `.hermit/bin/hermitd-run proposal micro .hermit brief-cycle`. This runs core's writer through the project-resident `bin/hermitd-run`, which resolves core's plugin root (a static `../hermitd/…` path can't — HA's `${CLAUDE_PLUGIN_ROOT}` is `<cache>/<marketplace>/hermitd-homeassistant/<version>/` and the version segment isn't knowable from skill text). It performs the whole `follow_up_count` 0/1/2+ lifecycle atomically (re-nudges count-1 entries, expires count-2+ entries, records each expiry, prunes any entry whose `status` isn't `"pending"`) and prints one JSON line `{"new":[…],"renudged":[…],"expired":[…],"dropped":[…]}`. Never hand-edit `state/micro-proposals.json`. Render from that verdict:
+9a. **Micro-proposals lifecycle**: age the queue in one call: `.hermit/bin/hermitd-run proposal micro .hermit brief-cycle`. This runs core's writer through the project-resident `bin/hermitd-run`, which resolves core's plugin root (a static `../hermitd/…` path can't; HA's `${CLAUDE_PLUGIN_ROOT}` is `<cache>/<marketplace>/hermitd-homeassistant/<version>/` and the version segment isn't knowable from skill text). It performs the whole `follow_up_count` 0/1/2+ lifecycle atomically (re-nudges count-1 entries, expires count-2+ entries, records each expiry, prunes any entry whose `status` isn't `"pending"`) and prints one JSON line `{"new":[…],"renudged":[…],"expired":[…],"dropped":[…]}`. Never hand-edit `state/micro-proposals.json`. Render from that verdict:
    - Each `new` entry: include in `Awaiting decision:` output (see Output Format).
    - Each `renudged` entry: include in `Awaiting decision:` with softer framing: "Still waiting on MP-YYYYMMDD-N: [question] (ignore again to drop it)".
    - `expired` entries were dropped this cycle — do not surface them.
-   - `dropped` entries were already resolved elsewhere (issue 676) — never surface them, never count them.
+   - `dropped` entries were resolved elsewhere: never surface them, never count them.
    - If `new` and `renudged` are both empty: skip this step entirely.
 
 10. **Compose brief** — Write a concise morning brief in the operator's language (from OPERATOR.md preferences). Use the format below.

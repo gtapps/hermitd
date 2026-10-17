@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-laravel-forge:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade-core-package` / `upgrade-core-applied`** → relay the `remedy` string verbatim to the operator and stop.
+- **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
   > "hermitd-laravel-forge {self_version} is already installed. Reply 'verify' to re-run checks only, or 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 4; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`ok: false`** → relay `message` and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ---
 
@@ -103,7 +103,7 @@ Append any missing patterns via Edit.
 
 ## Step 4 — CLI probe (credential check)
 
-Run: `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php check`
+Run: `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php check` and branch on `status`. A `policy_lift` field lists `.env` lifts of the shipped deny tiers; mention it in the final report.
 
 - **`missing`** → tell the operator to add `FORGE_API_TOKEN` to `.env` and re-run Step 3.
 - **`invalid`** → token found but API rejected it; tell the operator to check the token at https://forge.laravel.com/profile/api.
@@ -129,6 +129,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-laravel-forge
 ```
+
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 It appends the `<!-- hermitd-laravel-forge: Forge Workflow -->` block when the marker is absent and skips when it is already present; `hermit-evolve` handles replacement on upgrade.
 
@@ -174,7 +176,7 @@ Write the updated `config.json` via Write tool (full file replacement for valid 
 
 Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
 
-Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`.
+Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. It prints `OK`; `{"status":"installed","deny_conflicts":[...]}` means existing operator denies override those asks, so name them in the final report. On `{"error":...}`, surface the error and stop.
 
 ## Step 8 — Final report
 

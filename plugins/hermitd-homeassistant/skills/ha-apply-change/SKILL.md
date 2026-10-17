@@ -22,10 +22,12 @@ allowed-tools:
    - This runs HA config check, **pushes the config to HA via REST**, then reloads the domain.
    - The artifact must include `id:` at the top level — if missing, the CLI derives an ID from the alias or filename and warns in the output. A derived ID drifts if the alias is renamed, creating a duplicate.
 
-4. **Post-apply**: Check the JSON output for `creation_ok` and read `.hermit/raw/audit-ha-apply-latest.md`.
+4. **Post-apply**: Read `.hermit/raw/audit-ha-apply-latest.md` and branch on the JSON output:
+   - `{"status":"invalid","reason":"simulation_failed"}`: the artifact references missing entities or hits a blocked reason; run `ha simulate <artifact_path>` for the list and fix the YAML.
+   - `{"error":...}`: show it. `apply_failed:<detail>` means the config check or push failed; suggest fixing the YAML.
    - `creation_ok: true` — config was pushed and verified via REST. Reload picks it up immediately.
    - `creation_ok: false` + message contains "YAML mode" — HA is in YAML config mode (403). Tell the operator to place the generated YAML in their HA config directory and reload manually.
-   - `creation_ok: false` + other message — push failed with a validation error from HA. Show the error message and suggest fixing the YAML.
+   - `creation_ok: false` + other message: the push was not verified. Show the message.
    - If overall successful: update your auto memory if this automation introduces a new pattern.
 
 ## Safety

@@ -30,10 +30,10 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `evening-brief
 
 3. **Anomalous sensors** — From the live snapshot, identify currently unavailable, stuck, or unexpected-state sensors. Report only what is currently wrong — no baseline diff required.
 
-3a. **Pending updates**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates --digest` and capture stdout. Branch on its content (the command always exits 0 — never branch on exit code):
-   - Contains `(skipped:`: pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`updates fetch failed: <detail after "skipped:">`) and omit the `Updates:` section entirely.
-   - Contains `(no updates pending)` — omit the `Updates:` section entirely.
-   - Otherwise — render the digest lines as the `Updates:` section, translating tier labels into the operator's language. No proposal-id lookup here (unlike the morning brief).
+3a. **Pending updates**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates --digest`. It prints one JSON object and exits 0:
+   - `status` is `skipped`: pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`updates fetch failed: <detail>`) and omit the `Updates:` section entirely.
+   - `total` is 0: omit the `Updates:` section entirely.
+   - Otherwise: render the `Updates:` section, translating tier labels into the operator's language. `updates` holds the top updates in tier order, one `[tier] Title: installed → latest` line each (a null version renders as `?`); add `+ N more updates pending` when `more` is above 0 and `[hacs] N HACS updates pending` when `hacs_pending` is above 0. No proposal-id lookup here (unlike the morning brief).
 
 4. **Energy snapshot** — From the live context, pull current power draw and day's energy consumption if HA energy entities exist. Omit this section if no energy sensors are available.
 

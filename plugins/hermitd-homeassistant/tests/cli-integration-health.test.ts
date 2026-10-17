@@ -46,7 +46,7 @@ function refreshOverrides(snapshotPath: string) {
   };
 }
 
-test('cli integration-health emits existing stdout shape', async () => {
+test('cli integration-health emits the findings JSON', async () => {
   const tmp = tmpPath();
   const raw = join(tmp, '.hermit', 'raw');
   mkdirSync(raw, { recursive: true });
@@ -56,8 +56,26 @@ test('cli integration-health emits existing stdout shape', async () => {
 
   const { code, out } = await captureOutput(() => handleIntegrationHealth(tmp, dummyConfig));
   expect(code).toBe(0);
-  expect(out.startsWith('ha-integration-health findings —')).toBe(true);
-  expect(out).toContain('Degraded domains:');
+  const json = JSON.parse(out);
+  expect(json.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(json.scanned_domains).toBe(1);
+  expect(JSON.parse(out).degraded).toEqual([{ domain: 'sensor', unavailable: 4, total: 6, percent: 66.7 }]);
+});
+
+test('cli integration-health reports an empty degraded list when nothing is flagged', async () => {
+  const tmp = tmpPath();
+  const raw = join(tmp, '.hermit', 'raw');
+  mkdirSync(raw, { recursive: true });
+  const [idx, unavail] = makeEntities('sensor', 6, 1);
+  writeFileSync(
+    join(raw, 'snapshot-ha-normalized-latest.json'),
+    JSON.stringify({ entity_index: idx, unavailable_entities: unavail }),
+    'utf8',
+  );
+
+  const { code, out } = await captureOutput(() => handleIntegrationHealth(tmp, dummyConfig));
+  expect(code).toBe(0);
+  expect(JSON.parse(out)).toMatchObject({ scanned_domains: 1, degraded: [] });
 });
 
 test('cli integration-health refreshes and proceeds when snapshot missing', async () => {
@@ -68,8 +86,8 @@ test('cli integration-health refreshes and proceeds when snapshot missing', asyn
     handleIntegrationHealth(tmp, dummyConfig, refreshOverrides(snapshotPath)),
   );
   expect(code).toBe(0);
-  expect(out).not.toContain('skipped');
-  expect(out).toContain('Degraded domains:');
+  expect(JSON.parse(out).status).toBeUndefined();
+  expect(JSON.parse(out).degraded).toEqual([{ domain: 'sensor', unavailable: 4, total: 6, percent: 66.7 }]);
 });
 
 test('cli integration-health refreshes and proceeds when snapshot stale', async () => {
@@ -85,8 +103,8 @@ test('cli integration-health refreshes and proceeds when snapshot stale', async 
     handleIntegrationHealth(tmp, dummyConfig, refreshOverrides(snapshotPath)),
   );
   expect(code).toBe(0);
-  expect(out).not.toContain('skipped');
-  expect(out).toContain('Degraded domains:');
+  expect(JSON.parse(out).status).toBeUndefined();
+  expect(JSON.parse(out).degraded).toEqual([{ domain: 'sensor', unavailable: 4, total: 6, percent: 66.7 }]);
 });
 
 test('cli integration-health skips cleanly when refresh fails', async () => {
@@ -101,7 +119,7 @@ test('cli integration-health skips cleanly when refresh fails', async () => {
     }),
   );
   expect(code).toBe(0);
-  expect(out).toContain('refresh failed');
+  expect(JSON.parse(out)).toMatchObject({ status: 'skipped', reason: 'refresh_failed', detail: 'HA unreachable' });
 });
 
 test('cli integration-health refreshes when stat raises non-ENOENT', async () => {
@@ -126,6 +144,6 @@ test('cli integration-health refreshes when stat raises non-ENOENT', async () =>
     }),
   );
   expect(code).toBe(0);
-  expect(out).not.toContain('skipped');
-  expect(out).toContain('Degraded domains:');
+  expect(JSON.parse(out).status).toBeUndefined();
+  expect(JSON.parse(out).degraded).toEqual([{ domain: 'sensor', unavailable: 4, total: 6, percent: 66.7 }]);
 });

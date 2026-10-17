@@ -31,7 +31,7 @@ test('absent .mcp.json: adds the entry with literal values', async () => {
   const root = tmpPath();
   const { code, json } = await run(config(root, `${URL}/`));
   expect(code).toBe(0);
-  expect(json).toEqual({ ok: true, server: 'homeassistant', action: 'added' });
+  expect(json).toEqual({ server: 'homeassistant', action: 'added' });
   expect(readMcp(root).mcpServers.homeassistant).toEqual({
     type: 'http',
     url: `${URL}/api/mcp`,
@@ -91,11 +91,11 @@ test('literal entry with a stale token: only url and token refreshed', async () 
   });
 });
 
-test('missing token: exit 1, names the key, writes nothing', async () => {
+test('missing token: exit 0 with missing_keys, names the key, writes nothing', async () => {
   const root = tmpPath();
   const { code, json } = await run(config(root, URL, null));
-  expect(code).toBe(1);
-  expect(json).toEqual({ ok: false, missing: ['HOMEASSISTANT_TOKEN'] });
+  expect(code).toBe(0);
+  expect(json).toEqual({ status: 'missing_keys', missing: ['HOMEASSISTANT_TOKEN'] });
   expect(existsSync(join(root, '.mcp.json'))).toBe(false);
 });
 
@@ -104,7 +104,7 @@ test('invalid .mcp.json: exit 1, file left as is', async () => {
   writeFileSync(join(root, '.mcp.json'), '{ not json');
   const { code, json } = await run(config(root));
   expect(code).toBe(1);
-  expect(json.ok).toBe(false);
+  expect(json).toEqual({ error: 'invalid_mcp_json' });
   expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe('{ not json');
 });
 
@@ -114,7 +114,7 @@ test('non-object .mcp.json or mcpServers: exit 1, file left as is', async () => 
     writeFileSync(join(root, '.mcp.json'), body);
     const { code, json } = await run(config(root));
     expect(code).toBe(1);
-    expect(json.ok).toBe(false);
+    expect(json).toEqual({ error: 'invalid_mcp_json' });
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(body);
   }
 });

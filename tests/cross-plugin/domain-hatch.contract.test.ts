@@ -85,7 +85,7 @@ describe('discovery', () => {
     expect(text).toContain('`target_file` from step 1.5');
     expect(text).not.toContain('hatch-options.json');
     expect(text).not.toContain('domain-hatch ensure-target');
-    expect(text).toContain('If `ok` is false');
+    expect(text).toContain('If it prints `error`');
   });
 
   test('never includes core, which is not a consumer of its own protocol', () => {
@@ -157,7 +157,7 @@ for (const { slug, text } of HATCHES) {
     });
 
     test('branches on every preflight action value', () => {
-      for (const action of ['upgrade-core-package', 'upgrade-core-applied', '`verify`', '`full`']) {
+      for (const action of ['upgrade_core_package', 'upgrade_core_applied', '`verify`', '`full`']) {
         expect(text).toContain(action);
       }
     });

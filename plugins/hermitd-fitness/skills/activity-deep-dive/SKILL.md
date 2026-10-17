@@ -32,8 +32,8 @@ Interval sessions get work-interval HR progression and between-bout recovery qua
    ```
 
    The script fetches details, laps, streams, athlete zones, and the recent summary activities (for the efficiency baseline), then emits one JSON object. Handle the error contract:
-   - `{"error":"strava_auth","message":"…"}` (exit 1) → the token is missing or expired. Relay the `message` verbatim to the operator and stop. Do not compute anything.
-   - `{"error":"fetch","message":"…"}` (exit 1) → report the message and stop.
+   - `{"error":"strava_auth:<message>"}` (exit 1) → the token is missing or expired. Relay `<message>` verbatim to the operator and stop. Do not compute anything.
+   - Any other `{"error":"<token>:<detail>"}` (exit 1, e.g. `fetch` or `invalid_activity_id`) → report it and stop.
    - Success (exit 0) → parse the JSON and continue.
 
 3. **Interpret the JSON.** The object has these fields (see `thresholds` in the payload for the exact cutoffs behind each classification — cite them in coaching prose without hardcoding a second copy):

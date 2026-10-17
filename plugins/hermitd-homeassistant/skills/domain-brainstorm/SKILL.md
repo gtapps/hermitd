@@ -7,7 +7,7 @@ description: On-demand HA-voice brainstorm — reads entity inventory, automatio
 
 ## Kill criteria (read before running)
 
-After ≥8 invocations, check the `capability-brainstorm` segment of core's proposal metrics report — run `.hermit/bin/hermitd-run proposal metrics .hermit --source=capability-brainstorm` (the project-resident `bin/hermitd-run` resolves core's plugin root, which a path relative to this plugin can't reach), or read the `capability-brainstorm` row of the table `/hermitd:hermit-evolution` prints. If triage-survival < 25% or PROP-acceptance < 30%, treat it as a class-level signal that brainstorm output is noisy and raise it with the operator — the segment is shared with core's `capability-brainstorm` and the other domain brainstorm skills, so it cannot by itself say which skill to cut.
+After ≥8 invocations, check the `capability-brainstorm` segment of core's proposal metrics: run `.hermit/bin/hermitd-run proposal metrics .hermit --source=capability-brainstorm` (the project-resident `bin/hermitd-run` resolves core's plugin root, which a path relative to this plugin can't reach). When its `status` is `kill`, treat it as a class-level signal that brainstorm output is noisy and raise it with the operator, naming the `kill_reasons` with their `triage_survival_pct` and `acceptance_pct`. The segment is shared with core's `capability-brainstorm` and the other domain brainstorm skills, so it cannot by itself say which skill to cut.
 
 ### Gate 0 — Gather inputs
 
@@ -63,10 +63,10 @@ Set frontmatter: `source: auto-detected`, `category: improvement`, `tags: [capab
 
 Provenance is carried by those `tags`, which `proposal-create` writes onto both the `triage-verdict` row and the proposal frontmatter. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
-Parse the verdict:
-- `CREATE` — note PROP-NNN.
-- `SUPPRESS — <code>` — record suppression code; don't retry.
-- `DUPLICATE:<PROP-ID>` — record existing ID; don't create.
+`/hermitd:proposal-create` invokes `proposal-triage` internally. Parse its outcome:
+- `CREATE: <title>`: PROP file written, note the assigned PROP-NNN.
+- `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <PROP-ID>`: record the existing PROP-ID. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 

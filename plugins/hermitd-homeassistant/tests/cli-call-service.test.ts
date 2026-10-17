@@ -42,8 +42,8 @@ function runCli(argv: string[], client: FakeClient, config: AppConfig) {
 test('rejects a target with no dot', async () => {
   const client = fakeClient();
   const { code, out } = await runCli(['ha', 'call-service', 'reload_all'], client, cfg());
-  expect(code).toBe(2);
-  expect(JSON.parse(out).message).toContain("must contain a '.'");
+  expect(code).toBe(1);
+  expect(JSON.parse(out).error).toStartWith("usage:domain.service must contain a '.'");
 });
 
 test('rejects invalid --data JSON', async () => {
@@ -54,7 +54,7 @@ test('rejects invalid --data JSON', async () => {
     cfg(),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('valid JSON');
+  expect(JSON.parse(out).error).toBe('usage:--data is not valid JSON');
 });
 
 test('non-sensitive service call proceeds under strict', async () => {
@@ -62,8 +62,7 @@ test('non-sensitive service call proceeds under strict', async () => {
   const { code, out } = await runCli(['ha', 'call-service', 'automation.reload'], client, cfg('strict'));
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.blocked).toBe(false);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.report_path).toBeTruthy();
   expect(client.calls.post).toEqual([['/api/services/automation/reload', {}]]);
 });
@@ -75,9 +74,10 @@ test('sensitive domain via --data entity_id blocked under strict', async () => {
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
+  expect(parsed.status).toBe('blocked');
+  expect(parsed.reason).toBe('strict_mode');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -91,7 +91,7 @@ test('sensitive domain under ask runs', async () => {
   );
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(client.calls.post).toEqual([
     ['/api/services/lock/unlock', { entity_id: 'lock.front_door' }],
   ]);
@@ -104,10 +104,10 @@ test('target as an array (not an object) fails closed instead of silently extrac
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
-  expect(parsed.message).toContain('malformed targeting field');
+  expect(parsed.status).toBe('blocked');
+  expect(parsed.detail).toContain('malformed targeting field');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -118,8 +118,8 @@ test('non-string entity_id fails closed instead of silently extracting nothing',
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('malformed targeting field');
+  expect(code).toBe(0);
+  expect(JSON.parse(out).detail).toContain('malformed targeting field');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -130,8 +130,8 @@ test('mixed-type entity_id array fails closed', async () => {
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('malformed targeting field');
+  expect(code).toBe(0);
+  expect(JSON.parse(out).detail).toContain('malformed targeting field');
 });
 
 test('unresolvable area_id target fails closed in both modes', async () => {
@@ -141,10 +141,10 @@ test('unresolvable area_id target fails closed in both modes', async () => {
     client,
     cfg('ask'),
   );
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
-  expect(parsed.message).toContain('no resolvable entity IDs');
+  expect(parsed.status).toBe('blocked');
+  expect(parsed.detail).toContain('no resolvable entity IDs');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -157,8 +157,7 @@ test('HA error surfaces verbatim', async () => {
   const { code, out } = await runCli(['ha', 'call-service', 'automation.reload'], client, cfg());
   expect(code).toBe(1);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toBe('Service not found. (status=400)');
+  expect(parsed).toEqual({ error: 'ha_http_400:Service not found. (status=400)' });
 });
 
 test('sensitive entity hidden in scene.apply entities map is blocked under strict', async () => {
@@ -168,9 +167,9 @@ test('sensitive entity hidden in scene.apply entities map is blocked under stric
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
+  expect(parsed.status).toBe('blocked');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -193,7 +192,7 @@ test('non-sensitive entities in scene.apply map still proceed under strict', asy
     cfg('strict'),
   );
   expect(code).toBe(0);
-  expect(JSON.parse(out).ok).toBe(true);
+  expect(JSON.parse(out)).toHaveProperty('data');
   expect(client.calls.post).toEqual([
     ['/api/services/scene/apply', { entities: { 'light.living_room': 'on' } }],
   ]);
@@ -215,9 +214,10 @@ test('update.install blocked under strict when ha_update_auto_apply is unset', a
     client,
     cfg('strict'),
   );
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
+  expect(parsed.status).toBe('blocked');
+  expect(parsed.reason).toBe('update_auto_apply_disabled');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -234,8 +234,8 @@ test('update.install blocked under ask when ha_update_auto_apply is unset, even'
     client,
     cfg('ask'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -255,7 +255,7 @@ test('update.install with ha_update_auto_apply on runs under strict', async () =
   );
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(client.calls.post).toEqual([
     [
       '/api/services/update/install',
@@ -272,7 +272,7 @@ test('update.install with ha_update_auto_apply on runs under ask (mode-independe
     cfgWithFlag('ask', true),
   );
   expect(code).toBe(0);
-  expect(JSON.parse(out).ok).toBe(true);
+  expect(JSON.parse(out)).toHaveProperty('data');
 });
 
 test('update.install carrying a lock entity still hard-blocks under strict even with the flag on', async () => {
@@ -288,7 +288,7 @@ test('update.install carrying a lock entity still hard-blocks under strict even 
     client,
     cfgWithFlag('strict', true),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(client.calls.post.length).toBe(0);
 });

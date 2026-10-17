@@ -1,6 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
 import { join } from "node:path";
-import { parseArgs, buildUrl, mapPost, extractPosts, userAgent } from "../scripts/reddit-fetch";
+import { parseArgs, buildUrl, mapPost, extractPosts, userAgent, unavailableReason, HttpError } from "../scripts/reddit-fetch";
 
 const SCRIPT = join(import.meta.dir, "..", "scripts", "reddit-fetch.ts");
 
@@ -90,8 +90,15 @@ test("userAgent honours REDDIT_USER_AGENT override", () => {
   expect(userAgent()).toBe("custom/9.9");
 });
 
-test("no args → exit 1", async () => {
-  const proc = Bun.spawn(["bun", SCRIPT], { stdout: "ignore", stderr: "pipe" });
-  const code = await proc.exited;
-  expect(code).toBe(1);
+test("no args → usage error, exit 1", async () => {
+  const proc = Bun.spawn(["bun", SCRIPT], { stdout: "pipe", stderr: "pipe" });
+  const stdout = await new Response(proc.stdout).text();
+  expect(await proc.exited).toBe(1);
+  expect(JSON.parse(stdout)).toEqual({ error: "usage" });
+});
+
+test("unavailableReason maps fetch failures to snake_case tokens", () => {
+  expect(unavailableReason(new HttpError(403))).toBe("http_403");
+  expect(unavailableReason(new SyntaxError("Unexpected token"))).toBe("invalid_response");
+  expect(unavailableReason(new TypeError("fetch failed"))).toBe("network_error");
 });

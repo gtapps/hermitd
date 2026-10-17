@@ -25,7 +25,7 @@ if (fs.existsSync(HATCH_SKILL)) {
   ok('consumes the preflight verdict fields instead of re-deriving them',
     /`target`[\s\S]{0,60}`target_file`[\s\S]{0,60}`target_default`[\s\S]{0,60}`needs_target_question`/.test(text));
   ok('branches on every preflight `action` value',
-    ['upgrade-core-package', 'upgrade-core-applied', '`verify`', '`full`'].every(a => text.includes(a)));
+    ['upgrade_core_package', 'upgrade_core_applied', '`verify`', '`full`'].every(a => text.includes(a)));
 
   ok('records the operator\'s choice via ensure-target',
     text.includes('domain-hatch ensure-target hermitd-dev --target'));

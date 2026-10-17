@@ -22,7 +22,7 @@ For weekly-load aggregation (per-week km, moving time, elevation, zone %, and th
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/fitness-lab.ts weekly-load --weeks N
 ```
 
-It fetches the summary activities, buckets by ISO week, and emits `{weeks:[{week_start, activities, km, moving_time_min, elevation_m, zone_pct, tss_proxy}], method:{…}}`. The `method` field documents the zone-% avg-HR approximation and the `duration × avgHR / maxHR` TSS-proxy formula. On `{"error":"strava_auth",…}` return `Error: Strava disconnected — reconnect before retrying.`; on `{"error":"fetch",…}` return the message. Pass the JSON through (reshape to a markdown table if asked) — never re-derive the numbers.
+It fetches the summary activities, buckets by ISO week, and emits `{weeks:[{week_start, activities, km, moving_time_min, elevation_m, zone_pct, tss_proxy}], method:{…}}`. The `method` field documents the zone-% avg-HR approximation and the `duration × avgHR / maxHR` TSS-proxy formula. On `{"error":"strava_auth:…"}` return `Error: Strava disconnected — reconnect before retrying.`; on any other `{"error":"<token>:<detail>"}` return it. Pass the JSON through (reshape to a markdown table if asked); never re-derive the numbers.
 
 ## MCP fallback — only for shapes the script doesn't produce
 
