@@ -41,12 +41,13 @@ allowed-tools:
      - `counter`: `{"name": "...", "initial": 0, "step": 1}`
      - `schedule`: `{"name": "..."}` with weekday blocks — run `ha list-helpers --type schedule` to inspect the schema of any existing helper; if none exists, check the HA schedule integration docs for the required block format.
    - Preview the helper, then run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha create-helper <type> '<json>'` and handle the result:
-     - `"blocked": true`; `ha_safety_mode` is `strict`; explain the boundary and create a proposal via `/hermitd:proposal-create`. Do not retry the denied operation. Continue to validation so the operator sees which entities are still missing.
-     - `"ok": true` — helper created; continue.
+     - `{"status":"blocked","reason":"strict_mode"}`: `ha_safety_mode` is `strict`; explain the boundary and create a proposal via `/hermitd:proposal-create`. Do not retry the denied operation. Continue to validation so the operator sees which entities are still missing.
+     - `{"data",...}`: helper created; continue.
+     - `{"error":...}`: surface the error to the operator.
    - If any helpers were created, run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha refresh-context --incremental` to update the snapshot before validation.
 
 4. **Validate**:
-   - Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha simulate <path>` to check entity references and policy.
+   - Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha simulate <path>` to check entity references and policy. It prints `OK`, or `{"status":"invalid",...}` listing `missing_entities` and `blocked_reasons`.
    - Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha policy-check <path>` for a safety assessment.
 
 5. **Handle results**:

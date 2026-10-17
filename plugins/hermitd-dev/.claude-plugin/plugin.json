@@ -4,7 +4,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.12"
+      "version": "^1.4.16"
     }
   ],
   "description": "Git safeguards, debugging, and merge-conflict resolution for your Hermit.",

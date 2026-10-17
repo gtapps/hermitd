@@ -23,7 +23,6 @@ test('get automation config ok', async () => {
 
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
   expect(parsed.domain).toBe('automation');
   expect(parsed.config_id).toBe('my_automation');
   expect(parsed.config).toEqual(configPayload);
@@ -37,7 +36,6 @@ test('get script config ok', async () => {
 
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
   expect(parsed.domain).toBe('script');
   expect(parsed.config_id).toBe('garage_gate');
   expect(parsed.config).toEqual(configPayload);
@@ -51,7 +49,6 @@ test('get scene config ok', async () => {
 
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
   expect(parsed.domain).toBe('scene');
   expect(parsed.config_id).toBe('movie_night');
   expect(parsed.config).toEqual(configPayload);
@@ -59,7 +56,7 @@ test('get scene config ok', async () => {
 });
 
 for (const command of ['get-automation-config', 'get-script-config', 'get-scene-config']) {
-  test(`${command} not found exits nonzero`, async () => {
+  test(`${command} not found reports not_found, exit 0`, async () => {
     const client = fakeClient({
       get: () => {
         throw new HomeAssistantError(
@@ -71,10 +68,8 @@ for (const command of ['get-automation-config', 'get-script-config', 'get-scene-
     });
     const { code, out } = await runCli(['ha', command, 'nonexistent'], client);
 
-    expect(code).toBe(1);
-    const parsed = JSON.parse(out);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.message).toBe('Resource not found');
+    expect(code).toBe(0);
+    expect(JSON.parse(out)).toEqual({ status: 'not_found', reason: 'no_config', config_id: 'nonexistent' });
   });
 }
 
@@ -91,7 +86,5 @@ test('get automation config yaml mode 403', async () => {
   const { code, out } = await runCli(['ha', 'get-automation-config', 'my_auto'], client);
 
   expect(code).toBe(1);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toContain('YAML mode');
+  expect(JSON.parse(out).error).toStartWith('read_failed:Forbidden: Home Assistant is in YAML mode');
 });

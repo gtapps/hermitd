@@ -25,10 +25,10 @@ Check if `.hermit/config.json` exists in the current project.
   After it finishes, come back and type `/hermitd-dev:hatch`.
   ```
 - Present: run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-dev` and parse the JSON verdict. Branch on `action`:
-  - `upgrade-core-package` / `upgrade-core-applied` → relay the `remedy` string verbatim to the operator and stop.
+  - `bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
   - `verify` → this version (`self_version`) is already stamped; continue through the wizard, Step 3's block sync is the idempotency guard.
   - `full` → continue through the wizard.
-  - `ok: false` → relay `message` and stop.
+  - `error`, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ### 2. Detect protected-branch candidates and companions
 
@@ -51,6 +51,8 @@ If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibil
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-dev
 ```
+
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 The command appends when the marker is absent, replaces when the content differs, and skips when it is already current. Shared rules land in the hatch-resolved CLAUDE file, and resident duties in `.hermit/RESIDENT.md`.
 

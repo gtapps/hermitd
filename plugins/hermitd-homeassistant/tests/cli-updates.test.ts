@@ -9,133 +9,84 @@ afterAll(cleanupTmp);
 
 const dummyConfig = {} as AppConfig;
 
-test('cli updates emits fixed stdout shape with a pending update', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(dummyConfig, {
-      createClient: async () =>
-        fakeClient({
-          getStates: () => [
-            {
-              entity_id: 'update.home_assistant_core_update',
-              state: 'on',
-              attributes: {
-                title: 'Home Assistant Core',
-                installed_version: '2026.6.3',
-                latest_version: '2026.7.1',
-                release_url: 'https://example.com/core',
-              },
-            },
-          ],
-        }),
-    }),
-  );
+const CORE = {
+  entity_id: 'update.home_assistant_core_update',
+  state: 'on',
+  attributes: {
+    title: 'Home Assistant Core',
+    installed_version: '2026.6.3',
+    latest_version: '2026.7.1',
+    release_url: 'https://example.com/core',
+  },
+};
+
+const CORE_JSON = {
+  tier: 'core',
+  title: 'Home Assistant Core',
+  installed_version: '2026.6.3',
+  latest_version: '2026.7.1',
+  release_url: 'https://example.com/core',
+};
+
+const withStates = (states: unknown[]) => ({ createClient: async () => fakeClient({ getStates: () => states as any }) });
+const unreachable = {
+  createClient: async () => {
+    throw new HomeAssistantError('HA unreachable');
+  },
+};
+
+test('cli updates lists a pending update as JSON', async () => {
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, withStates([CORE])));
   expect(code).toBe(0);
-  expect(out.startsWith('ha-update-check findings —')).toBe(true);
-  expect(out).toContain('Updates pending: 1');
-  expect(out).toContain('[core] Home Assistant Core');
+  const json = JSON.parse(out);
+  expect(json.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(json).toMatchObject({ total: 1, updates: [CORE_JSON], hacs_pending: 0 });
+  expect(json.more).toBeUndefined();
 });
 
-test('cli updates reports no actionable findings when nothing pending', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(dummyConfig, { createClient: async () => fakeClient({ getStates: () => [] }) }),
-  );
+test('cli updates reports an empty list when nothing is pending', async () => {
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, withStates([])));
   expect(code).toBe(0);
-  expect(out).toContain('No actionable findings. (no updates pending)');
+  expect(JSON.parse(out)).toMatchObject({ total: 0, updates: [], hacs_pending: 0 });
 });
 
 test('cli updates skips cleanly when HA is unreachable', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(dummyConfig, {
-      createClient: async () => {
-        throw new HomeAssistantError('HA unreachable');
-      },
-    }),
-  );
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, unreachable));
   expect(code).toBe(0);
-  expect(out).toContain('skipped:');
+  expect(JSON.parse(out)).toMatchObject({ status: 'skipped', reason: 'ha_unreachable', detail: 'HA unreachable' });
 });
 
-// Regression gate: --digest wiring must never change default stdout — pinned
-// as the output contract for ha-update-check's `reflect --check-id ha-update-check --check hermitd-homeassistant:ha-update-check`.
-test('cli updates default output is byte-identical with and without the digest flag defaulting off', async () => {
-  const deps = {
-    createClient: async () =>
-      fakeClient({
-        getStates: () => [
-          {
-            entity_id: 'update.home_assistant_core_update',
-            state: 'on',
-            attributes: {
-              title: 'Home Assistant Core',
-              installed_version: '2026.6.3',
-              latest_version: '2026.7.1',
-              release_url: 'https://example.com/core',
-            },
-          },
-        ],
-      }),
-  };
-  const withoutFlag = await captureOutput(() => handleUpdates(dummyConfig, deps));
-  const withFlagFalse = await captureOutput(() => handleUpdates(dummyConfig, deps, false));
-  // The header carries today's date; pin everything below it byte-for-byte and
-  // require the two invocations to agree, so the date can't make this flake.
-  const body = (out: string) => out.split('\n').slice(1).join('\n');
+// The --digest wiring must never change the default output read by
+// ha-update-check's scheduled check.
+test('cli updates default output is identical with and without the digest flag defaulting off', async () => {
+  const withoutFlag = await captureOutput(() => handleUpdates(dummyConfig, withStates([CORE])));
+  const withFlagFalse = await captureOutput(() => handleUpdates(dummyConfig, withStates([CORE]), false));
   expect(withFlagFalse.out).toBe(withoutFlag.out);
-  expect(withoutFlag.out.split('\n')[0]).toStartWith('ha-update-check findings — ');
-  expect(body(withoutFlag.out)).toBe(
-    'Updates pending: 1\n- [core] Home Assistant Core: 2026.6.3 → 2026.7.1 — https://example.com/core\n',
-  );
 });
 
-test('cli updates --digest emits tier-sorted digest lines instead of the default shape', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(
-      dummyConfig,
-      {
-        createClient: async () =>
-          fakeClient({
-            getStates: () => [
-              {
-                entity_id: 'update.home_assistant_core_update',
-                state: 'on',
-                attributes: {
-                  title: 'Home Assistant Core',
-                  installed_version: '2026.6.3',
-                  latest_version: '2026.7.1',
-                },
-              },
-            ],
-          }),
-      },
-      true,
-    ),
-  );
+test('cli updates --digest lists tier-sorted top updates and counts the rest', async () => {
+  const states = [
+    { entity_id: 'update.mosquitto_broker', state: 'on', attributes: { installed_version: '6.4', latest_version: '6.5', supported_features: 29 } },
+    { entity_id: 'update.home_assistant_supervisor_update', state: 'on', attributes: { installed_version: '2026.7.0', latest_version: '2026.7.1' } },
+    CORE,
+    { entity_id: 'update.home_assistant_operating_system_update', state: 'on', attributes: { installed_version: '13.0', latest_version: '13.1' } },
+    { entity_id: 'update.frigate', state: 'on', attributes: { installed_version: '1.0', latest_version: '1.1' } },
+  ];
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, withStates(states), true));
   expect(code).toBe(0);
-  expect(out).toBe('[core] Home Assistant Core: 2026.6.3 → 2026.7.1\n');
-  expect(out).not.toContain('ha-update-check findings');
-  expect(out).not.toContain('Updates pending:');
+  const json = JSON.parse(out);
+  expect(json.updates.map((u: { tier: string }) => u.tier)).toEqual(['core', 'os', 'supervisor']);
+  expect(json).toMatchObject({ total: 5, more: 1, hacs_pending: 1 });
 });
 
-test('cli updates --digest with zero updates matches the default (no updates pending) shape', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(dummyConfig, { createClient: async () => fakeClient({ getStates: () => [] }) }, true),
-  );
+test('cli updates --digest with zero updates reports an empty list', async () => {
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, withStates([]), true));
   expect(code).toBe(0);
-  expect(out).toContain('No actionable findings. (no updates pending)');
+  expect(JSON.parse(out)).toMatchObject({ total: 0, updates: [], more: 0, hacs_pending: 0 });
 });
 
-test('cli updates --digest on fetch failure matches the default (skipped:) shape', async () => {
-  const { code, out } = await captureOutput(() =>
-    handleUpdates(
-      dummyConfig,
-      {
-        createClient: async () => {
-          throw new HomeAssistantError('HA unreachable');
-        },
-      },
-      true,
-    ),
-  );
+test('cli updates --digest on fetch failure skips like the default', async () => {
+  const { code, out } = await captureOutput(() => handleUpdates(dummyConfig, unreachable, true));
   expect(code).toBe(0);
-  expect(out).toContain('skipped:');
+  expect(JSON.parse(out)).toMatchObject({ status: 'skipped', reason: 'ha_unreachable' });
 });

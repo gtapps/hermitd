@@ -17,7 +17,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 
-import { isConfigCheckOk, readConfig, removeConfig, validateAndApply } from './apply';
+import { readConfig, removeConfig, validateAndApply } from './apply';
 import {
   currentSessionId,
   slugify,
@@ -27,23 +27,19 @@ import {
   writeMarkdownArtifact,
 } from './artifacts';
 import { auditAutomations, auditScripts } from './audits';
-import { automationDiff, formatAutomationDiff } from './automation-diff';
+import { automationDiff } from './automation-diff';
 import { bootStatus, saveBootPreferences, writeMcpConfig } from './boot';
 import { AppConfig, loadConfig, normalizedContextPath, projectRoot } from './config';
-import { HomeAssistantClient, HomeAssistantError, extractHaErrorMessage } from './ha-api';
+import { HomeAssistantClient, HomeAssistantError, haErrorToken } from './ha-api';
 import { HomeAssistantWsClient } from './ha-ws';
 import { fetchHistorySnapshot } from './history';
-import {
-  computeDegradedDomains,
-  formatIntegrationHealthStdout,
-  writeDegradedDomainsArtifact,
-} from './integration-health';
+import { computeDegradedDomains, writeDegradedDomainsArtifact } from './integration-health';
 import { checkEntity, gateServiceCall, gateStructuralMutation, normalizeEntityIndex } from './policy';
 import type { MutationGate } from './policy';
 import { evaluateYamlPolicy, simulateArtifact } from './simulate';
 import { computeSilenceSummary } from './silence';
 import { captureStates, restoreStates, DEFAULT_DOMAINS } from './snapshot-restore';
-import { collectPendingUpdates, formatUpdatesStdout, formatUpdatesDigest } from './update-check';
+import { collectPendingUpdates, digestUpdates, listUpdates } from './update-check';
 import {
   HELPER_TYPES,
   type WsCommandClient,
@@ -115,6 +111,44 @@ function jsonDumpsCompact(value: unknown): string {
   return `{${entries.join(', ')}}`;
 }
 
+/** Print a failure as `{"error":"<token>[:detail]"}` and return exit 1. */
+function printError(error: string): number {
+  console.log(jsonDumps({ error }, { ensureAscii: false }));
+  return 1;
+}
+
+/** Print a HomeAssistantError as its `{"error"}` token and return exit 1. */
+function printHaError(exc: HomeAssistantError, fallback?: string): number {
+  return printError(haErrorToken(exc, fallback));
+}
+
+/** Print an expected alternative outcome as `{"status","reason",...}` and return exit 0. */
+function printStatus(status: string, reason: string, extra: Record<string, unknown> = {}): number {
+  console.log(jsonDumps({ status, reason, ...extra }, { ensureAscii: false }));
+  return 0;
+}
+
+/** Print a gate refusal. */
+function printBlocked(gate: MutationGate): number {
+  return printStatus('blocked', gate.code ?? 'policy_deny', { detail: gate.reason });
+}
+
+/** Print a scheduled check that could not run. */
+function printSkipped(date: string, reason: string, exc: any): number {
+  return printStatus('skipped', reason, { date, detail: String(exc?.message ?? exc) });
+}
+
+/** Print a config id HA does not know. */
+function printNotFound(configId: string): number {
+  return printStatus('not_found', 'no_config', { config_id: configId });
+}
+
+/** Print a findings payload that a scheduled skill renders, on one line. */
+function printFindings(findings: Record<string, unknown>): number {
+  console.log(jsonDumps(findings, { indent: 0, ensureAscii: false }));
+  return 0;
+}
+
 /** date.today().isoformat() — local date. */
 function todayIso(): string {
   const d = new Date();
@@ -163,16 +197,16 @@ function resolveDeps(overrides: Partial<CliDeps>): CliDeps {
 // ---------------------------------------------------------------------------
 
 class ParserExit extends Error {
-  constructor(readonly code: number) {
+  constructor(readonly code: number, readonly error?: string) {
     super(`parser exit ${code}`);
   }
 }
 
 const TOP_USAGE = 'usage: ha_agent_lab [-h] {boot,ha} ...';
 const BOOT_USAGE = 'usage: ha_agent_lab boot [-h] {status,store,mcp-config} ...';
-function argError(prog: string, usage: string, message: string): never {
-  console.error(`${usage}\n${prog}: error: ${message}`);
-  throw new ParserExit(2);
+/** A malformed command line is a usage failure like any other: one `{"error"}` on stdout, exit 1. */
+function argError(prog: string, message: string): never {
+  throw new ParserExit(1, `usage:${prog}: ${message}`);
 }
 
 function printHelp(text: string): never {
@@ -238,7 +272,7 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
       }
       if (flag.kind === 'store_true') {
         if (inlineValue !== null) {
-          argError(spec.prog, spec.usage, `argument ${token}: ignored explicit argument '${inlineValue}'`);
+          argError(spec.prog, `argument ${token}: ignored explicit argument '${inlineValue}'`);
         }
         flags[token] = true;
         continue;
@@ -250,7 +284,7 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
           values.push(args[++i]!);
         }
         if (values.length === 0) {
-          argError(spec.prog, spec.usage, `argument ${token}: expected at least one argument`);
+          argError(spec.prog, `argument ${token}: expected at least one argument`);
         }
         flags[token] = values;
         continue;
@@ -261,15 +295,15 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
       } else if (i + 1 < args.length) {
         value = args[++i]!;
       } else {
-        argError(spec.prog, spec.usage, `argument ${token}: expected one argument`);
+        argError(spec.prog, `argument ${token}: expected one argument`);
       }
       if (flag.choices && !flag.choices.includes(value)) {
         const choices = flag.choices.map((c) => `'${c}'`).join(', ');
-        argError(spec.prog, spec.usage, `argument ${token}: invalid choice: '${value}' (choose from ${choices})`);
+        argError(spec.prog, `argument ${token}: invalid choice: '${value}' (choose from ${choices})`);
       }
       if (flag.int) {
         if (!/^[+-]?\d+$/.test(value.trim())) {
-          argError(spec.prog, spec.usage, `argument ${token}: invalid int value: '${value}'`);
+          argError(spec.prog, `argument ${token}: invalid int value: '${value}'`);
         }
         flags[token] = parseInt(value.trim(), 10);
       } else {
@@ -283,14 +317,14 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
 
   if (positionals.length < spec.positionals.length) {
     const missing = spec.positionals.slice(positionals.length).join(', ');
-    argError(spec.prog, spec.usage, `the following arguments are required: ${missing}`);
+    argError(spec.prog, `the following arguments are required: ${missing}`);
   }
   return { positionals, flags, extras };
 }
 
 function rejectExtras(extras: string[]): void {
   if (extras.length > 0) {
-    argError('ha_agent_lab', TOP_USAGE, `unrecognized arguments: ${extras.join(' ')}`);
+    argError('ha_agent_lab', `unrecognized arguments: ${extras.join(' ')}`);
   }
 }
 
@@ -355,7 +389,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
     run: async (args, { config }) => {
       const result = writeMcpConfig(config);
       console.log(jsonDumps(result));
-      return result.ok ? 0 : 1;
+      return 'error' in result ? 1 : 0;
     },
   },
   'ha refresh-context': {
@@ -373,7 +407,6 @@ export const COMMANDS: Record<string, CommandRecord> = {
           const [payload, delta] = await refreshContextIncremental(root, client, deps);
           console.log(
             jsonDumps({
-              status: 'ok',
               mode: 'incremental',
               entities: Object.keys(payload.entity_index).length,
               added: delta.added.length,
@@ -386,7 +419,6 @@ export const COMMANDS: Record<string, CommandRecord> = {
           const payload = await deps.refreshContext(root, client);
           console.log(
             jsonDumps({
-              status: 'ok',
               mode: 'full',
               entities: Object.keys(payload.entity_index).length,
               base_url_source: client.baseUrlSource,
@@ -396,8 +428,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
         return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -411,14 +442,14 @@ export const COMMANDS: Record<string, CommandRecord> = {
     help: '',
     run: async (args, { config, root, deps }) => {
       const result = simulateArtifact(root, resolve(args.positionals[0]!));
-      console.log(
-        jsonDumps({
-          valid: result.isValid,
-          missing_entities: result.missingEntities,
-          blocked_reasons: result.blockedReasons,
-        }),
-      );
-      return result.isValid ? 0 : 1;
+      if (result.isValid) {
+        console.log('OK');
+        return 0;
+      }
+      return printStatus('invalid', result.blockedReasons.length > 0 ? 'blocked' : 'missing_entities', {
+        missing_entities: result.missingEntities,
+        blocked_reasons: result.blockedReasons,
+      });
     },
   },
   'ha validate-apply': {
@@ -440,23 +471,29 @@ export const COMMANDS: Record<string, CommandRecord> = {
           resolve(args.positionals[0]!),
           (args.flags['--reload'] as string | undefined) ?? null,
         );
+        const reportPath = relative(root, result.reportPath);
+        if (result.message === 'simulation-failed') {
+          return printStatus('invalid', 'simulation_failed', { report_path: reportPath });
+        }
+        if (result.message === 'reload-blocked') {
+          return printStatus('blocked', 'reload_domain_not_allowed', { report_path: reportPath });
+        }
+        if (!result.ok) return printError(`apply_failed:${result.message}`);
         console.log(
           jsonDumps({
-            ok: result.ok,
             config_id: result.configId,
             creation_attempted: result.creationAttempted,
             creation_ok: result.creationOk,
             reload_attempted: result.reloadAttempted,
             message: result.message,
-            report_path: relative(root, result.reportPath),
+            report_path: reportPath,
             base_url_source: client.baseUrlSource,
           }),
         );
-        return result.ok ? 0 : 1;
+        return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -510,12 +547,11 @@ export const COMMANDS: Record<string, CommandRecord> = {
       try {
         const client = await deps.createClient(config);
         const response = await client.get(args.positionals[0]!);
-        console.log(jsonDumps(response, { ensureAscii: false }));
+        console.log(jsonDumps({ data: response }, { ensureAscii: false }));
         return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.error(`HA error ${exc.statusCode}: ${String(exc.payload).slice(0, 500)}`);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -696,12 +732,16 @@ export const COMMANDS: Record<string, CommandRecord> = {
       try {
         const client = await deps.createClient(config);
         const result = await automationDiff(root, client);
-        console.log(formatAutomationDiff(result));
-        return 0;
+        if (result.baseline) {
+          return printStatus('baseline', 'no_prior_snapshot', { date: todayIso(), tracked: result.tracked });
+        }
+        const changes = (['added', 'removed', 'edited', 'disabled', 'enabled'] as const).flatMap((change) =>
+          result[change].map((item) => ({ change, name: item.friendly_name ?? item.entity_id, id: item.id })),
+        );
+        return printFindings({ date: todayIso(), tracked: result.tracked, changes, untracked: result.untracked.length });
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -736,21 +776,18 @@ export const COMMANDS: Record<string, CommandRecord> = {
         console.log(
           jsonDumps(
             {
-              ok: result.ok,
               name: result.name,
               captured: result.captured,
               entities: result.entities,
               report_path: relative(root, result.reportPath),
-              message: result.message,
             },
             { ensureAscii: false },
           ),
         );
-        return result.ok ? 0 : 1;
+        return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -769,23 +806,22 @@ export const COMMANDS: Record<string, CommandRecord> = {
         const result = await restoreStates(root, client, {
           artifactPath: resolve(args.positionals[0]!),
         });
+        if (result.blocked) {
+          return printStatus('blocked', 'strict_mode', { entities: result.entities, sensitive: result.sensitive });
+        }
+        if (result.empty) return printStatus('empty', 'no_entities');
+        if (!result.ok) return printError(`snapshot_unreadable:${result.reason}`);
         const payload: Record<string, unknown> = {
-          ok: result.ok,
-          blocked: result.blocked,
           applied: result.applied,
           entities: result.entities,
           sensitive: result.sensitive,
-          reason: result.reason,
-          message: result.message,
         };
-        if (result.suggestion) payload.suggestion = result.suggestion;
         if (result.reportPath) payload.report_path = relative(root, result.reportPath);
         console.log(jsonDumps(payload, { ensureAscii: false }));
-        return result.ok ? 0 : 1;
+        return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -880,8 +916,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
     help: `    list-entities       List the entity registry via WebSocket (--registry).`,
     run: async (args, { config, root, deps }) => {
       if (!args.flags['--registry']) {
-        console.log(jsonDumps({ ok: false, message: 'Only registry mode is supported; pass --registry.' }));
-        return 1;
+        return printError('usage:only registry mode is supported; pass --registry');
       }
       return runWsRead(deps, config, listEntities);
     },
@@ -999,8 +1034,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
       if (raw === null) return 1;
       const parsed = parseJsonObject(raw);
       if (!parsed.ok) {
-        console.log(jsonDumps({ ok: false, message: `--categories ${parsed.message}` }));
-        return 1;
+        return printError(`usage:--categories ${parsed.message}`);
       }
       return runWsMutation(deps, config, root, (ws) =>
         updateEntity(root, ws, args.positionals[0]!, { categories: parsed.payload }, 'set-entity-categories'),
@@ -1108,20 +1142,16 @@ export const COMMANDS: Record<string, CommandRecord> = {
       const urlPath = (args.flags['--url-path'] as string | undefined) ?? null;
       const artifactPath = resolve(args.positionals[0]!);
       // Read+parse before opening the WS: a missing/malformed artifact must
-      // surface a clean {ok:false} (not an uncaught throw past runWsMutation's
+      // surface a clean {"error"} (not an uncaught throw past runWsMutation's
       // HomeAssistantError-only catch), and without wasting a WS connection.
       if (!existsSync(artifactPath)) {
-        console.log(jsonDumps({ ok: false, message: `Dashboard artifact not found: ${args.positionals[0]}` }));
-        return 1;
+        return printError(`artifact_not_found:${args.positionals[0]}`);
       }
       let dashboardConfig: unknown;
       try {
         dashboardConfig = parseYaml(readFileSync(artifactPath, 'utf8'));
       } catch (exc) {
-        console.log(
-          jsonDumps({ ok: false, message: `Failed to parse dashboard artifact: ${exc instanceof Error ? exc.message : String(exc)}` }),
-        );
-        return 1;
+        return printError(`invalid_artifact:${exc instanceof Error ? exc.message : String(exc)}`);
       }
       return runWsMutation(deps, config, root, (ws) =>
         saveDashboard(root, ws, urlPath, dashboardConfig),
@@ -1170,19 +1200,17 @@ export const COMMANDS: Record<string, CommandRecord> = {
     run: async (args, { config, root, deps }) => {
       const source = args.positionals[0]!;
       if (source !== '-' && !existsSync(resolve(source))) {
-        console.log(jsonDumps({ ok: false, message: `Template file not found: ${source}` }));
-        return 1;
+        return printError(`template_not_found:${source}`);
       }
       try {
         const client = await deps.createClient(config);
         const template = source === '-' ? await Bun.stdin.text() : readFileSync(resolve(source), 'utf8');
         const rendered = await client.postText('/api/template', { template });
-        console.log(rendered);
+        console.log(jsonDumps({ rendered }, { ensureAscii: false }));
         return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -1200,11 +1228,10 @@ export const COMMANDS: Record<string, CommandRecord> = {
         const client = await deps.createClient(config);
         const result = await client.post('/api/config/core/check_config');
         console.log(jsonDumps(result, { ensureAscii: false }));
-        return isConfigCheckOk(result) ? 0 : 1;
+        return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -1264,8 +1291,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
         if (raw === undefined) continue;
         const num = Number(raw);
         if (!Number.isFinite(num)) {
-          console.log(jsonDumps({ ok: false, message: `${flag} must be a number, got: '${raw}'` }));
-          return 1;
+          return printError(`usage:${flag} must be a number, got: '${raw}'`);
         }
         fields[key] = num;
       }
@@ -1280,8 +1306,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
       setIfPresent('--country', 'country');
 
       if (Object.keys(fields).length === 0) {
-        console.log(jsonDumps({ ok: false, message: 'At least one config field flag is required.' }));
-        return 1;
+        return printError('usage:at least one config field flag is required');
       }
       return runWsMutation(deps, config, root, (ws) =>
         setCoreConfig(root, ws, fields),
@@ -1300,12 +1325,11 @@ export const COMMANDS: Record<string, CommandRecord> = {
     run: async (args, { config, root, deps }) => {
       try {
         const client = await deps.createClient(config);
-        console.log(await client.getText('/api/error_log'));
+        console.log(jsonDumps({ log: await client.getText('/api/error_log') }, { ensureAscii: false }));
         return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -1326,13 +1350,12 @@ export const COMMANDS: Record<string, CommandRecord> = {
         const windowStart = daysAgo(windowDays);
         const entity = args.flags['--entity'] as string | undefined;
         const path = `/api/logbook/${encodeURIComponent(isoUtc(windowStart))}${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`;
-        const result = await client.get(path);
-        console.log(jsonDumps(result, { ensureAscii: false }));
+        const entries = await client.get(path);
+        console.log(jsonDumps({ entries }, { ensureAscii: false }));
         return 0;
       } catch (exc) {
         if (!(exc instanceof HomeAssistantError)) throw exc;
-        console.log(exc.message);
-        return 1;
+        return printHaError(exc);
       }
     },
   },
@@ -1648,8 +1671,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
     run: async (args, { config, root, deps }) => {
       const parsed = parseJsonObject(args.positionals[0]!);
       if (!parsed.ok) {
-        console.log(jsonDumps({ ok: false, message: `energy prefs JSON ${parsed.message}` }));
-        return 1;
+        return printError(`usage:energy prefs JSON ${parsed.message}`);
       }
       return runWsMutation(deps, config, root, (ws) =>
         setEnergyPrefs(root, ws, parsed.payload),
@@ -1752,13 +1774,12 @@ interface ParsedArgs {
 export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '-h' || argv[0] === '--help') printHelp(TOP_HELP);
   if (argv.length === 0) {
-    argError('ha_agent_lab', TOP_USAGE, 'the following arguments are required: command');
+    argError('ha_agent_lab', 'the following arguments are required: command');
   }
   const command = argv[0]!;
   if (command !== 'boot' && command !== 'ha') {
     argError(
       'ha_agent_lab',
-      TOP_USAGE,
       `argument command: invalid choice: '${command}' (choose from 'boot', 'ha')`,
     );
   }
@@ -1768,17 +1789,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
     printHelp(command === 'boot' ? BOOT_HELP : HA_HELP);
   }
   const subProg = `ha_agent_lab ${command}`;
-  const subUsage = command === 'boot' ? BOOT_USAGE : HA_USAGE;
   const subDest = command === 'boot' ? 'boot_command' : 'ha_command';
   if (rest.length === 0) {
-    argError(subProg, subUsage, `the following arguments are required: ${subDest}`);
+    argError(subProg, `the following arguments are required: ${subDest}`);
   }
   const sub = rest[0]!;
   const validSubs = command === 'boot' ? BOOT_COMMANDS : HA_COMMANDS;
   const record = COMMANDS[`${command} ${sub}`];
   if (!record) {
     const choices = validSubs.map((c) => `'${c}'`).join(', ');
-    argError(subProg, subUsage, `argument ${subDest}: invalid choice: '${sub}' (choose from ${choices})`);
+    argError(subProg, `argument ${subDest}: invalid choice: '${sub}' (choose from ${choices})`);
   }
 
   const leaf = parseLeaf(record.spec, rest.slice(1));
@@ -1803,12 +1823,10 @@ async function handleAudit(
       domain === 'automation'
         ? await auditAutomations(root, client)
         : await auditScripts(root, client);
-    printSafetyAuditSummary(summary, domain);
-    return 0;
+    return printFindings(safetyAuditFindings(summary, domain));
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
 }
 
@@ -1821,14 +1839,16 @@ async function handleListDomain(
   try {
     const client = await deps.createClient(config);
     const items = await listDomain(client, domain);
-    console.log(jsonDumps(items, { ensureAscii: false }));
+    console.log(jsonDumps({ [`${domain}s`]: items }, { ensureAscii: false }));
     return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
 }
+
+/** HA's message for a config id it does not have (a 400, not a 404). */
+const RESOURCE_NOT_FOUND = 'Resource not found';
 
 /** Shared body for `delete-automation` / `delete-script` / `delete-scene`. */
 async function handleDeleteConfig(
@@ -1841,20 +1861,15 @@ async function handleDeleteConfig(
   try {
     const client = await deps.createClient(config);
     const result = await removeConfig(root, client, domain, configId);
-    console.log(
-      jsonDumps({
-        ok: result.ok,
-        domain: result.domain,
-        config_id: result.configId,
-        message: result.message,
-        report_path: relative(root, result.reportPath),
-      }),
-    );
-    return result.ok ? 0 : 1;
+    if (result.ok) {
+      console.log('OK');
+      return 0;
+    }
+    if (result.message === RESOURCE_NOT_FOUND) return printNotFound(result.configId);
+    return printError(`delete_failed:${result.message}`);
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
 }
 
@@ -1868,23 +1883,22 @@ async function handleReadConfig(
   try {
     const client = await deps.createClient(config);
     const result = await readConfig(client, domain, configId);
+    if (result.message === RESOURCE_NOT_FOUND) return printNotFound(result.configId);
+    if (!result.ok) return printError(`read_failed:${result.message}`);
     console.log(
       jsonDumps(
         {
-          ok: result.ok,
           domain: result.domain,
           config_id: result.configId,
           config: result.config,
-          message: result.message,
         },
         { ensureAscii: false },
       ),
     );
-    return result.ok ? 0 : 1;
+    return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
 }
 
@@ -1895,7 +1909,7 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
   try {
     args = parseArgs(argv);
   } catch (exc) {
-    if (exc instanceof ParserExit) return exc.code;
+    if (exc instanceof ParserExit) return exc.error === undefined ? exc.code : printError(exc.error);
     throw exc;
   }
 
@@ -1905,8 +1919,7 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
   const record = COMMANDS[`${args.command} ${args.sub}`];
   if (!record) {
     // Unreachable: parseArgs rejects any key this table does not carry.
-    console.error(`${TOP_USAGE}\nha_agent_lab: error: Unsupported command.`);
-    return 2;
+    return printError('usage:ha_agent_lab: unsupported command');
   }
   return record.run(args, { config, root, deps });
 }
@@ -1914,18 +1927,18 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
 /** A value flag the handler needs but argparse treats as optional. Prints and returns null when absent. */
 function requireFlag(value: unknown, name: string): string | null {
   if (typeof value === 'string') return value;
-  console.log(jsonDumps({ ok: false, message: `${name} is required.` }));
+  printError(`usage:${name} is required`);
   return null;
 }
 
 /** A plus (nargs='+') flag the handler needs but argparse treats as optional. Prints and returns null when absent. */
 function requirePlusFlag(value: unknown, name: string): string[] | null {
   if (Array.isArray(value)) return value as string[];
-  console.log(jsonDumps({ ok: false, message: `${name} is required.` }));
+  printError(`usage:${name} is required`);
   return null;
 }
 
-/** Acquire a WS client, run a read, print {ok,data,message}, then close. */
+/** Acquire a WS client, run a read, print {data[,unavailable]} or {error}, then close. */
 async function runWsRead(
   deps: CliDeps,
   config: AppConfig,
@@ -1936,17 +1949,18 @@ async function runWsRead(
     ws = await deps.createWsClient(config);
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
   try {
     const result = await run(ws);
-    console.log(jsonDumps({ ok: result.ok, data: result.data, message: result.message }, { ensureAscii: false }));
-    return result.ok ? 0 : 1;
+    if (!result.ok) return printError(result.error);
+    const payload: Record<string, unknown> = { data: result.data };
+    if (result.unavailable) payload.unavailable = result.unavailable;
+    console.log(jsonDumps(payload, { ensureAscii: false }));
+    return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc, 'ha_command_failed');
   } finally {
     ws.close();
   }
@@ -1964,48 +1978,28 @@ async function runWsMutation(
   run: (ws: WsCommandClient) => Promise<WsMutationResult>,
 ): Promise<number> {
   const gate = gateStructuralMutation(root);
-  if (gate.decision === 'deny') {
-    console.log(
-      jsonDumps({
-        ok: false,
-        blocked: true,
-        mode: gate.mode,
-        data: null,
-        message: gate.reason,
-        report_path: null,
-      }),
-    );
-    return 1;
-  }
+  if (gate.decision === 'deny') return printBlocked(gate);
 
   let ws: WsCommandClient;
   try {
     ws = await deps.createWsClient(config);
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc);
   }
   try {
     const r = await run(ws);
+    if (!r.ok) return printError(r.error);
     console.log(
       jsonDumps(
-        {
-          ok: r.ok,
-          blocked: false,
-          mode: gate.mode,
-          data: r.data,
-          message: r.message,
-          report_path: r.reportPath ? relative(root, r.reportPath) : null,
-        },
+        { data: r.data, report_path: r.reportPath ? relative(root, r.reportPath) : null },
         { ensureAscii: false },
       ),
     );
-    return r.ok ? 0 : 1;
+    return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(exc.message);
-    return 1;
+    return printHaError(exc, 'ha_command_failed');
   } finally {
     ws.close();
   }
@@ -2028,8 +2022,7 @@ async function handleFetchHistory(
     client = await deps.createClient(config);
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.error(exc.message);
-    return 1;
+    return printHaError(exc);
   }
 
   const snapshotPath = normalizedContextPath(root);
@@ -2038,8 +2031,7 @@ async function handleFetchHistory(
       await deps.refreshContext(root, client);
     } catch (exc) {
       if (!(exc instanceof HomeAssistantError)) throw exc;
-      console.error(exc.message);
-      return 1;
+      return printHaError(exc);
     }
   }
 
@@ -2053,13 +2045,12 @@ async function handleFetchHistory(
     });
   } catch (exc: any) {
     // Python catches (HomeAssistantError, OSError, json.JSONDecodeError).
-    console.error(String(exc?.message ?? exc));
-    return 1;
+    if (exc instanceof HomeAssistantError) return printHaError(exc);
+    return printError(`history_failed:${String(exc?.message ?? exc)}`);
   }
 
   console.log(
     jsonDumpsCompact({
-      status: 'ok',
       entities: payload.requested_entities.length,
       events: payload.event_total,
       window_days: windowDays,
@@ -2075,7 +2066,6 @@ export async function handleIntegrationHealth(
 ): Promise<number> {
   const deps = resolveDeps(overrides);
   const today = todayIso();
-  const header = `ha-integration-health findings — ${today}`;
   const snapshotPath = normalizedContextPath(root);
 
   let stale = false;
@@ -2091,10 +2081,7 @@ export async function handleIntegrationHealth(
       const client = await deps.createClient(config);
       await deps.refreshContext(root, client);
     } catch (exc: any) {
-      console.log(
-        `${header}\nNo actionable findings. (skipped: snapshot stale, refresh failed — ${exc?.message ?? exc})`,
-      );
-      return 0;
+      return printSkipped(today, 'refresh_failed', exc);
     }
   }
 
@@ -2102,14 +2089,19 @@ export async function handleIntegrationHealth(
   try {
     normalized = JSON.parse(readFileSync(snapshotPath, 'utf8'));
   } catch (exc: any) {
-    console.log(`${header}\nNo actionable findings. (skipped: snapshot unreadable — ${exc?.message ?? exc})`);
-    return 0;
+    return printSkipped(today, 'snapshot_unreadable', exc);
   }
 
   const payload = computeDegradedDomains(normalized);
   writeDegradedDomainsArtifact(root, payload);
-  console.log(formatIntegrationHealthStdout(payload, today));
-  return 0;
+  const degraded = (payload.degraded_entity_domains as Array<Record<string, any>>).map((entry) => ({
+    domain: entry.domain,
+    unavailable: entry.unavailable,
+    total: entry.total,
+    // round(ratio * 100, 1)
+    percent: Math.round(entry.ratio * 1000) / 10,
+  }));
+  return printFindings({ date: today, scanned_domains: payload.scanned_domains, degraded });
 }
 
 export async function handleUpdates(
@@ -2119,24 +2111,26 @@ export async function handleUpdates(
 ): Promise<number> {
   const deps = resolveDeps(overrides);
   const today = todayIso();
-  const header = `ha-update-check findings — ${today}`;
   let states: Array<Record<string, any>>;
   try {
     const client = await deps.createClient(config);
     states = await client.getStates();
   } catch (exc: any) {
-    console.log(`${header}\nNo actionable findings. (skipped: ${exc?.message ?? exc})`);
-    return 0;
+    const reason = exc instanceof HomeAssistantError && exc.statusCode !== null ? `ha_http_${exc.statusCode}` : 'ha_unreachable';
+    return printSkipped(today, reason, exc);
   }
-  const updates = collectPendingUpdates(states);
-  // formatUpdatesDigest has no "no updates" message of its own; fall back to
-  // formatUpdatesStdout so both modes surface the same (no updates pending) text.
-  if (digest && updates.length > 0) {
-    console.log(formatUpdatesDigest(updates));
-  } else {
-    console.log(formatUpdatesStdout(updates, today));
-  }
-  return 0;
+  const pending = collectPendingUpdates(states);
+  const view = digest ? digestUpdates(pending) : listUpdates(pending);
+  const updates = view.updates.map((u) => ({
+    tier: u.tier,
+    title: u.title,
+    installed_version: u.installed_version,
+    latest_version: u.latest_version,
+    ...(digest ? {} : { release_url: u.release_url }),
+  }));
+  const payload: Record<string, unknown> = { date: today, total: pending.length, updates, hacs_pending: view.hacs };
+  if (digest) payload.more = view.more;
+  return printFindings(payload);
 }
 
 async function listDomain(client: CliClient, domain: string): Promise<Array<Record<string, any>>> {
@@ -2162,27 +2156,18 @@ async function listDomain(client: CliClient, domain: string): Promise<Array<Reco
   return items;
 }
 
-function printSafetyAuditSummary(summary: Record<string, any>, domain = 'automation'): void {
+function safetyAuditFindings(summary: Record<string, any>, domain = 'automation'): Record<string, unknown> {
   const violations: Array<Record<string, any>> = summary.violations ?? [];
-  const acknowledged: Array<Record<string, any>> = summary.acknowledged ?? [];
-  const total: number = summary[`total_${domain}s`] ?? 0;
-  const unmanaged: string[] = summary.unmanaged ?? [];
-  const fetchFailures: string[] = summary.fetch_failures ?? [];
-  const label = domain === 'automation' ? 'ha-safety-audit' : `ha-${domain}-safety-audit`;
-  console.log(`${label} findings — ${todayIso()}`);
-  if (violations.length === 0) {
-    console.log(`No actionable findings. (${total} ${domain}s scanned)`);
-  } else {
-    console.log(`Policy violations: ${violations.length}`);
-    for (const v of violations) {
-      const reasons = (v.reasons ?? []).join('; ');
-      console.log(`- ${v.alias} (\`${v.id}\`): ${reasons}`);
-    }
-    console.log(`No action needed: ${summary.passed} ${domain}s passed`);
-  }
-  if (acknowledged.length > 0) console.log(`Acknowledged (suppressed): ${acknowledged.length}`);
-  if (unmanaged.length > 0) console.log(`Skipped (no numeric id): ${unmanaged.length}`);
-  if (fetchFailures.length > 0) console.log(`Skipped (404 on config fetch): ${fetchFailures.length}`);
+  return {
+    date: todayIso(),
+    domain,
+    scanned: summary[`total_${domain}s`] ?? 0,
+    passed: summary.passed ?? 0,
+    violations: violations.map((v) => ({ alias: v.alias, id: v.id, reasons: v.reasons ?? [] })),
+    acknowledged: (summary.acknowledged ?? []).length,
+    unmanaged: (summary.unmanaged ?? []).length,
+    fetch_failures: (summary.fetch_failures ?? []).length,
+  };
 }
 
 interface GatedRestReportSpec {
@@ -2223,9 +2208,9 @@ function writeGatedRestReport(root: string, spec: GatedRestReportSpec, id: strin
 
 /**
  * Shared driver for the two REST-based gated writes (call-service, reload-entry):
- * emit the blocked JSON if the gate refuses, otherwise run the call, write an
- * audit report, and emit the standard {ok,blocked,mode,data,
- * message,report_path} envelope — mirrors runWsMutation for the WS path.
+ * emit the blocked status if the gate refuses, otherwise run the call, write an
+ * audit report, and emit {data,report_path} or {error}: mirrors runWsMutation
+ * for the WS path.
  */
 async function runGatedRestWrite(
   deps: CliDeps,
@@ -2235,50 +2220,18 @@ async function runGatedRestWrite(
   doCall: (client: CliClient) => Promise<unknown>,
   writeReport: (result: unknown) => string,
 ): Promise<number> {
-  if (gate.decision === 'deny') {
-    console.log(
-      jsonDumps({
-        ok: false,
-        blocked: true,
-        mode: gate.mode,
-        data: null,
-        message: gate.reason,
-        report_path: null,
-      }),
-    );
-    return 1;
-  }
+  if (gate.decision === 'deny') return printBlocked(gate);
   try {
     const client = await deps.createClient(config);
     const result = await doCall(client);
     const reportPath = writeReport(result);
     console.log(
-      jsonDumps(
-        {
-          ok: true,
-          blocked: false,
-          mode: gate.mode,
-          data: result,
-          message: 'ok',
-          report_path: relative(root, reportPath),
-        },
-        { ensureAscii: false },
-      ),
+      jsonDumps({ data: result, report_path: relative(root, reportPath) }, { ensureAscii: false }),
     );
     return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(
-      jsonDumps({
-        ok: false,
-        blocked: false,
-        mode: gate.mode,
-        data: null,
-        message: extractHaErrorMessage(exc),
-        report_path: null,
-      }),
-    );
-    return 1;
+    return printHaError(exc);
   }
 }
 
@@ -2291,8 +2244,7 @@ async function handleCallService(
 ): Promise<number> {
   const dot = target.indexOf('.');
   if (dot === -1) {
-    console.log(jsonDumps({ ok: false, message: `domain.service must contain a '.', got: '${target}'` }));
-    return 2;
+    return printError(`usage:domain.service must contain a '.', got: '${target}'`);
   }
   const domain = target.slice(0, dot);
   const service = target.slice(dot + 1);
@@ -2301,8 +2253,7 @@ async function handleCallService(
   if (rawData !== undefined) {
     const parsedData = parseJsonObject(rawData);
     if (!parsedData.ok) {
-      console.log(jsonDumps({ ok: false, message: `--data ${parsedData.message}` }));
-      return 1;
+      return printError(`usage:--data ${parsedData.message}`);
     }
     data = parsedData.payload;
   }
@@ -2341,28 +2292,16 @@ async function handleTriggerAutomation(
   deps: CliDeps,
 ): Promise<number> {
   if (!automationId.startsWith('automation.')) {
-    console.log(
-      jsonDumps(
-        { status: 'error', message: `automation_id must start with 'automation.', got: '${automationId}'` },
-        { ensureAscii: false },
-      ),
-    );
-    return 2;
+    return printError(`usage:automation_id must start with 'automation.', got: '${automationId}'`);
   }
   try {
     const client = await deps.createClient(config);
     await client.callService('automation', 'trigger', { entity_id: automationId });
-    console.log(jsonDumps({ status: 'ok', automation_id: automationId }, { ensureAscii: false }));
+    console.log('OK');
     return 0;
   } catch (exc) {
     if (!(exc instanceof HomeAssistantError)) throw exc;
-    console.log(
-      jsonDumps(
-        { status: 'error', message: extractHaErrorMessage(exc) },
-        { ensureAscii: false },
-      ),
-    );
-    return 1;
+    return printHaError(exc);
   }
 }
 
@@ -2378,11 +2317,10 @@ function handlePolicyCheck(target: string, root: string): number {
         reasons: decision.reasons,
       }),
     );
-    return decision.decision === 'deny' ? 1 : 0;
+    return 0;
   }
-  const result = checkEntity(target);
-  console.log(jsonDumps(result));
-  return result.sensitive ? 1 : 0;
+  console.log(jsonDumps(checkEntity(target)));
+  return 0;
 }
 
 // ---------------------------------------------------------------------------

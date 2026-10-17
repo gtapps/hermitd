@@ -141,13 +141,15 @@ export interface MutationGate {
   decision: PermissionDecision;
   mode: string;
   reason: string;
+  /** snake_case token naming why the gate denied; set only on deny. */
+  code?: string;
 }
 
 /** Structural writes are denied under strict; Claude Code asks before execution otherwise. */
 export function gateStructuralMutation(root?: string | null): MutationGate {
   const mode = safetyMode(root);
   return mode === 'strict'
-    ? { decision: PermissionDecision.DENY, mode, reason: 'Blocked under strict ha_safety_mode; surface this as a proposal for the operator to approve.' }
+    ? { decision: PermissionDecision.DENY, mode, code: 'strict_mode', reason: 'Blocked under strict ha_safety_mode; surface this as a proposal for the operator to approve.' }
     : { decision: PermissionDecision.ASK, mode, reason: 'Structural mutation requires native approval.' };
 }
 
@@ -286,6 +288,7 @@ export function gateServiceCall(
     return {
       decision: PermissionDecision.DENY,
       mode,
+      code: 'malformed_target',
       reason:
         'Cannot verify target safety: malformed targeting field ' +
         '(expected a string or array of strings). Use a proposal instead.',
@@ -297,6 +300,7 @@ export function gateServiceCall(
     return {
       decision: PermissionDecision.DENY,
       mode,
+      code: 'unresolvable_target',
       reason:
         'Cannot verify target safety: no resolvable entity IDs found ' +
         '(area_id/floor_id/label_id/device_id targets are not evaluated). Use a proposal instead.',
@@ -314,11 +318,13 @@ export function gateServiceCall(
   if (decision.decision === PermissionDecision.ALLOW && domain === 'update') {
     return updateAutoApply(root)
       ? { decision: PermissionDecision.ASK, mode, reason: 'Update installation requires native approval.' }
-      : { decision: PermissionDecision.DENY, mode, reason: 'update domain actuation requires ha_update_auto_apply to be enabled; surface this as a proposal for the operator to approve.' };
+      : { decision: PermissionDecision.DENY, mode, code: 'update_auto_apply_disabled', reason: 'update domain actuation requires ha_update_auto_apply to be enabled; surface this as a proposal for the operator to approve.' };
   }
   return {
     decision: decision.decision,
     mode,
+    // A sensitive reference denies only under strict; ask mode asks instead.
+    ...(decision.decision === PermissionDecision.DENY ? { code: 'strict_mode' } : {}),
     reason: decision.decision === PermissionDecision.ALLOW ? 'ok' : decision.reasons.join('; '),
   };
 }

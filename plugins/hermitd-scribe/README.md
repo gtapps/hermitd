@@ -81,13 +81,18 @@ The cleaned title and body are shown to the operator before filing as a single m
 
 ## Errors
 
+`file-issue.ts` prints one JSON object per run; a failure is `{"error":"<token>[:detail]"}` with exit 1.
+
 | Error | Cause |
 |-------|-------|
-| `HERMIT_GH_APP_KEY_FILE='...' does not exist` | Key file path wrong or missing — check `.env` |
-| `GH 401: Bad credentials` | Wrong App ID, install ID, or key file |
-| `GH 404` | App not installed on target repo, or repo name typo |
-| `GH 422` | Empty title or GitHub validation error |
-| `HERMIT_GH_REPO must be "owner/repo"` | Malformed repo path (more than one `/`) |
+| `missing_env:<NAME>` | Required env var not set; check `.env` |
+| `missing_key_file:<path>` | Key file path wrong or missing; check `.env` |
+| `gh_401:Bad credentials` | Wrong App ID, install ID, or key file |
+| `gh_404:...` | App not installed on target repo, or repo name typo |
+| `gh_422:...` | Empty title or GitHub validation error |
+| `invalid_repo:<value>` | Malformed `HERMIT_GH_REPO` (not `owner/repo`) |
+| `proxy_refused:...` / `proxy_unreachable:...` | Request never reached GitHub; check `HTTPS_PROXY` |
+| `no_html_url` | Nothing was filed; `HERMIT_GH_REPO` likely names a renamed repository |
 
 ## Safety
 

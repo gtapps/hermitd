@@ -307,6 +307,14 @@ export function extractHaErrorMessage(exc: HomeAssistantError): string {
   return exc.message;
 }
 
+/** The `{"error"}` token for a HomeAssistantError: `ha_http_<status>` when HA
+ *  answered, `fallback` when it did not, with HA's message as the detail. */
+export function haErrorToken(exc: HomeAssistantError, fallback = 'ha_unreachable'): string {
+  return exc.statusCode === null
+    ? `${fallback}:${exc.message}`
+    : `ha_http_${exc.statusCode}:${extractHaErrorMessage(exc)}`;
+}
+
 export async function probeHomeAssistantUrl(
   baseUrl: string,
   token: string,

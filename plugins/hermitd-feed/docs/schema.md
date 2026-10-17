@@ -90,8 +90,8 @@ sources_used, sources_skipped, sources_quiet, fetch_log`.
 `source-health` and the weekly source-reliability signal:
 
 - **`sources_skipped`** — the fetch itself FAILED: network error, Chrome unavailable/down, or
-  a fetch script exited non-zero (e.g. `reddit-fetch.ts` exit 1). A reliability signal —
-  repeated skips mean the source is broken.
+  a fetch script reported the source unavailable (e.g. `reddit-fetch.ts` `status: "unavailable"`).
+  A reliability signal: repeated skips mean the source is broken.
 - **`sources_quiet`** — the source fetched cleanly but contributed 0 items worth including (a
   quiet day). NOT a reliability signal — a quiet day must never count against a source.
 
@@ -200,7 +200,8 @@ entirely, → `sources_skipped`; `status: "ok"` with empty `items[]` → `source
 scoring is also `sources_quiet` per §2.
 `feed-brief` Phase 1 first verifies the file with `scripts/source-fetch-result.ts verify`
 using the ID it generated before dispatch. The helper reads once and prints the accepted
-JSON only when the top-level object has the matching `run_id` and a `sources` array.
+JSON only when the top-level object has the matching `run_id` and a `sources` array; otherwise
+it prints `{"status":"rejected","reason":"missing_output|invalid_payload|run_id_mismatch"}`.
 The caller reconciles that returned payload, not a second file read or the agent's reply.
 Run ID generation or verification failure sends every web/RSS source to `sources_skipped`,
 then Phase 2 continues without redispatch. Run ID generation deletes the previous output

@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-fitness:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade-core-package` / `upgrade-core-applied`** → relay the `remedy` string verbatim to the operator and stop.
+- **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
   > "hermitd-fitness {self_version} is already installed. Skip to Step 7 to re-verify the installation, or reply 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 7; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`ok: false`** → relay `message` and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ---
 
@@ -69,7 +69,7 @@ Run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/fitness-lab.ts env-check
 ```
 
-It prints `{"ok": ..., "missing": [...]}` with key names only, never values. A key counts as missing when it is absent, empty, or still `replace_me`. If `missing` is non-empty, report those names and loop back to the `AskUserQuestion` above. Do not proceed until `ok` is `true`.
+It prints `OK` when every key is set, or `{"status":"missing_keys","missing":[...]}` with key names only, never values. A key counts as missing when it is absent, empty, or still `replace_me`. On `missing_keys`, report those names and loop back to the `AskUserQuestion` above. Do not proceed until it prints `OK`.
 
 ---
 
@@ -95,7 +95,8 @@ It reads `.env` itself, so the credentials never enter the conversation. Do not 
 - `action: "replaced"` → an old entry with `${...}` placeholders was rewritten with literal values (Claude Code passes MCP `env` blocks literally; it does not expand shell variable syntax).
 - `action: "updated"` → an existing literal entry had different credentials than `.env`; only the four credential values were refreshed.
 - `action: "skipped"` → the existing `strava` entry already matches `.env`.
-- `ok: false` → relay `missing` (key names) or `message`, go back to Step 2, then re-run.
+- `status: "missing_keys"` → relay `missing` (key names), go back to Step 2, then re-run.
+- `{"error":"invalid_mcp_json"}` (exit 1) → `.mcp.json` is not a JSON object with an `mcpServers` object. Ask the operator to fix or remove it, then re-run.
 
 The entry it writes has this shape:
 
@@ -143,6 +144,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-fitness
 ```
+
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 It appends the `<!-- hermitd-fitness: Fitness Workflow -->` block when the marker is absent (creating `target_file` if needed) and skips when it is already present; `hermit-evolve` handles block replacement on upgrade.
 
@@ -239,7 +242,7 @@ Write the updated `config.json` using Write tool (full file replacement to ensur
 
 Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
 
-Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`.
+Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. Name any `deny_conflicts` it prints in the final report. On `error`, relay it and stop.
 
 ## Step 8 — Final report
 

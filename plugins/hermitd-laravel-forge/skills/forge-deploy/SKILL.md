@@ -19,13 +19,11 @@ php ${CLAUDE_PLUGIN_ROOT}/php/forge.php preview-deploy <server> <site>
 
 Resolves `<server>` and `<site>` to their canonical SDK records and prints:
 
-```
---- Deploy preview (no action taken) ---
-Server: prod-web-01 (ID: 12345, IP: 1.2.3.4)
-Site:   myapp.com (ID: 67890)
+```json
+{"server":{"id":12345,"name":"prod-web-01","ip_address":"1.2.3.4"},"site":{"id":67890,"name":"myapp.com"}}
 ```
 
-Exit 0. No network write.
+No network write. A `status` of `no_match` or `ambiguous` instead lists `choices`: ask the operator which one they meant.
 
 ### Step 2 — Relay canonical target to operator
 
@@ -39,18 +37,17 @@ php ${CLAUDE_PLUGIN_ROOT}/php/forge.php deploy <server> <site>
 
 This triggers the deployment and returns immediately (no blocking wait):
 
-```
-Deployment started: deploy-id=991 server-id=12345 site-id=67890 status=queued
-Watch with: forge.php deploy-watch 12345 67890 991
+```json
+{"deploy_id":991,"server_id":12345,"site_id":67890,"deploy_status":"queued"}
 ```
 
-Capture the canonical `deploy-id`, `server-id`, and `site-id` — Step 4 needs them.
+Capture `deploy_id`, `server_id`, and `site_id`: Step 4 needs them.
 
 ### Step 4 — Watch via the hermit watch registry (non-blocking)
 
 Do **not** poll in a foreground Bash call: a real deploy can outlast the Bash tool timeout, which would kill the wait and skip the incident. Arm a hermit watch instead: it runs detached, notifies you on each status change and on the terminal state at zero token cost while quiet, and is tracked in `monitors.runtime.json` (visible via `/hermitd:watch status`, cancellable via `/hermitd:watch stop`, and cleaned up when the watch finishes or is stopped).
 
-**Requires a running resident.** If the resident is unavailable, run `deploy-status` manually.
+**Requires a running resident.** If the resident is unavailable, run `deploy-status <server-id> <site-id> <deploy-id>` manually; it prints `{"deploy_status":"..."}`.
 
 Resolve `${CLAUDE_PLUGIN_ROOT}` to its **absolute path now** (at skill-execution time): the variable is NOT available inside the watch subprocess. Then arm the watch by invoking `/hermitd:watch` with this command (substitute the absolute path and the three IDs):
 
@@ -80,7 +77,7 @@ Scrubbing happens here, in this step — never in the watch command. The watcher
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php deploy-history <server> <site>
 ```
 
-Lists recent deployments with ID, status, and commit message.
+Prints `{"deployments":[...]}`, each entry with `id`, `status`, and `commit` (the message, truncated).
 
 ## Fetch a specific deployment log
 
@@ -130,6 +127,6 @@ tags: [deploy, failure, <site-name>]
 
 ## Notes
 
-- `<server>` and `<site>` accept name, hostname, URL hostname, or numeric ID. Ambiguous names are rejected.
+- `<server>` and `<site>` accept name, hostname, URL hostname, or numeric ID. An unmatched or ambiguous name returns `status` `no_match` or `ambiguous` with `choices`, and nothing runs.
 - Claude Code requests native approval before deploy and reboot execution.
 - For reading logs without a deploy action, use `/hermitd-laravel-forge:forge-logs`.

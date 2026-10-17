@@ -23,7 +23,9 @@ function run(target: string) {
 for (const scope of ['settings.json', 'settings.local.json']) {
   test(`installs publication asks in a new project ${scope}`, () => {
     const target = join(fixture(), '.claude', scope);
-    expect(run(target).exitCode).toBe(0);
+    const result = run(target);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toBe('OK\n');
     expect(JSON.parse(readFileSync(target, 'utf8'))).toEqual({ permissions: { ask: rules } });
   });
 
@@ -49,16 +51,28 @@ for (const scope of ['settings.json', 'settings.local.json']) {
 
 test('invalid settings remain untouched', () => {
   const target = join(fixture(), '.claude/settings.json');
-  for (const original of ['{bad', 'null', '[]', '{"permissions":[]}', '{"permissions":{"ask":"bad"}}', '{"permissions":{"deny":[3]}}']) {
+  const cases: [string, string][] = [
+    ['{bad', 'invalid_settings'],
+    ['null', 'invalid_settings'],
+    ['[]', 'invalid_settings'],
+    ['{"permissions":[]}', 'invalid_permissions'],
+    ['{"permissions":{"ask":"bad"}}', 'invalid_permissions:ask'],
+    ['{"permissions":{"deny":[3]}}', 'invalid_permissions:deny'],
+  ];
+  for (const [original, error] of cases) {
     writeFileSync(target, original);
-    expect(run(target).exitCode).not.toBe(0);
+    const result = run(target);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ error });
     expect(readFileSync(target, 'utf8')).toBe(original);
   }
 });
 
 test('refuses paths outside project .claude settings', () => {
   const root = fixture();
-  for (const target of [join(root, 'settings.json'), join(root, '.claude/config.json')]) {
-    expect(run(target).exitCode).not.toBe(0);
+  for (const [target, error] of [[join(root, 'settings.json'), 'not_project_settings'], [join(root, '.claude/config.json'), 'usage']]) {
+    const result = run(target);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ error });
   }
 });

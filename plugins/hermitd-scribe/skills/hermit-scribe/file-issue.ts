@@ -6,6 +6,14 @@ import path from "node:path";
 
 type Json = any;
 
+// A failure whose message is already the `{"error"}` token; anything else is
+// reported as `failed:<message>`.
+class Fail extends Error {}
+
+function print(data: Json) {
+  process.stdout.write(JSON.stringify(data) + "\n");
+}
+
 function b64url(input: Buffer | string): string {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
   return buf.toString("base64url");
@@ -43,23 +51,23 @@ async function ghRequest(method: string, path: string, auth: string, body?: Json
     },
     body: data,
   }).catch((err) => {
-    throw proxied ? new Error(`Proxy error: ${err.message} (check HTTPS_PROXY)`) : err;
+    throw proxied ? new Fail(`proxy_unreachable:${err.message}`) : err;
   });
   if (res.status >= 400 && proxied && !res.headers.has("x-github-request-id")) {
     const status = `${res.status} ${res.statusText}`.trimEnd();
-    throw new Error(`Proxy ${status}: request did not reach GitHub (check HTTPS_PROXY)`);
+    throw new Fail(`proxy_refused:${status}`);
   }
   const raw = await res.text();
   let json: Json;
   try { json = JSON.parse(raw); } catch { json = { message: raw }; }
-  if (res.status >= 400) throw new Error(`GH ${res.status}: ${json.message || raw}`);
+  if (res.status >= 400) throw new Fail(`gh_${res.status}:${json.message || raw}`);
   return json;
 }
 
 // A 301 on a renamed repo turns the POST into a GET that returns 2xx, so a
 // missing html_url is the only sign nothing was written.
 function requireUrl(res: Json): string {
-  if (!res?.html_url) throw new Error("GitHub returned no html_url (check HERMIT_GH_REPO)");
+  if (!res?.html_url) throw new Fail("no_html_url");
   return res.html_url;
 }
 
@@ -76,17 +84,11 @@ function loadEnv(): Json {
     ["HERMIT_GH_APP_INSTALL_ID", HERMIT_GH_APP_INSTALL_ID],
     ["HERMIT_GH_APP_KEY_FILE", HERMIT_GH_APP_KEY_FILE],
   ]) {
-    if (!val) {
-      process.stderr.write(`Missing env var: ${name}\n`);
-      process.exit(1);
-    }
+    if (!val) throw new Fail(`missing_env:${name}`);
   }
 
   const repoParts = HERMIT_GH_REPO.split("/");
-  if (repoParts.length !== 2) {
-    process.stderr.write(`HERMIT_GH_REPO must be "owner/repo", got: ${HERMIT_GH_REPO}\n`);
-    process.exit(1);
-  }
+  if (repoParts.length !== 2) throw new Fail(`invalid_repo:${HERMIT_GH_REPO}`);
 
   const [owner, repo] = repoParts;
   return { HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HERMIT_GH_APP_KEY_FILE, owner, repo };
@@ -97,10 +99,7 @@ async function getInstallToken({ HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HER
   try {
     pem = readFileSync(HERMIT_GH_APP_KEY_FILE, "utf8");
   } catch {
-    process.stderr.write(
-      `HERMIT_GH_APP_KEY_FILE='${HERMIT_GH_APP_KEY_FILE}' does not exist (cwd=${process.cwd()}) — check .env\n`
-    );
-    process.exit(1);
+    throw new Fail(`missing_key_file:${HERMIT_GH_APP_KEY_FILE}`);
   }
   const jwt = makeJWT(HERMIT_GH_APP_ID, pem);
   const { token } = await ghRequest(
@@ -113,10 +112,7 @@ async function getInstallToken({ HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HER
 
 async function checkMode() {
   const proposalId = process.argv[3];
-  if (!proposalId) {
-    process.stderr.write("Usage: bun file-issue.ts --check <proposal-id>\n");
-    process.exit(1);
-  }
+  if (!proposalId) throw new Fail("usage:--check <proposal-id>");
 
   const env = loadEnv();
   const token = await getInstallToken(env);
@@ -132,15 +128,14 @@ async function checkMode() {
     if (!Array.isArray(issues) || issues.length === 0) break;
     const match = issues.find((i) => i.body && i.body.includes(`proposal=${proposalId}`));
     if (match) {
-      process.stdout.write(match.html_url + "\n");
-      process.exit(0);
+      print({ status: "exists", url: match.html_url });
+      return;
     }
     if (issues.length < 100) break;
     page++;
   }
 
-  process.stderr.write(`no match for ${proposalId}\n`);
-  process.exit(2);
+  print({ status: "none", reason: "no_match" });
 }
 
 async function templatesMode() {
@@ -148,17 +143,11 @@ async function templatesMode() {
   const token = await getInstallToken(env);
   const { owner, repo } = env;
 
-  const noTemplates = () => {
-    process.stderr.write(`no templates for ${owner}/${repo}\n`);
-    process.exit(2);
-  };
-
-  let entries: Json;
+  let entries: Json = [];
   try {
     entries = await ghRequest("GET", `/repos/${owner}/${repo}/contents/.github/ISSUE_TEMPLATE`, `Bearer ${token}`);
   } catch (err: any) {
-    if (/^GH 404/.test(err.message)) noTemplates();
-    throw err;
+    if (!err.message.startsWith("gh_404:")) throw err;
   }
 
   const names = Array.isArray(entries)
@@ -167,28 +156,20 @@ async function templatesMode() {
         .map((e) => e.name)
     : [];
 
-  if (names.length === 0) noTemplates();
-
-  process.stdout.write(names.join("\n") + "\n");
+  print({ templates: names });
 }
 
 async function commentMode() {
   const issueNumber = parseInt(process.argv[3], 10);
   const bodyFile = process.argv[4];
-  if (!issueNumber || issueNumber <= 0 || !bodyFile) {
-    process.stderr.write("Usage: bun file-issue.ts --comment <issue-number> <body-file>\n");
-    process.exit(1);
-  }
+  if (!issueNumber || issueNumber <= 0 || !bodyFile) throw new Fail("usage:--comment <issue-number> <body-file>");
 
   const env = loadEnv();
   const token = await getInstallToken(env);
   const { owner, repo } = env;
 
   const body = readFileSync(bodyFile, "utf8");
-  if (!body.trim()) {
-    process.stderr.write(`Body file is empty: ${bodyFile}\n`);
-    process.exit(1);
-  }
+  if (!body.trim()) throw new Fail(`empty_body:${bodyFile}`);
   const comment = await ghRequest(
     "POST",
     `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
@@ -196,7 +177,7 @@ async function commentMode() {
     { body }
   );
 
-  process.stdout.write(requireUrl(comment) + "\n");
+  print({ url: requireUrl(comment) });
 }
 
 function buildLabels(extra: string[] = []): string[] {
@@ -276,10 +257,7 @@ function classifyMode() {
   const category = process.argv[3];
   const titleFile = process.argv[4];
   const bodyFile = process.argv[5];
-  if (!category || !titleFile || !bodyFile) {
-    process.stderr.write("Usage: bun file-issue.ts classify <category> <title-file> <body-file>\n");
-    process.exit(1);
-  }
+  if (!category || !titleFile || !bodyFile) throw new Fail("usage:classify <category> <title-file> <body-file>");
 
   const { title, body } = readTitleAndBody(titleFile, bodyFile);
 
@@ -288,16 +266,13 @@ function classifyMode() {
   const labels = deriveLabels(category, scope);
   const title_line = buildTitleLine(type, scope, title);
 
-  process.stdout.write(JSON.stringify({ type, scope, labels, title_line }) + "\n");
+  print({ type, scope, labels, title_line });
 }
 
 function readTitleAndBody(titleFile: string, bodyFile: string): { title: string; body: string } {
   const title = readFileSync(titleFile, "utf8").trim();
   const body = readFileSync(bodyFile, "utf8");
-  if (!title) {
-    process.stderr.write(`Title file is empty: ${titleFile}\n`);
-    process.exit(1);
-  }
+  if (!title) throw new Fail(`empty_title:${titleFile}`);
   return { title, body };
 }
 
@@ -325,19 +300,13 @@ async function main() {
   // Filing is named, not the fallthrough: `--publish` and `--comment` are what
   // the seeded permissions.ask rules match on, and a read mode must never be
   // one typo away from a publish.
-  if (process.argv[2] !== "--publish") {
-    process.stderr.write("Usage: bun file-issue.ts --publish <title-file> <body-file> [label...]\n");
-    process.exit(1);
-  }
+  if (process.argv[2] !== "--publish") throw new Fail("usage:--publish <title-file> <body-file> [label...]");
 
   const titleFile = process.argv[3];
   const bodyFile = process.argv[4];
   const extraLabels = process.argv.slice(5);
 
-  if (!titleFile || !bodyFile) {
-    process.stderr.write("Usage: bun file-issue.ts --publish <title-file> <body-file> [label...]\n");
-    process.exit(1);
-  }
+  if (!titleFile || !bodyFile) throw new Fail("usage:--publish <title-file> <body-file> [label...]");
 
   const env = loadEnv();
 
@@ -353,14 +322,14 @@ async function main() {
     { title, body: issueBody, labels: buildLabels(extraLabels) }
   );
 
-  process.stdout.write(requireUrl(issue) + "\n");
+  print({ url: requireUrl(issue) });
 }
 
 export { buildLabels, requireUrl, deriveType, resolveScope, deriveLabels, buildTitleLine };
 
 if (import.meta.main) {
   main().catch((err: any) => {
-    process.stderr.write(err.message + "\n");
+    print({ error: err instanceof Fail ? err.message : `failed:${err.message}` });
     process.exit(1);
   });
 }

@@ -45,31 +45,65 @@ class Forge {
   return { result, request, root };
 }
 
+const json = (out: Buffer) => JSON.parse(out.toString());
+
 test('deploy executes the resolved request without a confirmation flag', () => {
   const { result, request } = run('deploy', 'test-server', 'test.example');
   expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toContain('deploy-id=56 server-id=12 site-id=34');
+  expect(json(result.stdout)).toEqual({ deploy_id: 56, server_id: 12, site_id: 34, deploy_status: 'pending' });
   expect(JSON.parse(readFileSync(request, 'utf8'))).toEqual(['test-org', 12, 34, []]);
+});
+
+test('policy prints the effective boundary as one JSON object', () => {
+  const { result } = run('policy');
+  expect(result.exitCode).toBe(0);
+  const out = json(result.stdout);
+  expect(typeof out.reachable).toBe('number');
+  expect(out.tiers.secrets.state).toBe('denied');
+  expect(out.tiers.destructive).toEqual({ state: 'denied', verbs: ['DELETE'] });
+  expect(out.env_lifts).toEqual({ tiers: [], methods: [] });
+  expect(out.project_deny).toEqual([]);
 });
 
 test('reboot executes the resolved request without a confirmation flag', () => {
   const { result, request } = run('server-reboot', 'test-server');
   expect(result.exitCode).toBe(0);
+  expect(result.stdout.toString()).toBe('OK\n');
   expect(JSON.parse(readFileSync(request, 'utf8'))).toEqual(['test-org', 12, { action: 'reboot' }]);
 });
 
-test('preview remains read-only and prints the flag-free command', () => {
+test('preview remains read-only and prints the canonical target', () => {
   const { result, request } = run('preview-deploy', 'test-server', 'test.example');
   expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toContain('Run: forge.php deploy test-server test.example');
+  expect(json(result.stdout)).toEqual({
+    server: { id: 12, name: 'test-server', ip_address: '192.0.2.1' },
+    site: { id: 34, name: 'test.example' },
+  });
   expect(() => readFileSync(request)).toThrow();
 });
 
-test('invalid targets still fail before dispatch', () => {
+test('an unmatched target is a no_match outcome with choices, before dispatch', () => {
   const { result, request } = run('server-reboot', 'missing-server');
-  expect(result.exitCode).toBe(1);
-  expect(result.stderr.toString()).toContain('No server matching');
+  expect(result.exitCode).toBe(0);
+  expect(json(result.stdout)).toEqual({
+    status: 'no_match', reason: 'server', choices: [{ id: 12, name: 'test-server', ip_address: '192.0.2.1' }],
+  });
   expect(() => readFileSync(request)).toThrow();
+});
+
+test('list commands print one JSON object', () => {
+  expect(json(run('servers').result.stdout)).toEqual({ servers: [{ id: 12, name: 'test-server', ip_address: '192.0.2.1' }] });
+  expect(json(run('sites', 'test-server').result.stdout)).toEqual({ sites: [{ id: 34, name: 'test.example' }] });
+});
+
+test('help exits 0; usage and unknown commands fail with an error token', () => {
+  expect(run('--help').result.exitCode).toBe(0);
+  const usage = run('deploy').result;
+  expect(usage.exitCode).toBe(1);
+  expect(json(usage.stdout).error).toStartWith('usage:');
+  const unknown = run('nope').result;
+  expect(unknown.exitCode).toBe(1);
+  expect(json(unknown.stdout)).toEqual({ error: 'unknown_command:nope' });
 });
 
 

@@ -6,8 +6,9 @@
  * Optional: authed OAuth path when REDDIT_CLIENT_ID/SECRET are set (falls back on failure).
  *
  * USAGE:  bun reddit-fetch.ts <subreddit> [limit]
- * OUTPUT: JSON array to stdout — [{title, url, score, comments, permalink}]
- * Exit 1 on any error.
+ * OUTPUT: {"posts":[{title, url, score, comments, permalink}]} on stdout.
+ * An unreachable or failing Reddit prints {"status":"unavailable","reason":"<token>"} and exits 0;
+ * bad arguments print {"error":"usage"} and exit 1.
  */
 
 const DEFAULT_LIMIT = 20;
@@ -101,29 +102,38 @@ async function getAccessToken(clientId: string, clientSecret: string, ua: string
   }
 }
 
+export class HttpError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+  }
+}
+
+/** Snake-case reason for a fetch that did not yield posts. */
+export function unavailableReason(error: unknown): string {
+  if (error instanceof HttpError) return `http_${error.status}`;
+  if (error instanceof SyntaxError) return "invalid_response";
+  return "network_error";
+}
+
 async function fetchAndExtract(
   url: string,
   headers: Record<string, string>,
-  subreddit: string,
   limit: number,
 ): Promise<Post[]> {
   const resp = await fetch(url, { headers });
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} fetching r/${subreddit}: ${resp.statusText}`);
-  }
+  if (!resp.ok) throw new HttpError(resp.status);
   const json: unknown = await resp.json();
   return extractPosts(json, limit);
 }
 
 async function fetchUnauthed(subreddit: string, limit: number, ua: string): Promise<Post[]> {
-  return fetchAndExtract(buildUrl(subreddit, limit), { "User-Agent": ua }, subreddit, limit);
+  return fetchAndExtract(buildUrl(subreddit, limit), { "User-Agent": ua }, limit);
 }
 
 async function fetchAuthed(subreddit: string, limit: number, ua: string, token: string): Promise<Post[]> {
   return fetchAndExtract(
     `https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}`,
     { Authorization: `bearer ${token}`, "User-Agent": ua },
-    subreddit,
     limit,
   );
 }
@@ -131,7 +141,7 @@ async function fetchAuthed(subreddit: string, limit: number, ua: string, token: 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
   if (!parsed) {
-    process.stderr.write("Usage: reddit-fetch.ts <subreddit> [limit]\n");
+    console.log(JSON.stringify({ error: "usage" }));
     process.exit(1);
   }
   const { subreddit, limit } = parsed;
@@ -147,11 +157,9 @@ async function main(): Promise<void> {
     } else {
       posts = await fetchUnauthed(subreddit, limit, ua);
     }
-    console.log(JSON.stringify(posts));
+    console.log(JSON.stringify({ posts }));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    process.stderr.write(`Error fetching r/${subreddit}: ${msg}\n`);
-    process.exit(1);
+    console.log(JSON.stringify({ status: "unavailable", reason: unavailableReason(e) }));
   }
 }
 

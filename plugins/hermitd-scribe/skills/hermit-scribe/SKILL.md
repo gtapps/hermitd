@@ -63,8 +63,8 @@ Run:
 bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --templates
 ```
 
-- Exit 0 + filenames printed → hold the filenames for Step 4's preview. This checks the target repo (`HERMIT_GH_REPO`) directly via the GitHub API, not the local checkout, and only the modern `.github/ISSUE_TEMPLATE/` directory form — the legacy single-file `.github/ISSUE_TEMPLATE.md` is intentionally out of scope.
-- Exit 2 → hold nothing; Step 4's preview gets no template note.
+- Non-empty `templates` → hold the filenames for Step 4's preview. This checks the target repo (`HERMIT_GH_REPO`) directly via the GitHub API, not the local checkout, and only the modern `.github/ISSUE_TEMPLATE/` directory form; the legacy single-file `.github/ISSUE_TEMPLATE.md` is intentionally out of scope.
+- Empty `templates` → hold nothing; Step 4's preview gets no template note.
 
 These filenames are never passed to the Step 3 sanitizer and are never part of the draft or cleaned body — they reach the operator only through Step 4's preview.
 
@@ -75,8 +75,8 @@ Run:
 bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --check {id}
 ```
 
-- Exit 0 + URL printed → an issue already exists for this proposal. Show the URL to the operator and ask whether to skip filing or proceed anyway.
-- Exit 2 → no existing issue. Continue.
+- `status` `exists` → an issue already exists for this proposal. Show its `url` to the operator and ask whether to skip filing or proceed anyway.
+- `status` `none` → no existing issue. Continue.
 
 **Step 3: sanitize.**
 
@@ -136,7 +136,7 @@ For an ad-hoc issue (no proposal), omit the label args entirely:
 bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --publish /tmp/tmp.AbCdEf/title /tmp/tmp.AbCdEf/body.md
 ```
 
-Capture stdout: it is the issue URL on success. Stderr has any error message.
+On success it prints `{"url":...}`, the issue URL; on failure, `{"error":...}`.
 
 **Step 7: back-write and report.**
 
@@ -144,12 +144,9 @@ On success:
 1. Use the Edit tool to insert `gh_issue: {url}` into the proposal's YAML frontmatter, on a new line directly after the `id:` field. Skip this step for ad-hoc issues (no proposal file).
 2. Output `Filed: {url}`.
 
-On error, surface the stderr. Common causes:
-- `HERMIT_GH_APP_KEY_FILE='...' does not exist` → key file path is wrong or file is missing — check `.env`.
-- `GH 401: Bad credentials` → wrong App ID, install ID, or key file.
-- `GH 404` → App not installed on target repo, or repo name typo.
-- `GH 422` → empty title or GH validation error.
-- `GitHub returned no html_url (check HERMIT_GH_REPO)` → nothing was filed; `HERMIT_GH_REPO` likely names a renamed repository. Update it to the current `owner/repo`.
+On error, surface the `error`; the token names its cause. Two need a hint:
+- `gh_401` or `gh_404` → wrong App ID, install ID or key file, or the App is not installed on the target repo.
+- `no_html_url` → nothing was filed; `HERMIT_GH_REPO` likely names a renamed repository. Update it to the current `owner/repo`.
 
 ## How to comment
 
@@ -194,13 +191,13 @@ Run `mktemp -d` and capture the path. Use the Write tool to create:
 bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --comment {issue-number} /tmp/tmp.AbCdEf/body.md
 ```
 
-Capture stdout: it is the comment URL on success. Stderr has any error message.
+On success it prints `{"url":...}`, the comment URL; on failure, `{"error":...}`.
 
 **Step 6: report.**
 
 On success: output `Commented: {url}`. No back-write to any proposal frontmatter.
 
-On error, surface the stderr (same causes as filing: missing key file, bad credentials, 404, 422, no html_url).
+On error, surface the `error` (same causes as filing).
 
 ## Notes
 

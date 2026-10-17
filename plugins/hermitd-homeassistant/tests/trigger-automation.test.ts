@@ -21,8 +21,7 @@ test('trigger-automation: success', async () => {
   );
 
   expect(code).toBe(0);
-  const json = JSON.parse(out.trim());
-  expect(json).toEqual({ status: 'ok', automation_id: 'automation.morning_routine' });
+  expect(out).toBe('OK\n');
   expect(calls.post[0]![0]).toBe('/api/services/automation/trigger');
   expect(calls.post[0]![1]).toMatchObject({ entity_id: 'automation.morning_routine' });
 });
@@ -34,13 +33,11 @@ test('trigger-automation: rejects non-automation entity_id', async () => {
     main(['ha', 'trigger-automation', 'light.kitchen'], deps),
   );
 
-  expect(code).toBe(2);
-  const json = JSON.parse(out.trim());
-  expect(json.status).toBe('error');
-  expect(json.message).toContain('automation.');
+  expect(code).toBe(1);
+  expect(JSON.parse(out).error).toStartWith("usage:automation_id must start with 'automation.'");
 });
 
-test('trigger-automation: HA error → status error exit 1', async () => {
+test('trigger-automation: HA error → error token, exit 1', async () => {
   const { HomeAssistantError } = await import('../src/ha-api');
   const errClient = fakeClient({
     post: () => {
@@ -57,11 +54,12 @@ test('trigger-automation: HA error → status error exit 1', async () => {
   );
 
   expect(code).toBe(1);
-  const json = JSON.parse(out.trim());
-  expect(json.status).toBe('error');
+  expect(JSON.parse(out)).toEqual({ error: 'ha_http_404:Entity not found (status=404)' });
 });
 
-test('trigger-automation: missing arg → exit 2', async () => {
-  const { code } = await captureOutput(() => main(['ha', 'trigger-automation'], {}));
-  expect(code).toBe(2);
+test('trigger-automation: missing arg prints a usage error, exit 1', async () => {
+  const { code, out, err } = await captureOutput(() => main(['ha', 'trigger-automation'], {}));
+  expect(code).toBe(1);
+  expect(err).toBe('');
+  expect(JSON.parse(out).error).toStartWith('usage:ha_agent_lab ha trigger-automation: ');
 });

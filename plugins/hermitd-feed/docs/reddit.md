@@ -10,8 +10,8 @@ Reddit sources (`type: reddit` in `feed-sources.md`) resolve through this fallba
 reddit-fetch.ts → Chrome → skip (mark sources_skipped)
 ```
 
-If the script errors (exit 1) and no Chrome session is available, the source is skipped for that
-run and recorded in `sources_skipped`.
+If the script reports Reddit unavailable and no Chrome session is available, the source is
+skipped for that run and recorded in `sources_skipped`.
 
 ## Why a script (not WebFetch)
 
@@ -39,32 +39,35 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/reddit-fetch.ts LocalLLaMA
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/reddit-fetch.ts r/example 10
 ```
 
-**Output** — a JSON array to stdout:
+**Output**: one JSON object on stdout:
 
 ```json
-[
-  {
-    "title": "Example post title",
-    "url": "https://example.com/linked-article",
-    "score": 1200,
-    "comments": 340,
-    "permalink": "https://reddit.com/r/example/comments/abc123"
-  }
-]
+{
+  "posts": [
+    {
+      "title": "Example post title",
+      "url": "https://example.com/linked-article",
+      "score": 1200,
+      "comments": 340,
+      "permalink": "https://reddit.com/r/example/comments/abc123"
+    }
+  ]
+}
 ```
 
 `url` is the post's outbound link (the linked article), while `permalink` is the Reddit comment
 thread.
 
-## Exit codes
+## Outcomes
 
-| Code | Meaning | Pipeline behavior          |
-| ---- | ------- | -------------------------- |
-| `0`  | Success | Parse the JSON output      |
-| `1`  | Error (bad args, HTTP failure, unreachable) | Fall back: Chrome → skip |
+| Output | Exit | Pipeline behavior |
+| ------ | ---- | ----------------- |
+| `{"posts":[...]}` | `0` | Map the posts into items |
+| `{"status":"unavailable","reason":"http_403"}` (also `http_<code>`, `network_error`, `invalid_response`) | `0` | Fall back: Chrome → skip |
+| `{"error":"usage"}` | `1` | Bad arguments; fall back: Chrome → skip |
 
-There is no exit-2 / "not configured" state — missing credentials is not an error, the script
-just uses the unauthenticated path.
+There is no "not configured" state: missing credentials is not an error, the script just uses
+the unauthenticated path.
 
 ## Optional: authenticated path (higher rate limits)
 
@@ -89,4 +92,4 @@ endpoint directly with `fetch`.
 - `REDDIT_USER_AGENT` — optional. Defaults to `hermit/1.0 (feed bot)`. Reddit's API terms ask
   for a descriptive User-Agent; set your own for the authed path.
 
-Credentials never change the output shape or exit codes — only the rate limit and endpoint.
+Credentials never change the output shape or exit codes, only the rate limit and endpoint.

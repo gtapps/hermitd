@@ -7,7 +7,7 @@ result="$("$HERMIT_DIR/bin/hermitd-run" sibling-run hermitd-fitness scripts/fitn
 # {file,date,drift}), and this keeps the gate free of a jq dependency that a
 # non-Docker host install has no guarantee of.
 case "$result" in
-  *'"trend":"none"'*|*'"trend":"insufficient-data"'*) echo SKIP ;;
+  *'"trend":"none"'*|*'"trend":"insufficient_data"'*) echo SKIP ;;
   *'"trend":"upward"'*) echo WAKE ;;
   *) echo 'fitness-weekly-patterns-gate: invalid trend' >&2; exit 1 ;;
 esac

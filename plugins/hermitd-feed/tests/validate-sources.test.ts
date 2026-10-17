@@ -19,11 +19,12 @@ function sourcesFileIn(markdown: string): { dir: string; file: string } {
   return { dir, file };
 }
 
-async function runHook(cwd: string, filePath: string): Promise<number> {
-  const proc = Bun.spawn(["bun", SCRIPT], { stdin: "pipe", stdout: "ignore", stderr: "ignore", cwd });
+async function runHook(cwd: string, filePath: string): Promise<{ code: number; stdout: string }> {
+  const proc = Bun.spawn(["bun", SCRIPT], { stdin: "pipe", stdout: "pipe", stderr: "ignore", cwd });
   proc.stdin.write(JSON.stringify({ tool_input: { file_path: filePath } }));
   await proc.stdin.end();
-  return await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  return { code: await proc.exited, stdout };
 }
 
 const GOOD = `# Sources
@@ -80,11 +81,16 @@ test("hook passes through (exit 0) for a foreign sources.md edit", async () => {
 test("validates the payload-named file, not cwd's copy (payload good, cwd bad)", async () => {
   const cwdCopy = sourcesFileIn(BAD_TABLE);
   const edited = sourcesFileIn(GOOD);
-  expect(await runHook(cwdCopy.dir, edited.file)).toBe(0);
+  expect(await runHook(cwdCopy.dir, edited.file)).toEqual({ code: 0, stdout: "" });
 });
 
 test("validates the payload-named file, not cwd's copy (payload bad, cwd good)", async () => {
   const cwdCopy = sourcesFileIn(GOOD);
   const edited = sourcesFileIn(BAD_TABLE);
-  expect(await runHook(cwdCopy.dir, edited.file)).toBe(1);
+  const { code, stdout } = await runHook(cwdCopy.dir, edited.file);
+  // Exit 0 with a PostToolUse block decision, so the violations reach Claude.
+  expect(code).toBe(0);
+  const output = JSON.parse(stdout);
+  expect(output.decision).toBe("block");
+  expect(output.reason).toContain("invalid Type 'bogus'");
 });

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { classifyUpdateEntity, collectPendingUpdates, formatUpdatesStdout, formatUpdatesDigest } from '../src/update-check';
+import { classifyUpdateEntity, collectPendingUpdates, digestUpdates, listUpdates } from '../src/update-check';
 
 function state(entityId: string, attrs: Record<string, any>, pending = true): Record<string, any> {
   return { entity_id: entityId, state: pending ? 'on' : 'off', attributes: attrs };
@@ -88,12 +88,11 @@ test('collectPendingUpdates sorts by entity_id', () => {
   expect(updates.map((u) => u.entity_id)).toEqual(['update.aaa_thing', 'update.zzz_thing']);
 });
 
-test('formatUpdatesStdout empty case', () => {
-  const out = formatUpdatesStdout([], '2026-07-12');
-  expect(out).toBe('ha-update-check findings — 2026-07-12\nNo actionable findings. (no updates pending)');
+test('listUpdates empty case', () => {
+  expect(listUpdates([])).toEqual({ updates: [], more: 0, hacs: 0 });
 });
 
-test('formatUpdatesStdout lists individual tiers and aggregates hacs', () => {
+test('listUpdates lists individual tiers and aggregates hacs', () => {
   const updates = collectPendingUpdates([
     state('update.home_assistant_core_update', {
       title: 'Home Assistant Core',
@@ -104,49 +103,43 @@ test('formatUpdatesStdout lists individual tiers and aggregates hacs', () => {
     state('update.frigate', { installed_version: '1.0', latest_version: '1.1' }),
     state('update.mushroom', { installed_version: '2.0', latest_version: '2.1' }),
   ]);
-  const out = formatUpdatesStdout(updates, '2026-07-12');
-  expect(out).toContain('Updates pending: 3');
-  expect(out).toContain('- [core] Home Assistant Core: 2026.6.3 → 2026.7.1 — https://example.com/core');
-  expect(out).toContain('- [hacs] 2 HACS updates pending');
-  expect(out).not.toContain('frigate');
+  const view = listUpdates(updates);
+  expect(view.updates.map((u) => u.entity_id)).toEqual(['update.home_assistant_core_update']);
+  expect(view.updates[0]!.release_url).toBe('https://example.com/core');
+  expect(view.hacs).toBe(2);
 });
 
-test('formatUpdatesDigest empty case', () => {
-  expect(formatUpdatesDigest([])).toBe('');
+test('digestUpdates empty case', () => {
+  expect(digestUpdates([])).toEqual({ updates: [], more: 0, hacs: 0 });
 });
 
-test('formatUpdatesDigest sorts individual updates by tier, ignoring input order', () => {
+test('digestUpdates sorts individual updates by tier, ignoring input order', () => {
   const updates = collectPendingUpdates([
     state('update.mosquitto_broker', { installed_version: '6.4', latest_version: '6.5', supported_features: 29 }),
     state('update.home_assistant_supervisor_update', { installed_version: '2026.7.0', latest_version: '2026.7.1' }),
     state('update.home_assistant_core_update', { installed_version: '2026.6.3', latest_version: '2026.7.1' }),
     state('update.home_assistant_operating_system_update', { installed_version: '13.0', latest_version: '13.1' }),
   ]);
-  const out = formatUpdatesDigest(updates);
-  const lines = out.split('\n');
-  expect(lines[0]).toStartWith('[core]');
-  expect(lines[1]).toStartWith('[os]');
-  expect(lines[2]).toStartWith('[supervisor]');
-  // 4th individual update collapses — top 3 shown, mosquitto (addon) is the 4th.
-  expect(lines[3]).toBe('+ 1 more update pending');
+  const view = digestUpdates(updates);
+  expect(view.updates.map((u) => u.tier)).toEqual(['core', 'os', 'supervisor']);
+  // Top 3 shown; mosquitto (addon) is the 4th and is counted in `more`.
+  expect(view.more).toBe(1);
 });
 
-test('formatUpdatesDigest with 3 or fewer individual updates emits no collapse line', () => {
+test('digestUpdates with 3 or fewer individual updates counts nothing more', () => {
   const updates = collectPendingUpdates([
     state('update.home_assistant_core_update', { installed_version: '2026.6.3', latest_version: '2026.7.1' }),
     state('update.mosquitto_broker', { installed_version: '6.4', latest_version: '6.5', supported_features: 29 }),
   ]);
-  const out = formatUpdatesDigest(updates);
-  expect(out).not.toContain('more update');
-  expect(out.split('\n').length).toBe(2);
+  const view = digestUpdates(updates);
+  expect(view.more).toBe(0);
+  expect(view.updates.length).toBe(2);
 });
 
-test('formatUpdatesDigest aggregates hacs with singular/plural and excludes it from the top-3 cap', () => {
+test('digestUpdates aggregates hacs and excludes it from the top-3 cap', () => {
   const updates = collectPendingUpdates([
     state('update.home_assistant_core_update', { installed_version: '2026.6.3', latest_version: '2026.7.1' }),
     state('update.frigate', { installed_version: '1.0', latest_version: '1.1' }),
   ]);
-  const out = formatUpdatesDigest(updates);
-  expect(out).toContain('[hacs] 1 HACS update pending');
-  expect(out).not.toContain('more update');
+  expect(digestUpdates(updates)).toMatchObject({ more: 0, hacs: 1 });
 });

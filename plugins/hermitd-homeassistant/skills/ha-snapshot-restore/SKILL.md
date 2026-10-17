@@ -31,18 +31,18 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha restore-states <artifact>
 
 Restore is the plugin's one direct device-actuation path, so it runs through the same `ha_safety_mode` policy as every other actuation:
 
-- **strict (explicit):** if the snapshot contains any sensitive entity (lock, alarm, security-keyworded cover/switch), restore is **blocked** and exits non-zero with `blocked:true` and a suggestion to surface it as a proposal. Non-sensitive entities (lights, climate) restore normally.
+- **strict (explicit):** if the snapshot contains any sensitive entity (lock, alarm, security-keyworded cover/switch), restore is **blocked**: the CLI prints `{"status":"blocked","reason":"strict_mode",...}` listing the `sensitive` entities; surface it as a proposal. Non-sensitive entities (lights, climate) restore normally.
 - **ask:** show the affected entities before restoration; Claude Code requests native approval for sensitive targets before the command executes.
 - A successful restore writes an audit report under `.hermit/raw/audit-ha-restore-*`.
 
 ## Output contract
 
-Capture prints `{ ok, name, captured, entities, report_path, message }`.
+Capture prints `{ name, captured, entities, report_path }`.
 
-Restore prints `{ ok, blocked, applied, entities, sensitive, reason, ... }`. Exit code is 0 only when `ok` is true.
+Restore prints `{ applied, entities, sensitive, report_path }`, or a status with exit 0: `{"status":"blocked","reason":"strict_mode"}` or `{"status":"empty","reason":"no_entities"}`.
 
 ## Failure modes
 
-- HA unreachable → CLI exits non-zero with an error message.
-- A snapshot with no matching entities → capture reports `captured: 0`; restore reports an error.
+- HA unreachable or erroring: the CLI prints `{"error":"ha_unreachable:<detail>"}` or `{"error":"ha_http_<status>:<detail>"}` and exits 1. An unreadable snapshot file prints `{"error":"snapshot_unreadable:<detail>"}`.
+- A snapshot with no matching entities: capture reports `captured: 0`; restore reports `status: "empty"`.
 - Restore replays state + captured attributes via `scene.apply`; for cover position and climate setpoints the result depends on what HA's scene integration can reproduce — verify the outcome rather than assuming an exact match.

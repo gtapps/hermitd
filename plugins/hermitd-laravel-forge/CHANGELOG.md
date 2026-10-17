@@ -2,8 +2,20 @@
 
 ## [Unreleased]
 
+### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
+- `forge.php` commands print one JSON object, including `policy` and `failed-deploys` (which drops its `--json` flag and prose mode); errors are `{"error":"<token>"}` on stdout, and policy denials, plan refusals and unmatched or ambiguous names are `status` outcomes at exit 0
+- `native-permissions.ts` prints `OK` or one JSON object instead of prose and uncaught throws
+
 ### Fixed
+- `forge.php --help` exits 0
 - Scrubbed `forge.php` output redacts double-quoted values in JSON-encoded results, single-quoted values, and literal credentials on `composer config` auth lines.
+
+### Upgrade Instructions
+
+1. **Offer to migrate operator skills to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. List each skill line that runs a `hermitd-laravel-forge` helper through this plugin's install path and branches on its old output: `forge.php check` read as a bare `ok`/`missing`/`invalid`/`unreachable` word, `Deployment started:` or `key=value` text, a bare `deploy-status` word, a `Plan:` preview block, `servers`/`sites` columns, `No ... matching` or `Ambiguous` text, `(no deployments found)`, `policy` or `failed-deploys` text, or a non-zero exit from a policy refusal or an unmatched name. A line about the project's own script output, a placeholder, or a call that only checks the exit code of a real failure is not a hit. Skip silently when there are none. Otherwise show them with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+   - *Migrate them to the convention*: update each line to the shape the `hermitd-laravel-forge` skill running the same command describes, per core's `docs/creating-your-own-hermit.md` § Helper-script output. Report each file changed.
+   - *Keep them as they are*: change nothing, and tell the operator that these lines misread `hermitd-laravel-forge` output until they are updated.
 
 ## [0.0.19] - 2026-10-02
 

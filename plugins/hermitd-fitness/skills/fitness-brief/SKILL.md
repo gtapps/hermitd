@@ -62,8 +62,8 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      also read whatever `state/activity-notes.json` already holds for it. No new activity
      is itself the input — there's nothing to analyze.
 
-   Handle the script's error contract as `activity-deep-dive` does: `{"error":"strava_auth",...}`
-   or `{"error":"fetch",...}` (both exit 1) → relay the `message` to the operator and stop
+   Handle the script's error contract as `activity-deep-dive` does: `{"error":"strava_auth:<message>"}`
+   or `{"error":"fetch:<message>"}` (both exit 1) → relay the `<message>` to the operator and stop
    gathering further data; compose from whatever was already gathered.
 
 3. **Compose.** You have the digest from steps 1–2, the operator's voice (`agent_name`,

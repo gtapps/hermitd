@@ -24,10 +24,7 @@ test('delete automation ok', async () => {
   const { code, out } = await runCli(['ha', 'delete-automation', 'my_automation'], client);
 
   expect(code).toBe(0);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.config_id).toBe('my_automation');
-  expect(parsed.domain).toBe('automation');
+  expect(out).toBe('OK\n');
   expect(client.calls.delete).toEqual(['/api/config/automation/config/my_automation']);
 });
 
@@ -36,10 +33,7 @@ test('delete script ok', async () => {
   const { code, out } = await runCli(['ha', 'delete-script', 'my_script'], client);
 
   expect(code).toBe(0);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.config_id).toBe('my_script');
-  expect(parsed.domain).toBe('script');
+  expect(out).toBe('OK\n');
   expect(client.calls.delete).toEqual(['/api/config/script/config/my_script']);
 });
 
@@ -48,14 +42,11 @@ test('delete scene ok', async () => {
   const { code, out } = await runCli(['ha', 'delete-scene', 'my_scene'], client);
 
   expect(code).toBe(0);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.config_id).toBe('my_scene');
-  expect(parsed.domain).toBe('scene');
+  expect(out).toBe('OK\n');
   expect(client.calls.delete).toEqual(['/api/config/scene/config/my_scene']);
 });
 
-test('delete automation not found exits nonzero', async () => {
+test('delete automation not found reports not_found, exit 0', async () => {
   const client = fakeClient({
     del: () => {
       throw new HomeAssistantError(
@@ -67,10 +58,8 @@ test('delete automation not found exits nonzero', async () => {
   });
   const { code, out } = await runCli(['ha', 'delete-automation', 'nonexistent'], client);
 
-  expect(code).toBe(1);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toBe('Resource not found');
+  expect(code).toBe(0);
+  expect(JSON.parse(out)).toEqual({ status: 'not_found', reason: 'no_config', config_id: 'nonexistent' });
 });
 
 test('list automations ok', async () => {
@@ -92,7 +81,7 @@ test('list automations ok', async () => {
   const { code, out } = await runCli(['ha', 'list-automations'], client);
 
   expect(code).toBe(0);
-  const items = JSON.parse(out);
+  const items = JSON.parse(out).automations;
   expect(items.length).toBe(1);
   expect(items[0].entity_id).toBe('automation.lights_on');
   expect(items[0].id).toBe('lights_on');
@@ -119,7 +108,7 @@ test('list scripts filters correctly', async () => {
   const { code, out } = await runCli(['ha', 'list-scripts'], client);
 
   expect(code).toBe(0);
-  const items = JSON.parse(out);
+  const items = JSON.parse(out).scripts;
   expect(items.length).toBe(1);
   expect(items[0].entity_id).toBe('script.welcome');
 });
@@ -143,7 +132,7 @@ test('list scenes filters correctly', async () => {
   const { code, out } = await runCli(['ha', 'list-scenes'], client);
 
   expect(code).toBe(0);
-  const items = JSON.parse(out);
+  const items = JSON.parse(out).scenes;
   expect(items.length).toBe(1);
   expect(items[0].entity_id).toBe('scene.movie_night');
 });
@@ -167,7 +156,7 @@ test('list automations marks yaml-packaged as not deletable', async () => {
   const { code, out } = await runCli(['ha', 'list-automations'], client);
 
   expect(code).toBe(0);
-  const items = JSON.parse(out);
+  const items = JSON.parse(out).automations;
   expect(items.length).toBe(2);
   const byEntity = Object.fromEntries(items.map((item: any) => [item.entity_id, item]));
   expect(byEntity['automation.ui_managed'].deletable).toBe(true);
@@ -194,7 +183,7 @@ test('list automations returns sorted by entity_id', async () => {
   const { code, out } = await runCli(['ha', 'list-automations'], client);
 
   expect(code).toBe(0);
-  const items = JSON.parse(out);
+  const items = JSON.parse(out).automations;
   expect(items.map((item: any) => item.entity_id)).toEqual([
     'automation.alpha',
     'automation.zebra',
