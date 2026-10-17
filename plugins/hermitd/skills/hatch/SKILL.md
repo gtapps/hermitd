@@ -662,7 +662,7 @@ Run the existing "5a. OPERATOR.md onboarding" step verbatim — same scan, same 
 
 ### Quick Turn 5 — Confirm bundle
 
-Render the preview with the script, so what the operator approves is derived from the answers rather than re-typed:
+Get the preview data from the script, so what the operator approves is derived from the answers rather than re-typed:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERMIT_ANSWERS'
@@ -670,7 +670,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERM
 HERMIT_ANSWERS
 ```
 
-**Write the script's output verbatim as message text before calling `AskUserQuestion`.** The operator cannot see Bash output — the transcript collapses it to "Ran 1 shell command" — so your re-print is the only place the preview exists. Calling `AskUserQuestion` without having written the full table first means the operator approves a configuration they never saw. Do not summarize or narrate around it; emit the table exactly as printed. Nothing has been written at this point — the preview says so.
+**Compose the preview as message text before calling `AskUserQuestion`.** The operator cannot see Bash output (the transcript collapses it), so your message is the only preview; asking first means they approve a configuration they never saw. Show every `will_apply` fact as a short table in plain words (`channel: "none"` is the Claude app for now; a chat channel pairs after setup), mark each key in `defaults` as a default, and close with: nothing is written yet, and every default is tunable later with `/hermit-settings`.
 
 Then ask:
 
@@ -722,11 +722,12 @@ On the host, install the operator command after setup, from the project root:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deployment <docker|tmux|interactive>
 ```
 
-**Write its output verbatim as message text** — the operator cannot see Bash output (the transcript collapses it), so your re-print is the report. It reads the written `config.json`, the stamped `hatch-options.json`, and the filesystem — it takes no file list from this session, because a model-composed report can claim a file was written that the operator declined. Anything it could not observe is reported as absent, and a run that never wrote `config.json` is reported as an incomplete hatch rather than a success.
+Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
+
+- `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
+- Otherwise: `agent_name` is hatched; each absence in `observed` (null `claude_block` or `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they refine OPERATOR.md by telling you what changed.
 
 `--deployment` is the one thing it cannot read: Quick Turn 3 asks for it and nothing persists it. On the Advanced branch, pass the deployment the operator described, or `interactive` if they didn't say.
-
-Keep the script's own output — including the "Next" and "Anytime:" blocks — exactly as printed: it is the operator's handoff, and nothing runs on its own after this. (Deployment and channel were already shown back in the Turn 5 confirm preview; no extra line needed here.)
 
 ---
 

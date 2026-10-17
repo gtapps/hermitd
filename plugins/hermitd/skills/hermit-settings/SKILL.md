@@ -80,7 +80,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json record-fi
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json show
 ```
 
-Print its output. It renders the operator's live values grouped by area, with the argument that changes each one and when the change takes effect. Do not hand-render a settings summary — the script reads the same registry the table below is built from, so anything you compose by hand drifts from what the config actually holds.
+Compose the summary from its JSON: per area (`identity`, `operational`, `artifacts`), each `label`, `value` (absent: unset, the default applies), the `arg` that changes it (null: read-only) and when it `applies`; then each `stateful` section and its `arg`. Report only what it carries, never a remembered or example value.
 
 **Scalar and enum arguments — one table, one shape.**
 
@@ -109,7 +109,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `artifact-weekly-review` | `artifacts.weekly_review` | boolean | yes / no; the compiled weekly report at a stable URL | next refresh |
 | `artifact-backend` | `artifacts.backend` | string | any; 'claude', or the name of a connected MCP artifact server | next refresh |
 
-The enum values, dotted paths, and "applies" notes come from `scripts/lib/settings/registry.ts` — the same module `show` renders from and `validate-config.ts` shares its enums with. When a setting is added, add the row there; this table mirrors it.
+The enum values, dotted paths, and "applies" notes come from `scripts/lib/settings/registry.ts`, the same module `show` reads and `validate-config.ts` shares its enums with. When a setting is added, add the row there; this table mirrors it.
 
 **`model` takes whatever Claude Code takes.** The stored value is passed verbatim to `--model` by `hermitd-start.ts`, so no model list lives here. Offer the operator the aliases Claude Code itself accepts (`opus`, `sonnet`, `haiku`) or a full model ID, and pass it through.
 

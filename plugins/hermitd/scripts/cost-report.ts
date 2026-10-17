@@ -10,8 +10,8 @@
 //     {"cost_usd":<n>,"tokens":<n>} for one logical session's arc window.
 //
 //   bun cost-report.ts reflect [<stateDir>] [<days>] [--plain]
-//     The spend breakdown as one JSON object; --plain is the channel-safe prose
-//     form, a display renderer exempt from the helper-output convention.
+//     The spend breakdown as one JSON object; --plain selects the channel-safe data
+//     set (today vs a typical day, drivers named by work, cap status), also JSON.
 //
 // No data is an expected outcome (exit 0), because the callers are briefs and
 // channel replies that must still compose without cost.

@@ -39,7 +39,7 @@ Read the following (gracefully skip any file that doesn't exist). The sources ar
 
 **Micro:** Count entries with `status: "pending"` in `micro-proposals.json`. Omit this section entirely if count is zero.
 
-**Knowledge:** Report glob counts for raw (excl. archive), compiled, and archived files. Omit if all three are zero and the directories are missing. If the operator explicitly asked to check or lint knowledge (phrasing like "check knowledge", "lint knowledge", "knowledge health"), also run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-lint.ts .hermit` and relay its findings verbatim (grouped by type with file paths, ages, and actionable advice) beneath the counts. The script is strictly read-only.
+**Knowledge:** Report glob counts for raw (excl. archive), compiled, and archived files. Omit if all three are zero and the directories are missing. If the operator explicitly asked to check or lint knowledge ("check knowledge", "lint knowledge", "knowledge health"), also run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-lint.ts .hermit` and list its `findings` by type (`file`, `age` in days, `detail`) beneath the counts, each type with its fix from [reference.md](reference.md). It is read-only.
 
 **Channel availability:** From `config.json.channels`, for each configured channel, check whether `default_chat_id` or (failing that) `dm_channel_id` is set — the same fallback chain the outbound resolver uses. Report "ready" or "not yet paired (no chat id — send a message first)".
 

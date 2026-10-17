@@ -160,7 +160,7 @@ if (!Object.hasOwn(config._hermit_versions, 'hermitd')) {
 }
 if (Object.hasOwn(answers, 'activated_hermit') && answers.activated_hermit) {
   // slug is hand-built by the model from detected_hermits — refuse a malformed
-  // slug rather than let hatch-report.ts render an undefined Hermit-ext name.
+  // slug rather than let hatch-report.ts carry an undefined hermit_extension.
   // A stray `version` key (older skill text) is ignored; domain plugins stamp
   // `_hermit_versions` from their own hatch.
   const { slug } = answers.activated_hermit;

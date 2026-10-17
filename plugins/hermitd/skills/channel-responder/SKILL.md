@@ -104,7 +104,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Spend request** ("how much have I spent", "why is my bill high", "cost breakdown", "what's my spend", or any variant asking about spend/cost/billing, in any language)
   - **If `config.operator_profile === 'non-technical'`:** do not invoke cost-reflect or surface figures. Reply in the client chat and operator's language that their provider handles day-to-day costs, then offer other help. Figures remain maintainer-side (terminal, maintainer chat, weekly review).
-  - Otherwise invoke `/hermitd:cost-reflect`; its Step 0/1 use channel-aware `--plain` mode. Do not run the raw token-category breakdown here.
+  - Otherwise invoke `/hermitd:cost-reflect`; a channel turn reads its `--plain` data. Do not run the raw token-category breakdown here.
 
 - **Task assignment** ("work on X", "next task: Z", "start Y", or any message describing work to be done)
   - Apply TASKS.md policy; an explicit marker like these, or several requests in one message, meets its threshold on any subject even when the work fits this turn. At or above it the message is a **Task thread**: handle it there, including the `--due <ISO>` flag on `task.ts open` when a date was given, and end the turn.

@@ -17,16 +17,16 @@ import { card, pills, pageShell } from './artifact-theme';
 const UPDATED_TOKEN = '__PROPOSALS_PAGE_UPDATED__';
 
 export interface ProposalsPageState {
-  agentName: string;
+  agent_name: string;
   open: OpenProposalRow[];
   other: ProposalRow[];
-  otherOmitted: number;
+  other_omitted: number;
   strings: ArtifactStrings;
 }
 
 export function loadProposalsPageState(hermitDir: string): ProposalsPageState {
-  const { open, other, otherOmitted } = loadProposals(hermitDir);
-  return { agentName: loadAgentName(hermitDir), open, other, otherOmitted, strings: loadStrings(hermitDir) };
+  const { open, other, other_omitted } = loadProposals(hermitDir);
+  return { agent_name: loadAgentName(hermitDir), open, other, other_omitted, strings: loadStrings(hermitDir) };
 }
 
 // "PROP-025-some-slug-123243" -> "prop-025". Falls back to a full slugified id
@@ -75,20 +75,20 @@ export function renderProposalsPage(state: ProposalsPageState, opts?: { now?: st
   // Counts before the list: how many need a decision vs. how many are already
   // settled is the question this page answers, and it should not require
   // counting rows. `decided` includes the capped tail, so the total stays true.
-  const decided = state.other.length + state.otherOmitted;
+  const decided = state.other.length + state.other_omitted;
   const summary = pills([
     ...(state.open.length ? [{ tone: 'warn' as const, value: String(state.open.length), label: s.proposals_pill_open }] : []),
     ...(decided ? [{ tone: 'good' as const, value: String(decided), label: s.proposals_pill_decided }] : []),
   ]);
 
   const templated = pageShell({
-    title: fmt(s.proposals_page_title, { name: escapeHtml(state.agentName) }),
+    title: fmt(s.proposals_page_title, { name: escapeHtml(state.agent_name) }),
     heading: s.proposals_page_header,
     updatedLabel: s.label_updated,
     updatedToken: UPDATED_TOKEN,
     body: `${summary}
   ${renderOpen(state.open, s)}
-  ${renderOther(state.other, state.otherOmitted, s)}`,
+  ${renderOther(state.other, state.other_omitted, s)}`,
   });
 
   const hash = sha256(templated);

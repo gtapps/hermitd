@@ -527,7 +527,7 @@ try {
   if (findings.length > 0) {
     knowledgeSection = `### Knowledge Health\n`;
     for (const f of findings) {
-      knowledgeSection += `- ${f.file} [${f.age}] — ${f.reason}\n`;
+      knowledgeSection += `- ${f.file}${f.age !== undefined ? ` [${f.age}d]` : ''} — ${f.detail}\n`;
     }
     knowledgeSection += '\n';
   }

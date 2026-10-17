@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runScript, PLUGIN_ROOT } from './helpers/run';
-import { getPath, setPath, unsetPath, togglePath, renderShow, applyKnown, tableMarkdown } from '../scripts/settings-edit';
+import { getPath, setPath, unsetPath, togglePath, showData, applyKnown } from '../scripts/settings-edit';
 import { SETTINGS, tableSettings } from '../scripts/lib/settings/registry';
 import { freshDirFactory } from './helpers/workdir';
 
@@ -233,6 +233,18 @@ describe('settings-edit.ts CLI', () => {
 // (invented values, field list drifting every release) and the 14 per-argument
 // prose branches that each spelled out their own dotted path.
 
+// The skill's argument table, as markdown built from the registry rows apply-known writes.
+function tableMarkdown(): string {
+  const cell = (text: string): string => text.replaceAll('|', '\\|').replaceAll('\n', ' ');
+  const rows = tableSettings().map(s => {
+    const type = (s.kind === 'int' ? 'integer' : s.kind) + (s.nullable ? ', nullable' : '');
+    const values = s.values?.join(' / ') ?? (s.kind === 'boolean' ? 'yes / no' : 'any');
+    const hint = s.hint ? `${values}; ${s.hint}` : values;
+    return `| \`${s.arg}\` | \`${s.path}\` | ${type} | ${cell(hint)} | ${cell(s.applies ?? 'immediately')} |`;
+  });
+  return ['| Argument | Config path | Type | Values | Applies |', '|---|---|---|---|---|', ...rows].join('\n');
+}
+
 describe('settings registry', () => {
   test('every registry path is a real key in the shipped template', () => {
     // A row pointing at a path the template never defines would render "default"
@@ -277,33 +289,45 @@ describe('settings registry', () => {
 });
 
 describe('settings-edit show', () => {
-  test('renders live values, not an invented example', () => {
+  const row = (out: any, group: string, arg: string) => out[group].find((r: any) => r.arg === arg);
+
+  test('carries live values, not an invented example', () => {
     const dir = freshDir();
     const file = seedConfig(dir, { agent_name: 'Atlas', escalation: 'autonomous', remote: false });
-    const out = renderShow(JSON.parse(fs.readFileSync(file, 'utf8')), file);
-    expect(out).toContain('Atlas');
-    expect(out).toContain('autonomous');
-    expect(out).toContain('disabled');   // remote: false
+    const out = showData(JSON.parse(fs.readFileSync(file, 'utf8')), file);
+    expect(row(out, 'identity', 'name').value).toBe('Atlas');
+    expect(row(out, 'identity', 'escalation').value).toBe('autonomous');
+    expect(row(out, 'operational', 'remote')).toEqual({ arg: 'remote', label: 'Remote control', value: false, applies: 'next hermitd-start' });
   });
 
-  test('absent optional keys render without crashing', () => {
-    const out = renderShow({}, 'cfg.json');
-    expect(out).toContain('Hermit Settings');
-    expect(out).toContain('Identity:');
-    expect(out).toContain('Stateful');
+  test('absent optional keys carry no value, and every section is present', () => {
+    const out = JSON.parse(JSON.stringify(showData({}, 'cfg.json')));
+    expect(out.config_path).toBe('cfg.json');
+    expect(row(out, 'identity', 'name')).not.toHaveProperty('value');
+    expect(out.operational.some((r: any) => r.arg === null)).toBe(true);
+    expect(out.stateful.map((r: any) => r.arg)).toEqual(
+      ['channels', 'brief', 'heartbeat', 'watchdog', 'routines', 'scheduled-checks', 'env', 'docker']);
   });
 
-  test('an over-long value still leaves a space before the arrow', () => {
-    const out = renderShow({ env: { AAAAAAAAAAAAAAAAAAAA: '1', BBBBBBBBBBBBBBBBBBBB: '2' } }, 'cfg.json');
-    expect(out).not.toMatch(/\S→/);
+  test('stateful sections summarize counts and names', () => {
+    const out = showData({
+      channels: { primary: 'discord', discord: { enabled: true, morning_brief: { enabled: true, time: '08:00' } }, telegram: {} },
+      routines: [{ id: 'a', enabled: true }, { id: 'b', enabled: false }],
+      env: { FOO: '1' },
+    }, 'cfg.json');
+    const s = (arg: string) => out.stateful.find((r: any) => r.arg === arg);
+    expect(s('channels')).toMatchObject({ configured: ['discord', 'telegram'], enabled: ['discord'] });
+    expect(s('brief').enabled).toEqual([{ channel: 'discord', time: '08:00' }]);
+    expect(s('routines')).toMatchObject({ enabled: 1, total: 2 });
+    expect(s('env').keys).toEqual(['FOO']);
   });
 
-  test('CLI show exits 0 and prints the summary', async () => {
+  test('CLI show exits 0 and prints one JSON object', async () => {
     const dir = freshDir();
     const file = seedConfig(dir, { agent_name: 'Scout' });
     const r = await runScript('settings-edit.ts', { args: [file, 'show'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('Scout');
+    expect(row(JSON.parse(r.stdout), 'identity', 'name').value).toBe('Scout');
   });
 });
 

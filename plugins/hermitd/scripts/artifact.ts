@@ -20,9 +20,7 @@
 //   bun artifact.ts state dashboard <hermit-state-dir>
 //     Prints the dashboard's render inputs as JSON, for a hermit-local renderer
 //     (see docs/artifacts.md § Custom renderer) to compose its own page from:
-//     {state, themeCss, coreSections, updatedToken}. Read-only; writes nothing.
-//     The camelCase keys are an exception to the helper-output convention: they are
-//     the contract operator-owned renderers read.
+//     {state, theme_css, core_sections, updated_token}. Read-only; writes nothing.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,7 +30,7 @@ import { loadProposalsPageState, renderProposalsPage } from './lib/proposals-pag
 import { renderWeeklyArtifact } from './lib/weekly-artifact';
 import { DEFAULT_STRINGS } from './lib/artifact-strings';
 import { CSS } from './lib/artifact-theme';
-import { exitError } from './lib/cli';
+import { exitError, printJson } from './lib/cli';
 
 interface Rendered { content: string; hash: string }
 
@@ -125,19 +123,19 @@ function verbRender(page: string | undefined, hermitDir: string | undefined, out
   }
 }
 
-/** Render inputs for a hermit-local dashboard renderer. `coreSections` lets a custom
- *  page keep any default card verbatim, and `themeCss` comes from the live stylesheet
+/** Render inputs for a hermit-local dashboard renderer. `core_sections` lets a custom
+ *  page keep any default card verbatim, and `theme_css` comes from the live stylesheet
  *  so core-side theme fixes reach custom pages without them being rebuilt. */
 function verbState(page: string | undefined, hermitDir: string | undefined): void {
   if (page !== 'dashboard' || !hermitDir) exitError();
   try {
     const state = loadDashboardState(hermitDir);
-    process.stdout.write(JSON.stringify({
+    printJson({
       state,
-      themeCss: CSS,
-      coreSections: renderCoreSections(state),
-      updatedToken: UPDATED_TOKEN,
-    }) + '\n');
+      theme_css: CSS,
+      core_sections: renderCoreSections(state),
+      updated_token: UPDATED_TOKEN,
+    });
   } catch {
     exitError('state_failed:dashboard');
   }

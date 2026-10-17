@@ -70,7 +70,7 @@ Write it to `.hermit/dashboard-render.ts`. Its presence is the switch — core d
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts state dashboard .hermit
 ```
 
-returns `{state, themeCss, coreSections, updatedToken}` — the same state the default page renders from, the live stylesheet (so core's theme and dark-mode fixes keep reaching your page), the five default cards as ready HTML you can embed verbatim, and the placeholder to use for the hash trick. Use what helps; ignore the rest.
+returns `{state, theme_css, core_sections, updated_token}` — the same state the default page renders from, the live stylesheet (so core's theme and dark-mode fixes keep reaching your page), the default cards as ready HTML you can embed verbatim, and the placeholder to use for the hash trick. Use what helps; ignore the rest.
 
 **Escape everything that came from a file.** Compiled docs and raw snapshots can contain text a hermit fetched from the web, which means an attacker's text can reach your page. Escape it into element content; never interpolate it into an attribute, a `<script>`, or a `<style>`, and only allow `https:`/`#`/`mailto:` links. This is not optional — the page is published to the operator's account and can be shared.
 

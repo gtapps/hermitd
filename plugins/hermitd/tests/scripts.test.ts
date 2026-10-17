@@ -97,18 +97,64 @@ describe('check-upgrade.sh', () => {
   });
 
   test('check-upgrade output', () => {
-    expect(out).toContain('---Upgrade Available---');
+    expect(JSON.parse(out).status).toBe('upgrade_available');
   });
 });
 
-describe('check-upgrade.sh always_on banner', () => {
+describe('check-upgrade.sh verdict', () => {
+  const pluginVer = readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json')).version;
+  async function run(config: any) {
+    const wd = setupWorkdir();
+    try {
+      write(hermit(wd.dir, 'config.json'), typeof config === 'string' ? config : JSON.stringify(config));
+      const r = await runBash(path.join(SCRIPTS_DIR, 'check-upgrade.sh'), { args: [PLUGIN_ROOT], cwd: wd.dir });
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe('');
+      return r.stdout;
+    } finally { wd.cleanup(); }
+  }
+
+  test('gap -> upgrade_available with both versions and always_on', async () => {
+    for (const [cfg, alwaysOn] of [[{ always_on: true }, true], [{ always_on: false }, false], [{}, false]] as const) {
+      const out = await run({ ...cfg, _hermit_versions: { 'hermitd': '0.0.0' } });
+      expect(JSON.parse(out)).toEqual({ status: 'upgrade_available', plugin_version: pluginVer, config_version: '0.0.0', always_on: alwaysOn });
+    }
+  });
+
+  test('no gap -> bare OK', async () => {
+    expect(await run({ always_on: true, _hermit_versions: { 'hermitd': pluginVer } })).toBe('OK\n');
+  });
+
+  // Config ahead of the loaded plugin = a stale install copy is loaded. evolve cannot
+  // fix that state (it reads as up-to-date, and finalizing would downgrade the stamp),
+  // so this is its own status, never upgrade_available, under any always_on value.
+  test('config ahead of plugin -> stale_plugin_runtime with the loaded root', async () => {
+    for (const always_on of [true, false]) {
+      const out = await run({ always_on, _hermit_versions: { 'hermitd': '99.0.0' } });
+      expect(JSON.parse(out)).toEqual({ status: 'stale_plugin_runtime', plugin_version: pluginVer, config_version: '99.0.0', plugin_root: PLUGIN_ROOT });
+    }
+  });
+
+  test('corrupt config.json -> upgrade_available, so evolve reports the real error', async () => {
+    expect(JSON.parse(await run('not json')).status).toBe('upgrade_available');
+  });
+
+  test('unparseable version on either side -> bare OK', async () => {
+    expect(await run({ _hermit_versions: { 'hermitd': 'garbage' } })).toBe('OK\n');
+  });
+});
+
+// startup-context.ts composes the SessionStart section from check-upgrade.sh's verdict.
+describe('startup-context upgrade section', () => {
   const pluginVer = readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json')).version;
   async function run(configObj: any) {
     const wd = setupWorkdir();
     try {
       write(hermit(wd.dir, 'config.json'), JSON.stringify(configObj));
-      const r = await runBash(path.join(SCRIPTS_DIR, 'check-upgrade.sh'), { args: [PLUGIN_ROOT], cwd: wd.dir });
-      return r.stdout + r.stderr;
+      const r = await runScript('startup-context.ts', {
+        cwd: wd.dir, env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, HERMIT_RESIDENT: '1' }, stdin: '{"source":"startup"}',
+      });
+      return r.stdout;
     } finally { wd.cleanup(); }
   }
 
@@ -122,46 +168,36 @@ describe('check-upgrade.sh always_on banner', () => {
   test('always_on=false + gap -> advisory, no REQUIRED', async () => {
     const out = await run({ always_on: false, _hermit_versions: { 'hermitd': '0.0.0' } });
     expect(out).toContain('---Upgrade Available---');
+    expect(out).toContain('/hermitd:hermit-evolve');
     expect(out).not.toContain('REQUIRED');
   });
 
-  test('always_on absent + gap -> advisory, no REQUIRED', async () => {
-    const out = await run({ _hermit_versions: { 'hermitd': '0.0.0' } });
-    expect(out).toContain('---Upgrade Available---');
-    expect(out).not.toContain('REQUIRED');
-  });
-
-  test('no gap -> silent (no banner)', async () => {
+  test('no gap -> no upgrade section', async () => {
     const out = await run({ always_on: true, _hermit_versions: { 'hermitd': pluginVer } });
     expect(out).not.toContain('---Upgrade Available---');
+    expect(out).not.toContain('---Stale Plugin Runtime---');
   });
 
-  // Config ahead of the loaded plugin = a stale install copy is loaded. evolve cannot
-  // fix that state (it reads as up-to-date, and finalizing would downgrade the stamp),
-  // so this branch must never emit the evolve directive — under any always_on value.
   test('config ahead of plugin -> stale-runtime notice, never an evolve directive', async () => {
     for (const always_on of [true, false]) {
       const out = await run({ always_on, _hermit_versions: { 'hermitd': '99.0.0' } });
+      const section = out.slice(out.indexOf('---Stale Plugin Runtime---'));
       expect(out).toContain('---Stale Plugin Runtime---');
       expect(out).not.toContain('---Upgrade Available---');
-      expect(out).not.toContain('REQUIRED');
-      expect(out).not.toContain('/hermitd:hermit-evolve');
-      expect(out).toContain(`v${pluginVer}`);
-      expect(out).toContain('v99.0.0');
-      expect(out).toContain(PLUGIN_ROOT); // the loaded root identifies the stale entry
+      expect(section).not.toContain('REQUIRED');
+      expect(section).not.toContain('/hermitd:hermit-evolve');
+      expect(section).toContain(`v${pluginVer}`);
+      expect(section).toContain('v99.0.0');
+      expect(section).toContain(PLUGIN_ROOT); // the loaded root identifies the stale entry
     }
   });
 
-  // startup-context.ts slices this section to BUDGETS.upgrade (500). The install path is
+  // The section body is sliced to BUDGETS.upgrade (500). The install path is
   // machine-dependent and printed last, so only the fixed prose is budgeted here.
   test('stale-runtime prose leaves room for the path within the 500-char budget', async () => {
     const out = await run({ always_on: true, _hermit_versions: { 'hermitd': '99.0.0' } });
-    const prose = out.split('Loaded from:')[0];
-    expect(prose.length).toBeLessThanOrEqual(350);
-  });
-
-  test('unparseable version on either side -> silent', async () => {
-    expect(await run({ _hermit_versions: { 'hermitd': 'garbage' } })).toBe('');
+    const section = out.slice(out.indexOf('---Stale Plugin Runtime---') + '---Stale Plugin Runtime---\n'.length);
+    expect(section.split('Loaded from:')[0].length).toBeLessThanOrEqual(350);
   });
 });
 
@@ -864,6 +900,12 @@ describe('safeForLLMMultiline', () => {
 
 const runLint = (dir: string) =>
   runScript('knowledge-lint.ts', { args: [hermit(dir)] });
+// Findings grouped by snake_case type, from the one-object stdout.
+const lintFindings = async (dir: string) => {
+  const r = await runLint(dir);
+  expect(r.exitCode).toBe(0);
+  return JSON.parse(r.stdout).findings;
+};
 
 describe('knowledge-lint', () => {
   // 4. Empty state — no raw/, no compiled/
@@ -871,13 +913,20 @@ describe('knowledge-lint', () => {
     write(hermit(dir, 'config.json'), '{}');
     const r = await runLint(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(JSON.parse(r.stdout)).toEqual({ counts: { raw: 0, compiled: 0, archived: 0 }, findings: {} });
+  }));
+
+  test('knowledge-lint (--verbose adds schema_present)', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{}');
+    const r = await runScript('knowledge-lint.ts', { args: [hermit(dir), '--verbose'] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).schema_present).toBe(false);
   }));
 
   // 5. Findings: stale, unreferenced, oversized, missing-type
   describe('findings', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any = {};
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -893,22 +942,19 @@ describe('knowledge-lint', () => {
         '---\ntitle: no type\ncreated: 2026-04-01T00:00:00+00:00\n---\nshort');
       write(hermit(dir, 'compiled', 'big.md'),
         `---\ntitle: big\ntype: briefing\ncreated: 2026-04-10T00:00:00+00:00\n---\n${'x'.repeat(1500)}`);
-      const r = await runLint(dir);
-      out = r.stdout + r.stderr;
+      out = await lintFindings(dir);
     });
     afterAll(() => wd.cleanup());
 
-    test('knowledge-lint (finds unreferenced or stale)', () => {
-      expect(out).toMatch(/unreferenced|stale/);
+    test('knowledge-lint (finds stale, with age and detail)', () => {
+      expect(out.stale).toEqual([expect.objectContaining({ file: 'raw/old-snap.md', age: expect.any(Number), detail: expect.any(String) })]);
     });
-    test('knowledge-lint (finds stale)', () => {
-      expect(out).toContain('stale');
+    test('knowledge-lint (finds oversized, no age)', () => {
+      expect(out.oversized[0].file).toBe('compiled/big.md');
+      expect(out.oversized[0]).not.toHaveProperty('age');
     });
-    test('knowledge-lint (finds oversized)', () => {
-      expect(out).toContain('oversized');
-    });
-    test('knowledge-lint (finds missing-type)', () => {
-      expect(out).toContain('missing-type');
+    test('knowledge-lint (finds missing_type)', () => {
+      expect(out.missing_type[0].file).toBe('compiled/note.md');
     });
   });
 
@@ -936,7 +982,7 @@ describe('knowledge-lint', () => {
       expect(out).not.toContain('context-stubbed');
     });
     test('knowledge-lint (unstubbed oversized still flagged)', () => {
-      expect(out).toContain('oversized');
+      expect(JSON.parse(out).findings.oversized[0].file).toBe('compiled/briefing-big.md');
     });
   });
 
@@ -974,9 +1020,8 @@ describe('knowledge-lint', () => {
     test('knowledge-lint (all topic pages stale-checked, not just newest)', () => {
       expect(out).toContain('topic-stale-b.md');
     });
-    test('knowledge-lint (topic-missing-updated flagged)', () => {
-      expect(out).toContain('topic-missing-updated');
-      expect(out).toContain('topic-no-updated.md');
+    test('knowledge-lint (topic_missing_updated flagged)', () => {
+      expect(JSON.parse(out).findings.topic_missing_updated).toEqual([{ file: 'compiled/topic-no-updated.md', detail: expect.any(String) }]);
     });
   });
 
@@ -991,8 +1036,7 @@ describe('knowledge-lint', () => {
       `---\ntitle: fresh\ntype: source\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
     write(hermit(dir, 'compiled', 'summary.md'),
       `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\nBased on fresh-snap.md data`);
-    const r = await runLint(dir);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(await lintFindings(dir)).toEqual({});
   }));
 
   // 6a. Schema-empty finding — template-style schema (all bullets commented)
@@ -1010,8 +1054,7 @@ describe('knowledge-lint', () => {
       path.join(PLUGIN_ROOT, 'state-templates', 'knowledge-schema.md.template'), 'utf-8');
     write(hermit(dir, 'knowledge-schema.md'),
       template.split('\n').filter((l) => !/^- (note|input|review|procedure-brief|topic|capability-brainstorm):/.test(l)).join('\n'));
-    const r = await runLint(dir); // exit code intentionally not asserted (bash used `|| true`)
-    expect(r.stdout + r.stderr).toContain('schema-empty');
+    expect((await lintFindings(dir)).schema_empty).toHaveLength(1);
   }));
 
   test('knowledge-lint (template declares capability-brainstorm)', withDir(async (dir) => {
@@ -1022,9 +1065,7 @@ describe('knowledge-lint', () => {
     write(hermit(dir, 'knowledge-schema.md'), template);
     write(hermit(dir, 'compiled', 'capability-brainstorm-2026-10-09-1200.md'),
       `---\ntitle: Capability brainstorm\ntype: capability-brainstorm\ncreated: ${isoSec(daysAgo(1))}\n---\nCreated a proposal.`);
-    const r = await runLint(dir);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout + r.stderr).not.toContain('undeclared-type');
+    expect(await lintFindings(dir)).not.toHaveProperty('undeclared_type');
   }));
 
   // 6b. Schema enforcement — undeclared type warned; declared+matching type clean
@@ -1048,16 +1089,14 @@ describe('knowledge-lint', () => {
     test.serial('knowledge-lint (schema: undeclared type warned)', async () => {
       write(hermit(wd.dir, 'compiled', 'unknown.md'),
         '---\ntitle: unknown\ntype: foo\ncreated: 2026-04-14T00:00:00+00:00\n---\ndata');
-      const r = await runLint(wd.dir);
-      expect(r.stdout + r.stderr).toContain('undeclared-type');
+      expect((await lintFindings(wd.dir)).undeclared_type[0].file).toBe('compiled/unknown.md');
     });
 
     test.serial('knowledge-lint (schema: declared type is clean)', async () => {
       // Matching type: schema has 'briefing', file has type: briefing
       write(hermit(wd.dir, 'compiled', 'unknown.md'),
         `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
-      const r = await runLint(wd.dir);
-      expect(r.stdout).toContain('Knowledge base is clean');
+      expect(await lintFindings(wd.dir)).toEqual({});
     });
   });
 
@@ -1072,8 +1111,7 @@ describe('knowledge-lint', () => {
       `---\ntitle: fresh\ntype: source\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
     write(hermit(dir, 'compiled', 'summary.md'),
       `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\nBased on fresh-snap.md data`);
-    const r = await runLint(dir);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(await lintFindings(dir)).toEqual({});
   }));
 });
 
@@ -1114,10 +1152,7 @@ describe('archive-raw', () => {
 
   // Regression: review-weekly must not mask stale raw in knowledge-lint
   test('knowledge-lint (review-weekly does not mask stale)', () => {
-    expect(lintOut).toMatch(/^stale /m);
-  });
-  test('knowledge-lint (expired raw flagged stale)', () => {
-    expect(lintOut).toContain('raw/expired-snap.md');
+    expect(JSON.parse(lintOut).findings.stale.map((f: any) => f.file)).toEqual(['raw/expired-snap.md']);
   });
 
   test('archive-raw (review-weekly does not pin, real ref does)', () => {
@@ -4738,6 +4773,11 @@ describe('search', () => {
     expect(r.exitCode).toBe(0);
     return r.stdout + r.stderr;
   };
+  const searchHits = async (dir: string, ...args: string[]) => {
+    const r = await runScript('search.ts', { args: [hermit(dir), ...args] });
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout).hits;
+  };
 
   // search: basic match — finds a compiled artifact by keyword, returns file:line snippet
   describe('basic match', () => {
@@ -4764,8 +4804,11 @@ describe('search', () => {
     test('search (irrelevant file excluded)', () => {
       expect(out).not.toContain('briefing-2026-05-10');
     });
-    test('search (returns file:line snippet)', () => {
-      expect(out).toContain(':');
+    test('search (returns a file hit with a line snippet)', () => {
+      expect(JSON.parse(out).hits).toEqual([{
+        source: 'file', path: 'compiled/review-heartbeat-2026-05-01.md', date: '2026-05-01', title: 'Heartbeat design',
+        snippets: [{ line: 6, start_line: 6, text: 'The zero-token heartbeat is the best idea in the repo.' }],
+      }]);
     });
   });
 
@@ -4816,11 +4859,8 @@ describe('search', () => {
       '---\ntitle: Memory architecture review\ntype: review\ncreated: 2026-05-10T00:00:00+00:00\n---\nSome other content.');
     write(hermit(dir, 'compiled', 'briefing-2026-05-11.md'),
       '---\ntitle: Unrelated briefing\ntype: briefing\ncreated: 2026-05-11T00:00:00+00:00\n---\nThis file mentions memory in the body once.');
-    const out = await runSearch(dir, 'memory');
-    // First line mentioning review-memory must be within the first 3 output lines.
-    const idx = out.split('\n').findIndex((l) => l.includes('review-memory'));
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(idx).toBeLessThan(3);
+    const hits = await searchHits(dir, 'memory');
+    expect(hits.map((h: any) => h.path)).toEqual(['compiled/review-memory-2026-05-10.md', 'compiled/briefing-2026-05-11.md']);
   }));
 
   // search: no results case
@@ -4829,8 +4869,9 @@ describe('search', () => {
     write(hermit(dir, 'config.json'), '{}');
     write(hermit(dir, 'compiled', 'review-some-2026-05-01.md'),
       '---\ntitle: Some artifact\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nSome content.');
-    const out = await runSearch(dir, 'zzznomatch');
-    expect(out).toContain('No results found');
+    const r = await runScript('search.ts', { args: [hermit(dir), 'zzznomatch'] });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('{"hits":[]}');
   }));
 
   // search: snippet :line matches the real file line (frontmatter offset included)
@@ -4840,8 +4881,8 @@ describe('search', () => {
     write(hermit(dir, 'config.json'), '{}');
     write(hermit(dir, 'compiled', 'review-offset-2026-05-01.md'),
       '---\ntitle: Offset check\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nalpha\nbeta\nthe keyword zebra lives here\ngamma');
-    const out = await runSearch(dir, 'zebra');
-    expect(out).toContain(':8  the keyword zebra lives here');
+    const [hit] = await searchHits(dir, 'zebra');
+    expect(hit.snippets).toEqual([{ line: 8, start_line: 7, text: 'beta\nthe keyword zebra lives here\ngamma' }]);
   }));
 
   // lib/search.ts: TF+frontmatter boost verified in-process
@@ -4857,7 +4898,7 @@ describe('search', () => {
         '---\ntitle: weekly update\ntype: briefing\ncreated: 2026-05-11T00:00:00+00:00\n---\nMentions deployment in the body here.');
       const results = search(dir, 'deployment');
       expect(results.length).toBeGreaterThanOrEqual(2);
-      expect(results[0].relPath).toContain('review-a');
+      expect(results[0].path).toContain('review-a');
     } finally {
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
     }
@@ -4870,23 +4911,21 @@ describe('search', () => {
       write(hermit(dir, 'config.json'), '{}');
       write(hermit(dir, 'compiled', 'review-only-2026-05-01.md'),
         '---\ntitle: File only\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nA file about widgets.');
-      const out = await runSearch(dir, 'widgets');
-      expect(out).toContain('review-only');
-      expect(out).not.toContain('[channel]');
+      const hits = await searchHits(dir, 'widgets');
+      expect(hits.map((h: any) => [h.source, h.path])).toEqual([['file', 'compiled/review-only-2026-05-01.md']]);
     }));
 
-    test('search (channel hit labelled [channel], untrusted marker, no sqlite:1 ref)', withDir(async (dir) => {
+    test('search (channel hit marked untrusted, no path or line refs)', withDir(async (dir) => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), {
         source: 'discord', chat_id: 'C1', direction: 'in', sender: 'U1',
         text: 'lets ship the widgets dashboard next week', ts: '2026-06-01T00:00:00.000Z',
       });
-      const out = await runSearch(dir, 'widgets');
-      expect(out).toContain('[channel]');
-      expect(out).toContain('untrusted external input');
-      expect(out).toContain('widgets dashboard');
-      expect(out).not.toContain('sqlite:1');
+      expect(await searchHits(dir, 'widgets')).toEqual([{
+        source: 'channel', untrusted: true, title: 'from discord (C1)', date: '2026-06-01',
+        text: 'lets ship the widgets dashboard next week',
+      }]);
     }));
 
     test('search (--type=channel isolates channel hits from file hits)', withDir(async (dir) => {
@@ -4895,11 +4934,8 @@ describe('search', () => {
       write(hermit(dir, 'compiled', 'review-widgets-2026-05-01.md'),
         '---\ntitle: Widgets\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nAbout widgets.');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2026-06-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--type=channel', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      const out = r.stdout + r.stderr;
-      expect(out).toContain('[channel]');
-      expect(out).not.toContain('review-widgets');
+      const hits = await searchHits(dir, '--type=channel', 'widgets');
+      expect(hits.map((h: any) => h.source)).toEqual(['channel']);
     }));
 
     test('search (--type=review excludes channel hits)', withDir(async (dir) => {
@@ -4908,20 +4944,15 @@ describe('search', () => {
       write(hermit(dir, 'compiled', 'review-widgets-2026-05-01.md'),
         '---\ntitle: Widgets\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nAbout widgets.');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2026-06-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--type=review', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      const out = r.stdout + r.stderr;
-      expect(out).toContain('review-widgets');
-      expect(out).not.toContain('[channel]');
+      const hits = await searchHits(dir, '--type=review', 'widgets');
+      expect(hits.map((h: any) => [h.source, h.path])).toEqual([['file', 'compiled/review-widgets-2026-05-01.md']]);
     }));
 
     test('search (--since excludes an older channel hit)', withDir(async (dir) => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2020-01-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--since=2099-01-01', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      expect((r.stdout + r.stderr)).toContain('No results found');
+      expect(await searchHits(dir, '--since=2099-01-01', 'widgets')).toEqual([]);
     }));
 
     // Regression: FTS5 MATCH on an unquoted hyphenated term throws
@@ -4944,9 +4975,8 @@ describe('search', () => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'the foo bar dashboard ships next week', ts: '2026-06-01T00:00:00.000Z' });
-      const out = await runSearch(dir, 'foo-bar');
-      expect(out).toContain('[channel]');
-      expect(out).toContain('foo bar');
+      const [hit] = await searchHits(dir, 'foo-bar');
+      expect(hit).toMatchObject({ source: 'channel', untrusted: true, text: 'the foo bar dashboard ships next week' });
     }));
 
     // Regression: recalled channel text must pass through the same

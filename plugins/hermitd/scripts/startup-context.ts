@@ -536,7 +536,9 @@ function emitFullContext(source: string | null) {
   }
 
   // -------------------------------------------------------
-  // 7. Upgrade check (priority 5, budget 500)
+  // 7. Upgrade check (priority 5, budget 500). check-upgrade.sh prints the facts
+  // (its header says why stale_plugin_runtime never gets an evolve directive);
+  // the install path goes last so a very long path truncates, not the instruction.
   // -------------------------------------------------------
   if (totalChars < HARD_CAP) {
     try {
@@ -544,7 +546,19 @@ function emitFullContext(source: string | null) {
         `bash "${path.join(PLUGIN_ROOT, 'scripts', 'check-upgrade.sh')}" "${PLUGIN_ROOT}"`,
         { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
       ).trim();
-      if (out) emit('Upgrade Check', out.slice(0, BUDGETS.upgrade));
+      const v = out.startsWith('{') ? JSON.parse(out) : null;
+      let title = '', text = '';
+      if (v?.status === 'upgrade_available') {
+        title = 'Upgrade Available';
+        text = `Plugin v${v.plugin_version} ≠ config v${v.config_version}. ` + (v.always_on
+          ? 'REQUIRED: run /hermitd:hermit-evolve unattended NOW, before any other work this session.'
+          : 'Run /hermitd:hermit-evolve');
+      } else if (v?.status === 'stale_plugin_runtime') {
+        title = 'Stale Plugin Runtime';
+        text = `Loaded plugin v${v.plugin_version} is older than this hermit's applied state v${v.config_version}: a stale install copy. hermit-evolve cannot fix this: find the \`claude plugin list\` entry matching the path below, run \`claude plugin update hermitd@hermitd --scope <its scope>\`, then restart.\n`
+          + `Loaded from: ${v.plugin_root}`;
+      }
+      if (title) emit(title, text.slice(0, BUDGETS.upgrade));
     } catch {
       // Non-fatal
     }
