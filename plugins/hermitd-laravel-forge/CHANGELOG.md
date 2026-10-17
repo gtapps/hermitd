@@ -1,6 +1,6 @@
 # Changelog — laravel-forge-hermit
 
-## [Unreleased]
+## [0.0.20] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
@@ -8,6 +8,7 @@
 - `native-permissions.ts` prints `OK` or one JSON object instead of prose and uncaught throws
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor. A refused block sync names the file with the duplicate marker.
 - `forge.php --help` exits 0
 - Scrubbed `forge.php` output redacts double-quoted values in JSON-encoded results, single-quoted values, and literal credentials on `composer config` auth lines.
 
