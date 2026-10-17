@@ -1,4 +1,5 @@
 import { readSeedPatterns } from './lib/settings/seed-patterns';
+import { readTargetState } from './lib/domain-hatch/target';
 import { isLoggingEnabled } from './lib/channel-log';
 import { markerOnward } from './evolve-plan';
 // Fail-open: a failing check records "fail" in its own entry; the orchestrator
@@ -764,8 +765,7 @@ function checkPermissionRules(p: DoctorPaths = PATHS) {
 
     const { ask: seededAsk } = readSeedPatterns(p.pluginRoot);
     // A deny in any scope hard-blocks the rule everywhere, so the deny set is
-    // the union; the ask side is tracked per file so the fix names the one that
-    // actually carries the inert entries.
+    // the union; track asks per file for unstamped installs' per-file remedies.
     const denied = new Set(scopes.flatMap(s => s.deny));
     const carrying = scopes
       .map(s => ({ file: s.file, inert: seededAsk.filter(r => s.ask.includes(r) && !denied.has(r)) }))
@@ -776,8 +776,12 @@ function checkPermissionRules(p: DoctorPaths = PATHS) {
       return { id, status: 'ok', detail: `no seeded ask rules left inert in ${names}` };
     }
     const count = new Set(carrying.flatMap(s => s.inert)).size;
-    const fixes = carrying
-      .map(s => `bun ${p.pluginRoot}/scripts/apply-settings.ts ${s.file} deny hardened`)
+    const { target } = readTargetState(p.hermitDir, { core_scope: null, target: 'local' });
+    const fixFiles = target
+      ? [path.join(projectRoot, '.claude', target === 'committed' ? 'settings.json' : 'settings.local.json')]
+      : carrying.map(s => s.file);
+    const fixes = fixFiles
+      .map(file => `bun ${p.pluginRoot}/scripts/apply-settings.ts ${file} deny hardened`)
       .join('; ');
     return {
       id, status: 'warn',

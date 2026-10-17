@@ -49,6 +49,7 @@ never block:
 - **New settings (step 4):** write nothing except the detected `language`/`timezone` values (via a
   settings-edit verb) — step 9's finalizer applies every other missing template default itself and
   reports them as `settings_added`. Note those for the report ("adjust via /hermit-settings").
+- **Settings target refusal:** if any `apply-settings` call (Step 8 or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
 - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
   `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
 - **Template conflicts (step 5):** always park upstream as `<name>.new` and keep the operator's copy
