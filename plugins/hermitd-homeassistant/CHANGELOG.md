@@ -10,6 +10,12 @@
 ### Fixed
 - `domain-brainstorm` parses the proposal triage outcome in the current `CREATE:`/`SUPPRESS:`/`DUPLICATE:` form.
 
+### Upgrade Instructions
+
+1. **Offer to migrate operator skills to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. List each skill line that runs a `hermitd-homeassistant` helper through this plugin's install path and branches on its old output: an `ha-agent-lab` `ok`, `blocked` or `message` field, findings text such as `(skipped:` or `No actionable findings` read from the CLI, a bare `list-*` array, raw `probe` output, `status: "ok"` from `refresh-context` or `fetch-history`, argument-parser text on stderr or exit 2, or a non-zero exit from `simulate`, `policy-check`, `check-config` or a strict-mode block. A line about the project's own script output, a placeholder, or a call that only checks the exit code of a real failure is not a hit. Skip silently when there are none. Otherwise show them with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+   - *Migrate them to the convention*: update each line to the shape the `hermitd-homeassistant` skill running the same command describes, per core's `docs/creating-your-own-hermit.md` § Helper-script output. Report each file changed.
+   - *Keep them as they are*: change nothing, and tell the operator that these lines misread `hermitd-homeassistant` output until they are updated.
+
 ## [0.4.23] - 2026-10-15
 
 ### Changed
