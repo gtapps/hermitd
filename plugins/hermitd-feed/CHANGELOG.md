@@ -9,6 +9,12 @@
 - Briefs no longer skip every web and RSS source after one oversized fetch result; the previous `tmp/feed-source-items-<slot>.json` is deleted before each fetch.
 - `feed-sources.md` table violations now reach Claude: the `validate-sources` hook returns a PostToolUse block decision instead of exiting 1.
 
+### Upgrade Instructions
+
+1. **Offer to migrate operator skills to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. List each skill line that runs a `hermitd-feed` helper through this plugin's install path and branches on its old output: `source-fetch-result.ts new-run` read as a bare UUID, `verify` read by a non-zero exit on a rejected payload, or `reddit-fetch.ts` read as a bare array or by exit 1 when Reddit is unavailable. A line about the project's own script output, a placeholder, or a call that only checks the exit code of a real failure is not a hit. Skip silently when there are none. Otherwise show them with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+   - *Migrate them to the convention*: update each line to the shape the `hermitd-feed` skill running the same command describes, per core's `docs/creating-your-own-hermit.md` § Helper-script output. Report each file changed.
+   - *Keep them as they are*: change nothing, and tell the operator that these lines misread `hermitd-feed` output until they are updated.
+
 ## [0.2.4] - 2026-10-02
 
 ### Changed
