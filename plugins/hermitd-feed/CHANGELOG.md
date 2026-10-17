@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
 - `source-fetch-result.ts` and `reddit-fetch.ts` print one JSON object; a rejected verify and an unavailable subreddit exit 0 with `status` and `reason`.
 
 ### Fixed
