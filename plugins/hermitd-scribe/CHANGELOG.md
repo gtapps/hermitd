@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
 - `file-issue.ts` prints one JSON object per run, with failures as `{"error":"<token>"}` on stdout; no match and no templates exit 0.
 - `scripts/native-permissions.ts` prints `OK`, or `{"error":"<token>"}` with exit 1 instead of an uncaught exception.
 
