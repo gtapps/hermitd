@@ -67,6 +67,7 @@ import { writeFileAtomic } from './lib/md-write';
 import { SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from './lib/settings/automode-entries';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { emitJson, exitError, printJson } from './lib/cli';
+import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 
@@ -414,6 +415,16 @@ function mergeAsk(settings: Json, entries: string[]): string[] {
 const [, , targetFile, op, ...rest] = process.argv;
 
 if (!targetFile || !op) exitError();
+
+if (['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)) {
+  const resolvedTarget = path.resolve(targetFile);
+  const projectRoot = path.dirname(path.dirname(resolvedTarget));
+  const { target } = readTargetState(path.join(projectRoot, '.hermit'), { core_scope: null, target: 'local' });
+  if (target && path.basename(resolvedTarget) === settingsFile(target === 'local' ? 'committed' : 'local')) {
+    printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(target)}` });
+    process.exit(0);
+  }
+}
 
 const settings = readTargetJson(targetFile);
 // Snapshot before the ops below mutate in place — the audit ledger records what

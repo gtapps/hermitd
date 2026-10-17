@@ -39,8 +39,9 @@ const DENY_TEMPLATE = JSON.parse(
 function withTarget(fn: (target: string) => Promise<void>) {
   return async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apply-settings-'));
+    fs.mkdirSync(path.join(dir, '.claude'));
     try {
-      await fn(path.join(dir, 'settings.json'));
+      await fn(path.join(dir, '.claude', 'settings.json'));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -498,4 +499,52 @@ describe('hermitd permission migration', () => {
     expect(readAllow(target)).toEqual([custom, ...HERMIT_ALLOW]);
     expect(readAllow(target)).toContain('Bash(.hermit/bin/hermitd-run task note *)');
   }));
+});
+
+
+describe('apply-settings hatch target guard', () => {
+  for (const [op, ...args] of [
+    ['permissions-sync'], ['permissions-plan'], ['deny', 'standard'], ['deny-add', 'Bash(operator-own*)'],
+  ]) {
+    test(`committed stamp refuses local ${op} without writes or audit`, withTarget(async (fixture) => {
+      const root = path.dirname(path.dirname(fixture));
+      const state = path.join(root, '.hermit', 'state');
+      fs.mkdirSync(state, { recursive: true });
+      fs.writeFileSync(path.join(state, 'hatch-options.json'), JSON.stringify({ target: 'committed' }));
+            const target = path.join(root, '.claude', 'settings.local.json');
+      seed(target, { permissions: { allow: ['operator-owned'] } });
+      const before = fs.readFileSync(target, 'utf8');
+      const audit = path.join(state, 'settings-audit.jsonl');
+      fs.writeFileSync(audit, 'existing audit row\n');
+      const result = await runScript('apply-settings.ts', { args: [target, op!, ...args] });
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        status: 'refused', reason: 'not_hatch_target', settings_file: '.claude/settings.json',
+      });
+      expect(fs.readFileSync(target, 'utf8')).toBe(before);
+      expect(fs.readFileSync(audit, 'utf8')).toBe('existing audit row\n');
+    }));
+  }
+
+  for (const stamp of ['committed', 'local', null, 'invalid'] as const) {
+    for (const name of ['settings.json', 'settings.local.json']) {
+      test(`${stamp ?? 'absent'} stamp with ${name}`, withTarget(async (fixture) => {
+        const root = path.dirname(path.dirname(fixture));
+        if (stamp !== null) {
+          const state = path.join(root, '.hermit', 'state');
+          fs.mkdirSync(state, { recursive: true });
+          fs.writeFileSync(path.join(state, 'hatch-options.json'), JSON.stringify({ target: stamp }));
+        }
+                const target = path.join(root, '.claude', name);
+        const result = await run(target, 'permissions-sync');
+        if (stamp === 'local' && name === 'settings.json' || stamp === 'committed' && name === 'settings.local.json') {
+          expect(result).toEqual({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${stamp === 'local' ? 'settings.local.json' : 'settings.json'}` });
+          expect(fs.existsSync(target)).toBe(false);
+        } else {
+          expect(result.missing).toEqual(HERMIT_ALLOW);
+          expect(readAllow(target)).toEqual(HERMIT_ALLOW);
+        }
+      }));
+    }
+  }
 });

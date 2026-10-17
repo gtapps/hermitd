@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `apply-settings` `permissions-plan`, `permissions-sync`, `deny` and `deny-add` refuse the settings file that is not the stamped hatch target, so `/hermitd:hermit-evolve` no longer writes the sealed allow and deny sets into `settings.local.json` on committed-target hermits; the evolve runner re-runs a refused call once on the file it names.
+- `/hermitd:hatch` stamps the settings target before its first settings or `CLAUDE.md` write, and `/hermitd:hermit-doctor`'s `permission-rules` fix names the stamped target's settings file.
+
 ## [1.4.16] - 2026-10-17
 
 ### Changed

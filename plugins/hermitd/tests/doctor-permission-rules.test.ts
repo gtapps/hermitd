@@ -14,11 +14,15 @@ const SEEDED_ASK: string[] = JSON.parse(
   fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'deny-patterns.json'), 'utf8'),
 ).ask;
 
-type Fixture = { mode?: string; local?: any; project?: any };
+type Fixture = { mode?: string; local?: any; project?: any; target?: 'local' | 'committed' };
 
-function scenario({ mode, local, project }: Fixture) {
+function scenario({ mode, local, project, target }: Fixture) {
   const dir = freshDir();
   fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+  if (target) {
+    fs.mkdirSync(path.join(dir, '.hermit', 'state'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.hermit', 'state', 'hatch-options.json'), JSON.stringify({ target }));
+  }
   fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
   fs.writeFileSync(
     path.join(dir, '.hermit', 'config.json'),
@@ -54,6 +58,15 @@ describe('doctor permission-rules check', () => {
     expect(result.detail).toContain(`${SEEDED_ASK.length} seeded ask rules`);
     expect(result.detail).toContain(path.join(dir, '.claude', 'settings.local.json'));
     expect(result.detail).toContain('deny hardened');
+  });
+
+  test('committed stamp names one target remedy when only local settings carry the seed', () => {
+    const { result, dir } = scenario({ mode: 'bypassPermissions', local: standard, target: 'committed' });
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain(`${SEEDED_ASK.length} seeded ask rules`);
+    expect(result.detail).toContain(`${path.join(dir, '.claude', 'settings.json')} deny hardened`);
+    expect(result.detail).not.toContain('settings.local.json deny hardened');
+    expect(result.detail.match(/apply-settings\.ts/g)).toHaveLength(1);
   });
 
   test('bypassPermissions with the Hardened seed (asks in deny) → ok', () => {

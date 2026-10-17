@@ -266,6 +266,16 @@ Periodic plugin checks are registered as ordinary routines by domain hatches, fo
 
 `tmux_session_name` is derived from `project_name` on fresh hatch only (`hermit-<project_name>`) — re-init never re-substitutes it.
 
+**Persist hatch options.** After config.json is written, before any settings or CLAUDE write, run:
+
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd --target <local|committed>
+```
+
+with this run's final `hatch_target` (the Step 1.5 scope default or the Advanced Visibility answer). The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. It prints `{action, target, path}` (or `{error}` at exit 1), where `action` is `created`, `repaired`, `updated` or `unchanged`.
+
+This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to inherit the operator's target choice without re-running scope detection.
+
 ### 5b. Localize artifact chrome (non-`en` operators only)
 
 The script-rendered Artifact pages (dashboard, proposals) read their fixed UI chrome from `.hermit/state/artifact-strings.json` when present, overlaying it per key over the English defaults (a missing key or an absent file falls back to English). Model-authored content already follows `language`; this closes the gap for the ~35 hardcoded chrome labels so a non-`en` dashboard isn't half-English.
@@ -551,18 +561,6 @@ Claude Code ships its own native bash sandbox (`sandbox.*` settings, `bwrap`/`sa
 
 No `AskUserQuestion` — enabling or disabling `sandbox.*` is entirely the operator's call via `/sandbox` or by editing their settings file directly.
 
-### 9b. Persist hatch options
-
-After Steps 6–9 complete, run:
-
-```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd --target <local|committed>
-```
-
-with the target chosen in Step 6. The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. It prints `{action, target, path}` (or `{error}` at exit 1), where `action` is `created`, `repaired`, `updated` or `unchanged`.
-
-This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to inherit the operator's target choice without re-running scope detection.
-
 ### 9c. Artifact publish permission
 
 Skip this step entirely if `artifacts.dashboard`, `artifacts.proposals`, and `artifacts.weekly_review` are all `false` in the config just written (Step 5) — nothing to authorize.
@@ -698,6 +696,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 |---|---|---|
 | Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
 | Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
+| Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
 | Step 5b | artifact chrome localization | run verbatim — generate the translated table only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + dm_channel_id=null + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |

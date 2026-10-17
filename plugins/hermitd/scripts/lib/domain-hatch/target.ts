@@ -167,3 +167,7 @@ export function ensureHatchTarget(
 export function targetFile(target: Target): string {
   return target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md';
 }
+
+export function settingsFile(target: Target): string {
+  return target === 'local' ? 'settings.local.json' : 'settings.json';
+}
