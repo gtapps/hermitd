@@ -555,6 +555,10 @@ check(formatSdkError(new \RuntimeException('Connection failed.')) === "{\"error\
 check(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\NotFoundException()), true)['error'] === 'sdk_http_404:The resource you are looking for could not be found.'
     && str_starts_with(json_decode(formatSdkError(new \Laravel\Forge\Exceptions\RateLimitExceededException(null)), true)['error'], 'rate_limited'),
     'SDK exception classes map to their HTTP token');
+check(checkStatusFor(new \Exception('{"message":"Unauthenticated."}')) === 'invalid',
+    'check maps the Forge 401 body to invalid');
+check(checkStatusFor(new \RuntimeException('cURL error 6: Could not resolve host: forge.laravel.com')) === 'unreachable',
+    'check maps a network error to unreachable');
 $secretOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([
     'errors' => ['name' => ['Invalid DB_PASSWORD=hunter2trombone', 'Invalid https://app:s3cr3t@example.invalid/path']],
 ]));

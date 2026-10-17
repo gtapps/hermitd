@@ -40,6 +40,7 @@ if (file_exists($prodAutoload)) {
 
 use Laravel\Forge\Forge;
 use Laravel\Forge\Exceptions\NotFoundException;
+use Laravel\Forge\Exceptions\RateLimitExceededException;
 
 // ---------------------------------------------------------------------------
 // .env loader (project root only; getenv() takes precedence)
@@ -305,12 +306,7 @@ if ($cmd === 'check') {
         $forge->organizations();
         $status = 'ok';
     } catch (\Throwable $e) {
-        $msg = $e->getMessage();
-        if (str_contains($msg, '401') || str_contains($msg, 'Unauthorized') || str_contains($msg, 'unauthenticated')) {
-            $status = 'invalid';
-        } else {
-            $status = 'unreachable'; // network/egress error, not an auth rejection
-        }
+        $status = checkStatusFor($e);
     }
     emit(['status' => $status] + $lift);
 }
@@ -751,7 +747,7 @@ if ($cmd === 'failed-deploys') {
                         'commit'     => $latest?->commit?->message ?? null,
                     ];
                 } catch (\Throwable $e) {
-                    if (str_contains($e->getMessage(), '429')) {
+                    if ($e instanceof RateLimitExceededException) {
                         sleep(30);
                     }
                     $failures[] = [
