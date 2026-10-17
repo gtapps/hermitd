@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `domain-brainstorm` parses the proposal triage verdict in the grammar `proposal-triage` prints.
+
 ## [0.4.21] - 2026-10-10
 
 ### Fixed

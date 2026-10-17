@@ -52,9 +52,9 @@ Set frontmatter: `source: auto-detected`, `category: improvement`, `tags: [capab
 > `Evidence Source: capability-brainstorm` is reused intentionally: it is the only source `proposal-triage` recognizes for the single-pass recurrence bypass, and adding a dedicated `domain-brainstorm` source is a core edit this skill deliberately avoids. Provenance is carried by the `tags` above, which `proposal-create` writes onto both the `triage-verdict` row and the proposal frontmatter. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
 Parse the verdict:
-- `CREATE` — note PROP-NNN.
-- `SUPPRESS — <code>` — record suppression code; don't retry.
-- `DUPLICATE:<PROP-ID>` — record existing ID; don't create.
+- `CREATE: <title>`: PROP file written, note the assigned PROP-NNN.
+- `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <PROP-ID>`: record the existing PROP-ID. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 
