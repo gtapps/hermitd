@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `/hatch` names existing operator denies that override the publication asks, as the other domain installers do.
+
 ## [0.1.10] - 2026-10-17
 
 ### Changed
