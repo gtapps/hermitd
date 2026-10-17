@@ -43,6 +43,6 @@ Restore prints `{ applied, entities, sensitive, report_path }`, or a status with
 
 ## Failure modes
 
-- HA unreachable: the CLI prints `{"error":"ha_unreachable:<detail>"}` and exits 1. An unreadable snapshot file prints `{"error":"snapshot_unreadable:<detail>"}`.
+- HA unreachable or erroring: the CLI prints `{"error":"ha_unreachable:<detail>"}` or `{"error":"ha_http_<status>:<detail>"}` and exits 1. An unreadable snapshot file prints `{"error":"snapshot_unreadable:<detail>"}`.
 - A snapshot with no matching entities: capture reports `captured: 0`; restore reports `status: "empty"`.
 - Restore replays state + captured attributes via `scene.apply`; for cover position and climate setpoints the result depends on what HA's scene integration can reproduce — verify the outcome rather than assuming an exact match.

@@ -24,7 +24,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates
 The CLI:
 - Fetches live entity states and filters to `update.*` entities where `state == "on"` (an update is pending) and the pending version hasn't been skipped in HA.
 - Classifies each into a tier: `core` (HA Core), `os` (Operating System), `supervisor`, `addon`, or `hacs`. Core/OS/Supervisor are recognized by their well-known entity_ids; add-ons are recognized by the native backup capability they advertise (HA's `supported_features` BACKUP bit), which HACS/custom-integration updates lack; anything without it aggregates into the `hacs` bucket rather than risking noise.
-- Prints one JSON object: `date`, `total`, `updates` (each individual update's `tier`, `title`, `installed_version`, `latest_version`, `release_url`) and `hacs_pending`, or `{"date","status":"skipped","reason":"ha_unreachable","detail"}` when HA is unreachable.
+- Prints one JSON object: `date`, `total`, `updates` (each individual update's `tier`, `title`, `installed_version`, `latest_version`, `release_url`) and `hacs_pending`, or `{"date","status":"skipped","reason","detail"}` when HA is unreachable (`ha_unreachable`) or answers with an error (`ha_http_<status>`).
 
 ## Output contract
 

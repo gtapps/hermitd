@@ -9,7 +9,6 @@
 
 ### Fixed
 - `domain-brainstorm` parses the proposal triage outcome in the current `CREATE:`/`SUPPRESS:`/`DUPLICATE:` form.
-- `ha-morning-brief` applies the brief runner's `refresh` entries to micro-proposals, matching the core brief.
 
 ## [0.4.23] - 2026-10-15
 

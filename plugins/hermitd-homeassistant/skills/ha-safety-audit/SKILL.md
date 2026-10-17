@@ -41,5 +41,5 @@ If `violations` is empty, the `Policy violations`, violation and `No action need
 
 ## Failure modes
 
-- HA unreachable: the CLI prints `{"error":"ha_unreachable:<detail>"}` and exits 1. Treat that as "skipped, cannot audit" in reflect --check-id ha-safety-audit --check hermitd-homeassistant:ha-safety-audit context; do not retry automatically.
+- HA unreachable or erroring: the CLI prints `{"error":"ha_unreachable:<detail>"}` or `{"error":"ha_http_<status>:<detail>"}` and exits 1. Treat either as "skipped, cannot audit" in reflect --check-id ha-safety-audit --check hermitd-homeassistant:ha-safety-audit context; do not retry automatically.
 - No automations or scripts configured → `No actionable findings. (0 automations/scripts scanned)` — not an error.

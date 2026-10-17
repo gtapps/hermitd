@@ -733,7 +733,7 @@ export const COMMANDS: Record<string, CommandRecord> = {
         const client = await deps.createClient(config);
         const result = await automationDiff(root, client);
         if (result.baseline) {
-          return printStatus('baseline', 'no_prior_snapshot', { tracked: result.tracked });
+          return printStatus('baseline', 'no_prior_snapshot', { date: todayIso(), tracked: result.tracked });
         }
         const changes = (['added', 'removed', 'edited', 'disabled', 'enabled'] as const).flatMap((change) =>
           result[change].map((item) => ({ change, name: item.friendly_name ?? item.entity_id, id: item.id })),
@@ -2119,7 +2119,8 @@ export async function handleUpdates(
     const client = await deps.createClient(config);
     states = await client.getStates();
   } catch (exc: any) {
-    return printSkipped(today, 'ha_unreachable', exc);
+    const reason = exc instanceof HomeAssistantError && exc.statusCode !== null ? `ha_http_${exc.statusCode}` : 'ha_unreachable';
+    return printSkipped(today, reason, exc);
   }
   const pending = collectPendingUpdates(states);
   const view = digest ? digestUpdates(pending) : listUpdates(pending);

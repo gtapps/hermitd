@@ -7,7 +7,11 @@ class Failure extends Error {}
 function read(file: string): any {
   let value: any;
   try { value = JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (error: any) { if (error.code === 'ENOENT') return {}; throw new Failure('invalid_settings'); }
+  catch (error: any) {
+    if (error.code === 'ENOENT') return {};
+    if (error instanceof SyntaxError) throw new Failure('invalid_settings');
+    throw error;
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Failure('invalid_settings');
   return value;
 }

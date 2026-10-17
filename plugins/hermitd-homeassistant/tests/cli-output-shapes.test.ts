@@ -114,7 +114,7 @@ test('automation-diff reports a baseline first, then the changes', async () => {
   });
   const first = await run(['ha', 'automation-diff'], root, client);
   expect(first.code).toBe(0);
-  expect(JSON.parse(first.out)).toEqual({ status: 'baseline', reason: 'no_prior_snapshot', tracked: 1 });
+  expect(JSON.parse(first.out)).toEqual({ status: 'baseline', reason: 'no_prior_snapshot', date: expect.any(String), tracked: 1 });
 
   configs.morning = { ...configs.morning, trigger: [{ platform: 'time' }] };
   const second = await run(['ha', 'automation-diff'], root, client);
