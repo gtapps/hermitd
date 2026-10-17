@@ -26,6 +26,7 @@
 - `/hermitd:later` takes one-time reminders (`--remind`), delivered to the asking chat at the due minute in monitor mode and kept in the `later` ledger across restarts.
 
 ### Fixed
+- Weekly reviews list and prune the channel log; two of its `channel-log.ts` calls passed `.hermitd` and were refused.
 - Helpers stuck on a permission prompt or question are announced in chat, and a reply goes back to them as new instructions.
 - Late helper reports reach their task and proposal after a reportless idle notice.
 - Scheduled-check questions reach the operator when queued for micro-approval.

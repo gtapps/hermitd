@@ -1876,6 +1876,20 @@ describe('weekly-review consolidation delegation contract', () => {
     const block = (text: string) => extractBlock(text, '<!-- weekly-review-consolidation-schema:start -->', '<!-- weekly-review-consolidation-schema:end -->');
     expect(block(refFile)).toBe(block(skill));
   });
+
+});
+
+// Pinned scripts refuse any state dir but `.hermit`, and skills fail open on that
+// refusal, so a misspelled dir in a script call silently skips the step.
+test('no script call in skills, agents or templates passes a misspelled .hermit dir', () => {
+  const files = [SKILLS, AGENTS, TEMPLATES].flatMap((root) =>
+    (fs.readdirSync(root, { recursive: true }) as string[])
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => path.join(root, f)));
+  const offenders = files.flatMap((file) =>
+    [...read(file).matchAll(/scripts\/[\w-]+\.(?:ts|sh)[^\n`]*?\s(\.hermit[\w-]+)(?=[\s`]|$)/gm)]
+      .map((m) => `${path.relative(PLUGIN_ROOT, file)}: ${m[1]}`));
+  expect(offenders).toEqual([]);
 });
 
 // ============================================================

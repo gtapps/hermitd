@@ -10,7 +10,7 @@ Record notes only inside an open record's turn, using `bun ${CLAUDE_PLUGIN_ROOT}
 Generates the weekly review for the current ISO week.
 
 ## Commands
-- `channel-log-unconsolidated`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-log.ts .hermitd list-unconsolidated`
+- `channel-log-unconsolidated`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-log.ts .hermit list-unconsolidated`
 - `duties-summary`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit`
 - `task-report`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 3`
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
@@ -69,7 +69,7 @@ Generates the weekly review for the current ISO week.
 
    Finally, prune old consolidated rows (never unreviewed ones — see `scripts/lib/channel-log.ts`):
    ```
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-log.ts .hermitd prune <knowledge.channel_log_retention_days from config.json, default 90>
+   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-log.ts .hermit prune <knowledge.channel_log_retention_days from config.json, default 90>
    ```
 
 5. Read the frontmatter needed for the channel summary from the freshly-written review file:
