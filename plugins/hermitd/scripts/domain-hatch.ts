@@ -12,13 +12,9 @@
 //   bun domain-hatch.ts preflight <plugin-id>
 //     Read-only. Prints one JSON verdict: which of the two stale-core cases
 //     applies (if any), whether this is a full run or a re-verify, the resolved
-//     CLAUDE target, and what the CLAUDE-APPEND block needs. Every resolution
-//     outcome exits 0 — including a failure, which comes back as
-//     `{ok:false,error,message}` with no `action`, because callers read the
-//     fields, not the code. The argv checks below are the one exception: they
-//     reject a malformed invocation before preflight runs, exiting 1 on the
-//     same `{ok:false,error,message}` shape every domain hatch already has a
-//     "relay `message` and stop" branch for.
+//     CLAUDE target, and what the CLAUDE-APPEND block needs. An unresolved
+//     plugin is `{error:"plugin_*",...}` at exit 1 and still carries the target
+//     fields, which hermit-evolve reads either way.
 //
 //   bun domain-hatch.ts ensure-target <plugin-id> --target <local|committed>
 //     Creates or repairs state/hatch-options.json. Core owns this file; the
@@ -50,42 +46,19 @@
 // the re-verify that changes nothing) and has no business loading the block
 // writer to do its job.
 //
-// Mutating verbs exit 1 on failure, matching micro-proposal.ts /
-// apply-settings.ts / hatch-config.ts. preflight is inspection and exits 0.
+// Output follows the helper convention: one JSON object, exit 1 iff it carries
+// `error`.
 
 import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
+import { emitJson, exitError, failJson } from './lib/cli';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
-
-function out(o: unknown): void {
-  process.stdout.write(JSON.stringify(o) + '\n');
-}
-
-function die(code: string, message: string): never {
-  out({ ok: false, error: code, message });
-  process.exit(1);
-}
 
 const argv = process.argv.slice(2);
 const verb = argv[0];
 const pluginId = argv[1];
 const rest = argv.slice(2);
-
-if (!verb || !pluginId) {
-  process.stderr.write('Usage: domain-hatch.ts <preflight|ensure-target|sync-block> <plugin-id> [args]\n');
-  process.exit(1);
-}
-
-// A plugin id is a bare plugin name — reject anything that could be read as a
-// path. hermitd-exec.sh checks the script name but forwards the rest of argv
-// untouched, so this is the only place the identity argument is validated.
-if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(pluginId)) {
-  die('invalid_plugin_id', `not a plugin id: ${pluginId}`);
-}
-
-const stateDir = hermitDir();
-const projectRoot = path.resolve(stateDir, '..');
 
 async function readStdinIfFlagged(flag: string): Promise<string | undefined> {
   if (!argv.includes(flag)) return undefined;
@@ -95,101 +68,77 @@ async function readStdinIfFlagged(flag: string): Promise<string | undefined> {
   return buf;
 }
 
-if (verb === 'preflight') {
-  if (rest.length) die('unexpected_args', `preflight takes no args beyond <plugin-id>: ${rest.join(' ')}`);
-  const { preflight } = await import('./lib/domain-hatch/preflight');
-  out(preflight({ pluginId, hermitDir: stateDir, projectRoot, corePluginRoot: PLUGIN_ROOT }));
-  process.exit(0);
-}
+async function main(): Promise<void> {
+  if (!verb || !pluginId) exitError('usage');
 
-if (verb === 'ensure-target') {
-  if (rest.length !== 2 || rest[0] !== '--target') {
-    die('unexpected_args', `ensure-target takes exactly --target <local|committed>: ${rest.join(' ')}`);
-  }
-  const target = rest[1];
-  if (target !== 'local' && target !== 'committed') {
-    die('bad_target', '--target must be local or committed');
-  }
-  const [{ ensureHatchTarget }, { resolvePlugin, isResolveError, pluginList }, { coreScope }] = await Promise.all([
-    import('./lib/domain-hatch/target'),
-    import('./lib/domain-hatch/resolve'),
-    import('./resolve-siblings'),
-  ]);
-  const list = pluginList();
-  // The only thing this verb takes from the resolution is a version string for
-  // the stamp, and that already has a fallback. Failing the whole write when
-  // `claude plugin list` cannot be read would leave hatch-options.json
-  // unwritten and every later consumer re-asking the Visibility question — a
-  // far worse outcome than a `0.0.0` stamp. The plugin id is regex-validated
-  // above and only ever lands in core's own state dir as a string field.
-  const resolved = resolvePlugin(list, pluginId, projectRoot, PLUGIN_ROOT);
-  const unresolved = isResolveError(resolved);
-  const scope = coreScope(list as any, projectRoot);
-  const res = ensureHatchTarget(stateDir, {
-    target,
-    core_scope: scope.core_scope,
-    stampedBy: `${pluginId}:hatch`,
-    version: unresolved ? '0.0.0' : (resolved.version ?? '0.0.0'),
-  });
-  out(unresolved ? { ...res, resolve_warning: resolved.message } : res);
-  process.exit(res.ok ? 0 : 1);
-}
+  // A plugin id is a bare plugin name — reject anything that could be read as a
+  // path. hermitd-exec.sh checks the script name but forwards the rest of argv
+  // untouched, so this is the only place the identity argument is validated.
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(pluginId)) exitError('invalid_plugin_id');
 
-if (verb === 'sync-block') {
-  if (rest.length && rest.join(' ') !== '--rendered-stdin') {
-    die('unexpected_args', `sync-block takes only an optional --rendered-stdin: ${rest.join(' ')}`);
+  const stateDir = hermitDir();
+  const projectRoot = path.resolve(stateDir, '..');
+
+  if (verb === 'preflight') {
+    if (rest.length) exitError('unexpected_args');
+    const { preflight } = await import('./lib/domain-hatch/preflight');
+    emitJson(preflight({ pluginId, hermitDir: stateDir, projectRoot, corePluginRoot: PLUGIN_ROOT }));
   }
-  const [{ planBlock, applyBlock, splitResident, planResidentRemoval }, { readTargetState, targetFile }, { resolvePlugin, isResolveError, pluginList }, { coreScope }] =
-    await Promise.all([
-      import('./lib/domain-hatch/block'),
+
+  if (verb === 'ensure-target') {
+    if (rest.length !== 2 || rest[0] !== '--target') exitError('unexpected_args');
+    const target = rest[1];
+    if (target !== 'local' && target !== 'committed') exitError('bad_target');
+    const [{ ensureHatchTarget }, { resolvePlugin, isResolveError, pluginList }, { coreScope }] = await Promise.all([
       import('./lib/domain-hatch/target'),
       import('./lib/domain-hatch/resolve'),
       import('./resolve-siblings'),
     ]);
-  const list = pluginList();
-  const resolved = resolvePlugin(list, pluginId, projectRoot, PLUGIN_ROOT);
-  if (isResolveError(resolved)) die(resolved.error, resolved.message);
-
-  const state = readTargetState(stateDir, coreScope(list as any, projectRoot), projectRoot);
-  if (!state.target) {
-    die('no_target', 'hatch-options.json has no usable target; run ensure-target first');
+    const list = pluginList();
+    // The only thing this verb takes from the resolution is a version string for
+    // the stamp, and that already has a fallback. Failing the whole write when
+    // `claude plugin list` cannot be read would leave hatch-options.json
+    // unwritten and every later consumer re-asking the Visibility question — a
+    // far worse outcome than a `0.0.0` stamp. The plugin id is regex-validated
+    // above and only ever lands in core's own state dir as a string field.
+    const resolved = resolvePlugin(list, pluginId, projectRoot, PLUGIN_ROOT);
+    const unresolved = isResolveError(resolved);
+    const scope = coreScope(list as any, projectRoot);
+    const res = ensureHatchTarget(stateDir, {
+      target,
+      core_scope: scope.core_scope,
+      stampedBy: `${pluginId}:hatch`,
+      version: unresolved ? '0.0.0' : (resolved.version ?? '0.0.0'),
+    });
+    emitJson(unresolved ? { ...res, resolve_warning: resolved.error } : res);
   }
 
-  const rendered = await readStdinIfFlagged('--rendered-stdin');
-  const foreign = list
-    .map((e: any) => String(e?.id ?? '').split('@')[0])
-    .filter((n: string) => n && n !== pluginId);
+  if (verb === 'sync-block') {
+    if (rest.length && rest.join(' ') !== '--rendered-stdin') exitError('unexpected_args');
+    const [{ syncBlocks }, { readTargetState, targetFile }, { resolvePlugin, isResolveError, pluginList }, { coreScope }] =
+      await Promise.all([
+        import('./lib/domain-hatch/block'),
+        import('./lib/domain-hatch/target'),
+        import('./lib/domain-hatch/resolve'),
+        import('./resolve-siblings'),
+      ]);
+    const list = pluginList();
+    const resolved = resolvePlugin(list, pluginId, projectRoot, PLUGIN_ROOT);
+    if (isResolveError(resolved)) exitError(resolved.error);
 
-  const target = path.join(projectRoot, targetFile(state.target));
-  const original = planBlock(resolved.installPath, pluginId, target, foreign, rendered);
-  if (['no-template', 'no-marker', 'needs-rendering', 'ambiguous'].includes(original.action)) {
-    const result = applyBlock(original);
-    out(result);
-    process.exit(1);
+    const state = readTargetState(stateDir, coreScope(list as any, projectRoot), projectRoot);
+    if (!state.target) exitError('no_target');
+
+    const rendered = await readStdinIfFlagged('--rendered-stdin');
+    const foreign = list
+      .map((e: any) => String(e?.id ?? '').split('@')[0])
+      .filter((n: string) => n && n !== pluginId);
+
+    const target = path.join(projectRoot, targetFile(state.target));
+    emitJson(syncBlocks(resolved.installPath, pluginId, target, path.join(stateDir, 'RESIDENT.md'), foreign, rendered));
   }
-  const template = rendered ?? await Bun.file(path.join(resolved.installPath, 'state-templates', 'CLAUDE-APPEND.md')).text();
-  const split = splitResident(template);
-  const shared = planBlock(resolved.installPath, pluginId, target, foreign, split.shared, rendered !== undefined);
-  const residentPath = path.join(stateDir, 'RESIDENT.md');
-  const resident = split.resident
-    ? planBlock(resolved.installPath, pluginId, residentPath, foreign, split.resident, rendered !== undefined)
-    : planResidentRemoval(original, residentPath, foreign);
-  if (resident.action === 'ambiguous') {
-    out({ ...applyBlock(resident), resident: resident.action });
-    process.exit(1);
-  }
-  const result = applyBlock(shared);
-  const residentResult = applyBlock(resident);
-  // `written` covers both files: a run that only refreshed RESIDENT.md is still a
-  // write, and reporting the shared block's `false` would read as "nothing changed".
-  out({
-    ...result,
-    ok: result.ok && residentResult.ok,
-    written: result.written || residentResult.written,
-    resident: residentResult.action,
-  });
-  process.exit(result.ok && residentResult.ok ? 0 : 1);
+
+  exitError('usage');
 }
 
-process.stderr.write(`domain-hatch.ts: unknown verb "${verb}"\n`);
-process.exit(1);
+await main().catch(failJson);

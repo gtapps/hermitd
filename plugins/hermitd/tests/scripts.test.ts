@@ -5360,22 +5360,22 @@ describe('proposal metrics', () => {
   const runReport = async (dir: string, ...extra: string[]) => {
     const r = await runProposal(hermit(dir), ['metrics', ...extra]);
     expect(r.exitCode).toBe(0);
-    return r.stdout + r.stderr;
+    return JSON.parse(r.stdout);
   };
   const metricsFile = (dir: string) => hermit(dir, 'state', 'proposal-metrics.jsonl');
 
   // Missing / empty file — fails open
   test('metrics (missing file exits 0)', withDir(async (dir) => {
-    expect(await runReport(dir)).toContain('No proposal metrics');
+    expect(await runReport(dir)).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
   test('metrics (empty file exits 0)', withDir(async (dir) => {
     write(metricsFile(dir), '');
-    expect(await runReport(dir)).toContain('No proposal metrics');
+    expect(await runReport(dir, '--source=reflect')).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
-  // Insufficient sample (<8) — INSUFFICIENT output
-  test('metrics --source (INSUFFICIENT, n<8)', withDir(async (dir) => {
+  // Insufficient sample (<8)
+  test('metrics --source (insufficient_data, n<8)', withDir(async (dir) => {
     // 3 triage-verdicts from brainstorm + 2 created tagged brainstorm, 1 accepted
     write(metricsFile(dir), [
       '{"ts":"2026-01-01T00:00:00Z","type":"triage-verdict","verdict":"CREATE","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}',
@@ -5386,15 +5386,28 @@ describe('proposal metrics', () => {
       '{"ts":"2026-01-01T03:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}',
       '',
     ].join('\n'));
-    expect(await runReport(dir, '--source=capability-brainstorm')).toContain('INSUFFICIENT');
+    expect(await runReport(dir, '--source=capability-brainstorm')).toEqual({
+      source: 'capability_brainstorm',
+      status: 'insufficient_data',
+      sample: 3,
+      min_sample: 8,
+      triage_survival_pct: 33,
+      triage_created: 1,
+      triage_total: 3,
+      kill_survival_pct: 25,
+      acceptance_pct: 50,
+      accepted: 1,
+      created: 2,
+      kill_acceptance_pct: 30,
+    });
   }));
 
   // Full sample (>=8) — correct rates and kill verdict
   // 10 triage-verdicts: 4 CREATE, 6 SUPPRESS → survival 40%
-  // 4 created tagged, 1 accepted → acceptance 25% → KILL (acceptance < 30%)
+  // 4 created tagged, 1 accepted → acceptance 25% → kill (acceptance < 30%)
   describe('full sample', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -5410,26 +5423,26 @@ describe('proposal metrics', () => {
       }
       lines.push('{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}');
       write(metricsFile(wd.dir), lines.join('\n') + '\n');
-      const r = await runProposal(hermit(wd.dir), ['metrics', '--source=capability-brainstorm']);
-      out = r.stdout + r.stderr;
+      out = await runReport(wd.dir, '--source=capability-brainstorm');
     });
     afterAll(() => wd.cleanup());
 
     test('metrics --source (survival 40%)', () => {
-      expect(out).toContain('triage-survival 40%');
+      expect(out).toMatchObject({ triage_survival_pct: 40, triage_created: 4, triage_total: 10, sample: 10 });
     });
     test('metrics --source (acceptance 25%)', () => {
-      expect(out).toContain('acceptance 25%');
+      expect(out).toMatchObject({ acceptance_pct: 25, accepted: 1, created: 4 });
     });
-    test('metrics --source (KILL verdict)', () => {
-      expect(out).toContain('KILL');
+    test('metrics --source (kill verdict)', () => {
+      expect(out.status).toBe('kill');
+      expect(out.kill_reasons).toEqual(['acceptance']);
     });
   });
 
-  // Default table mode — all segments appear, known rate in table
-  describe('table mode', () => {
+  // Default mode — every segment appears as an object
+  describe('segments mode', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -5440,19 +5453,23 @@ describe('proposal metrics', () => {
         '{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-R1","action":"accept"}',
         '',
       ].join('\n'));
-      const r = await runProposal(hermit(wd.dir), ['metrics']);
-      out = r.stdout + r.stderr;
+      out = await runReport(wd.dir);
     });
     afterAll(() => wd.cleanup());
 
-    test('metrics table (header present)', () => {
-      expect(out).toContain('Proposal acceptance by source');
+    test('metrics segments (every source, snake_case)', () => {
+      expect(out.segments.map((s: any) => s.source)).toEqual(['reflect', 'capability_brainstorm', 'procedure_capture', 'scheduled_check']);
     });
-    test('metrics table (reflect row present)', () => {
-      expect(out).toContain('| reflect |');
+    test('metrics segments (reflect rates)', () => {
+      expect(out.segments[0]).toMatchObject({ status: 'insufficient_data', triage_survival_pct: 50, acceptance_pct: 100, accepted: 1, created: 1 });
     });
-    test('metrics table (capability-brainstorm row present)', () => {
-      expect(out).toContain('| capability-brainstorm |');
+    test('metrics segments (zero denominators are null)', () => {
+      expect(out.segments[1]).toMatchObject({ triage_survival_pct: null, acceptance_pct: null, sample: 0 });
+    });
+    test('metrics segments (scheduled-check omits the acceptance keys)', () => {
+      const sched = out.segments[3];
+      for (const key of ['acceptance_pct', 'accepted', 'created', 'kill_acceptance_pct']) expect(sched).not.toHaveProperty(key);
+      expect(sched).not.toHaveProperty('kill_reasons');
     });
   });
 
@@ -5463,14 +5480,23 @@ describe('proposal metrics', () => {
       '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}',
       '',
     ].join('\n'));
-    expect(await runReport(dir)).toContain('Proposal acceptance');
+    expect((await runReport(dir)).segments[0]).toMatchObject({ triage_created: 1, triage_total: 1 });
   }));
 
-  // --source with unknown key reports error gracefully
+  // --source with an unknown key is an error at exit 1
   test('metrics (unknown --source key)', withDir(async (dir) => {
     write(metricsFile(dir),
       '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}\n');
-    expect(await runReport(dir, '--source=nonexistent')).toContain('Unknown source key');
+    const r = await runProposal(hermit(dir), ['metrics', '--source=nonexistent']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'unknown_source:nonexistent' });
+  }));
+
+  test('metrics (unreadable file is metrics_failed at exit 1)', withDir(async (dir) => {
+    fs.mkdirSync(metricsFile(dir), { recursive: true });
+    const r = await runProposal(hermit(dir), ['metrics']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'metrics_failed' });
   }));
 });
 

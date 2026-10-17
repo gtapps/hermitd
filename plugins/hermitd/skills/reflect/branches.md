@@ -208,7 +208,7 @@ After ≥8 procedure-capture candidates surfaced, run:
 
 Run `proposal-metrics` (Commands) with arguments `--source=procedure-capture`.
 
-Triage-survival < 25% or acceptance < 30% → disable procedure capture rather than tune it. `INSUFFICIENT` output means the ≥8-verdict sample hasn't been reached yet; do not read thresholds until it does.
+`status: "kill"` (triage survival < 25% or acceptance < 30%, named in `kill_reasons`) → disable procedure capture rather than tune it. `status: "insufficient_data"` means the ≥8-verdict sample hasn't been reached yet; do not read thresholds until it does.
 
 **Detection — when to trigger:**
 

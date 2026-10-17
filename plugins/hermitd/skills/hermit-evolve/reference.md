@@ -53,7 +53,7 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
 
 First determine `hatch_target` (the pre-pass needs it, and so do Steps 6, 7, 8):
 
-Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then core's own block in `CLAUDE.local.md` or `CLAUDE.md`, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically.
+Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then core's own block in `CLAUDE.local.md` or `CLAUDE.md`, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
 
 If it returns `needs_target_question: true` the project has no stamped target. Use the returned `target_default` and stamp it with `domain-hatch-ensure-target` (Commands) with arguments `--target <target_default>`, so the next run of anything reads an answered file instead of re-deriving.
 

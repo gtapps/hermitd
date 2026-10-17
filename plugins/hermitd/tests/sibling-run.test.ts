@@ -22,7 +22,7 @@ function fixture(versioned = false) {
   dirs.push(dir);
   const core = plugin(path.join(dir, 'plugins/core', ...(versioned ? ['1.0.0'] : [])), 'core');
   fs.mkdirSync(path.join(core, 'scripts/lib'), { recursive: true });
-  for (const file of ['hermitd-exec.sh', 'sibling-run.ts', 'lib/plugin-siblings.ts']) {
+  for (const file of ['hermitd-exec.sh', 'sibling-run.ts', 'lib/cli.ts', 'lib/plugin-siblings.ts']) {
     fs.copyFileSync(path.join(PLUGIN_ROOT, 'scripts', file), path.join(core, 'scripts', file));
   }
   const sibling = plugin(path.join(dir, 'plugins/folder-name', ...(versioned ? ['2.0.0'] : [])), 'domain');
@@ -65,25 +65,33 @@ describe('sibling-run through bare-name dispatch', () => {
     expect(result.stdout).toBe('input\n');
   });
 
-  test('no manifest-name match exits 2', async () => {
+  test('no manifest-name match is no_sibling at exit 1', async () => {
     const f = fixture();
-    expect((await run(f, ['folder-name', 'scripts/probe.ts'])).code).toBe(2);
+    const result = await run(f, ['folder-name', 'scripts/probe.ts']);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'no_sibling:folder-name' });
   });
 
-  test('multiple matches exit 1 and list each path', async () => {
+  test('multiple matches are ambiguous_sibling at exit 1', async () => {
     const f = fixture();
-    const other = plugin(path.join(f.dir, 'plugins/another-folder'), 'domain');
+    plugin(path.join(f.dir, 'plugins/another-folder'), 'domain');
     const result = await run(f, ['domain', 'scripts/probe.ts']);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(f.sibling);
-    expect(result.stderr).toContain(other);
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'ambiguous_sibling:domain' });
   });
 
-  test('invalid or missing script exits 3', async () => {
+  test('an invalid script is invalid_script and a missing one missing_script, at exit 1', async () => {
     const f = fixture();
-    for (const script of ['/absolute.ts', '../probe.ts', 'scripts/a..b.ts', 'scripts/probe.js', 'scripts/missing.ts']) {
-      expect((await run(f, ['domain', script])).code).toBe(3);
+    for (const script of ['/absolute.ts', '../probe.ts', 'scripts/a..b.ts', 'scripts/probe.js']) {
+      const result = await run(f, ['domain', script]);
+      expect(result.code).toBe(1);
+      expect(JSON.parse(result.stdout)).toEqual({ error: 'invalid_script' });
     }
-    expect((await run(f, ['domain'])).code).toBe(3);
+    const none = await run(f, ['domain']);
+    expect(none.code).toBe(1);
+    expect(JSON.parse(none.stdout)).toEqual({ error: 'invalid_script' });
+    const missing = await run(f, ['domain', 'scripts/missing.ts']);
+    expect(missing.code).toBe(1);
+    expect(JSON.parse(missing.stdout)).toEqual({ error: 'missing_script' });
   });
 });

@@ -11,4 +11,4 @@ The fix to report beside each `knowledge-lint.ts` finding type. A type not liste
 | `missing_type` | Add a `type` field to the frontmatter so it groups properly at session start. |
 | `undeclared_type` | Declare the type in `knowledge-schema.md`, or remove the unused type value. |
 | `schema_empty` | Add type declarations to `knowledge-schema.md` under `## Work Products` and `## Raw Captures`. |
-| `schema_missing` | Create `knowledge-schema.md`: run `/hatch` or copy `${CLAUDE_PLUGIN_ROOT}/state-templates/knowledge-schema.md.template`. |
+| `schema_missing` | Create `knowledge-schema.md`: run `/hatch` or copy the plugin's `state-templates/knowledge-schema.md.template`. |

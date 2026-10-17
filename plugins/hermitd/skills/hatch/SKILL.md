@@ -559,7 +559,7 @@ After Steps 6–9 complete, run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd --target <local|committed>
 ```
 
-with the target chosen in Step 6. The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. Exits non-zero on a failed write; it prints `{ok, action, target, path}` where `action` is `created`, `repaired`, `updated` or `unchanged`.
+with the target chosen in Step 6. The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. It prints `{action, target, path}` (or `{error}` at exit 1), where `action` is `created`, `repaired`, `updated` or `unchanged`.
 
 This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to inherit the operator's target choice without re-running scope detection.
 

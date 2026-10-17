@@ -715,9 +715,8 @@ describe('proposal.ts dispatch gate', () => {
   test('metrics needs no state dir — it defaults to .hermit', withDir(async (dir) => {
     const r = await runScript('proposal.ts', { args: ['metrics'], cwd: dir });
     expect(r.exitCode).toBe(0);
-    // No ledger under the default dir → the fail-open line, not a usage error.
-    expect(r.stdout).toContain('No proposal metrics yet.');
-    expect(r.stderr).not.toContain('Usage:');
+    // No ledger under the default dir → the fail-open status, not a usage error.
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
   test('a verb that does need a state dir is still refused without one', async () => {

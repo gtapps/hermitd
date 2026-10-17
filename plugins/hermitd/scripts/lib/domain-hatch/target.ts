@@ -103,7 +103,6 @@ export function readTargetState(
 }
 
 export interface EnsureResult {
-  ok: boolean;
   action: 'created' | 'repaired' | 'updated' | 'unchanged';
   target: Target;
   path: string;
@@ -162,7 +161,7 @@ export function ensureHatchTarget(
     fs.mkdirSync(path.dirname(p), { recursive: true });
     writeFileAtomic(p, JSON.stringify(next, null, 2) + '\n');
   }
-  return { ok: true, action, target: next.target, path: p };
+  return { action, target: next.target, path: p };
 }
 
 export function targetFile(target: Target): string {
