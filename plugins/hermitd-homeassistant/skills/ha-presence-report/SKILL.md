@@ -67,6 +67,6 @@ allowed-tools:
 
 ## Failure modes
 
-- **HA unreachable** (fetch-history exits non-zero): print "Presence history unavailable — HA unreachable. Current state from snapshot shown above." and stop after step 2. Do not write the compiled artifact.
+- **HA unreachable** (fetch-history prints `{"error"}` and exits 1): print "Presence history unavailable: HA unreachable. Current state from snapshot shown above." and stop after step 2. Do not write the compiled artifact.
 - **No presence entities** (step 2 short-circuit): print the message and stop. This is not an error.
 - **Snapshot stale/missing** (step 2): include the staleness warning but continue — current-state and reliability from the snapshot will be degraded or absent; history fetch may still work.

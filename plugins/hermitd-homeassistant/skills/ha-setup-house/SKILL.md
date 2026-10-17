@@ -45,8 +45,9 @@ For each area the operator names:
 1. Check the `list-areas` output — skip if the area already exists (case-insensitive match on name).
 2. Preview the target, then run: `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha create-area "<name>"`
 3. Handle the result:
-   - `"ok": true` — created; confirm to operator.
-   - `"blocked": true` — `ha_safety_mode` is `strict`; explain and create a proposal via `/hermitd:proposal-create`.
+   - `{"data",...}`: created; confirm to operator.
+   - `{"status":"blocked","reason":"strict_mode"}`: `ha_safety_mode` is `strict`; explain and create a proposal via `/hermitd:proposal-create`.
+   - `{"error":...}`: surface the error to the operator.
 
 After creating all areas, re-run `ha list-areas` and store the updated area map.
 

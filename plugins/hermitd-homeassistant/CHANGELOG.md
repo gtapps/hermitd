@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `ha-agent-lab` prints one JSON object per command: failures are `{"error":"<token>:<detail>"}` on stdout with exit 1, and expected outcomes (a write blocked by `ha_safety_mode`, an invalid artifact, a missing config id, an empty snapshot) exit 0 with a `status`. Shapes are in `docs/cli-reference.md` § Output.
+- `audit-automations`, `audit-scripts`, `automation-diff`, `integration-health` and `updates` print findings as JSON, and their skills render the scheduled-check blocks, which keep their shape.
+- `boot mcp-config` reports missing keys as `{"status":"missing_keys"}` at exit 0; `native-permissions.ts` prints `OK` or one JSON object instead of throwing.
+
+### Fixed
+- `domain-brainstorm` parses the proposal triage outcome in the current `CREATE:`/`SUPPRESS:`/`DUPLICATE:` form.
+- `ha-morning-brief` applies the brief runner's `refresh` entries to micro-proposals, matching the core brief.
+
 ## [0.4.23] - 2026-10-15
 
 ### Changed

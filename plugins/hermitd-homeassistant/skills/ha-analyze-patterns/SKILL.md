@@ -19,7 +19,7 @@ allowed-tools:
 
 1. **Load existing analysis**: Read `.hermit/raw/snapshot-ha-pattern-analysis-latest.json` if it exists.
 2. **Get live context**: Call `GetLiveContext` and `GetDateTime` via MCP for current state.
-3. **Fetch history**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha fetch-history --window-days 7`. On non-zero exit, pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`history fetch failed: <stderr first line>`) and continue: the skill proceeds using Phase 1 silence findings only. Do not surface the fetch failure to scheduled-check stdout.
+3. **Fetch history**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha fetch-history --window-days 7`. When it prints `{"error"}` (exit 1), pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`history fetch failed: <error>`) and continue: the skill proceeds using Phase 1 silence findings only. Do not surface the fetch failure to scheduled-check stdout.
 4. **Read normalized inventory**: Read `.hermit/raw/snapshot-ha-normalized-latest.json`. Extract both `entity_index` and `silence_summary` (added by every context refresh). Also read `.hermit/raw/snapshot-ha-history-7d-latest.json` if present.
 5. **Analyze patterns from silence_summary and history**:
 

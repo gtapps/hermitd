@@ -47,7 +47,7 @@ test('fetch-history writes per-window artifact with correct filename', async () 
     existsSync(join(cfg.root, '.hermit', 'raw', 'snapshot-ha-history-7d-latest.json')),
   ).toBe(true);
   const parsed = JSON.parse(out);
-  expect(parsed.status).toBe('ok');
+  expect(parsed.status).toBeUndefined();
   expect(parsed.window_days).toBe(7);
 });
 

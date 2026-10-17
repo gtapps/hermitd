@@ -86,7 +86,8 @@ It writes the `homeassistant` entry from `.env` itself, so the token never enter
 - `action: "replaced"` → an old `${...}` placeholder entry was rewritten with literal values; tell the user the stale entry was replaced.
 - `action: "updated"` → an existing literal entry had a different URL or token than `.env`; only those values were refreshed.
 - `action: "skipped"` → the existing entry already matches `.env`.
-- `ok: false` → relay `missing` (key names) or `message`, return to §2, then re-run.
+- `status: "missing_keys"` → relay `missing` (key names), return to §2, then re-run.
+- `{"error":"invalid_mcp_json"}` → `.mcp.json` is not a JSON object with an `mcpServers` object; ask the user to fix or remove it, then re-run.
 
 The entry it writes has this shape:
 
@@ -265,7 +266,7 @@ Each routine owns its cadence and passes findings through reflection gates into 
 
 Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
 
-Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`.
+Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. It prints `OK`, or `{"status":"installed","deny_conflicts":[...]}` naming operator denies that still override these asks (tell the operator), or `{"error":...}` with exit 1 (relay it and stop).
 
 ### 8. Final report
 

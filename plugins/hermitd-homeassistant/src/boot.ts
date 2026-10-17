@@ -191,8 +191,9 @@ export function saveBootPreferences(
 }
 
 export type McpConfigResult =
-  | { ok: true; server: 'homeassistant'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
-  | { ok: false; missing?: string[]; message?: string };
+  | { server: 'homeassistant'; action: 'added' | 'replaced' | 'updated' | 'skipped' }
+  | { status: 'missing_keys'; missing: string[] }
+  | { error: 'invalid_mcp_json' };
 
 /** Write the `homeassistant` entry into the project `.mcp.json` from config, so
  *  hatch never has to hold the token. Adds a missing entry, replaces one still
@@ -201,7 +202,7 @@ export type McpConfigResult =
  *  skips it otherwise. The result never carries the URL or token. */
 export function writeMcpConfig(config: AppConfig): McpConfigResult {
   const missing = config.missingHaConfigurationFields();
-  if (missing.length > 0) return { ok: false, missing };
+  if (missing.length > 0) return { status: 'missing_keys', missing };
 
   const mcpPath = join(config.root, '.mcp.json');
   let doc: unknown = {};
@@ -214,7 +215,7 @@ export function writeMcpConfig(config: AppConfig): McpConfigResult {
   }
   const isObject = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
   if (!isObject(doc) || (doc.mcpServers != null && !isObject(doc.mcpServers))) {
-    return { ok: false, message: '.mcp.json is not a valid JSON object with an mcpServers object; fix or remove it, then re-run.' };
+    return { error: 'invalid_mcp_json' };
   }
   const servers: Record<string, unknown> = (doc.mcpServers ??= {});
   const url = `${config.primaryUrl()!.replace(/\/+$/, '')}/api/mcp`;
@@ -224,7 +225,7 @@ export function writeMcpConfig(config: AppConfig): McpConfigResult {
   if (isObject(existing) && !JSON.stringify(existing).includes('${')) {
     const headers = isObject(existing.headers) ? existing.headers : {};
     if (existing.url === url && headers.Authorization === authorization) {
-      return { ok: true, server: 'homeassistant', action: 'skipped' };
+      return { server: 'homeassistant', action: 'skipped' };
     }
     servers.homeassistant = { ...existing, url, headers: { ...headers, Authorization: authorization } };
     action = 'updated';
@@ -233,7 +234,7 @@ export function writeMcpConfig(config: AppConfig): McpConfigResult {
     servers.homeassistant = { type: 'http', url, headers: { Authorization: authorization } };
   }
   writeFileSync(mcpPath, `${JSON.stringify(doc, null, 2)}\n`);
-  return { ok: true, server: 'homeassistant', action };
+  return { server: 'homeassistant', action };
 }
 
 export async function probeEndpoint(

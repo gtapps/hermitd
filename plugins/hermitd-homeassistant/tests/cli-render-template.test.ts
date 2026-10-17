@@ -23,7 +23,7 @@ test('render-template reads a file and posts its contents', async () => {
   const { code, out } = await runCli(['ha', 'render-template', path], client);
 
   expect(code).toBe(0);
-  expect(out).toBe('2\n');
+  expect(JSON.parse(out)).toEqual({ rendered: '2' });
   expect(client.calls.post).toEqual([['/api/template', { template: '{{ 1 + 1 }}' }]]);
 });
 
@@ -31,7 +31,7 @@ test('render-template reports a missing file cleanly (no uncaught throw)', async
   const client = fakeClient();
   const { code, out } = await runCli(['ha', 'render-template', '/no/such/template.jinja'], client);
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('Template file not found');
+  expect(JSON.parse(out)).toEqual({ error: 'template_not_found:/no/such/template.jinja' });
   expect(client.calls.post.length).toBe(0);
 });
 
@@ -46,7 +46,7 @@ test('render-template surfaces HA error', async () => {
   const { code, out } = await runCli(['ha', 'render-template', path], client);
 
   expect(code).toBe(1);
-  expect(out).toContain('Error rendering template');
+  expect(JSON.parse(out).error).toStartWith('ha_http_400:Error rendering template');
 });
 
 test('check-config reports valid', async () => {
@@ -58,13 +58,13 @@ test('check-config reports valid', async () => {
   expect(JSON.parse(out)).toEqual({ result: 'valid', errors: null, warnings: null });
 });
 
-test('check-config reports invalid with nonzero exit', async () => {
+test('check-config reports invalid as an answer, exit 0', async () => {
   const client = fakeClient({
     post: () => ({ result: 'invalid', errors: 'some error', warnings: null }),
   });
 
   const { code, out } = await runCli(['ha', 'check-config'], client);
 
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   expect(JSON.parse(out).result).toBe('invalid');
 });

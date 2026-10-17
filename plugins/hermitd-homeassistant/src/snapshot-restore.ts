@@ -123,7 +123,8 @@ export interface RestoreResult {
   entities: string[];
   sensitive: string[];
   reason: string;
-  suggestion?: string;
+  /** The snapshot captured no entities, so nothing was restored. */
+  empty?: boolean;
   reportPath?: string;
   message: string;
 }
@@ -155,7 +156,7 @@ export async function restoreStates(
   const entityIds = Object.keys(snapshot.entities).sort();
   if (entityIds.length === 0) {
     return {
-      ok: false, blocked: false, applied: 0, entities: [], sensitive: [],
+      ok: false, blocked: false, empty: true, applied: 0, entities: [], sensitive: [],
       reason: 'snapshot has no entities to restore', message: 'error',
     };
   }
@@ -167,7 +168,6 @@ export async function restoreStates(
     return {
       ok: false, blocked: true, applied: 0, entities: entityIds, sensitive,
       reason: `Restore blocked under strict mode: ${sensitive.length} sensitive entit${sensitive.length === 1 ? 'y' : 'ies'}.`,
-      suggestion: 'surface as a proposal',
       message: 'blocked',
     };
   }

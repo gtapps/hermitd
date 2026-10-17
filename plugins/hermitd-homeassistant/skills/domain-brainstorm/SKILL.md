@@ -63,10 +63,10 @@ Set frontmatter: `source: auto-detected`, `category: improvement`, `tags: [capab
 
 Provenance is carried by those `tags`, which `proposal-create` writes onto both the `triage-verdict` row and the proposal frontmatter. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
-Parse the verdict:
-- `CREATE` — note PROP-NNN.
-- `SUPPRESS — <code>` — record suppression code; don't retry.
-- `DUPLICATE:<PROP-ID>` — record existing ID; don't create.
+`/hermitd:proposal-create` invokes `proposal-triage` internally. Parse its outcome:
+- `CREATE: <title>`: PROP file written, note the assigned PROP-NNN.
+- `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <PROP-ID>`: record the existing PROP-ID. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 

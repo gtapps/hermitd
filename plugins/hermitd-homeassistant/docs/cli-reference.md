@@ -38,3 +38,12 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot mcp-config   # hatch: write the home
 ```
 
 The full current surface (dashboards, backups, blueprints, energy prefs, floors/labels, call-service, etc.) is larger — see `src/cli.ts` or `ha-agent-lab --help`.
+
+## Output
+
+Every command prints one JSON object on stdout, or bare `OK` when a write or check has nothing to report (`simulate` on a valid artifact, `delete-*`, `trigger-automation`). Expected outcomes exit 0 with a `status` and `reason`:
+
+- `{"status":"blocked","reason":"strict_mode","detail":...}`: a gated write refused by `ha_safety_mode` or by the call-service policy (`reason` can also be `unresolvable_target`, `malformed_target` or `update_auto_apply_disabled`).
+- `{"status":"invalid",...}` from `simulate` and `validate-apply`, `{"status":"not_found","reason":"no_config"}` from `delete-*` and `get-*-config`, `{"status":"skipped",...}` from `updates` and `integration-health`.
+
+A failure exits 1 with `{"error":"<token>:<detail>"}`: `ha_unreachable` when Home Assistant never answered, `ha_http_<status>` when it answered with an error, `ha_command_failed` for a WebSocket command error, and `usage` for a bad argument. Argument-parser errors keep argparse's usage text on stderr with exit 2. `audit-*`, `automation-diff`, `integration-health` and `updates` print findings as JSON; their skills render the scheduled-check findings blocks.

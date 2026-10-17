@@ -7,6 +7,9 @@
 import { afterEach, expect, test as bunTest } from 'bun:test';
 const test = bunTest.serial;
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { main } from '../src/cli';
 import { AppConfig } from '../src/config';
 import { HomeAssistantError } from '../src/ha-api';
@@ -58,7 +61,7 @@ test('list-areas reads via WS and closes', async () => {
   const { code, out } = await runCli(['ha', 'list-areas'], ws, cfg());
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.data).toEqual([{ area_id: 'a1', name: 'Office' }]);
   expect(ws.calls).toEqual([{ type: 'config/area_registry/list', payload: {} }]);
   expect(ws.closed).toBe(true);
@@ -73,6 +76,19 @@ test('list-helpers fans out across all 8 types', async () => {
     ['counter', 'input_boolean', 'input_datetime', 'input_number', 'input_select', 'input_text', 'schedule', 'timer'].sort(),
   );
   expect(ws.calls.length).toBe(8);
+  expect(parsed.unavailable).toBeUndefined();
+});
+
+test('list-helpers names the helper types whose list failed', async () => {
+  const ws = fakeWs((type) => {
+    if (type === 'schedule/list') throw new HomeAssistantError('Unknown command.');
+    return [];
+  });
+  const { code, out } = await runCli(['ha', 'list-helpers'], ws, cfg());
+  expect(code).toBe(0);
+  const parsed = JSON.parse(out);
+  expect(parsed.unavailable).toEqual(['schedule']);
+  expect(parsed.data.schedule).toBeUndefined();
 });
 
 test('list-helpers --type scopes to one', async () => {
@@ -86,7 +102,7 @@ test('list-entities requires --registry', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'list-entities'], ws, cfg());
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--registry');
+  expect(JSON.parse(out).error).toContain('--registry');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -104,7 +120,7 @@ test('list-dashboards reads via WS and closes', async () => {
   const { code, out } = await runCli(['ha', 'list-dashboards'], ws, cfg());
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.data).toEqual([{ url_path: 'lovelace-home', id: 'd1', title: 'Home' }]);
   expect(ws.calls).toEqual([{ type: 'lovelace/dashboards/list', payload: {} }]);
   expect(ws.closed).toBe(true);
@@ -129,9 +145,9 @@ test('get-dashboard --url-path passes the named dashboard', async () => {
 test('delete-dashboard blocked under strict, no WS command sent', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'delete-dashboard', 'dashboard_cameras'], ws, cfg('strict'));
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
+  expect(parsed.status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -145,7 +161,7 @@ test('delete-dashboard sends dashboard_id payload', async () => {
   );
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.report_path).toBeTruthy();
   expect(ws.calls).toEqual([
     { type: 'lovelace/dashboards/delete', payload: { dashboard_id: 'dashboard_cameras' } },
@@ -160,7 +176,7 @@ test('create-dashboard rejects invalid JSON', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('valid JSON');
+  expect(JSON.parse(out).error).toContain('valid JSON');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -205,7 +221,7 @@ test('apply-dashboard reports a missing artifact cleanly, without opening the WS
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('Dashboard artifact not found');
+  expect(JSON.parse(out).error).toContain('artifact_not_found');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -226,16 +242,11 @@ test('dashboard write failure surfaces HA message and writes report', async () =
   const ws = fakeWs(() => {
     throw new HomeAssistantError('Dashboard not found.');
   });
-  const { code, out } = await runCli(
-    ['ha', 'delete-dashboard', 'nope'],
-    ws,
-    cfg('ask'),
-  );
+  const config = cfg('ask');
+  const { code, out } = await runCli(['ha', 'delete-dashboard', 'nope'], ws, config);
   expect(code).toBe(1);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toBe('Dashboard not found.');
-  expect(parsed.report_path).toBeTruthy();
+  expect(JSON.parse(out)).toEqual({ error: 'ha_command_failed:Dashboard not found.' });
+  expect(existsSync(join(config.root, '.hermit/raw/audit-ha-ws-latest.md'))).toBe(true);
 });
 
 // --- gate ----------------------------------------------------------------
@@ -243,10 +254,10 @@ test('dashboard write failure surfaces HA message and writes report', async () =
 test('mutation blocked under strict, no WS command sent', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'create-area', 'Office'], ws, cfg('strict'));
-  expect(code).toBe(1);
+  expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.blocked).toBe(true);
-  expect(parsed.message).toContain('proposal');
+  expect(parsed).toMatchObject({ status: 'blocked', reason: 'strict_mode' });
+  expect(parsed.detail).toContain('proposal');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -256,8 +267,7 @@ test('mutation under ask runs', async () => {
   const { code, out } = await runCli(['ha', 'create-area', 'Office'], ws, cfg('ask'));
   expect(code).toBe(0);
   const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(true);
-  expect(parsed.blocked).toBe(false);
+  expect(parsed).toHaveProperty('data');
   expect(parsed.report_path).toBeTruthy();
   expect(ws.calls).toEqual([{ type: 'config/area_registry/create', payload: { name: 'Office' } }]);
 });
@@ -272,7 +282,7 @@ test('create-helper rejects unknown type', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('Unknown helper type');
+  expect(JSON.parse(out).error).toContain('Unknown helper type');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -284,7 +294,7 @@ test('create-helper rejects invalid JSON', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('valid JSON');
+  expect(JSON.parse(out).error).toContain('valid JSON');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -312,7 +322,7 @@ test('rename-entity requires --name', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'rename-entity', 'light.x'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--name');
+  expect(JSON.parse(out).error).toContain('--name');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -371,8 +381,8 @@ test('list-floors reads via WS and closes', async () => {
 test('create-floor blocked under strict, no WS command sent', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'create-floor', 'Attic'], ws, cfg('strict'));
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -437,7 +447,7 @@ test('import-blueprint imports then saves', async () => {
     cfg('ask'),
   );
   expect(code).toBe(0);
-  expect(JSON.parse(out).ok).toBe(true);
+  expect(JSON.parse(out)).toHaveProperty('data');
   expect(ws.calls).toEqual([
     { type: 'blueprint/import', payload: { url: 'https://example.com/bp.yaml' } },
     {
@@ -464,7 +474,7 @@ test('import-blueprint stops after import on validation errors, does not save', 
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('validation failed');
+  expect(JSON.parse(out).error).toStartWith('blueprint_invalid:');
   expect(ws.calls.length).toBe(1);
   expect(ws.calls[0]!.type).toBe('blueprint/import');
 });
@@ -476,8 +486,8 @@ test('import-blueprint blocked under strict, no WS command sent', async () => {
     ws,
     cfg('strict'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -495,7 +505,7 @@ test('set-energy-prefs rejects invalid JSON', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-energy-prefs', 'not-json'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('valid JSON');
+  expect(JSON.parse(out).error).toContain('valid JSON');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -516,7 +526,7 @@ test('disable-entry requires --disabled', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'disable-entry', 'entry1'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--disabled');
+  expect(JSON.parse(out).error).toContain('--disabled');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -560,7 +570,7 @@ test('create-backup requires --agent-ids', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'create-backup'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--agent-ids');
+  expect(JSON.parse(out).error).toContain('--agent-ids');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -571,8 +581,8 @@ test('create-backup blocked under strict', async () => {
     ws,
     cfg('strict'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -650,7 +660,7 @@ test('expose-entity requires --entity-ids', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--entity-ids');
+  expect(JSON.parse(out).error).toContain('--entity-ids');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -662,7 +672,7 @@ test('expose-entity requires --assistants', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--assistants');
+  expect(JSON.parse(out).error).toContain('--assistants');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -674,7 +684,7 @@ test('expose-entity requires --expose', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--expose');
+  expect(JSON.parse(out).error).toContain('--expose');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -716,8 +726,8 @@ test('expose-entity blocked under strict', async () => {
     ws,
     cfg('strict'),
   );
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -766,7 +776,7 @@ test('set-entity-labels requires --labels', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-entity-labels', 'light.x'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--labels');
+  expect(JSON.parse(out).error).toContain('--labels');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -794,7 +804,7 @@ test('set-entity-categories rejects invalid JSON', async () => {
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('valid JSON');
+  expect(JSON.parse(out).error).toContain('valid JSON');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -818,7 +828,7 @@ test('set-entity-aliases requires --aliases', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-entity-aliases', 'light.x'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--aliases');
+  expect(JSON.parse(out).error).toContain('--aliases');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -844,7 +854,7 @@ test('rename-area requires --name', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'rename-area', 'a1'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--name');
+  expect(JSON.parse(out).error).toContain('--name');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -891,7 +901,7 @@ test('set-area-labels requires --labels', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-area-labels', 'a1'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--labels');
+  expect(JSON.parse(out).error).toContain('--labels');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -917,15 +927,15 @@ test('set-core-config requires at least one field flag', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-core-config'], ws, cfg('ask'));
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('At least one config field flag');
+  expect(JSON.parse(out).error).toContain('at least one config field flag');
   expect(ws.calls.length).toBe(0);
 });
 
 test('set-core-config blocked under strict', async () => {
   const ws = fakeWs();
   const { code, out } = await runCli(['ha', 'set-core-config', '--currency', 'EUR'], ws, cfg('strict'));
-  expect(code).toBe(1);
-  expect(JSON.parse(out).blocked).toBe(true);
+  expect(code).toBe(0);
+  expect(JSON.parse(out).status).toBe('blocked');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -978,7 +988,7 @@ test('set-core-config rejects a non-numeric latitude before any WS call', async 
     cfg('ask'),
   );
   expect(code).toBe(1);
-  expect(JSON.parse(out).message).toContain('--latitude must be a number');
+  expect(JSON.parse(out).error).toContain('--latitude must be a number');
   expect(ws.calls.length).toBe(0);
 });
 
@@ -988,10 +998,9 @@ test('WS command failure surfaces HA message and writes report', async () => {
   const ws = fakeWs(() => {
     throw new HomeAssistantError('Area name already exists.');
   });
-  const { code, out } = await runCli(['ha', 'create-area', 'Office'], ws, cfg('ask'));
+  const config = cfg('ask');
+  const { code, out } = await runCli(['ha', 'create-area', 'Office'], ws, config);
   expect(code).toBe(1);
-  const parsed = JSON.parse(out);
-  expect(parsed.ok).toBe(false);
-  expect(parsed.message).toBe('Area name already exists.');
-  expect(parsed.report_path).toBeTruthy();
+  expect(JSON.parse(out)).toEqual({ error: 'ha_command_failed:Area name already exists.' });
+  expect(existsSync(join(config.root, '.hermit/raw/audit-ha-ws-latest.md'))).toBe(true);
 });

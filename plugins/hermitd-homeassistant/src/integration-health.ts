@@ -66,26 +66,3 @@ export function writeDegradedDomainsArtifact(root: string, payload: Record<strin
   writeFileSync(path, JSON.stringify(payload, null, 2) + '\n', 'utf8');
   return path;
 }
-
-/** Produce the scheduled-check stdout block in the exact documented shape. */
-export function formatIntegrationHealthStdout(
-  payload: Record<string, any>,
-  dateStr: string,
-): string {
-  const degraded: Array<Record<string, any>> = payload.degraded_entity_domains;
-  const scanned: number = payload.scanned_domains;
-  const lines = [`ha-integration-health findings — ${dateStr}`];
-  if (degraded.length === 0) {
-    lines.push(`No actionable findings. (${scanned} domains scanned)`);
-  } else {
-    lines.push(`Degraded domains: ${degraded.length}`);
-    for (const entry of degraded) {
-      // round(ratio * 100, 1), formatted like a Python float (always one decimal).
-      const pct = (Math.round(entry.ratio * 1000) / 10).toFixed(1);
-      lines.push(
-        `- ${entry.domain}: ${entry.unavailable}/${entry.total} entities unavailable (${pct}%)`,
-      );
-    }
-  }
-  return lines.join('\n');
-}

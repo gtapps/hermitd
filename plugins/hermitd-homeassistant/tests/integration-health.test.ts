@@ -11,11 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { normalizeContext } from '../src/cli';
-import {
-  computeDegradedDomains,
-  formatIntegrationHealthStdout,
-  writeDegradedDomainsArtifact,
-} from '../src/integration-health';
+import { computeDegradedDomains, writeDegradedDomainsArtifact } from '../src/integration-health';
 
 const tmpDirs: string[] = [];
 
@@ -100,23 +96,4 @@ test('degraded domains artifact written to state path', () => {
   const loaded = JSON.parse(readFileSync(path, 'utf8'));
   expect(Object.keys(loaded)).toContain('degraded_entity_domains');
   expect(Object.keys(loaded)).toContain('computed_at');
-});
-
-test('format stdout with degraded', () => {
-  const payload = {
-    degraded_entity_domains: [{ domain: 'sensor', total: 15, unavailable: 12, ratio: 0.8 }],
-    scanned_domains: 8,
-  };
-  const out = formatIntegrationHealthStdout(payload, '2026-05-14');
-  expect(out.startsWith('ha-integration-health findings — 2026-05-14')).toBe(true);
-  expect(out).toContain('Degraded domains: 1');
-  expect(out).toContain('sensor: 12/15');
-  expect(out).toContain('80.0%');
-});
-
-test('format stdout no degraded', () => {
-  const payload = { degraded_entity_domains: [], scanned_domains: 5 };
-  const out = formatIntegrationHealthStdout(payload, '2026-05-14');
-  expect(out).toContain('No actionable findings.');
-  expect(out).toContain('5 domains scanned');
 });

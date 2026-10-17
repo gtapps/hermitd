@@ -23,7 +23,7 @@ Invoked from `proposal-act`'s Accept flow for a `[ha-update]` proposal (originat
    - **`hacs`** (an individual HACS entity accepted out of an aggregated proposal; HACS entities don't support the native `backup` parameter): first `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha create-backup --agent-ids <configured agent>`. If the backup call is blocked or fails, stop and stay advisory; tell the operator why. Only on a successful backup: `ha call-service update.install --data '{"entity_id":"<entity_id>"}'`.
    - **`core` / `os` / `supervisor`**: never auto-apply, even with the flag on. Show the tier, installed/available versions, and dashboard-access impact. Run: `ha call-service update.install --data '{"entity_id":"<entity_id>","backup":true}'`.
 
-3. **Report**: read the command's JSON output (`ok`/`message`). On success, tell the operator the update installed and that an audit is at `.hermit/raw/audit-ha-call-service-*`. On failure, surface the error verbatim and leave the proposal open rather than resolving it.
+3. **Report**: read the command's JSON output. On success (`data` and `report_path`), tell the operator the update installed and that an audit is at `report_path`. On `{"status":"blocked"}` or `{"error"}`, surface its `detail` or `error` verbatim and leave the proposal open rather than resolving it.
 
 ## Approval
 

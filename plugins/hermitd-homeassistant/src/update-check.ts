@@ -70,48 +70,39 @@ export function collectPendingUpdates(states: Array<Record<string, any>>): Pendi
   return out;
 }
 
-/** Produce the scheduled-check stdout block in the documented shape. */
-export function formatUpdatesStdout(updates: PendingUpdate[], dateStr: string): string {
-  const header = `ha-update-check findings — ${dateStr}`;
-  if (updates.length === 0) {
-    return `${header}\nNo actionable findings. (no updates pending)`;
-  }
-  const individual = updates.filter((u) => u.tier !== 'hacs');
-  const hacs = updates.filter((u) => u.tier === 'hacs');
-  const lines = [header, `Updates pending: ${updates.length}`];
-  for (const u of individual) {
-    const url = u.release_url ? ` — ${u.release_url}` : '';
-    const from = u.installed_version ?? '?';
-    const to = u.latest_version ?? '?';
-    lines.push(`- [${u.tier}] ${u.title}: ${from} → ${to}${url}`);
-  }
-  if (hacs.length > 0) {
-    lines.push(`- [hacs] ${hacs.length} HACS update${hacs.length === 1 ? '' : 's'} pending`);
-  }
-  return lines.join('\n');
+export interface UpdatesView {
+  /** Individual (non-HACS) updates to list. */
+  updates: PendingUpdate[];
+  /** Individual updates left out of `updates`. */
+  more: number;
+  /** HACS updates, which aggregate into one count. */
+  hacs: number;
+}
+
+/** Every individual update in entity_id order, HACS aggregated. */
+export function listUpdates(updates: PendingUpdate[]): UpdatesView {
+  return {
+    updates: updates.filter((u) => u.tier !== 'hacs'),
+    more: 0,
+    hacs: updates.filter((u) => u.tier === 'hacs').length,
+  };
 }
 
 const TIER_RANK: Record<UpdateTier, number> = { core: 0, os: 1, supervisor: 2, addon: 3, hacs: 4 };
 const DIGEST_TOP_N = 3;
 
 /**
- * Brief-ready digest: tier-sorted, top 3 individual updates, remainder collapsed.
+ * Brief-ready digest: tier-sorted, top 3 individual updates, remainder counted.
  * The tier ordering the briefs used to state in prose lives here.
  */
-export function formatUpdatesDigest(updates: PendingUpdate[]): string {
+export function digestUpdates(updates: PendingUpdate[]): UpdatesView {
   const individual = updates
     .filter((u) => u.tier !== 'hacs')
     .sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier]);
-  const hacs = updates.filter((u) => u.tier === 'hacs');
   const top = individual.slice(0, DIGEST_TOP_N);
-  const lines: string[] = [];
-  for (const u of top) {
-    lines.push(`[${u.tier}] ${u.title}: ${u.installed_version ?? '?'} → ${u.latest_version ?? '?'}`);
-  }
-  const rest = individual.length - top.length;
-  if (rest > 0) lines.push(`+ ${rest} more update${rest === 1 ? '' : 's'} pending`);
-  if (hacs.length > 0) {
-    lines.push(`[hacs] ${hacs.length} HACS update${hacs.length === 1 ? '' : 's'} pending`);
-  }
-  return lines.join('\n');
+  return {
+    updates: top,
+    more: individual.length - top.length,
+    hacs: updates.filter((u) => u.tier === 'hacs').length,
+  };
 }

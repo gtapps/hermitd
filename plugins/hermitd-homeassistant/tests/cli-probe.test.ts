@@ -23,7 +23,7 @@ test('probe success', async () => {
   const { code, out } = await runCli(['ha', 'probe', '/api/config/automation/config/123'], client);
 
   expect(code).toBe(0);
-  expect(JSON.parse(out)).toEqual(response);
+  expect(JSON.parse(out)).toEqual({ data: response });
   expect(client.calls.get).toEqual(['/api/config/automation/config/123']);
 });
 
@@ -34,8 +34,8 @@ test('probe 404 exits nonzero', async () => {
     },
   });
 
-  const { code, err } = await runCli(['ha', 'probe', '/api/config/automation/config/999'], client);
+  const { code, out } = await runCli(['ha', 'probe', '/api/config/automation/config/999'], client);
 
   expect(code).toBe(1);
-  expect(err).toContain('404');
+  expect(JSON.parse(out)).toEqual({ error: 'ha_http_404:not found (status=404)' });
 });

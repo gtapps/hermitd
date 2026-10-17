@@ -42,7 +42,7 @@ REST docs: https://developers.home-assistant.io/docs/api/rest/ ; WebSocket docs:
 
 - Helpers, areas, and entity/device registries have no REST endpoint; they are reachable only over `wss://<host>/api/websocket`. `HomeAssistantWsClient` opens one connection per CLI invocation (auth handshake, commands, close), reusing the REST client's URL selection and token.
 - Command types: helpers `<type>/create|list|delete` (`input_boolean|input_number|input_text|input_select|input_datetime|timer|counter|schedule`); areas `config/area_registry/*`; registries `config/entity_registry/list|update`, `config/device_registry/list|update`; dashboards `lovelace/dashboards/list|create|delete`, `lovelace/config`, `lovelace/config/save`. The docs index documents only the auth/result envelope, so confirm a new command's exact `type` and payload against a live instance.
-- All WS mutations are gated by `ha_safety_mode` via `gateStructuralMutation` in `policy.ts`; reads never are. Under `strict` a mutation is refused (`blocked: true`) and surfaced as a proposal; under `ask` Claude Code requests native approval before execution. Every mutation writes an `audit-ha-ws-*` report to `.hermit/raw/`.
+- All WS mutations are gated by `ha_safety_mode` via `gateStructuralMutation` in `policy.ts`; reads never are. Under `strict` a mutation is refused (`{"status":"blocked","reason":"strict_mode"}`) and surfaced as a proposal; under `ask` Claude Code requests native approval before execution. Every mutation writes an `audit-ha-ws-*` report to `.hermit/raw/`.
 
 ## Routines
 
