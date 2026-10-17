@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
+
 ### Fixed
 - `domain-brainstorm` parses the proposal triage verdict in the grammar `proposal-triage` prints.
 
