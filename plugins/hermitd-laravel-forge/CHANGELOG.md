@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- `forge.php` commands that skills read print one JSON object (`policy` and `failed-deploys` without `--json` stay human output); errors are `{"error":"<token>"}` on stdout, and policy denials, plan refusals and unmatched or ambiguous names are `status` outcomes at exit 0
+- `forge.php` commands print one JSON object, including `policy` and `failed-deploys` (which drops its `--json` flag and prose mode); errors are `{"error":"<token>"}` on stdout, and policy denials, plan refusals and unmatched or ambiguous names are `status` outcomes at exit 0
 - `native-permissions.ts` prints `OK` or one JSON object instead of prose and uncaught throws
 
 ### Fixed

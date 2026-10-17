@@ -84,8 +84,7 @@ require_once __DIR__ . '/forge-operation.php';
  * which is why the scrubber sits at the output boundary.
  */
 function emit(array $data, int $code = 0): never {
-    $out = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-    echo scrubSecrets((string) $out) . "\n";
+    echo json_encode(scrubValue($data), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
     exit($code);
 }
 
@@ -235,8 +234,6 @@ set_exception_handler('failSdk');
 $args = array_slice($argv, 1);
 $cmd  = array_shift($args) ?? '';
 
-$hasJson    = in_array('--json',    $args, true);
-
 $positional = array_values(array_filter($args, fn($a) => !str_starts_with($a, '--')));
 
 // ---------------------------------------------------------------------------
@@ -245,7 +242,7 @@ $positional = array_values(array_filter($args, fn($a) => !str_starts_with($a, '-
 if ($cmd === '' || $cmd === '--help' || $cmd === 'help') {
     $ttl = intdiv(PLAN_TTL_SECONDS, 60);
     echo <<<USAGE
-    Usage: forge.php <command> [args] [--json]
+    Usage: forge.php <command> [args]
 
     Credential:
       check                       Report token status (missing/invalid/unreachable/ok)
@@ -273,7 +270,7 @@ if ($cmd === '' || $cmd === '--help' || $cmd === 'help') {
       server-reboot <server>      Reboot server
 
     Estate scan:
-      failed-deploys [--json]     Find sites with a failed latest deployment
+      failed-deploys              Find sites with a failed latest deployment
 
     Generic dispatch (JSON args on stdin, org slug prepended automatically):
       policy                      Show what is reachable and what is denied (no credentials needed)
@@ -330,31 +327,22 @@ if ($cmd === 'policy') {
         'isEndpointMethod'
     ));
 
-    $lifted = fn(string $tier) => in_array($tier, $policy['tiers_lifted'], true) ? 'LIFTED ' : 'DENIED ';
+    $state = fn(string $tier) => in_array($tier, $policy['tiers_lifted'], true) ? 'lifted' : 'denied';
 
-    echo "Every SDK endpoint method is reachable ($reachable installed) except the tiers below.\n";
-    echo "Reads go through `call`. Writes require `preview` then `execute <plan-id>`.\n\n";
-
-    echo "Shipped tiers\n";
-    echo '  ' . $lifted('secrets') . " secrets      " . implode(', ', SECRET_METHODS) . "\n";
-    echo "                        plus any method returning " . implode(' / ',
-        array_map(fn($t) => substr((string) strrchr($t, '\\'), 1), SECRET_RETURN_TYPES)) . "\n";
-    echo '  ' . $lifted('destructive') . " destructive  any operation whose captured HTTP verb is "
-        . implode('/', DESTRUCTIVE_VERBS) . "\n\n";
-
-    echo "Operator lifts in .env (the real boundary — the agent cannot edit .env)\n";
-    echo '  FORGE_POLICY_ALLOW_TIERS  ' . ($policy['tiers_lifted'] === [] ? '(not set)' : implode(', ', $policy['tiers_lifted'])) . "\n";
-    echo '  FORGE_POLICY_ALLOW        ' . ($policy['methods_lifted'] === [] ? '(not set)' : implode(', ', $policy['methods_lifted'])) . "\n\n";
-
-    echo "Project denials in .hermit/forge-policy.json\n";
-    echo "  A reminder, not a boundary: the agent is allowed to edit this file.\n";
-    echo '  ' . ($policy['project_deny'] === [] ? '(none)' : implode(', ', $policy['project_deny'])) . "\n";
-
-    if ($policy['warnings'] !== []) {
-        echo "\nWarnings\n";
-        foreach ($policy['warnings'] as $w) echo "  $w\n";
-    }
-    exit(0);
+    emit([
+        'reachable' => $reachable,
+        'tiers' => [
+            'secrets' => [
+                'state' => $state('secrets'),
+                'methods' => SECRET_METHODS,
+                'return_types' => array_map(fn($t) => substr((string) strrchr($t, '\\'), 1), SECRET_RETURN_TYPES),
+            ],
+            'destructive' => ['state' => $state('destructive'), 'verbs' => DESTRUCTIVE_VERBS],
+        ],
+        'env_lifts' => ['tiers' => $policy['tiers_lifted'], 'methods' => $policy['methods_lifted']],
+        'project_deny' => $policy['project_deny'],
+        'warnings' => $policy['warnings'],
+    ]);
 }
 
 // All other commands require a valid token.
@@ -724,7 +712,7 @@ if ($cmd === 'server-reboot') {
 }
 
 // ---------------------------------------------------------------------------
-// failed-deploys [--json]
+// failed-deploys
 // ---------------------------------------------------------------------------
 if ($cmd === 'failed-deploys') {
     $failures = [];
@@ -780,21 +768,7 @@ if ($cmd === 'failed-deploys') {
         failSdk($e);   // a 429 here is {"error":"rate_limited:..."}
     }
 
-    if ($hasJson) {
-        emit(['failures' => $failures]);
-    }
-
-    if (count($failures) === 0) {
-        echo "No failed deployments found.\n";
-        exit(0);
-    }
-
-    echo count($failures) . " site(s) with failed latest deployment:\n";
-    foreach ($failures as $f) {
-        echo "  Site: {$f['site_name']} (ID: {$f['site_id']}, server: {$f['server_id']})\n";
-        echo "    Status: {$f['status']}" . (isset($f['commit']) ? "  Commit: " . substr($f['commit'], 0, 80) : '') . "\n";
-    }
-    exit(0);
+    emit(['failures' => $failures]);
 }
 
 // ---------------------------------------------------------------------------

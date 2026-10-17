@@ -504,6 +504,20 @@ $ordinaryLog = "Cloning into '/home/forge/app'...\nHEAD is now at 4f2a1b9c8d3e5f
 check(scrubSecrets($ordinaryLog) === $ordinaryLog,
     'an ordinary deploy log survives untouched, git SHA included');
 
+$scrubbed = json_encode(scrubValue([
+    'secrets' => ['state' => 'denied'],
+    'api_token' => 'Tok3nValue',
+    'record' => (object) ['ssh_key_id' => 7, 'meta' => new \stdClass()],
+    'log' => "DB_PASSWORD=hunter2trombone\nok",
+]));
+check(json_decode($scrubbed, true) === [
+    'secrets' => ['state' => 'denied'],
+    'api_token' => '[REDACTED]',
+    'record' => ['ssh_key_id' => '[REDACTED]', 'meta' => []],
+    'log' => "DB_PASSWORD=[REDACTED]\nok",
+] && str_contains($scrubbed, '"meta":{}'),
+    'scrubValue keeps output valid JSON, masks secret-named scalars, scrubs string leaves, keeps objects');
+
 // ---------------------------------------------------------------------------
 // SDK error output
 // ---------------------------------------------------------------------------

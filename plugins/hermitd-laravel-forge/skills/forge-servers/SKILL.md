@@ -82,6 +82,8 @@ Every SDK method is reachable through `call` (reads) and `preview`/`execute` (wr
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php policy
 ```
 
+It prints `reachable` (installed endpoint methods), each shipped tier's `state` (`denied` or `lifted`), the `.env` lifts in `env_lifts`, `project_deny`, and any `warnings`.
+
 Only the operator can widen this, by editing `.env` — which the agent cannot do:
 
 - `FORGE_POLICY_ALLOW_TIERS=destructive` lifts a whole tier

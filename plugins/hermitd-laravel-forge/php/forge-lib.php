@@ -256,6 +256,9 @@ function loadPolicy(string $projectRoot): array
  *
  * Regex redaction, not a parser: it is a strong net, not a proof.
  */
+/** Names that mark a credential, in an assignment or as a record field. */
+const SECRET_NAME_PATTERN = 'KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL';
+
 function scrubSecrets(string $text): string
 {
     // PEM blocks first — they span lines and would otherwise be partly matched
@@ -264,11 +267,11 @@ function scrubSecrets(string $text): string
 
     // KEY= / SECRET= / PASSWORD= / *_TOKEN= / CREDENTIAL= assignments, including
     // JSON-ish "key": "value" forms, single-quoted values, and the \" escapes a
-    // string gets once printResult JSON-encodes it (a deploy script, an env file).
+    // string gets once JSON-encoded (a deploy script, an env file).
     // A value ends at \" \n \r \t but runs through \/ \\ \uXXXX, so a JSON-encoded
     // base64 APP_KEY is masked whole.
     $text = preg_replace(
-        '/([A-Za-z0-9_.\-]*(?:KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL)[A-Za-z0-9_.\-]*(?:\\\\?")?\s*[:=]\s*(?:\\\\?["\'])?)(?:[^\s"\'\\\\,]|\\\\[^"nrt\s])+/i',
+        '/([A-Za-z0-9_.\-]*(?:' . SECRET_NAME_PATTERN . ')[A-Za-z0-9_.\-]*(?:\\\\?")?\s*[:=]\s*(?:\\\\?["\'])?)(?:[^\s"\'\\\\,]|\\\\[^"nrt\s])+/i',
         '$1[REDACTED]',
         $text
     ) ?? $text;
@@ -297,9 +300,30 @@ function scrubSecrets(string $text): string
 }
 
 /**
+ * Scrub a payload before it is JSON-encoded, so the output stays valid JSON:
+ * every string leaf goes through scrubSecrets(), and a scalar under a
+ * secret-named key is masked whole (an SDK record's `api_key` field).
+ */
+function scrubValue(mixed $value, string|int|null $key = null): mixed
+{
+    if (is_array($value) || is_object($value)) {
+        $out = [];
+        foreach (is_object($value) ? get_object_vars($value) : $value as $k => $v) {
+            $out[$k] = scrubValue($v, $k);
+        }
+        return is_object($value) ? (object) $out : $out;
+    }
+    if (is_string($key) && is_scalar($value) && $value !== ''
+        && preg_match('/' . SECRET_NAME_PATTERN . '/i', $key)) {
+        return '[REDACTED]';
+    }
+    return is_string($value) ? scrubSecrets($value) : $value;
+}
+
+/**
  * One `{"error":"<token>:<summary>"}` line. Keep the SDK summary and the
- * complete validation response, including nested field errors. Scrub after
- * rendering so API-provided details get the same protection as successful output.
+ * complete validation response, including nested field errors, scrubbed like
+ * successful output.
  */
 function formatSdkError(\Throwable $error): string
 {
@@ -316,9 +340,7 @@ function formatSdkError(\Throwable $error): string
     if ($error instanceof ValidationException && $error->errors() !== []) {
         $out['errors'] = $error->errors();
     }
-    $message = (string) json_encode($out, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-
-    return scrubSecrets($message) . "\n";
+    return json_encode(scrubValue($out), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
 }
 
 // ---------------------------------------------------------------------------

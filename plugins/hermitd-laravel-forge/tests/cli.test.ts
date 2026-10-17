@@ -54,6 +54,17 @@ test('deploy executes the resolved request without a confirmation flag', () => {
   expect(JSON.parse(readFileSync(request, 'utf8'))).toEqual(['test-org', 12, 34, []]);
 });
 
+test('policy prints the effective boundary as one JSON object', () => {
+  const { result } = run('policy');
+  expect(result.exitCode).toBe(0);
+  const out = json(result.stdout);
+  expect(typeof out.reachable).toBe('number');
+  expect(out.tiers.secrets.state).toBe('denied');
+  expect(out.tiers.destructive).toEqual({ state: 'denied', verbs: ['DELETE'] });
+  expect(out.env_lifts).toEqual({ tiers: [], methods: [] });
+  expect(out.project_deny).toEqual([]);
+});
+
 test('reboot executes the resolved request without a confirmation flag', () => {
   const { result, request } = run('server-reboot', 'test-server');
   expect(result.exitCode).toBe(0);

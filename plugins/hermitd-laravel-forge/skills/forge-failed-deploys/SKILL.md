@@ -16,7 +16,7 @@ Routine skill: scans the org-wide site list and flags any sites whose latest dep
 1. **Run the estate scan.**
 
    ```bash
-   php ${CLAUDE_PLUGIN_ROOT}/php/forge.php failed-deploys --json
+   php ${CLAUDE_PLUGIN_ROOT}/php/forge.php failed-deploys
    ```
 
    This pages through the org-wide site list via `organizationSites()->lazy()` and fetches the `deployment_status` field on each site. For sites in a failure state it fetches the latest `deployments()` detail. Rate limiting (429) is handled internally with conservative pacing.
