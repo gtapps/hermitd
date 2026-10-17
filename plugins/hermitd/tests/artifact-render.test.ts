@@ -70,5 +70,6 @@ describe('artifact.ts render weekly', () => {
   test('exits non-zero when no compiled weekly review exists', withHermitDir(async (hermitDir) => {
     const r = await runScript('artifact.ts', { args: ['render', 'weekly', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'render_failed:weekly' });
   }));
 });

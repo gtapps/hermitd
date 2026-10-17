@@ -23,6 +23,7 @@ import { readContextSurface, writeContextSurface } from './lib/context-surface';
 import { MAX_PLAUSIBLE_PROMPT_TOKENS } from './lib/context-signal';
 import { isGuest } from './lib/guest-marker';
 import { ownsResidentIdentity } from './lib/session-registry';
+import { emit, exitError } from './lib/cli';
 
 type Json = any;
 
@@ -803,10 +804,12 @@ if (import.meta.main) {
   // Mark-only entrypoint (synchronous, no stdin): the heartbeat SKILL calls this
   // to flip a delivered budget alert's `notified` flag. Keeps cost-tracker the
   // sole writer of budget-alerts.json so the SKILL never races the owned write.
+  // Prints `OK`, or {"error":"write_failed"}. The stdin mode below is the Stop
+  // hook and keeps the hook contract instead of the helper-output convention.
   const markKey = process.argv[2] === '--mark-budget-notified' ? process.argv[3] : null;
   if (markKey) {
-    mutateOwnedAlerts(BUDGET_ALERTS, (alerts) => markAlertNotified(alerts, markKey));
-    process.exit(0);
+    if (!mutateOwnedAlerts(BUDGET_ALERTS, (alerts) => markAlertNotified(alerts, markKey))) exitError('write_failed');
+    emit('OK');
   }
   (async () => {
     try {

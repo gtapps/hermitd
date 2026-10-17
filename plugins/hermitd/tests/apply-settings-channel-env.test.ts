@@ -31,7 +31,7 @@ describe('apply-settings.ts channel-env', () => {
       args: [file, 'channel-env', 'DISCORD', '/abs/state/discord'],
     });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ key: 'DISCORD_STATE_DIR', state_dir: '/abs/state/discord', effective: 'next-start' });
+    expect(JSON.parse(r.stdout)).toEqual({ key: 'DISCORD_STATE_DIR', state_dir: '/abs/state/discord', effective: 'next_start' });
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
   });
 

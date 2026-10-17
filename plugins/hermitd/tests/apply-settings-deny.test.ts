@@ -46,7 +46,7 @@ describe('apply-settings.ts deny', () => {
     for (const pattern of DENY) expect(deny).toContain(pattern);
     for (const pattern of ASK) expect(ask).toContain(pattern);
     for (const pattern of LEGACY_HARD_BLOCKS) expect(deny).toContain(pattern);
-    expect(r.stdout).not.toContain('removed:');
+    expect(JSON.parse(r.stdout)).toEqual({ added: ASK });
     expect(deny).toContain('Bash(operator-own*)');
     expect(JSON.stringify(settings)).not.toContain('Write(');
   });
@@ -65,7 +65,7 @@ describe('apply-settings.ts deny', () => {
     expect(settings.permissions.ask).toBeUndefined();
     expect(deny).toContain('Bash(operator-own*)');
     for (const pattern of LEGACY_HARD_BLOCKS) expect(deny).toContain(pattern);
-    expect(r.stdout).not.toContain('removed:');
+    expect(r.stdout.trim()).toBe('OK');
     expect(JSON.stringify(settings)).not.toContain('Write(');
   });
 
@@ -77,7 +77,7 @@ describe('apply-settings.ts deny', () => {
     const before = fs.readFileSync(file, 'utf8');
     const r = await runScript('apply-settings.ts', { args: [file, 'deny', 'ask-only'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).not.toContain('skip-preserved');
+    expect(JSON.parse(r.stdout)).toEqual({ added: ASK });
     const settings = readSettings(file);
     expect(settings.permissions.deny).toEqual([DENY[0], 'Bash(operator-own*)']);
     for (const pattern of ASK) expect(settings.permissions.ask).toContain(pattern);
@@ -85,13 +85,13 @@ describe('apply-settings.ts deny', () => {
     expect(JSON.stringify(settings)).not.toContain('Write(');
   });
 
-  test('deny ask-only prints skip-preserved and writes nothing on a virgin file', async () => {
+  test('deny ask-only skips and writes nothing on a virgin file', async () => {
     const dir = freshDir();
     const file = seedSettings(dir, { permissions: { deny: ['Bash(operator-own*)'] } });
     const before = fs.readFileSync(file, 'utf8');
     const r = await runScript('apply-settings.ts', { args: [file, 'deny', 'ask-only'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('skip-preserved');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'not_seeded' });
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
   });
 

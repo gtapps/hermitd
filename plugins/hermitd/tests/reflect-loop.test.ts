@@ -202,7 +202,7 @@ not json at all
 
   test('prune-observations: exits 0 and reports counts', () => {
     expect(runExit).toBe(0);
-    expect(runStdout).toContain('pruned 1, kept 3');
+    expect(JSON.parse(runStdout)).toEqual({ pruned: 1, kept: 3 });
   });
 
   test('prune-observations: fresh entry kept', () => {
@@ -226,12 +226,13 @@ not json at all
       args: [path.join(workdir, 'nonexistent-dir')],
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('pruned 0, kept 0');
+    expect(JSON.parse(r.stdout)).toEqual({ pruned: 0, kept: 0 });
   });
 
   test('prune-observations: no args exits 1', async () => {
     const r = await runScript('prune-observations.ts');
-    expect(r.exitCode).not.toBe(0);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toBe('{"error":"usage"}\n');
   });
 
   // timestamp-format robustness: ledger ts is agent-written and not format-enforced,
@@ -248,7 +249,7 @@ not json at all
       const r = await runScript('prune-observations.ts', {
         args: [path.join(wd, '.hermit')],
       });
-      expect(r.stdout).toContain('pruned 1, kept 1');
+      expect(JSON.parse(r.stdout)).toEqual({ pruned: 1, kept: 1 });
       expect(fs.readFileSync(l, 'utf-8')).toContain('offset-fresh');
     } finally {
       try { fs.rmSync(wd, { recursive: true, force: true }); } catch {}

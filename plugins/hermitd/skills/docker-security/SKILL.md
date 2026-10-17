@@ -257,10 +257,10 @@ Run `pick-subnet` — it enumerates occupied Docker subnets, excludes this proje
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts pick-subnet <PROJECT_ROOT>
 ```
 
-It prints `{ "chosen": { "subnet", "gateway", "netguardIp" } | null, "allCandidatesCollide": bool, "occupied": [...] }`.
+It prints `{ "chosen": { "subnet", "gateway", "netguard_ip" } | null, "all_candidates_collide": bool }`.
 
 - If `chosen` is non-null, use it.
-- If `allCandidatesCollide` is true, `AskUserQuestion` (header: `"Custom subnet"`) with an Other field for an IPv4 /24 CIDR. Validate each answer with one cheap re-run:
+- If `all_candidates_collide` is true, `AskUserQuestion` (header: `"Custom subnet"`) with an Other field for an IPv4 /24 CIDR. Validate each answer with one cheap re-run:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts pick-subnet <PROJECT_ROOT> --candidate <cidr>
   ```
@@ -283,7 +283,7 @@ After the netguard files are rendered (step 6c), the wizard runs an explicit `--
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROOT> <<'HERMIT_SEC_JSON'
 {
-  "network": { "subnet": "...", "gateway": "...", "netguardIp": "..." },
+  "network": { "subnet": "...", "gateway": "...", "netguard_ip": "..." },
   "toggles": {
     "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
     "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },

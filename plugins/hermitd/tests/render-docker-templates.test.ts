@@ -280,18 +280,18 @@ describe('render-docker-templates.ts', () => {
     expect(compose(dir)).not.toContain('STATE_DIR');
   });
 
-  test('manifestSeed payload carries absolute paths and current plugin version', async () => {
+  test('manifest_seed payload carries absolute paths and current plugin version', async () => {
     const dir = freshDir();
     const r = await render(dir);
     const out = JSON.parse(r.stdout);
-    expect(out.entrypointCopied).toBe(true);
+    expect(out.entrypoint_copied).toBe(true);
     expect(out.written).toHaveLength(2);
     for (const w of out.written) expect(path.isAbsolute(w)).toBe(true);
 
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
-    expect(out.manifestSeed.pluginVersion).toBe(pj.version);
+    expect(out.manifest_seed.plugin_version).toBe(pj.version);
 
-    const byKey = Object.fromEntries(out.manifestSeed.entries.map((e: any) => [e.key, e.file]));
+    const byKey = Object.fromEntries(out.manifest_seed.entries.map((e: any) => [e.key, e.file]));
     for (const file of Object.values(byKey)) expect(path.isAbsolute(file as string)).toBe(true);
     // Entrypoint hashes the on-disk rendered file at the project root; the two
     // .template keys hash the upstream templates in the plugin.
@@ -322,6 +322,14 @@ describe('render-docker-templates.ts', () => {
     expect(fs.existsSync(path.join(outputDir, 'docker-compose.hermit.yml'))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, 'docker-entrypoint.hermit.sh'))).toBe(true);
     expect(fs.readdirSync(projectRoot)).toEqual([]);
+  });
+
+  test('a failed render prints {"error"} on stdout and writes nothing', async () => {
+    const dir = freshDir();
+    const r = await runScript('render-docker-templates.ts', { args: [dir], stdin: 'not json' });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).error).toStartWith('render_failed:');
+    expect(fs.readdirSync(dir)).toEqual([]);
   });
 });
 

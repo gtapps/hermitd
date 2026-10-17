@@ -53,7 +53,7 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
 
 First determine `hatch_target` (the pre-pass needs it, and so do Steps 6, 7, 8):
 
-Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then core's own block in `CLAUDE.local.md` or `CLAUDE.md`, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically.
+Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then core's own block in `CLAUDE.local.md` or `CLAUDE.md`, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
 
 If it returns `needs_target_question: true` the project has no stamped target. Use the returned `target_default` and stamp it with `domain-hatch-ensure-target` (Commands) with arguments `--target <target_default>`, so the next run of anything reads an answered file instead of re-deriving.
 
@@ -230,7 +230,7 @@ Report the per-entry outcome (`merged(3-way)`, `merged(3-way; <n> conflicts reso
 - **Which files:** every file that was copied, replaced, or restored in Steps 5/5b/5c. Build one `{ "key": "<prefix>/<name>", "file": "<on-disk path of the new content>" }` entry per such file. Prefixes: `templates/` (file `.hermit/templates/<name>`), `bin/` (file `.hermit/bin/<name>`), and for the entrypoint the literal key `docker/docker-entrypoint.hermit.sh` (file: the project-root `docker-entrypoint.hermit.sh`).
 - **`customized-kept` files:** do NOT include them — the script preserves their existing manifest entry unchanged via foreign-key preservation.
 - **If `manifest_bootstrap` was true:** include the full managed set — every `templates/` and `bin/` file (and the entrypoint, if deployed), hashing whatever is now on-disk after any overwrites. This is the one-time baseline seeding.
-- **Run** `manifest-seed` (Commands) with `{ "pluginVersion": "<plan.to>", "entries": [ ... ] }` on stdin. The script hashes each on-disk file, merges into the existing `files` map — preserving untouched prefixes, sibling-hermit keys, and the `docker/docker-compose.hermit.yml.template` / `docker/Dockerfile.hermit.template` baselines `/docker-setup` records (Step 10 reads them) — and writes `{ "version": 1, "files": { ... } }`. It refuses to overwrite a present-but-corrupt manifest. - **Ordering:** run this *after* Step 8 has ensured the plugin permissions, so `bun */scripts/manifest-seed.ts*` is allowed. The files resolved in Steps 5/5b/5c are stable on disk, so deferring the manifest write to after Step 8 does not change the recorded hashes.
+- **Run** `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [ ... ] }` on stdin. The script hashes each on-disk file, merges into the existing `files` map — preserving untouched prefixes, sibling-hermit keys, and the `docker/docker-compose.hermit.yml.template` / `docker/Dockerfile.hermit.template` baselines `/docker-setup` records (Step 10 reads them) — and writes `{ "version": 1, "files": { ... } }`. It refuses to overwrite a present-but-corrupt manifest. - **Ordering:** run this *after* Step 8 has ensured the plugin permissions, so `bun */scripts/manifest-seed.ts*` is allowed. The files resolved in Steps 5/5b/5c are stable on disk, so deferring the manifest write to after Step 8 does not change the recorded hashes.
 
 ### 6. Update CLAUDE-APPEND block
 
@@ -310,7 +310,7 @@ where `<resolved-settings-file>` is `.claude/settings.local.json` (local) or `.c
   - Parse stdout as JSON. The finalizer's `core.confirmed` is the **authoritative on-disk version** — use it as `vNEW` in the Step 10 report, NOT `plan.to`.
   - `settings_added` lists the dotted paths it actually added, confirmed against its re-read. Report those as the added settings in Step 10 — not the keys Step 4 recorded, which are only what the plan expected.
   - `audit_scope` reports whether the Step 1 snapshot was usable: `whole_run` means this upgrade's config changes are attributed in the settings ledger, `version_only` means only the version stamp was recorded. Carry it into the Step 10 report. It is never a failure: a `version_only` upgrade succeeded, it just left less history behind.
-  - If `core.matched` is `false` or `errors` is non-empty, the bump did not land: set the `Upgrade:` line in the Step 10 report to `blocked: config version bump failed (<joined errors>)` and stop.
+  - If it prints `error`, the bump did not land: set the `Upgrade:` line in the Step 10 report to `blocked: config version bump failed (<joined errors>)` and stop.
 
 ### Report field: Context reload
 

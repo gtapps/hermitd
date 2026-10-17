@@ -166,6 +166,15 @@ describe('proposal.ts create', () => {
     expect(r.stderr).not.toContain('findings append');
   }));
 
+  test('a failed bookkeeping step is a warning on the created verdict', withDir(async (dir) => {
+    seedState(dir);
+    fs.mkdirSync(path.join(stateArg(dir), 'state', 'proposal-metrics.jsonl'), { recursive: true });
+    const r = await runProposal(stateArg(dir), ['create'], { stdin: heredoc({ Title: 'Metrics blocked' }, MIN_BODY) });
+    expect(r.exitCode).toBe(0);
+    expect(out(r).warnings).toEqual(['metrics_append_failed']);
+    expect(fs.existsSync(propPath(dir, out(r).id))).toBe(true);
+  }));
+
   test('proposal creation leaves the frozen shell untouched', withDir(async (dir) => {
     seedState(dir);
     const before = fs.readFileSync(shellPath(dir), 'utf8');
@@ -514,7 +523,7 @@ describe('proposal.ts state-dir pin', () => {
         env: { AGENT_DIR: stateArg(mine) },
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state dir must be');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.readFileSync(propPath(victim, id), 'utf-8')).toBe(before);
     })();
   }));
@@ -588,7 +597,7 @@ describe('proposal.ts state-dir pin', () => {
       cwd: sub,
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('state dir must be');
+    expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toBe(before);
   }));
 
@@ -604,14 +613,14 @@ describe('proposal.ts state-dir pin', () => {
 
       const metrics = await runScript('proposal.ts', { args: ['metrics', stateArg(victim)], env });
       expect(metrics.exitCode).toBe(1);
-      expect(metrics.stderr).toContain('state dir must be');
+      expect(metrics.stdout).toStartWith('{"error":"foreign_state_dir:');
 
       const signal = await runScript('proposal.ts', {
         args: ['success-signal', stateArg(victim), '2026-01-01', 'S-001', 'avg_session_cost_usd < 5 over 7 sessions'],
         env,
       });
       expect(signal.exitCode).toBe(1);
-      expect(signal.stderr).toContain('state dir must be');
+      expect(signal.stdout).toStartWith('{"error":"foreign_state_dir:');
     })();
   }));
 
@@ -690,31 +699,30 @@ describe('proposal.ts routine', () => {
 // would read that as a failure verdict.
 
 describe('proposal.ts dispatch gate', () => {
-  test('success-signal --validate needs no state dir; exit code still carries the verdict', async () => {
+  test('success-signal --validate needs no state dir; an invalid predicate is a status, not a failure', async () => {
     const ok = await runScript('proposal.ts', {
       args: ['success-signal', '--validate', 'avg_session_cost_usd < 1.5 over 5 sessions'],
     });
     expect(ok.exitCode).toBe(0);
     expect(ok.stdout.trim()).toBe('OK');
 
-    // Non-zero on a bad predicate is load-bearing: proposal-create branches on it.
+    // proposal-create and proposal-act branch on the status, so it must not read as a failure.
     const bad = await runScript('proposal.ts', { args: ['success-signal', '--validate', 'nonsense'] });
-    expect(bad.exitCode).toBe(1);
-    expect(bad.stdout).toContain('invalid grammar');
+    expect(bad.exitCode).toBe(0);
+    expect(JSON.parse(bad.stdout)).toEqual({ status: 'invalid', reason: 'invalid_grammar' });
   });
 
   test('metrics needs no state dir — it defaults to .hermit', withDir(async (dir) => {
     const r = await runScript('proposal.ts', { args: ['metrics'], cwd: dir });
     expect(r.exitCode).toBe(0);
-    // No ledger under the default dir → the fail-open line, not a usage error.
-    expect(r.stdout).toContain('No proposal metrics yet.');
-    expect(r.stderr).not.toContain('Usage:');
+    // No ledger under the default dir → the fail-open status, not a usage error.
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
   test('a verb that does need a state dir is still refused without one', async () => {
     const r = await runScript('proposal.ts', { args: ['create'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('Usage: bun proposal.ts');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
   });
 });
 
@@ -799,8 +807,7 @@ describe('proposal.ts patch — pending-ask reconciliation', () => {
 
     const r = await runProposal(stateArg(dir), ['patch', id, '--set', 'status=resolved']);
     expect(r.exitCode).toBe(0);
-    expect(out(r)).toEqual({ id });
-    expect(r.stderr).toContain('reconciliation');
+    expect(out(r)).toEqual({ id, warnings: ['pending_ask_sweep_failed'] });
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toContain('status: resolved');
   }));
 });

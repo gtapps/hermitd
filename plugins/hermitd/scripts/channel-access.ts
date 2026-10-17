@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { assertStateDir, pinStateDirOrExit } from './lib/cc-compat';
+import { pinStateDirOrExit } from './lib/cc-compat';
 import { channelStateDir } from './lib/channel-token';
 import { auditConfigChange } from './lib/config-audit';
 import { readConfigRaw } from './lib/config-read';
@@ -87,9 +87,7 @@ function writeAccess(dir: string, channel: string, file: string, before: Access,
 function main(): void {
   const [argvDir, verb, channel, value, ...args] = process.argv.slice(2);
   if (!argvDir || !verb) throw new Error('usage');
-  // Keep the CLI's error-token output even when the shared pin would exit directly.
-  if (!assertStateDir(argvDir)) throw new Error('invalid_state_dir');
-  const dir = pinStateDirOrExit(argvDir, 'channel-access.ts');
+  const dir = pinStateDirOrExit(argvDir);
   if (channel !== 'discord' && channel !== 'telegram') throw new Error('unsupported_channel');
   const config = readConfigRaw(dir);
   if (config === null) throw new Error('no_config');

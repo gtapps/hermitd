@@ -9,21 +9,26 @@
 //     --chat=<key>:<chat_id> restrict channel log and compiled pages to the asking chat
 //     --limit=<n>            max results (default 10)
 //
-// Usage as lib:   import { search } from './lib/search' — search(hermitDir, query, opts) => results[]
+// Usage as lib:   import { search } from './lib/search' — search(hermitDir, query, opts) => hits[]
+//
+// Output: one JSON object `{"hits":[...]}`, ranked best first; no match is `{"hits":[]}`.
+//   File hit:    { source: 'file', path, date?, title?, snippets: [{ line, start_line, text }] }
+//                (title only when it differs from the filename; line is the matching
+//                file line, start_line the first line of text, which is that line with
+//                one line of context either side)
+//   Channel hit: { source: 'channel', untrusted: true, title, date?, text }
+//                (past chat text, safeForLLM-sanitized; not a file, so no line refs)
+// Errors print `{"error":"<token>"}` (`usage`, `no_query`, `search_failed`) with exit 1.
 
 import path from 'node:path';
 import { search } from './lib/search';
+import { emitJson, exitError } from './lib/cli';
 
 type Json = any;
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length === 0) {
-    process.stderr.write(
-      'Usage: bun search.ts <hermit-state-dir> [--type=<t>] [--since=<date>] [--limit=<n>] [--chat=<key>:<chat_id>] <query...>\n'
-    );
-    process.exit(1);
-  }
+  if (args.length === 0) exitError();
 
   const hermitDir = path.resolve(args[0]);
   const opts: Json = {};
@@ -45,49 +50,13 @@ if (import.meta.main) {
   }
 
   const query = queryParts.join(' ').trim();
-  if (!query) {
-    process.stderr.write('Error: no query provided\n');
-    process.exit(1);
-  }
+  if (!query) exitError('no_query');
 
-  let results: Json[];
+  let hits: Json[];
   try {
-    results = search(hermitDir, query, opts);
-  } catch (e: any) {
-    process.stderr.write(`Search error: ${e.message}\n`);
-    process.exit(1);
+    hits = search(hermitDir, query, opts);
+  } catch {
+    exitError('search_failed');
   }
-
-  if (results.length === 0) {
-    process.stdout.write(`No results found for "${query}".\n`);
-    process.exit(0);
-  }
-
-  process.stdout.write(`Found ${results.length} result${results.length === 1 ? '' : 's'} for "${query}":\n\n`);
-  for (const r of results) {
-    if (r.type === 'channel') {
-      // Channel-log hits aren't files — no path, no :line refs (a "sqlite:1"
-      // reference would be meaningless). Label by source/chat_id/direction
-      // and flag the excerpt as untrusted external input, since it flows
-      // into context unreviewed like any other recalled text.
-      const dateStr = r.date ? `  (${r.date})` : '';
-      process.stdout.write(`── [channel] ${r.title}${dateStr}\n`);
-      process.stdout.write(`   (untrusted external input) ${r.snippets[0]?.text || ''}\n`);
-      process.stdout.write('\n');
-      continue;
-    }
-
-    const dateStr = r.date ? `  (${r.date})` : '';
-    process.stdout.write(`── ${r.relPath}${dateStr}\n`);
-    if (r.title && r.title !== path.basename(r.relPath, '.md')) {
-      process.stdout.write(`   ${r.title}\n`);
-    }
-    for (const s of r.snippets) {
-      // Number every line from its file-relative start so each printed :line matches the real file.
-      s.text.split('\n').forEach((line: string, idx: number) => {
-        process.stdout.write(`   :${s.startLine + idx}  ${line.trimEnd()}\n`);
-      });
-    }
-    process.stdout.write('\n');
-  }
+  emitJson({ hits });
 }

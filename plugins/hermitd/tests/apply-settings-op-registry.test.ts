@@ -29,6 +29,8 @@ describe('apply-settings.ts op registry', () => {
   test('the usage message advertises exactly the sealed ops', async () => {
     const r = await runScript('apply-settings.ts', { args: [path.join(freshDir(), 'settings.local.json'), 'no-such-op'] });
     expect(r.exitCode).toBe(1);
-    for (const op of SEALED_SETTINGS_OPS) expect(r.stderr).toContain(op);
+    const out = JSON.parse(r.stdout);
+    expect(out.error).toBe('unknown_op:no-such-op');
+    for (const op of SEALED_SETTINGS_OPS) expect(out.valid_ops).toContain(op);
   });
 });

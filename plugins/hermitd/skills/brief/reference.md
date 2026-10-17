@@ -6,7 +6,7 @@ Return structured JSON for the calling skill to compose and deliver. Read fresh 
 
 The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `daily`, `default-no-session`), `today` (ISO date), and morning `context_recovery`.
 
-Run `task-report` (Commands) with arguments `--limit 20` for normalized records and `task-list` (Commands) with arguments `--open --owner resident --json` for open resident work. Run `duties-summary` (Commands) for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` last event is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy.
+Run `task-report` (Commands) with arguments `--limit 20` for normalized records and `task-list` (Commands) with arguments `--open --owner resident --json` for open resident work. Run `duties-summary` (Commands) for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` `last_event` is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy.
 
 Open, waiting and queued items come only from the `task-list` and `task-report` rows returned in this run. Never take them from an earlier brief (`state/last-brief.json`, `compiled/brief-*`).
 

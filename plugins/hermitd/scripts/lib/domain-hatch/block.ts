@@ -22,7 +22,7 @@ import path from 'node:path';
 import { markerOnward, extractSiblingMarker, isAmbiguousBlock, requiresRendering } from '../../evolve-plan';
 import { writeFileAtomic } from '../md-write';
 
-export type BlockAction = 'append' | 'replace' | 'skip' | 'ambiguous' | 'no-template' | 'no-marker' | 'needs-rendering';
+export type BlockAction = 'append' | 'replace' | 'skip' | 'ambiguous' | 'no_template' | 'no_marker' | 'needs_rendering';
 
 export interface BlockPlan {
   action: BlockAction;
@@ -68,12 +68,12 @@ export function planBlock(
 ): BlockPlan {
   const tmplText = rendered ?? read(templatePath(installPath));
   if (tmplText === null) {
-    return { action: 'no-template', marker: null, targetFile: targetPath };
+    return { action: 'no_template', marker: null, targetFile: targetPath };
   }
 
   const marker = extractSiblingMarker(tmplText, pluginName);
   if (marker === null) {
-    return { action: 'no-marker', marker: null, targetFile: targetPath };
+    return { action: 'no_marker', marker: null, targetFile: targetPath };
   }
 
   // A template carrying `mode:` markers is rendered by its own plugin before
@@ -83,7 +83,7 @@ export function planBlock(
   // --rendered-stdin appends both mode regions and their fence comments
   // verbatim into the operator's CLAUDE.md.
   if (requiresRendering(tmplText)) {
-    return { action: 'needs-rendering', marker, targetFile: targetPath };
+    return { action: 'needs_rendering', marker, targetFile: targetPath };
   }
 
   const targetText = read(targetPath);
@@ -134,29 +134,12 @@ function norm(s: string): string {
 }
 
 export interface BlockResult extends BlockPlan {
-  ok: boolean;
   written: boolean;
-  message?: string;
 }
 
-// Apply the plan. Refuses on ambiguity and on a missing template rather than
-// guessing — both are states where a wrong write is worse than no write.
+// Writes only on append or replace; any other action comes back unchanged with `written: false`.
 export function applyBlock(plan: BlockPlan): BlockResult {
-  if (plan.action === 'ambiguous') {
-    return { ...plan, ok: false, written: false, message: `marker ${plan.marker} appears more than once in ${plan.targetFile}; refusing to replace` };
-  }
-  if (plan.action === 'no-template') {
-    return { ...plan, ok: false, written: false, message: 'plugin ships no state-templates/CLAUDE-APPEND.md' };
-  }
-  if (plan.action === 'no-marker') {
-    return { ...plan, ok: false, written: false, message: 'template carries no opening marker for this plugin' };
-  }
-  if (plan.action === 'needs-rendering') {
-    return { ...plan, ok: false, written: false, message: 'template carries mode: markers and must be rendered by its own plugin; pipe the rendering in with --rendered-stdin' };
-  }
-  if (plan.action === 'skip') {
-    return { ...plan, ok: true, written: false };
-  }
+  if (plan.action !== 'append' && plan.action !== 'replace') return { ...plan, written: false };
 
   const existing = read(plan.targetFile) ?? '';
   let next: string;
@@ -169,5 +152,48 @@ export function applyBlock(plan: BlockPlan): BlockResult {
     next = existing.replace(plan.old_block!, () => plan.new_block!);
   }
   writeFileAtomic(plan.targetFile, next.endsWith('\n') ? next : next + '\n');
-  return { ...plan, ok: true, written: true };
+  return { ...plan, written: true };
+}
+
+export type SyncResult =
+  | { action: BlockAction; written: boolean; resident: BlockAction; marker: string | null; target_file: string }
+  | { status: 'needs_rendering' }
+  | { status: 'refused'; reason: 'ambiguous_marker'; file: string }
+  | { error: 'no_template' | 'no_marker' };
+
+/** Plan the shared and resident blocks, refuse before any write on an ambiguous marker in either, then apply both. */
+export function syncBlocks(
+  installPath: string,
+  pluginName: string,
+  targetPath: string,
+  residentPath: string,
+  foreignNames: string[],
+  rendered?: string,
+): SyncResult {
+  const template = rendered ?? read(templatePath(installPath));
+  if (template === null) return { error: 'no_template' };
+  const replace = rendered !== undefined;
+  const original = planBlock(installPath, pluginName, targetPath, foreignNames, template, replace);
+  if (original.action === 'no_marker') return { error: 'no_marker' };
+  if (original.action === 'needs_rendering') return { status: 'needs_rendering' };
+
+  const split = splitResident(template);
+  const shared = planBlock(installPath, pluginName, targetPath, foreignNames, split.shared, replace);
+  const resident = split.resident
+    ? planBlock(installPath, pluginName, residentPath, foreignNames, split.resident, replace)
+    : planResidentRemoval(original, residentPath, foreignNames);
+  const refused = [original, shared, resident].find(p => p.action === 'ambiguous');
+  if (refused) return { status: 'refused', reason: 'ambiguous_marker', file: refused.targetFile };
+
+  const result = applyBlock(shared);
+  const residentResult = applyBlock(resident);
+  // `written` covers both files: a run that only refreshed RESIDENT.md is still a
+  // write, and reporting the shared block's `false` would read as "nothing changed".
+  return {
+    action: result.action,
+    written: result.written || residentResult.written,
+    resident: residentResult.action,
+    marker: result.marker,
+    target_file: targetPath,
+  };
 }

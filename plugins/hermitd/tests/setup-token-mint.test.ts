@@ -302,7 +302,7 @@ describe('auth-mode verbs', () => {
     try {
       const out = await run(hermitDir, configDir, ['status', '--target', 'oauth']);
       expect(out.exitCode).toBe(1);
-      expect(JSON.parse(out.stdout).ok).toBe(false);
+      expect(JSON.parse(out.stdout)).toEqual({ error: 'invalid_target' });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -316,7 +316,7 @@ describe('auth-mode verbs', () => {
       // this same doomed relay again on its next tick, forever.
       const out = await run(hermitDir, configDir, ['relay']);
       expect(out.exitCode).toBe(1);
-      expect(JSON.parse(out.stdout).error).toContain('operator unreachable');
+      expect(JSON.parse(out.stdout)).toEqual({ error: 'operator_unreachable' });
       const stamp = JSON.parse(
         fs.readFileSync(path.join(hermitDir, 'state', 'relay-unreachable.json'), 'utf8'),
       );
@@ -337,7 +337,7 @@ describe('auth-mode verbs', () => {
       for (const verb of ['start', 'terminal', 'relay']) {
         const out = await run(hermitDir, configDir, [verb]);
         expect(out.exitCode).toBe(1);
-        expect(JSON.parse(out.stdout).error).toContain('already waiting');
+        expect(JSON.parse(out.stdout)).toEqual({ error: 'credential_pending' });
       }
       // status stays readable while one is pending — it is how the skill reports it.
       expect(JSON.parse((await run(hermitDir, configDir, ['status'])).stdout).pending).toBe(true);

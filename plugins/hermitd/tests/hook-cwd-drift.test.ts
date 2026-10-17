@@ -129,6 +129,15 @@ describe('record-operator-action with drifted cwd', () => {
     const wrongPath = path.join(driftedCwd, '.hermit', 'state', 'last-operator-action.json');
     expect(fs.existsSync(wrongPath)).toBe(false);
   });
+
+  it('--force writes the marker and prints OK', async () => {
+    const statePath = path.join(hermitDir, 'state', 'last-operator-action.json');
+    try { fs.unlinkSync(statePath); } catch {}
+    const result = await runScript('record-operator-action.ts', { args: ['--force'], cwd: driftedCwd, env: driftEnv() });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('OK\n');
+    expect(fs.existsSync(statePath)).toBe(true);
+  });
 });
 
 // -------------------------------------------------------------------------

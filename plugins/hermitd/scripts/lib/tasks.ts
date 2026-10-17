@@ -1,7 +1,7 @@
 import { lastRoutineFire, lastRoutineEvent } from './routines/history';
 import { readAlertState } from './alert-state';
 import { readConfigRaw } from './config-read';
-import { readJson } from './cli';
+import { failJson, printJson, readJson } from './cli';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, globDirRecursive } from './frontmatter';
@@ -16,6 +16,13 @@ import { todayYMD } from './time';
 import { costLogPath } from './cc-compat';
 
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
+// What a correct call can still meet in the record's state (a replay, a race, a busy owner).
+// Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
+const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
+export function reportTaskError(error: unknown): void {
+  if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
+  else failJson(error);
+}
 const SLUG = /^[\w.:~+@;=-]+$/;
 const HOUR = 3600000;
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
@@ -359,7 +366,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}) {
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 
-export interface Execution { state: 'in_flight' | 'idle' | 'unknown'; turn_id: string | null; at: string | null; source: string | null; cc_session_id: string | null; reason: string | null; registry?: string | null; waitingFor?: string | null; display?: string }
+export interface Execution { state: 'in_flight' | 'idle' | 'unknown'; turn_id: string | null; at: string | null; source: string | null; cc_session_id: string | null; reason: string | null; registry?: string | null; waiting_for?: string | null; display?: string }
 export function readExecution(dir: string, options: { registryFallback?: true } = {}): Execution {
   const raw = readJson(path.join(dir, 'state/execution.json'));
   const empty: Execution = { state: 'unknown', turn_id: null, at: null, source: null, cc_session_id: null, reason: null };
@@ -369,8 +376,8 @@ export function readExecution(dir: string, options: { registryFallback?: true } 
     const runtime = readJson(path.join(dir, 'state/runtime.json'));
     const resident = findResident(runtime, runtime?.config_dir) as (ReturnType<typeof findResident> & { waitingFor?: string });
     result.registry = resident?.status ?? null;
-    result.waitingFor = typeof resident?.waitingFor === 'string' ? resident.waitingFor : null;
-    if (resident) result.display = `execution: unknown (registry: ${resident.status}${result.waitingFor ? ', ' + result.waitingFor : ''}, live process)`;
+    result.waiting_for = typeof resident?.waitingFor === 'string' ? resident.waitingFor : null;
+    if (resident) result.display = `execution: unknown (registry: ${resident.status}${result.waiting_for ? ', ' + result.waiting_for : ''}, live process)`;
   }
   return result;
 }
@@ -483,7 +490,7 @@ export function taskStandup(dir: string, days = 7) {
     if (listing.includes('late')) p.late.push(summary);
     if (record.waiting_on) person(record.waiting_on).waiting.push(summary);
   }
-  return { byPerson: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade ? 'pre-upgrade' : null, execution: readExecution(dir, { registryFallback: true }) };
+  return { by_person: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade, execution: readExecution(dir, { registryFallback: true }) };
 }
 export function startupTasks(dir: string): string[] {
   const list = listTasks(dir);

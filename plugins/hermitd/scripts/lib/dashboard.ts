@@ -46,7 +46,7 @@ export interface ProposalRow {
   title: string;
   status: string;
   created: string | null;
-  ageDays: number | null;
+  age_days: number | null;
 }
 
 export interface OpenProposalRow extends ProposalRow {
@@ -56,23 +56,23 @@ export interface OpenProposalRow extends ProposalRow {
 export interface OldestAccepted {
   id: string;
   title: string;
-  ageDays: number | null;
+  age_days: number | null;
 }
 
 export interface WeeklyState {
   week: string;
-  costUsd: number | null;
-  createdCount: number | null;
-  resolvedCount: number | null;
-  priorCostUsd: number | null;
-  hasPrior: boolean;
-  bodyHtml: string;
+  cost_usd: number | null;
+  created_count: number | null;
+  resolved_count: number | null;
+  prior_cost_usd: number | null;
+  has_prior: boolean;
+  body_html: string;
 }
 
 export interface LastBriefState {
   kind: string;
   text: string;
-  generatedAt: string | null;
+  generated_at: string | null;
 }
 
 export interface CompiledDocRow {
@@ -81,23 +81,23 @@ export interface CompiledDocRow {
 }
 
 export interface DashboardState {
-  byPerson: PersonTasks[];
-  agentName: string;
-  executionState: string;
+  by_person: PersonTasks[];
+  agent_name: string;
+  execution_state: string;
   tasks: TaskReport[];
-  aliveNow: boolean;
-  todayCostUsd: number;
-  todayTokens: number;
+  alive_now: boolean;
+  today_cost_usd: number;
+  today_tokens: number;
   alerts: AlertRow[];
   proposals: {
     open: OpenProposalRow[];
     other: ProposalRow[];
-    otherOmitted: number;
-    oldestOpenAccepted: OldestAccepted | null;
+    other_omitted: number;
+    oldest_open_accepted: OldestAccepted | null;
   };
   weekly: WeeklyState | null;
-  lastBrief: LastBriefState | null;
-  compiledIndex: { docs: CompiledDocRow[]; omitted: number };
+  last_brief: LastBriefState | null;
+  compiled_index: { docs: CompiledDocRow[]; omitted: number };
   strings: ArtifactStrings;
 }
 
@@ -113,11 +113,11 @@ function readJsonSafe(p: string): Json | null {
 
 // "Today" = the timezone-aware daily bucket in cost-index.json (sums every session
 // that ran today), not .status.json's current-session running total.
-function loadTodayCost(hermitDir: string, timezone: string): { costUsd: number; tokens: number } {
+function loadTodayCost(hermitDir: string, timezone: string): { cost_usd: number; tokens: number } {
   const index = readCostIndex(costIndexPath(hermitDir));
   const entry = index?.by_date?.[todayYMD(timezone)];
   return {
-    costUsd: typeof entry?.cost === 'number' ? entry.cost : 0,
+    cost_usd: typeof entry?.cost === 'number' ? entry.cost : 0,
     tokens: typeof entry?.tokens === 'number' ? entry.tokens : 0,
   };
 }
@@ -138,12 +138,12 @@ export function loadProposals(hermitDir: string): DashboardState['proposals'] {
   const bodies = new Map<string, string>();
   const index: ProposalsIndex | null = rebuildIndex(hermitDir, bodies);
   if (!index || !Array.isArray(index.proposals)) {
-    return { open: [], other: [], otherOmitted: 0, oldestOpenAccepted: null };
+    return { open: [], other: [], other_omitted: 0, oldest_open_accepted: null };
   }
 
   const open: OpenProposalRow[] = [];
   const other: ProposalRow[] = [];
-  let oldestOpenAccepted: OldestAccepted | null = null;
+  let oldest_open_accepted: OldestAccepted | null = null;
 
   for (const row of index.proposals) {
     const status = row.status ?? 'unknown';
@@ -152,14 +152,14 @@ export function loadProposals(hermitDir: string): DashboardState['proposals'] {
       title: row.title ?? 'untitled',
       status,
       created: row.created,
-      ageDays: ageDaysFrom(row.created),
+      age_days: ageDaysFrom(row.created),
     };
 
     if (status === 'accepted') {
       // Age since acceptance (the "since accepted" label), not since creation.
       const acceptedAge = ageDaysFrom(row.accepted_date ?? row.created);
-      if (!oldestOpenAccepted || (acceptedAge ?? -1) > (oldestOpenAccepted.ageDays ?? -1)) {
-        oldestOpenAccepted = { id: base.id, title: base.title, ageDays: acceptedAge };
+      if (!oldest_open_accepted || (acceptedAge ?? -1) > (oldest_open_accepted.age_days ?? -1)) {
+        oldest_open_accepted = { id: base.id, title: base.title, age_days: acceptedAge };
       }
     }
 
@@ -177,16 +177,16 @@ export function loadProposals(hermitDir: string): DashboardState['proposals'] {
   }
 
   // Oldest-waiting first: proposed/accepted proposals are the action items.
-  open.sort((a, b) => (b.ageDays ?? -1) - (a.ageDays ?? -1));
+  open.sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1));
   // Most recent activity first for the resolved/dismissed history.
-  other.sort((a, b) => (a.ageDays ?? Infinity) - (b.ageDays ?? Infinity));
+  other.sort((a, b) => (a.age_days ?? Infinity) - (b.age_days ?? Infinity));
 
-  const otherOmitted = Math.max(0, other.length - OTHER_CAP);
+  const other_omitted = Math.max(0, other.length - OTHER_CAP);
   return {
     open,
     other: other.slice(0, OTHER_CAP),
-    otherOmitted,
-    oldestOpenAccepted,
+    other_omitted,
+    oldest_open_accepted,
   };
 }
 
@@ -206,12 +206,12 @@ function loadWeekly(hermitDir: string): WeeklyState | null {
 
   return {
     week: typeof latest.fm.week === 'string' ? latest.fm.week : 'unknown',
-    costUsd: num(latest.fm.total_cost_usd),
-    createdCount: num(latest.fm.proposals_created),
-    resolvedCount: num(latest.fm.proposals_resolved),
-    priorCostUsd: prior?.fm ? num(prior.fm.total_cost_usd) : null,
-    hasPrior: !!prior?.fm,
-    bodyHtml: mdToHtml(latest.body),
+    cost_usd: num(latest.fm.total_cost_usd),
+    created_count: num(latest.fm.proposals_created),
+    resolved_count: num(latest.fm.proposals_resolved),
+    prior_cost_usd: prior?.fm ? num(prior.fm.total_cost_usd) : null,
+    has_prior: !!prior?.fm,
+    body_html: mdToHtml(latest.body),
   };
 }
 
@@ -221,7 +221,7 @@ function loadLastBrief(hermitDir: string): LastBriefState | null {
   return {
     kind: typeof raw.kind === 'string' && raw.kind ? raw.kind : 'brief',
     text: raw.text,
-    generatedAt: typeof raw.generated_at === 'string' ? raw.generated_at : null,
+    generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : null,
   };
 }
 
@@ -289,7 +289,7 @@ export function loadDashboardState(hermitDir: string): DashboardState {
   const timezone = typeof config.timezone === 'string' && config.timezone ? config.timezone : 'UTC';
   const strings = loadStrings(hermitDir);
   const liveAge = sharedLivenessAgeSecs(hermitDir);
-  const aliveNow = liveAge !== null && liveAge < LIVENESS_FRESH_SECS;
+  const alive_now = liveAge !== null && liveAge < LIVENESS_FRESH_SECS;
   const today = loadTodayCost(hermitDir, timezone);
   // Union alerts across the per-writer files (skill/checklist + budget + telemetry).
   const alerts: AlertRow[] = [];
@@ -302,22 +302,22 @@ export function loadDashboardState(hermitDir: string): DashboardState {
     });
   }
 
-  let byPerson: PersonTasks[] = [];
-  try { byPerson = taskStandup(hermitDir).byPerson; } catch { /* malformed task record: render the rest */ }
+  let by_person: PersonTasks[] = [];
+  try { by_person = taskStandup(hermitDir).by_person; } catch { /* malformed task record: render the rest */ }
 
   return {
-    byPerson,
-    agentName: agentNameFromConfig(config),
-    executionState: readExecution(hermitDir).state,
+    by_person,
+    agent_name: agentNameFromConfig(config),
+    execution_state: readExecution(hermitDir).state,
     tasks: readTaskReports(hermitDir),
-    aliveNow,
-    todayCostUsd: today.costUsd,
-    todayTokens: today.tokens,
+    alive_now,
+    today_cost_usd: today.cost_usd,
+    today_tokens: today.tokens,
     alerts,
     proposals: loadProposals(hermitDir),
     weekly: loadWeekly(hermitDir),
-    lastBrief: loadLastBrief(hermitDir),
-    compiledIndex: loadCompiledIndex(hermitDir),
+    last_brief: loadLastBrief(hermitDir),
+    compiled_index: loadCompiledIndex(hermitDir),
     strings,
   };
 }
@@ -479,8 +479,8 @@ function renderAlerts(state: DashboardState): string {
 }
 
 function executionDisplay(state: DashboardState): { label: string; tone: 'acc' | 'good' } {
-  const raw = state.executionState;
-  if (raw === 'idle' && state.aliveNow) return { label: state.strings.session_on_watch, tone: 'good' };
+  const raw = state.execution_state;
+  if (raw === 'idle' && state.alive_now) return { label: state.strings.session_on_watch, tone: 'good' };
   if (raw === 'in_flight') return { label: state.strings.session_in_progress, tone: 'acc' };
   if (raw === 'idle') return { label: state.strings.session_idle, tone: 'acc' };
   return { label: 'Unknown', tone: 'acc' };
@@ -492,8 +492,8 @@ function renderStatus(state: DashboardState): string {
   const tiles = [
     statTile('Execution', execution.label, execution.tone),
     statTile('Open tasks', String(state.tasks.filter(task => task.outcome === 'open' || task.outcome === 'unconfirmed').length)),
-    statTile(s.status_today, `$${state.todayCostUsd.toFixed(2)}`),
-    statTile(s.status_tokens, escapeHtml(formatTokens(state.todayTokens))),
+    statTile(s.status_today, `$${state.today_cost_usd.toFixed(2)}`),
+    statTile(s.status_tokens, escapeHtml(formatTokens(state.today_tokens))),
     statTile(s.status_alerts, String(state.alerts.length), state.alerts.length ? 'warn' : undefined),
   ].join('');
   return card(s.status_heading, `<div class="stat-row">${tiles}</div>${renderAlerts(state)}`);
@@ -517,13 +517,13 @@ export function proposalLabel(p: ProposalRow, meta: string[]): string {
 
 function renderProposals(state: DashboardState): string {
   const s = state.strings;
-  const { open, other, otherOmitted, oldestOpenAccepted } = state.proposals;
+  const { open, other, other_omitted, oldest_open_accepted } = state.proposals;
 
   const openHtml = open.length
     ? open
         .map(
           p => `<details class="proposal">
-            <summary>${proposalLabel(p, ageMeta(p.ageDays, s))}</summary>
+            <summary>${proposalLabel(p, ageMeta(p.age_days, s))}</summary>
             <div class="proposal-body">${mdToHtml(p.body)}</div>
           </details>`
         )
@@ -532,15 +532,15 @@ function renderProposals(state: DashboardState): string {
 
   const otherHtml = other.length
     ? `<ul class="proposal-history">${other
-        .map(p => `<li>${proposalLabel(p, ageMeta(p.ageDays, s))}</li>`)
-        .join('')}${otherOmitted > 0 ? `<li class="muted">${fmt(s.common_more_not_shown, { n: otherOmitted })}</li>` : ''}</ul>`
+        .map(p => `<li>${proposalLabel(p, ageMeta(p.age_days, s))}</li>`)
+        .join('')}${other_omitted > 0 ? `<li class="muted">${fmt(s.common_more_not_shown, { n: other_omitted })}</li>` : ''}</ul>`
     : '';
 
-  const oldestLine = oldestOpenAccepted
+  const oldestLine = oldest_open_accepted
     ? `<p class="muted">${fmt(s.proposals_oldest_accepted, {
-        id: escapeHtml(oldestOpenAccepted.id),
-        age: oldestOpenAccepted.ageDays != null
-          ? fmt(s.proposals_since_accepted, { age: ageLabel(oldestOpenAccepted.ageDays, s) })
+        id: escapeHtml(oldest_open_accepted.id),
+        age: oldest_open_accepted.age_days != null
+          ? fmt(s.proposals_since_accepted, { age: ageLabel(oldest_open_accepted.age_days, s) })
           : '',
       })}</p>`
     : '';
@@ -555,11 +555,11 @@ function renderWeekly(state: DashboardState): string {
   const w = state.weekly;
   if (!w) return '';
 
-  const costLine = w.costUsd != null
-    ? fmt(s.weekly_cost, { amount: `$${w.costUsd.toFixed(2)}`, delta: w.hasPrior ? delta(w.costUsd, w.priorCostUsd, s) : '' })
+  const costLine = w.cost_usd != null
+    ? fmt(s.weekly_cost, { amount: `$${w.cost_usd.toFixed(2)}`, delta: w.has_prior ? delta(w.cost_usd, w.prior_cost_usd, s) : '' })
     : null;
-  const proposalsLine = (w.createdCount != null || w.resolvedCount != null)
-    ? fmt(s.weekly_proposals, { created: w.createdCount ?? 0, resolved: w.resolvedCount ?? 0 })
+  const proposalsLine = (w.created_count != null || w.resolved_count != null)
+    ? fmt(s.weekly_proposals, { created: w.created_count ?? 0, resolved: w.resolved_count ?? 0 })
     : null;
 
   const summary = [costLine, proposalsLine].filter(Boolean) as string[];
@@ -568,21 +568,21 @@ function renderWeekly(state: DashboardState): string {
       <ul class="evolution">${summary.map(l => `<li>${l}</li>`).join('')}</ul>
       <details class="weekly-body">
         <summary>${s.weekly_full_review}</summary>
-        <div>${w.bodyHtml}</div>
+        <div>${w.body_html}</div>
       </details>`);
 }
 
 function renderBrief(state: DashboardState): string {
   const s = state.strings;
-  const b = state.lastBrief;
+  const b = state.last_brief;
   if (!b) return card(s.brief_heading, `<p class="muted">${s.brief_none}</p>`);
-  const when = b.generatedAt ? ` <span class="muted">· ${escapeHtml(b.generatedAt)}</span>` : '';
+  const when = b.generated_at ? ` <span class="muted">· ${escapeHtml(b.generated_at)}</span>` : '';
   return card(`${s.brief_heading} <span class="muted">(${escapeHtml(b.kind)})</span>${when}`, mdToHtml(b.text));
 }
 
 function renderCompiledIndex(state: DashboardState): string {
   const s = state.strings;
-  const { docs, omitted } = state.compiledIndex;
+  const { docs, omitted } = state.compiled_index;
   if (!docs.length) return card(s.compiled_heading, `<p class="muted">${s.compiled_none}</p>`);
   const items = docs
     .map(d => `<li>${escapeHtml(d.title)}<span class="rail-meta">${escapeHtml(d.name)}</span></li>`)
@@ -594,7 +594,7 @@ function renderCompiledIndex(state: DashboardState): string {
 }
 
 function renderByPerson(state: DashboardState): string {
-  const groups = (state.byPerson ?? []).map(person => {
+  const groups = (state.by_person ?? []).map(person => {
     const sections = ([['Promised', person.promised], ['Late', person.late], ['Waiting on them', person.waiting]] as const).map(([title, rows]) =>
       `<h3>${title}</h3><ul>${rows.map(row => `<li>${escapeHtml(row.handle)}: ${escapeHtml(row.title)} (${escapeHtml(row.due ?? 'no due date')}) ${escapeHtml(row.listing.join(', '))} $${row.cost_usd.toFixed(4)}</li>`).join('')}</ul>`).join('');
     return `<article><h2>${escapeHtml(person.identity)}${person.name ? ` (${escapeHtml(person.name)})` : ''}</h2>${sections}</article>`;
@@ -609,25 +609,25 @@ function renderByPerson(state: DashboardState): string {
 export function renderCoreSections(state: DashboardState): Record<string, string> {
   return {
     status: renderStatus(state),
-    byPerson: renderByPerson(state),
+    by_person: renderByPerson(state),
     brief: renderBrief(state),
     proposals: renderProposals(state),
     weekly: renderWeekly(state),
-    compiledIndex: renderCompiledIndex(state),
+    compiled_index: renderCompiledIndex(state),
   };
 }
 
 /** Renders the full artifact fragment plus a content hash stable across
  *  identical underlying state (the "last updated" stamp is excluded from the hash
  *  via a placeholder token, so the publish gate can skip no-op republishes).
- *  One caveat: `state.aliveNow` is derived from file mtimes at load time, so a
+ *  One caveat: `state.alive_now` is derived from file mtimes at load time, so a
  *  render that straddles the liveness freshness window can flip the session tile
  *  (and therefore the hash) with no persisted state change. That costs at most one
  *  extra republish per flip, and only on a hermit whose liveness signal goes stale
  *  between refreshes. */
 export function renderDashboard(state: DashboardState, opts?: { now?: string }): { html: string; hash: string } {
   const s = state.strings;
-  const title = fmt(s.dashboard_title, { name: escapeHtml(state.agentName) });
+  const title = fmt(s.dashboard_title, { name: escapeHtml(state.agent_name) });
   const sections = renderCoreSections(state);
   const templated = pageShell({
     title,
@@ -636,11 +636,11 @@ export function renderDashboard(state: DashboardState, opts?: { now?: string }):
     updatedToken: UPDATED_TOKEN,
     body: [
       sections.status,
-      sections.byPerson,
+      sections.by_person,
       sections.brief,
       sections.proposals,
       sections.weekly,
-      sections.compiledIndex,
+      sections.compiled_index,
     ].filter(Boolean).join('\n  '),
   });
 

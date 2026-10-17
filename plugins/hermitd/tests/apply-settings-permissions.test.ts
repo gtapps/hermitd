@@ -430,7 +430,7 @@ describe('literal-path hermitd-run grants', () => {
   // while the grant stays.
   test('the mode-less channel-send grant is backed by an in-script state-dir pin', () => {
     const src = fs.readFileSync(path.join(import.meta.dir, '..', 'scripts', 'channel-send.ts'), 'utf8');
-    expect(src).toContain('assertStateDir');
+    expect(src).toContain('pinStateDirOrExit');
   });
 });
 

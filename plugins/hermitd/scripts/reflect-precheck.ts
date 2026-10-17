@@ -18,7 +18,8 @@ import { readTaskReports } from './lib/task-report';
 // not a gating decision (the skill is already loaded by the time this runs).
 //
 // Exit 0 always, EXCEPT a foreign state-dir argv (see the pin below) — that is
-// a mis-invocation, not a runtime condition, so it exits 1 on stderr instead.
+// a mis-invocation, not a runtime condition, so it prints `{"error":"foreign_state_dir:<dir>"}`
+// and exits 1 instead.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,9 +48,9 @@ if (!stateDirArg) emitJson({ status: 'run', phases: {} });
 // The state dir is not caller-chosen. Reachable through a pre-approved
 // `Bash(bun */scripts/reflect-precheck.ts*)` grant that covers every argument,
 // and forwards it to archive-raw.ts and update-reflection-state.ts, so an
-// unvalidated root would have reached both. Deliberately a usage error (stderr, exit 1), not a stdout verdict —
-// callers branch on the stdout status.
-const stateDir = pinStateDirOrExit(stateDirArg, 'reflect-precheck.ts');
+// unvalidated root would have reached both. An `{"error"}` at exit 1, never a
+// `status` verdict: callers branch on the stdout status.
+const stateDir = pinStateDirOrExit(stateDirArg);
 
 const readJSON = (p: string): Json => {
   try { return JSON.parse(fs.readFileSync(p, 'utf-8')); }

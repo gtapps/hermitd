@@ -6,6 +6,8 @@ import { dutySummary } from './lib/duty-summary';
 // Zero npm dependencies. Node stdlib only.
 // Usage: bun weekly-review.ts <hermit-state-dir>
 //   hermit-state-dir: path to .hermit/ in the target project (default: .hermit)
+// Output: `{"path":"<review file>","knowledge_findings":N,"usage_docs":N}`, the two
+// counts sizing the review's Knowledge Health and Usage sections (0 = section absent).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +19,7 @@ import { formatTokens } from './lib/format';
 import { writeFileAtomic } from './lib/md-write';
 import { shortPropId } from './lib/dashboard';
 import { lint as knowledgeLint } from './knowledge-lint';
+import { printJson } from './lib/cli';
 
 type Json = any;
 
@@ -442,7 +445,7 @@ if (sessionsCount > 0) {
 }
 
 body += '### By person\n';
-for (const person of taskStandup(hermitDir).byPerson) {
+for (const person of taskStandup(hermitDir).by_person) {
   body += `- ${person.name ?? person.identity}: ${person.promised.length} open, ${person.late.length} late, ${person.waiting.length} waiting\n`;
 }
 const reviewRoutinePrefixes = readSettledConfig(hermitDir).routines
@@ -517,12 +520,14 @@ if (openLoops.length > 0) {
 
 // --- Knowledge Health (via shared knowledge-lint.ts) ---
 let knowledgeSection = '';
+let knowledgeFindings = 0;
 try {
   const { findings } = knowledgeLint(hermitDir);
+  knowledgeFindings = findings.length;
   if (findings.length > 0) {
     knowledgeSection = `### Knowledge Health\n`;
     for (const f of findings) {
-      knowledgeSection += `- ${f.file} [${f.age}] — ${f.reason}\n`;
+      knowledgeSection += `- ${f.file}${f.age !== undefined ? ` [${f.age}d]` : ''} — ${f.detail}\n`;
     }
     knowledgeSection += '\n';
   }
@@ -538,7 +543,7 @@ fs.mkdirSync(compiledDir, { recursive: true });
 
 const reviewPath = path.join(compiledDir, `review-weekly-${weekKey}.md`);
 fs.writeFileSync(reviewPath, report, 'utf8');
-console.log(`Weekly review written: ${reviewPath}`);
+printJson({ path: reviewPath, knowledge_findings: knowledgeFindings, usage_docs: autoArchived.length + untouchedDocs.length });
 
 // --- Compact the usage ledger: keep events <180d, plus the single newest
 // event per stale kind:name pair (preserves last-used forever), plus the

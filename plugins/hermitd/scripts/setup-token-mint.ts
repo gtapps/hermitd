@@ -32,6 +32,10 @@
  *                             EXPIRES:<iso8601> (see hermit-meta.json)
  *   stamp-auth-mode           record what this install already authenticates with
  *
+ * The stepwise verbs print one JSON object; a failure is {"error":"<token>"} with
+ * exit 1. `probe` keeps the expiry-probe protocol; `terminal` and `relay` are the
+ * operator's and the watchdog's front doors, not skill verbs.
+ *
  * Two auth modes over the same machine. In `token` mode the pane runs
  * `claude setup-token` and the scraped token is installed directly. In `login`
  * mode the pane runs `claude auth login --claudeai` against a STAGING
@@ -67,7 +71,7 @@ import { readSettledConfig } from './lib/config-read';
 import { resolve as resolveOutboundChannel } from './resolve-outbound-channel';
 import { resolveLocale, MINT, dates } from './lib/messages';
 import { readRuntimeJson } from './lib/runtime';
-import { flagValue } from './lib/cli';
+import { flagValue, exitError, printJson, snakeToken } from './lib/cli';
 import { writeFileAtomic } from './lib/md-write';
 
 const HERMIT_DIR = process.env.HERMIT_DIR || '.hermit';
@@ -423,12 +427,12 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
       // channel is dead both fail here. Stamping it is what keeps the watchdog from
       // respawning this same doomed relay on its next tick.
       writeRelayUnreachable();
-      return fail('operator unreachable — no channel to relay the sign-in link');
+      return fail('operator_unreachable');
     }
     const acked = await io.awaitAck(startedAt);
     if (!acked) {
       clearMarker();
-      return fail('no acknowledgement — nothing minted');
+      return fail('no_ack');
     }
   }
 
@@ -436,7 +440,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   startMint(mode);
 
   const url = await waitFor(() => extractUrl(readStream()), URL_TIMEOUT_MS);
-  if (!url) return abortMint('sign-in link never appeared');
+  if (!url) return abortMint('no_sign_in_link');
 
   writeMarker('awaiting-code', mode);
   await io.notify(MINT[OPERATOR_LOCALE].openLink(url));
@@ -467,7 +471,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
     cleanupMint();
     clearMarker();
     await io.notify(MINT[OPERATOR_LOCALE].failed());
-    return fail(AUTH_TARGET === 'login' ? 'no sign-in captured' : 'no token captured');
+    return fail(AUTH_TARGET === 'login' ? 'no_sign_in_captured' : 'no_token_captured');
   }
 
   // Drop the marker on success too, not just on failure: it is the "a renewal is
@@ -550,8 +554,8 @@ function writeAuthMode(value: 'login' | 'token', hermitDir: string = HERMIT_DIR)
   );
 }
 
-function fail(reason: string): number {
-  console.log(JSON.stringify({ ok: false, error: reason }));
+function fail(token: string): number {
+  printJson({ error: token });
   return 1;
 }
 
@@ -603,20 +607,12 @@ async function main(): Promise<void> {
   // whether a value is required, not whether one was found.
   const target = process.argv.includes('--target') ? (flagValue(process.argv, '--target') ?? '') : undefined;
   if (target === 'login' || target === 'token') AUTH_TARGET = target;
-  else if (target !== undefined) {
-    console.log(JSON.stringify({ ok: false, error: `--target must be login or token` }));
-    process.exit(1);
-  }
+  else if (target !== undefined) exitError('invalid_target');
 
   // One staged sign-in at a time. Starting a second would reset the staging dir out
   // from under a credential the watchdog has already been told to commit.
   if (verb === 'start' || verb === 'terminal' || verb === 'relay') {
-    if (readPendingCredential()) {
-      console.log(
-        JSON.stringify({ ok: false, error: 'a signed-in credential is already waiting for the next restart' }),
-      );
-      process.exit(1);
-    }
+    if (readPendingCredential()) exitError('credential_pending');
   }
 
   switch (verb) {
@@ -651,7 +647,7 @@ async function main(): Promise<void> {
     case 'await-url': {
       const url = await waitFor(() => extractUrl(readStream()), URL_TIMEOUT_MS);
       if (!url) {
-        code = abortMint('sign-in link never appeared');
+        code = abortMint('no_sign_in_link');
       } else {
         writeMarker('awaiting-code', 'skill');
         console.log(JSON.stringify({ ok: true, url }));
@@ -662,12 +658,12 @@ async function main(): Promise<void> {
     case 'submit-code': {
       const value = process.argv[3];
       if (!value) {
-        code = fail('no code given');
+        code = fail('usage');
       } else if (!mintSessionAlive()) {
-        code = fail('no mint in progress');
+        code = fail('no_mint_in_progress');
       } else {
         submitCode(value);
-        console.log(JSON.stringify({ ok: true, stage: 'code-submitted' }));
+        printJson({ ok: true, stage: 'code_submitted' });
       }
       break;
     }
@@ -679,7 +675,7 @@ async function main(): Promise<void> {
           TOKEN_TIMEOUT_MS,
         );
         if (!staged) {
-          code = abortMint('no sign-in captured');
+          code = abortMint('no_sign_in_captured');
         } else {
           const expiresAt = writePendingCredential();
           killMintPane();
@@ -690,7 +686,7 @@ async function main(): Promise<void> {
       }
       const token = await waitFor(() => extractToken(readStream()), TOKEN_TIMEOUT_MS);
       if (!token) {
-        code = abortMint('no token captured');
+        code = abortMint('no_token_captured');
       } else {
         const record = installToken(HERMIT_DIR, defaultConfigDir(), token);
         writeAuthMode('token');
@@ -712,7 +708,8 @@ async function main(): Promise<void> {
     // sealed permission entry — a skill that runs over a channel can't afford a
     // command that prompts, since an unanswerable prompt is a denial.
     case 'finish':
-      console.log(JSON.stringify({ ok: requestRestart(), stage: 'restarting' }));
+      if (requestRestart()) printJson({ ok: true, stage: 'restarting' });
+      else code = fail('watchdog_missing');
       break;
 
     case 'status': {
@@ -722,6 +719,7 @@ async function main(): Promise<void> {
       // Kept alongside auth_mode because `hermitd-docker login` parses it.
       const record = readTokenRecord(HERMIT_DIR);
       const loginExpiry = inspectStoredLogin(defaultConfigDir()).refreshExpiresAt;
+      const stage: string | undefined = readMarker()?.stage;
       console.log(
         JSON.stringify({
           ok: true,
@@ -734,7 +732,7 @@ async function main(): Promise<void> {
                 : new Date(loginExpiry).toISOString()
               : (record?.expires_at ?? null),
           pending: readPendingCredential() !== null,
-          in_progress: readMarker()?.stage ?? null,
+          in_progress: stage ? snakeToken(stage) : null,
         })
       );
       break;
@@ -804,10 +802,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      process.stderr.write(
-        'Usage: setup-token-mint.ts <terminal|relay|start|await-url|submit-code|await-token-and-install|finish|abort|status|probe|stamp-auth-mode> [--target login|token]\n'
-      );
-      code = 1;
+      exitError();
   }
 
   process.exit(code);
@@ -816,7 +811,6 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((e) => {
     cleanupMint();
-    process.stderr.write(`[setup-token-mint] ${e}\n`);
-    process.exit(1);
+    exitError(`mint_failed:${e instanceof Error ? e.message : e}`);
   });
 }

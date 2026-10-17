@@ -212,29 +212,29 @@ describe('the remaining write verbs', () => {
 });
 
 describe('proposal.ts anchor', () => {
-  test('prints the Anchor line when proposals/ is present', withDir(async (dir) => {
+  test('prints root and memory_dir when proposals/ is present', withDir(async (dir) => {
     const base = seed(dir);
     const r = await runProposal(base, ['anchor']);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe(
-      `Anchor: root=${path.resolve(base)} memory_dir=${memoryDirFor(path.dirname(base))}\n`,
+      JSON.stringify({ root: path.resolve(base), memory_dir: memoryDirFor(path.dirname(base)) }) + '\n',
     );
   }));
 
-  test('prints the Anchor line and writes no index when proposals/ is absent', withDir(async (dir) => {
+  test('prints root and memory_dir and writes no index when proposals/ is absent', withDir(async (dir) => {
     const base = seed(dir);
     fs.rmSync(path.join(base, 'proposals'), { recursive: true });
     const r = await runProposal(base, ['anchor']);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe(
-      `Anchor: root=${path.resolve(base)} memory_dir=${memoryDirFor(path.dirname(base))}\n`,
+      JSON.stringify({ root: path.resolve(base), memory_dir: memoryDirFor(path.dirname(base)) }) + '\n',
     );
     expect(fs.existsSync(path.join(base, 'state', 'proposals-index.json'))).toBe(false);
   }));
 
   // A worktree session passes the shipped relative spelling, which resolves to the
   // worktree's projected `.hermit` (config.json, no state/). The pin
-  // normalizes it back to main; the anchor line must name main, not the projection —
+  // normalizes it back to main; the anchor must name main, not the projection —
   // the projection would pass the agents' config.json blindness check while every
   // real source sits in main.
   test('names the main root when argv is a worktree projection', withDir(async (dir) => {
@@ -248,11 +248,11 @@ describe('proposal.ts anchor', () => {
     });
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe(
-      `Anchor: root=${path.resolve(base)} memory_dir=${memoryDirFor(path.dirname(base))}\n`,
+      JSON.stringify({ root: path.resolve(base), memory_dir: memoryDirFor(path.dirname(base)) }) + '\n',
     );
   }));
 
-  test('exit 1 and empty stdout on a drifted argv', withDir(async (dir) => {
+  test('exit 1 with foreign_state_dir on a drifted argv', withDir(async (dir) => {
     const base = seed(dir);
     const foreign = path.join(dir, 'elsewhere', '.hermit');
     fs.mkdirSync(foreign, { recursive: true });
@@ -261,8 +261,7 @@ describe('proposal.ts anchor', () => {
       env: { AGENT_DIR: base },
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stdout).toBe('');
-    expect(r.stderr).toContain('state dir must be this project');
+    expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
   }));
 });
 

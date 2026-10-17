@@ -8,17 +8,17 @@
  *     not overlap. With --candidate, validates an operator-supplied /24 (prefix
  *     + collision) so the AskUserQuestion retry loop is one cheap call. Always
  *     exits 0 — the caller inspects fields, not the exit code (probe pattern).
- *     Output: { chosen: {subnet, gateway, netguardIp} | null,
- *               allCandidatesCollide: bool, occupied: [...] }
+ *     Output: { chosen: {subnet, gateway, netguard_ip} | null,
+ *               all_candidates_collide: bool, occupied: [...] }
  *
  *   render <project-root>
  *     Renders docker-compose.security.yml + nftables.conf + dnsmasq.allowlist
  *     from operator selections on stdin. All three render in memory and pass the
  *     fail-loud placeholder check before anything is written; any failure →
- *     exit 1, nothing written. Output: { written: [...] }.
+ *     {"error":"render_failed:<detail>"}, exit 1, nothing written. Output: { written: [...] }.
  *     stdin JSON:
  *       {
- *         "network": { "subnet": "172.28.0.0/24", "gateway": "172.28.0.1", "netguardIp": "172.28.0.2" },
+ *         "network": { "subnet": "172.28.0.0/24", "gateway": "172.28.0.1", "netguard_ip": "172.28.0.2" },
  *         "toggles": {
  *           "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
  *           "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },
@@ -29,13 +29,14 @@
  *         "fleetDomains": ["api.strava.com", ...],
  *         "additionalDomains": ["example.org", ...]
  *       }
- *     network is required only when toggles.lan.enabled.
+ *     network is required only when toggles.lan.enabled; pick-subnet's `chosen` passes as-is.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { renderTemplate } from './lib/render-template';
+import { exitError } from './lib/cli';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const SECURITY_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'security');
@@ -73,7 +74,7 @@ export function overlaps(a: Range, b: Range): boolean {
 export interface Chosen {
   subnet: string;
   gateway: string;
-  netguardIp: string;
+  netguard_ip: string;
 }
 
 // derive is only ever called with a /24 (CANDIDATES are /24; validateCandidate
@@ -83,12 +84,12 @@ export interface Chosen {
 function derive(subnet: string): Chosen {
   const o = subnet.split('/')[0].split('.');
   const base = `${o[0]}.${o[1]}.${o[2]}`;
-  return { subnet: `${base}.0/24`, gateway: `${base}.1`, netguardIp: `${base}.2` };
+  return { subnet: `${base}.0/24`, gateway: `${base}.1`, netguard_ip: `${base}.2` };
 }
 
 export interface PickResult {
   chosen: Chosen | null;
-  allCandidatesCollide: boolean;
+  all_candidates_collide: boolean;
   occupied: string[];
 }
 
@@ -101,10 +102,10 @@ export function pickSubnet(candidates: string[], occupied: string[]): PickResult
     const cr = cidrToRange(cand);
     if (!cr) continue;
     if (!occRanges.some((o) => overlaps(cr, o))) {
-      return { chosen: derive(cand), allCandidatesCollide: false, occupied };
+      return { chosen: derive(cand), all_candidates_collide: false, occupied };
     }
   }
-  return { chosen: null, allCandidatesCollide: true, occupied };
+  return { chosen: null, all_candidates_collide: true, occupied };
 }
 
 /** Validate an operator-supplied /24 against the occupied set. */
@@ -112,13 +113,13 @@ export function validateCandidate(candidate: string, occupied: string[]): PickRe
   const cr = cidrToRange(candidate);
   const isSlash24 = /\/24$/.test(String(candidate).trim());
   if (!cr || !isSlash24) {
-    return { chosen: null, allCandidatesCollide: true, occupied };
+    return { chosen: null, all_candidates_collide: true, occupied };
   }
   const occRanges = occupied.map(cidrToRange).filter((r): r is Range => r !== null);
   if (occRanges.some((o) => overlaps(cr, o))) {
-    return { chosen: null, allCandidatesCollide: true, occupied };
+    return { chosen: null, all_candidates_collide: true, occupied };
   }
-  return { chosen: derive(candidate.trim()), allCandidatesCollide: false, occupied };
+  return { chosen: derive(candidate.trim()), all_candidates_collide: false, occupied };
 }
 
 /**
@@ -246,7 +247,7 @@ function netguardService(net: Chosen, dnsMode: string, sysctls: string, ports: s
     '    pids_limit: 256',
     '    networks:',
     '      hermit-net:',
-    `        ipv4_address: ${net.netguardIp}`,
+    `        ipv4_address: ${net.netguard_ip}`,
     '    volumes:',
     '      - ./.hermit/docker/nftables.conf:/etc/nftables.conf:ro',
     '      - ./.hermit/docker/dnsmasq.allowlist:/etc/dnsmasq.allowlist:ro',
@@ -275,7 +276,7 @@ export function renderOverlay(input: RenderInput): string {
   const sysctlsOn = resOn && input.toggles.resources?.sysctlsEnabled === true;
   const ports = input.publishPorts ?? [];
 
-  if (lanOn && !input.network) throw new Error('render: toggles.lan.enabled requires network {subnet,gateway,netguardIp}');
+  if (lanOn && !input.network) throw new Error('toggles.lan.enabled requires network {subnet,gateway,netguard_ip}');
 
   const networksBlock = lanOn
     ? [
@@ -404,12 +405,10 @@ if (import.meta.main) {
       try {
         runRender(projectRoot, raw.trim());
       } catch (e: any) {
-        console.error(`render-security-overlay: ${e.message}`);
-        process.exit(1);
+        exitError(`render_failed:${e.message}`);
       }
     });
   } else {
-    console.error('usage: render-security-overlay.ts <pick-subnet|render> <project-root> [...]');
-    process.exit(1);
+    exitError();
   }
 }

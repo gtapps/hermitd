@@ -1110,8 +1110,8 @@ function evaluateReauth(
  *
  * Detached and unawaited: a first push of a repo carrying binaries can run for
  * minutes, and dead-session recovery (steps 3-5) is the tick's core promise. The
- * child writes its own status file and always exits 0, so nothing here waits on
- * it. `child.on('error')` is required alongside the try/catch — a spawn ENOENT
+ * child writes its own status file, so nothing here waits on it or reads its
+ * exit code. `child.on('error')` is required alongside the try/catch — a spawn ENOENT
  * arrives asynchronously and an unhandled 'error' event on a ChildProcess would
  * throw out of the whole tick.
  */

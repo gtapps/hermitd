@@ -213,3 +213,19 @@ describe('cost-tracker: stale budget alert entries from prior periods are reaped
     expect(keys.filter(k => k.startsWith('budget-breach:daily:'))).toHaveLength(1);
   });
 });
+
+describe('cost-tracker: --mark-budget-notified', () => {
+  test('flips notified on the named entry and prints OK', async () => {
+    const s = setup({ timezone: null });
+    try {
+      const file = path.join(s.cchDir, 'state', 'budget-alerts.json');
+      fs.writeFileSync(file, JSON.stringify({ alerts: { 'budget-breach:daily:2026-10-17': { kind: 'budget', notified: false } } }));
+      const r = await runScript('cost-tracker.ts', { args: ['--mark-budget-notified', 'budget-breach:daily:2026-10-17'], cwd: s.dir });
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toBe('OK\n');
+      expect(JSON.parse(fs.readFileSync(file, 'utf8')).alerts['budget-breach:daily:2026-10-17'].notified).toBe(true);
+    } finally {
+      fs.rmSync(s.dir, { recursive: true });
+    }
+  });
+});

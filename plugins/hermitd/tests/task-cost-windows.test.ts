@@ -18,7 +18,7 @@ test('task windows split shared rows and scan beyond retention', async () => {
       { timestamp: new Date(Date.now() - 100 * 86400000).toISOString(), bucket: 'tasks', task_id: a.id, estimated_cost_usd: 8 },
     ].map(row => JSON.stringify(row)).join('\n') + '\n');
     updateCostIndex(log, costIndexPath(f.dir));
-    expect(taskStandup(f.dir, 7).byPerson[0].promised.map(r => r.cost_usd)).toEqual([3, 3]);
-    expect(taskStandup(f.dir, 120).byPerson[0].promised.map(r => r.cost_usd)).toEqual([11, 3]);
+    expect(taskStandup(f.dir, 7).by_person[0].promised.map(r => r.cost_usd)).toEqual([3, 3]);
+    expect(taskStandup(f.dir, 120).by_person[0].promised.map(r => r.cost_usd)).toEqual([11, 3]);
   } finally { f.cleanup(); }
 });

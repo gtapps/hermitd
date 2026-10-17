@@ -48,26 +48,31 @@ describe('artifact.ts state dashboard', () => {
     expect(r.exitCode).toBe(0);
 
     const payload = JSON.parse(r.stdout);
-    expect(Object.keys(payload).sort()).toEqual(['coreSections', 'state', 'themeCss', 'updatedToken']);
+    expect(Object.keys(payload).sort()).toEqual(['core_sections', 'state', 'theme_css', 'updated_token']);
     // Theme comes from the live stylesheet, so core-side theme fixes reach custom pages.
-    expect(payload.themeCss).toBe(CSS);
-    expect(Object.keys(payload.coreSections).sort())
-      .toEqual(['brief', 'byPerson', 'compiledIndex', 'proposals', 'status', 'weekly']);
-    expect(payload.state.agentName).toBe('Hermit');
-    expect(typeof payload.updatedToken).toBe('string');
-    expect(payload.updatedToken.length).toBeGreaterThan(0);
+    expect(payload.theme_css).toBe(CSS);
+    expect(Object.keys(payload.core_sections).sort())
+      .toEqual(['brief', 'by_person', 'compiled_index', 'proposals', 'status', 'weekly']);
+    expect(payload.state.agent_name).toBe('Hermit');
+    expect(typeof payload.updated_token).toBe('string');
+    expect(payload.updated_token.length).toBeGreaterThan(0);
+    // The whole payload is the renderer contract, so every nested key is snake_case too.
+    const keys = (v: any): string[] => v && typeof v === 'object'
+      ? Object.entries(v).flatMap(([k, c]) => (Array.isArray(v) ? [] : [k]).concat(keys(c))) : [];
+    expect(keys(payload).filter(k => !/^[a-z0-9_]+$/.test(k))).toEqual([]);
   }));
 
   test('a bare state dir degrades instead of throwing', withHermitDir(async (hermitDir) => {
     fs.rmSync(path.join(hermitDir, 'state'), { recursive: true, force: true });
     const r = await runScript('artifact.ts', { args: ['state', 'dashboard', hermitDir] });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout).state.todayCostUsd).toBe(0);
+    expect(JSON.parse(r.stdout).state.today_cost_usd).toBe(0);
   }));
 
   test('rejects a page other than dashboard', withHermitDir(async (hermitDir) => {
     const r = await runScript('artifact.ts', { args: ['state', 'proposals', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'usage' });
   }));
 });
 
@@ -89,8 +94,8 @@ import { spawnSync } from 'node:child_process';
 const hermitDir = process.argv[2];
 const artifactTs = ${JSON.stringify(path.resolve(import.meta.dir, '..', 'scripts', 'artifact.ts'))};
 const res = spawnSync(process.execPath, [artifactTs, 'state', 'dashboard', hermitDir], { encoding: 'utf8' });
-const { coreSections, themeCss } = JSON.parse(res.stdout);
-const html = '<style>' + themeCss + '</style>' + coreSections.status;
+const { core_sections, theme_css } = JSON.parse(res.stdout);
+const html = '<style>' + theme_css + '</style>' + core_sections.status;
 const out = path.join(hermitDir, 'state', 'dashboard.html');
 fs.writeFileSync(out, html);
 process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }) + '\\n');
@@ -107,6 +112,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     writeRenderer(hermitDir, 'process.exit(3);');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'render_failed:dashboard' });
   }));
 
   // The receipt is core's protocol, not the child's: step 1 of the refresh procedure
@@ -116,6 +122,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     writeRenderer(hermitDir, 'console.log("rendered ok");');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'render_failed:dashboard:no_receipt' });
   }));
 
   test('an explicit outPath is rejected, not silently ignored', withHermitDir(async (hermitDir) => {
@@ -123,6 +130,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     const out = path.join(hermitDir, 'state', 'elsewhere.html');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir, out] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'custom_renderer_owns_out_path' });
     expect(fs.existsSync(out)).toBe(false);
     // and the live page was not overwritten behind the caller's back
     expect(fs.existsSync(path.join(hermitDir, 'state', 'dashboard.html'))).toBe(false);

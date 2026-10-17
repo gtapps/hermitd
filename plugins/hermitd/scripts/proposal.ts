@@ -26,7 +26,8 @@
 //     a separate assign-then-write step, which would allow a burned ID with no
 //     file). Best-effort tail: `created` metrics event,
 //     proposals-index + state-summary regen. Output: `{"id":"<canonical ID>"}`,
-//     or `{"error":"<token>"}` (exit 1) with zero writes.
+//     plus `"warnings":[<token>,...]` when a tail step failed, or
+//     `{"error":"<token>"}` (exit 1) with zero writes.
 //
 //   patch <stateDir> <filename> [--set key=value]... [--request-compact] [--stdin]
 //     <filename> must be a direct-child basename of the proposals dir (no `/`,
@@ -40,7 +41,8 @@
 //     to one in-memory copy, then a single atomic write — validation failures
 //     touch nothing. The Decision append is idempotent (skipped if the section
 //     already ends with the identical line). `--request-compact` writes
-//     state/compact-requested.json. Output: `{"id":"<id>"}` or `{"error":"<reason>"}`.
+//     state/compact-requested.json. Output: `{"id":"<id>"}` (plus `warnings`, as
+//     for create) or `{"error":"<reason>"}`.
 //
 //   routine <stateDir>
 //     stdin: one routine entry as JSON ({id, schedule, skill, enabled, ...}).
@@ -62,15 +64,15 @@
 //   success-signal  lib/proposals/success-signal.ts
 //   quality-gate    lib/proposals/quality-gate.ts
 //
-// Exit 0 for every expected outcome. Exit 1 on a real failure: a
-// `{"error":"<token>"}` verdict (malformed `queue-micro` / `micro` input among
-// them), a missing OR foreign state-dir argv, and malformed `success-signal
-// --validate` input (stderr): a silent queue-drop or a silently accepted bad
-// predicate is the failure mode those three exist to remove.
+// Exit 0 for every expected outcome, an invalid `success-signal --validate`
+// predicate included. Exit 1 on a real failure, always a `{"error":"<token>"}`
+// on stdout: malformed `queue-micro` / `micro` input, a missing argument, or a
+// foreign state-dir argv. A silent queue-drop is the failure mode the first exists
+// to remove.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emit, emitJson, readStdin, readStdinIfFlagged, readJson, flagValue } from './lib/cli';
+import { emit, emitJson, exitError, readStdin, readStdinIfFlagged, readJson, flagValue } from './lib/cli';
 import { pinStateDirOrExit, memoryDirFor } from './lib/cc-compat';
 import { appendJsonlLine } from './lib/append-jsonl';
 import { auditConfigChange } from './lib/config-audit';
@@ -100,15 +102,17 @@ type Json = any;
 
 type Verdict = Record<string, Json>;
 
-function warn(msg: string): void {
-  console.error(`WARN: ${msg}`);
+// A write verb's best-effort tail failures, as tokens on its success verdict.
+// Omitted when nothing failed.
+function withWarnings(verdict: Verdict, warnings: string[]): Verdict {
+  return warnings.length ? { ...verdict, warnings } : verdict;
 }
 
 // Best-effort — a stale/missing index or summary is regenerated on the next
 // write anyway, so failures here are never fatal to the calling verb.
-function regenTail(stateDir: string): void {
-  try { rebuildIndex(stateDir); } catch (e: any) { warn(`index rebuild failed: ${e.message}`); }
-  try { regenerateSummary(path.join(stateDir, 'state')); } catch (e: any) { warn(`summary regen failed: ${e.message}`); }
+function regenTail(stateDir: string, warnings: string[]): void {
+  try { rebuildIndex(stateDir); } catch { warnings.push('index_rebuild_failed'); }
+  try { regenerateSummary(path.join(stateDir, 'state')); } catch { warnings.push('summary_regen_failed'); }
 }
 
 // ---------------------------------------------------------------- create ---
@@ -201,21 +205,22 @@ export function verbCreate(stateDir: string, stdin: string): Verdict {
     suffix = SUFFIX_LETTERS[suffixIdx];
   }
 
-  // Best-effort tail — the proposal file already exists; failures warn on
-  // stderr but never change the stdout verdict or roll anything back.
+  // Best-effort tail — the proposal file already exists; a failure adds a
+  // warning but never changes the verdict or rolls anything back.
+  const warnings: string[] = [];
   try {
     const metricsErr = appendJsonlLine(
       path.join(stateDir, 'state', 'proposal-metrics.jsonl'),
       JSON.stringify({ ts: utcISOStamp(), type: 'created', proposal_id: claimedId, source, category, tags }),
     );
-    if (metricsErr) warn(`metrics append: ${metricsErr}`);
-  } catch (e: any) {
-    warn(`metrics append failed: ${e.message}`);
+    if (metricsErr) warnings.push('metrics_append_failed');
+  } catch {
+    warnings.push('metrics_append_failed');
   }
 
-  regenTail(stateDir);
+  regenTail(stateDir, warnings);
 
-  return { id: claimedId! };
+  return withWarnings({ id: claimedId! }, warnings);
 }
 
 // ----------------------------------------------------------------- patch ---
@@ -325,18 +330,19 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
   try { writeFileAtomic(targetPath, patched); }
   catch { return { error: 'write_failed' }; }
 
+  const warnings: string[] = [];
   if (requestCompact) {
     try {
       writeFileAtomic(
         path.join(stateDir, 'state', 'compact-requested.json'),
         JSON.stringify({ requested_at: nowStamp, reason: 'proposal-resolve' }) + '\n',
       );
-    } catch (e: any) {
-      warn(`compact marker write failed: ${e.message}`);
+    } catch {
+      warnings.push('compact_marker_failed');
     }
   }
 
-  regenTail(stateDir);
+  regenTail(stateDir, warnings);
 
   // A terminal status retires any ask parked on this proposal by proposal-act's
   // accept flow — otherwise the queue keeps a question the decision already
@@ -345,13 +351,10 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
   // warning, never `{error}` (which would read as "nothing was patched").
   if (typeof patch.status === 'string' && MOOT_STATUSES.includes(patch.status)) {
     const propId = /^(PROP-\d+)/.exec(path.basename(targetPath))?.[1];
-    if (propId) {
-      const swept = sweepMoot(stateDir, propId);
-      if (!swept.ok) warn(`pending-ask reconciliation for ${propId} failed: ${swept.error}`);
-    }
+    if (propId && !sweepMoot(stateDir, propId).ok) warnings.push('pending_ask_sweep_failed');
   }
 
-  return { id: path.basename(targetPath).replace(/\.md$/, '') };
+  return withWarnings({ id: path.basename(targetPath).replace(/\.md$/, '') }, warnings);
 }
 
 // ------------------------------------------------------------------ routine
@@ -390,19 +393,14 @@ export function verbRoutine(stateDir: string, stdin: string): Verdict {
 
 // ------------------------------------------------------------------- main --
 
-const VERBS = 'create|patch|routine|resolve-id|gate|queue-micro|micro|index|anchor|metrics|event|success-signal|quality-gate';
-
 // The state dir is not caller-chosen. Every production call passes the literal
 // `.hermit` from the project root; accepting an arbitrary root let
 // one pre-approved `Bash(bun */scripts/proposal.ts*)` call mutate — or read —
-// another project's proposal queue. A usage error (stderr, exit 1) from the
-// shared pinStateDirOrExit rather than a `{"error"}` line: that helper serves
-// every pinned script, including ones whose stdout is not a JSON object
-// (`channel-log.ts` prints a bare array or a plain-text prune line), so it never
-// writes stdout. This also turns a drifted cwd into a loud failure instead of a
-// write against the wrong tree.
+// another project's proposal queue. A mismatch prints `{"error":"foreign_state_dir:<dir>"}`
+// through the shared pinStateDirOrExit. This also turns a drifted cwd into a
+// loud failure instead of a write against the wrong tree.
 function requirePinnedStateDir(dir: string): string {
-  return pinStateDirOrExit(dir, 'proposal.ts');
+  return pinStateDirOrExit(dir);
 }
 
 // `root` is the PINNED dir, not the raw argv: from a `claude --worktree` session
@@ -411,10 +409,11 @@ function requirePinnedStateDir(dir: string): string {
 // naming it would pass the agents' blindness check while every real source
 // (state/proposals-index.json, sessions/, proposals/) sits in main — a silent
 // dedup-blind gate, the exact failure the anchor exists to close.
-// rebuildIndex is a no-op write when proposals/ is absent; the line still prints.
+// rebuildIndex is a no-op write when proposals/ is absent; the verdict still prints.
+// Prints `{"root","memory_dir"}`; callers compose the `Anchor:` prompt line from it.
 function runAnchor(root: string): never {
   rebuildIndex(root);
-  emit(`Anchor: root=${root} memory_dir=${memoryDirFor(path.dirname(root))}`);
+  emitJson({ root, memory_dir: memoryDirFor(path.dirname(root)) });
 }
 
 async function main(): Promise<void> {
@@ -445,10 +444,7 @@ async function main(): Promise<void> {
   // non-zero exit as a real failure rather than "nothing to do".
   if (verb === 'index' && !stateDir) emitJson({ status: 'skip', reason: 'no_state_dir' });
 
-  if (!verb || !stateDir) {
-    console.error(`Usage: bun proposal.ts <${VERBS}> <hermit-state-dir> [args...]`);
-    process.exit(1);
-  }
+  if (!verb || !stateDir) exitError();
 
   const pinnedDir = requirePinnedStateDir(stateDir);
 
@@ -481,8 +477,5 @@ async function main(): Promise<void> {
 
 // Guarded so importing a verb for an in-process test does not run the CLI.
 if (import.meta.main) {
-  main().catch((e: any) => {
-    console.error('proposal.ts: unexpected error: ' + e.message);
-    emitJson({ error: 'unexpected' });
-  });
+  main().catch((e: any) => emitJson({ error: `unexpected:${e?.message ?? 'unknown'}` }));
 }

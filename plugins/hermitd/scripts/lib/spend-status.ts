@@ -1,8 +1,9 @@
-// Operator-language cap-status composition, shared by lib/prompt-stages/channel-status-responder.ts
-// (the deterministic `status` hook) and cost-report.ts's reflect verb (the --plain channel mode)
-// so the two surfaces can't drift on how a spend cap is phrased. Lives here rather
-// than in lib/budget.ts (which is pure evaluation, no I/O) because budgetLine reads
-// the cost index.
+// Spend-cap status, shared by lib/prompt-stages/channel-status-responder.ts (the
+// deterministic `status` hook, which prints budgetLine's operator-language line) and
+// cost-report.ts's reflect verb (the --plain channel data, which carries budgetStatus's
+// figures) so the two surfaces can't drift on which cap and spend they report. Lives
+// here rather than in lib/budget.ts (which is pure evaluation, no I/O) because
+// budgetStatus reads the cost index.
 
 import { costLogPath } from './cc-compat';
 import { costIndexPath, readCostIndex, computeIndex } from './cost-log';
@@ -22,10 +23,12 @@ function resolveTimezone(config: Json): string {
 // Reports the first cap set, in daily > weekly > monthly precedence — the
 // shortest configured window is what an operator checking in mid-day cares
 // about first.
-function budgetLine(dir: string, config: Json, timezone: string, locale: Locale = 'en'): string | null {
+type BudgetPeriod = 'daily' | 'weekly' | 'monthly';
+
+function budgetStatus(dir: string, config: Json, timezone: string): { period: BudgetPeriod; spend: number; cap: number } | null {
   const budget = config?.budget;
   if (!budget) return null;
-  const candidates: Array<['daily' | 'weekly' | 'monthly', number | null]> = [
+  const candidates: Array<[BudgetPeriod, number | null]> = [
     ['daily', typeof budget.daily_usd === 'number' ? budget.daily_usd : null],
     ['weekly', typeof budget.weekly_usd === 'number' ? budget.weekly_usd : null],
     ['monthly', typeof budget.monthly_usd === 'number' ? budget.monthly_usd : null],
@@ -45,8 +48,13 @@ function budgetLine(dir: string, config: Json, timezone: string, locale: Locale 
   const spend = period === 'daily' ? idx?.by_date?.[todayYMD(timezone)]?.cost || 0
     : period === 'weekly' ? idx?.by_week?.[thisWeekKey(timezone)]?.cost || 0
     : idx?.by_month?.[thisMonthYYYYMM(timezone)]?.cost || 0;
-  const label = SPEND[locale].capLabel(period);
-  return SPEND[locale].capStatus(label, money(spend), money(cap));
+  return { period, spend, cap };
 }
 
-export { money, resolveTimezone, budgetLine };
+function budgetLine(dir: string, config: Json, timezone: string, locale: Locale = 'en'): string | null {
+  const status = budgetStatus(dir, config, timezone);
+  if (!status) return null;
+  return SPEND[locale].capStatus(SPEND[locale].capLabel(status.period), money(status.spend), money(status.cap));
+}
+
+export { money, resolveTimezone, budgetStatus, budgetLine };

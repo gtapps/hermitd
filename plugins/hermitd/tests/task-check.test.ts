@@ -42,8 +42,8 @@ test('task.ts exposes no check-result verb, so only a real check run closes by c
   try {
     const { id } = await f.open(['--check', 'false']);
     const r = await f.run('check-result', [id, '--result-rev', '0', '--exit', '0', '--output-stdin'], 'proof');
-    expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('invalid_verb');
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_verb' });
     expect(decodeTask(f.text(id)).status).toBe('open');
   } finally { f.cleanup(); }
 });

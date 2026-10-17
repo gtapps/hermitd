@@ -97,18 +97,64 @@ describe('check-upgrade.sh', () => {
   });
 
   test('check-upgrade output', () => {
-    expect(out).toContain('---Upgrade Available---');
+    expect(JSON.parse(out).status).toBe('upgrade_available');
   });
 });
 
-describe('check-upgrade.sh always_on banner', () => {
+describe('check-upgrade.sh verdict', () => {
+  const pluginVer = readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json')).version;
+  async function run(config: any) {
+    const wd = setupWorkdir();
+    try {
+      write(hermit(wd.dir, 'config.json'), typeof config === 'string' ? config : JSON.stringify(config));
+      const r = await runBash(path.join(SCRIPTS_DIR, 'check-upgrade.sh'), { args: [PLUGIN_ROOT], cwd: wd.dir });
+      expect(r.exitCode).toBe(0);
+      expect(r.stderr).toBe('');
+      return r.stdout;
+    } finally { wd.cleanup(); }
+  }
+
+  test('gap -> upgrade_available with both versions and always_on', async () => {
+    for (const [cfg, alwaysOn] of [[{ always_on: true }, true], [{ always_on: false }, false], [{}, false]] as const) {
+      const out = await run({ ...cfg, _hermit_versions: { 'hermitd': '0.0.0' } });
+      expect(JSON.parse(out)).toEqual({ status: 'upgrade_available', plugin_version: pluginVer, config_version: '0.0.0', always_on: alwaysOn });
+    }
+  });
+
+  test('no gap -> bare OK', async () => {
+    expect(await run({ always_on: true, _hermit_versions: { 'hermitd': pluginVer } })).toBe('OK\n');
+  });
+
+  // Config ahead of the loaded plugin = a stale install copy is loaded. evolve cannot
+  // fix that state (it reads as up-to-date, and finalizing would downgrade the stamp),
+  // so this is its own status, never upgrade_available, under any always_on value.
+  test('config ahead of plugin -> stale_plugin_runtime with the loaded root', async () => {
+    for (const always_on of [true, false]) {
+      const out = await run({ always_on, _hermit_versions: { 'hermitd': '99.0.0' } });
+      expect(JSON.parse(out)).toEqual({ status: 'stale_plugin_runtime', plugin_version: pluginVer, config_version: '99.0.0', plugin_root: PLUGIN_ROOT });
+    }
+  });
+
+  test('corrupt config.json -> upgrade_available, so evolve reports the real error', async () => {
+    expect(JSON.parse(await run('not json')).status).toBe('upgrade_available');
+  });
+
+  test('unparseable version on either side -> bare OK', async () => {
+    expect(await run({ _hermit_versions: { 'hermitd': 'garbage' } })).toBe('OK\n');
+  });
+});
+
+// startup-context.ts composes the SessionStart section from check-upgrade.sh's verdict.
+describe('startup-context upgrade section', () => {
   const pluginVer = readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json')).version;
   async function run(configObj: any) {
     const wd = setupWorkdir();
     try {
       write(hermit(wd.dir, 'config.json'), JSON.stringify(configObj));
-      const r = await runBash(path.join(SCRIPTS_DIR, 'check-upgrade.sh'), { args: [PLUGIN_ROOT], cwd: wd.dir });
-      return r.stdout + r.stderr;
+      const r = await runScript('startup-context.ts', {
+        cwd: wd.dir, env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, HERMIT_RESIDENT: '1' }, stdin: '{"source":"startup"}',
+      });
+      return r.stdout;
     } finally { wd.cleanup(); }
   }
 
@@ -122,46 +168,36 @@ describe('check-upgrade.sh always_on banner', () => {
   test('always_on=false + gap -> advisory, no REQUIRED', async () => {
     const out = await run({ always_on: false, _hermit_versions: { 'hermitd': '0.0.0' } });
     expect(out).toContain('---Upgrade Available---');
+    expect(out).toContain('/hermitd:hermit-evolve');
     expect(out).not.toContain('REQUIRED');
   });
 
-  test('always_on absent + gap -> advisory, no REQUIRED', async () => {
-    const out = await run({ _hermit_versions: { 'hermitd': '0.0.0' } });
-    expect(out).toContain('---Upgrade Available---');
-    expect(out).not.toContain('REQUIRED');
-  });
-
-  test('no gap -> silent (no banner)', async () => {
+  test('no gap -> no upgrade section', async () => {
     const out = await run({ always_on: true, _hermit_versions: { 'hermitd': pluginVer } });
     expect(out).not.toContain('---Upgrade Available---');
+    expect(out).not.toContain('---Stale Plugin Runtime---');
   });
 
-  // Config ahead of the loaded plugin = a stale install copy is loaded. evolve cannot
-  // fix that state (it reads as up-to-date, and finalizing would downgrade the stamp),
-  // so this branch must never emit the evolve directive — under any always_on value.
   test('config ahead of plugin -> stale-runtime notice, never an evolve directive', async () => {
     for (const always_on of [true, false]) {
       const out = await run({ always_on, _hermit_versions: { 'hermitd': '99.0.0' } });
+      const section = out.slice(out.indexOf('---Stale Plugin Runtime---'));
       expect(out).toContain('---Stale Plugin Runtime---');
       expect(out).not.toContain('---Upgrade Available---');
-      expect(out).not.toContain('REQUIRED');
-      expect(out).not.toContain('/hermitd:hermit-evolve');
-      expect(out).toContain(`v${pluginVer}`);
-      expect(out).toContain('v99.0.0');
-      expect(out).toContain(PLUGIN_ROOT); // the loaded root identifies the stale entry
+      expect(section).not.toContain('REQUIRED');
+      expect(section).not.toContain('/hermitd:hermit-evolve');
+      expect(section).toContain(`v${pluginVer}`);
+      expect(section).toContain('v99.0.0');
+      expect(section).toContain(PLUGIN_ROOT); // the loaded root identifies the stale entry
     }
   });
 
-  // startup-context.ts slices this section to BUDGETS.upgrade (500). The install path is
+  // The section body is sliced to BUDGETS.upgrade (500). The install path is
   // machine-dependent and printed last, so only the fixed prose is budgeted here.
   test('stale-runtime prose leaves room for the path within the 500-char budget', async () => {
     const out = await run({ always_on: true, _hermit_versions: { 'hermitd': '99.0.0' } });
-    const prose = out.split('Loaded from:')[0];
-    expect(prose.length).toBeLessThanOrEqual(350);
-  });
-
-  test('unparseable version on either side -> silent', async () => {
-    expect(await run({ _hermit_versions: { 'hermitd': 'garbage' } })).toBe('');
+    const section = out.slice(out.indexOf('---Stale Plugin Runtime---') + '---Stale Plugin Runtime---\n'.length);
+    expect(section.split('Loaded from:')[0].length).toBeLessThanOrEqual(350);
   });
 });
 
@@ -864,6 +900,12 @@ describe('safeForLLMMultiline', () => {
 
 const runLint = (dir: string) =>
   runScript('knowledge-lint.ts', { args: [hermit(dir)] });
+// Findings grouped by snake_case type, from the one-object stdout.
+const lintFindings = async (dir: string) => {
+  const r = await runLint(dir);
+  expect(r.exitCode).toBe(0);
+  return JSON.parse(r.stdout).findings;
+};
 
 describe('knowledge-lint', () => {
   // 4. Empty state — no raw/, no compiled/
@@ -871,13 +913,20 @@ describe('knowledge-lint', () => {
     write(hermit(dir, 'config.json'), '{}');
     const r = await runLint(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(JSON.parse(r.stdout)).toEqual({ counts: { raw: 0, compiled: 0, archived: 0 }, findings: {} });
+  }));
+
+  test('knowledge-lint (--verbose adds schema_present)', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{}');
+    const r = await runScript('knowledge-lint.ts', { args: [hermit(dir), '--verbose'] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).schema_present).toBe(false);
   }));
 
   // 5. Findings: stale, unreferenced, oversized, missing-type
   describe('findings', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any = {};
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -893,22 +942,19 @@ describe('knowledge-lint', () => {
         '---\ntitle: no type\ncreated: 2026-04-01T00:00:00+00:00\n---\nshort');
       write(hermit(dir, 'compiled', 'big.md'),
         `---\ntitle: big\ntype: briefing\ncreated: 2026-04-10T00:00:00+00:00\n---\n${'x'.repeat(1500)}`);
-      const r = await runLint(dir);
-      out = r.stdout + r.stderr;
+      out = await lintFindings(dir);
     });
     afterAll(() => wd.cleanup());
 
-    test('knowledge-lint (finds unreferenced or stale)', () => {
-      expect(out).toMatch(/unreferenced|stale/);
+    test('knowledge-lint (finds stale, with age and detail)', () => {
+      expect(out.stale).toEqual([expect.objectContaining({ file: 'raw/old-snap.md', age: expect.any(Number), detail: expect.any(String) })]);
     });
-    test('knowledge-lint (finds stale)', () => {
-      expect(out).toContain('stale');
+    test('knowledge-lint (finds oversized, no age)', () => {
+      expect(out.oversized[0].file).toBe('compiled/big.md');
+      expect(out.oversized[0]).not.toHaveProperty('age');
     });
-    test('knowledge-lint (finds oversized)', () => {
-      expect(out).toContain('oversized');
-    });
-    test('knowledge-lint (finds missing-type)', () => {
-      expect(out).toContain('missing-type');
+    test('knowledge-lint (finds missing_type)', () => {
+      expect(out.missing_type[0].file).toBe('compiled/note.md');
     });
   });
 
@@ -936,7 +982,7 @@ describe('knowledge-lint', () => {
       expect(out).not.toContain('context-stubbed');
     });
     test('knowledge-lint (unstubbed oversized still flagged)', () => {
-      expect(out).toContain('oversized');
+      expect(JSON.parse(out).findings.oversized[0].file).toBe('compiled/briefing-big.md');
     });
   });
 
@@ -974,9 +1020,8 @@ describe('knowledge-lint', () => {
     test('knowledge-lint (all topic pages stale-checked, not just newest)', () => {
       expect(out).toContain('topic-stale-b.md');
     });
-    test('knowledge-lint (topic-missing-updated flagged)', () => {
-      expect(out).toContain('topic-missing-updated');
-      expect(out).toContain('topic-no-updated.md');
+    test('knowledge-lint (topic_missing_updated flagged)', () => {
+      expect(JSON.parse(out).findings.topic_missing_updated).toEqual([{ file: 'compiled/topic-no-updated.md', detail: expect.any(String) }]);
     });
   });
 
@@ -991,8 +1036,7 @@ describe('knowledge-lint', () => {
       `---\ntitle: fresh\ntype: source\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
     write(hermit(dir, 'compiled', 'summary.md'),
       `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\nBased on fresh-snap.md data`);
-    const r = await runLint(dir);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(await lintFindings(dir)).toEqual({});
   }));
 
   // 6a. Schema-empty finding — template-style schema (all bullets commented)
@@ -1010,8 +1054,7 @@ describe('knowledge-lint', () => {
       path.join(PLUGIN_ROOT, 'state-templates', 'knowledge-schema.md.template'), 'utf-8');
     write(hermit(dir, 'knowledge-schema.md'),
       template.split('\n').filter((l) => !/^- (note|input|review|procedure-brief|topic|capability-brainstorm):/.test(l)).join('\n'));
-    const r = await runLint(dir); // exit code intentionally not asserted (bash used `|| true`)
-    expect(r.stdout + r.stderr).toContain('schema-empty');
+    expect((await lintFindings(dir)).schema_empty).toHaveLength(1);
   }));
 
   test('knowledge-lint (template declares capability-brainstorm)', withDir(async (dir) => {
@@ -1022,9 +1065,7 @@ describe('knowledge-lint', () => {
     write(hermit(dir, 'knowledge-schema.md'), template);
     write(hermit(dir, 'compiled', 'capability-brainstorm-2026-10-09-1200.md'),
       `---\ntitle: Capability brainstorm\ntype: capability-brainstorm\ncreated: ${isoSec(daysAgo(1))}\n---\nCreated a proposal.`);
-    const r = await runLint(dir);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout + r.stderr).not.toContain('undeclared-type');
+    expect(await lintFindings(dir)).not.toHaveProperty('undeclared_type');
   }));
 
   // 6b. Schema enforcement — undeclared type warned; declared+matching type clean
@@ -1048,16 +1089,14 @@ describe('knowledge-lint', () => {
     test.serial('knowledge-lint (schema: undeclared type warned)', async () => {
       write(hermit(wd.dir, 'compiled', 'unknown.md'),
         '---\ntitle: unknown\ntype: foo\ncreated: 2026-04-14T00:00:00+00:00\n---\ndata');
-      const r = await runLint(wd.dir);
-      expect(r.stdout + r.stderr).toContain('undeclared-type');
+      expect((await lintFindings(wd.dir)).undeclared_type[0].file).toBe('compiled/unknown.md');
     });
 
     test.serial('knowledge-lint (schema: declared type is clean)', async () => {
       // Matching type: schema has 'briefing', file has type: briefing
       write(hermit(wd.dir, 'compiled', 'unknown.md'),
         `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
-      const r = await runLint(wd.dir);
-      expect(r.stdout).toContain('Knowledge base is clean');
+      expect(await lintFindings(wd.dir)).toEqual({});
     });
   });
 
@@ -1072,8 +1111,7 @@ describe('knowledge-lint', () => {
       `---\ntitle: fresh\ntype: source\ncreated: ${isoSec(daysAgo(5))}\n---\ndata`);
     write(hermit(dir, 'compiled', 'summary.md'),
       `---\ntitle: summary\ntype: briefing\ncreated: ${isoSec(daysAgo(5))}\n---\nBased on fresh-snap.md data`);
-    const r = await runLint(dir);
-    expect(r.stdout).toContain('Knowledge base is clean');
+    expect(await lintFindings(dir)).toEqual({});
   }));
 });
 
@@ -1108,20 +1146,17 @@ describe('archive-raw', () => {
     const lint = await runLint(dir);
     lintOut = lint.stdout + lint.stderr;
     const arch = await runScript('archive-raw.ts', { args: [hermit(dir)] });
-    archiveOut = arch.stdout + arch.stderr;
+    archiveOut = arch.stdout;
   });
   afterAll(() => wd.cleanup());
 
   // Regression: review-weekly must not mask stale raw in knowledge-lint
   test('knowledge-lint (review-weekly does not mask stale)', () => {
-    expect(lintOut).toMatch(/^stale /m);
-  });
-  test('knowledge-lint (expired raw flagged stale)', () => {
-    expect(lintOut).toContain('raw/expired-snap.md');
+    expect(JSON.parse(lintOut).findings.stale.map((f: any) => f.file)).toEqual(['raw/expired-snap.md']);
   });
 
   test('archive-raw (review-weekly does not pin, real ref does)', () => {
-    expect(archiveOut).toContain('1 archived, 1 retained');
+    expect(JSON.parse(archiveOut)).toMatchObject({ archived: 1, retained: 1 });
   });
   test('archive-raw (review-named file archived)', () => {
     expect(fs.existsSync(hermit(wd.dir, 'raw', '.archive', 'expired-snap.md'))).toBe(true);
@@ -1175,7 +1210,7 @@ describe('update-alert-state', () => {
       count: 1, consecutive_clean: 0, suppressed: false, first_seen: '2026-07-10', last_seen: '2026-07-10', text: 'Session idle 3h',
     });
     expect(state.total_ticks).toBe(5); // precheck-owned — must survive untouched
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(monitoring).toEqual([]);
     expect(stdout.notifications).toEqual(['Session idle 3h']); // first observation notifies
   }));
@@ -1296,7 +1331,7 @@ describe('update-alert-state', () => {
       alerts, self_eval: {}, total_ticks: 345, last_clean_eval_at: null, last_digest_date: '2026-07-10', // digest already sent today
     }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing new
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.last_clean_eval_at).toBe(NOW);
     expect(stdout.notifications).toEqual([]);
     // Still tracked, still suppressed, still counting — only the damper verdict changed.
@@ -1319,7 +1354,7 @@ describe('update-alert-state', () => {
     }));
     const { state, stdout } = await updateAlertState(dir,
       firingPayload([{ key: 'checklist:invoice1', text: 'An invoice has been overdue since Monday' }]));
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.last_clean_eval_at).toBe(NOW);
     expect(stdout.notifications).toEqual([]);
     expect(state.alerts['checklist:invoice1']).toMatchObject({ count: 3, suppressed: false, consecutive_clean: 0 });
@@ -1330,7 +1365,7 @@ describe('update-alert-state', () => {
       '{"alerts":{},"self_eval":{},"total_ticks":12,"last_clean_eval_at":"2026-07-10T06:00:00.000Z"}');
     const { state, stdout } = await updateAlertState(dir,
       firingPayload([{ key: 'checklist:invoice1', text: 'An invoice is overdue' }]));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.last_clean_eval_at).toBeNull();
     expect(stdout.notifications).toEqual(['An invoice is overdue']);
   }));
@@ -1357,6 +1392,7 @@ describe('update-alert-state', () => {
     const stateFile = hermit(dir, 'state', 'alert-state.json');
     const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: 'not-json' });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_json' });
     expect(fs.existsSync(stateFile)).toBe(false);
   }));
 
@@ -1367,19 +1403,19 @@ describe('update-alert-state', () => {
     write(stateFile, before);
     let r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: 'not-an-array', self_eval_updates: {} }), env: { HERMIT_NOW: NOW } });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before)); // untouched — never coerced to empty and aged
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ key: 'checklist:x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // missing text
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ text: 'x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // neither item nor key
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
   }));
 
@@ -1388,7 +1424,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout, monitoring } = await updateAlertState(dir, '{"firing":null}');
     expect(state).toEqual(JSON.parse(before)); // untouched — last_clean_eval_at and the live alert both survive
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(monitoring).toHaveLength(0);
   }));
 
@@ -1399,7 +1435,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout } = await updateAlertState(dir, 'null');
     expect(state).toEqual(JSON.parse(before));
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
   }));
 
   test('update-alert-state (duplicate firing keys deduped — first occurrence wins)', withDir(async (dir) => {
@@ -1453,7 +1489,7 @@ describe('update-alert-state', () => {
     ]));
     expect(state.alerts).toEqual({});
     expect(stdout.notifications).toEqual([]);
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
   }));
 
   test('update-alert-state (unresolvable key dedups on the key, not the reworded text)', withDir(async (dir) => {
@@ -1527,7 +1563,7 @@ describe('update-alert-state', () => {
     try {
       const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: firingPayload([{ key: 'custom:x', text: 'x' }]), env: { HERMIT_NOW: NOW } });
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write_failed' });
+      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'write_failed' });
       expect(fs.readFileSync(stateFile, 'utf-8')).toBe(before); // untouched
     } finally {
       fs.chmodSync(stateSubdir, 0o755);
@@ -1561,7 +1597,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
     write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'Proceed?' }] }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.alerts['micro-proposal-pending:MP-1']).toBeDefined();
     expect(state.alerts['micro-proposal-pending:MP-1'].text).toContain("micro-proposal 'MP-1' awaiting operator input — Proceed?");
   }));
@@ -1722,7 +1758,7 @@ describe('update-alert-state', () => {
         'garbage',
       ],
     }));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(stdout.digest_done).toBeUndefined();
     const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
     expect(digest).not.toContain('Looks already done');
@@ -1733,7 +1769,7 @@ describe('update-alert-state', () => {
     // A refresh that is not an array at all degrades to no refresh.
     seedDecisionDigest(dir);
     const second = await updateAlertState(dir, JSON.stringify({ firing: [], refresh: { nope: true } }));
-    expect(second.stdout.heartbeat_result).not.toBe('INDETERMINATE');
+    expect(second.stdout.heartbeat_result).not.toBe('indeterminate');
     expect(second.stdout.notifications.some((n: string) => n.startsWith('Suppressed alert digest:'))).toBe(true);
   }));
 
@@ -1802,7 +1838,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5,"last_clean_eval_at":"2026-06-01T00:00:00.000Z"}');
     write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
     const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.last_clean_eval_at).toBeNull();
   }));
 
@@ -1837,7 +1873,7 @@ describe('update-alert-state', () => {
 
     const second = await updateAlertState(dir, firingPayload([]));
     expect(second.stdout.notifications).toEqual([]); // same day — silent
-    expect(second.stdout.heartbeat_result).toBe('ALERT'); // but still never a false OK
+    expect(second.stdout.heartbeat_result).toBe('alert'); // but still never a false OK
 
     // A new day re-notifies: the file is still broken and the operator still can't see their queue.
     write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
@@ -1869,7 +1905,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [] }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([]));
     expect(stdout.notifications).toEqual([]);
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.structured_read_failure_notified_date).toBeNull();
   }));
 
@@ -2012,7 +2048,7 @@ describe('observations.ts observe', () => {
         stdin: 'attacker row',
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state dir must be');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.existsSync(ledgerOf(victim))).toBe(false);
     })();
   }));
@@ -2504,6 +2540,7 @@ describe('update-reflection-state', () => {
     const stateFile = hermit(dir, 'state', 'reflection-state.json');
     const r = await runPinnedScript('update-reflection-state.ts', hermit(dir), [stateFile, payload]);
     expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe('OK\n');
     return readJson(stateFile);
   }
 
@@ -3484,7 +3521,7 @@ describe('routines.ts log-event', () => {
 
     test.serial('log-event (root resolves to state file)', async () => {
       // Fired from the hermit root → unchanged behavior
-      await runScript('routines.ts', { args: ['log-event', 'weekly-review', 'skipped-waiting'], cwd: wd.dir });
+      expect((await runScript('routines.ts', { args: ['log-event', 'weekly-review', 'skipped-waiting'], cwd: wd.dir })).stdout).toBe('OK\n');
       const content = fs.readFileSync(metrics(), 'utf-8');
       expect(content).toContain('"routine_id":"weekly-review","event":"skipped-waiting"');
     });
@@ -3585,16 +3622,16 @@ describe('routines.ts log-event', () => {
   });
 
   describe('no hermit ancestor', () => {
-    // No .hermit/ ancestor → non-zero exit with a clear diagnostic
+    // No .hermit/ ancestor → non-zero exit with a clear error token
     let exitCode = 0;
-    let stderr = '';
+    let stdout = '';
 
     beforeAll(async () => {
       const nohermit = fs.mkdtempSync(path.join(os.tmpdir(), 'no-hermit-'));
       try {
         const r = await runScript('routines.ts', { args: ['log-event', 'x', 'fired'], cwd: nohermit });
         exitCode = r.exitCode;
-        stderr = r.stderr;
+        stdout = r.stdout;
       } finally {
         try { fs.rmSync(nohermit, { recursive: true, force: true }); } catch {}
       }
@@ -3604,7 +3641,7 @@ describe('routines.ts log-event', () => {
       expect(exitCode).not.toBe(0);
     });
     test('log-routine-event (no ancestor diagnostic)', () => {
-      expect(stderr).toContain('could not find .hermit/');
+      expect(JSON.parse(stdout)).toEqual({ error: 'no_hermit_dir' });
     });
   });
 });
@@ -3957,12 +3994,13 @@ describe('pricing', () => {
 });
 
 // -------------------------------------------------------
-// cost-report.ts reflect (subprocess — CWD-relative cost-log read, stdout report)
+// cost-report.ts reflect (subprocess — CWD-relative cost-log read, stdout JSON)
 // -------------------------------------------------------
 
-async function runCostReflect(dir: string): Promise<string> {
+async function runCostReflect(dir: string): Promise<any> {
   const r = await runScript('cost-report.ts', { args: ['reflect', '.hermit'], cwd: dir });
-  return r.stdout + r.stderr;
+  expect(r.exitCode).toBe(0);
+  return JSON.parse(r.stdout);
 }
 
 describe('cost-reflect', () => {
@@ -3970,7 +4008,7 @@ describe('cost-reflect', () => {
   // the 7-day window (today - 1 day). One entry is older than the window (today - 8 days).
   describe('window + sections', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -3990,92 +4028,71 @@ describe('cost-reflect', () => {
     });
     afterAll(() => wd.cleanup());
 
-    // Basic: exits cleanly and produces output
-    test('cost-reflect: produces output', () => {
-      expect(out.length).toBeGreaterThan(0);
-    });
-
     // Grand total = sum of 5 in-window stored dollars (session-OLD and malformed line excluded)
     // 0.03 + 0.195 + 0.024 + 7.5 + 0.021 = 7.77
     test('cost-reflect: total includes all 5 in-window entries', () => {
-      expect(out).toMatch(/7\.7[0-9]/);
+      expect(out.window_days).toBe(7);
+      expect(out.total_usd).toBeCloseTo(7.77, 4);
+      expect(out.turns).toBe(5);
     });
 
     // Pre-window entry excluded (session-OLD would contribute $99 if included)
     test('cost-reflect: pre-window entry excluded', () => {
-      expect(out).not.toMatch(/99\./);
-      expect(out).not.toContain('session-OLD');
+      expect(out.total_usd).toBeLessThan(99);
+      expect(out.top_sessions.map((s: any) => s.id)).not.toContain('session-');
     });
 
-    // Malformed line skipped, output still produced
-    test('cost-reflect: malformed line skipped', () => {
-      expect(out).toContain('$');
-    });
-
-    // Cold-start: section appears AND the content shows exactly 1 turn
+    // Cold-start: exactly 1 turn
     // (entry 2 matches heuristic; entry 5 has cw=0 so it is NOT a cold-start)
-    test('cost-reflect: cold-start section present', () => {
-      expect(out).toContain('Cold starts');
-    });
     test('cost-reflect: 1 cold-start turn detected', () => {
-      expect(out).toMatch(/1 turn.*cache-write/);
+      expect(out.cold_starts).toMatchObject({ turns: 1, cost_usd: 0.195 });
     });
 
-    // sessionB2 is the most expensive (opus, $7.5 output) → first line under Top sessions
+    // sessionB2 is the most expensive (opus, $7.5 output) → first top session
     test('cost-reflect: sessionB (opus output) is top session', () => {
-      const lines = out.split('\n');
-      const i = lines.findIndex((l) => l.includes('Top sessions'));
-      expect(i).toBeGreaterThanOrEqual(0);
-      expect(lines[i] + '\n' + (lines[i + 1] ?? '')).toContain('sessionB');
+      expect(out.top_sessions[0]).toMatchObject({ id: 'sessionB', cost_usd: 7.5 });
     });
 
     // sessionD4: sonnet, cache_read=20K tokens vs output=1K tokens — by token count
     // cache_read>output, but by sub-cost output ($0.015) > cache_read ($0.006) →
-    // dominant must be 'output', not 'cache_read'. Targets only the sessionD line.
+    // dominant must be 'output', not 'cache_read'.
     test('cost-reflect: dominant type by sub-cost not token volume', () => {
-      const dLines = out.split('\n').filter((l) => l.includes('sessionD'));
-      expect(dLines.join('\n')).toMatch(/output/i);
+      const d = out.top_sessions.find((s: any) => s.id === 'sessionD');
+      expect(d.dominant).toBe('output');
     });
 
-    // Output respects ≤1500 char cap
+    // The digest stays verdict-sized
     test('cost-reflect: output ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
+      expect(JSON.stringify(out).length).toBeLessThanOrEqual(1500);
     });
 
-    // Per-model section: fixture mixes sonnet, haiku, opus → section must appear
-    test('cost-reflect: Cost by model section present for mixed-model window', () => {
-      expect(out).toContain('Cost by model');
-    });
-    test('cost-reflect: per-model section contains sonnet row', () => {
-      expect(out).toMatch(/- sonnet /);
-    });
-    test('cost-reflect: per-model section contains haiku row', () => {
-      expect(out).toMatch(/- haiku /);
+    // Per-model rows: fixture mixes sonnet, haiku, opus
+    test('cost-reflect: by_model lists every model in a mixed-model window', () => {
+      expect(out.by_model.map((m: any) => m.model).sort()).toEqual(['haiku', 'opus', 'sonnet']);
     });
   });
 
-  // Single-model window: Cost by model section must be absent
-  test('cost-reflect: Cost by model section absent for single-model window', withDir(async (dir) => {
+  test('cost-reflect: by_model and cold_starts stay empty for a single-model window with no warm-up', withDir(async (dir) => {
     const inWindow = utcDate(daysAgo(1));
     write(path.join(dir, '.claude', 'cost-log.jsonl'), [
-      `{"timestamp":"${inWindow}T10:00:00.000Z","session_id":"s1","model":"sonnet","input_tokens":0,"cache_write_tokens":10000,"cache_read_tokens":0,"output_tokens":500,"total_tokens":10500,"estimated_cost_usd":0.05}`,
       `{"timestamp":"${inWindow}T10:01:00.000Z","session_id":"s1","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":50000,"output_tokens":200,"total_tokens":50200,"estimated_cost_usd":0.018}`,
     ].join('\n'));
     const o = await runCostReflect(dir);
-    expect(o).not.toContain('Cost by model');
+    expect(o.by_model).toEqual([]);
+    expect(o.cold_starts).toBeNull();
   }));
 
+  const EMPTY = { status: 'empty', reason: 'no_cost_data', window_days: 7 };
+
   // Empty log: no entries at all
-  test("cost-reflect: empty log → 'No cost data'", withDir(async (dir) => {
+  test('cost-reflect: empty log → empty status', withDir(async (dir) => {
     write(path.join(dir, '.claude', 'cost-log.jsonl'), '\n');
-    expect(await runCostReflect(dir)).toMatch(/no cost data/i);
+    expect(await runCostReflect(dir)).toEqual(EMPTY);
   }));
 
   // Missing log: .claude/cost-log.jsonl does not exist
-  test("cost-reflect: missing log → 'No cost data' (exit 0)", withDir(async (dir) => {
-    const r = await runScript('cost-report.ts', { args: ['reflect', '.hermit'], cwd: dir });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout + r.stderr).toMatch(/no cost data/i);
+  test('cost-reflect: missing log → empty status (exit 0)', withDir(async (dir) => {
+    expect(await runCostReflect(dir)).toEqual(EMPTY);
   }));
 });
 
@@ -4618,14 +4635,15 @@ describe('cost-reflect source attribution', () => {
   // Fixture log with known source values + legacy untagged entries
   describe('tagged sources', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
+    const source = (name: string) => out.by_source.find((r: any) => r.source === name);
 
     beforeAll(async () => {
       wd = setupWorkdir();
       const d = utcDate(daysAgo(1));
       // Fixture: 4 main-turn entries + 1 subagent:true entry for routine:reflect (haiku).
       // haiku cost: input=10000→$0.008, output=2000→$0.008 = $0.016.
-      // routine:reflect total: $0.06 (main) + $0.016 (subagent) = $0.076 → displayed as $0.08.
+      // routine:reflect total: $0.06 (main) + $0.016 (subagent) = $0.076.
       // turns count must remain 4 (subagent line excluded from turn counter).
       write(path.join(wd.dir, '.claude', 'cost-log.jsonl'), [
         `{"timestamp":"${d}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":100000,"output_tokens":0,"total_tokens":100000,"estimated_cost_usd":0.03}`,
@@ -4639,69 +4657,31 @@ describe('cost-reflect source attribution', () => {
     });
     afterAll(() => wd.cleanup());
 
-    test('cost-reflect: Cost by source section present', () => {
-      expect(out).toContain('Cost by source');
-    });
     test('cost-reflect: heartbeat source row present', () => {
-      expect(out).toContain('heartbeat');
-    });
-    test('cost-reflect: routine:reflect source row present', () => {
-      expect(out).toContain('routine:reflect');
-    });
-    test('cost-reflect: other (non-scheduled) label present', () => {
-      expect(out).toContain('non-scheduled');
+      expect(source('heartbeat')).toBeDefined();
     });
     test('cost-reflect: legacy entry (no source) bucketed to other', () => {
-      expect(out).toContain('other');
-    });
-    test('cost-reflect: routine row triggers subagent footnote', () => {
-      expect(out).toMatch(/subagent/i);
+      // other = $0.09 (tagged) + $0.021 (untagged legacy row)
+      expect(source('other').cost_usd).toBeCloseTo(0.111, 4);
     });
     test('cost-reflect (source fixture): output ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
+      expect(JSON.stringify(out).length).toBeLessThanOrEqual(1500);
     });
     test('cost-reflect: subagent entry folds into routine:reflect row (cost rises)', () => {
-      // routine:reflect = $0.06 (main sonnet) + $0.016 (haiku subagent) = $0.076 → $0.08
-      // Without subagent attribution it would show $0.06; with it, $0.08.
-      const routineLine = out.split('\n').find(l => l.includes('routine:reflect'));
-      expect(routineLine).toBeDefined();
-      expect(routineLine).toMatch(/\$0\.0[78]/); // $0.07 or $0.08 depending on rounding
+      // routine:reflect = $0.06 (main sonnet) + $0.016 (haiku subagent) = $0.076.
+      // Without subagent attribution it would be $0.06.
+      expect(source('routine:reflect').cost_usd).toBeCloseTo(0.076, 4);
     });
     test('cost-reflect: subagent line is excluded from turns count', () => {
       // 4 main-turn entries in fixture (not 5); subagent line must not inflate turns.
-      expect(out).toContain('4 turns');
-    });
-  });
-
-  // No-routine fixture: footnote must be absent when no routine row is displayed (no dangling note)
-  describe('no routine row', () => {
-    let wd: Workdir;
-    let out = '';
-
-    beforeAll(async () => {
-      wd = setupWorkdir();
-      const d = utcDate(daysAgo(1));
-      write(path.join(wd.dir, '.claude', 'cost-log.jsonl'), [
-        `{"timestamp":"${d}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":100000,"output_tokens":0,"total_tokens":100000,"estimated_cost_usd":0.03}`,
-        `{"timestamp":"${d}T10:02:00.000Z","session_id":"s3","source":"other","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":50000,"output_tokens":5000,"total_tokens":55000,"estimated_cost_usd":0.09}`,
-        '',
-      ].join('\n'));
-      out = await runCostReflect(wd.dir);
-    });
-    afterAll(() => wd.cleanup());
-
-    test('cost-reflect: no routine row → source section still present', () => {
-      expect(out).toContain('Cost by source');
-    });
-    test('cost-reflect: no routine row → no subagent footnote', () => {
-      expect(out).not.toMatch(/subagent/i);
+      expect(out.turns).toBe(4);
     });
   });
 
   // ~20-source cap fixture: verify ≤1500 chars with many distinct routine sources
   describe('many sources cap', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -4715,14 +4695,11 @@ describe('cost-reflect source attribution', () => {
     });
     afterAll(() => wd.cleanup());
 
-    test('cost-reflect: 20-source fixture produces output', () => {
-      expect(out.length).toBeGreaterThan(0);
+    test('cost-reflect: 20-source fixture caps by_source at five', () => {
+      expect(out.by_source).toHaveLength(5);
     });
-    test('cost-reflect: 20-source fixture ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
-    });
-    test('cost-reflect: 20-source fixture shows +N more sources line', () => {
-      expect(out).toContain('more sources');
+    test('cost-reflect: 20-source fixture counts the rest in more_sources', () => {
+      expect(out.more_sources).toBe(15);
     });
   });
 });
@@ -4796,6 +4773,11 @@ describe('search', () => {
     expect(r.exitCode).toBe(0);
     return r.stdout + r.stderr;
   };
+  const searchHits = async (dir: string, ...args: string[]) => {
+    const r = await runScript('search.ts', { args: [hermit(dir), ...args] });
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout).hits;
+  };
 
   // search: basic match — finds a compiled artifact by keyword, returns file:line snippet
   describe('basic match', () => {
@@ -4822,8 +4804,11 @@ describe('search', () => {
     test('search (irrelevant file excluded)', () => {
       expect(out).not.toContain('briefing-2026-05-10');
     });
-    test('search (returns file:line snippet)', () => {
-      expect(out).toContain(':');
+    test('search (returns a file hit with a line snippet)', () => {
+      expect(JSON.parse(out).hits).toEqual([{
+        source: 'file', path: 'compiled/review-heartbeat-2026-05-01.md', date: '2026-05-01', title: 'Heartbeat design',
+        snippets: [{ line: 6, start_line: 6, text: 'The zero-token heartbeat is the best idea in the repo.' }],
+      }]);
     });
   });
 
@@ -4874,11 +4859,8 @@ describe('search', () => {
       '---\ntitle: Memory architecture review\ntype: review\ncreated: 2026-05-10T00:00:00+00:00\n---\nSome other content.');
     write(hermit(dir, 'compiled', 'briefing-2026-05-11.md'),
       '---\ntitle: Unrelated briefing\ntype: briefing\ncreated: 2026-05-11T00:00:00+00:00\n---\nThis file mentions memory in the body once.');
-    const out = await runSearch(dir, 'memory');
-    // First line mentioning review-memory must be within the first 3 output lines.
-    const idx = out.split('\n').findIndex((l) => l.includes('review-memory'));
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(idx).toBeLessThan(3);
+    const hits = await searchHits(dir, 'memory');
+    expect(hits.map((h: any) => h.path)).toEqual(['compiled/review-memory-2026-05-10.md', 'compiled/briefing-2026-05-11.md']);
   }));
 
   // search: no results case
@@ -4887,8 +4869,9 @@ describe('search', () => {
     write(hermit(dir, 'config.json'), '{}');
     write(hermit(dir, 'compiled', 'review-some-2026-05-01.md'),
       '---\ntitle: Some artifact\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nSome content.');
-    const out = await runSearch(dir, 'zzznomatch');
-    expect(out).toContain('No results found');
+    const r = await runScript('search.ts', { args: [hermit(dir), 'zzznomatch'] });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('{"hits":[]}');
   }));
 
   // search: snippet :line matches the real file line (frontmatter offset included)
@@ -4898,8 +4881,8 @@ describe('search', () => {
     write(hermit(dir, 'config.json'), '{}');
     write(hermit(dir, 'compiled', 'review-offset-2026-05-01.md'),
       '---\ntitle: Offset check\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nalpha\nbeta\nthe keyword zebra lives here\ngamma');
-    const out = await runSearch(dir, 'zebra');
-    expect(out).toContain(':8  the keyword zebra lives here');
+    const [hit] = await searchHits(dir, 'zebra');
+    expect(hit.snippets).toEqual([{ line: 8, start_line: 7, text: 'beta\nthe keyword zebra lives here\ngamma' }]);
   }));
 
   // lib/search.ts: TF+frontmatter boost verified in-process
@@ -4915,7 +4898,7 @@ describe('search', () => {
         '---\ntitle: weekly update\ntype: briefing\ncreated: 2026-05-11T00:00:00+00:00\n---\nMentions deployment in the body here.');
       const results = search(dir, 'deployment');
       expect(results.length).toBeGreaterThanOrEqual(2);
-      expect(results[0].relPath).toContain('review-a');
+      expect(results[0].path).toContain('review-a');
     } finally {
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
     }
@@ -4928,23 +4911,21 @@ describe('search', () => {
       write(hermit(dir, 'config.json'), '{}');
       write(hermit(dir, 'compiled', 'review-only-2026-05-01.md'),
         '---\ntitle: File only\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nA file about widgets.');
-      const out = await runSearch(dir, 'widgets');
-      expect(out).toContain('review-only');
-      expect(out).not.toContain('[channel]');
+      const hits = await searchHits(dir, 'widgets');
+      expect(hits.map((h: any) => [h.source, h.path])).toEqual([['file', 'compiled/review-only-2026-05-01.md']]);
     }));
 
-    test('search (channel hit labelled [channel], untrusted marker, no sqlite:1 ref)', withDir(async (dir) => {
+    test('search (channel hit marked untrusted, no path or line refs)', withDir(async (dir) => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), {
         source: 'discord', chat_id: 'C1', direction: 'in', sender: 'U1',
         text: 'lets ship the widgets dashboard next week', ts: '2026-06-01T00:00:00.000Z',
       });
-      const out = await runSearch(dir, 'widgets');
-      expect(out).toContain('[channel]');
-      expect(out).toContain('untrusted external input');
-      expect(out).toContain('widgets dashboard');
-      expect(out).not.toContain('sqlite:1');
+      expect(await searchHits(dir, 'widgets')).toEqual([{
+        source: 'channel', untrusted: true, title: 'from discord (C1)', date: '2026-06-01',
+        text: 'lets ship the widgets dashboard next week',
+      }]);
     }));
 
     test('search (--type=channel isolates channel hits from file hits)', withDir(async (dir) => {
@@ -4953,11 +4934,8 @@ describe('search', () => {
       write(hermit(dir, 'compiled', 'review-widgets-2026-05-01.md'),
         '---\ntitle: Widgets\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nAbout widgets.');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2026-06-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--type=channel', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      const out = r.stdout + r.stderr;
-      expect(out).toContain('[channel]');
-      expect(out).not.toContain('review-widgets');
+      const hits = await searchHits(dir, '--type=channel', 'widgets');
+      expect(hits.map((h: any) => h.source)).toEqual(['channel']);
     }));
 
     test('search (--type=review excludes channel hits)', withDir(async (dir) => {
@@ -4966,20 +4944,15 @@ describe('search', () => {
       write(hermit(dir, 'compiled', 'review-widgets-2026-05-01.md'),
         '---\ntitle: Widgets\ntype: review\ncreated: 2026-05-01T00:00:00+00:00\n---\nAbout widgets.');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2026-06-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--type=review', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      const out = r.stdout + r.stderr;
-      expect(out).toContain('review-widgets');
-      expect(out).not.toContain('[channel]');
+      const hits = await searchHits(dir, '--type=review', 'widgets');
+      expect(hits.map((h: any) => [h.source, h.path])).toEqual([['file', 'compiled/review-widgets-2026-05-01.md']]);
     }));
 
     test('search (--since excludes an older channel hit)', withDir(async (dir) => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'widgets chat', ts: '2020-01-01T00:00:00.000Z' });
-      const r = await runScript('search.ts', { args: [hermit(dir), '--since=2099-01-01', 'widgets'] });
-      expect(r.exitCode).toBe(0);
-      expect((r.stdout + r.stderr)).toContain('No results found');
+      expect(await searchHits(dir, '--since=2099-01-01', 'widgets')).toEqual([]);
     }));
 
     // Regression: FTS5 MATCH on an unquoted hyphenated term throws
@@ -5002,9 +4975,8 @@ describe('search', () => {
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       logMessage(hermit(dir), { source: 'discord', chat_id: 'C1', direction: 'in', text: 'the foo bar dashboard ships next week', ts: '2026-06-01T00:00:00.000Z' });
-      const out = await runSearch(dir, 'foo-bar');
-      expect(out).toContain('[channel]');
-      expect(out).toContain('foo bar');
+      const [hit] = await searchHits(dir, 'foo-bar');
+      expect(hit).toMatchObject({ source: 'channel', untrusted: true, text: 'the foo bar dashboard ships next week' });
     }));
 
     // Regression: recalled channel text must pass through the same
@@ -5295,21 +5267,22 @@ describe('channel-log', () => {
   });
 
   describe('scripts/channel-log.ts (subprocess CLI)', () => {
-    test('list-unconsolidated: no DB -> exit 0, empty JSON array', withDir(async (dir) => {
+    test('list-unconsolidated: no DB -> exit 0, empty rows', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'list-unconsolidated']);
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toEqual([]);
+      expect(JSON.parse(r.stdout.trim())).toEqual({ rows: [] });
     }));
 
     test('prune: no DB -> exit 0 (not a failure)', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'prune', '90']);
       expect(r.exitCode).toBe(0);
-      expect(r.stdout).toContain('pruned 0');
+      expect(JSON.parse(r.stdout.trim())).toEqual({ deleted: 0 });
     }));
 
     test('unknown subcommand -> exit 1', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'bogus']);
       expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe('{"error":"usage"}\n');
     }));
 
     test('list-unconsolidated stamps audience from shared_chats', withDir(async (dir) => {
@@ -5324,7 +5297,7 @@ describe('channel-log', () => {
       logMessage(hermitPath, { source: 'discord', chat_id: '4242', direction: 'in', text: 'numeric shared row' });
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       const byChat = Object.fromEntries(rows.map((r: { chat_id: string; audience: string }) => [r.chat_id, r.audience]));
       expect(byChat.C1).toBe('discord:C1');
       expect(byChat.C2).toBe('shared');
@@ -5337,7 +5310,7 @@ describe('channel-log', () => {
       logMessage(hermitPath, { source: 'discord', chat_id: 'C2', direction: 'in', text: 'b' });
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       expect(rows.map((r: { audience: string }) => r.audience).sort()).toEqual(['discord:C1', 'discord:C2']);
     }));
 
@@ -5347,14 +5320,15 @@ describe('channel-log', () => {
 
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       expect(rows.length).toBe(1);
 
       const marked = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'mark-consolidated', String(rows[0].id)]);
       expect(marked.exitCode).toBe(0);
+      expect(marked.stdout).toBe('OK\n');
 
       const listedAfter = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(JSON.parse(listedAfter.stdout.trim())).toEqual([]);
+      expect(JSON.parse(listedAfter.stdout.trim())).toEqual({ rows: [] });
     }));
 
     // channel-log.ts is reachable through a pre-approved
@@ -5371,7 +5345,7 @@ describe('channel-log', () => {
           env: { AGENT_DIR: hermit(mine) },
         });
         expect(r.exitCode).toBe(1);
-        expect(r.stderr).toContain('state dir must be');
+        expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
         expect(unconsolidated(victimPath).rows?.length).toBe(1);
       })();
     }));
@@ -5386,22 +5360,22 @@ describe('proposal metrics', () => {
   const runReport = async (dir: string, ...extra: string[]) => {
     const r = await runProposal(hermit(dir), ['metrics', ...extra]);
     expect(r.exitCode).toBe(0);
-    return r.stdout + r.stderr;
+    return JSON.parse(r.stdout);
   };
   const metricsFile = (dir: string) => hermit(dir, 'state', 'proposal-metrics.jsonl');
 
   // Missing / empty file — fails open
   test('metrics (missing file exits 0)', withDir(async (dir) => {
-    expect(await runReport(dir)).toContain('No proposal metrics');
+    expect(await runReport(dir)).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
   test('metrics (empty file exits 0)', withDir(async (dir) => {
     write(metricsFile(dir), '');
-    expect(await runReport(dir)).toContain('No proposal metrics');
+    expect(await runReport(dir, '--source=reflect')).toEqual({ status: 'none', reason: 'no_metrics' });
   }));
 
-  // Insufficient sample (<8) — INSUFFICIENT output
-  test('metrics --source (INSUFFICIENT, n<8)', withDir(async (dir) => {
+  // Insufficient sample (<8)
+  test('metrics --source (insufficient_data, n<8)', withDir(async (dir) => {
     // 3 triage-verdicts from brainstorm + 2 created tagged brainstorm, 1 accepted
     write(metricsFile(dir), [
       '{"ts":"2026-01-01T00:00:00Z","type":"triage-verdict","verdict":"CREATE","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}',
@@ -5412,15 +5386,28 @@ describe('proposal metrics', () => {
       '{"ts":"2026-01-01T03:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}',
       '',
     ].join('\n'));
-    expect(await runReport(dir, '--source=capability-brainstorm')).toContain('INSUFFICIENT');
+    expect(await runReport(dir, '--source=capability-brainstorm')).toEqual({
+      source: 'capability_brainstorm',
+      status: 'insufficient_data',
+      sample: 3,
+      min_sample: 8,
+      triage_survival_pct: 33,
+      triage_created: 1,
+      triage_total: 3,
+      kill_survival_pct: 25,
+      acceptance_pct: 50,
+      accepted: 1,
+      created: 2,
+      kill_acceptance_pct: 30,
+    });
   }));
 
   // Full sample (>=8) — correct rates and kill verdict
   // 10 triage-verdicts: 4 CREATE, 6 SUPPRESS → survival 40%
-  // 4 created tagged, 1 accepted → acceptance 25% → KILL (acceptance < 30%)
+  // 4 created tagged, 1 accepted → acceptance 25% → kill (acceptance < 30%)
   describe('full sample', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -5436,26 +5423,26 @@ describe('proposal metrics', () => {
       }
       lines.push('{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}');
       write(metricsFile(wd.dir), lines.join('\n') + '\n');
-      const r = await runProposal(hermit(wd.dir), ['metrics', '--source=capability-brainstorm']);
-      out = r.stdout + r.stderr;
+      out = await runReport(wd.dir, '--source=capability-brainstorm');
     });
     afterAll(() => wd.cleanup());
 
     test('metrics --source (survival 40%)', () => {
-      expect(out).toContain('triage-survival 40%');
+      expect(out).toMatchObject({ triage_survival_pct: 40, triage_created: 4, triage_total: 10, sample: 10 });
     });
     test('metrics --source (acceptance 25%)', () => {
-      expect(out).toContain('acceptance 25%');
+      expect(out).toMatchObject({ acceptance_pct: 25, accepted: 1, created: 4 });
     });
-    test('metrics --source (KILL verdict)', () => {
-      expect(out).toContain('KILL');
+    test('metrics --source (kill verdict)', () => {
+      expect(out.status).toBe('kill');
+      expect(out.kill_reasons).toEqual(['acceptance']);
     });
   });
 
-  // Default table mode — all segments appear, known rate in table
-  describe('table mode', () => {
+  // Default mode — every segment appears as an object
+  describe('segments mode', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -5466,19 +5453,23 @@ describe('proposal metrics', () => {
         '{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-R1","action":"accept"}',
         '',
       ].join('\n'));
-      const r = await runProposal(hermit(wd.dir), ['metrics']);
-      out = r.stdout + r.stderr;
+      out = await runReport(wd.dir);
     });
     afterAll(() => wd.cleanup());
 
-    test('metrics table (header present)', () => {
-      expect(out).toContain('Proposal acceptance by source');
+    test('metrics segments (every source, snake_case)', () => {
+      expect(out.segments.map((s: any) => s.source)).toEqual(['reflect', 'capability_brainstorm', 'procedure_capture', 'scheduled_check']);
     });
-    test('metrics table (reflect row present)', () => {
-      expect(out).toContain('| reflect |');
+    test('metrics segments (reflect rates)', () => {
+      expect(out.segments[0]).toMatchObject({ status: 'insufficient_data', triage_survival_pct: 50, acceptance_pct: 100, accepted: 1, created: 1 });
     });
-    test('metrics table (capability-brainstorm row present)', () => {
-      expect(out).toContain('| capability-brainstorm |');
+    test('metrics segments (zero denominators are null)', () => {
+      expect(out.segments[1]).toMatchObject({ triage_survival_pct: null, acceptance_pct: null, sample: 0 });
+    });
+    test('metrics segments (scheduled-check omits the acceptance keys)', () => {
+      const sched = out.segments[3];
+      for (const key of ['acceptance_pct', 'accepted', 'created', 'kill_acceptance_pct']) expect(sched).not.toHaveProperty(key);
+      expect(sched).not.toHaveProperty('kill_reasons');
     });
   });
 
@@ -5489,14 +5480,23 @@ describe('proposal metrics', () => {
       '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}',
       '',
     ].join('\n'));
-    expect(await runReport(dir)).toContain('Proposal acceptance');
+    expect((await runReport(dir)).segments[0]).toMatchObject({ triage_created: 1, triage_total: 1 });
   }));
 
-  // --source with unknown key reports error gracefully
+  // --source with an unknown key is an error at exit 1
   test('metrics (unknown --source key)', withDir(async (dir) => {
     write(metricsFile(dir),
       '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}\n');
-    expect(await runReport(dir, '--source=nonexistent')).toContain('Unknown source key');
+    const r = await runProposal(hermit(dir), ['metrics', '--source=nonexistent']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'unknown_source:nonexistent' });
+  }));
+
+  test('metrics (unreadable file is metrics_failed at exit 1)', withDir(async (dir) => {
+    fs.mkdirSync(metricsFile(dir), { recursive: true });
+    const r = await runProposal(hermit(dir), ['metrics']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'metrics_failed' });
   }));
 });
 

@@ -1,9 +1,10 @@
-import { assertStateDir, pinStateDirOrExit } from './lib/cc-compat';
+import { pinStateDirOrExit } from './lib/cc-compat';
+import { exitError, failJson } from './lib/cli';
 import { readTaskReports } from './lib/task-report';
 
 try {
   const [dirArg, ...args] = process.argv.slice(2);
-  if (!dirArg || !assertStateDir(dirArg)) throw new Error('invalid_state_dir');
+  if (!dirArg) exitError();
   let limit = 20;
   let recent = false;
   while (args.length) {
@@ -13,8 +14,8 @@ try {
     else throw new Error('invalid_arguments');
   }
   if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
-  const records = readTaskReports(pinStateDirOrExit(dirArg, 'task-report'))
+  const records = readTaskReports(pinStateDirOrExit(dirArg))
     .filter(record => !recent || record.outcome !== 'open')
     .sort((a, b) => (b.closed_at ?? b.opened_at).localeCompare(a.closed_at ?? a.opened_at));
   console.log(JSON.stringify({ rows: records.slice(0, limit), total: records.length, omitted: Math.max(0, records.length - limit) }));
-} catch (error: any) { console.error(error.message); process.exitCode = 2; }
+} catch (error) { failJson(error); }

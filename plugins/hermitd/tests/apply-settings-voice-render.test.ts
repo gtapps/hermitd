@@ -45,7 +45,7 @@ describe('apply-settings.ts voice-render', () => {
     const { settingsFile, voiceFile } = project({ voice: { style: 'Concise', prose: null } });
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('applied:Concise');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'applied', style: 'Concise' });
     expect(readSettings(settingsFile).outputStyle).toBeUndefined();
     expect(fs.existsSync(voiceFile)).toBe(false);
   });
@@ -61,7 +61,7 @@ describe('apply-settings.ts voice-render', () => {
     const { settingsFile, voiceFile } = project({ voice: { style: 'custom', prose } });
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('applied:hermit-voice');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'applied', style: 'hermit-voice' });
     expect(readSettings(settingsFile).outputStyle).toBeUndefined();
     const body = readRaw(voiceFile);
     expect(body).toContain(prose);
@@ -89,7 +89,7 @@ describe('apply-settings.ts voice-render', () => {
     const before = readRaw(settingsFile);
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('skipped:unset');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'unset' });
     expect(readRaw(settingsFile)).toBe(before); // byte-identical: boot runs this every start
   });
 
@@ -97,7 +97,7 @@ describe('apply-settings.ts voice-render', () => {
     const { settingsFile } = project({});
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('skipped:unset');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'unset' });
     expect(readSettings(settingsFile).outputStyle).toBeUndefined();
   });
 
@@ -114,7 +114,7 @@ describe('apply-settings.ts voice-render', () => {
     const { settingsFile, voiceFile } = project({ voice: { style: 'custom', prose: '   ' } });
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('voice.prose');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'voice_prose_empty' });
     expect(fs.existsSync(voiceFile)).toBe(false);
     expect(readSettings(settingsFile).outputStyle).toBeUndefined();
   });
@@ -126,7 +126,7 @@ describe('apply-settings.ts voice-render', () => {
     });
     const r = await render(settingsFile);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('settings.local.json');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'not_settings_local' });
     expect(readSettings(settingsFile).outputStyle).toBeUndefined();
   });
 

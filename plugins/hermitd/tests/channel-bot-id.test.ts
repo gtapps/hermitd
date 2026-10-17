@@ -81,14 +81,14 @@ describe('channel-bot-id', () => {
     writeToken(dir, 'discord', 'DISCORD_BOT_TOKEN');
     const r = await run(dir, 'discord');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('discord bot_user_id=987654321098765432 bot_username=hermitbot');
+    expect(JSON.parse(r.stdout)).toEqual({ channel: 'discord', bot_user_id: '987654321098765432', bot_username: 'hermitbot', written: false });
     expect(readConfig(dir).channels.discord.bot_user_id).toBeUndefined();
   }));
 
   test('--write merges into the channel entry, preserving other keys', withDir(DISCORD_CFG, async (dir) => {
     writeToken(dir, 'discord', 'DISCORD_BOT_TOKEN');
     const r = await run(dir, 'discord', '--write');
-    expect(r.stdout.trim()).toBe('discord bot_user_id=987654321098765432 bot_username=hermitbot written');
+    expect(JSON.parse(r.stdout)).toEqual({ channel: 'discord', bot_user_id: '987654321098765432', bot_username: 'hermitbot', written: true });
     const ch = readConfig(dir).channels.discord;
     expect(ch.bot_user_id).toBe('987654321098765432');
     expect(ch.bot_username).toBe('hermitbot');
@@ -111,7 +111,7 @@ describe('channel-bot-id', () => {
     async (dir) => {
       writeToken(dir, 'telegram', 'TELEGRAM_BOT_TOKEN');
       const r = await run(dir, 'telegram', '--write');
-      expect(r.stdout.trim()).toBe('telegram bot_user_id=111222333 bot_username=hermit_tg_bot written');
+      expect(JSON.parse(r.stdout)).toEqual({ channel: 'telegram', bot_user_id: '111222333', bot_username: 'hermit_tg_bot', written: true });
       expect(readConfig(dir).channels.telegram.bot_user_id).toBe('111222333');
     },
   ));
@@ -119,7 +119,7 @@ describe('channel-bot-id', () => {
   test('no token — SKIPs, exit 0, config untouched', withDir(DISCORD_CFG, async (dir) => {
     const r = await run(dir, 'discord', '--write');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('SKIP discord: no token configured');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'no_token', channel: 'discord' });
     expect(readConfig(dir).channels.discord.bot_user_id).toBeUndefined();
   }));
 
@@ -128,21 +128,21 @@ describe('channel-bot-id', () => {
     async (dir) => {
       const r = await run(dir, 'matrix', '--write');
       expect(r.exitCode).toBe(0);
-      expect(r.stdout).toContain('SKIP matrix: no identity probe');
+      expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'no_identity_probe', channel: 'matrix' });
     },
   ));
 
   test('channel absent from config — SKIPs', withDir(DISCORD_CFG, async (dir) => {
     const r = await run(dir, 'telegram', '--write');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('SKIP telegram: no channel entry');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'no_channel_entry', channel: 'telegram' });
   }));
 
   test('non-2xx probe — SKIPs with the status, config untouched', withDir(DISCORD_CFG, async (dir) => {
     writeToken(dir, 'discord', 'DISCORD_BOT_TOKEN', 'wrong-token');
     const r = await run(dir, 'discord', '--write');
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('SKIP discord: probe returned HTTP 401');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'http_401', channel: 'discord' });
     expect(readConfig(dir).channels.discord.bot_user_id).toBeUndefined();
   }));
 
@@ -155,7 +155,7 @@ describe('channel-bot-id', () => {
       env: { HERMIT_DOCTOR_DISCORD_API: 'http://localhost:1', ...stateDirEnv(dir) },
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('SKIP discord: probe failed');
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'skip', reason: 'probe_network_error' });
     expect(r.stdout + r.stderr).not.toContain(TOKEN);
     expect(r.stdout).not.toContain('localhost:1');
   }));

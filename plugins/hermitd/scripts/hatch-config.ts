@@ -31,7 +31,9 @@
  * the imported validate(config) reject the assembled output — the same guard the
  * PostToolUse hook runs on every config.json write.
  *
- * Prints the written config.json to stdout on success.
+ * Prints `OK` on success, or `{"kept_errors":[...]}` when a re-init leaves errors the
+ * config already carried. Failure prints `{"error":"<token>[:detail]"}` (validation:
+ * `{"error":"invalid_config","errors":[...]}`) and exits 1 with nothing written.
  */
 
 import fs from 'node:fs';
@@ -39,20 +41,16 @@ import path from 'node:path';
 import { validate } from './validate-config';
 import { persistConfig } from './lib/config-write';
 import { configExists, readConfigRaw } from './lib/config-read';
+import { emit, emitJson, exitError } from './lib/cli';
 
 type Json = any;
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 const TEMPLATE_PATH = path.join(PLUGIN_ROOT, 'state-templates', 'config.json.template');
 
-function die(msg: string): never {
-  console.error(`hatch-config: ${msg}`);
-  process.exit(1);
-}
-
 // --- CLI args ---
 const projectRoot = process.argv[2];
-if (!projectRoot) die('usage: bun hatch-config.ts <PROJECT_ROOT> [--reinit]  (answers JSON on stdin)');
+if (!projectRoot) exitError();
 const reinit = process.argv.slice(3).some((a) => a === '--reinit' || a === '--reinit=true');
 
 // --- stdin: answers payload ---
@@ -68,7 +66,7 @@ let answers: Json;
 try {
   answers = JSON.parse(readStdinSync() || '{}');
 } catch (e: any) {
-  die(`answers payload on stdin is not valid JSON: ${e.message}`);
+  exitError(`invalid_answers:${e.message}`);
 }
 
 // --- read own plugin version (never from the answers payload — see header) ---
@@ -79,7 +77,7 @@ try {
   );
   coreVersion = ownPluginJson.version;
 } catch (e: any) {
-  die(`could not read this plugin's own plugin.json: ${e.message}`);
+  exitError(`plugin_json_unreadable:${e.message}`);
 }
 
 // --- load base: template (fresh) or existing config, strictly (re-init) ---
@@ -87,8 +85,8 @@ const hermitDir = path.join(projectRoot, '.hermit');
 const configPath = path.join(hermitDir, 'config.json');
 const exists = fs.existsSync(configPath);
 
-if (reinit && !exists) die(`--reinit passed but no existing config.json found at ${configPath}`);
-if (!reinit && exists) die(`config.json already exists at ${configPath} — pass --reinit to update it`);
+if (reinit && !exists) exitError(`no_config:${configPath}`);
+if (!reinit && exists) exitError(`config_exists:${configPath}`);
 
 let config: Json;
 // Errors the operator's config already carried before this run. Only relevant on
@@ -101,20 +99,20 @@ if (reinit) {
   // file's exact bytes (mirrors apply-settings.ts's readTargetJson, not its
   // permissive readJson which would silently discard the file as `{}`).
   const raw = fs.readFileSync(configPath, 'utf8');
-  if (raw.trim() === '') die(`config.json exists but is empty — fix or remove it, then re-run with --reinit`);
+  if (raw.trim() === '') exitError(`config_empty:${configPath}`);
   try {
     config = JSON.parse(raw);
   } catch (e: any) {
-    die(`refusing to modify ${configPath}: existing file is not valid JSON (${e.message}). Fix or remove it, then re-run.`);
+    exitError(`config_json_invalid:${e.message}`);
   }
   priorErrors = validate(JSON.parse(raw)).errors;
 } else {
   try {
     config = JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8'));
   } catch (e: any) {
-    die(`could not read config.json.template: ${e.message}`);
+    exitError(`template_unreadable:${e.message}`);
   }
-  if (!answers.project_name) die('fresh hatch requires answers.project_name to substitute tmux_session_name');
+  if (!answers.project_name) exitError('invalid_answers:project_name');
   config.tmux_session_name = String(config.tmux_session_name).replace('{project_name}', answers.project_name);
 }
 
@@ -162,11 +160,11 @@ if (!Object.hasOwn(config._hermit_versions, 'hermitd')) {
 }
 if (Object.hasOwn(answers, 'activated_hermit') && answers.activated_hermit) {
   // slug is hand-built by the model from detected_hermits — refuse a malformed
-  // slug rather than let hatch-report.ts render an undefined Hermit-ext name.
+  // slug rather than let hatch-report.ts carry an undefined hermit_extension.
   // A stray `version` key (older skill text) is ignored; domain plugins stamp
   // `_hermit_versions` from their own hatch.
   const { slug } = answers.activated_hermit;
-  if (typeof slug !== 'string' || !slug) die('activated_hermit.slug must be a non-empty string');
+  if (typeof slug !== 'string' || !slug) exitError('invalid_answers:activated_hermit.slug');
 }
 
 // --- boot_skill: only touched when a hermit was (re)activated this run ---
@@ -177,7 +175,7 @@ if (Object.hasOwn(answers, 'activated_hermit')) {
 // --- channels: field-level merge, preserve learned/unknown state on re-init ---
 if (Object.hasOwn(answers, 'channels')) {
   const answerChannels = answers.channels;
-  if (!answerChannels || typeof answerChannels !== 'object') die('channels must be an object');
+  if (!answerChannels || typeof answerChannels !== 'object') exitError('invalid_answers:channels');
   config.channels = config.channels && typeof config.channels === 'object' ? config.channels : {};
   for (const [name, ansRaw] of Object.entries<Json>(answerChannels)) {
     const ans = ansRaw && typeof ansRaw === 'object' ? ansRaw : {};
@@ -226,17 +224,9 @@ let result;
 try {
   result = persistConfig({ hermitDir, before: preExisting, after: config, actor: 'hatch-config', priorErrors });
 } catch (e: any) {
-  die(`write failed: ${e.message}`);
+  exitError(`write_failed:${e.message}`);
 }
 const { newErrors, keptErrors } = result;
-if (newErrors.length > 0) {
-  console.error('hatch-config: assembled config.json failed validation:');
-  for (const e of newErrors) console.error(`  FAIL  ${e}`);
-  process.exit(1);
-}
-for (const e of keptErrors) {
-  console.error(`hatch-config: pre-existing config error, left as-is:  ${e}`);
-}
-
-console.log(JSON.stringify(config));
-process.exit(0);
+if (newErrors.length > 0) emitJson({ error: 'invalid_config', errors: newErrors });
+if (keptErrors.length > 0) emitJson({ kept_errors: keptErrors });
+emit('OK');

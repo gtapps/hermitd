@@ -20,10 +20,13 @@
 // and the frame a hermit session naturally writes, since sessions launch from the
 // project root. Every path this module hands to git is resolved in that one frame.
 //
-// Output: one JSON line, always exit 0 —
-//   {"tier":"...","action":"RUN"|"SKIP","reason":"...","focus_files":[...]}
+// Output: one JSON object, always exit 0 —
+//   {"tier":"...","status":"run"|"skip","reason":"<token>","detail":"<prose>","focus_files":[...]}
+// Reasons: budget_tier, quality_tier, no_file_evidence, no_files_changed,
+// bookkeeping_only, code_changed, instruction_changed, structural_change,
+// no_substantive_change. `detail` is the human-readable why (file, category).
 // Fail-safe by design: an unreadable config, a missing proposal, a broken git
-// invocation, or an empty candidate set all resolve to a bounded SKIP with the
+// invocation, or an empty candidate set all resolve to a bounded skip with the
 // reason naming what was missing. The gate is cleanup, not correctness — the
 // `## Verification` gate is what blocks resolution — so a gate failure must
 // never block an implementation.
@@ -38,11 +41,12 @@ import { QUALITY_GATE_TIER } from '../settings/enums';
 
 type Json = any;
 
-export type Action = 'RUN' | 'SKIP';
+export type Status = 'run' | 'skip';
 export interface Verdict {
   tier: string;
-  action: Action;
+  status: Status;
   reason: string;
+  detail: string;
   focus_files: string[];
 }
 
@@ -166,13 +170,13 @@ export function decide(
 ): Verdict {
   const tier = resolveTier(stateDir);
   if (tier === 'budget') {
-    return { tier, action: 'SKIP', reason: 'budget tier — cleanup never runs', focus_files: [] };
+    return { tier, status: 'skip', reason: 'budget_tier', detail: 'budget tier — cleanup never runs', focus_files: [] };
   }
 
   const inGit = suppliedFiles ? null : worktreeFiles(cwd);
   const raw = suppliedFiles ?? inGit;
   if (raw === null) {
-    return { tier, action: 'SKIP', reason: 'no file evidence — not a git worktree and no --files-json', focus_files: [] };
+    return { tier, status: 'skip', reason: 'no_file_evidence', detail: 'no file evidence — not a git worktree and no --files-json', focus_files: [] };
   }
 
   const candidates = raw.filter(p => !isBookkeeping(p));
@@ -180,14 +184,15 @@ export function decide(
     const dropped = raw.length;
     return {
       tier,
-      action: 'SKIP',
-      reason: dropped ? `only session bookkeeping changed (${dropped} path${dropped === 1 ? '' : 's'})` : 'no files changed',
+      status: 'skip',
+      reason: dropped ? 'bookkeeping_only' : 'no_files_changed',
+      detail: dropped ? `only session bookkeeping changed (${dropped} path${dropped === 1 ? '' : 's'})` : 'no files changed',
       focus_files: [],
     };
   }
 
   if (tier === 'quality') {
-    return { tier, action: 'RUN', reason: 'quality tier — cleanup always runs', focus_files: candidates };
+    return { tier, status: 'run', reason: 'quality_tier', detail: 'quality tier — cleanup always runs', focus_files: candidates };
   }
 
   // balanced — decide on the observed change, never on the proposal's prose.
@@ -195,24 +200,24 @@ export function decide(
   // Only structured candidates consult the root, and the loop usually breaks on a
   // code or instruction file first — so don't spawn `git rev-parse` for nothing.
   const root = candidates.some(isStructured) ? gitRoot(cwd) : null;
-  const reasons: string[] = [];
+  let hit: { reason: string; detail: string } | null = null;
   for (const f of candidates) {
-    if (isCode(f)) { reasons.push(`code changed (${f})`); break; }
-    if (isInstruction(f)) { reasons.push(`instruction text changed (${f})`); break; }
+    if (isCode(f)) { hit = { reason: 'code_changed', detail: `code changed (${f})` }; break; }
+    if (isInstruction(f)) { hit = { reason: 'instruction_changed', detail: `instruction text changed (${f})` }; break; }
     // No repo root means no diff to inspect, so the file cannot be proven value-only.
-    if (isStructured(f) && (!root || !isValueOnlyChange(f, root))) { reasons.push(`structural config changed (${f})`); break; }
-  }
-
-  if (reasons.length) {
-    const suffix = category ? ` [category: ${category}]` : '';
-    return { tier, action: 'RUN', reason: reasons[0] + suffix, focus_files: candidates };
+    if (isStructured(f) && (!root || !isValueOnlyChange(f, root))) { hit = { reason: 'structural_change', detail: `structural config changed (${f})` }; break; }
   }
 
   const suffix = category ? ` [category: ${category}]` : '';
+  if (hit) {
+    return { tier, status: 'run', reason: hit.reason, detail: hit.detail + suffix, focus_files: candidates };
+  }
+
   return {
     tier,
-    action: 'SKIP',
-    reason: `no code, instruction, or structural change among ${candidates.length} touched file${candidates.length === 1 ? '' : 's'}` + suffix,
+    status: 'skip',
+    reason: 'no_substantive_change',
+    detail: `no code, instruction, or structural change among ${candidates.length} touched file${candidates.length === 1 ? '' : 's'}` + suffix,
     focus_files: [],
   };
 }

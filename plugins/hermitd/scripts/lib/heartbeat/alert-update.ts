@@ -7,10 +7,10 @@
 //
 // Fail-safe contract: ANY validation failure or write failure leaves
 // alert-state.json byte-identical and prints one stdout JSON line
-// with heartbeat_result:"INDETERMINATE" and a reason. The caller (SKILL.md
+// with heartbeat_result:"indeterminate" and a reason. The caller (SKILL.md
 // step 5) echoes HEARTBEAT_INDETERMINATE (<reason>) instead of HEARTBEAT_OK.
-// Only a genuinely unparseable input payload exits 1; every other reject path
-// exits 0 (unchanged from before this refactor).
+// Only a genuinely unparseable input payload fails, as {"error":"invalid_json"}
+// at exit 1; every other reject path exits 0.
 //
 // On success, prints notifications, self-evaluation proposals and the verdict.
 // Sending stays with the caller after the durable state write.
@@ -20,6 +20,7 @@
 // Usage: bun heartbeat.ts alert-state <state-file-path>   # eval-json on stdin
 
 import path from 'node:path';
+import { emitJson, exitError } from '../cli';
 import { runSelfEval, type SelfEvalProposal } from './self-eval';
 import {
   readAlertState, defaultAlertState, quarantineAlertState, writeAlertState,
@@ -34,10 +35,7 @@ type Json = any;
 
 const stateFile = process.argv[2];
 
-if (!stateFile) {
-  console.error('Usage: bun heartbeat.ts alert-state <state-file-path>   # eval-json on stdin');
-  process.exit(1);
-}
+if (!stateFile) exitError();
 
 // stateFile = <stateDir>/state/alert-state.json
 const stateDir = path.dirname(path.dirname(stateFile));
@@ -135,26 +133,22 @@ function resolveFiring(entries: RawFiring[], canonical: Set<string> | null): Fir
   return out;
 }
 
-// Reject path: prints the INDETERMINATE contract without touching alert-state.json. Exit code matches
-// today's contract: 1 only for invalid-json (unparseable payload), 0 for
-// every other reason.
-function indeterminate(reason: string, exitCode: 0 | 1 = 0): never {
-  process.stdout.write(JSON.stringify({
+// Reject path: prints the INDETERMINATE contract without touching alert-state.json, at exit 0.
+function indeterminate(reason: string): never {
+  emitJson({
     notifications: [],
     self_eval_proposals: [],
-    heartbeat_result: 'INDETERMINATE',
+    heartbeat_result: 'indeterminate',
     reason,
-  }) + '\n');
-  process.exit(exitCode);
+  });
 }
 
 function apply(payloadJson: string): void {
   let payload: Json;
   try {
     payload = JSON.parse(payloadJson);
-  } catch (err: any) {
-    console.error(`update-alert-state: invalid payload JSON: ${err.message}`);
-    indeterminate('invalid_json', 1);
+  } catch {
+    exitError('invalid_json');
   }
 
   // `JSON.parse('null')` parses fine but has no properties — reading `.firing`
@@ -318,15 +312,13 @@ function apply(payloadJson: string): void {
   const wrote = writeAlertState(stateFile, updated);
   if (!wrote) indeterminate('write_failed'); // fail-safe: no durable write → emit no side effects
 
-  process.stdout.write(JSON.stringify({
+  emitJson({
     notifications: result.notifications,
     self_eval_proposals: selfEvalProposals,
     // Never OK when a structured pending decision couldn't be verified this tick.
-    heartbeat_result: hasStructuredReadFailure ? 'ALERT' : result.heartbeatResult,
+    heartbeat_result: hasStructuredReadFailure ? 'alert' : result.heartbeatResult,
     ...(result.digestDoneKeys.length > 0 ? { digest_done: result.digestDoneKeys } : {}),
-  }) + '\n');
-
-  process.exit(0);
+  });
 }
 
 let buf = '';

@@ -14,6 +14,7 @@ import {
   WORKSPACE_MARKER,
   evaluateBackupDue,
   formatStatus,
+  statusDigest,
   hasWorkspaceMarker,
   mirrorDir,
   normalizeRemote,
@@ -295,6 +296,17 @@ describe('status file', () => {
     );
     expect(out.split('\n').length).toBeLessThanOrEqual(5);
     expect(out).toContain('committed');
+  });
+
+  test('statusDigest gives the stdout spelling of persisted tokens', () => {
+    expect(statusDigest(null, {})).toEqual({ status: 'none', reason: 'no_run_recorded' });
+    expect(statusDigest(
+      { last_result: 'dirty-index', push: 'ok', refused: [{ path: 'a.pem', reason: 'secret-filename' }] },
+      { mode: 'mirror' },
+    )).toEqual({
+      result: 'dirty_index', mode: 'mirror', last_attempt_at: null, last_success_at: null, push: 'ok',
+      refused: 1, first_refused: { path: 'a.pem', reason: 'secret_filename' },
+    });
   });
 });
 

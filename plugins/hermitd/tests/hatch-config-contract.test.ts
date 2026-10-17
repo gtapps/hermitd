@@ -96,7 +96,7 @@ describe('hatch-config.ts', () => {
     expect(onDisk).toEqual(expected);
     expect(onDisk).not.toHaveProperty('sign_off');
     expect(onDisk).not.toHaveProperty('idle_behavior');
-    expect(JSON.parse(r.stdout)).toEqual(expected);
+    expect(r.stdout.trim()).toBe('OK');
   });
 
   test('fresh hatch: refuses if config.json already exists (no --reinit)', async () => {
@@ -275,7 +275,7 @@ describe('hatch-config.ts', () => {
     const dir = freshDir();
     const r = await runHatchConfig(dir, { project_name: 'x', channels: null });
     expect(r.exitCode).not.toBe(0);
-    expect(r.stderr).toContain('hatch-config:');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_answers:channels' });
     expect(fs.existsSync(configPathFor(dir))).toBe(false);
   });
 
@@ -337,7 +337,7 @@ describe('hatch-config.ts', () => {
       expect(r.exitCode).toBe(0);
       const expected = { ...seed, channels: { ...seed.channels, discord: { ...channel, passive_chats } } };
       expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'))).toEqual(expected);
-      expect(JSON.parse(r.stdout)).toEqual(expected);
+      expect(r.stdout.trim()).toBe('OK');
 
       const omitted = await runHatchConfig(dir, { channels: { discord: {} } }, true);
       expect(omitted.exitCode).toBe(0);
@@ -360,7 +360,7 @@ describe('hatch-config.ts', () => {
         enabled: true, dm_channel_id: null, default_chat_id: null,
         state_dir: '.claude.local/channels/discord', passive_chats: ['123'],
       });
-      expect(JSON.parse(r.stdout)).toEqual(out);
+      expect(r.stdout.trim()).toBe('OK');
     });
   }
 
@@ -381,7 +381,8 @@ describe('hatch-config.ts', () => {
       const before = fs.readFileSync(configPathFor(dir), 'utf8');
       const r = await runHatchConfig(dir, { channels: { discord: { passive_chats } } }, true);
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr).toContain('channels.discord.passive_chats');
+      expect(JSON.parse(r.stdout).error).toBe('invalid_config');
+      expect(r.stdout).toContain('channels.discord.passive_chats');
       expect(fs.readFileSync(configPathFor(dir), 'utf8')).toBe(before);
     });
   }
@@ -394,10 +395,11 @@ describe('hatch-config.ts', () => {
     });
     const omitted = await runHatchConfig(dir, { channels: { discord: { enabled: false } } }, true);
     expect(omitted.exitCode).toBe(0);
+    expect(JSON.parse(omitted.stdout).kept_errors[0]).toContain('channels.discord.passive_chats');
     expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8')).channels.discord.passive_chats).toEqual([123]);
     const repaired = await runHatchConfig(dir, { channels: { discord: { passive_chats: ['456'] } } }, true);
     expect(repaired.exitCode).toBe(0);
-    expect(repaired.stderr).not.toContain('channels.discord.passive_chats');
+    expect(repaired.stdout.trim()).toBe('OK');
     const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
     expect(out.channels.discord.passive_chats).toEqual(['456']);
     expect(out.channels.discord.enabled).toBe(false);

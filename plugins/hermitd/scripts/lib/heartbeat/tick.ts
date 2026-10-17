@@ -20,9 +20,10 @@ type Notifications = { budget: Notification[]; queue?: QueueNotice };
 type DecisionItem = { key: string; text: string };
 
 type TickResult = {
-  verdict: string;
+  status: string;
   reason?: string;
-  alert?: string;
+  hash?: string;
+  detail?: string;
   notifications: Notifications;
   model: string | null;
   effort: string | null;
@@ -47,11 +48,19 @@ function dueDecisionItems(hermitDir: string, timezone: string, nowMs: number): D
     .map(([key, e]) => ({ key, text: typeof e.text === 'string' ? e.text : '' }));
 }
 
-/** Split the precheck's one-line grammar into the JSON fields the skill branches on. */
+/** The snake_case token for a precheck reason, e.g. `HEARTBEAT.md missing` → `heartbeat_md_missing`. */
+const reasonToken = (raw: string): string => raw.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/**
+ * Split the precheck's one-line grammar into the JSON fields the skill branches on.
+ * The only ALERT is `injection-suspect:<hash>|<detail>`, so it splits into fields.
+ */
 function parseVerdict(raw: string): Omit<TickResult, 'model' | 'effort'> {
-  if (raw.startsWith('SKIP|')) return { verdict: 'SKIP', reason: raw.slice(5), notifications: { budget: [] } };
-  if (raw.startsWith('ALERT|')) return { verdict: 'ALERT', alert: raw.slice(6), notifications: { budget: [] } };
-  return { verdict: raw, notifications: { budget: [] } };
+  const notifications = { budget: [] };
+  if (raw.startsWith('SKIP|')) return { status: 'skip', reason: reasonToken(raw.slice(5)), notifications };
+  const alert = raw.match(/^ALERT\|([^:|]+):([^|]*)\|(.*)$/);
+  if (alert) return { status: 'alert', reason: reasonToken(alert[1]), hash: alert[2], detail: alert[3], notifications };
+  return { status: raw.toLowerCase(), notifications };
 }
 
 /**
@@ -105,16 +114,16 @@ export async function run(args: string[]): Promise<void> {
   try {
     const nowMs = resolveHermitNowMs();
 
-    if (result.verdict === 'EVALUATE' || result.verdict === 'ALERT') {
+    if (result.status === 'evaluate' || result.status === 'alert') {
       await composeBudgetAlerts(hermitDir, config, result.notifications.budget);
-      if (result.verdict === 'EVALUATE') {
+      if (result.status === 'evaluate') {
         const queue = pendingQueue(hermitDir, nowMs);
         if (queue) result.notifications.queue = queue;
         const due = dueDecisionItems(hermitDir, config.timezone ?? 'UTC', nowMs);
         if (due.length > 0) result.decision_refresh = due;
       }
     }
-  } catch { /* fail-open: the verdict still ships, minus the bookkeeping */ }
+  } catch { /* fail-open: the status still ships, minus the bookkeeping */ }
 
   process.stdout.write(JSON.stringify(result) + '\n');
 }

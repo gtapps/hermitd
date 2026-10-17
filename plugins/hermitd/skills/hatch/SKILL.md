@@ -393,14 +393,14 @@ No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone li
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json voice-render
    ```
 
-   **Local scope, not the hatch target** — that is the scope Claude Code's own `/config` picker writes and the one that outranks committed settings, and a custom voice file is gitignored, so a committed pointer would name a file a teammate doesn't have. The op refuses any other target. It prints `applied:<style>`; carry that into Phase 5.
+   **Local scope, not the hatch target** — that is the scope Claude Code's own `/config` picker writes and the one that outranks committed settings, and a custom voice file is gitignored, so a committed pointer would name a file a teammate doesn't have. The op refuses any other target. It prints the applied `style`; carry that into Phase 5.
 
 #### Phase 5 — Confirm
 
 Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Refine anytime — just tell me what changed." Then report the style from what Phase 4b step 3 printed:
 
-- **A built-in** (`applied:default` / `applied:Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
-- **A custom voice** (`applied:hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
+- **A built-in** (`default` / `Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
+- **A custom voice** (`hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
 
 Either way the file is a render of `config.json` — say so if the operator asks about editing it directly, so they don't lose an edit at the next restart.
 
@@ -410,9 +410,9 @@ The target file is determined by `hatch_target` (computed in Step 1.5):
 - `hatch_target == "local"` → write to `CLAUDE.local.md` (gitignored, operator-personal)
 - `hatch_target == "committed"` → write to `CLAUDE.md` (committed, current behavior)
 
-Check CLAUDE.md, CLAUDE.local.md and .hermit/RESIDENT.md for duplicate markers within each file. The shared block and resident block belong in their respective destinations. Perform the shared-block idempotency check across both CLAUDE files first: if the marker `hermitd: Session Discipline` exists in the non-target file, surface a conflict — ask operator: **Move to target file** (diff-and-confirm) / **Keep both** (warn that both load) / **Skip conflict**. Never silently leave duplicate markers.
+Perform the shared-block idempotency check across both CLAUDE files first: if the marker `hermitd: Session Discipline` exists in the non-target file, surface a conflict — ask operator: **Move to target file** (diff-and-confirm) / **Keep both** (warn that both load) / **Skip conflict**. Never silently leave duplicate markers.
 
-Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts sync-block hermitd` to write shared instructions to the hatch-resolved CLAUDE file and resident duties to `.hermit/RESIDENT.md`. Never regenerate the template by hand.
+Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts sync-block hermitd` to write shared instructions to the hatch-resolved CLAUDE file and resident duties to `.hermit/RESIDENT.md`. Never regenerate the template by hand. On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 For the target file:
 - If it exists: check if it already contains `hermitd: Session Discipline`
@@ -493,14 +493,14 @@ sealed entries the target lacks, and any entries from retired plugin versions it
    (No auto-mode step here: the classifier reads `autoMode` only from user scope, managed settings, or `--settings`, so there is nothing useful to seed into a project settings file. `hermitd-start` renders the hermit's classifier policy into a per-session overlay at every boot and launches with `--settings`.)
 5. If the operator declines: skip, and note: "You may be prompted to approve hook commands during sessions. Run `/hermitd:hermit-settings permissions` to add them later."
 
-**Seed `state/template-manifest.json`** (deferred from Step 2 — now that the `bun */scripts/manifest-seed.ts*` permission is in place). It records the sha256 pristine-baseline that the `hermit-evolve` drift signals depend on. The script computes the hashes (an LLM cannot sha256 reliably). Read the current plugin version from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json`, then run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit` with this JSON on stdin:
+**Seed `state/template-manifest.json`** (deferred from Step 2 — now that the `bun */scripts/manifest-seed.ts*` permission is in place). It records the sha256 pristine-baseline that the `hermit-evolve` drift signals depend on. The script computes the hashes (an LLM cannot sha256 reliably). Read the current plugin version from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit` with this JSON on stdin:
 
 ```json
 {
-  "pluginVersion": "<version>",
+  "plugin_version": "<version>",
   "entries": [
     { "key": "templates/PROPOSAL.md.template", "file": "${CLAUDE_PLUGIN_ROOT}/state-templates/PROPOSAL.md.template" },
-    { "keyPrefix": "bin", "dir": "${CLAUDE_PLUGIN_ROOT}/state-templates/bin" }
+    { "key_prefix": "bin", "dir": "${CLAUDE_PLUGIN_ROOT}/state-templates/bin" }
   ]
 }
 ```
@@ -559,7 +559,7 @@ After Steps 6–9 complete, run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd --target <local|committed>
 ```
 
-with the target chosen in Step 6. The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. Exits non-zero on a failed write; it prints `{ok, action, target, path}` where `action` is `created`, `repaired`, `updated` or `unchanged`.
+with the target chosen in Step 6. The script owns the whole schema: it stamps the five canonical fields on a fresh file, and on an existing one (a domain hatch may have stamped it first) it preserves the original `stamped_at`/`stamped_by` and records this run in `last_updated_at`/`last_updated_by`. It also repairs a file that exists without a usable `target`. It prints `{action, target, path}` (or `{error}` at exit 1), where `action` is `created`, `repaired`, `updated` or `unchanged`.
 
 This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to inherit the operator's target choice without re-running scope detection.
 
@@ -662,7 +662,7 @@ Run the existing "5a. OPERATOR.md onboarding" step verbatim — same scan, same 
 
 ### Quick Turn 5 — Confirm bundle
 
-Render the preview with the script, so what the operator approves is derived from the answers rather than re-typed:
+Get the preview data from the script, so what the operator approves is derived from the answers rather than re-typed:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERMIT_ANSWERS'
@@ -670,7 +670,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERM
 HERMIT_ANSWERS
 ```
 
-**Write the script's output verbatim as message text before calling `AskUserQuestion`.** The operator cannot see Bash output — the transcript collapses it to "Ran 1 shell command" — so your re-print is the only place the preview exists. Calling `AskUserQuestion` without having written the full table first means the operator approves a configuration they never saw. Do not summarize or narrate around it; emit the table exactly as printed. Nothing has been written at this point — the preview says so.
+**Compose the preview as message text before calling `AskUserQuestion`.** The operator cannot see Bash output (the transcript collapses it), so your message is the only preview; asking first means they approve a configuration they never saw. Show every `will_apply` fact as a short table in plain words (`channel: "none"` is the Claude app for now; a chat channel pairs after setup), mark each key in `defaults` as a default, and close with: nothing is written yet, and every default is tunable later with `/hermit-settings`.
 
 Then ask:
 
@@ -722,11 +722,12 @@ On the host, install the operator command after setup, from the project root:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deployment <docker|tmux|interactive>
 ```
 
-**Write its output verbatim as message text** — the operator cannot see Bash output (the transcript collapses it), so your re-print is the report. It reads the written `config.json`, the stamped `hatch-options.json`, and the filesystem — it takes no file list from this session, because a model-composed report can claim a file was written that the operator declined. Anything it could not observe is reported as absent, and a run that never wrote `config.json` is reported as an incomplete hatch rather than a success.
+Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
+
+- `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
+- Otherwise: `agent_name` is hatched; each absence in `observed` (null `claude_block` or `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they refine OPERATOR.md by telling you what changed.
 
 `--deployment` is the one thing it cannot read: Quick Turn 3 asks for it and nothing persists it. On the Advanced branch, pass the deployment the operator described, or `interactive` if they didn't say.
-
-Keep the script's own output — including the "Next" and "Anytime:" blocks — exactly as printed: it is the operator's handoff, and nothing runs on its own after this. (Deployment and channel were already shown back in the Turn 5 confirm preview; no extra line needed here.)
 
 ---
 

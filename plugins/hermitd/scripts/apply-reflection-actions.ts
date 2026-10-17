@@ -10,9 +10,9 @@
 // Stdin: {"resolution_actions":[{proposal_id, action, frontmatter_patch,
 //         shell_findings_line}, ...]}   — a non-null `metrics_event` is rejected;
 //         the `resolved` row is derived here from proposal_id.
-// Output: one JSON line — {"ok":true,"applied":{...}} (+ "errors" when any
-// post-validation write failed) or {"ok":false,"reason":...} with zero writes.
-// Exit 0 always (lib/heartbeat/alert-update.ts pattern); only missing argv exits 1.
+// Output: {"applied":{...}} (+ "errors" when any post-validation write failed),
+// or {"error":"<token>"} with zero writes and exit 1. A rejected entry is
+// `invalid_action:<index>:<problem>`.
 //
 // The whole batch validates before writes. Post-validation write failures are
 // reported per proposal; no journal or task record is written here.
@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pinStateDirOrExit } from './lib/cc-compat';
+import { emitJson, exitError } from './lib/cli';
 import { listProposalFiles, readFileWithFrontmatter } from './lib/frontmatter';
 import { appendEvent, resolvedEvent } from './lib/proposals/event';
 import { sweepMoot } from './lib/proposals/micro';
@@ -32,9 +33,9 @@ const ACTIONS = new Set(['auto-resolve', 'nudge', 'skip']);
 function apply(stateDir: string, stdin: string): Json {
   let input: Json;
   try { input = JSON.parse(stdin); }
-  catch (e: any) { return { ok: false, reason: 'stdin not parseable as JSON: ' + e.message }; }
+  catch { return { error: 'invalid_json' }; }
   const actions = input?.resolution_actions;
-  if (!Array.isArray(actions)) return { ok: false, reason: 'resolution_actions missing or not an array' };
+  if (!Array.isArray(actions)) return { error: 'missing_resolution_actions' };
 
   const proposalsDir = path.join(stateDir, 'proposals');
   const resolvedFiles = new Map<number, string>();
@@ -43,43 +44,33 @@ function apply(stateDir: string, stdin: string): Json {
   // --- Validation pass: reject the whole batch before any write. ---
   for (let i = 0; i < actions.length; i++) {
     const a = actions[i];
-    const label = `entry ${i} (${a?.proposal_id ?? '?'})`;
-    if (!a || typeof a !== 'object') return { ok: false, reason: `${label}: not an object` };
-    if (typeof a.proposal_id !== 'string' || !/^PROP-\d+$/.test(a.proposal_id)) {
-      return { ok: false, reason: `${label}: proposal_id must match PROP-<digits>` };
-    }
-    if (!ACTIONS.has(a.action)) return { ok: false, reason: `${label}: unknown action "${a.action}"` };
+    const invalid = (problem: string) => ({ error: `invalid_action:${i}:${problem}` });
+    if (!a || typeof a !== 'object') return invalid('not_object');
+    if (typeof a.proposal_id !== 'string' || !/^PROP-\d+$/.test(a.proposal_id)) return invalid('bad_proposal_id');
+    if (!ACTIONS.has(a.action)) return invalid('unknown_action');
     // `metrics_event` was a model-authored JSON string appended verbatim after only a
     // JSON.parse check — the last unschema'd write into proposal-metrics.jsonl. It is
     // gone: the row is always a `resolved` for a proposal_id this function already has,
     // so it is now built from that id below. Reject it if a stale runner still sends one,
     // rather than ignoring it and leaving the caller believing it was recorded.
-    if (a.metrics_event != null) {
-      return { ok: false, reason: `${label}: metrics_event is no longer accepted — the resolved row is derived from proposal_id` };
-    }
-    if (a.shell_findings_line != null && typeof a.shell_findings_line !== 'string') {
-      return { ok: false, reason: `${label}: shell_findings_line must be a string or null` };
-    }
+    if (a.metrics_event != null) return invalid('metrics_event_rejected');
+    if (a.shell_findings_line != null && typeof a.shell_findings_line !== 'string') return invalid('bad_shell_findings_line');
     if (a.action !== 'auto-resolve') continue;
 
     const patch = a.frontmatter_patch;
-    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
-      return { ok: false, reason: `${label}: auto-resolve requires a frontmatter_patch object` };
-    }
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return invalid('missing_frontmatter_patch');
     for (const [k, v] of Object.entries(patch)) {
-      if (!PATCH_KEY_RE.test(k)) return { ok: false, reason: `${label}: invalid patch key "${k}"` };
-      if (v !== null && !['string', 'number', 'boolean'].includes(typeof v)) {
-        return { ok: false, reason: `${label}: patch value for "${k}" must be scalar or null` };
-      }
+      if (!PATCH_KEY_RE.test(k)) return invalid('bad_patch_key');
+      if (v !== null && !['string', 'number', 'boolean'].includes(typeof v)) return invalid('non_scalar_patch_value');
     }
     if (listed === null) listed = listProposalFiles(proposalsDir);
-    if (!listed.ok) return { ok: false, reason: 'proposals_dir_unreadable' };
+    if (!listed.ok) return { error: 'proposals_dir_unreadable' };
     // Boundary-safe prefix match: PROP-1 must never match PROP-12.
     const file = (listed.files ?? []).find(f => f.startsWith(a.proposal_id + '-') || f === a.proposal_id + '.md');
-    if (!file) return { ok: false, reason: `${label}: no matching proposal file` };
+    if (!file) return invalid('no_such_proposal');
     const full = path.join(proposalsDir, file);
     const parsed = readFileWithFrontmatter(full);
-    if (!parsed || !parsed.fm) return { ok: false, reason: `${label}: proposal frontmatter unparseable` };
+    if (!parsed || !parsed.fm) return invalid('frontmatter_unparseable');
     resolvedFiles.set(i, full);
   }
 
@@ -115,31 +106,26 @@ function apply(stateDir: string, stdin: string): Json {
     }
   }
 
-  const out: Json = { ok: true, applied };
+  const out: Json = { applied };
   if (errors.length > 0) out.errors = errors;
   return out;
 }
 
 if (import.meta.main) {
   const stateDir = process.argv[2];
-  if (!stateDir) {
-    console.error('Usage: bun apply-reflection-actions.ts <hermit-state-dir>   (stdin: {"resolution_actions":[...]})');
-    process.exit(1);
-  }
+  if (!stateDir) exitError();
   // The state dir is not caller-chosen. This script patches proposal
   // frontmatter and appends to the metrics ledger, and it is reachable through
   // a pre-approved `Bash(bun */scripts/apply-reflection-actions.ts*)` grant
   // that covers every argument — so an unvalidated root let one such call
-  // resolve another project's proposals. Joins the missing-argv exit-1 case
-  // above rather than returning a verdict line, for the same reason.
-  const pinned = pinStateDirOrExit(stateDir, 'apply-reflection-actions.ts');
+  // resolve another project's proposals.
+  const pinned = pinStateDirOrExit(stateDir);
   let stdin = '';
   try { stdin = fs.readFileSync(0, 'utf-8'); } catch { /* treated as unparseable below */ }
   let result: Json;
   try { result = apply(pinned, stdin); }
-  catch (e: any) { result = { ok: false, reason: 'error: ' + e.message }; }
-  process.stdout.write(JSON.stringify(result) + '\n');
-  process.exit(0);
+  catch (e: any) { result = { error: `unexpected:${e.message}` }; }
+  emitJson(result);
 }
 
 export { apply, patchFrontmatter };

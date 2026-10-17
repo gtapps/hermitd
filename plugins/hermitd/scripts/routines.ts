@@ -27,6 +27,9 @@
 //     attempts, skips, and windowed cost. The fronting script for reflect and
 //     hermit-evolution, which used to tail and hand-parse the ledgers themselves.
 //
+// `due` keeps its ROUTINE_DUE line grammar, an exception to the helper-output
+// convention: the monitor relays it as the wake notification.
+//
 // Verb dispatch is lazy, and for the first two the verb is spliced out of
 // process.argv so each module keeps the argv indices it used as a standalone
 // script: scheduling and cron matching stay byte-for-byte unchanged rather
@@ -34,9 +37,7 @@
 // interval, so it has no business loading the registry or tz-shift graphs to
 // do it.
 
-export {}; // module scope: every import here is dynamic, and top-level await needs it
-
-const USAGE = 'Usage: bun routines.ts <due|precheck|finish|tz-shift|log-event|health|arm> [args...]';
+import { exitError } from './lib/cli'; // fs only; every verb module stays dynamic
 
 const verb = process.argv[2];
 const rest = process.argv.slice(3);
@@ -82,6 +83,5 @@ switch (verb) {
   }
 
   default:
-    console.error(USAGE);
-    process.exit(1);
+    exitError();
 }

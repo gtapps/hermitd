@@ -47,8 +47,9 @@ function git(cwd: string, ...args: string[]): void {
 test('balanced: a diff of only state bookkeeping does NOT run cleanup', () => {
   const { root, stateDir } = projectAt('balanced');
   const v = decide(stateDir, undefined, ['.hermit/state/runtime.json'], root);
-  expect(v.action).toBe('SKIP');
-  expect(v.reason).toContain('session bookkeeping');
+  expect(v.status).toBe('skip');
+  expect(v.reason).toBe('bookkeeping_only');
+  expect(v.detail).toContain('session bookkeeping');
   expect(v.focus_files).toEqual([]);
 });
 
@@ -58,13 +59,13 @@ describe('tier resolution', () => {
   test('budget never runs cleanup, even with code changed', () => {
     const { root, stateDir } = projectAt('budget');
     const v = decide(stateDir, undefined, ['scripts/thing.ts'], root);
-    expect(v).toMatchObject({ tier: 'budget', action: 'SKIP' });
+    expect(v).toMatchObject({ tier: 'budget', status: 'skip' });
   });
 
   test('quality always runs cleanup and passes focus files through', () => {
     const { root, stateDir } = projectAt('quality');
     const v = decide(stateDir, undefined, ['README.md'], root);
-    expect(v).toMatchObject({ tier: 'quality', action: 'RUN' });
+    expect(v).toMatchObject({ tier: 'quality', status: 'run' });
     expect(v.focus_files).toEqual(['README.md']);
   });
 
@@ -103,14 +104,14 @@ describe('bookkeeping exclusions (each dropped individually)', () => {
   for (const p of EXCLUDED) {
     test(`drops ${p}`, () => {
       const { root, stateDir } = projectAt('balanced');
-      expect(decide(stateDir, undefined, [p], root).action).toBe('SKIP');
+      expect(decide(stateDir, undefined, [p], root).status).toBe('skip');
     });
   }
 
   test('an excluded path alongside a code change still runs cleanup', () => {
     const { root, stateDir } = projectAt('balanced');
     const v = decide(stateDir, undefined, ['.hermit/state/runtime.json', 'scripts/x.ts'], root);
-    expect(v.action).toBe('RUN');
+    expect(v.status).toBe('run');
     expect(v.focus_files).toEqual(['scripts/x.ts']);
   });
 
@@ -118,63 +119,63 @@ describe('bookkeeping exclusions (each dropped individually)', () => {
     const { root, stateDir } = projectAt('balanced');
     // The pattern is anchored on `state/<name>.jsonl` — a bare data file elsewhere
     // is a real change, and silently dropping it would be a false SKIP.
-    expect(decide(stateDir, undefined, ['fixtures/sample.jsonl'], root).action).toBe('SKIP');
-    expect(decide(stateDir, undefined, ['fixtures/state/sample.jsonl'], root).action).toBe('SKIP');
+    expect(decide(stateDir, undefined, ['fixtures/sample.jsonl'], root).status).toBe('skip');
+    expect(decide(stateDir, undefined, ['fixtures/state/sample.jsonl'], root).status).toBe('skip');
   });
 });
 
 // ------------------------------------------------------ balanced rubric
 
 describe('balanced classification', () => {
-  const cases: Array<[string, string, 'RUN' | 'SKIP']> = [
-    ['code — ts', 'scripts/a.ts', 'RUN'],
-    ['code — sh', 'bin/a.sh', 'RUN'],
-    ['code — py', 'tools/a.py', 'RUN'],
-    ['code — go', 'cmd/a.go', 'RUN'],
-    ['code — rs', 'src/a.rs', 'RUN'],
-    ['code — js', 'web/a.js', 'RUN'],
-    ['instruction — SKILL.md', 'skills/foo/SKILL.md', 'RUN'],
-    ['instruction — agents', 'agents/reviewer.md', 'RUN'],
-    ['docs — README', 'README.md', 'SKIP'],
-    ['docs — CHANGELOG', 'CHANGELOG.md', 'SKIP'],
-    ['docs — docs tree', 'docs/security.md', 'SKIP'],
-    ['docs — plain md', 'notes/thinking.md', 'SKIP'],
-    ['other — gitignore', '.gitignore', 'SKIP'],
-    ['other — txt', 'fixture.txt', 'SKIP'],
+  const cases: Array<[string, string, 'run' | 'skip']> = [
+    ['code — ts', 'scripts/a.ts', 'run'],
+    ['code — sh', 'bin/a.sh', 'run'],
+    ['code — py', 'tools/a.py', 'run'],
+    ['code — go', 'cmd/a.go', 'run'],
+    ['code — rs', 'src/a.rs', 'run'],
+    ['code — js', 'web/a.js', 'run'],
+    ['instruction — SKILL.md', 'skills/foo/SKILL.md', 'run'],
+    ['instruction — agents', 'agents/reviewer.md', 'run'],
+    ['docs — README', 'README.md', 'skip'],
+    ['docs — CHANGELOG', 'CHANGELOG.md', 'skip'],
+    ['docs — docs tree', 'docs/security.md', 'skip'],
+    ['docs — plain md', 'notes/thinking.md', 'skip'],
+    ['other — gitignore', '.gitignore', 'skip'],
+    ['other — txt', 'fixture.txt', 'skip'],
   ];
 
   for (const [label, file, expected] of cases) {
     test(`${label} → ${expected}`, () => {
       const { root, stateDir } = projectAt('balanced');
-      expect(decide(stateDir, undefined, [file], root).action).toBe(expected);
+      expect(decide(stateDir, undefined, [file], root).status).toBe(expected);
     });
   }
 
   test('an empty candidate set skips', () => {
     const { root, stateDir } = projectAt('balanced');
     const v = decide(stateDir, undefined, [], root);
-    expect(v.action).toBe('SKIP');
-    expect(v.reason).toContain('no files changed');
+    expect(v.status).toBe('skip');
+    expect(v.reason).toBe('no_files_changed');
   });
 
   test('a path containing spaces is classified by extension, not mangled', () => {
     const { root, stateDir } = projectAt('balanced');
-    expect(decide(stateDir, undefined, ['my scripts/some file.ts'], root).action).toBe('RUN');
+    expect(decide(stateDir, undefined, ['my scripts/some file.ts'], root).status).toBe('run');
   });
 
-  test('category is recorded in the reason but does not decide', () => {
+  test('category is recorded in the detail but does not decide', () => {
     const { root, stateDir } = projectAt('balanced');
     const prop = proposalAt(root, 'constraint');
     // `constraint` used to "lean SKIP" as a category prior; observed change wins.
     const v = decide(stateDir, prop, ['scripts/a.ts'], root);
-    expect(v.action).toBe('RUN');
-    expect(v.reason).toContain('constraint');
+    expect(v.status).toBe('run');
+    expect(v.detail).toContain('constraint');
   });
 
   test('a missing proposal file does not break the verdict', () => {
     const { root, stateDir } = projectAt('balanced');
     const v = decide(stateDir, path.join(root, 'nope.md'), ['scripts/a.ts'], root);
-    expect(v.action).toBe('RUN');
+    expect(v.status).toBe('run');
   });
 });
 
@@ -195,20 +196,20 @@ describe('structured config changes (needs a real diff)', () => {
     const { root, stateDir } = gitProjectAt('balanced');
     fs.writeFileSync(path.join(root, 'conf.json'), JSON.stringify({ version: '1.0.1', retries: 3 }, null, 2) + '\n');
     const v = decide(stateDir, undefined, ['conf.json'], root);
-    expect(v.action).toBe('SKIP');
+    expect(v.status).toBe('skip');
   });
 
   test('a new key in JSON is structural and runs', () => {
     const { root, stateDir } = gitProjectAt('balanced');
     fs.writeFileSync(path.join(root, 'conf.json'), JSON.stringify({ version: '1.0.0', retries: 3, timeout: 9 }, null, 2) + '\n');
     const v = decide(stateDir, undefined, ['conf.json'], root);
-    expect(v.action).toBe('RUN');
-    expect(v.reason).toContain('structural');
+    expect(v.status).toBe('run');
+    expect(v.reason).toBe('structural_change');
   });
 
   test('outside git a structured file cannot be proven value-only, so it runs', () => {
     const { root, stateDir } = projectAt('balanced');
-    expect(decide(stateDir, undefined, ['conf.json'], root).action).toBe('RUN');
+    expect(decide(stateDir, undefined, ['conf.json'], root).status).toBe('run');
   });
 
   test('a project below the git root still resolves the repo-root-relative pathspec', () => {
@@ -226,14 +227,14 @@ describe('structured config changes (needs a real diff)', () => {
     // `sub/conf.json` is the frame git emits. Read as a pathspec relative to
     // `project` it would match nothing, the diff would come back empty, and a
     // plain version bump would be misclassified as structural.
-    expect(decide(stateDir, undefined, ['sub/conf.json'], project).action).toBe('SKIP');
+    expect(decide(stateDir, undefined, ['sub/conf.json'], project).status).toBe('skip');
   });
 
   test('the working-tree diff is used when no files are supplied', () => {
     const { root, stateDir } = gitProjectAt('balanced');
     fs.writeFileSync(path.join(root, 'app.ts'), 'export const x = 1;\n');
     const v = decide(stateDir, undefined, null, root);
-    expect(v.action).toBe('RUN');
+    expect(v.status).toBe('run');
     expect(v.focus_files).toContain('app.ts');
   });
 
@@ -241,7 +242,7 @@ describe('structured config changes (needs a real diff)', () => {
     const { root, stateDir } = gitProjectAt('balanced');
     fs.writeFileSync(path.join(root, 'unrelated.ts'), 'export const y = 2;\n');
     const v = decide(stateDir, undefined, ['doc.md'], root);
-    expect(v.action).toBe('SKIP');
+    expect(v.status).toBe('skip');
     expect(v.focus_files).toEqual([]);
   });
 
@@ -255,14 +256,14 @@ describe('structured config changes (needs a real diff)', () => {
   test('a clean git worktree skips', () => {
     const { root, stateDir } = gitProjectAt('balanced');
     const v = decide(stateDir, undefined, null, root);
-    expect(v.action).toBe('SKIP');
+    expect(v.status).toBe('skip');
   });
 
   test('outside git with no supplied files reports missing evidence, never a crash', () => {
     const { root, stateDir } = projectAt('balanced');
     const v = decide(stateDir, undefined, null, root);
-    expect(v.action).toBe('SKIP');
-    expect(v.reason).toContain('no file evidence');
+    expect(v.status).toBe('skip');
+    expect(v.reason).toBe('no_file_evidence');
   });
 });
 
@@ -275,20 +276,20 @@ describe('CLI contract', () => {
     expect(r.exitCode).toBe(0);
     const lines = r.stdout.trim().split('\n');
     expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0])).toMatchObject({ tier: 'balanced', action: 'RUN' });
+    expect(JSON.parse(lines[0])).toMatchObject({ tier: 'balanced', status: 'run' });
   });
 
   test('a missing state dir is a usage error, matching every other verb', async () => {
     const r = await runScript('proposal.ts', { args: ['quality-gate'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('quality-gate');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
   });
 
   test('malformed --files-json falls back rather than failing the call', async () => {
     const { root, stateDir } = projectAt('balanced');
     const r = await runProposal(stateDir, ['quality-gate', '--files-json', '{not json'], { cwd: root });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim()).action).toBe('SKIP');
+    expect(JSON.parse(r.stdout.trim()).status).toBe('skip');
   });
 });
 

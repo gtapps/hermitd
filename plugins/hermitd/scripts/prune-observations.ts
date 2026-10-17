@@ -1,6 +1,7 @@
 // Prunes the sub-threshold observations ledger (state/observations.jsonl).
 // Zero npm dependencies, Node stdlib only.
 // Usage: bun prune-observations.ts <hermit-state-dir>
+// Output: `{"pruned":N,"kept":N}` (a missing ledger is `{"pruned":0,"kept":0}`).
 //
 // Keep rule: an entry survives iff its ts is within the retention window, OR
 // any entry sharing its pattern is within the window (recurrence keeps a
@@ -9,6 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { emitJson, exitError } from './lib/cli';
 
 type Json = any;
 
@@ -16,10 +18,7 @@ const RETENTION_DAYS = 30;
 
 const stateDir = process.argv[2];
 
-if (!stateDir) {
-  console.error('Usage: bun prune-observations.ts <hermit-state-dir>');
-  process.exit(1);
-}
+if (!stateDir) exitError();
 
 const ledgerPath = path.join(stateDir, 'state', 'observations.jsonl');
 
@@ -27,8 +26,7 @@ let content: string;
 try {
   content = fs.readFileSync(ledgerPath, 'utf-8');
 } catch {
-  console.log('pruned 0, kept 0');
-  process.exit(0);
+  emitJson({ pruned: 0, kept: 0 });
 }
 
 const cutoffMs = Date.now() - RETENTION_DAYS * 86400000;
@@ -55,4 +53,4 @@ if (kept.length < lines.length) {
   fs.renameSync(tmp, ledgerPath);
 }
 
-console.log(`pruned ${lines.length - kept.length}, kept ${kept.length}`);
+emitJson({ pruned: lines.length - kept.length, kept: kept.length });

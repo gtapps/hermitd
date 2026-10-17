@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { defaultConfigDir } from './setup-token';
+import { exitError } from './cli';
 
 type Json = any;
 type TriState = { state: string; count: number; entries: Json[] };
@@ -203,26 +204,15 @@ function assertUnderStateDir(argvValue: string, subdir: string): string | null {
   return pinnedRoot(resolved, isUnder);
 }
 
-// Shared pin-or-exit tail for scripts reached through a wildcarded
-// `Bash(bun */scripts/<name>.ts*)` grant: assert the pin, and on a miss print
-// a scriptLabel-prefixed usage error to stderr and exit 1 — never a stdout
-// verdict, so it's safe regardless of a caller's own stdout grammar.
-function pinStateDirOrExit(argvValue: string, scriptLabel: string): string {
-  const pinned = assertStateDir(argvValue);
-  if (pinned) return pinned;
-  console.error(`${scriptLabel}: state dir must be this project's (${hermitDir()}); got ${argvValue}`);
-  process.exit(1);
+// assertStateDir(), or exit 1 with `{"error":"foreign_state_dir:<expected dir>"}`
+// naming the dir to rerun with.
+function pinStateDirOrExit(argvValue: string): string {
+  return assertStateDir(argvValue) ?? exitError(`foreign_state_dir:${hermitDir()}`);
 }
 
-// Containment counterpart for callers whose argv is a file or subdirectory
-// under the state dir, not the dir itself. `noun` names what argv represents
-// in the error message (e.g. "state dir", "state file"); `subdir` narrows the
-// accepted branch as described on assertUnderStateDir().
-function pinUnderStateDirOrExit(argvValue: string, scriptLabel: string, noun: string, subdir: string): string {
-  const pinned = assertUnderStateDir(argvValue, subdir);
-  if (pinned) return pinned;
-  console.error(`${scriptLabel}: ${noun} must be under ${path.join(hermitDir(), subdir)}; got ${argvValue}`);
-  process.exit(1);
+// assertUnderStateDir(), or exit 1 with the same `foreign_state_dir:<expected dir>` error.
+function pinUnderStateDirOrExit(argvValue: string, subdir: string): string {
+  return assertUnderStateDir(argvValue, subdir) ?? exitError(`foreign_state_dir:${hermitDir()}`);
 }
 
 // ---------------------------------------------------------------------------

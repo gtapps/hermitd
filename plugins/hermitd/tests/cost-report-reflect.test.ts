@@ -1,8 +1,8 @@
-// cost-report.ts reflect --plain mode: the channel-safe "why is my bill high" answer
-// (audit's "plain spend statement" PR). Verifies composition (total vs typical,
-// drivers named by work, cap status, notional caveat) and — the load-bearing
-// property — that the output never leaks the raw token-category vocabulary the
-// table mode uses (cache_read/cache_write, raw source strings, session ids).
+// cost-report.ts reflect --plain mode: the channel-safe "why is my bill high" data
+// set. Verifies composition (today vs typical, drivers named by work, cap status)
+// and, the load-bearing property, that the output never carries the raw
+// token-category vocabulary the table mode uses (cache_read/cache_write, raw source
+// strings, session ids) for a channel reply to leak.
 //
 // Subprocess test (via runScript): the reflect verb is invoked as a standalone
 // script, exactly how the SKILL.md Step 1 command runs it.
@@ -85,22 +85,24 @@ function setup(budget: object | null, entries: LogEntry[]): { dir: string; cchDi
   return { dir, cchDir };
 }
 
-async function runPlain(cchDir: string): Promise<string> {
+async function runPlain(cchDir: string): Promise<{ raw: string; out: any }> {
   const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '--plain'] });
   expect(result.exitCode).toBe(0);
-  return result.stdout;
+  return { raw: result.stdout, out: JSON.parse(result.stdout) };
 }
 
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
 describe('cost-reflect --plain: no data', () => {
-  test('reports "no spend recorded" rather than the table-mode message', async () => {
+  test('reports the empty status rather than zero figures', async () => {
     const { cchDir } = setup(null, []);
-    const out = await runPlain(cchDir);
-    expect(out.trim()).toBe('No spend recorded yet.');
+    const { out } = await runPlain(cchDir);
+    expect(out).toEqual({ status: 'empty', reason: 'no_cost_data' });
   });
 });
 
 describe('cost-reflect --plain: composition', () => {
-  test('total, drivers, cap status, and caveat all render', async () => {
+  test('today, drivers, and cap status all carry their figures', async () => {
     const { cchDir } = setup(
       { daily_usd: 10.0, weekly_usd: null, monthly_usd: null, action: 'alert' },
       [
@@ -111,41 +113,46 @@ describe('cost-reflect --plain: composition', () => {
         { daysAgo: 3, source: 'channel:discord' },
       ],
     );
-    const out = await runPlain(cchDir);
+    const { out } = await runPlain(cchDir);
 
     // Today's total is the sum of today's stored estimated_cost_usd.
     const todayTotal = cost({ daysAgo: 0, source: 'other', input: 1000, cacheWrite: 2000, cacheRead: 50000, output: 3000 })
       + cost({ daysAgo: 0, source: 'heartbeat' });
-    expect(out).toContain(`Today: $${todayTotal.toFixed(2)}`);
+    expect(out.today_usd).toBe(round4(todayTotal));
 
-    // Drivers named by work, not by raw source string.
-    expect(out).toContain('Mostly from');
-    expect(out).toContain('our conversations');
-    expect(out).toContain('background check-ins');
-    expect(out).toContain('scheduled routines');
+    // Drivers named by work, not by raw source string, capped at three.
+    const works = out.drivers.map((d: any) => d.work);
+    expect(works).toHaveLength(3);
+    expect(works).toContain('conversations');
+    expect(works).toContain('scheduled_routines');
 
-    // Two distinct routine:<id> sources collapse into one "scheduled routines"
-    // bucket rather than appearing as two separate driver entries.
-    expect((out.match(/scheduled routines/g) ?? []).length).toBe(1);
+    // Two distinct routine:<id> sources collapse into one scheduled_routines entry.
+    expect(works.filter((w: string) => w === 'scheduled_routines')).toHaveLength(1);
 
-    // Cap status, reusing the same phrasing as the deterministic status hook.
-    expect(out).toContain(`Today: $${todayTotal.toFixed(2)} of $10.00 cap.`);
-
-    // Notional-dollars caveat, one line.
-    expect(out).toContain('These dollar figures are an estimate');
+    // Cap status, from the same figures the deterministic status hook phrases.
+    expect(out.budget).toEqual({ period: 'daily', spend_usd: round4(todayTotal), cap_usd: 10 });
   });
 
-  test('cap line is omitted when no budget is configured', async () => {
-    const { cchDir } = setup(null, [{ daysAgo: 0, source: 'other' }]);
-    const out = await runPlain(cchDir);
-    expect(out).not.toContain('cap.');
+  test('channel sources are named channel_messages', async () => {
+    const { cchDir } = setup(
+      { daily_usd: null, weekly_usd: null, monthly_usd: null, action: 'alert' },
+      [{ daysAgo: 0, source: 'channel:discord' }, { daysAgo: 0, source: 'channel:telegram' }],
+    );
+    const { out } = await runPlain(cchDir);
+    expect(out.drivers.map((d: any) => d.work)).toEqual(['channel_messages']);
   });
 
-  test('typical-day comparison is omitted with no prior-day history', async () => {
+  test('budget is null when no cap is configured', async () => {
     const { cchDir } = setup(null, [{ daysAgo: 0, source: 'other' }]);
-    const out = await runPlain(cchDir);
-    const todayLine = out.split('\n')[0];
-    expect(todayLine).toMatch(/^Today: \$[\d.]+\.$/); // no " — ... typical day" suffix
+    const { out } = await runPlain(cchDir);
+    expect(out.budget).toBeNull();
+  });
+
+  test('typical-day comparison is null with no prior-day history', async () => {
+    const { cchDir } = setup(null, [{ daysAgo: 0, source: 'other' }]);
+    const { out } = await runPlain(cchDir);
+    expect(out.typical_day_usd).toBeNull();
+    expect(out.vs_typical).toBeNull();
   });
 
   test('typical-day comparison names a direction with prior-day history', async () => {
@@ -153,8 +160,9 @@ describe('cost-reflect --plain: composition', () => {
       { daysAgo: 0, source: 'other', cacheRead: 100000, output: 5000 }, // big today
       { daysAgo: 1, source: 'other', cacheRead: 1000, output: 50 }, // tiny prior day
     ]);
-    const out = await runPlain(cchDir);
-    expect(out.split('\n')[0]).toContain('typical day');
+    const { out } = await runPlain(cchDir);
+    expect(out.vs_typical).toBe('higher');
+    expect(out.typical_day_usd).toBeGreaterThan(0);
   });
 });
 
@@ -169,15 +177,15 @@ describe('cost-reflect --plain: no-jargon invariant', () => {
         { daysAgo: 2, source: 'channel:discord' },
       ],
     );
-    const out = await runPlain(cchDir);
+    const { raw: out } = await runPlain(cchDir);
 
-    // Token-category vocabulary (the table mode's header, cost-reflect.ts:132-136).
-    for (const jargon of ['cache_read', 'cache_write', 'token type', 'turns /']) {
+    // Token-category vocabulary (the table mode's by_type keys).
+    for (const jargon of ['cache_read', 'cache_write', 'token', 'turns']) {
       expect(out).not.toContain(jargon);
     }
     // Raw source strings must be translated, never passed through.
-    for (const raw of ['heartbeat', 'routine:', 'channel:']) {
-      expect(out.toLowerCase()).not.toContain(raw);
+    for (const rawSource of ['heartbeat', 'routine:', 'channel:']) {
+      expect(out.toLowerCase()).not.toContain(rawSource);
     }
     // No internal IDs or slash commands.
     expect(out).not.toMatch(/PROP-\d/);
@@ -192,8 +200,9 @@ describe('cost-reflect table mode: unaffected by --plain', () => {
     const { cchDir } = setup(null, [{ daysAgo: 0, source: 'other' }]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('### Cost by token type');
-    expect(result.stdout).toContain('cache_read');
+    const out = JSON.parse(result.stdout);
+    expect(out.window_days).toBe(7);
+    expect(out.by_type.cache_read).toBeDefined();
   });
 });
 
@@ -205,8 +214,9 @@ describe('cost-reflect table mode: stored dollars, never re-priced', () => {
     ]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('$20.00');
-    expect(result.stdout).not.toContain('cache_read');
+    const out = JSON.parse(result.stdout);
+    expect(out.total_usd).toBe(20);
+    expect(out.by_type).toBeNull();
   });
 
   test('a mixed window shows the split from cost_by_type rows only', async () => {
@@ -219,10 +229,14 @@ describe('cost-reflect table mode: stored dollars, never re-priced', () => {
     ]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('$8.00');
-    expect(result.stdout).toContain('cache_read $2.00');
-    expect(result.stdout).toContain('cache_write $0.50');
-    expect(result.stdout).toContain('output $1.50');
-    expect(result.stdout).toContain('input $1.00');
+    const out = JSON.parse(result.stdout);
+    expect(out.total_usd).toBe(8);
+    expect(out.by_type).toEqual({
+      typed_total_usd: 5,
+      cache_read: { cost_usd: 2, pct: 40 },
+      cache_write: { cost_usd: 0.5, pct: 10 },
+      output: { cost_usd: 1.5, pct: 30 },
+      input: { cost_usd: 1, pct: 20 },
+    });
   });
 });

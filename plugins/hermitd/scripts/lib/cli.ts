@@ -1,7 +1,8 @@
 // Shared primitives for the scripts/*.ts verdict-line CLI contract (see
 // CLAUDE.md § Token discipline): emit() writes a bare stdout token (e.g. `OK`)
 // and exits 0; printJson() writes one JSON object line; emitJson() writes it
-// and exits 1 when it carries an `error` key, else 0; failJson() prints a caught
+// and exits 1 when it carries an `error` key, else 0; exitError() prints a usage
+// or argument error as `{"error":"<token>"}` and exits 1; failJson() prints a caught
 // error as `{"error":"<token>"}` and sets exit 1 without exiting; readStdin() reads a
 // heredoc payload to completion untrimmed (callers trim where the original
 // per-script behavior trimmed); readJson() is a tolerant JSON-file reader for
@@ -25,6 +26,10 @@ function printJson(obj: object): void {
 function emitJson(obj: object): never {
   printJson(obj);
   process.exit('error' in obj ? 1 : 0);
+}
+
+function exitError(token = 'usage'): never {
+  return emitJson({ error: token });
 }
 
 /**
@@ -82,4 +87,4 @@ function flagEq(argv: string[], name: string): string | undefined {
   return hit === undefined ? undefined : hit.slice(name.length + 3);
 }
 
-export { emit, printJson, emitJson, failJson, snakeToken, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };
+export { emit, printJson, emitJson, exitError, failJson, snakeToken, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };

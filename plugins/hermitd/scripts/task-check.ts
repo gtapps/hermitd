@@ -2,7 +2,7 @@ import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
 import { runEvidence } from './lib/evidence-runner';
 import { scanForInjection } from './lib/injection-scan';
-import { mutateTask, TASK_ID } from './lib/tasks';
+import { mutateTask, reportTaskError, TASK_ID } from './lib/tasks';
 
 async function main(): Promise<void> {
   const [id, ...extra] = process.argv.slice(2);
@@ -20,4 +20,4 @@ async function main(): Promise<void> {
     'result-rev': String(snapshot.result_rev), exit: String(result.exit), 'output-stdin': true,
   }, result.output)));
 }
-main().catch((error: Error) => { console.error(error.message); process.exitCode = 2; });
+main().catch(reportTaskError);

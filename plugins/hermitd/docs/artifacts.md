@@ -137,7 +137,7 @@ A hermit that has run `/hermit-dashboard-design` owns its dashboard render outri
 The skill writes `.hermit/dashboard-render.ts`; **the file's presence is the
 switch** (no config flag), and `artifact.ts render dashboard` then hands the whole render
 to it — `spawnSync`, 60s timeout, the child's stdout receipt relayed verbatim, a non-zero
-child exit surfaced as exit 1 so step 5's skip-silently rule applies unchanged. An exit-0
+child exit surfaced as `{"error":"render_failed:dashboard"}` at exit 1 so step 5's skip-silently rule applies unchanged. An exit-0
 run whose stdout doesn't parse as a `{path,hash}` receipt is failed the same way, since
 step 1 parses that stdout — the *page* is unvalidated, the *receipt* is core's protocol.
 An explicit `outPath` is rejected rather than ignored (the renderer's contract fixes its
@@ -155,11 +155,13 @@ stays out of the hash, escaping everything file-derived, no imports from the plu
 version-stamped cache path) lives in the skill that writes it, not in a core gate.
 
 `bun scripts/artifact.ts state dashboard <hermit-dir>` is the read-only companion verb a
-renderer composes from: `{state, themeCss, coreSections, updatedToken}` — the same
+renderer composes from: `{state, theme_css, core_sections, updated_token}` — the same
 `DashboardState` the built-in page renders from, the live `artifact-theme.ts` stylesheet
-(so core theme fixes reach custom pages without regenerating them), the five default cards
-as ready-to-embed HTML, and the hash placeholder. A custom page may use all of it, some of
-it, or none.
+(so core theme fixes reach custom pages without regenerating them), the default cards
+as ready-to-embed HTML keyed `status`, `by_person`, `brief`, `proposals`, `weekly` and
+`compiled_index`, and the hash placeholder. Every key in the payload, nested state
+included, is snake_case (`state.today_cost_usd`, `state.proposals.oldest_open_accepted`,
+`state.weekly.body_html`). A custom page may use all of it, some of it, or none.
 
 ## Proposals page
 
@@ -221,7 +223,7 @@ Claude Code's `artifact-design` skill needs to touch — `dashboard.ts` and
 (§ Custom renderer) is outside that guarantee by design: it owns its own layout and may
 style the page however its operator wants. It is not cut off from core's design work,
 though — the `state dashboard` verb hands it the current stylesheet on every render, so a
-renderer that uses `themeCss` picks up theme fixes without being regenerated.
+renderer that uses `theme_css` picks up theme fixes without being regenerated.
 `artifact-design` is prose guidance with nothing importable, so the sync mechanism is
 deliberate: keep every decision in one module, and encode the checkable rules as
 `tests/artifact-theme.test.ts`. When that skill gains a mechanically-checkable

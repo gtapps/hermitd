@@ -81,7 +81,7 @@ When the operator accepts a proposal:
      ```
      bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts success-signal --validate "<predicate line>"
      ```
-     Exit 0 → plan a stdin `Set: success_signal=<predicate line>` line for the patch call (free text — never argv `--set`). Exit non-zero → plan a `task.ts note .hermit <id>` warning when running inside an open record, otherwise report the warning: `PROP-NNN success_signal ignored: <reason printed by the script>`. No section, or empty/comment-only → leave `success_signal` unset. Never block accept regardless of outcome.
+     `OK` → plan a stdin `Set: success_signal=<predicate line>` line for the patch call (free text — never argv `--set`). Status `invalid` → plan a `task.ts note .hermit <id>` warning when running inside an open record, otherwise report the warning: `PROP-NNN success_signal ignored: <reason>`. No section, or empty/comment-only → leave `success_signal` unset. Never block accept regardless of outcome.
 
 3. **Patch.** One call applies the frontmatter flip, session tracking, success signal, and the Operator Decision timestamp — assembled from what step 2 determined:
    ```bash

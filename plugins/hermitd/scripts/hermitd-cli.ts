@@ -6,6 +6,7 @@ import { isContainer } from './lib/container';
 import { resolvePlugin, isResolveError } from './lib/domain-hatch/resolve';
 import { marketplace, readRegistry, registerProject, prune } from './lib/host-registry';
 import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatus, inspect } from './lib/hermit-status';
+import { printJson } from './lib/cli';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
 function execute(command: string, args: string[], project: string): number {
@@ -68,6 +69,22 @@ function updateProject(project: string, args: string[], docker: boolean): number
   const fresh = hostInstall(project);
   return dockerScript(project, ['update', ...args], fresh.installPath);
 }
+// `install` is the one helper verb here (hatch and docker-setup run it), so it prints the
+// helper-script output; every other verb is an operator CLI. PATH notices stay on stderr.
+function install(args: string[], cwd: string, root: string): number {
+  try {
+    if (isContainer()) { printJson({ status: 'skip', reason: 'container' }); return 0; }
+    const project = target(args, 'install', cwd, root);
+    if (!marketplace(root)) { printJson({ status: 'skip', reason: 'no_marketplace' }); return 0; }
+    const { id, scope, projectPath } = hostInstall(project);
+    const skipped = installHost(project, root, { id, scope, projectPath });
+    if (skipped) printJson(skipped); else console.log('OK');
+    return 0;
+  } catch (error) {
+    printJson({ error: `install_failed:${error instanceof Error ? error.message : error}` });
+    return 1;
+  }
+}
 function list(root: string, cwd: string, json: boolean): void {
   const entries = registry(root);
   const projects = new Map(entries.map(entry => [entry.project_dir, { registered: true, state: entry.state, name: entry.name }]));
@@ -99,7 +116,8 @@ function list(root: string, cwd: string, json: boolean): void {
 }
 export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = coreRoot): number {
   const [verb, ...args] = argv;
-  if (['install', 'register'].includes(verb) && isContainer()) return 0;
+  if (verb === 'install') return install(args, cwd, root);
+  if (verb === 'register' && isContainer()) return 0;
   if (verb === 'list') { list(root, cwd, args.includes('--json')); return 0; }
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
@@ -108,12 +126,6 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     throw new Error('Usage: hermitd list|status|start|stop|restart|attach|update|prune|docker|pause|watchdog|run [name] [args]');
   }
   const project = target(args, verb, cwd, root);
-  if (verb === 'install') {
-    if (!marketplace(root)) return 0;
-    const { id, scope, projectPath } = hostInstall(project);
-    installHost(project, root, { id, scope, projectPath });
-    return 0;
-  }
   if (verb === 'register') {
     registerProject(project, root, fs.existsSync(path.join(project, 'docker-compose.hermit.yml')) ? 'docker' : 'tmux');
     return 0;

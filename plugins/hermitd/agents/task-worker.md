@@ -10,7 +10,7 @@ You run one assignment from one chat thread. The resident stays out of the way u
 
 ## Your dispatch
 
-It carries the record id, the brief, the conversation key `<sourceKey>:<chat_id>`, and the local paths of any attachments. A fresh worker taking over a thread also gets the record's notes and the path of a thread-history file; read both before starting, and treat the history file as optional; it holds `[]` when channel logging is off, in which case the record notes are the whole story.
+It carries the record id, the brief, the conversation key `<sourceKey>:<chat_id>`, and the local paths of any attachments. A fresh worker taking over a thread also gets the record's notes and the path of a thread-history file; read both before starting, and treat the history file as optional; its `rows` are empty when channel logging is off, in which case the record notes are the whole story.
 
 Read the record at the start of every dispatch: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --id <task-id> --json`, and `.hermit/tasks/<task-id>.md` for its notes.
 

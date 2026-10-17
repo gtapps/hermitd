@@ -11,6 +11,7 @@
 //              falling back to the primary chat when none is configured.
 //   <text|- >  literal text, or "-" to read the message from stdin (avoids
 //              argv length/newline edges — the form spawnSync callers use).
+//   Prints `OK` once sent, else {"error":"<token>"} at exit 1.
 //
 // Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id>]
 //   Reads a JSON payload on stdin: { client?, maintainer?, sensitive?, fallback? }.
@@ -19,31 +20,16 @@
 //   fallback, tier disclosure). The model never resolves a channel itself; this
 //   script does. `--routine <id>` names the routine whose fire is sending: when
 //   that routine has a `chat`, the client leg goes there instead of the home
-//   chat. Prints a normalized JSON result on stdout. Exit codes:
-//     0  every requested leg landed where it was meant to
-//     1  a leg failed to land (delivery problem — see the JSON on stdout)
-//     2  the payload/usage was rejected (caller error — fix and retry; no JSON,
-//        nothing was sent, and this is *not* evidence the channel is broken)
+//   chat. Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
+//     delivered    every requested leg landed where it was meant to
+//     degraded     every leg was accepted, but maintainer detail fell back to Findings
+//     undelivered  a leg failed to land (`reason: no_reachable_channel` when none could)
+//   A rejected payload prints {"error":"invalid_payload:<detail>"} at exit 1: nothing
+//   was sent, and it is not evidence the channel is broken.
 
-import { assertStateDir, hermitDir as ownStateDir } from './lib/cc-compat';
+import { pinStateDirOrExit } from './lib/cc-compat';
 import { sendToChannel, sendOperatorNotice, type SendResult } from './lib/channel-send';
-
-// The state dir is not caller-chosen. Reachable through a pre-approved
-// `Bash(bun */scripts/channel-send.ts*)` grant that covers every argument, so an
-// unvalidated root let one such call send with *another* project's bot token to
-// *that* project's configured chat — the worst shape of this defect class, since
-// this script is an egress path. See cc-compat.ts.
-//
-// Exits 2, not the shared pinStateDirOrExit()'s 1: this script documents 1 as
-// "a leg failed to land" and 2 as "the caller got it wrong, nothing was sent".
-// A foreign state dir is the latter, and reporting it as the former would read
-// as a broken channel.
-function pinOrExit(argvValue: string): string {
-  const pinned = assertStateDir(argvValue);
-  if (pinned) return pinned;
-  process.stderr.write(`channel-send: state dir must be this project's (${ownStateDir()}); got ${argvValue}\n`);
-  process.exit(2);
-}
+import { emit, emitJson, exitError, failJson } from './lib/cli';
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -142,15 +128,9 @@ function legDelivered(r: SendResult): boolean {
 
 async function runNotice(hermitDir: string, routine?: string): Promise<void> {
   const raw = (await readStdin()).trim();
-  if (!raw) {
-    process.stderr.write('channel-send: empty --notice payload (the JSON goes on stdin)\n');
-    process.exit(2);
-  }
+  if (!raw) exitError('invalid_payload:empty');
   const p = parseNotice(raw);
-  if ('error' in p) {
-    process.stderr.write(`channel-send: ${p.error}\n`);
-    process.exit(2);
-  }
+  if ('error' in p) exitError(`invalid_payload:${p.error}`);
 
   const out = await sendOperatorNotice(hermitDir, {
     client: p.client,
@@ -164,72 +144,52 @@ async function runNotice(hermitDir: string, routine?: string): Promise<void> {
   // Every leg that survived dedup must have landed. `some` would report success
   // for a half-delivered notice — e.g. a typo'd maintainer_channel_id degrading
   // the maintainer leg to Findings while the client leg goes out — and the
-  // caller's documented "exit 0 ⇒ done" branch would drop that content silently.
-  const delivered = legs.length > 0 && legs.every(legDelivered);
-  const degraded = out.maintainer?.route === 'findings' && out.maintainer?.delivered === false;
-  const no_channel = legs.length > 0 && legs.every((r) => r.error === 'no_reachable_channel');
-  process.stdout.write(JSON.stringify({ delivered, degraded, no_channel, result: out }) + '\n');
-  process.exit(delivered ? 0 : 1);
+  // caller's documented "delivered ⇒ done" branch would drop that content silently.
+  // Accepted-but-not-delivered can only be the maintainer leg's Findings fallback.
+  const status = legs.every(legDelivered) ? 'delivered' : legs.every((r) => r.ok) ? 'degraded' : 'undelivered';
+  const no_channel = legs.every((r) => r.error === 'no_reachable_channel');
+  emitJson(status === 'undelivered' && no_channel
+    ? { status, reason: 'no_reachable_channel', result: out }
+    : { status, result: out });
 }
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
-  if ('error' in parsed) {
-    // Usage error, not a delivery failure — exit 2 so a caller can tell its own
-    // malformed invocation apart from a channel that wouldn't take the message.
-    process.stderr.write(`channel-send: ${parsed.error}\n`);
-    process.exit(2);
-  }
+  if ('error' in parsed) exitError(`usage:${parsed.error}`);
 
   if (parsed.mode === 'notice') {
     const [hermitDir] = parsed.positionals;
     // Reject a stray positional rather than ignoring it: the likely mistake is
     // passing the payload as an argument, which would otherwise leave the script
     // waiting on an stdin that never arrives.
-    if (!hermitDir || parsed.positionals.length > 1) {
-      process.stderr.write('Usage: bun channel-send.ts <hermit-dir> --notice   (JSON payload on stdin)\n');
-      process.exit(2);
-    }
-    // Pinned after the arity check so a missing positional still prints this
-    // mode's usage rather than the pin error.
-    await runNotice(pinOrExit(hermitDir), parsed.routine);
+    if (!hermitDir || parsed.positionals.length > 1) exitError();
+    // Pinned after the arity check so a missing positional still prints the
+    // usage error rather than the pin error.
+    await runNotice(pinStateDirOrExit(hermitDir), parsed.routine);
     return;
   }
 
   const [hermitDir, textArg] = parsed.positionals;
-  if (!hermitDir || !textArg) {
-    process.stderr.write('Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer] <text|->\n');
-    process.exit(2);
-  }
-  const stateDir = pinOrExit(hermitDir);
+  if (!hermitDir || !textArg) exitError();
+  const stateDir = pinStateDirOrExit(hermitDir);
 
   const text = textArg === '-' ? (await readStdin()).trim() : textArg;
-  if (!text) {
-    process.stderr.write('channel-send: empty text\n');
-    process.exit(1);
-  }
+  if (!text) exitError('empty_text');
 
   if (parsed.tier === 'maintainer') {
     const res = await sendOperatorNotice(stateDir, { maintainer: { text, fallback: 'client' } });
     const m = res.maintainer;
-    if (!m || !m.ok) {
-      process.stderr.write(`channel-send: ${m?.error ?? 'no_delivery'}\n`);
-      process.exit(1);
-    }
-    process.exit(0);
+    if (m?.ok) emit('OK');
+    // A send error can be free text (a fetch message); failJson keeps only a token.
+    failJson(m?.error ?? 'no_delivery', 'send_failed');
+    return;
   }
 
   const result = await sendToChannel(stateDir, text);
-  if (!result.ok) {
-    process.stderr.write(`channel-send: ${result.error}\n`);
-    process.exit(1);
-  }
-  process.exit(0);
+  if (result.ok) emit('OK');
+  failJson(result.error, 'send_failed');
 }
 
 if (import.meta.main) {
-  main().catch((e: any) => {
-    process.stderr.write(`channel-send: ${e?.message || e}\n`);
-    process.exit(1);
-  });
+  main().catch((e) => failJson(e, 'send_failed'));
 }

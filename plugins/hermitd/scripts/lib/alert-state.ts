@@ -171,7 +171,7 @@ export interface ClassifyTickResult {
   notifications: string[];
   lastCleanEvalAt: string | null;
   lastDigestDate: string | null;
-  heartbeatResult: 'OK' | 'ALERT';
+  heartbeatResult: 'ok' | 'alert';
   // Structured keys the digest batched under "Looks already done"; a 'clear'
   // reply resolves exactly these.
   digestDoneKeys: string[];
@@ -329,7 +329,7 @@ export function classifyTick(opts: {
     notifications,
     lastCleanEvalAt: isClean ? nowIso : null,
     lastDigestDate,
-    heartbeatResult: isClean ? 'OK' : 'ALERT',
+    heartbeatResult: isClean ? 'ok' : 'alert',
     digestDoneKeys,
   };
 }

@@ -5,7 +5,7 @@
 // write config.json each have a different, intentional failure contract
 // (settings-edit aborts on a malformed file, hatch-config validates then dies,
 // evolve-finalize returns a structured error and re-reads to verify,
-// channel-bot-id degrades to a SKIP line, channel-hook is silently fail-open).
+// channel-bot-id degrades to a skip verdict, channel-hook is silently fail-open).
 // A shared writer would flatten all five. Instead each writer keeps its own
 // write and calls auditConfigChange() afterwards; the diff happens here, so a
 // writer cannot forget to report a change or report one that did not happen.

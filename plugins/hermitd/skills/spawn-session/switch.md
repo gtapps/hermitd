@@ -22,8 +22,8 @@ Use the Commands from the parent skill. Never ask the operator a question.
 2. Run `helper-switch` (Commands) with `<bg-id>` and the supplied `--model`
    and/or `--effort`. Use the row's `id`; without a row, use the 8-character
    prefix of the sid in the latest `Handed to helper <n> (<sid>)` note on the
-   record. On `refuse`, post the reason and end. On `ok`, retain `sid`,
-   `name`, `cwd` and the shell-quoted `flags`. Read the resulting model and
+   record. On `refused`, post its `reason` in plain words and end. Otherwise
+   retain `sid`, `name`, `cwd` and the shell-quoted `flags`. Read the resulting model and
    effort from these flags for the acknowledgement; an absent value is
    `default`, never a guessed config value.
 3. Remove any live `peer-idle` entry whose `target` is `<n>` and write the
