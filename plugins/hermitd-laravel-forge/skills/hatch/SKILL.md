@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-laravel-forge:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop.
+- **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
   > "hermitd-laravel-forge {self_version} is already installed. Reply 'verify' to re-run checks only, or 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 4; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`error`**, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ---
 

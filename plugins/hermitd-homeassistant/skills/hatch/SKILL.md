@@ -25,10 +25,10 @@ Check whether `.hermit/config.json` exists.
   After it finishes, come back and type `/hermitd-homeassistant:hatch`.
   ```
 - If it is present: run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant` and parse the JSON verdict. Branch on `action`:
-  - `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop.
+  - `bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
   - `verify` → `AskUserQuestion`: "Already set up. Re-verify HA access only (skip setup wizard)?". Yes → skip to §5. No → continue.
   - `full` → continue with setup.
-  - `error`, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
+  - `error`, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ### 2. Verify .env
 

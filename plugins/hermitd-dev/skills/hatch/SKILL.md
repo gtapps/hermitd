@@ -25,10 +25,10 @@ Check if `.hermit/config.json` exists in the current project.
   After it finishes, come back and type `/hermitd-dev:hatch`.
   ```
 - Present: run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-dev` and parse the JSON verdict. Branch on `action`:
-  - `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop.
+  - `bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
   - `verify` → this version (`self_version`) is already stamped; continue through the wizard, Step 3's block sync is the idempotency guard.
   - `full` → continue through the wizard.
-  - `error`, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
+  - `error`, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
 ### 2. Detect protected-branch candidates and companions
 
