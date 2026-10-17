@@ -2,13 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+- `file-issue.ts` prints one JSON object per run, with failures as `{"error":"<token>"}` on stdout; no match and no templates exit 0.
+- `scripts/native-permissions.ts` prints `OK`, or `{"error":"<token>"}` with exit 1 instead of an uncaught exception.
+
 ### Fixed
-- Filing or commenting fails with an error naming `HERMIT_GH_REPO` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0.
+- Filing or commenting fails with `no_html_url` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0.
 
 ### Upgrade Instructions
 
 1. Use the Edit tool, as in the scribe skill's back-write, to remove every `gh_issue: undefined` line from `.hermit/proposals/*.md` frontmatter. Preserve all other content. List those proposals to the operator as never filed and ready to file again.
-2. Tell the operator: if filing fails with `GitHub returned no html_url (check HERMIT_GH_REPO)`, set `HERMIT_GH_REPO` to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. The variable lives in `.env` or settings env, which evolve does not read.
+2. Tell the operator: if filing fails with `no_html_url`, set `HERMIT_GH_REPO` to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. The variable lives in `.env` or settings env, which evolve does not read.
 
 ## [0.1.9] - 2026-10-07
 

@@ -55,7 +55,7 @@ function assertMatch(actual: string, pattern: RegExp, label: string) {
 function assertFails(env: Json, args: string[], pattern: RegExp) {
   const r = run(env, args);
   assertEqual(r.status, 1, "exit code");
-  assertMatch(r.stderr, pattern, "stderr");
+  assertMatch(JSON.parse(r.stdout).error, pattern, "error");
 }
 
 const fixtures = mkdtempSync(path.join(tmpdir(), "hermit-scribe-test-"));
@@ -79,25 +79,25 @@ const fullEnv = {
 console.log("hermit-scribe CLI tests");
 
 test("one arg prints usage and exits 1", () => {
-  assertFails({}, ["--publish", titleFile], /Usage: bun file-issue\.ts/);
+  assertFails({}, ["--publish", titleFile], /^usage:--publish /);
 });
 
 // Filing must stay behind the named verb: the seeded permissions.ask rule
 // matches on `--publish`, so a bare positional call reaching the API would
 // publish with no operator checkpoint.
 test("bare positional args no longer file an issue", () => {
-  assertFails({}, [titleFile, bodyFile], /Usage: bun file-issue\.ts --publish/);
+  assertFails({}, [titleFile, bodyFile], /^usage:--publish /);
 });
 
 test("missing HERMIT_GH_APP_ID is named in error", () => {
-  assertFails({}, ["--publish", titleFile, bodyFile], /Missing env var: HERMIT_GH_APP_ID/);
+  assertFails({}, ["--publish", titleFile, bodyFile], /^missing_env:HERMIT_GH_APP_ID$/);
 });
 
 test("missing HERMIT_GH_APP_INSTALL_ID is named in error", () => {
   assertFails(
     { HERMIT_GH_APP_ID: "1" },
     ["--publish", titleFile, bodyFile],
-    /Missing env var: HERMIT_GH_APP_INSTALL_ID/
+    /^missing_env:HERMIT_GH_APP_INSTALL_ID$/
   );
 });
 
@@ -105,7 +105,7 @@ test("missing HERMIT_GH_APP_KEY_FILE is named in error", () => {
   assertFails(
     { HERMIT_GH_APP_ID: "1", HERMIT_GH_APP_INSTALL_ID: "2" },
     ["--publish", titleFile, bodyFile],
-    /Missing env var: HERMIT_GH_APP_KEY_FILE/
+    /^missing_env:HERMIT_GH_APP_KEY_FILE$/
   );
 });
 
@@ -113,7 +113,7 @@ test("HERMIT_GH_REPO with too many slashes is rejected", () => {
   assertFails(
     { ...fullEnv, HERMIT_GH_REPO: "a/b/c" },
     ["--publish", titleFile, bodyFile],
-    /HERMIT_GH_REPO must be "owner\/repo"/
+    /^invalid_repo:a\/b\/c$/
   );
 });
 
@@ -121,35 +121,35 @@ test("HERMIT_GH_REPO with no slash is rejected", () => {
   assertFails(
     { ...fullEnv, HERMIT_GH_REPO: "single" },
     ["--publish", titleFile, bodyFile],
-    /HERMIT_GH_REPO must be "owner\/repo"/
+    /^invalid_repo:single$/
   );
 });
 
 test("--check with no proposal id prints usage and exits 1", () => {
-  assertFails({}, ["--check"], /Usage: bun file-issue\.ts --check/);
+  assertFails({}, ["--check"], /^usage:--check /);
 });
 
 test("--check with missing env var reports the var name", () => {
-  assertFails({}, ["--check", "PROP-001"], /Missing env var: HERMIT_GH_APP_ID/);
+  assertFails({}, ["--check", "PROP-001"], /^missing_env:HERMIT_GH_APP_ID$/);
 });
 
 test("--check with missing key file shows labeled error", () => {
   assertFails(
     { ...fullEnv, HERMIT_GH_APP_KEY_FILE: "/nonexistent/key.pem" },
     ["--check", "PROP-001"],
-    /HERMIT_GH_APP_KEY_FILE=.*does not exist/
+    /^missing_key_file:\/nonexistent\/key\.pem$/
   );
 });
 
 test("--templates with missing env var reports the var name", () => {
-  assertFails({}, ["--templates"], /Missing env var: HERMIT_GH_APP_ID/);
+  assertFails({}, ["--templates"], /^missing_env:HERMIT_GH_APP_ID$/);
 });
 
 test("--templates with missing key file shows labeled error", () => {
   assertFails(
     { ...fullEnv, HERMIT_GH_APP_KEY_FILE: "/nonexistent/key.pem" },
     ["--templates"],
-    /HERMIT_GH_APP_KEY_FILE=.*does not exist/
+    /^missing_key_file:\/nonexistent\/key\.pem$/
   );
 });
 
@@ -171,38 +171,34 @@ test("API calls are tunnelled through HTTPS_PROXY", () => {
   const r = run({ ...fullEnv, HTTPS_PROXY: `http://127.0.0.1:${proxyPort}` }, ["--check", "PROP-001"]);
   assertEqual(r.status, 1, "exit code");
   assertMatch(readFileSync(proxyLog, "utf8"), /^CONNECT api\.github\.com:443 /, "proxy log");
-  // A refused tunnel must not read as a GitHub rejection ("GH 407: ").
-  assertMatch(
-    r.stderr,
-    /^Proxy 407 Proxy Authentication Required: request did not reach GitHub \(check HTTPS_PROXY\)$/m,
-    "stderr"
-  );
+  // A refused tunnel must not read as a GitHub rejection ("gh_407:").
+  assertEqual(JSON.parse(r.stdout).error, "proxy_refused:407 Proxy Authentication Required", "error");
 });
 
 test("an unreachable proxy is reported as a proxy error", () => {
   const r = run({ ...fullEnv, HTTPS_PROXY: "http://127.0.0.1:1" }, ["--check", "PROP-001"]);
   assertEqual(r.status, 1, "exit code");
-  assertMatch(r.stderr, /^Proxy error: .*\(check HTTPS_PROXY\)$/m, "stderr");
+  assertMatch(JSON.parse(r.stdout).error, /^proxy_unreachable:/, "error");
 });
 
 proxy.kill();
 
 // Requires real GitHub App credentials. Set HERMIT_GH_CHECK_LIVE=1 to run.
 if (process.env.HERMIT_GH_CHECK_LIVE) {
-  test("--check with unknown proposal id exits 2 with no match message", () => {
+  test("--check with unknown proposal id reports status none", () => {
     const liveEnv = {
       HERMIT_GH_APP_ID: process.env.HERMIT_GH_APP_ID,
       HERMIT_GH_APP_INSTALL_ID: process.env.HERMIT_GH_APP_INSTALL_ID,
       HERMIT_GH_APP_KEY_FILE: process.env.HERMIT_GH_APP_KEY_FILE,
     };
     const r = run(liveEnv, ["--check", "PROP-NOTREAL-99999"]);
-    assertEqual(r.status, 2, "exit code");
-    assertMatch(r.stderr, /no match/, "stderr");
+    assertEqual(r.status, 0, "exit code");
+    assertEqual(r.stdout.trim(), JSON.stringify({ status: "none", reason: "no_match" }), "stdout");
   });
 }
 
 test("whitespace-only title file is rejected after trim", () => {
-  assertFails(fullEnv, ["--publish", wsTitleFile, bodyFile], /Title file is empty/);
+  assertFails(fullEnv, ["--publish", wsTitleFile, bodyFile], /^empty_title:/);
 });
 
 // --- requireUrl unit tests ---
@@ -216,7 +212,7 @@ test("requireUrl rejects a redirected GET's list response", () => {
   // A 301 on a renamed repo turns the POST into a GET that answers 200 [].
   let msg = "";
   try { requireUrl([]); } catch (err: any) { msg = err.message; }
-  assertEqual(msg, "GitHub returned no html_url (check HERMIT_GH_REPO)", "error");
+  assertEqual(msg, "no_html_url", "error");
 });
 
 // --- buildLabels unit tests ---
@@ -251,7 +247,7 @@ test("trailing label args do not break arg parsing (reaches token acquisition)",
   assertFails(
     { ...fullEnv, HERMIT_GH_APP_KEY_FILE: "/nonexistent/key.pem" },
     ["--publish", titleFile, bodyFile, "bug", "homeassistant-hermit"],
-    /HERMIT_GH_APP_KEY_FILE=.*does not exist/
+    /^missing_key_file:/
   );
 });
 
@@ -340,7 +336,7 @@ test("buildTitleLine: without scope", () =>
 // --- classify: CLI subcommand (config reader + JSON emission) ---
 
 test("classify with no args prints usage and exits 1", () => {
-  assertFails({}, ["classify"], /Usage: bun file-issue\.ts classify/);
+  assertFails({}, ["classify"], /^usage:classify /);
 });
 
 test("classify emits JSON derived from config _hermit_versions", () => {
