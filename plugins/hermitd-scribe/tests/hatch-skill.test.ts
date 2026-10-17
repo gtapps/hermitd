@@ -64,6 +64,7 @@ test("installs native rules before updating the instruction block, including cur
   assertTrue(install > 0 && install < update, 'approval installation precedes block refresh');
   assertTrue(text.includes('including when the version is current'), 'version skips cannot skip approval installation');
   assertTrue(text.includes('If it fails, stop before updating'), 'installation failure stops the hatch');
+  assertTrue(text.includes('deny_conflicts') && text.indexOf('deny_conflicts', text.indexOf('### 4. Final report')) > 0, 'final report names deny conflicts');
   assertTrue(text.includes('domain-hatch preflight hermitd-scribe'), 'uses core target resolution');
   assertTrue(text.includes('`.claude/settings.local.json`') && text.includes('`.claude/settings.json`'), 'both project settings scopes are supported');
 });

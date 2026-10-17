@@ -33,7 +33,7 @@ for (const scope of ['settings.json', 'settings.local.json']) {
     const target = join(fixture(), '.claude', scope);
     const original = {
       env: { KEEP: 'yes' },
-      permissions: { allow: ['Bash(*)'], deny: [rules[0]], ask: ['Read(private)', rules[1]] },
+      permissions: { allow: ['Bash(*)'], deny: ['Read(secret)', rules[0]], ask: ['Read(private)', rules[1]] },
     };
     writeFileSync(target, JSON.stringify(original));
     const result = run(target);

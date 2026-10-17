@@ -40,4 +40,4 @@ Write `_hermit_versions["hermitd-scribe"]` into `.hermit/config.json` with the c
 
 ### 4. Final report
 
-Print: "hermit-scribe active. Issue filing goes through `/hermitd-scribe:hermit-scribe`, always with an in-session preview before posting."
+Print: "hermit-scribe active. Issue filing goes through `/hermitd-scribe:hermit-scribe`, always with an in-session preview before posting." Then name any `deny_conflicts` from step 1.5 as operator denies that block those commands outright.
