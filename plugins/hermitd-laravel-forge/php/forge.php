@@ -533,7 +533,7 @@ if ($cmd === 'server-log') {
         $log = $forge->serverLog($org, $server->id, $key);
     } catch (NotFoundException $e) {
         // A wrong key, or a service Forge tracks no log path for.
-        emit(['status' => 'none', 'reason' => 'no_log', 'key' => $key]);
+        emit(['status' => 'none', 'reason' => 'no_log', 'log_name' => $key]);
     }
     emit(['log' => (string) $log]);
 }

@@ -507,16 +507,18 @@ check(scrubSecrets($ordinaryLog) === $ordinaryLog,
 $scrubbed = json_encode(scrubValue([
     'secrets' => ['state' => 'denied'],
     'api_token' => 'Tok3nValue',
-    'record' => (object) ['ssh_key_id' => 7, 'meta' => new \stdClass()],
+    'record' => (object) ['ssh_key_id' => 7, 'ssh_key' => 'ssh-rsa AAAA', 'meta' => new \stdClass()],
     'log' => "DB_PASSWORD=hunter2trombone\nok",
 ]));
 check(json_decode($scrubbed, true) === [
     'secrets' => ['state' => 'denied'],
     'api_token' => '[REDACTED]',
-    'record' => ['ssh_key_id' => '[REDACTED]', 'meta' => []],
+    'record' => ['ssh_key_id' => 7, 'ssh_key' => '[REDACTED]', 'meta' => []],
     'log' => "DB_PASSWORD=[REDACTED]\nok",
 ] && str_contains($scrubbed, '"meta":{}'),
-    'scrubValue keeps output valid JSON, masks secret-named scalars, scrubs string leaves, keeps objects');
+    'scrubValue keeps output valid JSON, masks strings under secret-named keys (ids stay), scrubs string leaves, keeps objects');
+check(array_keys(scrubValue(['Bearer abcdefgh12345678' => 1])) === ['Bearer [REDACTED]'],
+    'scrubValue scrubs string keys too');
 
 // ---------------------------------------------------------------------------
 // SDK error output

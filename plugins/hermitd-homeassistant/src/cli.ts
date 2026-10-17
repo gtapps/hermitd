@@ -197,7 +197,7 @@ function resolveDeps(overrides: Partial<CliDeps>): CliDeps {
 // ---------------------------------------------------------------------------
 
 class ParserExit extends Error {
-  constructor(readonly code: number) {
+  constructor(readonly code: number, readonly error?: string) {
     super(`parser exit ${code}`);
   }
 }
@@ -205,9 +205,8 @@ class ParserExit extends Error {
 const TOP_USAGE = 'usage: ha_agent_lab [-h] {boot,ha} ...';
 const BOOT_USAGE = 'usage: ha_agent_lab boot [-h] {status,store,mcp-config} ...';
 /** A malformed command line is a usage failure like any other: one `{"error"}` on stdout, exit 1. */
-function argError(prog: string, usage: string, message: string): never {
-  printError(`usage:${prog}: ${message} (${usage})`);
-  throw new ParserExit(1);
+function argError(prog: string, message: string): never {
+  throw new ParserExit(1, `usage:${prog}: ${message}`);
 }
 
 function printHelp(text: string): never {
@@ -273,7 +272,7 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
       }
       if (flag.kind === 'store_true') {
         if (inlineValue !== null) {
-          argError(spec.prog, spec.usage, `argument ${token}: ignored explicit argument '${inlineValue}'`);
+          argError(spec.prog, `argument ${token}: ignored explicit argument '${inlineValue}'`);
         }
         flags[token] = true;
         continue;
@@ -285,7 +284,7 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
           values.push(args[++i]!);
         }
         if (values.length === 0) {
-          argError(spec.prog, spec.usage, `argument ${token}: expected at least one argument`);
+          argError(spec.prog, `argument ${token}: expected at least one argument`);
         }
         flags[token] = values;
         continue;
@@ -296,15 +295,15 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
       } else if (i + 1 < args.length) {
         value = args[++i]!;
       } else {
-        argError(spec.prog, spec.usage, `argument ${token}: expected one argument`);
+        argError(spec.prog, `argument ${token}: expected one argument`);
       }
       if (flag.choices && !flag.choices.includes(value)) {
         const choices = flag.choices.map((c) => `'${c}'`).join(', ');
-        argError(spec.prog, spec.usage, `argument ${token}: invalid choice: '${value}' (choose from ${choices})`);
+        argError(spec.prog, `argument ${token}: invalid choice: '${value}' (choose from ${choices})`);
       }
       if (flag.int) {
         if (!/^[+-]?\d+$/.test(value.trim())) {
-          argError(spec.prog, spec.usage, `argument ${token}: invalid int value: '${value}'`);
+          argError(spec.prog, `argument ${token}: invalid int value: '${value}'`);
         }
         flags[token] = parseInt(value.trim(), 10);
       } else {
@@ -318,14 +317,14 @@ function parseLeaf(spec: LeafSpec, args: string[]): ParsedLeaf {
 
   if (positionals.length < spec.positionals.length) {
     const missing = spec.positionals.slice(positionals.length).join(', ');
-    argError(spec.prog, spec.usage, `the following arguments are required: ${missing}`);
+    argError(spec.prog, `the following arguments are required: ${missing}`);
   }
   return { positionals, flags, extras };
 }
 
 function rejectExtras(extras: string[]): void {
   if (extras.length > 0) {
-    argError('ha_agent_lab', TOP_USAGE, `unrecognized arguments: ${extras.join(' ')}`);
+    argError('ha_agent_lab', `unrecognized arguments: ${extras.join(' ')}`);
   }
 }
 
@@ -1775,13 +1774,12 @@ interface ParsedArgs {
 export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '-h' || argv[0] === '--help') printHelp(TOP_HELP);
   if (argv.length === 0) {
-    argError('ha_agent_lab', TOP_USAGE, 'the following arguments are required: command');
+    argError('ha_agent_lab', 'the following arguments are required: command');
   }
   const command = argv[0]!;
   if (command !== 'boot' && command !== 'ha') {
     argError(
       'ha_agent_lab',
-      TOP_USAGE,
       `argument command: invalid choice: '${command}' (choose from 'boot', 'ha')`,
     );
   }
@@ -1791,17 +1789,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
     printHelp(command === 'boot' ? BOOT_HELP : HA_HELP);
   }
   const subProg = `ha_agent_lab ${command}`;
-  const subUsage = command === 'boot' ? BOOT_USAGE : HA_USAGE;
   const subDest = command === 'boot' ? 'boot_command' : 'ha_command';
   if (rest.length === 0) {
-    argError(subProg, subUsage, `the following arguments are required: ${subDest}`);
+    argError(subProg, `the following arguments are required: ${subDest}`);
   }
   const sub = rest[0]!;
   const validSubs = command === 'boot' ? BOOT_COMMANDS : HA_COMMANDS;
   const record = COMMANDS[`${command} ${sub}`];
   if (!record) {
     const choices = validSubs.map((c) => `'${c}'`).join(', ');
-    argError(subProg, subUsage, `argument ${subDest}: invalid choice: '${sub}' (choose from ${choices})`);
+    argError(subProg, `argument ${subDest}: invalid choice: '${sub}' (choose from ${choices})`);
   }
 
   const leaf = parseLeaf(record.spec, rest.slice(1));
@@ -1912,7 +1909,7 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
   try {
     args = parseArgs(argv);
   } catch (exc) {
-    if (exc instanceof ParserExit) return exc.code;
+    if (exc instanceof ParserExit) return exc.error === undefined ? exc.code : printError(exc.error);
     throw exc;
   }
 
@@ -1922,7 +1919,7 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
   const record = COMMANDS[`${args.command} ${args.sub}`];
   if (!record) {
     // Unreachable: parseArgs rejects any key this table does not carry.
-    return printError(`usage:ha_agent_lab: unsupported command (${TOP_USAGE})`);
+    return printError('usage:ha_agent_lab: unsupported command');
   }
   return record.run(args, { config, root, deps });
 }

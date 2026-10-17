@@ -31,7 +31,7 @@ Use `deploy-history` first to find the deployment ID.
 php ${CLAUDE_PLUGIN_ROOT}/php/forge.php server-log <server> <key>
 ```
 
-Common keys: `php`, `mysql`, `cron`, `daemon`, `nginx-error`, `nginx-access`. Nginx keys are hyphenated; `nginx_error` (underscored) returns a 404. The PHP-FPM log key is dot-version notation matching the server's installed PHP (`php-8.3`, not `php`); passing the literal `php` key auto-resolves it against the server's `php_version`. `mysql`/`cron`/`daemon` may 404 outright on servers with a custom, non-Forge-provisioned install of that service (no Forge-tracked log path), so a 404 there isn't necessarily a wrong key. A 404 prints `no_log` with the resolved `key`. Key list depends on the server's installed services.
+Common keys: `php`, `mysql`, `cron`, `daemon`, `nginx-error`, `nginx-access`. Nginx keys are hyphenated; `nginx_error` (underscored) returns a 404. The PHP-FPM log key is dot-version notation matching the server's installed PHP (`php-8.3`, not `php`); passing the literal `php` key auto-resolves it against the server's `php_version`. `mysql`/`cron`/`daemon` may 404 outright on servers with a custom, non-Forge-provisioned install of that service (no Forge-tracked log path), so a 404 there isn't necessarily a wrong key. A 404 prints `no_log` with the resolved key as `log_name`. Key list depends on the server's installed services.
 
 ## Site logs
 

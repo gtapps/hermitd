@@ -246,6 +246,9 @@ function loadPolicy(string $projectRoot): array
 // Output scrubber
 // ---------------------------------------------------------------------------
 
+/** Names that mark a credential, in an assignment or as a record field. */
+const SECRET_NAME_PATTERN = 'KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL';
+
 /**
  * Best-effort credential redaction for everything printed by call/execute.
  *
@@ -256,9 +259,6 @@ function loadPolicy(string $projectRoot): array
  *
  * Regex redaction, not a parser: it is a strong net, not a proof.
  */
-/** Names that mark a credential, in an assignment or as a record field. */
-const SECRET_NAME_PATTERN = 'KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL';
-
 function scrubSecrets(string $text): string
 {
     // PEM blocks first — they span lines and would otherwise be partly matched
@@ -301,7 +301,7 @@ function scrubSecrets(string $text): string
 
 /**
  * Scrub a payload before it is JSON-encoded, so the output stays valid JSON:
- * every string leaf goes through scrubSecrets(), and a scalar under a
+ * every string key and leaf goes through scrubSecrets(), and a string under a
  * secret-named key is masked whole (an SDK record's `api_key` field).
  */
 function scrubValue(mixed $value, string|int|null $key = null): mixed
@@ -309,11 +309,11 @@ function scrubValue(mixed $value, string|int|null $key = null): mixed
     if (is_array($value) || is_object($value)) {
         $out = [];
         foreach (is_object($value) ? get_object_vars($value) : $value as $k => $v) {
-            $out[$k] = scrubValue($v, $k);
+            $out[is_string($k) ? scrubSecrets($k) : $k] = scrubValue($v, $k);
         }
         return is_object($value) ? (object) $out : $out;
     }
-    if (is_string($key) && is_scalar($value) && $value !== ''
+    if (is_string($key) && is_string($value) && $value !== ''
         && preg_match('/' . SECRET_NAME_PATTERN . '/i', $key)) {
         return '[REDACTED]';
     }
