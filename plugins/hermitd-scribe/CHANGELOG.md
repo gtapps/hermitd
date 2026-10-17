@@ -13,6 +13,9 @@
 
 1. Use the Edit tool, as in the scribe skill's back-write, to remove every `gh_issue: undefined` line from `.hermit/proposals/*.md` frontmatter. Preserve all other content. List those proposals to the operator as never filed and ready to file again.
 2. Tell the operator: if filing fails with `no_html_url`, set `HERMIT_GH_REPO` to the current `owner/repo` or remove it to use the default `gtapps/hermitd`. The variable lives in `.env` or settings env, which evolve does not read.
+3. **Offer to migrate operator skills to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. List each skill line that runs a `hermitd-scribe` helper through this plugin's install path and branches on its old output: `file-issue.ts` read as a bare URL or a newline list of templates, `--check` or `--templates` read by exit 2, or error text read from stderr. A line about the project's own script output, a placeholder, or a call that only checks the exit code of a real failure is not a hit. Skip silently when there are none. Otherwise show them with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+   - *Migrate them to the convention*: update each line to the shape the `hermitd-scribe` skill running the same command describes, per core's `docs/creating-your-own-hermit.md` § Helper-script output. Report each file changed.
+   - *Keep them as they are*: change nothing, and tell the operator that these lines misread `hermitd-scribe` output until they are updated.
 
 ## [0.1.9] - 2026-10-07
 
