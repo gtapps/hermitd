@@ -41,7 +41,7 @@ Match the operator's phrase, case-insensitive, against routine `id` and skill na
 
 ### Settings and model questions
 
-Answer from the setting's row in `settings-edit ... show`: its saved `value` (absent means unset, so the default applies), the `arg` that changes it, and when it `applies`. For the running model or effort: if this session's context holds a `[harness-command] … transcript now reports model X` line, that is the observed serving model; otherwise say the saved value is what the next boot uses and the current session's value is unverified. `settings-edit ... history <path>` answers who changed it and when. Never claim a runtime value the harness did not report.
+Answer from the setting's row in `settings-edit ... show`: its saved `value` (absent: not set on a `nullable` row, else the default applies), the `arg` that changes it, and when it `applies`. For the running model or effort: if this session's context holds a `[harness-command] … transcript now reports model X` line, that is the observed serving model; otherwise say the saved value is what the next boot uses and the current session's value is unverified. `settings-edit ... history <path>` answers who changed it and when. Never claim a runtime value the harness did not report.
 
 ### Access question
 

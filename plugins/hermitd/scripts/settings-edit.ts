@@ -269,13 +269,15 @@ function statefulRows(config: Json): Json[] {
 
 /**
  * Live values grouped by area, each with the argument that changes it and when the
- * change applies. An absent `value` means the key is unset and its default applies.
+ * change applies. An absent `value` means the key is unset: not set on a `nullable` row,
+ * otherwise its default applies.
  */
 export function showData(config: Json, configPath: string): Json {
   const out: Json = { config_path: configPath };
   for (const group of ['Identity', 'Operational', 'Artifacts'] as const) {
     const rows: Json[] = SETTINGS.filter(s => s.group === group).map(s => ({
-      arg: s.arg, label: s.label, value: getPath(config, s.path), ...(s.applies ? { applies: s.applies } : {}),
+      arg: s.arg, label: s.label, value: getPath(config, s.path),
+      ...(s.nullable ? { nullable: true } : {}), ...(s.applies ? { applies: s.applies } : {}),
     }));
     for (const r of READ_ONLY.filter(r => r.group === group)) {
       rows.push({ arg: null, label: r.label, value: getPath(config, r.path) });

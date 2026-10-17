@@ -47,8 +47,9 @@ source). Note that watches (Monitor tool) cost ~0 tokens when quiet and will not
 is unavailable, omit the split.
 
 **Proposal velocity:** From `proposal-metrics.jsonl`, median days `created_at` → `resolved_at`
-for proposals resolved in the last 30 days. From step 4 output, show the acceptance-by-source
-table (rows with n>0 only). Note any triggered kill gates.
+for proposals resolved in the last 30 days. From step 4's `segments`, show an acceptance-by-source
+table (survival and acceptance rates with their counts, segments with `sample` > 0 only). Note
+any segment whose `status` is `kill`, with its `kill_reasons`.
 
 **Routines & watches:** From config.json, list enabled routines with their `schedule` cron
 string. Use the step 7 output for 30-day fire counts, and flag any routine whose `incomplete`,

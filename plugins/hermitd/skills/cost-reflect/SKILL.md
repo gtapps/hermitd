@@ -34,7 +34,7 @@ Capture stdout. `status: "empty"` → say no spend is recorded yet and stop; the
 
 **Terminal:** compose the report from the JSON in under 1500 characters: the window total with turns and sessions, the `by_type` split, `by_model` and `cold_starts` when non-empty, `by_source` (with `more_sources`), and `top_sessions`. Report the figures as given, without commentary.
 
-**Channel (`--plain` output):** reply through that channel's reply tool, in the operator's language, for someone with no technical background: today's spend against a typical day (`today_usd`, `vs_typical`, `typical_day_usd`), each `drivers` `work` in everyday words (`background_checks`: background check-ins; `scheduled_routines`: scheduled routines; `channel_messages`: their chat messages; `other_sessions`: other sessions on this machine; `conversations`: conversations with you), the `budget` cap when present, and that the figures are a tracking estimate, not a literal bill. No token types, session IDs, `PROP-`/`T-...` or slash commands.
+**Channel (`--plain` output):** reply through that channel's reply tool, in the operator's language, for someone with no technical background: today's spend against a typical day (`today_usd`, `vs_typical`, `typical_day_usd`), each `drivers` `work` in everyday words with its `cost_usd` (`background_checks`: background check-ins; `scheduled_routines`: scheduled routines; `channel_messages`: their chat messages; `other_sessions`: other sessions on this machine; `conversations`: conversations with you), the `budget` cap when present, and that the figures are a tracking estimate, not a literal bill. No token types, session IDs, `PROP-`/`T-...` or slash commands.
 
 ## Step 3 — Channel delivery
 

@@ -80,7 +80,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json record-fi
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json show
 ```
 
-Compose the summary from its JSON: per area (`identity`, `operational`, `artifacts`), each `label`, `value` (absent: unset, the default applies), the `arg` that changes it (null: read-only) and when it `applies`; then each `stateful` section and its `arg`. Report only what it carries, never a remembered or example value.
+Compose the summary from its JSON: per area (`identity`, `operational`, `artifacts`), each `label`, `value` (absent: unset on a `nullable` row, else default), the `arg` that changes it (null: read-only) and when it `applies`; then each `stateful` section and its `arg`. Report only what it carries, never a remembered or example value.
 
 **Scalar and enum arguments — one table, one shape.**
 

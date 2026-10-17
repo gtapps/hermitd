@@ -410,9 +410,9 @@ The target file is determined by `hatch_target` (computed in Step 1.5):
 - `hatch_target == "local"` → write to `CLAUDE.local.md` (gitignored, operator-personal)
 - `hatch_target == "committed"` → write to `CLAUDE.md` (committed, current behavior)
 
-Check CLAUDE.md, CLAUDE.local.md and .hermit/RESIDENT.md for duplicate markers within each file. The shared block and resident block belong in their respective destinations. Perform the shared-block idempotency check across both CLAUDE files first: if the marker `hermitd: Session Discipline` exists in the non-target file, surface a conflict — ask operator: **Move to target file** (diff-and-confirm) / **Keep both** (warn that both load) / **Skip conflict**. Never silently leave duplicate markers.
+Perform the shared-block idempotency check across both CLAUDE files first: if the marker `hermitd: Session Discipline` exists in the non-target file, surface a conflict — ask operator: **Move to target file** (diff-and-confirm) / **Keep both** (warn that both load) / **Skip conflict**. Never silently leave duplicate markers.
 
-Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts sync-block hermitd` to write shared instructions to the hatch-resolved CLAUDE file and resident duties to `.hermit/RESIDENT.md`. Never regenerate the template by hand.
+Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts sync-block hermitd` to write shared instructions to the hatch-resolved CLAUDE file and resident duties to `.hermit/RESIDENT.md`. Never regenerate the template by hand. On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 For the target file:
 - If it exists: check if it already contains `hermitd: Session Discipline`

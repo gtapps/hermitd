@@ -136,7 +136,7 @@ export function confirmData(answers: Json): Json {
       monthly_usd: t.budget.monthly_usd ?? null, action: t.budget.action ?? 'alert',
     };
   }
-  if (answers.deployment) will.safety_rules = 'standard';
+  if (answers.deployment) choose('safety_rules', 'standard');
   will.hatch_target = answers.hatch_target === 'committed' ? 'committed' : 'local';
   if (answers.hatch_target) chosen.add('hatch_target');
   will.git_init = !!answers.git_init;
