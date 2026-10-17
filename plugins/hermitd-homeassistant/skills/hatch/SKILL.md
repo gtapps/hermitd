@@ -141,7 +141,7 @@ Then write the block:
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-homeassistant
 ```
 
-If it prints `status` `refused`, tell the operator and stop.
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 It appends the `<!-- hermitd-homeassistant: Home Assistant Workflow -->` block when the marker is absent and skips when it is already present. Refreshing an existing block on a version bump is `hermit-evolve`'s job, not hatch's.
 

@@ -130,7 +130,7 @@ Then write the block:
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-laravel-forge
 ```
 
-If it prints `status` `refused`, tell the operator and stop.
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 It appends the `<!-- hermitd-laravel-forge: Forge Workflow -->` block when the marker is absent and skips when it is already present; `hermit-evolve` handles replacement on upgrade.
 

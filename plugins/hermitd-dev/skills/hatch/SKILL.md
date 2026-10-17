@@ -52,7 +52,7 @@ If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibil
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-dev
 ```
 
-If it prints `status` `refused`, tell the operator and stop.
+On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
 
 The command appends when the marker is absent, replaces when the content differs, and skips when it is already current. Shared rules land in the hatch-resolved CLAUDE file, and resident duties in `.hermit/RESIDENT.md`.
 
