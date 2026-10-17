@@ -381,8 +381,7 @@ console.log('\ncontract: 401 auth failure:');
   try {
     j = JSON.parse(out);
   } catch {}
-  eq('error kind', j?.error, 'strava_auth');
-  eq('verbatim recovery message', j?.message, AUTH_RECOVERY_MESSAGE);
+  eq('verbatim recovery message', j?.error, `strava_auth:${AUTH_RECOVERY_MESSAGE}`);
   fs.rmSync(proj, { recursive: true });
 }
 
@@ -400,7 +399,7 @@ console.log('\ncontract: partial-scope 401 on /athlete/zones propagates (not swa
   try {
     j = JSON.parse(out);
   } catch {}
-  eq('zones 401 → strava_auth', j?.error, 'strava_auth');
+  ok('zones 401 → strava_auth', j?.error?.startsWith('strava_auth:'));
   fs.rmSync(proj, { recursive: true });
 }
 
@@ -413,7 +412,7 @@ console.log('\ncontract: missing token → strava_auth:');
   try {
     j = JSON.parse(out);
   } catch {}
-  eq('missing token maps to strava_auth', j?.error, 'strava_auth');
+  ok('missing token maps to strava_auth', j?.error?.startsWith('strava_auth:'));
   fs.rmSync(proj, { recursive: true });
 }
 
@@ -477,7 +476,7 @@ console.log('\nweekly-patterns unit (trail steady excluded → insufficient):');
   mk(3, '2026-05-18', 'Cardiac drift: +9 bpm');
   mk(4, '2026-05-25', 'HR/altitude: tracked the climb'); // trail steady, no drift line
   const r = weeklyPatterns(proj);
-  eq('steady found 4 but drift series short → insufficient-data', r.trend, 'insufficient-data');
+  eq('steady found 4 but drift series short → insufficient_data', r.trend, 'insufficient_data');
   eq('series only 3 (trail excluded at extraction)', r.series.length, 3);
   fs.rmSync(proj, { recursive: true });
 }
@@ -556,7 +555,13 @@ console.log('\ncontract: rpe validation:');
   const proj = tmpProject();
   const { code, out } = await run(['rpe', '555', '11', '--project-root', proj]);
   ok('exit 1 on rpe out of range', code === 1);
-  eq('fetch error kind', JSON.parse(out)?.error, 'fetch');
+  ok('usage error kind', JSON.parse(out)?.error?.startsWith('usage:'));
+}
+{
+  const proj = tmpProject();
+  const { code, out } = await run(['rpe', 'abc', '6', '--project-root', proj]);
+  ok('exit 1 on bad activity id', code === 1);
+  eq('invalid activity id token', JSON.parse(out), { error: 'invalid_activity_id:abc' });
   fs.rmSync(proj, { recursive: true });
 }
 
@@ -572,12 +577,13 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   fs.writeFileSync(path.join(proj, '.env'), `STRAVA_CLIENT_ID=123\nSTRAVA_CLIENT_SECRET=${SECRET}\nSTRAVA_ACCESS_TOKEN=replace_me\n`);
   let r = await run(['env-check', '--project-root', proj]);
   ok('env-check exit 0', r.code === 0);
-  eq('env-check missing names', JSON.parse(r.out).missing, ['STRAVA_ACCESS_TOKEN', 'STRAVA_REFRESH_TOKEN']);
+  eq('env-check missing names', JSON.parse(r.out), { status: 'missing_keys', missing: ['STRAVA_ACCESS_TOKEN', 'STRAVA_REFRESH_TOKEN'] });
   ok('env-check prints no secret', !r.out.includes(SECRET));
 
   // mcp-config refuses while incomplete
   r = await run(['mcp-config', '--project-root', proj]);
-  ok('mcp-config exit 1 when incomplete', r.code === 1);
+  ok('mcp-config exit 0 when incomplete', r.code === 0);
+  eq('mcp-config missing keys', JSON.parse(r.out).status, 'missing_keys');
   ok('mcp-config wrote nothing', !fs.existsSync(path.join(proj, '.mcp.json')));
   fs.rmSync(proj, { recursive: true });
 
@@ -587,7 +593,7 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
   r = await run(['mcp-config', '--project-root', proj]);
   ok('mcp-config exit 0', r.code === 0);
-  eq('mcp-config added', JSON.parse(r.out), { ok: true, server: 'strava', action: 'added' });
+  eq('mcp-config added', JSON.parse(r.out), { server: 'strava', action: 'added' });
   ok('mcp-config prints no secret', !r.out.includes(SECRET));
   eq('strava env literal', mcpOf(proj).mcpServers.strava.env.STRAVA_REFRESH_TOKEN, `${SECRET}-r`);
   eq('other server kept', mcpOf(proj).mcpServers.other, { command: 'x' });
@@ -621,12 +627,13 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   fs.writeFileSync(path.join(proj, '.mcp.json'), '{ not json');
   r = await run(['mcp-config', '--project-root', proj]);
   ok('mcp-config exit 1 on invalid json', r.code === 1);
+  eq('invalid json error', JSON.parse(r.out), { error: 'invalid_mcp_json' });
   eq('invalid json untouched', fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'), '{ not json');
 
   // non-object mcpServers left alone (no silent drop of the entry)
   fs.writeFileSync(path.join(proj, '.mcp.json'), '{"mcpServers": []}');
   r = await run(['mcp-config', '--project-root', proj]);
-  ok('mcp-config exit 1 on array mcpServers', r.code === 1 && JSON.parse(r.out).ok === false);
+  ok('mcp-config exit 1 on array mcpServers', r.code === 1 && JSON.parse(r.out).error === 'invalid_mcp_json');
   eq('array mcpServers untouched', fs.readFileSync(path.join(proj, '.mcp.json'), 'utf-8'), '{"mcpServers": []}');
   fs.rmSync(proj, { recursive: true });
 
@@ -634,7 +641,7 @@ console.log('\ncontract: env-check + mcp-config (hatch):');
   proj = tmpProject();
   fs.writeFileSync(path.join(proj, '.env'), fullEnv.replace('STRAVA_CLIENT_ID=123', 'export STRAVA_CLIENT_ID=123 # app id'));
   r = await run(['env-check', '--project-root', proj]);
-  eq('env-check accepts export prefix', JSON.parse(r.out).missing, []);
+  eq('env-check accepts export prefix', r.out.trim(), 'OK');
   r = await run(['mcp-config', '--project-root', proj]);
   eq('inline comment stripped', mcpOf(proj).mcpServers.strava.env.STRAVA_CLIENT_ID, '123');
   fs.rmSync(proj, { recursive: true });

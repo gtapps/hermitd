@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `fitness-lab.ts` and `native-permissions.ts` print one JSON object or bare `OK`, with failures as `{"error":"<token>[:detail]"}`; missing Strava keys exit 0 with `status: "missing_keys"`.
+- `weekly-patterns` reports `trend: "insufficient_data"`.
+
+### Fixed
+- `domain-brainstorm` parses the triage outcome in the shape `proposal-create` prints.
+
+### Upgrade Instructions
+1. If `.hermit/bin/fitness-weekly-patterns-gate` exists, overwrite it from the consumer project root with `install -m 755 "<fitness-plugin-root>/state-templates/bin/fitness-weekly-patterns-gate" .hermit/bin/fitness-weekly-patterns-gate`, where `<fitness-plugin-root>` is the `install_path` the upgrade plan reports for `hermitd-fitness` (not core's root). Otherwise skip.
+
 ## [0.2.6] - 2026-10-15
 
 ### Changed

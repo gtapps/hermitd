@@ -14,7 +14,7 @@ try {
   for (const [output, code, expected] of [
     ['{"trend":"upward"}', 0, 'WAKE'],
     ['{"trend":"none"}', 0, 'SKIP'],
-    ['{"trend":"insufficient-data"}', 0, 'SKIP'],
+    ['{"trend":"insufficient_data"}', 0, 'SKIP'],
     ['garbage', 0, null],
     ['{"trend":"unknown"}', 0, null],
     ['{"trend":"none"}', 2, null],
