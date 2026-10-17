@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.10] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` prints one JSON object.
@@ -8,6 +8,7 @@
 - `scripts/native-permissions.ts` prints `OK`, or `{"error":"<token>"}` with exit 1 instead of an uncaught exception.
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor.
 - Filing or commenting fails with `no_html_url` when GitHub returns no issue URL, instead of printing `undefined` and exiting 0.
 
 ### Upgrade Instructions
