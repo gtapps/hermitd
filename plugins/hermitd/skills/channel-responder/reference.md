@@ -94,6 +94,6 @@ Run `observations-observe` (Commands) with arguments `skill-correction --origin=
 skill-correction:<canonical-name>
 ```
 
-`<canonical-name>` is the skill's lowercase bare `name:` frontmatter, without `hermitd:`/`<plugin>:`. Set `origin` to `external-content` for non-primary senders, else `own-work`. Rejected rows return `ERROR|<reason>` at exit 0; no `|| true` is needed. Mis-invocations exit 1: fix the call, never retry blindly or block the reply. At most one row per turn.
+`<canonical-name>` is the skill's lowercase bare `name:` frontmatter, without `hermitd:`/`<plugin>:`. Set `origin` to `external-content` for non-primary senders, else `own-work`. A rejected row or mis-invocation exits 1: fix the call, never retry blindly or block the reply. At most one row per turn.
 
 Without a clearly named skill, write the eligible `## Findings` line; do not guess a `<name>` or ask for disambiguation mid-reply.

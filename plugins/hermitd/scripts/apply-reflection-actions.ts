@@ -73,7 +73,7 @@ function apply(stateDir: string, stdin: string): Json {
       }
     }
     if (listed === null) listed = listProposalFiles(proposalsDir);
-    if (!listed.ok) return { ok: false, reason: 'proposals-dir-unreadable' };
+    if (!listed.ok) return { ok: false, reason: 'proposals_dir_unreadable' };
     // Boundary-safe prefix match: PROP-1 must never match PROP-12.
     const file = (listed.files ?? []).find(f => f.startsWith(a.proposal_id + '-') || f === a.proposal_id + '.md');
     if (!file) return { ok: false, reason: `${label}: no matching proposal file` };
@@ -107,7 +107,7 @@ function apply(stateDir: string, stdin: string): Json {
       // proposal.ts's patch verb runs, since this path writes frontmatter
       // itself rather than going through it. A miss is reported, never fatal:
       // the proposal really was resolved.
-      const swept = sweepMoot(stateDir, { proposalId: a.proposal_id });
+      const swept = sweepMoot(stateDir, a.proposal_id);
       if (!swept.ok) errors.push(`${a.proposal_id}: pending-ask reconciliation: ${swept.error}`);
       applied.auto_resolve++;
     } else {

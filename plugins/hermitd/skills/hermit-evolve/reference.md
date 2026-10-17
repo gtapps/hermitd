@@ -76,7 +76,7 @@ Before entering either the full or sibling-only path, initialize `context_reload
 
 Run `evolve-snapshot` (Commands) with arguments `--core=<to>`.
 
-Step 2b migrations write `config.json` (through settings-edit) before the finalizer runs; without this snapshot, the finalizer's audit `before` is taken after those writes and the ledger could only ever show the version stamp and its own defaults merge. It always exits 0 — if it prints `SKIP|…`, continue the upgrade anyway. The finalizer reports which happened as `audit_scope` in Step 9.
+Step 2b migrations write `config.json` (through settings-edit) before the finalizer runs; without this snapshot, the finalizer's audit `before` is taken after those writes and the ledger could only ever show the version stamp and its own defaults merge. It always exits 0; on a `skip` status, continue the upgrade anyway. The finalizer reports which happened as `audit_scope` in Step 9.
 
 ### 2. Read the changelog
 
@@ -309,7 +309,7 @@ where `<resolved-settings-file>` is `.claude/settings.local.json` (local) or `.c
   - **When `plan.up_to_date` is `true` (core current, sibling-only run):** the plan's `to` is still used as `--core=<to>`. Here `to` equals the on-disk stamp, so evolve-finalize re-stamps the same version — a genuine no-op that keeps the finalizer as the single atomic writer. (This is only reached when core is *current*; the config-ahead case never gets here, because the stale-runtime check above stops the run before Step 2. The finalizer independently refuses a lower `--core` with `core_version_regression`.)
   - Parse stdout as JSON. The finalizer's `core.confirmed` is the **authoritative on-disk version** — use it as `vNEW` in the Step 10 report, NOT `plan.to`.
   - `settings_added` lists the dotted paths it actually added, confirmed against its re-read. Report those as the added settings in Step 10 — not the keys Step 4 recorded, which are only what the plan expected.
-  - `audit_scope` reports whether the Step 1 snapshot was usable: `whole-run` means this upgrade's config changes are attributed in the settings ledger, `version-only` means only the version stamp was recorded. Carry it into the Step 10 report. It is never a failure — a `version-only` upgrade succeeded, it just left less history behind.
+  - `audit_scope` reports whether the Step 1 snapshot was usable: `whole_run` means this upgrade's config changes are attributed in the settings ledger, `version_only` means only the version stamp was recorded. Carry it into the Step 10 report. It is never a failure: a `version_only` upgrade succeeded, it just left less history behind.
   - If `core.matched` is `false` or `errors` is non-empty, the bump did not land: set the `Upgrade:` line in the Step 10 report to `blocked: config version bump failed (<joined errors>)` and stop.
 
 ### Report field: Context reload

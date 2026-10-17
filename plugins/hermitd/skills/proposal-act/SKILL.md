@@ -42,10 +42,10 @@ Before reading any proposal file, resolve the operator's input to a filename:
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve-id .hermit "<operator input>"
 ```
-- `MATCH|<filename>` — proceed with that file.
-- `NONE|not-a-prop-id` — error "Not a PROP id."
-- `NONE|no-match` — error "No proposal matches [input]. Use /proposal-list to see available proposals."
-- `AMBIGUOUS|<json array of {file, title}>` — show a disambiguation prompt:
+- `match`: proceed with `file`.
+- `none`, reason `not_a_prop_id`: error "Not a PROP id."
+- `none`, reason `no_match`: error "No proposal matches [input]. Use /proposal-list to see available proposals."
+- `ambiguous`: show a disambiguation prompt from `matches` (`file`, `title`):
   ```
   Multiple proposals match PROP-NNN:
     PROP-NNN-capability-brainstorm-103612 — [title of first match]
@@ -92,7 +92,7 @@ When the operator accepts a proposal:
    [Set: success_signal=<predicate line>]
    HERMIT_PATCH
    ```
-   Do NOT set `resolved_date` — resolution happens when reflect confirms the pattern is gone. `OK|<id>` confirms the write; `ERROR|<reason>` means nothing was patched — report it to the caller/operator and stop.
+   Do NOT set `resolved_date`: resolution happens when reflect confirms the pattern is gone. `{"id":…}` confirms the write; `{"error":…}` means nothing was patched; report it to the caller/operator and stop.
 
 3a. **Routine proposals.** If the proposal's frontmatter `category: routine` (or a `Type: routine` line) **and** a `## Config` section with a JSON block: upsert into `config.json` after any skill/agent install below.
 
@@ -104,7 +104,7 @@ When the operator accepts a proposal:
    <the ## Config JSON block, verbatim>
    HERMIT_ROUTINE
    ```
-   The script validates `id`/`schedule`/`skill`/`enabled` are present and upserts by `id` — `OK|added` / `OK|updated`, or `ERROR|<reason>` (nothing written; report it and stop).
+   The script validates `id`/`schedule`/`skill`/`enabled` are present and upserts by `id`: `status` `added` or `updated`, or `{"error":…}` (nothing written; report it and stop).
    - Notify the operator with one plain notice: saved (skill, and agent if any), first run time from the cron, how to stop (disable the routine).
    - Do not enter step 4 — the routine branch is complete.
 
@@ -142,7 +142,7 @@ When the operator accepts a proposal:
    Decision: Deferred on @now. Reason: [operator's note]
    HERMIT_PATCH
    ```
-   Do NOT set `resolved_date` — deferral is not a terminal state. Omit the `Decision:` line entirely if no note was given. `OK|<id>` confirms; `ERROR|<reason>` means nothing was patched — report it and stop.
+   Do NOT set `resolved_date`: deferral is not a terminal state. Omit the `Decision:` line entirely if no note was given. `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
 5. Respond: "PROP-NNN deferred." On a channel-tagged turn (Step 0), use plain voice instead: "Held Suggestion #N for later."
 
 Deferred proposals still appear in `/proposal-list` but are sorted below open proposals.
@@ -163,7 +163,7 @@ Deferred proposals still appear in `/proposal-list` but are sorted below open pr
    Decision: Dismissed on @now. Reason: [operator's reason]
    HERMIT_PATCH
    ```
-   Omit the `Decision:` line entirely if no reason was given. `OK|<id>` confirms; `ERROR|<reason>` means nothing was patched — report it and stop.
+   Omit the `Decision:` line entirely if no reason was given. `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
 4b. **Dismissal learning** — only when a reason was provided in step 3. Judge whether the reason states a durable preference, rule, or taste that applies to a *family* of future proposals (e.g. "don't propose process changes for things I do twice a year", "stop suggesting test-coverage proposals on docs-only changes") versus a one-off or proposal-specific response ("not now", "already did this manually", "the analysis is wrong", "duplicate of last week"). If generalizable, save it through the normal auto-memory flow as a `feedback` entry: the rule, a brief `Why:`, and `How to apply:` so proposal-triage and reflection-judge can match it in their memory cross-check. One-off or sub-threshold: save nothing.
 5. Respond: "PROP-NNN dismissed." If step 4b saved a preference, add: "Remembered that as a standing preference (future similar proposals may be filtered)." On a channel-tagged turn (Step 0), use plain voice instead: "Dropped Suggestion #N." (same preference-remembered addendum, in plain voice, if step 4b saved one).
 
@@ -189,7 +189,7 @@ Used when reflect has surfaced a sparse-cadence proposal as a resolution candida
 
    `--request-compact` writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton — overwrite unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence + quiescence guards).
 
-   `OK|<id>` confirms; `ERROR|<reason>` means nothing was patched — report it and stop.
+   `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
 4. Respond: "PROP-NNN resolved."
 
 No first-response tracking on resolve — the proposal was already accepted and that event was already logged.

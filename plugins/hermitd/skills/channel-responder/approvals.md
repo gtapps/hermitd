@@ -3,12 +3,12 @@
 ## Micro-approval response
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
-  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --reply "<token>"`; pass the explicit id when supplied, otherwise omit it. Follow its one output line:
-    - `MATCH|<id>|<yes|no|label>|<tier>|<on_resolve or ->`: use the returned entry, answer, tier and invocation in the resolution branches below.
-    - `AMBIGUOUS|<reason>|<id>=<opt1>/<opt2>;<id>=...`: list the returned ids and options and ask for the target or choice once; do not resolve.
-    - `NONE|no-pending`: fall through to general classification. `NONE|no-match`: ask for clarification once; do not resolve.
+  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --reply "<token>"`; pass the explicit id when supplied, otherwise omit it. Follow its `status`:
+    - `match`: use the returned `id`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
+    - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
+    - `none`, reason `no_pending`: fall through to general classification. Reason `no_match`: ask for clarification once; do not resolve.
     - On a script error, report it and do not resolve or hand-edit the queue.
-  - **Suggestion escape hatch:** on `AMBIGUOUS` for bare `yes`/`no`/`later`, run `proposal-index` (Commands) to validate the index against disk, then check `state/proposals-index.json`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.
+  - **Suggestion escape hatch:** on `ambiguous` for bare `yes`/`no`/`later`, run `proposal-index` (Commands) to validate the index against disk, then check `state/proposals-index.json`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.
   - **On resolved entry:** every branch below resolves the entry via one script call — never hand-edit `state/micro-proposals.json`: the script is the only writer that keeps the file and the ledger consistent.
     - **Entry has `on_resolve`** → **resolve on disk FIRST, then invoke.** Run:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`.

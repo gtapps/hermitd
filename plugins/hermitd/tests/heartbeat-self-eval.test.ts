@@ -245,8 +245,9 @@ describe('self-evaluation uses current alert state', () => {
       `Self-Eval-Key: ${QUIET_KEY}`, '---', '## Context', 'Review the check.',
     ].join('\n') });
     expect(created.exitCode).toBe(0);
-    expect(created.stdout.trim()).toMatch(/^PROP-/);
-    const dismissed = await runProposal(stateDir, ['patch', created.stdout.trim(), '--set', 'status=dismissed']);
+    const { id } = JSON.parse(created.stdout);
+    expect(id).toMatch(/^PROP-/);
+    const dismissed = await runProposal(stateDir, ['patch', id, '--set', 'status=dismissed']);
     expect(dismissed.exitCode).toBe(0);
     const result = evaluate({ [QUIET_KEY]: { proposed: true, clean_ticks: 20, sessions_seen: 3 } }, stateDir);
     expect(result.self_eval[QUIET_KEY]).toMatchObject({ proposed: false, clean_ticks: 0 });

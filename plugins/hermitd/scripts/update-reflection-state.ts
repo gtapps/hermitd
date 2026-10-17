@@ -17,7 +17,7 @@
 // timestamp 3b captured *before* Candidate processing appended its reflect-noticed
 // rows — passed explicitly, because the write happens later, at State Update, and only
 // on a clean run. Stamping it inside 3b instead meant a candidate that then hit
-// GATE_FAILED was gone until a brand-new row arrived, breaking the fail-closed
+// gate-failed was gone until a brand-new row arrived, breaking the fail-closed
 // "re-surfaces on the next reflect cycle" promise for exactly the best-evidenced
 // patterns. Bare (no value) still stamps now, for callers with nothing to preserve.
 //

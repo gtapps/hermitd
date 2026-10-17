@@ -78,7 +78,7 @@ never block:
   the rest of the report **except the `Context reload:` line** — steps 6/7 may already have rewritten
   project instructions on disk, and a blocked version bump does not undo those writes.
   Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —
-  `version-only` is not a failure and never blocks.
+  `version_only` is not a failure and never blocks.
 
 Everything else (version gates 0/0b, the plan pre-pass, classification, copies, manifest write, and the
 step-9 config write — the `new_config_keys` merge and the `_hermit_versions` bump, both performed by
@@ -110,7 +110,7 @@ Sibling hermits: <one or more of the following per sibling, space-separated, or 
 Siblings detected but not activated: <name ... | none>
 Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
-Audit scope: <whole-run | version-only>
+Audit scope: <whole_run | version_only>
 Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
 Deferred for operator: <none | one or more verbatim blocks, each:>
   --- deferred-migration ---

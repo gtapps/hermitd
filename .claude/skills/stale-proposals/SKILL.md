@@ -92,7 +92,7 @@ HERMIT_PATCH
 
 Writing the evidence into the Decision line is what makes an automatic flip auditable: the operator can later see exactly which bullet closed the proposal and reopen it if the match was wrong.
 
-`proposal.ts resolve-id` returning `AMBIGUOUS` or `NONE` means don't guess — move that proposal into the Step 4 list instead. `proposal.ts` returning `ERROR|<reason>` means nothing was patched; report it and continue with the rest.
+`resolve-id` prints `{"status":"match","file":...}`; pass that `file` as `<filename>`. Status `ambiguous` or `none` means don't guess: move that proposal into the Step 4 list instead. `{"error":...}` from `proposal.ts` means nothing was patched; report it and continue with the rest.
 
 ## Step 4 — Ask about the rest
 

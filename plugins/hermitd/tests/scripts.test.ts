@@ -1367,19 +1367,19 @@ describe('update-alert-state', () => {
     write(stateFile, before);
     let r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: 'not-an-array', self_eval_updates: {} }), env: { HERMIT_NOW: NOW } });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before)); // untouched — never coerced to empty and aged
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ key: 'checklist:x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // missing text
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ text: 'x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // neither item nor key
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
   }));
 
@@ -1388,7 +1388,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout, monitoring } = await updateAlertState(dir, '{"firing":null}');
     expect(state).toEqual(JSON.parse(before)); // untouched — last_clean_eval_at and the live alert both survive
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(monitoring).toHaveLength(0);
   }));
 
@@ -1399,7 +1399,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout } = await updateAlertState(dir, 'null');
     expect(state).toEqual(JSON.parse(before));
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
   }));
 
   test('update-alert-state (duplicate firing keys deduped — first occurrence wins)', withDir(async (dir) => {
@@ -1527,7 +1527,7 @@ describe('update-alert-state', () => {
     try {
       const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: firingPayload([{ key: 'custom:x', text: 'x' }]), env: { HERMIT_NOW: NOW } });
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write-failed' });
+      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write_failed' });
       expect(fs.readFileSync(stateFile, 'utf-8')).toBe(before); // untouched
     } finally {
       fs.chmodSync(stateSubdir, 0o755);
@@ -1938,15 +1938,15 @@ describe('observations.ts observe', () => {
     // not hold; only the scripts that compute them may write them.
     for (const source of ['cost-spike', 'behavior-digest', 'startup-drift']) {
       const r = await observe(hermit(dir), source, 'forged');
-      expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe(`ERROR|invalid-source:${source}`);
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ error: `invalid_source:${source}` });
     }
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
 
   test('observations (origin rejected on a source that never carries it)', withDir(async (dir) => {
     const r = await observe(hermit(dir), 'quick-deferral', 'a label', '--origin=own-work');
-    expect(r.stdout.trim()).toBe('ERROR|origin-not-allowed:quick-deferral');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'origin_not_allowed:quick-deferral' });
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
 
@@ -1973,26 +1973,26 @@ describe('observations.ts observe', () => {
 
   test('observations (invalid origin value rejected)', withDir(async (dir) => {
     const r = await observe(hermit(dir), 'skill-correction', 'skill-correction:reflect', '--origin=elsewhere');
-    expect(r.stdout.trim()).toBe('ERROR|invalid-origin:elsewhere');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_origin:elsewhere' });
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
 
   test('observations (empty and multiline labels write nothing)', withDir(async (dir) => {
-    expect((await observe(hermit(dir), 'quick-deferral', '   ')).stdout.trim()).toBe('ERROR|empty-pattern');
-    expect((await observe(hermit(dir), 'quick-deferral', 'a\nb')).stdout.trim()).toBe('ERROR|multiline-pattern');
+    expect(JSON.parse((await observe(hermit(dir), 'quick-deferral', '   ')).stdout)).toEqual({ error: 'empty_pattern' });
+    expect(JSON.parse((await observe(hermit(dir), 'quick-deferral', 'a\nb')).stdout)).toEqual({ error: 'multiline_pattern' });
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
 
   test('observations (over-long label rejected, ledger untouched)', withDir(async (dir) => {
     const r = await observe(hermit(dir), 'quick-deferral', 'x'.repeat(201));
-    expect(r.stdout.trim()).toBe('ERROR|pattern-too-long:201');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'pattern_too_long:201' });
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
 
-  test('observations (a rejected row never exits non-zero — telemetry must not abort a skill)', withDir(async (dir) => {
+  test('observations (a rejected row exits 1 with its error token)', withDir(async (dir) => {
     const r = await observe(hermit(dir), 'bogus-source', 'label');
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('ERROR|invalid-source:bogus-source');
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_source:bogus-source' });
   }));
 
   test('observations (mis-invocation exits 1 so a broken call site is loud)', withDir(async (dir) => {
@@ -2037,56 +2037,56 @@ describe('proposal resolve-id', () => {
   async function resolveProp(dir: string, input: string) {
     const r = await runProposal(hermit(dir), ['resolve-id', input]);
     expect(r.exitCode).toBe(0);
-    return r.stdout.trimEnd();
+    return JSON.parse(r.stdout);
   }
 
   test('resolve-id (legacy exact match)', withDir(async (dir) => {
     seedProposal(dir, 'PROP-007.md', 'Legacy');
-    expect(await resolveProp(dir, 'prop-7')).toBe('MATCH|PROP-007.md');
+    expect(await resolveProp(dir, 'prop-7')).toEqual({ status: 'match', file: 'PROP-007.md' });
   }));
 
   test('resolve-id (new-format bare-id match)', withDir(async (dir) => {
     seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    expect(await resolveProp(dir, 'PROP-6')).toBe('MATCH|PROP-006-capability-brainstorm-103612.md');
+    expect(await resolveProp(dir, 'PROP-6')).toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
   }));
 
   test('resolve-id (suffix match, lowercase input against lowercase slug)', withDir(async (dir) => {
     seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
     expect(await resolveProp(dir, 'prop-006-capability-brainstorm-103612'))
-      .toBe('MATCH|PROP-006-capability-brainstorm-103612.md');
+      .toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
   }));
 
   test('resolve-id (suffix match, timestamp-only input)', withDir(async (dir) => {
     seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    expect(await resolveProp(dir, 'PROP-006-103612')).toBe('MATCH|PROP-006-capability-brainstorm-103612.md');
+    expect(await resolveProp(dir, 'PROP-006-103612')).toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
   }));
 
   test('resolve-id (4-digit NNN never collides with 3-digit bare id)', withDir(async (dir) => {
     // PROP-006 must not match PROP-0061.md once proposal counts cross 1000.
     seedProposal(dir, 'PROP-0061.md', 'Collision');
-    expect(await resolveProp(dir, 'PROP-6')).toBe('NONE|no-match');
+    expect(await resolveProp(dir, 'PROP-6')).toEqual({ status: 'none', reason: 'no_match' });
   }));
 
   test('resolve-id (0 matches)', withDir(async (dir) => {
     fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    expect(await resolveProp(dir, 'PROP-999')).toBe('NONE|no-match');
+    expect(await resolveProp(dir, 'PROP-999')).toEqual({ status: 'none', reason: 'no_match' });
   }));
 
   test('resolve-id (not a PROP id)', withDir(async (dir) => {
     fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    expect(await resolveProp(dir, 'hello')).toBe('NONE|not-a-prop-id');
+    expect(await resolveProp(dir, 'hello')).toEqual({ status: 'none', reason: 'not_a_prop_id' });
   }));
 
-  test('resolve-id (2+ matches — AMBIGUOUS carries file + title)', withDir(async (dir) => {
+  test('resolve-id (2+ matches: ambiguous carries file + title)', withDir(async (dir) => {
     seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
     seedProposal(dir, 'PROP-006-something-else-110000.md', 'Bar');
-    const out = await resolveProp(dir, 'PROP-6');
-    expect(out.startsWith('AMBIGUOUS|')).toBe(true);
-    const payload = JSON.parse(out.slice('AMBIGUOUS|'.length));
-    expect(payload).toEqual([
-      { file: 'PROP-006-capability-brainstorm-103612.md', title: 'Foo' },
-      { file: 'PROP-006-something-else-110000.md', title: 'Bar' },
-    ]);
+    expect(await resolveProp(dir, 'PROP-6')).toEqual({
+      status: 'ambiguous',
+      matches: [
+        { file: 'PROP-006-capability-brainstorm-103612.md', title: 'Foo' },
+        { file: 'PROP-006-something-else-110000.md', title: 'Bar' },
+      ],
+    });
   }));
 });
 
@@ -2100,8 +2100,9 @@ describe('proposal gate', () => {
     if (opts.evidenceSource) args.push('--evidence-source', opts.evidenceSource);
     if (opts.tags) args.push('--tags', JSON.stringify(opts.tags));
     const r = await runProposal(hermit(dir), args, { stdin: `Title: ${title}\nVerdict: ${verdict}\n` });
-    expect(r.exitCode).toBe(0);
-    return r.stdout.trim();
+    const out = JSON.parse(r.stdout);
+    expect(r.exitCode).toBe('error' in out ? 1 : 0);
+    return out;
   }
   function ledgerLines(dir: string): any[] {
     const p = hermit(dir, 'state', 'proposal-metrics.jsonl');
@@ -2109,35 +2110,35 @@ describe('proposal gate', () => {
     return fs.readFileSync(p, 'utf-8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
   }
 
-  test('gate (triage CREATE -> PROCEED + triage-verdict event)', withDir(async (dir) => {
+  test('gate (triage CREATE -> create + triage-verdict event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage', caller: 'proposal-create', evidenceSource: 'capability-brainstorm', tags: ['capability-brainstorm'] }, 'Foo', 'CREATE: Foo');
-    expect(out).toBe('PROCEED|CREATE');
+    expect(out).toEqual({ status: 'create' });
     const lines = ledgerLines(dir);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ type: 'triage-verdict', verdict: 'CREATE', caller: 'proposal-create', evidence_source: 'capability-brainstorm', tags: ['capability-brainstorm'] });
   }));
 
-  test('gate (triage SUPPRESS -> DROP with code)', withDir(async (dir) => {
+  test('gate (triage SUPPRESS -> suppress with code)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-recurrence: one-off ("excerpt")');
-    expect(out).toBe('DROP|SUPPRESS:weak-recurrence');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-recurrence' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'SUPPRESS' });
   }));
 
-  test('gate (triage DUPLICATE -> DROP with PROP-ID)', withDir(async (dir) => {
+  test('gate (triage DUPLICATE -> duplicate with PROP-ID)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'DUPLICATE: Foo — PROP-019: same problem');
-    expect(out).toBe('DROP|DUPLICATE:PROP-019');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'DUPLICATE' });
   }));
 
-  test('gate (triage garbled verdict -> GATE_FAILED + gate-failed event)', withDir(async (dir) => {
+  test('gate (triage garbled verdict -> gate-failed + gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
-    expect(out).toBe('GATE_FAILED');
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage', title: 'Foo', verdict: 'garbled nonsense' });
   }));
 
-  test('gate (triage GATE_BLIND -> GATE_FAILED, blind line kept in the gate-failed event)', withDir(async (dir) => {
+  test('gate (triage GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'GATE_BLIND: Foo — missing Anchor: line');
-    expect(out).toBe('GATE_FAILED');
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', verdict: 'GATE_BLIND: Foo — missing Anchor: line' });
   }));
 
@@ -2146,57 +2147,57 @@ describe('proposal gate', () => {
     expect(ledgerLines(dir)[0].verdict).toBe('x'.repeat(200));
   }));
 
-  test('gate (judge ACCEPT -> PROCEED, no ledger event)', withDir(async (dir) => {
+  test('gate (judge ACCEPT -> accept, no ledger event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'ACCEPT: Bar');
-    expect(out).toBe('PROCEED|ACCEPT');
+    expect(out).toEqual({ status: 'accept' });
     expect(ledgerLines(dir)).toHaveLength(0);
   }));
 
   test('gate (judge ACCEPT with source tag)', withDir(async (dir) => {
-    expect(await gate(dir, { gate: 'judge' }, 'Bar', 'ACCEPT (current-session): Bar')).toBe('PROCEED|ACCEPT');
+    expect(await gate(dir, { gate: 'judge' }, 'Bar', 'ACCEPT (current-session): Bar')).toEqual({ status: 'accept' });
   }));
 
-  test('gate (judge DOWNGRADE -> PROCEED with tier)', withDir(async (dir) => {
+  test('gate (judge DOWNGRADE -> downgrade with tier)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'DOWNGRADE:2: Bar — weak-recurrence');
-    expect(out).toBe('PROCEED|DOWNGRADE:2');
+    expect(out).toEqual({ status: 'downgrade', tier: 2 });
   }));
 
   test('gate (judge DOWNGRADE quarantine — tier passes through as-is)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'DOWNGRADE:3 (current-session): Bar — quarantine: external origin');
-    expect(out).toBe('PROCEED|DOWNGRADE:3');
+    expect(out).toEqual({ status: 'downgrade', tier: 3 });
   }));
 
-  test('gate (judge SUPPRESS -> DROP with code, no ledger event)', withDir(async (dir) => {
+  test('gate (judge SUPPRESS -> suppress with code, no ledger event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS: Bar — no-sessions: no cross-session evidence cited');
-    expect(out).toBe('DROP|SUPPRESS:no-sessions');
+    expect(out).toEqual({ status: 'suppress', code: 'no-sessions' });
     expect(ledgerLines(dir)).toHaveLength(0);
   }));
 
-  test('gate (judge empty verdict -> GATE_FAILED + gate-failed event tagged reflection-judge)', withDir(async (dir) => {
+  test('gate (judge empty verdict -> gate-failed + gate-failed event tagged reflection-judge)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', '');
-    expect(out).toBe('GATE_FAILED');
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar', verdict: '' });
   }));
 
-  test('gate (judge GATE_BLIND -> GATE_FAILED, blind line kept in the gate-failed event)', withDir(async (dir) => {
+  test('gate (judge GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'GATE_BLIND: Bar — missing Anchor: line');
-    expect(out).toBe('GATE_FAILED');
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', verdict: 'GATE_BLIND: Bar — missing Anchor: line' });
   }));
 
-  test('gate (invalid --gate value -> GATE_FAILED)', withDir(async (dir) => {
+  test('gate (invalid --gate value -> gate-failed)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'bogus' as any }, 'Foo', 'CREATE: Foo');
-    expect(out).toBe('GATE_FAILED');
+    expect(out).toEqual({ status: 'gate_failed' });
   }));
 
   test('gate (missing state/ subdir does not crash — creates it before appending)', async () => {
     // Regression: appendJsonlLine's fs.appendFileSync throws ENOENT if state/ doesn't
-    // exist yet, which would violate this script's own "Exit 0 always" contract.
+    // exist yet, which would crash a recognized verdict instead of routing it.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-gate-nodir-'));
     try {
       const r = await runProposal(dir, ['gate', '--gate', 'triage', '--caller', 'test'], { stdin: 'Title: Foo\nVerdict: CREATE: Foo\n' });
       expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe('PROCEED|CREATE');
+      expect(JSON.parse(r.stdout)).toEqual({ status: 'create' });
       const line = JSON.parse(fs.readFileSync(path.join(dir, 'state', 'proposal-metrics.jsonl'), 'utf-8').trim());
       expect(line).toMatchObject({ type: 'triage-verdict', verdict: 'CREATE' });
     } finally {
@@ -2217,7 +2218,7 @@ describe('proposal queue-micro', () => {
   async function queue(dir: string, payload: any) {
     const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify(payload) });
     expect(r.exitCode).toBe(0);
-    return r.stdout.trim();
+    return JSON.parse(r.stdout);
   }
   function microFile(dir: string): any {
     return readJson(hermit(dir, 'state', 'micro-proposals.json'));
@@ -2226,7 +2227,8 @@ describe('proposal queue-micro', () => {
   test('queue-micro (first entry of the day is N=0)', withDir(async (dir) => {
     seed(dir);
     const out = await queue(dir, { tier: 1, question: 'For 3 weeks I added the same hashtags. Automate it? Yes / No' });
-    expect(out).toMatch(/^QUEUED\|MP-\d{8}-0$/);
+    expect(out.status).toBe('queued');
+    expect(out.id).toMatch(/^MP-\d{8}-0$/);
     const micro = microFile(dir);
     expect(micro.pending).toHaveLength(1);
     expect(micro.pending[0]).toMatchObject({ tier: 1, status: 'pending', follow_up_count: 0 });
@@ -2236,17 +2238,16 @@ describe('proposal queue-micro', () => {
     seed(dir);
     const out1 = await queue(dir, { tier: 1, question: 'Question A' });
     const out2 = await queue(dir, { tier: 2, question: 'Question B' });
-    const n1 = parseInt(out1.split('-').pop()!, 10);
-    const n2 = parseInt(out2.split('-').pop()!, 10);
+    const n1 = parseInt(out1.id.split('-').pop()!, 10);
+    const n2 = parseInt(out2.id.split('-').pop()!, 10);
     expect(n2).toBe(n1 + 1);
   }));
 
   test('queue-micro (dedup by exact question match)', withDir(async (dir) => {
     seed(dir);
     const out1 = await queue(dir, { tier: 1, question: 'Same question here' });
-    const id1 = out1.split('|')[1];
     const out2 = await queue(dir, { tier: 1, question: 'Same question here' });
-    expect(out2).toBe(`DUPLICATE|${id1}`);
+    expect(out2).toEqual({ status: 'duplicate', id: out1.id });
     expect(microFile(dir).pending).toHaveLength(1);
   }));
 
@@ -2256,7 +2257,7 @@ describe('proposal queue-micro', () => {
       pending: [{ id: 'MP-20260101-0', tier: 1, status: 'accepted', follow_up_count: 0, ts: '2026-01-01T00:00:00Z', question: 'Same question here' }],
     }));
     const out = await queue(dir, { tier: 1, question: 'Same question here' });
-    expect(out.startsWith('QUEUED|')).toBe(true);
+    expect(out.status).toBe('queued');
     expect(microFile(dir).pending).toHaveLength(2);
   }));
 
@@ -2284,12 +2285,14 @@ describe('proposal queue-micro', () => {
     seed(dir);
     const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1 }) });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'missing_question' });
   }));
 
   test('queue-micro (invalid JSON -> exit 1, no write)', withDir(async (dir) => {
     seed(dir);
     const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: 'not-json' });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
   }));
 
   test('queue-micro (corrupt existing file -> exit 1, refuses to overwrite)', withDir(async (dir) => {
@@ -2298,6 +2301,7 @@ describe('proposal queue-micro', () => {
     const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
     const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'New question' }) });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'queue_corrupt' });
     expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
   }));
 
@@ -2313,7 +2317,7 @@ describe('proposal queue-micro', () => {
 });
 
 // -------------------------------------------------------
-// proposal.ts micro (subprocess — resolve/nudge, issue 649 regression)
+// proposal.ts micro (subprocess: resolve, issue 649 regression)
 // -------------------------------------------------------
 
 describe('proposal micro', () => {
@@ -2333,22 +2337,12 @@ describe('proposal micro', () => {
     seed(dir, [entryA, entryB]);
     const r = await runProposal(hermit(dir), ['micro', 'resolve', entryA.id, '--action', 'approved']);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe(`RESOLVED|${entryA.id}|approved`);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'resolved', id: entryA.id, action: 'approved' });
     const raw = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
     expect(() => JSON.parse(raw)).not.toThrow();
     const micro = JSON.parse(raw);
     expect(micro.pending).toHaveLength(1);
     expect(micro.pending[0].id).toBe(entryB.id);
-  }));
-
-  test('nudge (increments follow_up_count, leaves other fields intact)', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const r = await runProposal(hermit(dir), ['micro', 'nudge', entryA.id]);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe(`NUDGED|${entryA.id}|1`);
-    const entry = microFile(dir).pending[0];
-    expect(entry.follow_up_count).toBe(1);
-    expect(entry.question).toBe(entryA.question);
   }));
 
   test('resolve on a corrupt file -> exit 1, file byte-unchanged', withDir(async (dir) => {
@@ -2359,12 +2353,12 @@ describe('proposal micro', () => {
     expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
   }));
 
-  test('resolve unknown id -> NONE|no-match, exit 0, no write', withDir(async (dir) => {
+  test('resolve unknown id -> no_match, exit 0, no write', withDir(async (dir) => {
     seed(dir, [entryA]);
     const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
     const r = await runProposal(hermit(dir), ['micro', 'resolve', 'MP-does-not-exist', '--action', 'approved']);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('NONE|no-match');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_match' });
     expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
   }));
 
@@ -2376,10 +2370,10 @@ describe('proposal micro', () => {
     expect(events[0]).toMatchObject({ type: 'micro-resolved', micro_id: entryA.id, action: 'answered', answer: 'session task', question: entryA.question });
   }));
 
-  test('resolve on absent file -> NONE|no-match, exit 0', withDir(async (dir) => {
+  test('resolve on absent file -> no_match, exit 0', withDir(async (dir) => {
     const r = await runProposal(hermit(dir), ['micro', 'resolve', 'MP-anything', '--action', 'approved']);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('NONE|no-match');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_match' });
   }));
 
   test('resolve with missing --action -> exit 1, file unchanged', withDir(async (dir) => {
@@ -2390,19 +2384,19 @@ describe('proposal micro', () => {
     expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
   }));
 
-  test('resolve with the <MP-id> omitted -> exit 1, never a silent NONE|no-match', withDir(async (dir) => {
+  test('resolve with the <MP-id> omitted -> exit 1, never a silent no_match', withDir(async (dir) => {
     seed(dir, [entryA]);
     const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
     const r = await runProposal(hermit(dir), ['micro', 'resolve', '--action', 'approved']);
     expect(r.exitCode).toBe(1);
-    expect(r.stdout).not.toContain('NONE|no-match');
+    expect(r.stdout).not.toContain('no_match');
     expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
   }));
 
   test('unknown verb -> exit 1 even when the file is absent', withDir(async (dir) => {
     const r = await runProposal(hermit(dir), ['micro', 'expire', 'MP-20260101-0']);
     expect(r.exitCode).toBe(1);
-    expect(r.stdout).not.toContain('NONE|no-match');
+    expect(r.stdout).not.toContain('no_match');
   }));
 
   test('resolve with invalid --action -> exit 1, file unchanged', withDir(async (dir) => {
@@ -3373,7 +3367,7 @@ describe('reflect-precheck', () => {
     // No cost log or task results newer than last_run_at
     const r = await runReflectPrecheck(dir);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trimEnd()).toBe('EMPTY');
+    expect(r.stdout.trimEnd()).toBe('{"status":"empty"}');
   }));
 
   // 22. EMPTY path leaves frozen SHELL.md unchanged.
@@ -3434,7 +3428,7 @@ describe('reflect-precheck', () => {
     });
     await seedComputeActivity(dir);
     const r = await runReflectPrecheck(dir);
-    expect(r.stdout).toContain('compute');
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'run', phases: { compute: true }, phase: 'adult' });
   }));
 
   test('reflect-precheck ignores a large frozen journal and omits archive_due', withDir(async (dir) => {
@@ -3445,11 +3439,19 @@ describe('reflect-precheck', () => {
     write(hermit(dir, 'sessions', 'SHELL.md'), frozen);
     await seedComputeActivity(dir);
     const result = await runReflectPrecheck(dir);
-    expect(result.stdout).toMatch(/^RUN\|/m);
-    expect(result.stdout).toContain('"compute":true');
+    expect(JSON.parse(result.stdout).phases.compute).toBe(true);
     expect(result.stdout).not.toContain('archive_due');
     expect(fs.readFileSync(hermit(dir, 'sessions', 'SHELL.md'), 'utf-8')).toBe(frozen);
     expect(fs.existsSync(hermit(dir, 'sessions', 'snapshots'))).toBe(false);
+  }));
+
+  test('reflect-precheck --quick: empty with no records, a run hash under --force', withDir(async (dir) => {
+    seedReflect(dir, {});
+    const quick = (flags: string[]) => runPinnedScript('reflect-precheck.ts', hermit(dir), [hermit(dir), PLUGIN_ROOT, ...flags]);
+    expect((await quick(['--quick'])).stdout.trimEnd()).toBe('{"status":"empty"}');
+    const forced = JSON.parse((await quick(['--quick', '--force'])).stdout);
+    expect(forced.status).toBe('run');
+    expect(forced.hash).toMatch(/^[0-9a-f]{64}$/);
   }));
 
 });
@@ -5600,28 +5602,33 @@ describe('proposal micro match is read-only', () => {
   const plain = { id: 'MP-plain', status: 'pending', tier: 1, question: 'Proceed?' };
   const choices = { id: 'MP-options', status: 'pending', tier: 2,
     options: ['Ship now', 'Ship later', 'Cancel'], on_resolve: '/example {answer}' };
-  const cases: { name: string; pending: any[]; args: string[]; output: string }[] = [
-    { name: 'yes case insensitive', pending: [plain], args: ['--reply', 'YES'], output: 'MATCH|MP-plain|yes|1|-' },
-    { name: 'no case insensitive', pending: [plain], args: ['--reply', 'No'], output: 'MATCH|MP-plain|no|1|-' },
-    { name: 'explicit id', pending: [plain], args: ['MP-plain', '--reply', 'yes'], output: 'MATCH|MP-plain|yes|1|-' },
-    { name: 'unknown id', pending: [plain], args: ['MP-other', '--reply', 'yes'], output: 'NONE|no-match' },
-    { name: 'unknown answer', pending: [plain], args: ['--reply', 'perhaps'], output: 'NONE|no-match' },
-    { name: 'number', pending: [choices], args: ['--reply', '2'], output: 'MATCH|MP-options|Ship later|2|/example {answer}' },
-    { name: 'id and number', pending: [choices], args: ['MP-options', '--reply', '1'], output: 'MATCH|MP-options|Ship now|2|/example {answer}' },
-    { name: 'unique label prefix', pending: [choices], args: ['--reply', 'cAn'], output: 'MATCH|MP-options|Cancel|2|/example {answer}' },
-    { name: 'full label', pending: [choices], args: ['--reply', 'ship NOW'], output: 'MATCH|MP-options|Ship now|2|/example {answer}' },
-    { name: 'multi-label prefix', pending: [choices], args: ['--reply', 'ship'], output: 'AMBIGUOUS|multiple-labels|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'number too large', pending: [choices], args: ['--reply', '4'], output: 'AMBIGUOUS|number-out-of-range|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'zero', pending: [choices], args: ['--reply', '0'], output: 'AMBIGUOUS|number-out-of-range|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'negative number', pending: [choices], args: ['--reply', '-1'], output: 'AMBIGUOUS|number-out-of-range|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'yes against options', pending: [choices], args: ['--reply', 'yes'], output: 'AMBIGUOUS|options-require-choice|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'no against options', pending: [choices], args: ['--reply', 'NO'], output: 'AMBIGUOUS|options-require-choice|MP-options=Ship now/Ship later/Cancel' },
-    { name: 'no matching label', pending: [choices], args: ['--reply', 'unrelated'], output: 'NONE|no-match' },
-    { name: 'several without id', pending: [plain, choices], args: ['--reply', '2'], output: 'AMBIGUOUS|multiple-pending|MP-plain=yes/no;MP-options=Ship now/Ship later/Cancel' },
-    { name: 'several with id', pending: [plain, choices], args: ['MP-options', '--reply', '3'], output: 'MATCH|MP-options|Cancel|2|/example {answer}' },
-    { name: 'none pending', pending: [], args: ['--reply', 'yes'], output: 'NONE|no-pending' },
-    { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: 'MATCH|MP-plain|yes|1|-' },
-    { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: 'NONE|no-pending' },
+  const match = (id: string, answer: string, tier: number, on_resolve: string | null) =>
+    ({ status: 'match', id, answer, tier, on_resolve });
+  const ambiguous = (reason: string, ...choices: [string, string[]][]) =>
+    ({ status: 'ambiguous', reason, choices: choices.map(([id, options]) => ({ id, options })) });
+  const none = (reason: string) => ({ status: 'none', reason });
+  const cases: { name: string; pending: any[]; args: string[]; output: object }[] = [
+    { name: 'yes case insensitive', pending: [plain], args: ['--reply', 'YES'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'no case insensitive', pending: [plain], args: ['--reply', 'No'], output: match('MP-plain', 'no', 1, null) },
+    { name: 'explicit id', pending: [plain], args: ['MP-plain', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'unknown id', pending: [plain], args: ['MP-other', '--reply', 'yes'], output: none('no_match') },
+    { name: 'unknown answer', pending: [plain], args: ['--reply', 'perhaps'], output: none('no_match') },
+    { name: 'number', pending: [choices], args: ['--reply', '2'], output: match('MP-options', 'Ship later', 2, '/example {answer}') },
+    { name: 'id and number', pending: [choices], args: ['MP-options', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
+    { name: 'unique label prefix', pending: [choices], args: ['--reply', 'cAn'], output: match('MP-options', 'Cancel', 2, '/example {answer}') },
+    { name: 'full label', pending: [choices], args: ['--reply', 'ship NOW'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
+    { name: 'multi-label prefix', pending: [choices], args: ['--reply', 'ship'], output: ambiguous('multiple_labels', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'number too large', pending: [choices], args: ['--reply', '4'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'zero', pending: [choices], args: ['--reply', '0'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'negative number', pending: [choices], args: ['--reply', '-1'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'yes against options', pending: [choices], args: ['--reply', 'yes'], output: ambiguous('options_require_choice', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'no against options', pending: [choices], args: ['--reply', 'NO'], output: ambiguous('options_require_choice', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'no matching label', pending: [choices], args: ['--reply', 'unrelated'], output: none('no_match') },
+    { name: 'several without id', pending: [plain, choices], args: ['--reply', '2'], output: ambiguous('multiple_pending', ['MP-plain', ['yes', 'no']], ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
+    { name: 'several with id', pending: [plain, choices], args: ['MP-options', '--reply', '3'], output: match('MP-options', 'Cancel', 2, '/example {answer}') },
+    { name: 'none pending', pending: [], args: ['--reply', 'yes'], output: none('no_pending') },
+    { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: none('no_pending') },
   ];
   for (const item of cases) test(item.name, withDir(async (dir) => {
     const file = hermit(dir, 'state', 'micro-proposals.json');
@@ -5632,7 +5639,7 @@ describe('proposal micro match is read-only', () => {
     const beforeStat = fs.statSync(file);
     const result = await runProposal(hermit(dir), ['micro', 'match', ...item.args]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(item.output + '\n');
+    expect(result.stdout).toBe(JSON.stringify(item.output) + '\n');
     expect(result.stderr).toBe('');
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
     expect(fs.statSync(file).mtimeMs).toBe(beforeStat.mtimeMs);
@@ -5643,7 +5650,7 @@ describe('proposal micro match is read-only', () => {
   test('missing file stays missing', withDir(async (dir) => {
     const result = await runProposal(hermit(dir), ['micro', 'match', '--reply', 'yes']);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('NONE|no-pending\n');
+    expect(JSON.parse(result.stdout)).toEqual({ status: 'none', reason: 'no_pending' });
     expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
     expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
   }));
@@ -5653,8 +5660,7 @@ describe('proposal micro match is read-only', () => {
     write(file, '{broken');
     const result = await runProposal(hermit(dir), ['micro', 'match', '--reply', 'yes']);
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('unparseable');
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'queue_corrupt' });
     expect(fs.readFileSync(file, 'utf8')).toBe('{broken');
     expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
   }));
@@ -5663,7 +5669,7 @@ describe('proposal micro match is read-only', () => {
     test(`rejects malformed match args ${JSON.stringify(args)}`, withDir(async (dir) => {
       const result = await runProposal(hermit(dir), ['micro', 'match', ...args]);
       expect(result.exitCode).toBe(1);
-      expect(result.stdout).toBe('');
+      expect(JSON.parse(result.stdout)).toEqual({ error: 'usage' });
       expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
     }));
   }

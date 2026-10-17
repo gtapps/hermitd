@@ -59,10 +59,10 @@ HERMIT_GATE
 ```
 `evidence_source` is the `Evidence Source:` value the caller passed (default `archived-session`). `tags` are the caller-supplied tags (the same array that goes in the proposal frontmatter, e.g. `["procedure-capture"]`); use `[]` if none. Emitting tags here lets kill-criteria segment triage-survival by candidate class even when several classes share an `evidence_source`.
 
-- `PROCEED|CREATE` — proceed with the steps below
-- `DROP|DUPLICATE:<PROP-ID>` — stop, report to the caller: "Proposal already exists as <PROP-ID>"
-- `DROP|SUPPRESS:<code>` — stop, report the suppression reason (from the agent's line 1) to the caller
-- `GATE_FAILED` (unrecognized/empty line 1 — agent errored, returned malformed output, or was terminated before emitting a verdict): fail closed — do not create the proposal. When inside an open task record turn, note it with the record id; otherwise report it to the caller:
+- `create`: proceed with the steps below
+- `duplicate`: stop and report "Proposal already exists as <id>" to the caller
+- `suppress`: stop and report the suppression reason (from the agent's line 1) to the caller
+- `gate_failed` (unrecognized or empty line 1, because the agent errored, returned malformed output, or was terminated before emitting a verdict): fail closed and do not create the proposal. When inside an open task record turn, note it with the record id; otherwise report it to the caller:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> <<'HERMIT_LINE'
   gate-failed: proposal-triage — <title> — <the agent's line 1, verbatim>
@@ -110,8 +110,8 @@ HERMIT_PROPOSAL
 
 The script assigns the canonical ID `PROP-NNN-<slug>-HHMMSS` (resolves the next `NNN`, generates the slug, stamps `HHMMSS` in `config.json`'s timezone, claims it atomically with a same-second collision-suffix letter on conflict), writes `.hermit/proposals/<id>.md`, records the `created` metrics event, and regenerates the proposals index and state summary — one transactional call.
 
-- **stdout is the canonical ID** on success (e.g. `PROP-009-capability-brainstorm-103612`) — record it for all cross-references; it equals the filename stem, there is no separate short form.
-- **`ERROR|<token>` on stdout** means nothing was created — report the token to the caller/operator; never retry with a guessed ID.
+- **`id` is the canonical ID** on success (e.g. `PROP-009-capability-brainstorm-103612`). Record it for all cross-references; it equals the filename stem, there is no separate short form.
+- **`{"error":…}`** means nothing was created: report the token to the caller/operator; never retry with a guessed ID.
 - **`WARN:` lines on stderr** mean the proposal file was created but a bookkeeping step (metrics, index/summary regen) failed — note the warning via `task.ts note .hermit <id>` when in an open task record turn; otherwise report it. Never retry the whole call.
 
 Header fields:

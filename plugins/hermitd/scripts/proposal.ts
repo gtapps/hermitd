@@ -25,14 +25,14 @@
 //     as one atomic operation (exclusive create, suffix walk on EEXIST — never
 //     a separate assign-then-write step, which would allow a burned ID with no
 //     file). Best-effort tail: `created` metrics event,
-//     proposals-index + state-summary regen. Output: the canonical ID, or
-//     `ERROR|<token>` with zero writes.
+//     proposals-index + state-summary regen. Output: `{"id":"<canonical ID>"}`,
+//     or `{"error":"<token>"}` (exit 1) with zero writes.
 //
 //   patch <stateDir> <filename> [--set key=value]... [--request-compact] [--stdin]
 //     <filename> must be a direct-child basename of the proposals dir (no `/`,
 //     no leading `.`) — it is joined onto that dir, so a `../` prefix would
 //     otherwise reach any frontmatter-bearing .md on disk. Rejected the same
-//     way a genuinely absent proposal is: `ERROR|no-such-proposal`.
+//     way a genuinely absent proposal is: `{"error":"no_such_proposal"}`.
 //     stdin (opt-in with --stdin, heredoc): `Decision: <line>` and/or `Set: key=value`
 //     lines (free-text values — argv --set is for enum/bool/date/@now values
 //     only). `@now` in any --set value or stdin line expands to the current
@@ -40,38 +40,37 @@
 //     to one in-memory copy, then a single atomic write — validation failures
 //     touch nothing. The Decision append is idempotent (skipped if the section
 //     already ends with the identical line). `--request-compact` writes
-//     state/compact-requested.json. Output: `OK|<id>` or `ERROR|<reason>`.
+//     state/compact-requested.json. Output: `{"id":"<id>"}` or `{"error":"<reason>"}`.
 //
 //   routine <stateDir>
 //     stdin: one routine entry as JSON ({id, schedule, skill, enabled, ...}).
 //     Upserts by `id` into config.json's routines array. Output:
-//     `OK|added` / `OK|updated` or `ERROR|<reason>`.
+//     `{"status":"added"|"updated","id":"<routine id>"}` or `{"error":"<reason>"}`.
 //
 // The verbs below are the proposal-lifecycle *readers and satellites*, absorbed
-// from what used to be one top-level script each. They keep their own stdout
-// grammars and exit codes rather than being forced into `OK`/`ERROR|<token>` —
-// callers branch on those, and rewriting them would be a behavior change:
+// from what used to be one top-level script each. Each module documents its
+// own output:
 //
-//   resolve-id <stateDir> <operator-input>       MATCH|… AMBIGUOUS|… NONE|…
-//   gate <stateDir> --gate … --caller …          PROCEED|… DROP|… GATE_FAILED
-//   queue-micro <stateDir>                       QUEUED|<MP-id> / DUPLICATE|<id>
-//   micro <stateDir> resolve|nudge|brief-cycle|sweep  RESOLVED|… NUDGED|… SWEPT|… NONE|… / JSON
-//   index <stateDir>                             OK|<n> proposals / SKIP|…
-//   anchor <stateDir>                            Anchor: root=… memory_dir=…
-//   metrics [<stateDir>] [--source=<key>]        markdown table / one-line verdict
-//   success-signal --validate "<predicate>"      OK (exit 0) / reason (exit 1)
-//   success-signal <stateDir> <date> <sess> <p>  one JSON verdict line
-//   quality-gate <stateDir> <prop-file> [--files-json <json>]   one JSON verdict line
+//   resolve-id      lib/proposals/resolve.ts
+//   gate            lib/proposals/gate.ts
+//   queue-micro     lib/proposals/queue-micro.ts
+//   micro           lib/proposals/micro.ts
+//   index           lib/proposals/index-rebuild.ts
+//   event           lib/proposals/event.ts
+//   anchor          runAnchor below
+//   metrics         lib/proposals/metrics.ts
+//   success-signal  lib/proposals/success-signal.ts
+//   quality-gate    lib/proposals/quality-gate.ts
 //
-// Exit 0 always, EXCEPT: a missing OR foreign state-dir argv exits 1 (creation should
-// never proceed on a mis-invocation, but a resolved, validated failure is always
-// a verdict line, not a crash), and `queue-micro` / `micro` / `success-signal
-// --validate` exit 1 on malformed input — a silent queue-drop or a silently
-// accepted bad predicate is the failure mode those three exist to remove.
+// Exit 0 for every expected outcome. Exit 1 on a real failure: a
+// `{"error":"<token>"}` verdict (malformed `queue-micro` / `micro` input among
+// them), a missing OR foreign state-dir argv, and malformed `success-signal
+// --validate` input (stderr): a silent queue-drop or a silently accepted bad
+// predicate is the failure mode those three exist to remove.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emit, readStdin, readStdinIfFlagged, readJson, flagValue } from './lib/cli';
+import { emit, emitJson, readStdin, readStdinIfFlagged, readJson, flagValue } from './lib/cli';
 import { pinStateDirOrExit, memoryDirFor } from './lib/cc-compat';
 import { appendJsonlLine } from './lib/append-jsonl';
 import { auditConfigChange } from './lib/config-audit';
@@ -92,12 +91,14 @@ import { run as runQualityGate } from './lib/proposals/quality-gate';
 
 type Json = any;
 
-// The write verbs return their complete stdout token — `ERROR|<reason>` or the
-// success line — rather than exiting, so the write-path grammar is callable
-// from a test without a subprocess. `main()`, via lib/cli's `emit`, is the only
-// exit adapter. An exported verb takes `stateDir` already pinned (see
+// The write verbs return their stdout verdict object (`{error}` or the
+// success shape) rather than exiting, so the write-path grammar is callable
+// from a test without a subprocess. `main()`, via lib/cli's `emitJson`, is the
+// only exit adapter. An exported verb takes `stateDir` already pinned (see
 // requirePinnedStateDir): the pin is a property of the CLI entry, so an
 // in-process caller owns it.
+
+type Verdict = Record<string, Json>;
 
 function warn(msg: string): void {
   console.error(`WARN: ${msg}`);
@@ -129,37 +130,37 @@ export function parseStringArray(raw: string | null): string[] | null {
   return null;
 }
 
-export function verbCreate(stateDir: string, stdin: string): string {
+export function verbCreate(stateDir: string, stdin: string): Verdict {
   const sep = /^---[ \t]*$/m.exec(stdin);
-  if (!sep) return 'ERROR|missing-separator';
+  if (!sep) return { error: 'missing_separator' };
   const header = stdin.slice(0, sep.index);
   let body = stdin.slice(sep.index + sep[0].length).replace(/^\n+/, '').replace(/\s+$/, '');
-  if (!body) return 'ERROR|empty-body';
+  if (!body) return { error: 'empty_body' };
 
   const title = grabHeader(header, 'Title');
-  if (!title) return 'ERROR|missing-title';
+  if (!title) return { error: 'missing_title' };
 
   const source = grabHeader(header, 'Source') || 'manual';
   const selfEvalKey = grabHeader(header, 'Self-Eval-Key');
   const session = grabHeader(header, 'Session') || null;
 
   const category = grabHeader(header, 'Category') || 'improvement';
-  if (!VALID_CATEGORIES.has(category)) return 'ERROR|invalid-category';
+  if (!VALID_CATEGORIES.has(category)) return { error: 'invalid_category' };
 
   const tags = parseStringArray(grabHeader(header, 'Tags'));
-  if (tags === null) return 'ERROR|invalid-tags';
+  if (tags === null) return { error: 'invalid_tags' };
   const relatedSessions = parseStringArray(grabHeader(header, 'Related-Sessions'));
-  if (relatedSessions === null) return 'ERROR|invalid-related-sessions';
+  if (relatedSessions === null) return { error: 'invalid_related_sessions' };
 
-  if (!fs.existsSync(stateDir)) return 'ERROR|state-dir-not-found';
+  if (!fs.existsSync(stateDir)) return { error: 'state_dir_not_found' };
 
   const templatePath = path.join(stateDir, 'templates', 'PROPOSAL.md.template');
   let templateContent: string;
   try { templateContent = fs.readFileSync(templatePath, 'utf-8'); }
-  catch { return 'ERROR|template-missing'; }
-  if (!templateContent.startsWith('---')) return 'ERROR|template-malformed';
+  catch { return { error: 'template_missing' }; }
+  if (!templateContent.startsWith('---')) return { error: 'template_malformed' };
   const fmEnd = templateContent.indexOf('\n---', 3);
-  if (fmEnd === -1) return 'ERROR|template-malformed';
+  if (fmEnd === -1) return { error: 'template_malformed' };
   const templateFrontmatterBlock = templateContent.slice(0, fmEnd + 4);
 
   if (!/^## Operator Decision[ \t]*$/m.test(body)) {
@@ -193,10 +194,10 @@ export function verbCreate(stateDir: string, stdin: string): string {
       claimedId = candidateId;
       break;
     } catch (e: any) {
-      if (e.code !== 'EEXIST') return 'ERROR|proposals-dir-unwritable';
+      if (e.code !== 'EEXIST') return { error: 'proposals_dir_unwritable' };
     }
     suffixIdx++;
-    if (suffixIdx >= SUFFIX_LETTERS.length) return 'ERROR|collision-suffixes-exhausted';
+    if (suffixIdx >= SUFFIX_LETTERS.length) return { error: 'collision_suffixes_exhausted' };
     suffix = SUFFIX_LETTERS[suffixIdx];
   }
 
@@ -214,7 +215,7 @@ export function verbCreate(stateDir: string, stdin: string): string {
 
   regenTail(stateDir);
 
-  return claimedId!;
+  return { id: claimedId! };
 }
 
 // ----------------------------------------------------------------- patch ---
@@ -255,21 +256,21 @@ export function sectionEndsWithLine(content: string, heading: string, rawLine: s
   return new RegExp(`^${pattern}$`).test(lines[lines.length - 1]);
 }
 
-export function verbPatch(stateDir: string, stdin: string, args: string[]): string {
+export function verbPatch(stateDir: string, stdin: string, args: string[]): Verdict {
   const { filename, sets: rawSets, requestCompact } = parsePatchArgs(args);
-  if (!filename) return 'ERROR|no-such-proposal';
+  if (!filename) return { error: 'no_such_proposal' };
   // Direct-child basename only. The `path.join` below would otherwise let a
   // `../` prefix escape the proposals dir and patch any frontmatter-bearing
   // .md on disk; the state-dir pin in main() does not constrain this argument.
   // `startsWith('.')` covers `.`, `..`, and dotfiles in one predicate.
-  if (filename !== path.basename(filename) || filename.startsWith('.')) return 'ERROR|no-such-proposal';
+  if (filename !== path.basename(filename) || filename.startsWith('.')) return { error: 'no_such_proposal' };
 
   const sets: Record<string, string> = {};
   for (const kv of rawSets) {
     const eq = kv.indexOf('=');
-    if (eq === -1) return 'ERROR|invalid-set';
+    if (eq === -1) return { error: 'invalid_set' };
     const key = kv.slice(0, eq);
-    if (!PATCH_KEY_RE.test(key)) return `ERROR|invalid-key:${key}`;
+    if (!PATCH_KEY_RE.test(key)) return { error: `invalid_key:${key}` };
     sets[key] = kv.slice(eq + 1);
   }
 
@@ -282,7 +283,7 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): stri
   const setLineRe = /^Set:[ \t]*([^\s=]+)=(.*)$/gm;
   let m: RegExpExecArray | null;
   while ((m = setLineRe.exec(stdin))) {
-    if (!PATCH_KEY_RE.test(m[1])) return `ERROR|invalid-key:${m[1]}`;
+    if (!PATCH_KEY_RE.test(m[1])) return { error: `invalid_key:${m[1]}` };
     stdinSets[m[1]] = m[2];
   }
 
@@ -293,11 +294,11 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): stri
     const p = path.join(proposalsDir, name);
     if (fs.existsSync(p)) { targetPath = p; break; }
   }
-  if (!targetPath) return 'ERROR|no-such-proposal';
+  if (!targetPath) return { error: 'no_such_proposal' };
 
   let content: string;
   try { content = fs.readFileSync(targetPath, 'utf-8'); }
-  catch { return 'ERROR|no-such-proposal'; }
+  catch { return { error: 'no_such_proposal' }; }
 
   const now = new Date();
   const timezone = readSettledConfig(stateDir).timezone ?? 'UTC';
@@ -311,18 +312,18 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): stri
   let patched = content;
   if (Object.keys(patch).length > 0) {
     try { patched = patchFrontmatter(content, patch); }
-    catch { return 'ERROR|frontmatter-terminator-missing'; }
+    catch { return { error: 'frontmatter_terminator_missing' }; }
   }
 
   if (decisionLine) {
     if (!sectionEndsWithLine(patched, 'Operator Decision', decisionLine)) {
       try { patched = appendToSection(patched, 'Operator Decision', expand(decisionLine)); }
-      catch { return 'ERROR|no-operator-decision-section'; }
+      catch { return { error: 'no_operator_decision_section' }; }
     }
   }
 
   try { writeFileAtomic(targetPath, patched); }
-  catch { return 'ERROR|write-failed'; }
+  catch { return { error: 'write_failed' }; }
 
   if (requestCompact) {
     try {
@@ -341,35 +342,34 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): stri
   // accept flow — otherwise the queue keeps a question the decision already
   // answered, and the heartbeat digests it daily forever. Best-effort by
   // design: the proposal write has landed, so a reconciliation miss is a
-  // warning, never `ERROR|` (which would read as "nothing was patched").
-  // `proposal.ts micro <dir> sweep` re-runs the same pass.
+  // warning, never `{error}` (which would read as "nothing was patched").
   if (typeof patch.status === 'string' && MOOT_STATUSES.includes(patch.status)) {
     const propId = /^(PROP-\d+)/.exec(path.basename(targetPath))?.[1];
     if (propId) {
-      const swept = sweepMoot(stateDir, { proposalId: propId });
+      const swept = sweepMoot(stateDir, propId);
       if (!swept.ok) warn(`pending-ask reconciliation for ${propId} failed: ${swept.error}`);
     }
   }
 
-  return `OK|${path.basename(targetPath).replace(/\.md$/, '')}`;
+  return { id: path.basename(targetPath).replace(/\.md$/, '') };
 }
 
 // ------------------------------------------------------------------ routine
 
 const ROUTINE_REQUIRED_FIELDS = ['id', 'schedule', 'skill', 'enabled'];
 
-export function verbRoutine(stateDir: string, stdin: string): string {
+export function verbRoutine(stateDir: string, stdin: string): Verdict {
   let entry: Json;
-  try { entry = JSON.parse(stdin); } catch { return 'ERROR|invalid-json'; }
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return 'ERROR|invalid-json';
+  try { entry = JSON.parse(stdin); } catch { return { error: 'invalid_json' }; }
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return { error: 'invalid_json' };
   for (const field of ROUTINE_REQUIRED_FIELDS) {
-    if (!(field in entry)) return `ERROR|missing-field:${field}`;
+    if (!(field in entry)) return { error: `missing_field:${field}` };
   }
-  if (typeof entry.id !== 'string' || !entry.id) return 'ERROR|missing-field:id';
+  if (typeof entry.id !== 'string' || !entry.id) return { error: 'missing_field:id' };
 
   const configPath = path.join(stateDir, 'config.json');
   const config: Json = readJson(configPath);
-  if (!config) return 'ERROR|config-unreadable';
+  if (!config) return { error: 'config_unreadable' };
 
   if (!Array.isArray(config.routines)) config.routines = [];
   const configBefore = structuredClone(config);
@@ -381,11 +381,11 @@ export function verbRoutine(stateDir: string, stdin: string): string {
   try {
     writeFileAtomic(configPath, JSON.stringify(config, null, 2) + '\n');
   } catch {
-    return 'ERROR|config-write-failed';
+    return { error: 'config_write_failed' };
   }
   auditConfigChange(stateDir, configBefore, config, 'proposal');
 
-  return `OK|${verdict}`;
+  return { status: verdict, id: entry.id };
 }
 
 // ------------------------------------------------------------------- main --
@@ -395,12 +395,12 @@ const VERBS = 'create|patch|routine|resolve-id|gate|queue-micro|micro|index|anch
 // The state dir is not caller-chosen. Every production call passes the literal
 // `.hermit` from the project root; accepting an arbitrary root let
 // one pre-approved `Bash(bun */scripts/proposal.ts*)` call mutate — or read —
-// another project's proposal queue. Deliberately a usage error (stderr, exit 1)
-// rather than an `ERROR|<token>` verdict line: that line goes to stdout, which
-// would corrupt the distinct stdout grammars several verbs own and callers
-// branch on (`gate` -> PROCEED|/DROP|/GATE_FAILED, `resolve-id` -> MATCH|/NONE|,
-// `micro` -> RESOLVED|). This also turns a drifted cwd into a loud failure
-// instead of a write against the wrong tree.
+// another project's proposal queue. A usage error (stderr, exit 1) from the
+// shared pinStateDirOrExit rather than a `{"error"}` line: that helper serves
+// every pinned script, including ones whose stdout is not a JSON object
+// (`channel-log.ts` prints a bare array or a plain-text prune line), so it never
+// writes stdout. This also turns a drifted cwd into a loud failure instead of a
+// write against the wrong tree.
 function requirePinnedStateDir(dir: string): string {
   return pinStateDirOrExit(dir, 'proposal.ts');
 }
@@ -440,14 +440,10 @@ async function main(): Promise<void> {
     if (tail[0] !== '--validate' && tail.length >= 4) requirePinnedStateDir(tail[0]);
     return runSuccessSignal(tail);
   }
-  // `index` was fail-open before it was absorbed: a missing state dir answered
-  // `SKIP|no state dir` on stdout at exit 0, never a usage error. Preserve that —
-  // it is a derived-cache rebuild, and its callers treat a non-zero exit as a
-  // real failure rather than "nothing to do".
-  if (verb === 'index' && !stateDir) {
-    process.stdout.write('SKIP|no state dir\n');
-    process.exit(0);
-  }
+  // `index` is fail-open: a missing state dir is a skip at exit 0, never a
+  // usage error. It is a derived-cache rebuild, and its callers treat a
+  // non-zero exit as a real failure rather than "nothing to do".
+  if (verb === 'index' && !stateDir) emitJson({ status: 'skip', reason: 'no_state_dir' });
 
   if (!verb || !stateDir) {
     console.error(`Usage: bun proposal.ts <${VERBS}> <hermit-state-dir> [args...]`);
@@ -458,12 +454,12 @@ async function main(): Promise<void> {
 
   const rest = process.argv.slice(4);
   switch (verb) {
-    case 'create': return emit(verbCreate(stateDir, await readStdin()));
+    case 'create': return emitJson(verbCreate(stateDir, await readStdin()));
     case 'patch': {
       const stdin = await readStdinIfFlagged(rest, '--stdin');
-      return emit(verbPatch(stateDir, stdin, rest));
+      return emitJson(verbPatch(stateDir, stdin, rest));
     }
-    case 'routine': return emit(verbRoutine(stateDir, await readStdin()));
+    case 'routine': return emitJson(verbRoutine(stateDir, await readStdin()));
     case 'resolve-id': return runResolveId(stateDir, rest[0]);
     case 'gate': return runGate(stateDir, rest);
     case 'queue-micro': return runQueueMicro(stateDir);
@@ -471,12 +467,15 @@ async function main(): Promise<void> {
     case 'index': return runIndex(stateDir);
     case 'anchor': return runAnchor(pinnedDir);
     // `event` is the writer; `metrics` above is the reader. Deliberately not named
-    // `metric` — one character from `metrics` in a dispatcher whose default branch
-    // exits 0 would make a typo a silent no-op in either direction.
-    case 'event': return emit(runEvent(stateDir, rest));
+    // `metric`: one character from `metrics` would make a typo easy to miss.
+    case 'event': {
+      const err = runEvent(stateDir, rest);
+      if (err) emitJson(err); else emit('OK');
+      return;
+    }
     case 'quality-gate': return runQualityGate(stateDir, rest);
     default:
-      return emit('ERROR|unknown-verb');
+      return emitJson({ error: 'unknown_verb' });
   }
 }
 
@@ -484,7 +483,6 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((e: any) => {
     console.error('proposal.ts: unexpected error: ' + e.message);
-    process.stdout.write('ERROR|unexpected\n');
-    process.exit(0);
+    emitJson({ error: 'unexpected' });
   });
 }

@@ -20,7 +20,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts index .hermit
 ```
 Then read `.hermit/state/proposals-index.json` — a derived cache of every proposal's frontmatter (`id`, `status`, `source`, `category`, `title`, `created`, `session`, `responded`, plus an `unparseable` flag), refreshed on every proposal write by the `generate-summary` PostToolUse hook. **(fresh read — re-read the file now; do not reuse a value cached in context from before compaction.)**
 
-The rebuild reads frontmatter off disk — idempotent, no LLM/token cost — so run it unconditionally: it also catches out-of-band proposal writes and **deletions** that the `generate-summary` hook (which fires only on `Edit`/`Write` tool payloads) never sees. The script prints `SKIP|no proposals dir` when there are no proposals — in that case respond "No proposals found." and stop. If the index's `count` is 0, also respond "No proposals found." and stop.
+The rebuild reads frontmatter off disk (idempotent, no LLM/token cost), so run it unconditionally. It also catches out-of-band proposal writes and **deletions** that the `generate-summary` hook (which fires only on `Edit`/`Write` tool payloads) never sees. When the script prints `status` `skip` or `count` 0, respond "No proposals found." and stop.
 
 **Do not read proposal bodies.** Every field the table needs is in the index row; this is the whole point of the index (reading a dozen full bodies costs ~22K tokens for a table that needs only frontmatter). Read a specific body only if the operator asks to see one proposal's detail.
 

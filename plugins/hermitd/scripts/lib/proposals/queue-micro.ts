@@ -4,24 +4,24 @@
 //        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"..."}
 //        HERMIT_MP
 //   — stdin only (question is free text and may contain apostrophes/quotes; no argv mode).
-// Output (stdout, one line):
-//   QUEUED|<MP-id>
-//   DUPLICATE|<existing-id>
-// Exit 1 (+ stderr) on malformed input, a missing "question", or a ledger-append
-// failure — a silent queue-drop would strand the candidate.
+// Output (stdout, one JSON line):
+//   {"status":"queued","id":"<MP-id>"}
+//   {"status":"duplicate","id":"<existing-id>"}
+//   {"error":"invalid_input"|"missing_question"|"queue_corrupt"|"event_unrecorded:<MP-id>"}, exit 1
+// A silent queue-drop would strand the candidate, so every failure exits 1.
 // Implements reflect/branches.md § Micro-approval queuing steps 1-3. `options`/
 // `on_resolve` are optional per the channel-bridged-ask extension (branches.md:
 // 205-207); when `on_resolve` is present, tier is forced to 1 and the metrics
 // event carries "kind":"ask" (branches.md:207,214) regardless of the caller's tier.
 // Dedup is by exact `question` match against existing `pending` entries, or by
-// `proposal_id` when the payload declares one (that link also lets `micro
-// sweep` retire the ask once its proposal reaches a terminal status).
+// `proposal_id` when the payload declares one (that link also lets `sweepMoot`
+// retire the ask once its proposal reaches a terminal status).
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { todayYMD, utcISOStamp } from '../time';
 import { appendJsonlLine } from '../append-jsonl';
-import { readStdin } from '../cli';
+import { emitJson, readStdin } from '../cli';
 import { readSettledConfig } from '../config-read';
 import { writeFileAtomic } from '../md-write';
 import { readMicroProposals } from '../micro-proposals-io';
@@ -34,23 +34,19 @@ export async function run(stateDir: string): Promise<void> {
   let payload: Json;
   try {
     payload = JSON.parse(raw);
-  } catch (err: any) {
-    console.error(`Invalid JSON: ${err.message}`);
-    process.exit(1);
+  } catch {
+    emitJson({ error: 'invalid_input' });
   }
 
   const question: string = payload.question;
-  if (!question) {
-    console.error('Error: "question" is required');
-    process.exit(1);
-  }
+  if (!question) emitJson({ error: 'missing_question' });
   const onResolve: string | undefined = payload.on_resolve;
   const isBridged = onResolve !== undefined;
   const tier = isBridged ? 1 : (payload.tier ?? 1);
   const options: string[] | undefined = payload.options;
   // Declared link to the proposal this ask belongs to. Malformed values are
   // dropped rather than fatal: the ask still deserves to be queued, it just
-  // falls back to the legacy on_resolve link that `micro sweep` also reads.
+  // falls back to the legacy on_resolve link that `sweepMoot` also reads.
   const proposalId: string | undefined =
     typeof payload.proposal_id === 'string' && normalizeProposalId(payload.proposal_id)
       ? payload.proposal_id
@@ -62,10 +58,7 @@ export async function run(stateDir: string): Promise<void> {
   // {pending:[]} here would silently destroy the whole backlog on the next
   // queue (issue 649).
   const read = readMicroProposals(microPath);
-  if (read.status === 'corrupt') {
-    console.error(`${read.error} — refusing to overwrite.`);
-    process.exit(1);
-  }
+  if (read.status === 'corrupt') emitJson({ error: 'queue_corrupt' });
   const micro: Json = read.status === 'missing' ? { pending: [] } : read.data;
 
   // Dedup against live entries only (issue 676): a stale non-"pending" row left
@@ -82,8 +75,7 @@ export async function run(stateDir: string): Promise<void> {
   const existing = micro.pending.find((e: Json) => e && e.status === 'pending'
     && ((wanted !== null && linkedProposalId(e) === wanted) || e.question === question));
   if (existing) {
-    process.stdout.write(`DUPLICATE|${existing.id}\n`);
-    process.exit(0);
+    emitJson({ status: 'duplicate', id: existing.id });
   }
 
   const config = readSettledConfig(stateDir);
@@ -120,10 +112,7 @@ export async function run(stateDir: string): Promise<void> {
   const event: Json = { ts: utcISOStamp(), type: 'micro-queued', micro_id: id, tier, question };
   if (isBridged) event.kind = 'ask';
   const err = appendJsonlLine(ledger, JSON.stringify(event));
-  if (err) {
-    console.error(err);
-    process.exit(1);
-  }
+  if (err) emitJson({ error: `event_unrecorded:${id}` });
 
-  process.stdout.write(`QUEUED|${id}\n`);
+  emitJson({ status: 'queued', id });
 }

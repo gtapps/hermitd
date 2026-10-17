@@ -24,6 +24,10 @@ function metricsLines(dir: string): any[] {
   return fs.readFileSync(p, 'utf-8').split('\n').filter(Boolean).map(l => JSON.parse(l));
 }
 
+function out(r: { stdout: string }): any {
+  return JSON.parse(r.stdout);
+}
+
 function seedState(dir: string, opts: { timezone?: string; routines?: any[] } = {}): void {
   const base = stateArg(dir);
   fs.mkdirSync(path.join(base, 'proposals'), { recursive: true });
@@ -63,8 +67,8 @@ describe('proposal.ts create', () => {
     const stdin = heredoc({ Title: 'Fix the thing', Category: 'bug', Tags: '["tag-a","tag-b"]' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toMatch(/^PROP-001-fix-thing-\d{6}$/); // 'the' is a slugify stopword
-    const id = r.stdout.trim();
+    const id = out(r).id;
+    expect(id).toMatch(/^PROP-001-fix-thing-\d{6}$/); // 'the' is a slugify stopword
     const content = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(content).toContain(`id: ${id}`);
     expect(content).toContain('title: "Fix the thing"');
@@ -81,7 +85,7 @@ describe('proposal.ts create', () => {
     fs.writeFileSync(propPath(dir, 'PROP-007-old-100000'), '---\nid: x\n---\nbody\n');
     const stdin = heredoc({ Title: 'Next one' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    expect(r.stdout.trim()).toMatch(/^PROP-008-/);
+    expect(out(r).id).toMatch(/^PROP-008-/);
   }));
 
   test('session defaults to null when Session header omitted', withDir(async (dir) => {
@@ -89,17 +93,18 @@ describe('proposal.ts create', () => {
     fs.writeFileSync(path.join(stateArg(dir), 'state', 'runtime.json'), JSON.stringify({ cc_session_id: 'resident' }));
     const stdin = heredoc({ Title: 'Session default test' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    const id = r.stdout.trim();
+    const id = out(r).id;
     const content = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(content).toContain('session: null');
   }));
 
-  test('template missing -> ERROR|template-missing, zero writes', withDir(async (dir) => {
+  test('template missing -> template_missing error, zero writes', withDir(async (dir) => {
     fs.mkdirSync(path.join(stateArg(dir), 'proposals'), { recursive: true });
     fs.writeFileSync(path.join(stateArg(dir), 'config.json'), JSON.stringify({ timezone: 'UTC' }));
     const stdin = heredoc({ Title: 'No template' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    expect(r.stdout.trim()).toBe('ERROR|template-missing');
+    expect(r.exitCode).toBe(1);
+    expect(out(r)).toEqual({ error: 'template_missing' });
     expect(fs.readdirSync(path.join(stateArg(dir), 'proposals'))).toHaveLength(0);
     expect(metricsLines(dir)).toHaveLength(0);
   }));
@@ -109,16 +114,16 @@ describe('proposal.ts create', () => {
     const stdin = heredoc({ Title: 'Task proposal', Session: 'T-20260916-120000' }, MIN_BODY);
     const result = await runProposal(stateArg(dir), ['create'], { stdin });
     expect(result.exitCode).toBe(0);
-    expect(fs.readFileSync(propPath(dir, result.stdout.trim()), 'utf-8')).toContain('session: T-20260916-120000');
+    expect(fs.readFileSync(propPath(dir, out(result).id), 'utf-8')).toContain('session: T-20260916-120000');
   }));
 
   const invalidCases: Array<[string, Record<string, string>, string, string]> = [
-    ['missing title', {}, MIN_BODY, 'ERROR|missing-title'],
-    ['missing separator', {}, '', 'ERROR|missing-separator'],
-    ['empty body', { Title: 'T' }, '   \n\n', 'ERROR|empty-body'],
-    ['bad category', { Title: 'T', Category: 'nonsense' }, MIN_BODY, 'ERROR|invalid-category'],
-    ['bad tags JSON', { Title: 'T', Tags: 'not-json' }, MIN_BODY, 'ERROR|invalid-tags'],
-    ['bad related-sessions JSON', { Title: 'T', 'Related-Sessions': '{not an array}' }, MIN_BODY, 'ERROR|invalid-related-sessions'],
+    ['missing title', {}, MIN_BODY, 'missing_title'],
+    ['missing separator', {}, '', 'missing_separator'],
+    ['empty body', { Title: 'T' }, '   \n\n', 'empty_body'],
+    ['bad category', { Title: 'T', Category: 'nonsense' }, MIN_BODY, 'invalid_category'],
+    ['bad tags JSON', { Title: 'T', Tags: 'not-json' }, MIN_BODY, 'invalid_tags'],
+    ['bad related-sessions JSON', { Title: 'T', 'Related-Sessions': '{not an array}' }, MIN_BODY, 'invalid_related_sessions'],
   ];
   for (const [label, header, body, expected] of invalidCases) {
     test(`validation error: ${label} -> ${expected}, zero writes`, withDir(async (dir) => {
@@ -127,12 +132,13 @@ describe('proposal.ts create', () => {
         ? 'Title: T\nno separator here'
         : heredoc(header, body);
       const r = await runProposal(stateArg(dir), ['create'], { stdin });
-      expect(r.stdout.trim()).toBe(expected);
+      expect(r.exitCode).toBe(1);
+      expect(out(r)).toEqual({ error: expected });
       expect(fs.readdirSync(path.join(stateArg(dir), 'proposals'))).toHaveLength(0);
     }));
   }
 
-  test('unwritable proposals dir -> ERROR, no metrics, SHELL.md unchanged', withDir(async (dir) => {
+  test('unwritable proposals dir -> error, no metrics, SHELL.md unchanged', withDir(async (dir) => {
     seedState(dir);
     const proposalsDir = path.join(stateArg(dir), 'proposals');
     fs.chmodSync(proposalsDir, 0o555);
@@ -140,7 +146,8 @@ describe('proposal.ts create', () => {
     try {
       const stdin = heredoc({ Title: 'Blocked write' }, MIN_BODY);
       const r = await runProposal(stateArg(dir), ['create'], { stdin });
-      expect(r.stdout.trim()).toMatch(/^ERROR\|/);
+      expect(r.exitCode).toBe(1);
+      expect(out(r).error).toBeTruthy();
       expect(metricsLines(dir)).toHaveLength(0);
       expect(fs.readFileSync(shellPath(dir), 'utf-8')).toBe(shellBefore);
     } finally {
@@ -154,8 +161,8 @@ describe('proposal.ts create', () => {
     const stdin = heredoc({ Title: 'No shell file' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toMatch(/^PROP-001-/);
-    expect(fs.existsSync(propPath(dir, r.stdout.trim()))).toBe(true);
+    expect(out(r).id).toMatch(/^PROP-001-/);
+    expect(fs.existsSync(propPath(dir, out(r).id))).toBe(true);
     expect(r.stderr).not.toContain('findings append');
   }));
 
@@ -171,7 +178,7 @@ describe('proposal.ts create', () => {
     seedState(dir);
     const stdin = heredoc({ Title: 'Metrics test', Source: 'operator-request', Category: 'capability', Tags: '["x"]' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    const id = r.stdout.trim();
+    const id = out(r).id;
     const lines = metricsLines(dir);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ type: 'created', proposal_id: id, source: 'operator-request', category: 'capability', tags: ['x'] });
@@ -181,7 +188,7 @@ describe('proposal.ts create', () => {
     seedState(dir);
     const stdin = heredoc({ Title: 'Index regen test' }, MIN_BODY);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    const id = r.stdout.trim();
+    const id = out(r).id;
     const index = JSON.parse(fs.readFileSync(path.join(stateArg(dir), 'state', 'proposals-index.json'), 'utf-8'));
     expect(index.proposals.some((p: any) => p.id === id)).toBe(true);
     expect(fs.existsSync(path.join(stateArg(dir), 'state', 'state-summary.md'))).toBe(true);
@@ -192,18 +199,18 @@ describe('proposal.ts create', () => {
     const bodyNoDecision = '## Context\nctx\n\n## Problem\nprob\n';
     const stdin = heredoc({ Title: 'No decision section' }, bodyNoDecision);
     const r = await runProposal(stateArg(dir), ['create'], { stdin });
-    const id = r.stdout.trim();
+    const id = out(r).id;
     const content = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(content).toContain('## Operator Decision');
   }));
 });
 
 describe('proposal.ts dispatcher', () => {
-  test('unknown verb -> ERROR|unknown-verb, exit 0', withDir(async (dir) => {
+  test('unknown verb -> unknown_verb error, exit 1', withDir(async (dir) => {
     seedState(dir);
     const r = await runProposal(stateArg(dir), ['bogus']);
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('ERROR|unknown-verb');
+    expect(r.exitCode).toBe(1);
+    expect(out(r)).toEqual({ error: 'unknown_verb' });
   }));
 
   test('missing state dir arg -> exit 1', async () => {
@@ -253,17 +260,17 @@ describe('proposal.ts event', () => {
   }));
 
   const errorCases: Array<[string, string[], string]> = [
-    ['missing --id', ['responded', '--action=accept'], 'ERROR|missing-id'],
-    ['bad --action', ['responded', '--id=PROP-042', '--action=maybe'], 'ERROR|invalid-action:maybe'],
-    ['--action on resolved', ['resolved', '--id=PROP-042', '--action=accept'], 'ERROR|action-not-allowed:resolved'],
-    ['unknown event type', ['archived', '--id=PROP-042'], 'ERROR|unknown-event-type:archived'],
+    ['missing --id', ['responded', '--action=accept'], 'missing_id'],
+    ['bad --action', ['responded', '--id=PROP-042', '--action=maybe'], 'invalid_action:maybe'],
+    ['--action on resolved', ['resolved', '--id=PROP-042', '--action=accept'], 'action_not_allowed:resolved'],
+    ['unknown event type', ['archived', '--id=PROP-042'], 'unknown_event_type:archived'],
   ];
   for (const [label, args, expected] of errorCases) {
-    test(`${label} -> ${expected}, exit 0, zero writes`, withDir(async (dir) => {
+    test(`${label} -> ${expected}, exit 1, zero writes`, withDir(async (dir) => {
       seedState(dir);
       const r = await event(dir, ...args);
-      expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe(expected);
+      expect(r.exitCode).toBe(1);
+      expect(out(r)).toEqual({ error: expected });
       expect(metricsLines(dir)).toHaveLength(0);
     }));
   }
@@ -274,14 +281,14 @@ describe('proposal.ts patch', () => {
     seedState(dir);
     const id = await createProposal(dir);
     const r = await runProposal(stateArg(dir), ['patch', id, '--set', 'status=accepted'], { openStdin: true, cwd: dir });
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     expect(r.exitCode).toBe(0);
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toContain('status: accepted');
   }));
 
   function createProposal(dir: string, extra: Record<string, string> = {}): Promise<string> {
     const stdin = heredoc({ Title: 'Patch target', ...extra }, MIN_BODY);
-    return runProposal(stateArg(dir), ['create'], { stdin }).then(r => r.stdout.trim());
+    return runProposal(stateArg(dir), ['create'], { stdin }).then(r => out(r).id);
   }
 
   test('accept flip: in-place frontmatter patch, @now expansion, Decision append', withDir(async (dir) => {
@@ -290,7 +297,7 @@ describe('proposal.ts patch', () => {
     const before = fs.readFileSync(propPath(dir, id), 'utf-8');
 
     const r = await runProposal(stateArg(dir), ['patch', id, '--stdin', '--set', 'status=accepted', '--set', 'accepted_date=@now', '--set', 'responded=true'], { stdin: 'Decision: Accepted on @now.\n' });
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     const after = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(after).toContain('status: accepted');
     expect(after).toContain('responded: true');
@@ -316,7 +323,7 @@ describe('proposal.ts patch', () => {
     seedState(dir);
     const id = await createProposal(dir);
     const r = await runProposal(stateArg(dir), ['patch', id, '--set', 'status=dismissed', '--set', 'dismissed_date=@now', '--set', 'resolved_date=@now']);
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     const after = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(after).toContain('status: dismissed');
     expect(after.match(/dismissed_date: \S+/)).toBeTruthy();
@@ -335,21 +342,22 @@ describe('proposal.ts patch', () => {
     expect(after).toContain('just a note.');
   }));
 
-  test('invalid key / no-such-proposal / missing frontmatter terminator -> ERROR, file byte-identical', withDir(async (dir) => {
+  test('invalid key / no_such_proposal / missing frontmatter terminator -> error, file byte-identical', withDir(async (dir) => {
     seedState(dir);
     const id = await createProposal(dir);
     const before = fs.readFileSync(propPath(dir, id), 'utf-8');
 
     const r1 = await runProposal(stateArg(dir), ['patch', id, '--set', 'bad key=x']);
-    expect(r1.stdout.trim()).toMatch(/^ERROR\|invalid-key/);
+    expect(r1.exitCode).toBe(1);
+    expect(out(r1).error).toMatch(/^invalid_key/);
 
     const r2 = await runProposal(stateArg(dir), ['patch', 'PROP-999-nope-000000']);
-    expect(r2.stdout.trim()).toBe('ERROR|no-such-proposal');
+    expect(out(r2)).toEqual({ error: 'no_such_proposal' });
 
     const noTerm = path.join(stateArg(dir), 'proposals', 'PROP-002-broken-000001.md');
     fs.writeFileSync(noTerm, '---\nid: PROP-002-broken-000001\nno closing fence\n');
     const r3 = await runProposal(stateArg(dir), ['patch', 'PROP-002-broken-000001', '--set', 'status=accepted']);
-    expect(r3.stdout.trim()).toBe('ERROR|frontmatter-terminator-missing');
+    expect(out(r3)).toEqual({ error: 'frontmatter_terminator_missing' });
 
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toBe(before);
   }));
@@ -375,7 +383,7 @@ describe('proposal.ts patch', () => {
     seedState(dir);
     const id = await createProposal(dir);
     const r = await runProposal(stateArg(dir), ['patch', id, '--stdin'], { stdin: 'Set: success_signal=avg_session_cost_usd < 5 over 7 sessions\n' });
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     const after = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(after).toContain('success_signal: "avg_session_cost_usd < 5 over 7 sessions"');
   }));
@@ -412,7 +420,7 @@ describe('proposal.ts patch', () => {
     seedState(dir);
     const id = await createProposal(dir);
     const r = await runProposal(stateArg(dir), ['patch', id, '--stdin'], { stdin: 'Decision:\nSet: success_signal=avg_session_cost_usd < 5 over 7 sessions\n' });
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     const after = fs.readFileSync(propPath(dir, id), 'utf-8');
     expect(after).toContain('success_signal: "avg_session_cost_usd < 5 over 7 sessions"');
     // The Set: line must not also land in the Operator Decision section.
@@ -458,7 +466,7 @@ describe('proposal.ts patch path containment', () => {
       seedState(dir);
       const target = seedCanary(canaryAt(dir));
       const r = await runProposal(stateArg(dir), ['patch', arg, '--set', 'status=OWNED']);
-      expect(r.stdout.trim()).toBe('ERROR|no-such-proposal');
+      expect(out(r)).toEqual({ error: 'no_such_proposal' });
       expect(fs.readFileSync(target, 'utf-8')).toBe(CANARY);
     }));
   }
@@ -467,14 +475,14 @@ describe('proposal.ts patch path containment', () => {
     seedState(dir);
     const target = seedCanary(path.join(dir, 'abs-canary.md'));
     const r = await runProposal(stateArg(dir), ['patch', target, '--set', 'status=OWNED']);
-    expect(r.stdout.trim()).toBe('ERROR|no-such-proposal');
+    expect(out(r)).toEqual({ error: 'no_such_proposal' });
     expect(fs.readFileSync(target, 'utf-8')).toBe(CANARY);
   }));
 
   test('refuses a bare ".."', withDir(async (dir) => {
     seedState(dir);
     const r = await runProposal(stateArg(dir), ['patch', '..', '--set', 'status=OWNED']);
-    expect(r.stdout.trim()).toBe('ERROR|no-such-proposal');
+    expect(out(r)).toEqual({ error: 'no_such_proposal' });
   }));
 
   test('still resolves a bare id with no .md suffix', withDir(async (dir) => {
@@ -482,9 +490,9 @@ describe('proposal.ts patch path containment', () => {
     const created = await runProposal(stateArg(dir), ['create'], {
       stdin: heredoc({ Title: 'Suffix walk' }, MIN_BODY),
     });
-    const id = created.stdout.trim();
+    const id = out(created).id;
     const r = await runProposal(stateArg(dir), ['patch', id, '--set', 'status=accepted']);
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toContain('status: accepted');
   }));
 });
@@ -497,7 +505,7 @@ describe('proposal.ts state-dir pin', () => {
       const created = await runProposal(stateArg(victim), ['create'], {
         stdin: heredoc({ Title: 'Victim prop' }, MIN_BODY),
       });
-      const id = created.stdout.trim();
+      const id = out(created).id;
       const before = fs.readFileSync(propPath(victim, id), 'utf-8');
 
       // Clean basename, foreign root: the basename guard alone would not stop this.
@@ -547,8 +555,8 @@ describe('proposal.ts state-dir pin', () => {
       stdin: heredoc({ Title: 'From a worktree' }, MIN_BODY),
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toMatch(/^PROP-\d+-/);
-    expect(fs.existsSync(propPath(main, r.stdout.trim()))).toBe(true);
+    expect(out(r).id).toMatch(/^PROP-\d+-/);
+    expect(fs.existsSync(propPath(main, out(r).id))).toBe(true);
   }));
 
   // The worktree carve-out is gated on actually being in a linked worktree.
@@ -572,7 +580,7 @@ describe('proposal.ts state-dir pin', () => {
       cwd: dir,
       stdin: heredoc({ Title: 'Sibling prop' }, MIN_BODY),
     });
-    const id = created.stdout.trim();
+    const id = out(created).id;
     const before = fs.readFileSync(propPath(dir, id), 'utf-8');
 
     const r = await runScript('proposal.ts', {
@@ -614,7 +622,7 @@ describe('proposal.ts state-dir pin', () => {
       cwd: dir,
       stdin: heredoc({ Title: 'Cwd relative' }, MIN_BODY),
     });
-    expect(created.stdout.trim()).toMatch(/^PROP-\d+-/);
+    expect(out(created).id).toMatch(/^PROP-\d+-/);
   }));
 });
 
@@ -623,8 +631,8 @@ describe('retired proposal task and shell verbs', () => {
     seedState(dir);
     const before = fs.readFileSync(shellPath(dir), 'utf8');
     const r = await runProposal(stateArg(dir), [verb], { stdin: 'retired write' });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('ERROR|unknown-verb');
+    expect(r.exitCode).toBe(1);
+    expect(out(r)).toEqual({ error: 'unknown_verb' });
     expect(fs.readFileSync(shellPath(dir), 'utf8')).toBe(before);
     expect(fs.existsSync(path.join(stateArg(dir), 'sessions', 'NEXT-TASK.md'))).toBe(false);
   })());
@@ -638,31 +646,32 @@ describe('proposal.ts routine', () => {
   test('appends to routines array, other config keys byte-preserved', withDir(async (dir) => {
     seedState(dir, { timezone: 'UTC', routines: [{ id: 'existing', schedule: '0 0 * * *', skill: 'x', enabled: true }] });
     const r = await runProposal(stateArg(dir), ['routine'], { stdin: JSON.stringify({ id: 'new-routine', schedule: '0 8 * * *', skill: 'brief', enabled: true }) });
-    expect(r.stdout.trim()).toBe('OK|added');
+    expect(out(r)).toEqual({ status: 'added', id: 'new-routine' });
     const cfg = readConfig(dir);
     expect(cfg.timezone).toBe('UTC');
     expect(cfg.routines).toHaveLength(2);
     expect(cfg.routines.find((x: any) => x.id === 'new-routine')).toBeTruthy();
   }));
 
-  test('duplicate id replaces entry, OK|updated', withDir(async (dir) => {
+  test('duplicate id replaces entry, status updated', withDir(async (dir) => {
     seedState(dir, { routines: [{ id: 'r1', schedule: '0 0 * * *', skill: 'old', enabled: false }] });
     const r = await runProposal(stateArg(dir), ['routine'], { stdin: JSON.stringify({ id: 'r1', schedule: '0 9 * * *', skill: 'new', enabled: true }) });
-    expect(r.stdout.trim()).toBe('OK|updated');
+    expect(out(r)).toEqual({ status: 'updated', id: 'r1' });
     const cfg = readConfig(dir);
     expect(cfg.routines).toHaveLength(1);
     expect(cfg.routines[0].skill).toBe('new');
   }));
 
-  test('invalid JSON / missing field -> ERROR, config untouched', withDir(async (dir) => {
+  test('invalid JSON / missing field -> error, config untouched', withDir(async (dir) => {
     seedState(dir);
     const before = fs.readFileSync(path.join(stateArg(dir), 'config.json'), 'utf-8');
 
     const r1 = await runProposal(stateArg(dir), ['routine'], { stdin: 'not json' });
-    expect(r1.stdout.trim()).toBe('ERROR|invalid-json');
+    expect(r1.exitCode).toBe(1);
+    expect(out(r1)).toEqual({ error: 'invalid_json' });
 
     const r2 = await runProposal(stateArg(dir), ['routine'], { stdin: JSON.stringify({ schedule: '0 0 * * *', skill: 'x', enabled: true }) });
-    expect(r2.stdout.trim()).toBe('ERROR|missing-field:id');
+    expect(out(r2)).toEqual({ error: 'missing_field:id' });
 
     expect(fs.readFileSync(path.join(stateArg(dir), 'config.json'), 'utf-8')).toBe(before);
   }));
@@ -731,7 +740,7 @@ describe('proposal.ts patch — pending-ask reconciliation', () => {
   }
   function createProposal(dir: string): Promise<string> {
     return runProposal(stateArg(dir), ['create'], { stdin: heredoc({ Title: 'Reconcile target' }, MIN_BODY) })
-      .then(r => r.stdout.trim());
+      .then(r => out(r).id);
   }
 
   for (const [status, extraSets] of [
@@ -745,7 +754,7 @@ describe('proposal.ts patch — pending-ask reconciliation', () => {
       seedAsk(dir, id.slice(0, 8));
 
       const r = await runProposal(stateArg(dir), ['patch', id, '--set', `status=${status}`, ...extraSets]);
-      expect(r.stdout.trim()).toBe(`OK|${id}`);
+      expect(out(r)).toEqual({ id });
       expect(pending(dir)).toHaveLength(0);
       expect(metricsLines(dir).filter(e => e.action === 'moot')).toHaveLength(1);
     }));
@@ -777,11 +786,11 @@ describe('proposal.ts patch — pending-ask reconciliation', () => {
     seedAsk(dir, id.slice(0, 8));
 
     const r = await runProposal(stateArg(dir), ['patch', id, '--stdin'], { stdin: 'Set: status=resolved\nDecision: Done.\n' });
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     expect(pending(dir)).toHaveLength(0);
   }));
 
-  // The proposal write already landed — reporting ERROR| would tell the caller
+  // The proposal write already landed: reporting an error would tell the caller
   // nothing was patched, which is false and worse than the stale ask.
   test('a corrupt queue warns but still reports the patch as applied', withDir(async (dir) => {
     seedState(dir);
@@ -790,19 +799,19 @@ describe('proposal.ts patch — pending-ask reconciliation', () => {
 
     const r = await runProposal(stateArg(dir), ['patch', id, '--set', 'status=resolved']);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe(`OK|${id}`);
+    expect(out(r)).toEqual({ id });
     expect(r.stderr).toContain('reconciliation');
     expect(fs.readFileSync(propPath(dir, id), 'utf-8')).toContain('status: resolved');
   }));
 });
 
-// `index` is the third carve-out: it was a fail-open derived-cache rebuild before
-// absorption (`SKIP|no state dir`, exit 0) and stays one. Falling through to the
-// generic exit-1 usage guard would read as a real failure to its callers.
+// `index` is the third carve-out: a fail-open derived-cache rebuild (a skip at
+// exit 0). Falling through to the generic exit-1 usage guard would read as a
+// real failure to its callers.
 describe('proposal.ts index fail-open contract', () => {
-  test('index with no state dir → SKIP on stdout, exit 0', async () => {
+  test('index with no state dir → skip on stdout, exit 0', async () => {
     const r = await runScript('proposal.ts', { args: ['index'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('SKIP|no state dir');
+    expect(out(r)).toEqual({ status: 'skip', reason: 'no_state_dir' });
   });
 });

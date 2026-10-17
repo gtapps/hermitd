@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readJson } from '../cli';
+import { emitJson, printJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { isGuest } from '../guest-marker';
 import { pidAlive } from '../lockfile';
@@ -26,13 +26,22 @@ const runtimePath = (hermitDir: string) =>
 const livenessPath = (hermitDir: string) =>
   path.join(hermitDir, 'state', 'heartbeat-liveness.json');
 
+/** The native skill that activates a planned Monitor registration. */
+export const MONITOR_ACTIVATE = '/hermitd:monitor-activate';
+
+/** Verdicts shared by `heartbeat start-check` and `routines arm begin`. */
+export const GUEST_VERDICT = Object.freeze({ status: 'guest', reason: 'native_monitors_resident_only' });
+export const COMMAND_DRIFT_VERDICT = Object.freeze({ status: 'restart_required', reason: 'command_drift' });
+
+/** The heartbeat leg's registration plan. Every planned arm also needs activation. */
+export type HeartbeatArmPlan = { first_start?: true; interval: number };
+
 /**
- * Side effects and plan lines for one heartbeat re-arm, without the leading
- * `REARM|<reason>` line. Shared by `start-check` and by `routines.ts arm begin`,
- * which prefixes each line with `HB_` — so the two callers can never drift into
- * planning different registrations.
+ * Side effects and plan for one heartbeat re-arm. Shared by `start-check` and by
+ * `routines.ts arm begin`, which nests it under `heartbeat`: so the two callers can
+ * never drift into planning different registrations.
  */
-export function prepareHeartbeatArm(hermitDir: string, config: Json): string[] {
+export function prepareHeartbeatArm(hermitDir: string, config: Json): HeartbeatArmPlan {
   const bootId = readBootId(hermitDir);
   writeJson(path.join(hermitDir, 'state', 'heartbeat-monitor.control.json'), config?.heartbeat?.enabled === false
     ? { mode: 'forced', boot_id: bootId }
@@ -46,16 +55,17 @@ export function prepareHeartbeatArm(hermitDir: string, config: Json): string[] {
     try { fs.rmSync(livenessPath(hermitDir), { force: true }); } catch {}
   }
 
-  const lines: string[] = [];
-  if (!hasStartedRegistration(runtime)) lines.push('FIRST_START:1');
-  lines.push(`INTERVAL:${heartbeatInterval(config)}`);
-  lines.push('ACTIVATE:/hermitd:monitor-activate');
-  return lines;
+  const interval = heartbeatInterval(config);
+  return hasStartedRegistration(runtime) ? { interval } : { first_start: true, interval };
 }
+
+export type HeartbeatCommit =
+  | { status: 'registered'; interval: number }
+  | { status: 'dead'; reason: 'liveness_absent' };
 
 /**
  * Records a heartbeat Monitor registration: waits for the first liveness tick,
- * writes `state/heartbeat-monitor.runtime.json` and returns the result line for the caller to print. This module stays the
+ * writes `state/heartbeat-monitor.runtime.json` and returns the result for the caller to print. This module stays the
  * sole writer of that runtime file — `arm commit --heartbeat` calls in here rather
  * than writing it itself.
  */
@@ -63,7 +73,7 @@ export async function commitHeartbeatArm(
   hermitDir: string,
   config: Json,
   taskId: string,
-): Promise<string> {
+): Promise<HeartbeatCommit> {
   const interval = heartbeatInterval(config);
   const nowMs = resolveHermitNowMs();
   const liveness = readJson(livenessPath(hermitDir));
@@ -74,7 +84,7 @@ export async function commitHeartbeatArm(
   // readers see it untrusted. That is what the predates-grace in monitorFreshness rides
   // out — adopting the tick instead cannot work, because no timestamp proves which
   // process wrote it, and the outgoing monitor is still alive when the arm is planned.
-  // Written even on the DEAD path below: without a started_at the readers report
+  // Written even on the dead path below: without a started_at the readers report
   // `unregistered`, which counts as fresh, and doctor would call a spawn-blocked
   // monitor "warming up" forever.
   writeJson(runtimePath(hermitDir), {
@@ -86,44 +96,41 @@ export async function commitHeartbeatArm(
     boot_id: readBootId(hermitDir),
   });
 
-  if (!live) return 'DEAD|liveness-absent';
-  return `OK|registered|interval=${interval}`;
+  if (!live) return { status: 'dead', reason: 'liveness_absent' };
+  return { status: 'registered', interval };
 }
 
 function cmdCheck(hermitDir: string, config: Json): void {
   const health = heartbeatHealth(hermitDir, config, resolveHermitNowMs());
   if (health.reason === 'restart-required') {
-    process.stdout.write('RESTART_REQUIRED|command-drift\n');
+    printJson(COMMAND_DRIFT_VERDICT);
     return;
   }
   // `disabled` is healthy to the daily anchor, which must leave a deliberately-off
   // heartbeat alone. Reaching `start` at all is an explicit act, so re-arm instead.
   if (health.healthy && health.reason !== 'disabled') {
-    process.stdout.write(`FRESH|interval=${heartbeatInterval(config)}\n`);
+    printJson({ status: 'fresh', interval: heartbeatInterval(config) });
     return;
   }
-  process.stdout.write(`REARM|${health.reason}\n`);
-  for (const line of prepareHeartbeatArm(hermitDir, config)) {
-    process.stdout.write(`${line}\n`);
-  }
+  const plan = prepareHeartbeatArm(hermitDir, config);
+  printJson({ status: 'rearm', reason: snakeToken(health.reason), ...plan, activate: MONITOR_ACTIVATE });
 }
 
 async function cmdCommit(hermitDir: string, config: Json, taskId: string): Promise<void> {
-  process.stdout.write(`${await commitHeartbeatArm(hermitDir, config, taskId)}\n`);
+  printJson(await commitHeartbeatArm(hermitDir, config, taskId));
 }
 
 export async function run(verb: string, args: string[]): Promise<void> {
   const hermitDir = args[0] ? path.resolve(args[0]) : null;
   if (!hermitDir) {
-    // Fail-open in the same direction the rest of the arming path does: claim
-    // nothing is fresh, so the caller re-arms rather than trusting a stale monitor.
-    process.stdout.write('REARM|usage\n');
-    return;
+    // heartbeat-monitor.sh always passes its dir and falls back to 1800 on any
+    // non-integer `interval` output, so a usage error here is a real failure.
+    emitJson({ error: 'usage' });
   }
   const config = readConfigRaw(hermitDir) ?? {};
   const sessionIndex = args.indexOf('--session-id');
   if (verb === 'start-check' && isGuest(path.join(hermitDir, 'state'), sessionIndex < 0 ? null : args[sessionIndex + 1])) {
-    process.stdout.write('GUEST|native-monitors-resident-only\n');
+    printJson(GUEST_VERDICT);
     return;
   }
   if (verb === 'interval') process.stdout.write(`${heartbeatInterval(config)}\n`);

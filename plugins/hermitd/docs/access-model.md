@@ -26,7 +26,7 @@ Native `disableClaudeAiConnectors` owns account connector loading. When unset, a
 
 ## Unattended settings writes
 
-`channel-access.ts` owns pairing, policy, delivery defaults, and group enrolment from the setup wizards and chat. Channel plugins remain writers of `access.json` too. Group changes write `config.json` first through the shared config persister, then re-read and write access state. There is a brief window between files, without a lock, journal, or rollback. If the access write fails after config lands, the command reports `ERROR|partial-config-written` and asks the operator to re-run the same command; it does not report complete success.
+`channel-access.ts` owns pairing, policy, delivery defaults, and group enrolment from the setup wizards and chat. Channel plugins remain writers of `access.json` too. Group changes write `config.json` first through the shared config persister, then re-read and write access state. There is a brief window between files, without a lock, journal, or rollback. If the access write fails after config lands, the command reports `{"error":"partial_config_written"}` and asks the operator to re-run the same command; it does not report complete success.
 
 The shipped `SEALED_SETTINGS_OPS` list owns the enumerated classifier exception, rendered into a per-session overlay at each boot. An absent op has no exception from this list. Removing an overlay entry by hand does not persist across restart: boot renders it again from the installed list. The exact constraints remain in [the sealed exception](security.md#auto-mode-classifier).
 

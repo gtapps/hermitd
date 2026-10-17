@@ -17,7 +17,7 @@
 //   bun heartbeat.ts start-check <hermit-dir>
 //   bun heartbeat.ts start-commit <hermit-dir> <task-id>
 //     The two halves of `heartbeat start`: is a re-arm needed, and record the
-//     Monitor the skill registered in between.
+//     Monitor the skill registered in between. Each prints one JSON object.
 //
 //   bun heartbeat.ts alert-state <state-file>
 //     Applies one alert-state update from stdin.

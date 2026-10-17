@@ -26,7 +26,7 @@ export type LegHealth = { healthy: boolean; reason: string };
 /**
  * Has this registration confirmed a first tick? `stop` clears the runtime file to
  * `{}`, which is not a registration. `heartbeatHealth` (`runtime-missing`) and
- * `start-check` (`FIRST_START`) must agree on this.
+ * `start-check` (`first_start`) must agree on this.
  */
 export function hasStartedRegistration(runtime: Json): boolean {
   return !!runtime && typeof runtime.started_at === 'string';
@@ -43,7 +43,7 @@ export function livenessReason(reason: string): string {
 
 /**
  * Command drift under a live supervisor cannot be re-armed: the arming verbs answer
- * RESTART_REQUIRED, so every consumer reads `restart-required` instead of re-checking.
+ * restart_required, so every consumer reads `restart-required` instead of re-checking.
  */
 export function commandDriftReason(hermitDir: string, livenessFile: string): string {
   const live = readJson(path.join(hermitDir, 'state', livenessFile));

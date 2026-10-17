@@ -64,7 +64,7 @@ jobs:
             bun ../plugins/hermitd/scripts/docker-bun-pin.ts \
               "$PWD/.hermit" 1.4.2 ci-build)
           echo "verdict: $verdict"
-          test "$verdict" = "OK|converged"
+          test "$verdict" = '{"status":"converged"}'
 
       - name: Build the image
         run: docker build -t hermit-ci:${{ matrix.shape }} -f build/Dockerfile.hermit build

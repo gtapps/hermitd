@@ -64,7 +64,7 @@ Sibling hermits: <one or more of the following per sibling, space-separated, or 
 Siblings detected but not activated: <name ... | none>
 Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
-Audit scope: <whole-run | version-only>
+Audit scope: <whole_run | version_only>
 Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
 Deferred for operator: <none | one or more verbatim blocks, each:>
   --- deferred-migration ---
@@ -76,7 +76,7 @@ Deferred for operator: <none | one or more verbatim blocks, each:>
   --- end ---
 ```
 
-**Audit scope.** `whole-run` needs no mention — say nothing. On `version-only`, tell the operator once that this upgrade's config changes were not recorded in the settings history (the upgrade itself succeeded; only the attribution is missing), so a later "why did this setting change?" gets an honest answer instead of a confident wrong one.
+**Audit scope.** `whole_run` needs no mention; say nothing. On `version_only`, tell the operator once that this upgrade's config changes were not recorded in the settings history (the upgrade itself succeeded; only the attribution is missing), so a later "why did this setting change?" gets an honest answer instead of a confident wrong one.
 
 **Operator notes.** If `Operator notes` is not `none`, append every line to the delivered result as its own line, in every delivery mode (inline, direct-channel-reply, automated-maintainer). These are the CHANGELOG's version-specific notes for the operator and the report is their only route out of the subagent. Relay each line verbatim: a line starting with `**Operator action required:**` keeps that marker so it renders bold. Never fold these lines into the one-line summary and never merge them with deferred-migration text. Omit the section when `none`.
 
@@ -115,17 +115,17 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts arm check .hermit ${CLAUDE_PLUGIN_
 ```
 
 `arm check` is the read-only twin of the daily anchor's verdict — it stamps no fire, so asking
-costs one Bash call instead of loading the routines skill. Route on its single line:
+costs one Bash call instead of loading the routines skill. Route on its JSON `status`:
 
-- `HEALTHY|…` — both legs are registered and current. Log that line; invoke nothing.
-- `ARM|<legs>|…` including `routines` — invoke `/hermitd:hermit-routines load`, which
+- `healthy`: both legs are registered and current. Log it; invoke nothing.
+- `arm` with `routines` in `legs`: invoke `/hermitd:hermit-routines load`, which
   makes exact-match routine migrations active immediately in CronCreate fallback mode (a migration
-  that changed routines shows up here as `fallback-drift`) and re-arms the heartbeat leg with it.
-- `ARM|heartbeat|…` alone — invoke `/hermitd:heartbeat start`.
-- `SKIP|paused` — the hermit is paused and fires nothing until resumed. Log the line; invoke nothing.
-- `SKIP|restart-required:<legs>` or `RESTART_REQUIRED|command-drift`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself to finish the upgrade at its next idle moment; otherwise, restart the resident with `hermitd restart`.
-- `ARM|…|check-error:<reason>` — state was unreadable, so nothing is safe to re-arm. Append that
-  line and the manual `hermit-routines load` next action to the report.
+  that changed routines shows up in `reasons` as `fallback_drift`) and re-arms the heartbeat leg with it.
+- `arm` with only `heartbeat`: invoke `/hermitd:heartbeat start`.
+- `skip`, reason `paused`: the hermit is paused and fires nothing until resumed. Log it; invoke nothing.
+- `restart_required`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself to finish the upgrade at its next idle moment; otherwise, restart the resident with `hermitd restart`.
+- An `error` (`check_error:<reason>`): state was unreadable, so nothing is safe to re-arm. Append
+  it and the manual `hermit-routines load` next action to the report.
 
 If reconciliation fails, append that failure and the manual `hermit-routines load` next action to
 the report.

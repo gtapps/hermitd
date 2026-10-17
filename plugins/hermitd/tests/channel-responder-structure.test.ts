@@ -70,6 +70,6 @@ test('clear of already-done items precedes the micro answer and never guesses', 
 // Channel-safe approvals: the micro-proposal resolver's reply grammar.
 test('resolver accepts numbered and label replies', () => {
   expect(approvals).toContain('match [<MP-id>] --reply');
-  expect(approvals).toContain('MATCH|<id>|<yes|no|label>|<tier>|<on_resolve or ->');
-  expect(approvals).toContain('AMBIGUOUS|<reason>');
+  expect(approvals).toContain('`match`: use the returned `id`, `answer`, `tier` and `on_resolve`');
+  expect(approvals).toContain('`ambiguous`: list the `choices`');
 });

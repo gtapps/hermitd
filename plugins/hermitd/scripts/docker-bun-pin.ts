@@ -3,12 +3,12 @@
 //
 // Usage: bun docker-bun-pin.ts <hermit-state-dir> <bun-version> <plugin-version>
 //
-// Verdicts (stdout, one line, exit 0):
-//   SKIP|absent                  no Dockerfile.hermit
-//   OK|already-pinned            ARG BUN_VERSION already at target
-//   OK|repinned <old>-><new>     ARG BUN_VERSION line moved to target
-//   OK|converged                 legacy `npm install -g bun` replaced by the block
-//   DEFER|unrecognized bun install shape   file untouched, caller defers
+// Verdicts (stdout, one JSON object, exit 0), by `status`:
+//   skip (reason absent)         no Dockerfile.hermit
+//   already_pinned               ARG BUN_VERSION already at target
+//   repinned (from, to)          ARG BUN_VERSION line moved to target
+//   converged                    legacy `npm install -g bun` replaced by the block
+//   defer (reason unrecognized_bun_install_shape)   file untouched, caller defers
 //
 // Deploys exist on every template shape since v1.0.0, so the classification is
 // the contract — a migration step that assumed one shape is what stranded most
@@ -20,6 +20,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { emitJson } from './lib/cli';
 import { sha256 } from './lib/hash';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { writePristineBaselines } from './lib/pristine-baseline';
@@ -92,7 +93,7 @@ function readManifest(): { path: string; data: any } | null {
 
 // Re-records the pristine baseline so evolve-plan's drift classifier stops
 // flagging Dockerfile.hermit.template. Only for a verdict that leaves the
-// deployment matching the shipped template: recording it after a DEFER would
+// deployment matching the shipped template: recording it after a defer would
 // clear the drift signal on a hermit whose bun was never pinned, and after a
 // converge it would vouch for a pre-1.2.0 scaffold that is several template
 // generations behind in everything except the bun block we just spliced in.
@@ -113,27 +114,22 @@ function writeBaseline(manifest: { path: string; data: any } | null): void {
   }
 }
 
-function commit(contents: string, verdict: string): never {
+function commit(contents: string, result: Record<string, string>): never {
   fs.writeFileSync(dockerfile, contents, 'utf8');
   writeBaseline(manifest);
-  console.log(verdict);
-  process.exit(0);
+  emitJson(result);
 }
 
 function defer(): never {
-  console.log('DEFER|unrecognized bun install shape');
-  process.exit(0);
+  emitJson({ status: 'defer', reason: 'unrecognized_bun_install_shape' });
 }
 
 // Anchored on the state dir's parent, the project root `pinStateDirOrExit` just
 // validated — never on CWD. A shell that drifted (which persists across calls)
-// would otherwise resolve nothing, report SKIP|absent, and leave the hermit
+// would otherwise resolve nothing, report the absent skip, and leave the hermit
 // silently unpinned: the exact no-op this migration exists to end.
 const dockerfile = path.join(path.dirname(stateDir), 'Dockerfile.hermit');
-if (!fs.existsSync(dockerfile)) {
-  console.log('SKIP|absent');
-  process.exit(0);
-}
+if (!fs.existsSync(dockerfile)) emitJson({ status: 'skip', reason: 'absent' });
 
 const original = fs.readFileSync(dockerfile, 'utf8');
 const lines = original.split('\n');
@@ -151,11 +147,10 @@ if (argIdx !== -1 && nativeInstall) {
   const current = lines[argIdx].slice('ARG BUN_VERSION='.length).trim();
   if (current === bunVersion) {
     writeBaseline(manifest);
-    console.log('OK|already-pinned');
-    process.exit(0);
+    emitJson({ status: 'already_pinned' });
   }
   lines[argIdx] = `ARG BUN_VERSION=${bunVersion}`;
-  commit(lines.join('\n'), `OK|repinned ${current}->${bunVersion}`);
+  commit(lines.join('\n'), { status: 'repinned', from: current, to: bunVersion });
 }
 
 // Legacy shape: bun rides along in the npm globals line. Also matches a
@@ -172,8 +167,7 @@ if (npmIdx !== -1) {
   // No writeBaseline: see the comment there — a converged scaffold is current
   // in its bun block alone, and the drift nudge on the rest is a true signal.
   fs.writeFileSync(dockerfile, body.join('\n'), 'utf8');
-  console.log('OK|converged');
-  process.exit(0);
+  emitJson({ status: 'converged' });
 }
 
 defer();

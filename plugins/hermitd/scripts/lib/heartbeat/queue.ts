@@ -28,7 +28,7 @@ export function pendingQueue(dir: string, nowMs = resolveHermitNowMs()): QueueNo
 
 export function acknowledgeQueue(dir: string, ack: string): { acknowledged: boolean; reason?: string } {
   const lock = path.join(dir, 'state/tasks.lock');
-  if (!acquireLockWithWait(lock, 2000)) return { acknowledged: false, reason: 'lock-unavailable' };
+  if (!acquireLockWithWait(lock, 2000)) return { acknowledged: false, reason: 'lock_unavailable' };
   try {
     const record = readTasks(dir).find(row => isRunnable(row) && token(row) === ack);
     if (!record) return { acknowledged: false, reason: 'changed' };

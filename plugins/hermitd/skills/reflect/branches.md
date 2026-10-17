@@ -19,7 +19,7 @@ Invoked from SKILL.md § Single-check mode. Evaluate exactly one supplied skill,
    Evidence: <one-paragraph summary>
    Sessions: none
    ```
-   Follow § Candidate processing → Evidence Validation (`hermitd:reflection-judge`), then the Proposal triage gate (`hermitd:proposal-triage`, a batch of one; pass `--caller scheduled-checks` to the `gate` verb). Obtain this run's `Anchor:` line as described in § Candidate processing and paste it as the first line of both dispatches. On judge `PROCEED`, continue to triage. On triage `PROCEED|CREATE`, route Tier 1/2 to Micro-approval queuing, sending that section's operator notice at queue time before stopping in step 5, and Tier 3 to `/hermitd:proposal-create`. A `DROP|...` token drops the candidate. `GATE_FAILED` from either gate fails closed per § Gate failure handling: do not queue, create, or apply anything. For `empty`, `unavailable`, or `error`, no candidate or proposal is produced.
+   Follow § Candidate processing → Evidence Validation (`hermitd:reflection-judge`), then the Proposal triage gate (`hermitd:proposal-triage`, a batch of one; pass `--caller scheduled-checks` to the `gate` verb). Obtain this run's `Anchor:` line as described in § Candidate processing and paste it as the first line of both dispatches. On judge `accept` or `downgrade`, continue to triage. On triage `create`, route Tier 1/2 to Micro-approval queuing, sending that section's operator notice at queue time before stopping in step 5, and Tier 3 to `/hermitd:proposal-create`. A `suppress` or `duplicate` status drops the candidate. A `gate_failed` status from either gate fails closed per § Gate failure handling: do not queue, create, or apply anything. For `empty`, `unavailable`, or `error`, no candidate or proposal is produced.
 5. **Task note (when a record is open).** Append exactly one line to the open task record through `task.ts note`: `[HH:MM] reflect (check): <id>: <classification>; verdicts: accept=A downgrade=D suppress=S; outcome: <none|dropped|gate-failed|micro-queued|proposal-created>`. Then stop. Routine scheduling owns future invocations; this mode does not read or write per-check scheduling state.
 
 ## `skill-correction:*` routing
@@ -114,14 +114,14 @@ Run `proposal-gate` (Commands) with arguments `--gate judge --caller reflect` an
 Title: <title>
 Verdict: <the judge's line for this candidate, verbatim>
 ```
-- `PROCEED|ACCEPT` — proceed with the candidate at its original tier.
-- `PROCEED|DOWNGRADE:<N>` — proceed at the revised tier `N`. When the judge's reason contains `quarantine: external origin`, the judge itself already forced `N` to 3 — route to `proposal-create` and pass `Evidence Origin: external-content` through so proposal-create can write the operator-visible provenance line in the PROP body. reflect does not write the PROP body itself.
-- `DROP|SUPPRESS:<code>`; if `<code>` is `no-sessions`, note the candidate in open record notes for future revisit. Otherwise drop silently.
-- `GATE_FAILED` — see § Gate failure handling.
+- `accept`: proceed with the candidate at its original tier.
+- `downgrade`: proceed at the revised `tier`. When the judge's reason contains `quarantine: external origin`, the judge itself already forced the tier to 3, so route to `proposal-create` and pass `Evidence Origin: external-content` through so proposal-create can write the operator-visible provenance line in the PROP body. reflect does not write the PROP body itself.
+- `suppress`: if `code` is `no-sessions`, note the candidate in open record notes for future revisit. Otherwise drop silently.
+- `gate_failed`: see § Gate failure handling.
 
 ### Gate failure handling
 
-The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `GATE_FAILED` and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `GATE_FAILED`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>; <the agent's line, verbatim>` in open record notes. The candidate re-surfaces on the next reflect cycle.
+The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `gate_failed` and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `gate_failed`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>; <the agent's line, verbatim>` in open record notes. The candidate re-surfaces on the next reflect cycle.
 
 ### Component Health signal ladder
 
@@ -156,10 +156,10 @@ Run `proposal-gate` (Commands) with arguments `--gate triage --caller reflect` a
 Title: <title>
 Verdict: <that candidate's line 1, verbatim>
 ```
-- `PROCEED|CREATE` — proceed
-- `DROP|DUPLICATE:<PROP-ID>`; link to existing proposal in open record notes instead, do not create
-- `DROP|SUPPRESS:<code>` — drop silently
-- `GATE_FAILED` — see § Gate failure handling, for that candidate only; the rest of the batch proceeds on its own verdicts.
+- `create`: proceed
+- `duplicate`: link to the existing proposal `id` in open record notes instead, do not create
+- `suppress`: drop silently
+- `gate_failed`: see § Gate failure handling, for that candidate only; the rest of the batch proceeds on its own verdicts.
 
 ### Outcomes
 
@@ -167,7 +167,7 @@ After validating with `hermitd:reflection-judge`, choose exactly one outcome per
 
 1. **No action** — pattern not strong enough, already handled, or already addressed by the Resolution Check.
 2. **Memory update** — for **durable lessons** worth remembering for future sessions: operator-stated rules, preferences that recurred, decision rationales that may apply later, workflow patterns that worked (subject to the placement rule — settled task-scoped or multi-step content belongs to the skill owning the task, with memory as the pointer). Issue the standard "remember it" reflection — the trained auto-memory flow handles the write, with its own discipline (concise, MEMORY.md ≤ 200 lines / 25KB, topic files for detail, respect WHAT_NOT_TO_SAVE). Save nothing if nothing rises above noise. Sub-threshold *patterns* do NOT go to memory — they go to the observations ledger; keeping the recurrence store separate from operator memory is what prevents triage's `covered-by-memory` check from suppressing a pattern at the moment it graduates.
-3. **Proposal candidate** — classify tier (§ Proposal Tier Classification) for every candidate reaching this outcome, batch them all through the Proposal triage gate together, then per candidate on its own token: Tier 1/2 `PROCEED|CREATE` → queue micro-approval in `state/micro-proposals.json`; Tier 3 `PROCEED|CREATE` → call `/hermitd:proposal-create` (exception: procedure-capture candidates skip the separate pre-gate — see § Procedure capture).
+3. **Proposal candidate**: classify tier (§ Proposal Tier Classification) for every candidate reaching this outcome, batch them all through the Proposal triage gate together, then per candidate on its own verdict: Tier 1/2 `create` → queue micro-approval in `state/micro-proposals.json`; Tier 3 `create` → call `/hermitd:proposal-create` (exception: procedure-capture candidates skip the separate pre-gate; see § Procedure capture).
 
 Sub-threshold observations do not surface to the operator in steady state. Append them to the observations ledger with a short stable pattern label — the label goes on stdin, so apostrophes in it are safe:
 Run `observations-observe` (Commands) with arguments `reflect-noticed --origin=own-work` and the following stdin payload:
@@ -193,8 +193,8 @@ Run `proposal-queue-micro` (Commands) and the following stdin payload:
 ```
 `options` and `on_resolve` are optional — used by channel-bridged asks from other skills (see `channel-responder` § Channel-safe ask bridge) as well as reflect's own future N-way candidates. When `on_resolve` is present, the script forces `tier: 1` regardless of the caller-supplied tier (so tier-1 readers like heartbeat keep working unchanged) and tags the metrics event `"kind":"ask"` (a bounded ask is not a yes/no approval, so `generate-summary.ts`/`weekly-review.ts` exclude it from approval-rate calculations).
 
-- `QUEUED|MP-YYYYMMDD-N` — the script generates the day-scoped ID, appends the `pending` entry to `state/micro-proposals.json`, and logs the `micro-queued` metric event.
-- `DUPLICATE|<existing-id>` — a pending entry with the same `question` already exists; nothing written.
+- `queued`: the script generates the day-scoped `id` (`MP-YYYYMMDD-N`), appends the `pending` entry to `state/micro-proposals.json`, and logs the `micro-queued` metric event.
+- `duplicate`: a pending entry with the same `question` already exists (its `id` is returned); nothing written.
 
 Notify the operator with the question (using the returned or existing id). Entries without `options`: `MP-YYYYMMDD-N (tier <N>): <question>` — Reply `"MP-YYYYMMDD-N yes"` or `"MP-YYYYMMDD-N no"` (bare `yes`/`no` accepted when only one entry is pending). Entries with `options`: render them numbered (`1. <label>`, `2. <label>`, ...) under the question and hint `Reply "MP-YYYYMMDD-N <number or label>"` (bare number/label accepted when only one entry is pending).
 
@@ -267,7 +267,7 @@ A procedure is **chat-triggered** when its evidence is an operator request from 
 
 **Lane A (Tier 3 — no proposed routine, chat-triggered, or `Evidence Origin: external-content`).** Classify **Tier 3** (a new skill auto-loads into every future session, its triggers can fire autonomously, and writing under `.claude/` is operator-space — plus chat-triggered and external-origin procedures need full artifact review). This matches the Tier-3 definition and the convention that all `category: capability` writers go straight to `proposal-create`.
 
-Queue as a Tier-3 candidate by calling `/hermitd:proposal-create` — it runs `proposal-triage` internally and emits the `tags`-carrying triage-verdict. Do **not** pre-gate with `proposal-triage` separately: a separate pre-gate emits an untagged `caller: reflect` verdict, so its SUPPRESSes escape the triage-survival count above and inflate the rate. Call with:
+Queue as a Tier-3 candidate by calling `/hermitd:proposal-create`: it runs `proposal-triage` internally and emits the `tags`-carrying triage-verdict. Do **not** pre-gate with `proposal-triage` separately: a separate pre-gate emits an untagged `caller: reflect` verdict, so its `suppress` verdicts escape the triage-survival count above and inflate the rate. Call with:
 - `category: capability`
 - `tags: [procedure-capture]`
 - `source: auto-detected`

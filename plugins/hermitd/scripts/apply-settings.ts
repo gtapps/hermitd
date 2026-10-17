@@ -123,7 +123,6 @@ const HERMIT_ALLOW = [
   'Bash(bun */scripts/channel-access.ts*)',
   'Bash(bun */scripts/routines.ts precheck*)',
   'Bash(bun */scripts/routines.ts finish*)',
-  'Bash(bun */scripts/routines.ts cron-registry*)',
   'Bash(bun */scripts/routines.ts health*)',
   // The arming and tick verbs the daily anchor, `hermit-routines load` and
   // `heartbeat run/start` call on every wake. Per-verb like the entries above:
@@ -257,6 +256,8 @@ const HERMIT_OBSOLETE = [
   'Bash(bun */scripts/heartbeat-precheck.ts*)',
   'Bash(bun */scripts/routine-precheck.ts*)',
   'Bash(bun */scripts/cron-registry.ts*)',
+  // The standalone registry verb; `routines.ts arm` owns registration planning.
+  'Bash(bun */scripts/routines.ts cron-registry*)',
   'Bash(bun */scripts/cron-tz-shift.ts*)',
   // Superseded by the no-space form above — CC 2.1.246 warns at startup on this shape
   // (fully-literal `observe` argument following the `*/scripts/…` wildcard).

@@ -73,13 +73,13 @@ type RowInput = {
 // rows are indistinguishable to every reader.
 function observationRow(input: RowInput): { row: Record<string, unknown> } | { error: string } {
   const pattern = input.pattern.trim();
-  if (!pattern) return { error: 'empty-pattern' };
-  if (pattern.includes('\n')) return { error: 'multiline-pattern' };
-  if (pattern.length > MAX_PATTERN) return { error: `pattern-too-long:${pattern.length}` };
+  if (!pattern) return { error: 'empty_pattern' };
+  if (pattern.includes('\n')) return { error: 'multiline_pattern' };
+  if (pattern.length > MAX_PATTERN) return { error: `pattern_too_long:${pattern.length}` };
 
   if (input.origin !== undefined) {
-    if (!ORIGIN_SOURCES.has(input.source)) return { error: `origin-not-allowed:${input.source}` };
-    if (!ORIGINS.includes(input.origin)) return { error: `invalid-origin:${input.origin}` };
+    if (!ORIGIN_SOURCES.has(input.source)) return { error: `origin_not_allowed:${input.source}` };
+    if (!ORIGINS.includes(input.origin)) return { error: `invalid_origin:${input.origin}` };
   }
 
   const row: Record<string, unknown> = {
@@ -93,7 +93,7 @@ function observationRow(input: RowInput): { row: Record<string, unknown> } | { e
   // `source` or `session_id` would otherwise silently forge the very fields this
   // module exists to own.
   for (const [k, v] of Object.entries(input.extra ?? {})) {
-    if (k in row) return { error: `reserved-extra-key:${k}` };
+    if (k in row) return { error: `reserved_extra_key:${k}` };
     row[k] = v;
   }
   return { row };
@@ -106,10 +106,12 @@ function observationLine(input: RowInput): { line: string } | { error: string } 
   return 'error' in built ? built : { line: JSON.stringify(built.row) };
 }
 
-function appendObservation(stateDir: string, input: RowInput): string | null {
+// Returns the `{error}` to report, or null when the row landed.
+function appendObservation(stateDir: string, input: RowInput): { error: string } | null {
   const built = observationRow(input);
-  if ('error' in built) return built.error;
-  return appendJsonlLine(observationsPath(stateDir), JSON.stringify(built.row));
+  if ('error' in built) return built;
+  const err = appendJsonlLine(observationsPath(stateDir), JSON.stringify(built.row));
+  return err ? { error: `ledger_append_failed:${err}` } : null;
 }
 
 interface GraduationCandidate {

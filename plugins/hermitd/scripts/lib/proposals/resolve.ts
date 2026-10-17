@@ -1,11 +1,10 @@
 // `proposal.ts resolve-id <stateDir> <operator-input>` — resolves an operator's
 // PROP-id input to a proposal filename.
-// Output (stdout, one line):
-//   MATCH|<filename>
-//   AMBIGUOUS|<json array of {file, title}>
-//   NONE|not-a-prop-id
-//   NONE|no-match
-// Exit 0 always — resolution failures are reported via the verdict token, not exit code.
+// Output (stdout, one JSON line):
+//   {"status":"match","file":"<filename>"}
+//   {"status":"ambiguous","matches":[{"file","title"}]}
+//   {"status":"none","reason":"not_a_prop_id"|"no_match"}
+// Exit 0 always: resolution failures are reported via the verdict, not exit code.
 // Implements proposal-act/SKILL.md § Resolving a Proposal ID. Glob matching is
 // case-insensitive: step 1 uppercases the whole input (including any slug suffix),
 // while real proposal filenames carry a lowercase slug — case-insensitive matching
@@ -14,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readFrontmatter } from '../frontmatter';
-import { emit } from '../cli';
+import { emitJson } from '../cli';
 
 // Anchored glob → regex. Never a bare `PROP-NNN*` — that collides with 4-digit NNN
 // filenames (e.g. `PROP-0061.md`) once proposal counts cross 1000.
@@ -24,11 +23,11 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 export function run(stateDir: string, rawInput: string | undefined): never {
-  if (rawInput === undefined) emit('NONE|not-a-prop-id');
+  if (rawInput === undefined) emitJson({ status: 'none', reason: 'not_a_prop_id' });
 
   const input = rawInput.trim().toUpperCase();
   const m = input.match(/^PROP-(\d+)(?:-(.+))?$/);
-  if (!m) emit('NONE|not-a-prop-id');
+  if (!m) emitJson({ status: 'none', reason: 'not_a_prop_id' });
 
   const num = m[1].padStart(3, '0');
   const suffix = m[2];
@@ -38,7 +37,7 @@ export function run(stateDir: string, rawInput: string | undefined): never {
   try {
     files = fs.readdirSync(proposalsDir).filter(f => f.endsWith('.md')).sort();
   } catch {
-    emit('NONE|no-match');
+    emitJson({ status: 'none', reason: 'no_match' });
   }
 
   let matches: string[];
@@ -51,12 +50,12 @@ export function run(stateDir: string, rawInput: string | undefined): never {
     matches = files.filter(f => pattern.test(f));
   }
 
-  if (matches.length === 0) emit('NONE|no-match');
-  if (matches.length === 1) emit(`MATCH|${matches[0]}`);
+  if (matches.length === 0) emitJson({ status: 'none', reason: 'no_match' });
+  if (matches.length === 1) emitJson({ status: 'match', file: matches[0] });
 
   const payload = matches.map(f => ({
     file: f,
     title: readFrontmatter(path.join(proposalsDir, f))?.title ?? null,
   }));
-  emit(`AMBIGUOUS|${JSON.stringify(payload)}`);
+  emitJson({ status: 'ambiguous', matches: payload });
 }

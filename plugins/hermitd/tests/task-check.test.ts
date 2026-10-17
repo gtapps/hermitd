@@ -23,7 +23,7 @@ test('changing a check, its definition or status refuses the old snapshot', asyn
     const { id } = await f.open(['--check', 'true']);
     const snapshot = await f.ok('check-snapshot', [id]);
     await f.ok('note', [id, '--check', 'false']);
-    expect(() => mutateTask(f.dir, 'check-result', id, { 'result-rev': String(snapshot.result_rev), exit: '0', 'output-stdin': true }, 'proof')).toThrow('stale-check');
+    expect(() => mutateTask(f.dir, 'check-result', id, { 'result-rev': String(snapshot.result_rev), exit: '0', 'output-stdin': true }, 'proof')).toThrow('stale_check');
     await f.ok('note', [id, '--check', 'clear']);
     expect((await f.ok('list', ['--with-check'])).rows).toEqual([]);
     const { id: redefined } = await f.open(['--check', 'true']);
@@ -43,7 +43,7 @@ test('task.ts exposes no check-result verb, so only a real check run closes by c
     const { id } = await f.open(['--check', 'false']);
     const r = await f.run('check-result', [id, '--result-rev', '0', '--exit', '0', '--output-stdin'], 'proof');
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toContain('invalid-verb');
+    expect(r.stderr).toContain('invalid_verb');
     expect(decodeTask(f.text(id)).status).toBe('open');
   } finally { f.cleanup(); }
 });

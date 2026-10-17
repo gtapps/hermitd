@@ -53,7 +53,7 @@ function heredoc(header: Record<string, string>, body = BODY): string {
 describe('verbCreate grammar', () => {
   test('happy path returns the canonical id and writes the file it names', withDir(async (dir) => {
     const base = seed(dir);
-    const id = verbCreate(base, heredoc({ Title: 'Ship the thing', Tags: '["architecture"]' }));
+    const id = verbCreate(base, heredoc({ Title: 'Ship the thing', Tags: '["architecture"]' })).id;
 
     expect(id).toMatch(/^PROP-001-ship-thing-\d{6}$/);
     const content = fs.readFileSync(path.join(base, 'proposals', `${id}.md`), 'utf-8');
@@ -64,17 +64,17 @@ describe('verbCreate grammar', () => {
   }));
 
   test.each([
-    ['no separator line', 'Title: x\nbody with no separator', 'ERROR|missing-separator'],
-    ['body is only whitespace', 'Title: x\n---\n   \n', 'ERROR|empty-body'],
-    ['no Title header', heredoc({ Source: 'manual' }), 'ERROR|missing-title'],
-    ['Title present but blank', heredoc({ Title: '   ' }), 'ERROR|missing-title'],
-    ['category outside the enum', heredoc({ Title: 'x', Category: 'wishlist' }), 'ERROR|invalid-category'],
-    ['Tags is not JSON', heredoc({ Title: 'x', Tags: 'architecture' }), 'ERROR|invalid-tags'],
-    ['Tags is JSON but not string[]', heredoc({ Title: 'x', Tags: '[1,2]' }), 'ERROR|invalid-tags'],
-    ['Related-Sessions is malformed', heredoc({ Title: 'x', 'Related-Sessions': '{}' }), 'ERROR|invalid-related-sessions'],
+    ['no separator line', 'Title: x\nbody with no separator', { error: 'missing_separator' }],
+    ['body is only whitespace', 'Title: x\n---\n   \n', { error: 'empty_body' }],
+    ['no Title header', heredoc({ Source: 'manual' }), { error: 'missing_title' }],
+    ['Title present but blank', heredoc({ Title: '   ' }), { error: 'missing_title' }],
+    ['category outside the enum', heredoc({ Title: 'x', Category: 'wishlist' }), { error: 'invalid_category' }],
+    ['Tags is not JSON', heredoc({ Title: 'x', Tags: 'architecture' }), { error: 'invalid_tags' }],
+    ['Tags is JSON but not string[]', heredoc({ Title: 'x', Tags: '[1,2]' }), { error: 'invalid_tags' }],
+    ['Related-Sessions is malformed', heredoc({ Title: 'x', 'Related-Sessions': '{}' }), { error: 'invalid_related_sessions' }],
   ])('%s', (_name, stdin, expected) => withDir(async (dir) => {
     const base = seed(dir);
-    expect(verbCreate(base, stdin)).toBe(expected);
+    expect(verbCreate(base, stdin)).toEqual(expected);
     expect(fs.readdirSync(path.join(base, 'proposals'))).toEqual([]);
   })());
 
@@ -82,20 +82,20 @@ describe('verbCreate grammar', () => {
     const base = seed(dir);
     fs.writeFileSync(path.join(base, 'state', 'runtime.json'), JSON.stringify({}));
 
-    const id = verbCreate(base, heredoc({ Title: 'x', Session: '' }));
+    const id = verbCreate(base, heredoc({ Title: 'x', Session: '' })).id;
     expect(fs.readFileSync(path.join(base, 'proposals', `${id}.md`), 'utf-8')).toContain('session: null');
   }));
 
   test('an absent Operator Decision section is appended so patch has somewhere to write', withDir(async (dir) => {
     const base = seed(dir);
-    const id = verbCreate(base, heredoc({ Title: 'x' }, '## Context\nctx'));
+    const id = verbCreate(base, heredoc({ Title: 'x' }, '## Context\nctx')).id;
     expect(fs.readFileSync(path.join(base, 'proposals', `${id}.md`), 'utf-8')).toContain('## Operator Decision');
   }));
 
   test('a missing template fails before any write', withDir(async (dir) => {
     const base = seed(dir);
     fs.rmSync(path.join(base, 'templates', 'PROPOSAL.md.template'));
-    expect(verbCreate(base, heredoc({ Title: 'x' }))).toBe('ERROR|template-missing');
+    expect(verbCreate(base, heredoc({ Title: 'x' }))).toEqual({ error: 'template_missing' });
     expect(fs.readdirSync(path.join(base, 'proposals'))).toEqual([]);
   }));
 
@@ -115,7 +115,7 @@ describe('verbCreate grammar', () => {
     }) as any);
 
     try {
-      const id = verbCreate(base, heredoc({ Title: 'Racing create' }));
+      const id = verbCreate(base, heredoc({ Title: 'Racing create' })).id;
       expect(thrown).toBe(true);
       expect(id).toMatch(/^PROP-001-racing-create-\d{6}a$/);
       expect(fs.existsSync(path.join(base, 'proposals', `${id}.md`))).toBe(true);
@@ -128,7 +128,7 @@ describe('verbCreate grammar', () => {
 describe('verbPatch grammar', () => {
   function seedProposal(dir: string): { base: string; id: string } {
     const base = seed(dir);
-    const id = verbCreate(base, heredoc({ Title: 'Patch me' }));
+    const id = verbCreate(base, heredoc({ Title: 'Patch me' })).id;
     return { base, id };
   }
 
@@ -136,7 +136,7 @@ describe('verbPatch grammar', () => {
     const { base, id } = seedProposal(dir);
     const verdict = verbPatch(base, 'Decision: Accepted on @now.', [id, '--set', 'status=accepted']);
 
-    expect(verdict).toBe(`OK|${id}`);
+    expect(verdict).toEqual({ id });
     const content = fs.readFileSync(path.join(base, 'proposals', `${id}.md`), 'utf-8');
     expect(content).toContain('status: accepted');
     expect(content).toMatch(/Accepted on \d{4}-\d{2}-\d{2}T[\d:]{8}[+-]\d{2}:\d{2}\./);
@@ -157,16 +157,16 @@ describe('verbPatch grammar', () => {
     ['a nested path', 'sub/PROP-001.md'],
     ['a dotfile', '.hidden.md'],
     ['an absent proposal', 'PROP-999-nope.md'],
-  ])('%s is refused as no-such-proposal', (_name, filename) => withDir(async (dir) => {
+  ])('%s is refused as no_such_proposal', (_name, filename) => withDir(async (dir) => {
     const base = seed(dir);
     const before = fs.readFileSync(path.join(base, 'config.json'), 'utf-8');
-    expect(verbPatch(base, '', [filename, '--set', 'status=accepted'])).toBe('ERROR|no-such-proposal');
+    expect(verbPatch(base, '', [filename, '--set', 'status=accepted'])).toEqual({ error: 'no_such_proposal' });
     expect(fs.readFileSync(path.join(base, 'config.json'), 'utf-8')).toBe(before);
   })());
 
   test('a --set with no `=` is rejected', withDir(async (dir) => {
     const { base, id } = seedProposal(dir);
-    expect(verbPatch(base, '', [id, '--set', 'statusaccepted'])).toBe('ERROR|invalid-set');
+    expect(verbPatch(base, '', [id, '--set', 'statusaccepted'])).toEqual({ error: 'invalid_set' });
   }));
 
   test('an invalid key is rejected before the file is touched, decision line included', withDir(async (dir) => {
@@ -175,7 +175,7 @@ describe('verbPatch grammar', () => {
     const before = fs.readFileSync(propPath, 'utf-8');
 
     expect(verbPatch(base, 'Decision: Accepted on @now.', [id, '--set', 'sta tus=accepted']))
-      .toBe('ERROR|invalid-key:sta tus');
+      .toEqual({ error: 'invalid_key:sta tus' });
     expect(fs.readFileSync(propPath, 'utf-8')).toBe(before);
   }));
 
@@ -193,8 +193,8 @@ describe('the remaining write verbs', () => {
     const base = seed(dir);
     const entry = { id: 'daily-brief', schedule: '0 8 * * *', skill: 'brief', enabled: true };
 
-    expect(verbRoutine(base, JSON.stringify(entry))).toBe('OK|added');
-    expect(verbRoutine(base, JSON.stringify({ ...entry, enabled: false }))).toBe('OK|updated');
+    expect(verbRoutine(base, JSON.stringify(entry))).toEqual({ status: 'added', id: 'daily-brief' });
+    expect(verbRoutine(base, JSON.stringify({ ...entry, enabled: false }))).toEqual({ status: 'updated', id: 'daily-brief' });
 
     const config = JSON.parse(fs.readFileSync(path.join(base, 'config.json'), 'utf-8'));
     expect(config.routines).toHaveLength(1);
@@ -202,12 +202,12 @@ describe('the remaining write verbs', () => {
   }));
 
   test.each([
-    ['malformed JSON', 'not json', 'ERROR|invalid-json'],
-    ['a JSON array', '[]', 'ERROR|invalid-json'],
-    ['a missing field', '{"id":"x","schedule":"* * * * *","skill":"brief"}', 'ERROR|missing-field:enabled'],
-    ['a blank id', '{"id":"","schedule":"* * * * *","skill":"brief","enabled":true}', 'ERROR|missing-field:id'],
+    ['malformed JSON', 'not json', { error: 'invalid_json' }],
+    ['a JSON array', '[]', { error: 'invalid_json' }],
+    ['a missing field', '{"id":"x","schedule":"* * * * *","skill":"brief"}', { error: 'missing_field:enabled' }],
+    ['a blank id', '{"id":"","schedule":"* * * * *","skill":"brief","enabled":true}', { error: 'missing_field:id' }],
   ])('routine rejects %s', (_name, stdin, expected) => withDir(async (dir) => {
-    expect(verbRoutine(seed(dir), stdin as string)).toBe(expected);
+    expect(verbRoutine(seed(dir), stdin as string)).toEqual(expected);
   })());
 });
 

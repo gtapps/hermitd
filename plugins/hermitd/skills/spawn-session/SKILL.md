@@ -128,9 +128,9 @@ alternate invocation, or weaker permission mode. The exceptions are
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve-id <abs>/.hermit "<PROP-id>"
    ```
-   Anything but `MATCH|<filename>` refuses before any launch, with the resolver's
-   reason. On MATCH, append the absolute proposal path
-   `<abs>/.hermit/proposals/<filename>` to the prompt as an
+   Anything but `status` `match` refuses before any launch, with the resolver's
+   reason. On a match, append the absolute proposal path
+   `<abs>/.hermit/proposals/<file>` to the prompt as an
    `@<abs-path>` mention, the same way `--background` is. Read `<p>` from `<abs>/.hermit/config.json`
    (`permission_mode`), dropping the flag for `default`, `null` or an absent
    key, mapping `bypassPermissions` to `auto` (Six limits), and passing
@@ -167,8 +167,8 @@ alternate invocation, or weaker permission mode. The exceptions are
    timestamped for you).
    After the handoff note, bind the record with
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id> --owner helper:<n>`.
-   On `invalid-owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
-   `owner-busy`, leave it resident-owned and tell the operator why.
+   On `invalid_owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
+   `owner_busy`, leave it resident-owned and tell the operator why.
    With `--proposal`, open the record (title names
    the helper work; requester is the current operator or channel identity). The
    key is `helper:PROP-NNN`, not `proposal:PROP-NNN`: that second key belongs to
@@ -182,7 +182,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    ```
    Then append one handoff line with no `--set`:
    ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> --stdin <<'HERMIT_PATCH'
+   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <file> --stdin <<'HERMIT_PATCH'
    Decision: Handed to helper <n> (<sid>) on @now; record <T-id>.
    HERMIT_PATCH
    ```

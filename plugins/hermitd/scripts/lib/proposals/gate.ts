@@ -1,21 +1,21 @@
 // `proposal.ts gate <stateDir> …` — parses one proposal/reflect gate-agent verdict
-// line, appends the corresponding metric event, and returns a routing token.
+// line, appends the corresponding metric event, and returns a routing verdict.
 // Usage: proposal.ts gate <hermit-state-dir> --gate <triage|judge> --caller <caller>
 //        [--evidence-source <value>] [--tags <json-array>] <<'HERMIT_GATE'
 //        Title: <candidate title>
 //        Verdict: <the gate agent's verdict line, verbatim>
 //        HERMIT_GATE
-// Output (stdout, one line):
-//   PROCEED|CREATE                (triage)
-//   DROP|SUPPRESS:<code>          (triage or judge)
-//   DROP|DUPLICATE:<PROP-ID>      (triage)
-//   PROCEED|ACCEPT                (judge)
-//   PROCEED|DOWNGRADE:<N>         (judge)
-//   GATE_FAILED                   (either gate — unrecognized/empty verdict)
-// Exit 0 always.
+// Output (stdout, one JSON line):
+//   {"status":"create"}                       (triage)
+//   {"status":"suppress","code":"<code>"}     (triage or judge)
+//   {"status":"duplicate","id":"<PROP-ID>"}   (triage)
+//   {"status":"accept"}                       (judge)
+//   {"status":"downgrade","tier":<N>}         (judge)
+//   {"status":"gate_failed"}                  (either gate: unrecognized/empty verdict)
+// Exit 0 for every verdict, gate_failed included.
 //
 // Fail-closed by design — the opposite stance from the fail-open *-precheck.ts
-// scripts: an unrecognized verdict never PROCEEDs. Recognized triage verdicts
+// scripts: an unrecognized verdict never proceeds. Recognized triage verdicts
 // append a `triage-verdict` event to state/proposal-metrics.jsonl (matches the
 // existing prose contract in proposal-create/SKILL.md and reflect/branches.md).
 // Judge verdicts are not separately logged today — only a judge gate *failure*
@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { appendJsonlLine } from '../append-jsonl';
 import { utcISOStamp } from '../time';
-import { emit, readStdin } from '../cli';
+import { emitJson, readStdin } from '../cli';
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -66,7 +66,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
       path.join(stateDir, 'state', 'proposal-metrics.jsonl'),
       JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title, verdict: verdictLine.slice(0, 200) }),
     );
-    emit('GATE_FAILED');
+    emitJson({ status: 'gate_failed' });
   }
 
   if ((gate !== 'triage' && gate !== 'judge') || !verdictLine) failClosed();
@@ -80,15 +80,15 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
 
     if (create) {
       appendJsonlLine(ledger, JSON.stringify({ ts: utcISOStamp(), type: 'triage-verdict', verdict: 'CREATE', caller, evidence_source: evidenceSource, tags }));
-      emit('PROCEED|CREATE');
+      emitJson({ status: 'create' });
     }
     if (suppress) {
       appendJsonlLine(ledger, JSON.stringify({ ts: utcISOStamp(), type: 'triage-verdict', verdict: 'SUPPRESS', caller, evidence_source: evidenceSource, tags }));
-      emit(`DROP|SUPPRESS:${suppress[1]}`);
+      emitJson({ status: 'suppress', code: suppress[1] });
     }
     if (duplicate) {
       appendJsonlLine(ledger, JSON.stringify({ ts: utcISOStamp(), type: 'triage-verdict', verdict: 'DUPLICATE', caller, evidence_source: evidenceSource, tags }));
-      emit(`DROP|DUPLICATE:${duplicate[1]}`);
+      emitJson({ status: 'duplicate', id: duplicate[1] });
     }
     failClosed();
   }
@@ -98,8 +98,8 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   const downgrade = verdictLine.match(/^DOWNGRADE:(\d+)(?:\s*\([^)]+\))?:/);
   const suppress = verdictLine.match(/^SUPPRESS(?:\s*\([^)]+\))?:\s*.+?—\s*([a-z-]+):/);
 
-  if (accept) emit('PROCEED|ACCEPT');
-  if (downgrade) emit(`PROCEED|DOWNGRADE:${downgrade[1]}`);
-  if (suppress) emit(`DROP|SUPPRESS:${suppress[1]}`);
+  if (accept) emitJson({ status: 'accept' });
+  if (downgrade) emitJson({ status: 'downgrade', tier: Number(downgrade[1]) });
+  if (suppress) emitJson({ status: 'suppress', code: suppress[1] });
   failClosed();
 }

@@ -1,19 +1,20 @@
 // `routines.ts precheck` — consolidates a routine fire's pre-dispatch gate (pause-check) and the `started` stamp into one script call, replacing 2-3 separate
-// model-issued tool calls per fire with one. Mirrors reflect-precheck.ts's /
-// `heartbeat.ts precheck`'s verdict-token contract. Delegates the JSONL write to lib/routines/event.ts,
+// model-issued tool calls per fire with one. Mirrors reflect-precheck.ts's
+// one-verdict contract. Delegates the JSONL write to lib/routines/event.ts,
 // which stays the single writer — the #464 dedup guard and JSONL schema live in exactly
 // one place.
 // Usage: bun routines.ts precheck <routine-id> [delivery]
-// Output (stdout): SKIP | PROCEED, optionally followed by one `REFLECT RUN|<phases-json>`
-// line carrying the reflect gate's verdict so the skill does not re-run that script
-// (which would append its observation rows a second time).
+// Output (stdout, one JSON line): {"status":"skip"} | {"status":"proceed"}, the latter
+// optionally with `reflect`: the reflect gate's run verdict object, so the skill does
+// not re-run that script (which would append its observation rows a second time).
 // Side effect: stamps skipped-paused | skipped-precheck |
 // precheck-error | started via logRoutineEvent().
-// Exit 0 always — fail-open to PROCEED on any read error (a malformed runtime.json must
+// Exit 0 always: fail-open to proceed on any read error (a malformed runtime.json must
 // never silently kill a routine).
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { emitJson } from '../cli';
 import { hermitDir } from '../cc-compat';
 import { readConfigRaw } from '../config-read';
 import { isPaused } from '../pause';
@@ -24,21 +25,19 @@ import { BUILTIN_REFLECT, readReflectGate, runGate } from './gate';
 
 type Json = any;
 
-function emit(verdict: string): never {
-  process.stdout.write(verdict + '\n');
-  process.exit(0);
-}
+const PROCEED = { status: 'proceed' };
+const SKIP = { status: 'skip' };
 
 const id = process.argv[2];
 const delivery = process.argv[3] || 'cron-create';
 
-if (!id) emit('PROCEED');
+if (!id) emitJson(PROCEED);
 
 let HERMIT_ROOT: string;
 try {
   HERMIT_ROOT = hermitDir();
 } catch {
-  emit('PROCEED'); // fail-open: can't resolve the hermit dir → never silently kill the routine
+  emitJson(PROCEED); // fail-open: can't resolve the hermit dir → never silently kill the routine
 }
 
 function stamp(event: string, detail?: string): void {
@@ -64,34 +63,34 @@ function routineEntry(): Json | null {
  * Two deliveries, two different jobs:
  *   monitor      — `due` already ran the gate before it emitted, so running it again
  *                  here would be a second execution of operator code per fire. The
- *                  only thing left to do is hand reflect its phases, which `due`
+ *                  only thing left to do is hand reflect its verdict, which `due`
  *                  parked keyed by the fire's cron mark.
  *   cron-create  — there is no `due` in fallback mode, so this is the gate's only
  *                  chance. The wake has already been paid for; behavior parity, not
  *                  cost parity (the doctor says so out loud).
  *
- * Returns the extra line to print after PROCEED, or exits on a SKIP verdict.
+ * Returns the reflect verdict to hand over with proceed, or exits on a skip verdict.
  */
-function gateLine(routine: Json | null): string | null {
+function reflectGate(routine: Json | null): Json | null {
   if (!routine || routine.precheck === undefined || routine.precheck === null) return null;
 
   if (delivery === 'monitor') {
     if (String(routine.precheck).trim() !== BUILTIN_REFLECT) return null;
     const cached = readReflectGate(HERMIT_ROOT, id);
-    // No cache match means a monitor from before this feature, or a race with a
-    // re-registered schedule. Falling through to a bare PROCEED is safe: the skill
-    // still has its own precheck path for exactly that case.
-    if (!cached || !cached.phases || cached.mark !== consumedMark()) return null;
-    return `REFLECT ${cached.phases}`;
+    // No cache match (no entry, no `reflect` object, or a race with a re-registered
+    // schedule) falls through to a bare proceed, which is safe: the skill still has
+    // its own precheck path for exactly that case.
+    if (!cached || cached.mark !== consumedMark()) return null;
+    return cached.reflect && typeof cached.reflect === 'object' ? cached.reflect : null;
   }
 
   const gate = runGate(routine, HERMIT_ROOT, consumedMark() || utcISOStamp());
   if (gate.verdict === 'skip') {
     stamp('skipped-precheck');
-    emit('SKIP');
+    emitJson(SKIP);
   }
   if (gate.verdict === 'error') stamp('precheck-error', gate.detail);
-  return gate.phases ? `REFLECT ${gate.phases}` : null;
+  return gate.reflect ?? null;
 }
 
 /** The cron mark `due` consumed for this fire — the key a cached reflect verdict is under. */
@@ -153,13 +152,13 @@ try {
 }
 if (paused) {
   stamp('skipped-paused');
-  emit('SKIP');
+  emitJson(SKIP);
 }
 
-// Runs before the `started` stamp: a gate SKIP means this fire never opened, so it
+// Runs before the `started` stamp: a gate skip means this fire never opened, so it
 // must not leave an attempt the ledger would later read as abandoned.
-const reflectLine = gateLine(routineEntry());
+const reflect = reflectGate(routineEntry());
 
 stamp('started');
 captureArtifactBaseline();
-emit(reflectLine ? `PROCEED\n${reflectLine}` : 'PROCEED');
+emitJson(reflect ? { ...PROCEED, reflect } : PROCEED);

@@ -34,7 +34,7 @@ they can ask again to implement once its report lands (that re-entry is
 With no such entry, continue below. After a successful send or resume to `<n>`,
 bind the record step (a) opened with
 run `task-note` (Commands) with arguments `<record> --owner helper:<n>`.
-On `invalid-owner` or `owner-busy`, leave it resident-owned and note why.
+On `invalid_owner` or `owner_busy`, leave it resident-owned and note why.
 
 - `<n>` has a `ListAgents` row: run spawn-session
   § Follow-ups, "Resume with new instructions" with the instructions, note

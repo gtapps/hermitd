@@ -4,12 +4,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readJson } from '../cli';
+import { failJson, printJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { isGuest } from '../guest-marker';
 import { pidAlive } from '../lockfile';
 import { commandDriftReason, heartbeatHealth, PLUGIN_ROOT, livenessReason, sameMonitorCommand, STARTUP_GRACE_SECS, type LegHealth } from '../heartbeat/monitor-cmd';
-import { commitHeartbeatArm, prepareHeartbeatArm } from '../heartbeat/start';
+import { COMMAND_DRIFT_VERDICT, commitHeartbeatArm, GUEST_VERDICT, MONITOR_ACTIVATE, prepareHeartbeatArm, type HeartbeatCommit } from '../heartbeat/start';
 import { bootMismatch, monitorFreshness, waitForFirstTick } from '../monitor-health';
 import { isPaused } from '../pause';
 import { resolveHermitNowMs } from '../time';
@@ -155,7 +155,7 @@ function monitorHealth(ctx: Context): LegHealth {
   return { healthy: true, reason: runtime.mode };
 }
 
-function anchorAge(ctx: Context): string {
+function anchorAgeDays(ctx: Context): number {
   const fired = lastRoutineFire(path.join(ctx.hermitDir, 'state', 'routine-metrics.jsonl'), ANCHOR_ID);
   const ages = [
     fired === null ? NaN : ctx.nowMs - Date.parse(fired),
@@ -163,13 +163,17 @@ function anchorAge(ctx: Context): string {
       ? ctx.nowMs - ctx.mirror.routines[ANCHOR_ID].registered_at
       : NaN,
   ].filter(Number.isFinite) as number[];
-  return `${(ages.length ? Math.max(0, Math.min(...ages)) / 86400000 : 0).toFixed(1)}d`;
+  return Number((ages.length ? Math.max(0, Math.min(...ages)) / 86400000 : 0).toFixed(1));
 }
 
-function summary(ctx: Context, heartbeat: LegHealth): string {
+function healthyVerdict(ctx: Context, heartbeat: LegHealth): Json {
   const runtime = readJson(path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json'));
-  const mode = runtime?.mode === 'croncreate-fallback' ? 'fallback' : 'monitor';
-  return `routines=${mode}:${ctx.scheduled.length}|anchor_age=${anchorAge(ctx)}|heartbeat=${heartbeat.reason === 'disabled' ? 'disabled' : 'ok'}`;
+  return {
+    status: 'healthy',
+    routines: { mode: runtime?.mode === 'croncreate-fallback' ? 'fallback' : 'monitor', scheduled: ctx.scheduled.length },
+    anchor_age_days: anchorAgeDays(ctx),
+    heartbeat: heartbeat.reason === 'disabled' ? 'disabled' : 'ok',
+  };
 }
 
 function stamp(ctx: Context, event: string): void {
@@ -181,43 +185,46 @@ function renderAnchorPrompt(ctx: Context): string {
   return [
     `[hermit-routine:${ANCHOR_ID}]`,
     `Run: ${cli} arm anchor ${ctx.hermitDir} ${ctx.pluginRoot}`,
-    'If the first line is SKIP|restart-required, report that the resident must be restarted to pick up the new plugin path, and stop.',
-    'If it is SKIP|paused, report that the resident is paused and stop.',
-    'If it is any other SKIP, or is an ARM line whose reason starts with check-error, stop and report that line: the check could not read state, so there is nothing safe to re-arm.',
-    'If it is HEALTHY, reply with one short healthy line and stop without TaskStop, Monitor, Cron, or file writes.',
-    'If it is ARM and the legs include routines, invoke /hermitd:hermit-routines load: it arms the heartbeat leg too, so do not also invoke /hermitd:heartbeat start.',
-    'If it is ARM and heartbeat is the only leg, invoke /hermitd:heartbeat start.',
+    'It prints one JSON object. Status "restart_required": report that the resident must be restarted to pick up the new plugin path, and stop.',
+    'Status "skip", reason "paused": report that the resident is paused and stop.',
+    'An "error" key: stop and report it. The check could not read state, so there is nothing safe to re-arm.',
+    'Status "healthy": reply with one short healthy line and stop without TaskStop, Monitor, Cron, or file writes.',
+    'Status "arm" with "routines" in legs: invoke /hermitd:hermit-routines load. It arms the heartbeat leg too, so do not also invoke /hermitd:heartbeat start.',
+    'Status "arm" with only "heartbeat" in legs: invoke /hermitd:heartbeat start.',
     `Then run: ${cli} finish ${ANCHOR_ID} cron-create`,
   ].join('\n');
 }
 
-function emitPlan(ctx: Context, result: PlanResult): void {
-  for (const id of result.deletes) process.stdout.write(`DELETE:${id}\n`);
-  for (const item of result.creates) process.stdout.write(`CREATE:${item.id}|${item.schedule}\n`);
-  for (const item of result.creates) if (item.warn) process.stdout.write(`WARN:${item.id}|${item.warn}\n`);
-  process.stdout.write(`KEEP:${result.keepCount}\n`);
+/** The registration plan fields of an `arm begin` object. */
+function planFields(ctx: Context, result: PlanResult): Json {
+  const fields: Json = {
+    delete: result.deletes,
+    create: result.creates.map(item => ({ id: item.id, schedule: item.schedule })),
+    keep: result.keepCount,
+  };
   try {
     const configured = ctx.config?.routine_wake_lint?.max_windows;
     const maxWindows = Number.isFinite(configured) && configured > 0 ? configured : 6;
     const spread = computeWakeSpread(result.enabledShifted, maxWindows);
-    if (spread) process.stdout.write(`WAKESPREAD:${spread.distinct}|${maxWindows}|${spread.loneliest.join(',')}\n`);
+    if (spread) fields.wake_spread = { distinct: spread.distinct, max_windows: maxWindows, loneliest: spread.loneliest };
   } catch {}
+  return fields;
 }
 
-/** The verdict line both `anchor` and `check` report, computed without writing anything. */
-function armVerdict(ctx: Context): { line: string; healthy: boolean; paused: boolean } {
-  if (isPaused(ctx.hermitDir).paused) return { line: 'SKIP|paused', healthy: false, paused: true };
+/** The verdict both `anchor` and `check` report, computed without writing anything. */
+function armVerdict(ctx: Context): { body: Json; healthy: boolean; paused: boolean } {
+  if (isPaused(ctx.hermitDir).paused) return { body: { status: 'skip', reason: 'paused' }, healthy: false, paused: true };
   const routines = monitorHealth(ctx);
   const heartbeat = heartbeatHealth(ctx.hermitDir, ctx.config, ctx.nowMs);
   if (routines.healthy && heartbeat.healthy) {
-    return { line: `HEALTHY|${summary(ctx, heartbeat)}`, healthy: true, paused: false };
+    return { body: healthyVerdict(ctx, heartbeat), healthy: true, paused: false };
   }
-  // A restart-required leg makes `load` answer RESTART_REQUIRED for both legs, so an ARM here only wakes a futile load.
+  // A restart-required leg makes `load` answer restart_required for both legs, so an arm here only wakes a futile load.
   const restart = [routines.reason === 'restart-required' ? 'routines' : null, heartbeat.reason === 'restart-required' ? 'heartbeat' : null].filter(Boolean);
-  if (restart.length > 0) return { line: `SKIP|restart-required:${restart.join(',')}`, healthy: false, paused: false };
+  if (restart.length > 0) return { body: { status: 'restart_required', legs: restart }, healthy: false, paused: false };
   const legs = [!routines.healthy ? 'routines' : null, !heartbeat.healthy ? 'heartbeat' : null].filter(Boolean);
-  const reasons = [!routines.healthy ? `routines:${routines.reason}` : null, !heartbeat.healthy ? `heartbeat:${heartbeat.reason}` : null].filter(Boolean);
-  return { line: `ARM|${legs.join(',')}|${reasons.join(',')}`, healthy: false, paused: false };
+  const reasons = [!routines.healthy ? `routines:${snakeToken(routines.reason)}` : null, !heartbeat.healthy ? `heartbeat:${snakeToken(heartbeat.reason)}` : null].filter(Boolean);
+  return { body: { status: 'arm', legs, reasons }, healthy: false, paused: false };
 }
 
 function cmdAnchor(ctx: Context): void {
@@ -228,55 +235,57 @@ function cmdAnchor(ctx: Context): void {
   if (verdict.paused) stamp(ctx, 'skipped-paused');
   else if (verdict.healthy) { stamp(ctx, 'started'); stamp(ctx, 'fired'); }
   else stamp(ctx, 'started');
-  process.stdout.write(`${verdict.line}\n`);
+  printJson(verdict.body);
 }
 
-/** Read-only twin of `anchor`: same verdict line, no ledger row, no file touched. */
+/** Read-only twin of `anchor`: same verdict, no ledger row, no file touched. */
 function cmdCheck(ctx: Context): void {
-  process.stdout.write(`${armVerdict(ctx).line}\n`);
+  printJson(armVerdict(ctx).body);
 }
 
 function cmdBegin(ctx: Context, flags: string[]): void {
   const sessionIndex = flags.indexOf('--session-id');
   if (isGuest(path.join(ctx.hermitDir, 'state'), sessionIndex < 0 ? null : flags[sessionIndex + 1])) {
-    process.stdout.write('GUEST|native-monitors-resident-only\n');
+    printJson(GUEST_VERDICT);
     return;
   }
   const reset = flags.includes('--reset');
   const fallback = flags.includes('--fallback');
-  // Read once for both the HEALTHY short-circuit and the HB_ plan below: heartbeatHealth
+  // Read once for both the healthy short-circuit and the heartbeat plan below: heartbeatHealth
   // re-reads two state files plus `.boot-id`, and both sites see identical inputs. Null
   // on `--fallback`, the one path that never plans the heartbeat leg.
   const heartbeat = fallback ? null : heartbeatHealth(ctx.hermitDir, ctx.config, ctx.nowMs);
   const routines = monitorHealth(ctx);
   if (heartbeat?.reason === 'restart-required' || (!fallback && routines.reason === 'restart-required')) {
-    process.stdout.write('RESTART_REQUIRED|command-drift\n');
+    printJson(COMMAND_DRIFT_VERDICT);
     return;
   }
   if (heartbeat && !reset && heartbeat.healthy && routines.healthy) {
-    process.stdout.write(`HEALTHY|${summary(ctx, heartbeat)}\n`);
+    printJson(healthyVerdict(ctx, heartbeat));
     return;
   }
 
   const runtime = readJson(path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json'));
   const firstTransition = runtime?.mode !== 'monitor';
-  const legs = fallback ? 'routines' : 'routines,heartbeat';
-  process.stdout.write(`ARM|${legs}|${fallback ? 'fallback' : reset ? 'reset' : 'reconcile'}\n`);
+  const out: Json = {
+    status: 'arm',
+    legs: fallback ? ['routines'] : ['routines', 'heartbeat'],
+    mode: fallback ? 'fallback' : reset ? 'reset' : 'reconcile',
+  };
   // The heartbeat leg rides along so one `load` arms both monitors. `--fallback` is
   // the second pass of a load whose first pass already committed the heartbeat, and
-  // a `disabled` verdict is healthy — neither emits a plan.
+  // a `disabled` verdict is healthy: neither emits a plan. A planned heartbeat leg
+  // always needs activation.
   let activate = false;
   if (heartbeat && !heartbeat.healthy) {
-    for (const line of prepareHeartbeatArm(ctx.hermitDir, ctx.config)) {
-      if (line.startsWith('ACTIVATE:')) activate = true;
-      else process.stdout.write(`HB_${line}\n`);
-    }
+    out.heartbeat = prepareHeartbeatArm(ctx.hermitDir, ctx.config);
+    activate = true;
   }
-  // Only ever a transition INTO monitor mode. The line tells the skill to CronDelete
+  // Only ever a transition INTO monitor mode. The flag tells the skill to CronDelete
   // every non-anchor `[hermit-routine:*]` entry, which is right when those crons are
   // being replaced by a monitor — and wrong in fallback mode, where they ARE the
-  // routines and only the ids carrying a `CREATE:` line would come back.
-  if (firstTransition && !fallback) process.stdout.write('FIRST_TRANSITION:1\n');
+  // routines and only the ids in `create` would come back.
+  if (firstTransition && !fallback) out.first_transition = true;
   if (reset || firstTransition) {
     try { fs.rmSync(path.join(ctx.hermitDir, 'state', 'routine-schedule.json'), { force: true }); } catch {}
   }
@@ -287,18 +296,20 @@ function cmdBegin(ctx: Context, flags: string[]): void {
     try { fs.rmSync(path.join(ctx.hermitDir, 'state', 'routine-monitor-liveness.json'), { force: true }); } catch {}
   }
   if (!fallback) {
-    if (ctx.scheduled.length === 0) process.stdout.write('MONITOR_SKIP:zero-scheduled\n');
+    if (ctx.scheduled.length === 0) out.monitor_skip = 'zero_scheduled';
     else activate = true;
   }
-  if (activate) process.stdout.write('ACTIVATE:/hermitd:monitor-activate\n');
-  if (fallback && ctx.scheduled.length > 0) {
-    process.stdout.write('WARN:routines|routine_max_lateness_minutes is not enforced in CronCreate fallback; Monitor scheduling is required\n');
-  }
+  if (activate) out.activate = MONITOR_ACTIVATE;
   const result = plan(ctx, fallback, reset).plan;
-  emitPlan(ctx, result);
-  process.stdout.write('ANCHOR_PROMPT_BEGIN\n');
-  process.stdout.write(renderAnchorPrompt(ctx) + '\n');
-  process.stdout.write('ANCHOR_PROMPT_END\n');
+  const warnings = [
+    ...(fallback && ctx.scheduled.length > 0
+      ? [{ id: 'routines', message: 'routine_max_lateness_minutes is not enforced in CronCreate fallback; Monitor scheduling is required' }]
+      : []),
+    ...result.creates.filter(item => item.warn).map(item => ({ id: item.id, message: item.warn })),
+  ];
+  const fields: Json = { ...out, ...planFields(ctx, result), warnings };
+  if (result.creates.some(item => item.id === ANCHOR_ID)) fields.anchor_prompt = renderAnchorPrompt(ctx);
+  printJson(fields);
 }
 
 function commitMirror(ctx: Context, fallback: boolean, reset: boolean, created: Set<string>): void {
@@ -309,12 +320,12 @@ function commitMirror(ctx: Context, fallback: boolean, reset: boolean, created: 
 }
 
 /**
- * Starts recording the heartbeat Monitor the skill registered from this run's `HB_`
- * lines, or returns null when no heartbeat task was passed. Independent of the routine
- * leg's outcome: `lib/heartbeat/start.ts` owns the write, and a routine fallback says
- * nothing about whether the heartbeat subprocess ticked.
+ * Starts recording the heartbeat Monitor the skill registered from this run's
+ * `heartbeat` plan, or returns null when no heartbeat task was passed. Independent of
+ * the routine leg's outcome: `lib/heartbeat/start.ts` owns the write, and a routine
+ * fallback says nothing about whether the heartbeat subprocess ticked.
  */
-function startHeartbeatLeg(ctx: Context, flags: string[]): Promise<string> | null {
+function startHeartbeatLeg(ctx: Context, flags: string[]): Promise<HeartbeatCommit> | null {
   const index = flags.indexOf('--heartbeat');
   const taskId = index === -1 ? '' : (flags[index + 1] ?? '').trim();
   if (!taskId || taskId === 'none') return null;
@@ -344,8 +355,7 @@ async function cmdCommit(ctx: Context, taskId: string, flags: string[]): Promise
       started_at: new Date(ctx.nowMs).toISOString(),
       boot_id: ctx.bootId,
     });
-    process.stdout.write(`OK|monitor|${ctx.scheduled.length} scheduled|anchor ${created.has(ANCHOR_ID) ? 'created' : 'kept'}\n`);
-    if (heartbeatLeg) process.stdout.write(`HEARTBEAT:${await heartbeatLeg}\n`);
+    printJson(await withHeartbeat(armed(ctx, created), heartbeatLeg));
     return;
   }
 
@@ -364,18 +374,23 @@ async function cmdCommit(ctx: Context, taskId: string, flags: string[]): Promise
   };
   if (noMonitor) runtime.routines = 0;
   writeJson(path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json'), runtime);
-  process.stdout.write(
-    live
-      ? `OK|monitor|${ctx.scheduled.length} scheduled|anchor ${created.has(ANCHOR_ID) ? 'created' : 'kept'}\n`
-      : 'FALLBACK|liveness-absent\n',
-  );
-  if (heartbeatLeg) process.stdout.write(`HEARTBEAT:${await heartbeatLeg}\n`);
+  printJson(await withHeartbeat(live ? armed(ctx, created) : { status: 'fallback', reason: 'liveness_absent' }, heartbeatLeg));
+}
+
+function armed(ctx: Context, created: Set<string>): Json {
+  return { status: 'armed', scheduled: ctx.scheduled.length, anchor: created.has(ANCHOR_ID) ? 'created' : 'kept' };
+}
+
+async function withHeartbeat(result: Json, heartbeatLeg: Promise<HeartbeatCommit> | null): Promise<Json> {
+  return heartbeatLeg ? { ...result, heartbeat: await heartbeatLeg } : result;
 }
 
 export async function run(args: string[]): Promise<void> {
   const [subverb, hermitDir, pluginRoot, ...rest] = args;
+  // Every caller stops and reports a check_error, so it is a failure, not a verdict.
+  // exitCode rather than exit(): a commit's heartbeat leg may still be settling.
   if (!subverb || !hermitDir || !pluginRoot || !['anchor', 'check', 'begin', 'commit'].includes(subverb)) {
-    process.stdout.write('ARM|routines,heartbeat|check-error:usage\n');
+    failJson('check_error:usage');
     return;
   }
   try {
@@ -388,7 +403,7 @@ export async function run(args: string[]): Promise<void> {
       await cmdCommit(ctx, taskId || 'none', flags);
     }
   } catch (error: any) {
-    const message = String(error?.message ?? error).replace(/[\r\n|]+/g, ' ').slice(0, 200);
-    process.stdout.write(`ARM|routines,heartbeat|check-error:${message}\n`);
+    const message = String(error?.message ?? error).replace(/[\r\n]+/g, ' ').slice(0, 200);
+    failJson(`check_error:${message}`);
   }
 }

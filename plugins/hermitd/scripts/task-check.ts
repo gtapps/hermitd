@@ -6,10 +6,10 @@ import { mutateTask, TASK_ID } from './lib/tasks';
 
 async function main(): Promise<void> {
   const [id, ...extra] = process.argv.slice(2);
-  if (!id || !TASK_ID.test(id) || extra.length) throw new Error('invalid-id');
+  if (!id || !TASK_ID.test(id) || extra.length) throw new Error('invalid_id');
   const dir = hermitDir();
   const snapshot = mutateTask(dir, 'check-snapshot', id, {}, '') as { check: string | null; result_rev: number; status: string };
-  if (snapshot.status !== 'open' || !snapshot.check) throw new Error('no-open-check');
+  if (snapshot.status !== 'open' || !snapshot.check) throw new Error('no_open_check');
   const hit = scanForInjection(snapshot.check);
   const result = hit
     ? { exit: 1, output: `injection-suspect:${hit.cls}` }

@@ -16,10 +16,10 @@
 // transcript-digest), every remaining caller passes model-authored prose, so
 // there is no argv case left to serve and no quoting rule to document.
 //
-// Exit 0 always; the verdict is the stdout line (OK | ERROR|<token>), matching
-// proposal.ts. A metrics row is telemetry — it must never abort a skill step.
+// Prints `OK`, or `{"error":"<token>"}` with exit 1. A metrics row is telemetry:
+// the calling skill reports a rejected row and carries on with its step.
 
-import { emit, flagEq as flag, flagValue, readStdin } from './lib/cli';
+import { emit, emitJson, failJson, flagEq as flag, flagValue, readStdin } from './lib/cli';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { CLI_SOURCES, appendObservation, graduateObservations, resolveSessionId, type CliSource, type Origin } from './lib/observations';
 
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   // behavior-digest and startup-drift are derived from data the model does not hold,
   // so a prose-authored row for one of them would be a guess wearing a fact's label.
   if (!(CLI_SOURCES as readonly string[]).includes(source)) {
-    emit(`ERROR|invalid-source:${source}`);
+    emitJson({ error: `invalid_source:${source}` });
   }
 
   const origin = flag(rest, 'origin') as Origin | undefined;
@@ -72,10 +72,7 @@ async function main(): Promise<void> {
     sessionId: resolveSessionId(stateDir),
     origin,
   });
-  emit(err ? `ERROR|${err}` : 'OK');
+  if (err) emitJson(err); else emit('OK');
 }
 
-main().catch((e: any) => {
-  process.stdout.write(`ERROR|unexpected:${e?.message ?? 'unknown'}\n`);
-  process.exit(0);
-});
+main().catch((e: any) => failJson(`unexpected:${e?.message ?? 'unknown'}`));

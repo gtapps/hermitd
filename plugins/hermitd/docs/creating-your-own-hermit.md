@@ -240,6 +240,17 @@ This is a convention, not a core contract: core ships no block registry or brief
 
 Follow core's `scripts/` directory as reference. Profile-gate safety hooks to `strict`, quality hooks to `standard,strict`. Fail open (exit 0 on parse errors). Drain stdin. No npm dependencies.
 
+### Helper-script output
+
+Scripts your skills run follow the same output convention as core, which matches Claude Code's own:
+
+- Exit 0 for every expected outcome, including no match, skip or duplicate. Exit 1 only for a real failure: Claude Code's Bash tool reports any exit 1 as a failure, and a failing `` !`command` `` aborts the whole skill.
+- Print one JSON object on stdout. Keys, `status` values and `reason`/`error` tokens are snake_case.
+- An alternative outcome is `{"status":"<value>","reason":"<token>"}` plus any data. A check or write with nothing to report prints bare `OK`. A failure prints `{"error":"<token>[:detail]"}`.
+- No positional `A|B|C` lines. Hooks follow the [hook contract](https://code.claude.com/docs/en/hooks); routine gate scripts print `SKIP` or `WAKE` ([routine authoring](routine-authoring.md)); expiry probes use the protocol in [Credential registry](#credential-registry).
+
+Your skill then names only the fields it branches on.
+
 ### Docker dependencies
 
 If your hermit needs system packages in Docker (e.g. `python3-yaml`, `postgresql-client`), declare them with a `## Docker apt dependencies` section in your `hatch` SKILL.md or in a `DOCKER.md` file at the plugin root:
