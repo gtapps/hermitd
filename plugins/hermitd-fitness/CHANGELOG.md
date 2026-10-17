@@ -11,6 +11,9 @@
 
 ### Upgrade Instructions
 1. If `.hermit/bin/fitness-weekly-patterns-gate` exists, overwrite it from the consumer project root with `install -m 755 "<fitness-plugin-root>/state-templates/bin/fitness-weekly-patterns-gate" .hermit/bin/fitness-weekly-patterns-gate`, where `<fitness-plugin-root>` is the `install_path` the upgrade plan reports for `hermitd-fitness` (not core's root). Otherwise skip.
+2. **Offer to migrate operator skills to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. List each skill line that runs a `hermitd-fitness` helper through this plugin's install path and branches on its old output: a `fitness-lab.ts` `ok` or `message` field, the trend value `insufficient-data`, `mcp-config` read by exit 1 on missing keys, or `native-permissions.ts` text such as `Native approval rules installed.` or `Existing denies remain`. A line about the project's own script output, a placeholder, or a call that only checks the exit code of a real failure is not a hit. Skip silently when there are none. Otherwise show them with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
+   - *Migrate them to the convention*: update each line to the shape the `hermitd-fitness` skill running the same command describes, per core's `docs/creating-your-own-hermit.md` § Helper-script output. Report each file changed.
+   - *Keep them as they are*: change nothing, and tell the operator that these lines misread `hermitd-fitness` output until they are updated.
 
 ## [0.2.6] - 2026-10-15
 
