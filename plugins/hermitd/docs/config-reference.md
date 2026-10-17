@@ -43,7 +43,7 @@ Hermit records settings changes in the append-only `.hermit/state/settings-audit
 
 Run `/hermitd:hermit-settings history [setting]` to print recent changes, optionally filtered to one setting. `/hermitd:recall` reads the same ledger when you ask questions such as "did something change my settings?"
 
-Before applying a version's migrations, `/hermitd:hermit-evolve` snapshots `config.json` so additions and rewrites are attributed to that upgrade. If the snapshot is unavailable, the migration still succeeds and reports `Audit scope: version-only` instead of silently claiming complete attribution.
+Before applying a version's migrations, `/hermitd:hermit-evolve` snapshots `config.json` so additions and rewrites are attributed to that upgrade. If the snapshot is unavailable, the migration still succeeds and reports `Audit scope: version_only` instead of silently claiming complete attribution.
 
 ---
 

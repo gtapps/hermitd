@@ -3,16 +3,16 @@ import { readTaskReports } from './lib/task-report';
 
 try {
   const [dirArg, ...args] = process.argv.slice(2);
-  if (!dirArg || !assertStateDir(dirArg)) throw new Error('invalid-state-dir');
+  if (!dirArg || !assertStateDir(dirArg)) throw new Error('invalid_state_dir');
   let limit = 20;
   let recent = false;
   while (args.length) {
     const arg = args.shift();
     if (arg === '--recent') recent = true;
     else if (arg === '--limit') limit = Number(args.shift());
-    else throw new Error('invalid-arguments');
+    else throw new Error('invalid_arguments');
   }
-  if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid-limit');
+  if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
   const records = readTaskReports(pinStateDirOrExit(dirArg, 'task-report'))
     .filter(record => !recent || record.outcome !== 'open')
     .sort((a, b) => (b.closed_at ?? b.opened_at).localeCompare(a.closed_at ?? a.opened_at));

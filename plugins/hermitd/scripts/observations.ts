@@ -75,4 +75,4 @@ async function main(): Promise<void> {
   if (err) emitJson(err); else emit('OK');
 }
 
-main().catch((e: any) => failJson(new Error(`unexpected:${e?.message ?? 'unknown'}`)));
+main().catch((e: any) => failJson(`unexpected:${e?.message ?? 'unknown'}`));

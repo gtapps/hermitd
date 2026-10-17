@@ -167,8 +167,8 @@ alternate invocation, or weaker permission mode. The exceptions are
    timestamped for you).
    After the handoff note, bind the record with
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id> --owner helper:<n>`.
-   On `invalid-owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
-   `owner-busy`, leave it resident-owned and tell the operator why.
+   On `invalid_owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
+   `owner_busy`, leave it resident-owned and tell the operator why.
    With `--proposal`, open the record (title names
    the helper work; requester is the current operator or channel identity). The
    key is `helper:PROP-NNN`, not `proposal:PROP-NNN`: that second key belongs to

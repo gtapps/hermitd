@@ -100,7 +100,7 @@ async function main() {
       ...(chat !== undefined ? { chat } : {}),
       ...(timeoutS !== DEFAULT_TIMEOUT_S ? { timeout_s: timeoutS } : {}) };
     const error = withLedgerLock(file, () => appendJsonlLine(file, JSON.stringify(row)));
-    if (error) throw new Error('ledger_append_failed');
+    if (error) throw new Error(`ledger_append_failed:${error}`);
     const config = readConfigRaw(dir);
     const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
     const exact = (row.kind === 'reminder' || row.origin === 'operator')

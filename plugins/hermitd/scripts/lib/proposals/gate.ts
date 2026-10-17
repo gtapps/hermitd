@@ -11,8 +11,8 @@
 //   {"status":"duplicate","id":"<PROP-ID>"}   (triage)
 //   {"status":"accept"}                       (judge)
 //   {"status":"downgrade","tier":<N>}         (judge)
-//   {"error":"gate_failed"}, exit 1           (either gate: unrecognized/empty verdict)
-// Exit 0 for every recognized verdict.
+//   {"status":"gate_failed"}                  (either gate: unrecognized/empty verdict)
+// Exit 0 for every verdict, gate_failed included.
 //
 // Fail-closed by design — the opposite stance from the fail-open *-precheck.ts
 // scripts: an unrecognized verdict never proceeds. Recognized triage verdicts
@@ -66,7 +66,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
       path.join(stateDir, 'state', 'proposal-metrics.jsonl'),
       JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title, verdict: verdictLine.slice(0, 200) }),
     );
-    emitJson({ error: 'gate_failed' });
+    emitJson({ status: 'gate_failed' });
   }
 
   if ((gate !== 'triage' && gate !== 'judge') || !verdictLine) failClosed();

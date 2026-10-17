@@ -73,7 +73,7 @@ function apply(stateDir: string, stdin: string): Json {
       }
     }
     if (listed === null) listed = listProposalFiles(proposalsDir);
-    if (!listed.ok) return { ok: false, reason: 'proposals-dir-unreadable' };
+    if (!listed.ok) return { ok: false, reason: 'proposals_dir_unreadable' };
     // Boundary-safe prefix match: PROP-1 must never match PROP-12.
     const file = (listed.files ?? []).find(f => f.startsWith(a.proposal_id + '-') || f === a.proposal_id + '.md');
     if (!file) return { ok: false, reason: `${label}: no matching proposal file` };

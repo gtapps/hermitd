@@ -12,7 +12,8 @@
 - `/hermitd:hermit-doctor` drops the `permissions` check, which warned on every normal install, and the `opus-wake` check, which warned on every hermit with an Opus session model. Opus spend stays visible in cost reports and budget caps.
 - `/hermitd:hermit-doctor` names the file and line of a bad state ledger row, and reports NUL bytes left by a crash as a warning with a one-line repair instead of a failure.
 - Core helper scripts print one JSON object instead of positional `OK|`/`ERROR|`-style lines, exit 0 for every expected outcome such as no match, skip or duplicate, and exit 1 with `{"error":"<token>"}` only on failure. This covers `proposal.ts`, `routines.ts` (`precheck`, `arm`, `finish`), `heartbeat.ts start-check`/`start-commit`, `reflect-precheck.ts`, `channel-access.ts`, `conversation.ts`, `observations.ts`, `later.ts`, `evolve-finalize.ts snapshot` and `docker-bun-pin.ts`. The heartbeat precheck, routine gate `SKIP`/`WAKE` and expiry probe protocols are unchanged.
-- `proposal.ts micro nudge`, `proposal.ts micro sweep`, `routines.ts cron-registry` and `hermitd-pause status --quiet` are removed; nothing called them.
+- Error, reason and status tokens that core helper scripts print are snake_case (`no_such_proposal`, `invalid_record`), including `task.ts`, `task-check.ts`, `task-report.ts`, `duties.ts` and `evolve-finalize.ts` `audit_scope`. `proposal.ts gate` reports an unreadable agent verdict as status `gate_failed` with exit 0.
+- `proposal.ts micro nudge`, `proposal.ts micro sweep`, `routines.ts cron-registry` and `hermitd-pause status --quiet` are removed; nothing called them outside an old upgrade step, whose cleanup the briefs now cover.
 
 ### Added
 - Docker approves configured third-party channel plugins through a managed `allowedChannelPlugins` drop-in; install them through `docker.recommended_plugins`.
@@ -67,7 +68,7 @@ Run `/hermitd:hermit-evolve`. The evolve skill handles:
 8. List open task records whose dedupe key starts with `duty:heartbeat:checklist:` and does not end in `-<8 hex>` (matching `-[0-9a-f]{8}$`). Tell the operator these tasks will not close on their own, and close them only with the operator's agreement.
 9. List open proposals whose `self_eval_key` starts with `checklist:` and does not match `-[0-9a-f]{8}$`. Tell the operator these checklist suggestions are no longer linked to their item, so the same suggestion may come up again later.
 10. **Offer to migrate operator skills and scripts to the helper-output convention.** Look only in the project root's `.claude/skills/` and `.claude/commands/`; skip `.claude/worktrees/`, nested project repositories, backups and plugin directories. Collect two lists:
-    - *Breaks on upgrade:* a skill line that branches on old output (`OK|`, `ERROR|`, `MATCH|`, `AMBIGUOUS|`, `NONE|`, `PROCEED`, `DROP|`, `QUEUED|`, `RUN|`, `EMPTY`, `HEALTHY|`, `ARM|`) of a command that runs a hermitd script, through `hermitd-run` or a hermitd plugin path. A line about the project's own script output, a placeholder like `<a|b>`, a markdown table, or a call that only checks the exit code is not a hit.
+    - *Breaks on upgrade:* a skill line that branches on old output (`OK|`, `ERROR|`, `MATCH|`, `AMBIGUOUS|`, `NONE|`, `PROCEED`, `DROP|`, `QUEUED|`, `DUPLICATE|`, `RESOLVED|`, `GATE_FAILED`, `RUN|`, `EMPTY`, `HEALTHY|`, `ARM|`, `FRESH|`, `REARM|`, `FALLBACK|`, `DEAD|`, `GUEST|`, `RESTART_REQUIRED|`, `NOOP|`, `DEFER|`, `failed|`, or `SKIP|` from any command other than `heartbeat.ts precheck`) of a command that runs a hermitd script, through `hermitd-run` or a hermitd plugin path. Also a hit: any call to `hermitd-pause status --quiet` or `routines.ts cron-registry`, which no longer exist. A line about the project's own script output, a placeholder like `<a|b>`, a markdown table, or a call that only checks the exit code is not a hit.
     - *Optional:* a script bundled under those folders whose stdout a skill reads as positional `A|B|C` fields. It keeps working; migrating it is an offer.
     Skip silently when both lists are empty. Otherwise show both lists with file and line, and **defer per SKILL.md Step 10** with `options: ["Migrate them to the convention", "Keep them as they are"]`, no `on_resolve`; the chosen branch is applied in attended Step 10 only:
     - *Migrate them to the convention*: update each breaking skill line to the shape the core skill running the same command describes, then rewrite each optional script's output together with the skill lines that read it, per `docs/creating-your-own-hermit.md` § Helper-script output. Never change a routine gate script's `SKIP`/`WAKE` or an expiry probe's protocol. Report each file changed.
@@ -1186,13 +1187,7 @@ Everything else in this release is self-migrating on next run: the denial ledger
 
 ### Upgrade Instructions
 
-**Clear questions left behind by already-settled decisions.** Run once from the project root:
-
-```bash
-bun "<plugin_root>/scripts/proposal.ts" micro .claude-code-hermit sweep
-```
-
-`SWEPT|<ids>` lists the questions retired (their proposals were already resolved, dismissed, or deferred); `NONE|no-moot` means there were none. Safe to re-run — it only ever removes questions whose proposal has reached one of those three states, and every removal is recorded in `state/proposal-metrics.jsonl` as a `moot` event.
+**Questions left behind by already-settled decisions.** No action needed: each brief shows a pending question, re-asks it once, and expires it on the third brief, recording a `micro-resolved` event in `state/proposal-metrics.jsonl`. Tell the operator that a question about an already-settled decision may appear in up to two more briefs before it retires.
 
 **Reflect stops waking the session on empty days.** In `.claude-code-hermit/config.json`, find the `routines[]` entry with `"id": "reflect"`. If it has no `precheck` key, add `"precheck": "reflect"`. If the key is already present with any value, leave the entry exactly as it is — this step is a no-op on a re-run, and an operator who changed the value keeps it. Do not add the key to any other routine; operator-authored routines are untouched. To opt back out later, delete the key.
 
@@ -1215,9 +1210,11 @@ bun <plugin_root>/scripts/docker-bun-pin.ts .claude-code-hermit 1.4.0 <to>
 
 **Step 2 — Report, by verdict line.**
 
-- `OK|converged` or `OK|repinned <old>-><new>` → set the report's `Docker rebuild` field to `base-patched`. Step 10 emits a rebuild-only notice and suppresses the generic "re-run /docker-setup" drift bullet for `Dockerfile.hermit`.
-- `OK|already-pinned` or `SKIP|absent` → nothing to report.
-- `DEFER|unrecognized bun install shape` → the file no longer matches any shipped shape (bun installed some other way). Record a deferred-migration block with the instruction "manually set bun to 1.4.0 in `Dockerfile.hermit`, then rebuild", and **continue the remaining evolve steps** (do not abort).
+The script prints one JSON object; branch on its `status`:
+
+- `converged` or `repinned` → set the report's `Docker rebuild` field to `base-patched`. Step 10 emits a rebuild-only notice and suppresses the generic "re-run /docker-setup" drift bullet for `Dockerfile.hermit`.
+- `already_pinned`, or `skip` with reason `absent` → nothing to report.
+- `defer` (reason `unrecognized_bun_install_shape`) → the file no longer matches any shipped shape (bun installed some other way). Record a deferred-migration block with the instruction "manually set bun to 1.4.0 in `Dockerfile.hermit`, then rebuild", and **continue the remaining evolve steps** (do not abort).
 
 No `config.json` changes required.
 
@@ -1235,7 +1232,7 @@ No `config.json` changes required.
 
 ### Upgrade Instructions
 
-**Docker runtime bump to Bun 1.4.0.** Superseded by the 1.2.46 step: `docker-bun-pin.ts` classifies `Dockerfile.hermit`, applies the pin and re-records the template baseline, and reports `SKIP|absent` on a non-Docker hermit. Nothing to run here.
+**Docker runtime bump to Bun 1.4.0.** Superseded by the 1.2.46 step: `docker-bun-pin.ts` classifies `Dockerfile.hermit`, applies the pin and re-records the template baseline, and reports a `skip` status on a non-Docker hermit. Nothing to run here.
 
 No `config.json` changes required.
 

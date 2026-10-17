@@ -59,7 +59,7 @@ function main(): void {
     const until = new Date(Date.now() + ms).toISOString();
     setPause(HERMIT_ROOT, { reason: 'operator', by: BY, until });
     console.log(`[hermitd-pause] paused until ${until}`);
-  } else if (cmd === 'status') {
+  } else if (cmd === 'status' && process.argv.length === 3) {
     printStatus();
   } else {
     usage();

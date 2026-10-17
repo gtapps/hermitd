@@ -395,11 +395,12 @@ const VERBS = 'create|patch|routine|resolve-id|gate|queue-micro|micro|index|anch
 // The state dir is not caller-chosen. Every production call passes the literal
 // `.hermit` from the project root; accepting an arbitrary root let
 // one pre-approved `Bash(bun */scripts/proposal.ts*)` call mutate — or read —
-// another project's proposal queue. Deliberately a usage error (stderr, exit 1)
-// rather than a `{"error"}` verdict line: that line goes to stdout, where
-// several verbs own distinct verdict shapes callers branch on (`gate`,
-// `resolve-id`, `micro`). This also turns a drifted cwd into a loud failure
-// instead of a write against the wrong tree.
+// another project's proposal queue. A usage error (stderr, exit 1) from the
+// shared pinStateDirOrExit rather than a `{"error"}` line: that helper serves
+// every pinned script, including ones whose stdout is not a JSON object
+// (`channel-log.ts` prints a bare array or a plain-text prune line), so it never
+// writes stdout. This also turns a drifted cwd into a loud failure instead of a
+// write against the wrong tree.
 function requirePinnedStateDir(dir: string): string {
   return pinStateDirOrExit(dir, 'proposal.ts');
 }

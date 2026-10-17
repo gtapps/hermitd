@@ -19,7 +19,7 @@ Invoked from SKILL.md § Single-check mode. Evaluate exactly one supplied skill,
    Evidence: <one-paragraph summary>
    Sessions: none
    ```
-   Follow § Candidate processing → Evidence Validation (`hermitd:reflection-judge`), then the Proposal triage gate (`hermitd:proposal-triage`, a batch of one; pass `--caller scheduled-checks` to the `gate` verb). Obtain this run's `Anchor:` line as described in § Candidate processing and paste it as the first line of both dispatches. On judge `accept` or `downgrade`, continue to triage. On triage `create`, route Tier 1/2 to Micro-approval queuing, sending that section's operator notice at queue time before stopping in step 5, and Tier 3 to `/hermitd:proposal-create`. A `suppress` or `duplicate` status drops the candidate. `{"error":"gate_failed"}` from either gate fails closed per § Gate failure handling: do not queue, create, or apply anything. For `empty`, `unavailable`, or `error`, no candidate or proposal is produced.
+   Follow § Candidate processing → Evidence Validation (`hermitd:reflection-judge`), then the Proposal triage gate (`hermitd:proposal-triage`, a batch of one; pass `--caller scheduled-checks` to the `gate` verb). Obtain this run's `Anchor:` line as described in § Candidate processing and paste it as the first line of both dispatches. On judge `accept` or `downgrade`, continue to triage. On triage `create`, route Tier 1/2 to Micro-approval queuing, sending that section's operator notice at queue time before stopping in step 5, and Tier 3 to `/hermitd:proposal-create`. A `suppress` or `duplicate` status drops the candidate. A `gate_failed` status from either gate fails closed per § Gate failure handling: do not queue, create, or apply anything. For `empty`, `unavailable`, or `error`, no candidate or proposal is produced.
 5. **Task note (when a record is open).** Append exactly one line to the open task record through `task.ts note`: `[HH:MM] reflect (check): <id>: <classification>; verdicts: accept=A downgrade=D suppress=S; outcome: <none|dropped|gate-failed|micro-queued|proposal-created>`. Then stop. Routine scheduling owns future invocations; this mode does not read or write per-check scheduling state.
 
 ## `skill-correction:*` routing
@@ -117,11 +117,11 @@ Verdict: <the judge's line for this candidate, verbatim>
 - `accept`: proceed with the candidate at its original tier.
 - `downgrade`: proceed at the revised `tier`. When the judge's reason contains `quarantine: external origin`, the judge itself already forced the tier to 3, so route to `proposal-create` and pass `Evidence Origin: external-content` through so proposal-create can write the operator-visible provenance line in the PROP body. reflect does not write the PROP body itself.
 - `suppress`: if `code` is `no-sessions`, note the candidate in open record notes for future revisit. Otherwise drop silently.
-- `{"error":"gate_failed"}`: see § Gate failure handling.
+- `gate_failed`: see § Gate failure handling.
 
 ### Gate failure handling
 
-The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `{"error":"gate_failed"}` (exit 1) and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `gate_failed`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>; <the agent's line, verbatim>` in open record notes. The candidate re-surfaces on the next reflect cycle.
+The `gate` verb fails closed by construction: an unrecognized, malformed, or empty verdict line always returns `gate_failed` and appends the `gate-failed` metric itself (agent tagged via `--gate triage|judge`); no separate append needed at the call site. On `gate_failed`: do not create or queue the candidate. Note `gate-failed: <agent>; <title>; <the agent's line, verbatim>` in open record notes. The candidate re-surfaces on the next reflect cycle.
 
 ### Component Health signal ladder
 
@@ -159,7 +159,7 @@ Verdict: <that candidate's line 1, verbatim>
 - `create`: proceed
 - `duplicate`: link to the existing proposal `id` in open record notes instead, do not create
 - `suppress`: drop silently
-- `{"error":"gate_failed"}`: see § Gate failure handling, for that candidate only; the rest of the batch proceeds on its own verdicts.
+- `gate_failed`: see § Gate failure handling, for that candidate only; the rest of the batch proceeds on its own verdicts.
 
 ### Outcomes
 

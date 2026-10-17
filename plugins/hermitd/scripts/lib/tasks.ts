@@ -37,7 +37,7 @@ const clean = (value: string) => value.replace(/[\r\n]+/g, ' ');
 const iso = (value: string) => /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value));
 
 export function validateTask(record: Task): void {
-  const fail = () => { throw new Error('invalid-record'); };
+  const fail = () => { throw new Error('invalid_record'); };
   for (const key of requiredStrings) if (typeof record[key] !== 'string' || !record[key]) fail();
   for (const key of nullableStrings) if (record[key] !== null && typeof record[key] !== 'string') fail();
   if (!TASK_ID.test(record.id) || record.type !== 'task' || !['open', 'closed'].includes(record.status)) fail();
@@ -73,7 +73,7 @@ export function decodeTask(text: string): Task {
     for (const key of nullableStrings) if (!(key in record)) record[key] = null;
     validateTask(record);
     return record;
-  } catch { throw new Error('invalid-record'); }
+  } catch { throw new Error('invalid_record'); }
 }
 
 export function encodeTask(record: Task): string {
@@ -87,7 +87,7 @@ export function encodeTask(record: Task): string {
 export function readTasks(dir: string): Task[] {
   return globDirRecursive(path.join(dir, 'tasks')).map(file => {
     const record = decodeTask(fs.readFileSync(file, 'utf8'));
-    if (path.basename(file) !== `${record.id}.md`) throw new Error('invalid-record');
+    if (path.basename(file) !== `${record.id}.md`) throw new Error('invalid_record');
     return record;
   }).sort((a, b) => a.opened_at.localeCompare(b.opened_at) || a.id.localeCompare(b.id));
 }
@@ -95,7 +95,7 @@ export function readTasks(dir: string): Task[] {
 export function allocateTaskId(ids: string[], now: string): string {
   const base = 'T-' + now.slice(0, 10).replaceAll('-', '') + '-' + now.slice(11, 19).replaceAll(':', '');
   for (const suffix of ['', ...'0123456789abcdefghijklmnopqrstuvwxyz'].map(x => x ? `-${x}` : '')) if (!ids.includes(base + suffix)) return base + suffix;
-  throw new Error('id-collision');
+  throw new Error('id_collision');
 }
 
 function validRequester(value: string): boolean {
@@ -116,35 +116,35 @@ export type TaskFlags = Record<string, string | boolean | string[]>;
 const flag = (flags: TaskFlags, name: string): string | undefined => typeof flags[name] === 'string' ? flags[name] as string : undefined;
 function required(flags: TaskFlags, name: string): string {
   const value = flag(flags, name)?.trim();
-  if (!value) throw new Error(`missing-${name}`);
+  if (!value) throw new Error(`missing_${name.replaceAll('-', '_')}`);
   return clean(value);
 }
 function dateFlag(flags: TaskFlags, name: string): string | null {
   const value = flag(flags, name);
   if (!value) return null;
-  if (!iso(value)) throw new Error(`invalid-${name}`);
+  if (!iso(value)) throw new Error(`invalid_${name.replaceAll('-', '_')}`);
   return new Date(value).toISOString();
 }
 function ownerFlag(flags: TaskFlags): string {
   // Re-stating the owner a record already has is a no-op.
   const value = flag(flags, 'owner') ?? '';
-  if (!validOwner(value)) throw new Error('invalid-owner');
+  if (!validOwner(value)) throw new Error('invalid_owner');
   return value;
 }
 function checkOwnerAvailable(records: Task[], owner: string, id?: string): void {
-  if (owner !== 'resident' && records.some(record => record.status === 'open' && record.owner === owner && record.id !== id)) throw new Error('owner-busy');
+  if (owner !== 'resident' && records.some(record => record.status === 'open' && record.owner === owner && record.id !== id)) throw new Error('owner_busy');
 }
 function mutedFlag(flags: TaskFlags): boolean {
   const value = flag(flags, 'muted');
-  if (value !== 'true' && value !== 'false') throw new Error('invalid-muted');
+  if (value !== 'true' && value !== 'false') throw new Error('invalid_muted');
   return value === 'true';
 }
 function card(record: Task, value: string | undefined): void {
   if (value === undefined) return;
-  if (record.owner !== 'resident') throw new Error('card-on-worker-task');
+  if (record.owner !== 'resident') throw new Error('card_on_worker_task');
   let input;
-  try { input = JSON.parse(value); } catch { throw new Error('invalid-card'); }
-  if (!input || typeof input.chat_id !== 'string' || !input.chat_id || typeof input.message_id !== 'string' || !input.message_id || Object.keys(input).some(key => !['chat_id', 'message_id'].includes(key))) throw new Error('invalid-card');
+  try { input = JSON.parse(value); } catch { throw new Error('invalid_card'); }
+  if (!input || typeof input.chat_id !== 'string' || !input.chat_id || typeof input.message_id !== 'string' || !input.message_id || Object.keys(input).some(key => !['chat_id', 'message_id'].includes(key))) throw new Error('invalid_card');
   record.card_chat_id = input.chat_id;
   record.card_message_id = input.message_id;
 }
@@ -172,10 +172,10 @@ function heldClaim(dir: string, id: string): boolean {
 }
 
 export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string): unknown {
-  if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid-id');
+  if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
-  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock-unavailable');
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
   try {
     const records = readTasks(dir);
     const now = new Date().toISOString();
@@ -184,9 +184,9 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     let progress = true;
     if (verb === 'open') {
       const requester = required(flags, 'requester');
-      if (!validRequester(requester)) throw new Error('invalid-requester');
+      if (!validRequester(requester)) throw new Error('invalid_requester');
       const conversation = flag(flags, 'conversation') ?? null;
-      try { if (conversation !== null) checkKey(conversation); } catch { throw new Error('invalid-conversation'); }
+      try { if (conversation !== null) checkKey(conversation); } catch { throw new Error('invalid_conversation'); }
       const owner = 'owner' in flags ? ownerFlag(flags) : 'resident';
       const dedupe = flag(flags, 'dedupe-key') ?? null;
       const existing = dedupe && records.find(r => r.status === 'open' && r.dedupe_key === dedupe);
@@ -214,11 +214,11 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       digest = openDigest(record, records, true);
     } else {
       const found = records.find(r => r.id === id);
-      if (!found) throw new Error('not-found');
+      if (!found) throw new Error('not_found');
       record = found;
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
-      if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale-check');
-      if (record.status !== 'open') throw new Error('not-open');
+      if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
+      if (record.status !== 'open') throw new Error('not_open');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
@@ -247,7 +247,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if ('approval' in flags) {
           const approval = required(flags, 'approval');
           const match = approval.match(/^(.+):\s+(.+)$/);
-          if (!match) throw new Error('invalid-approval');
+          if (!match) throw new Error('invalid_approval');
           append(record, 'Approvals', match[1], match[2], now);
         }
         digest = { id, result_rev: record.result_rev };
@@ -257,7 +257,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id };
       } else if (verb === 'check-result') {
         const exit = flag(flags, 'exit');
-        if (!flags['output-stdin'] || !/^-?\d+$/.test(exit ?? '')) throw new Error('invalid-check-result');
+        if (!flags['output-stdin'] || !/^-?\d+$/.test(exit ?? '')) throw new Error('invalid_check_result');
         if (Number(exit) === 0) {
           // Clearing the passed check is what ends the daily run: the record stays open with its
           // result, and a still-set check would re-execute the command on every later wake forever.
@@ -277,7 +277,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           append(record, 'Outcome', actor, line, now);
           digest = { id, listing: 'unconfirmed', result_rev: record.result_rev, waiting_on: record.waiting_on };
         } else {
-          if (!flag(flags, 'status-line') || !flag(flags, 'next')) throw new Error('stall-needs-status-and-next');
+          if (!flag(flags, 'status-line') || !flag(flags, 'next')) throw new Error('stall_needs_status_and_next');
           record.waiting_on = required(flags, 'waiting-on');
           record.stall_at = now; record.stall_status = required(flags, 'status-line'); record.stall_next = required(flags, 'next');
           append(record, 'Progress', actor, `${record.stall_status}; next: ${record.stall_next}`, now);
@@ -286,28 +286,28 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         record.waiting_since = now;
       } else if (verb === 'close') {
         const by = flag(flags, 'by');
-        if (by !== 'check' && by !== 'confirmed') throw new Error('invalid-closed-by');
+        if (by !== 'check' && by !== 'confirmed') throw new Error('invalid_closed_by');
         const closer = required(flags, 'actor');
         let reason = line;
         if (by === 'confirmed') {
-          if (record.approver && closer !== record.approver) throw new Error('approver-required');
-          if ((record.result || 'result-rev' in flags) && (!/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale-result');
-          if (!flags['reason-stdin'] || !reason) throw new Error('empty-reason');
+          if (record.approver && closer !== record.approver) throw new Error('approver_required');
+          if ((record.result || 'result-rev' in flags) && (!/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_result');
+          if (!flags['reason-stdin'] || !reason) throw new Error('empty_reason');
         } else {
-          if (record.approver) throw new Error('approver-required');
+          if (record.approver) throw new Error('approver_required');
           const claim = (flags.claim as string[] | undefined)?.[0];
           if (closer.startsWith('duty:') && record.dedupe_key?.startsWith(closer + ':')) reason = closer;
           else if (closer === 'hermit' && claim && record.claims.includes(claim) && heldClaim(dir, claim)) reason = `later:${claim}:held`;
-          else throw new Error('check-needs-evidence');
+          else throw new Error('check_needs_evidence');
         }
         finish(record, by, closer, reason, now);
         digest = { id, closed_by: by, result_rev: record.result_rev, next_queued: nextQueued(records) };
       } else if (verb === 'cancel') {
         const closer = required(flags, 'actor');
-        if (!flags['reason-stdin'] || !line) throw new Error('empty-reason');
+        if (!flags['reason-stdin'] || !line) throw new Error('empty_reason');
         finish(record, 'cancelled', closer, line, now);
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
-      } else throw new Error('invalid-verb');
+      } else throw new Error('invalid_verb');
     }
     const encoded = encodeTask(record);
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
@@ -348,9 +348,9 @@ function checkFlag(flags: TaskFlags): string | null {
 export function listTasks(dir: string, flags: TaskFlags = {}) {
   const records = readTasks(dir);
   const owner = flag(flags, 'owner');
-  if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid-owner');
+  if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
-  if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid-limit');
+  if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
   const selected = records.filter(r => (!flags.all || flags.open ? r.status === 'open' : true)
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
@@ -508,11 +508,11 @@ export function deriveDuties(dir: string): { name: string; last_run: string | nu
 export function recordWatchDuty(dir: string, id: string, verdict: string): void {
   const file = path.join(dir, 'state/monitors.runtime.json');
   const lock = file + '.lock';
-  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock-unavailable');
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
   try {
     const registry = readJson(file);
     const watch = registry?.monitors?.find((entry: any) => entry.id === id);
-    if (!watch) throw new Error('watch-not-found');
+    if (!watch) throw new Error('watch_not_found');
     watch.last_event_at = new Date().toISOString();
     watch.last_verdict = clean(verdict);
     writeFileAtomic(file, JSON.stringify(registry) + '\n');

@@ -3171,7 +3171,7 @@ describe('proposal-triage batch contract', () => {
     expect(branches).toContain('- `create`: proceed');
     expect(branches).toContain('- `duplicate`: link to the existing proposal `id`');
     expect(branches).toContain('- `suppress`: drop silently');
-    expect(branches).toContain('`{"error":"gate_failed"}`');
+    expect(branches).toContain('- `gate_failed`: see § Gate failure handling');
   });
 
   test('proposal-create/SKILL.md documents its call as a batch of one and parses the new grammar', () => {
@@ -3179,7 +3179,7 @@ describe('proposal-triage batch contract', () => {
     expect(proposalCreate).toContain('- `create`: proceed');
     expect(proposalCreate).toContain('- `duplicate`: stop');
     expect(proposalCreate).toContain('- `suppress`: stop');
-    expect(proposalCreate).toContain('`{"error":"gate_failed"}`');
+    expect(proposalCreate).toContain('- `gate_failed` (unrecognized');
   });
 
   test('capability-brainstorm/SKILL.md parses proposal-create outcome with the title-tagged grammar', () => {

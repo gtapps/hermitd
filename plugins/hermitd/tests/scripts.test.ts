@@ -1367,19 +1367,19 @@ describe('update-alert-state', () => {
     write(stateFile, before);
     let r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: 'not-an-array', self_eval_updates: {} }), env: { HERMIT_NOW: NOW } });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before)); // untouched — never coerced to empty and aged
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ key: 'checklist:x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // missing text
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ text: 'x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // neither item nor key
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
   }));
 
@@ -1388,7 +1388,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout, monitoring } = await updateAlertState(dir, '{"firing":null}');
     expect(state).toEqual(JSON.parse(before)); // untouched — last_clean_eval_at and the live alert both survive
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
     expect(monitoring).toHaveLength(0);
   }));
 
@@ -1399,7 +1399,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout } = await updateAlertState(dir, 'null');
     expect(state).toEqual(JSON.parse(before));
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing-or-malformed-firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
   }));
 
   test('update-alert-state (duplicate firing keys deduped — first occurrence wins)', withDir(async (dir) => {
@@ -1527,7 +1527,7 @@ describe('update-alert-state', () => {
     try {
       const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: firingPayload([{ key: 'custom:x', text: 'x' }]), env: { HERMIT_NOW: NOW } });
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write-failed' });
+      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write_failed' });
       expect(fs.readFileSync(stateFile, 'utf-8')).toBe(before); // untouched
     } finally {
       fs.chmodSync(stateSubdir, 0o755);
@@ -2132,13 +2132,13 @@ describe('proposal gate', () => {
 
   test('gate (triage garbled verdict -> gate-failed + gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
-    expect(out).toEqual({ error: 'gate_failed' });
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage', title: 'Foo', verdict: 'garbled nonsense' });
   }));
 
   test('gate (triage GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'GATE_BLIND: Foo — missing Anchor: line');
-    expect(out).toEqual({ error: 'gate_failed' });
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', verdict: 'GATE_BLIND: Foo — missing Anchor: line' });
   }));
 
@@ -2175,19 +2175,19 @@ describe('proposal gate', () => {
 
   test('gate (judge empty verdict -> gate-failed + gate-failed event tagged reflection-judge)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', '');
-    expect(out).toEqual({ error: 'gate_failed' });
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar', verdict: '' });
   }));
 
   test('gate (judge GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'GATE_BLIND: Bar — missing Anchor: line');
-    expect(out).toEqual({ error: 'gate_failed' });
+    expect(out).toEqual({ status: 'gate_failed' });
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', verdict: 'GATE_BLIND: Bar — missing Anchor: line' });
   }));
 
   test('gate (invalid --gate value -> gate-failed)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'bogus' as any }, 'Foo', 'CREATE: Foo');
-    expect(out).toEqual({ error: 'gate_failed' });
+    expect(out).toEqual({ status: 'gate_failed' });
   }));
 
   test('gate (missing state/ subdir does not crash — creates it before appending)', async () => {

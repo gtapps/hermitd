@@ -50,9 +50,9 @@ export interface FinalizeResult {
   /** Dotted paths this run added from the template, confirmed against the re-read.
    *  Empty when --plugin-root is omitted (no template to diff) or nothing was missing. */
   settings_added: string[];
-  /** whole-run: `before` came from a step-1 snapshot, so migration writes are attributed.
-   *  version-only: no usable snapshot, so the ledger sees just what finalize() itself wrote. */
-  audit_scope: 'whole-run' | 'version-only';
+  /** whole_run: `before` came from a step-1 snapshot, so migration writes are attributed.
+   *  version_only: no usable snapshot, so the ledger sees just what finalize() itself wrote. */
+  audit_scope: 'whole_run' | 'version_only';
   errors: { code: string; message: string }[];
 }
 
@@ -67,7 +67,7 @@ export interface FinalizeResult {
 // older than the window is not trusted: a prior run wrote one and aborted
 // before step 9, the operator then edited config by hand, and a later run
 // drops the (model-performed) step-1 snapshot: the stale file would attribute
-// the operator's own edits to the upgrade. Degrading to version-only is honest;
+// the operator's own edits to the upgrade. Degrading to version_only is honest;
 // a wrong row is not.
 
 function snapshotPath(hermitDir: string): string {
@@ -76,7 +76,7 @@ function snapshotPath(hermitDir: string): string {
 
 /**
  * Write the pre-migration snapshot. Fail-open by contract: a snapshot that can't
- * be written degrades the audit to version-only, and must never block an upgrade.
+ * be written degrades the audit to version_only, and must never block an upgrade.
  * Returns the stdout object: `{path}` on success, a skip status otherwise.
  */
 export function writeSnapshot(hermitDir: string, core: string | null): Record<string, string> {
@@ -176,7 +176,7 @@ export function finalize(opts: {
   const siblingsSkipped: string[] = [];
 
   // Every rejection below returns the same shape: nothing confirmed, nothing added,
-  // version-only attribution, carrying whatever has been pushed to `errors` and
+  // version_only attribution, carrying whatever has been pushed to `errors` and
   // `siblingsSkipped` by then (both captured by reference, so this reads their state
   // at call time). Push the error, then `return fail()`.
   const fail = (): FinalizeResult => ({
@@ -185,7 +185,7 @@ export function finalize(opts: {
     siblings_confirmed: {},
     siblings_skipped: siblingsSkipped,
     settings_added: [],
-    audit_scope: 'version-only',
+    audit_scope: 'version_only',
     errors,
   });
 
@@ -247,7 +247,7 @@ export function finalize(opts: {
   // Either way `config` is mutated in place from here on, hence the clone.
   const snapshotBefore = readSnapshot(opts.hermitDir, opts.core);
   const hasSnapshot = snapshotBefore !== undefined;
-  const auditScope: 'whole-run' | 'version-only' = hasSnapshot ? 'whole-run' : 'version-only';
+  const auditScope: 'whole_run' | 'version_only' = hasSnapshot ? 'whole_run' : 'version_only';
   const configBefore = hasSnapshot ? snapshotBefore : structuredClone(config);
 
   // Monotonicity guard. The stamp records which migrations have been APPLIED, so moving
@@ -350,14 +350,14 @@ export function finalize(opts: {
   // keeps the ledger honest in the exact case this verification exists to catch: a
   // write that reported success but did not land leaves the old value in `onDisk`,
   // so the diff emits no _hermit_versions row on its own. Gating the whole call on
-  // coreMatched would be wrong under a whole-run snapshot — it would suppress the
+  // coreMatched would be wrong under a whole_run snapshot: it would suppress the
   // upgrade's real migration rows whenever the version bump failed, which is
   // backwards. The re-read succeeding is the only precondition.
   auditConfigChange(
     opts.hermitDir,
     configBefore,
     onDisk,
-    auditScope === 'whole-run' ? 'hermit-evolve' : 'evolve-finalize',
+    auditScope === 'whole_run' ? 'hermit-evolve' : 'evolve-finalize',
   );
   // Single-use, consumed only now that the row it feeds exists. Retained above so a
   // run that dies before this point can be retried with attribution intact.
@@ -390,7 +390,7 @@ if (import.meta.main) {
 
   if (snapshotMode) {
     // Fail-open, unlike the finalize path below: a missing snapshot degrades the
-    // audit to version-only (reported as audit_scope), and must never stop an upgrade.
+    // audit to version_only (reported as audit_scope), and must never stop an upgrade.
     // Same state-dir pin — the sealed grant covers every argument to this script —
     // but a foreign dir skips instead of exiting 1: declining to write is already the
     // outcome the pin exists to force, and a non-zero exit here would read to the
@@ -416,7 +416,7 @@ if (import.meta.main) {
       siblings_confirmed: {},
       siblings_skipped: [],
       settings_added: [],
-      audit_scope: 'version-only',
+      audit_scope: 'version_only',
       errors: [{ code: 'fatal', message: e.message }],
     };
   }

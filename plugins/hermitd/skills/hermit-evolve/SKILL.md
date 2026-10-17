@@ -64,7 +64,7 @@ Sibling hermits: <one or more of the following per sibling, space-separated, or 
 Siblings detected but not activated: <name ... | none>
 Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
-Audit scope: <whole-run | version-only>
+Audit scope: <whole_run | version_only>
 Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
 Deferred for operator: <none | one or more verbatim blocks, each:>
   --- deferred-migration ---
@@ -76,7 +76,7 @@ Deferred for operator: <none | one or more verbatim blocks, each:>
   --- end ---
 ```
 
-**Audit scope.** `whole-run` needs no mention — say nothing. On `version-only`, tell the operator once that this upgrade's config changes were not recorded in the settings history (the upgrade itself succeeded; only the attribution is missing), so a later "why did this setting change?" gets an honest answer instead of a confident wrong one.
+**Audit scope.** `whole_run` needs no mention; say nothing. On `version_only`, tell the operator once that this upgrade's config changes were not recorded in the settings history (the upgrade itself succeeded; only the attribution is missing), so a later "why did this setting change?" gets an honest answer instead of a confident wrong one.
 
 **Operator notes.** If `Operator notes` is not `none`, append every line to the delivered result as its own line, in every delivery mode (inline, direct-channel-reply, automated-maintainer). These are the CHANGELOG's version-specific notes for the operator and the report is their only route out of the subagent. Relay each line verbatim: a line starting with `**Operator action required:**` keeps that marker so it renders bold. Never fold these lines into the one-line summary and never merge them with deferred-migration text. Omit the section when `none`.
 

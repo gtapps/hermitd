@@ -28,12 +28,13 @@ function emitJson(obj: object): never {
 }
 
 /**
- * Report a caught error as `{"error":"<token>"}` with exit code 1. The message is
- * the token when it already reads as one (`snake_token` or `snake_token:detail`),
- * else `fallback`. Sets process.exitCode instead of exiting so pending work settles.
+ * Report a caught error (or a token string) as `{"error":"<token>"}` with exit code 1.
+ * The message is the token when it already reads as one (`snake_token` or
+ * `snake_token:detail`), else `fallback`. Sets process.exitCode instead of exiting so
+ * pending work settles.
  */
 function failJson(error: unknown, fallback = 'operation_failed'): void {
-  const message = error instanceof Error ? error.message : '';
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   printJson({ error: /^[a-z_]+(:.*)?$/s.test(message) ? message : fallback });
   process.exitCode = 1;
 }

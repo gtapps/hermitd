@@ -154,19 +154,19 @@ function apply(payloadJson: string): void {
     payload = JSON.parse(payloadJson);
   } catch (err: any) {
     console.error(`update-alert-state: invalid payload JSON: ${err.message}`);
-    indeterminate('invalid-json', 1);
+    indeterminate('invalid_json', 1);
   }
 
   // `JSON.parse('null')` parses fine but has no properties — reading `.firing`
   // off it throws, which would bypass the reject contract entirely (no stdout,
   // no monitoring line, a stack trace on exit 1).
-  if (!payload || typeof payload !== 'object') indeterminate('missing-or-malformed-firing');
+  if (!payload || typeof payload !== 'object') indeterminate('missing_or_malformed_firing');
 
   const validated = validateFiring(payload.firing);
-  if (validated === null) indeterminate('missing-or-malformed-firing'); // malformed firing shape — reject the tick, no write
+  if (validated === null) indeterminate('missing_or_malformed_firing'); // malformed firing shape: reject the tick, no write
   const canonical = canonicalChecklistKeys(stateDir);
   const resolved = resolveFiring(validated, canonical);
-  if (resolved === null) indeterminate('unresolvable-firing');
+  if (resolved === null) indeterminate('unresolvable_firing');
   const modelFiring = resolved.filter(f => !isReservedKey(f.key));
 
   // Split read from parse: a transient read error (ioerror) must not clobber a healthy
@@ -183,7 +183,7 @@ function apply(payloadJson: string): void {
     state = defaultAlertState();
   } else {
     console.error(`update-alert-state: read failed (${r.code ?? 'unknown'}); skipping write`);
-    indeterminate(`read-failed:${r.code ?? 'unknown'}`);
+    indeterminate(`read_failed:${r.code ?? 'unknown'}`);
   }
 
   const prevAlerts: Json = state.alerts && typeof state.alerts === 'object' ? state.alerts : {};
@@ -316,7 +316,7 @@ function apply(payloadJson: string): void {
   };
 
   const wrote = writeAlertState(stateFile, updated);
-  if (!wrote) indeterminate('write-failed'); // fail-safe: no durable write → emit no side effects
+  if (!wrote) indeterminate('write_failed'); // fail-safe: no durable write → emit no side effects
 
   process.stdout.write(JSON.stringify({
     notifications: result.notifications,

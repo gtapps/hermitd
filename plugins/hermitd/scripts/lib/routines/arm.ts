@@ -390,7 +390,7 @@ export async function run(args: string[]): Promise<void> {
   // Every caller stops and reports a check_error, so it is a failure, not a verdict.
   // exitCode rather than exit(): a commit's heartbeat leg may still be settling.
   if (!subverb || !hermitDir || !pluginRoot || !['anchor', 'check', 'begin', 'commit'].includes(subverb)) {
-    failJson(new Error('check_error:usage'));
+    failJson('check_error:usage');
     return;
   }
   try {
@@ -404,6 +404,6 @@ export async function run(args: string[]): Promise<void> {
     }
   } catch (error: any) {
     const message = String(error?.message ?? error).replace(/[\r\n]+/g, ' ').slice(0, 200);
-    failJson(new Error(`check_error:${message}`));
+    failJson(`check_error:${message}`);
   }
 }
