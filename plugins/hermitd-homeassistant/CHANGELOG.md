@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- The morning brief lists open proposals under `Pending:` again.
+
 ## [0.4.24] - 2026-10-17
 
 ### Changed
