@@ -20,7 +20,7 @@
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.7"
+      "version": "^1.4.16"
     }
   ]
 }

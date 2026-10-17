@@ -29,14 +29,14 @@ After it finishes, come back and type `/hermitd-laravel-forge:hatch`.
 
 If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge` and parse the JSON verdict. Branch on `action`:
 
-- **`upgrade-core-package` / `upgrade-core-applied`** → relay the `remedy` string verbatim to the operator and stop.
+- **`upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop.
 - **`verify`** → say:
 
   > "hermitd-laravel-forge {self_version} is already installed. Reply 'verify' to re-run checks only, or 'full' to re-run the full wizard."
 
   Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 4; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
-- **`ok: false`** → relay `message` and stop.
+- **`error`**, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
 
 ---
 
@@ -129,6 +129,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-laravel-forge
 ```
+
+If it prints `status` `refused`, tell the operator and stop.
 
 It appends the `<!-- hermitd-laravel-forge: Forge Workflow -->` block when the marker is absent and skips when it is already present; `hermit-evolve` handles replacement on upgrade.
 
