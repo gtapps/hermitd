@@ -57,7 +57,9 @@ test('trigger-automation: HA error → error token, exit 1', async () => {
   expect(JSON.parse(out)).toEqual({ error: 'ha_http_404:Entity not found (status=404)' });
 });
 
-test('trigger-automation: missing arg → exit 2', async () => {
-  const { code } = await captureOutput(() => main(['ha', 'trigger-automation'], {}));
-  expect(code).toBe(2);
+test('trigger-automation: missing arg prints a usage error, exit 1', async () => {
+  const { code, out, err } = await captureOutput(() => main(['ha', 'trigger-automation'], {}));
+  expect(code).toBe(1);
+  expect(err).toBe('');
+  expect(JSON.parse(out).error).toStartWith('usage:ha_agent_lab ha trigger-automation: ');
 });

@@ -204,9 +204,10 @@ class ParserExit extends Error {
 
 const TOP_USAGE = 'usage: ha_agent_lab [-h] {boot,ha} ...';
 const BOOT_USAGE = 'usage: ha_agent_lab boot [-h] {status,store,mcp-config} ...';
+/** A malformed command line is a usage failure like any other: one `{"error"}` on stdout, exit 1. */
 function argError(prog: string, usage: string, message: string): never {
-  console.error(`${usage}\n${prog}: error: ${message}`);
-  throw new ParserExit(2);
+  printError(`usage:${prog}: ${message} (${usage})`);
+  throw new ParserExit(1);
 }
 
 function printHelp(text: string): never {
@@ -1921,8 +1922,7 @@ export async function main(argv: string[], overrides: Partial<CliDeps> = {}): Pr
   const record = COMMANDS[`${args.command} ${args.sub}`];
   if (!record) {
     // Unreachable: parseArgs rejects any key this table does not carry.
-    console.error(`${TOP_USAGE}\nha_agent_lab: error: Unsupported command.`);
-    return 2;
+    return printError(`usage:ha_agent_lab: unsupported command (${TOP_USAGE})`);
   }
   return record.run(args, { config, root, deps });
 }
