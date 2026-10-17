@@ -33,10 +33,12 @@ for (const scope of ['settings.json', 'settings.local.json']) {
     const target = join(fixture(), '.claude', scope);
     const original = {
       env: { KEEP: 'yes' },
-      permissions: { allow: ['Bash(*)'], deny: [rules[0]], ask: ['Read(private)', rules[1]] },
+      permissions: { allow: ['Bash(*)'], deny: ['Read(secret)', rules[0]], ask: ['Read(private)', rules[1]] },
     };
     writeFileSync(target, JSON.stringify(original));
-    expect(run(target).exitCode).toBe(0);
+    const result = run(target);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ status: 'installed', deny_conflicts: [rules[0]] });
     const installed = JSON.parse(readFileSync(target, 'utf8'));
     expect(installed.env).toEqual(original.env);
     expect(installed.permissions.allow).toEqual(original.permissions.allow);

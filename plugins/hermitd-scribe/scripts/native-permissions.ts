@@ -5,7 +5,7 @@ import path from 'node:path';
 // A failure whose message is already the `{"error"}` token.
 class Fail extends Error {}
 
-function install(): void {
+function install(): string[] {
   const [target, ...extra] = process.argv.slice(2);
   if (!target || extra.length || !['settings.json', 'settings.local.json'].includes(path.basename(target))) {
     throw new Fail('usage');
@@ -39,11 +39,12 @@ function install(): void {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   }
+  return settings.permissions.deny?.filter((rule: string) => rules.includes(rule)) ?? [];
 }
 
 try {
-  install();
-  console.log('OK');
+  const conflicts = install();
+  console.log(conflicts.length ? JSON.stringify({ status: 'installed', deny_conflicts: conflicts }) : 'OK');
 } catch (error: any) {
   console.log(JSON.stringify({ error: error instanceof Fail ? error.message : `install_failed:${error.message}` }));
   process.exit(1);
