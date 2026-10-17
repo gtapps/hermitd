@@ -1036,8 +1036,9 @@ function applyVoiceRender(config: Json): void {
     console.log(`[hermit] WARNING: voice render failed: ${(r.stdout || r.stderr || '').trim()} — continuing boot.`);
     return;
   }
-  const out = JSON.parse(r.stdout);
-  if (out.status === 'applied') {
+  let out: Json = null;
+  try { out = JSON.parse(r.stdout); } catch { /* unexpected stdout: skip the notice, keep booting */ }
+  if (out?.status === 'applied') {
     console.log(`[hermit] Voice: outputStyle ${out.style} in the launch overlay, style file rendered`);
   }
 }

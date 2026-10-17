@@ -34,7 +34,7 @@
  *   deny <standard|hardened|ask-only>
  *                            Seed native permissions from state-templates/deny-patterns.json.
  *                            `standard` merges `deny` into permissions.deny and `ask` into
- *                            permissions.ask — purely additive, removes nothing — and prints
+ *                            permissions.ask (purely additive, removes nothing) and prints
  *                            {"added":[...]}, the ask entries it added.
  *                            `hardened` merges both arrays into permissions.deny and prints OK.
  *                            `ask-only` merges ask (printing {"added":[...]}) when the target
