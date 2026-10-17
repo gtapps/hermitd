@@ -22,7 +22,7 @@ Generates the weekly review for the current ISO week.
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/weekly-review.ts .hermit
    ```
 
-2. Report the result. On success, output the review filename. If a **Knowledge Health** section appears in the review output, summarize the issues to the operator. If a **Usage** section appears, relay it: the script has already auto-archived the docs with no tracked use in the window (move-only, into `compiled/.archive/` — restoring one is moving the file back, and a restored doc is never archived again). Don't archive anything further yourself, and never on judgment alone: semantic changes (merging or rewriting topic pages, reclassifying a compiled conclusion as raw, tagging `foundational`) always wait for explicit operator approval. Tracked use for this section is compiled/ Reads including subagent reads; startup injection isn't tracked.
+2. Report the review's `path`. When `knowledge_findings` is non-zero, summarize the review's **Knowledge Health** section to the operator; when `usage_docs` is, relay its **Usage** section: the script has already auto-archived the docs with no tracked use in the window (move-only, into `compiled/.archive/` — restoring one is moving the file back, and a restored doc is never archived again). Don't archive anything further yourself, and never on judgment alone: semantic changes (merging or rewriting topic pages, reclassifying a compiled conclusion as raw, tagging `foundational`) always wait for explicit operator approval. Tracked use for this section is compiled/ Reads including subagent reads; startup injection isn't tracked.
 
 3. **Dispatch the week's file-heavy analysis** to the isolated-context runner in one call, so full topic-page bodies and the week's channel rows never land in this session's context. Dispatch `hermitd:skill-eval-runner` once, passing no `model` parameter so it inherits the session model. Point it at both specs.
    - `${CLAUDE_PLUGIN_ROOT}/skills/weekly-review/reference.md` — the topic-page semantic check: reads every `compiled/topic-*.md` for contradictions, stale claims, and broken `[[wikilinks]]` (capped at 3 findings).
@@ -100,8 +100,8 @@ Generates the weekly review for the current ISO week.
        the same notice, not a spend-only fragment, because the client leg is dropped in favor of the
        maintainer's dedup partner only when both resolve to the same chat, in which case the
        maintainer text (the complete one) is what's sent.
-   - If a leg didn't land (exit 1 — exit 2 means the payload was rejected, so fix it and re-run
-     instead), follow § Operator Notification's fallback (push if
+   - If a leg didn't land (`status` not `delivered`; on an `error`, fix the payload and
+     re-run instead), follow § Operator Notification's fallback (push if
      enabled, log to Findings) rather than a bespoke branch here — weekly-review is a recurring
      routine, not an alert, so still skip a `channel-send-unavailable` issue for this call.
    - To set a preferred channel, add `"primary": "<channel-name>"` inside `channels` in `config.json`.

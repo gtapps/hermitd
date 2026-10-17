@@ -30,18 +30,20 @@
  *
  * Prints JSON to stdout:
  *   { "written": ["/abs/Dockerfile.hermit", "/abs/docker-compose.hermit.yml"],
- *     "entrypointCopied": true,
- *     "manifestSeed": { "pluginVersion": "...", "entries": [...] } }
- * The skill pipes `manifestSeed` straight into manifest-seed.ts — this script
- * does NOT hash anything itself (one writer per file).
+ *     "entrypoint_copied": true,
+ *     "manifest_seed": { "plugin_version": "...", "entries": [...] } }
+ * The skill pipes `manifest_seed` straight into manifest-seed.ts — this script
+ * does NOT hash anything itself (one writer per file). Its value is that script's
+ * stdin payload, so it keeps manifest-seed's input keys.
  *
  * Exit 0 on success. Any validation failure / unsubstituted placeholder →
- * exit 1 with nothing written.
+ * `{"error":"render_failed:<detail>"}`, exit 1, nothing written.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderTemplate } from './lib/render-template';
+import { exitError } from './lib/cli';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const TEMPLATES_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker');
@@ -186,10 +188,7 @@ function pluginVersion(): string {
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const toIndex = argv.indexOf('--to');
-  if (toIndex !== -1 && !argv[toIndex + 1]) {
-    console.error('render-docker-templates: --to requires an output directory');
-    process.exit(1);
-  }
+  if (toIndex !== -1 && !argv[toIndex + 1]) exitError();
   const projectRootArg = argv.find(
     (arg, index) => arg !== '--to' && (toIndex === -1 || index !== toIndex + 1),
   );
@@ -225,7 +224,7 @@ if (import.meta.main) {
       fs.copyFileSync(entrypointSrc, entrypointPath);
 
       const manifestSeed = {
-        pluginVersion: version,
+        plugin_version: version,
         entries: [
           { key: 'docker/docker-entrypoint.hermit.sh', file: entrypointPath },
           {
@@ -241,13 +240,12 @@ if (import.meta.main) {
 
       console.log(JSON.stringify({
         written: [dockerfilePath, composePath],
-        entrypointCopied: true,
-        manifestSeed,
+        entrypoint_copied: true,
+        manifest_seed: manifestSeed,
       }));
       process.exit(0);
     } catch (e: any) {
-      console.error(`render-docker-templates: ${e.message}`);
-      process.exit(1);
+      exitError(`render_failed:${e.message}`);
     }
   });
 }

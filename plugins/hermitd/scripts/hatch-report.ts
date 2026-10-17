@@ -19,10 +19,13 @@
 // branch asks for it, nothing persists it (neither config.json nor
 // hatch-options.json carry it), and the Step-10 next-steps block keys off it.
 // Anything else the report needs, it reads.
+//
+// Output exception: both verbs print markdown, not JSON. It is a display renderer
+// the model relays verbatim to the operator; argument errors still print {"error"}.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readStdin, readJson, flagValue } from './lib/cli';
+import { readStdin, readJson, flagValue, exitError } from './lib/cli';
 import { readConfigRaw } from './lib/config-read';
 
 type Json = any;
@@ -238,34 +241,24 @@ async function main(): Promise<void> {
   const verb = process.argv[2];
   const root = process.argv[3];
 
-  if (!verb || !root) {
-    console.error('Usage: bun hatch-report.ts <confirm|final> <project-root> [--deployment <d>]');
-    process.exit(1);
-  }
+  if (!verb || !root) exitError();
 
   if (verb === 'confirm') {
     const raw = await readStdin();
     let answers: Json = {};
-    try { answers = JSON.parse(raw); } catch {
-      console.error('confirm requires the answers payload as JSON on stdin');
-      process.exit(1);
-    }
+    try { answers = JSON.parse(raw); } catch { exitError('invalid_answers'); }
     process.stdout.write(renderConfirm(answers) + '\n');
     return;
   }
 
   if (verb === 'final') {
     const deployment = flagValue(process.argv.slice(4), '--deployment') ?? 'interactive';
-    if (!DEPLOYMENTS.includes(deployment)) {
-      console.error(`--deployment must be one of ${DEPLOYMENTS.join('|')}`);
-      process.exit(1);
-    }
+    if (!DEPLOYMENTS.includes(deployment)) exitError('invalid_deployment');
     process.stdout.write(renderFinal(observe(root), deployment) + '\n');
     return;
   }
 
-  console.error(`Unknown verb "${verb}" — expected confirm or final`);
-  process.exit(1);
+  exitError();
 }
 
 if (import.meta.main) main();

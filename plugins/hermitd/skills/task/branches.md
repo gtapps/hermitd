@@ -11,10 +11,10 @@ Rare-branch procedures for `task/SKILL.md`. Read only the section the skill name
 
 ## Replace an unreachable worker
 
-Write the output of `conversation` (Commands) with arguments `history --source '<source>' --chat-id '<chat_id>' --limit 100` to `.hermit/helper-reports/<id>-history.md` (it may be `[]`). Dispatch a fresh worker as `SKILL.md` **Dispatch the worker** says, with the record's notes and that path, then run `task-note` (Commands) with arguments `<id> --owner worker:<new-agentId>`.
+Write the output of `conversation` (Commands) with arguments `history --source '<source>' --chat-id '<chat_id>' --limit 100` to `.hermit/helper-reports/<id>-history.md` (its `rows` may be empty). Dispatch a fresh worker as `SKILL.md` **Dispatch the worker** says, with the record's notes and that path, then run `task-note` (Commands) with arguments `<id> --owner worker:<new-agentId>`.
 
 ## Standup and duties
 
-`standup --json` groups promised, late and waiting work by stable identity. Execution is advisory. A shared turn divides its cost equally across its bound tasks; a missed progress note may bill to conversation. Older rows without buckets are pre-upgrade.
+`standup --json` groups promised, late and waiting work by stable identity. Execution is advisory. A shared turn divides its cost equally across its bound tasks; a missed progress note may bill to conversation. `pre_upgrade: true` means some cost rows in the window carry no bucket.
 
 Duties open deduplicated records only when a human must act and `config.tasks.duties_open_records` permits it. Otherwise post plain messages. An ambiguous duty read never closes a record.

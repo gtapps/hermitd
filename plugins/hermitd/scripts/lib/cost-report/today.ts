@@ -1,16 +1,17 @@
 // `cost-report.ts today` — prints today's spend as
-// "$X.XX (<tokens>) across N session(s)".
+// {"cost_usd":<n>,"tokens":<n>,"sessions":<n>}.
 // Log resolved against the anchored hermit root (survives cwd drift), not cwd.
-// Unreadable log -> "cost data unavailable" (not a misleading $0.00); a readable
-// log with no rows today -> honest $0.00.
+// Unreadable log -> {"status":"unavailable","reason":"cost_log_unreadable"} (not a
+// misleading zero); a readable log with no rows today -> honest zeros.
 
 import fs from 'node:fs';
-import { formatTokens } from '../format';
+import { printJson } from '../cli';
+import { round4 } from '../format';
 import { costLogPath, hermitDir } from '../cc-compat';
 
-const UNAVAILABLE = 'cost data unavailable';
+const UNAVAILABLE = { status: 'unavailable', reason: 'cost_log_unreadable' };
 
-function render(costLog: string): string {
+function summarize(costLog: string): object {
   let raw: string;
   try {
     raw = fs.readFileSync(costLog, 'utf8');
@@ -33,7 +34,7 @@ function render(costLog: string): string {
         }
       } catch {}
     }
-    return `$${cost.toFixed(2)} (${formatTokens(tokens)}) across ${sessions.size} session(s)`;
+    return { cost_usd: round4(cost), tokens, sessions: sessions.size };
   } catch {
     return UNAVAILABLE;
   }
@@ -43,5 +44,5 @@ function render(costLog: string): string {
 // verb module is imported unconditionally, so a module-scope hermitDir() walk
 // would run even for the verbs that never read it.
 export function run(): void {
-  process.stdout.write(render(costLogPath(hermitDir())) + '\n');
+  printJson(summarize(costLogPath(hermitDir())));
 }

@@ -1,7 +1,7 @@
 // Tests for cost-report.ts's today verb: today's spend summary from cost-log.jsonl.
 // Cost-path resolution must be anchored to the hermit root, not process.cwd() —
 // the calling shell (brief, invoked inline in main) persists cd across calls,
-// so a drifted cwd must not silently misreport $0.00.
+// so a drifted cwd must not silently misreport a zero.
 
 import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
@@ -55,7 +55,7 @@ describe('cost-report.ts today', () => {
 
     const r = await runScript('cost-report.ts', { args: ['today'], cwd: drifted, env: baseEnv(dir) });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('$14.91 (28.5M tokens) across 1 session(s)');
+    expect(JSON.parse(r.stdout)).toEqual({ cost_usd: 14.91, tokens: 28500000, sessions: 1 });
   }));
 
   test('drift regression: walk-up anchor resolves without CLAUDE_PROJECT_DIR set', withTmpdir(async (dir) => {
@@ -71,14 +71,14 @@ describe('cost-report.ts today', () => {
       env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: '', AGENT_DIR: '' },
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('$1.50 (1.0K tokens) across 1 session(s)');
+    expect(JSON.parse(r.stdout)).toEqual({ cost_usd: 1.5, tokens: 1000, sessions: 1 });
   }));
 
   test('unavailable: cost log absent', withTmpdir(async (dir) => {
     seedHermitRoot(dir);
     const r = await runScript('cost-report.ts', { args: ['today'], cwd: dir, env: baseEnv(dir) });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('cost data unavailable');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'unavailable', reason: 'cost_log_unreadable' });
   }));
 
   test('unavailable: cost log path is a directory (non-ENOENT read failure)', withTmpdir(async (dir) => {
@@ -86,7 +86,7 @@ describe('cost-report.ts today', () => {
     fs.mkdirSync(path.join(dir, '.claude', 'cost-log.jsonl'), { recursive: true });
     const r = await runScript('cost-report.ts', { args: ['today'], cwd: dir, env: baseEnv(dir) });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('cost data unavailable');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'unavailable', reason: 'cost_log_unreadable' });
   }));
 
   test('honest zero: log present but no rows dated today', withTmpdir(async (dir) => {
@@ -96,6 +96,6 @@ describe('cost-report.ts today', () => {
     seedHermitRoot(dir);
     const r = await runScript('cost-report.ts', { args: ['today'], cwd: dir, env: baseEnv(dir) });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('$0.00 (0 tokens) across 0 session(s)');
+    expect(JSON.parse(r.stdout)).toEqual({ cost_usd: 0, tokens: 0, sessions: 0 });
   }));
 });

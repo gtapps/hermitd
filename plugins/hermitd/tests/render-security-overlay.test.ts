@@ -45,8 +45,8 @@ describe('subnet overlap logic', () => {
 
   test('pickSubnet returns the first candidate when nothing is occupied', () => {
     const r = pickSubnet(CANDIDATES, []);
-    expect(r.chosen).toEqual({ subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguardIp: '172.28.0.2' });
-    expect(r.allCandidatesCollide).toBe(false);
+    expect(r.chosen).toEqual({ subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' });
+    expect(r.all_candidates_collide).toBe(false);
   });
 
   test('pickSubnet skips candidates that overlap an occupied subnet', () => {
@@ -56,22 +56,22 @@ describe('subnet overlap logic', () => {
     expect(r.chosen!.subnet).toBe('172.31.0.0/24');
   });
 
-  test('pickSubnet reports allCandidatesCollide when every candidate overlaps', () => {
+  test('pickSubnet reports all_candidates_collide when every candidate overlaps', () => {
     const occupied = CANDIDATES.map((c) => c.replace('/24', '/16'));
     const r = pickSubnet(CANDIDATES, occupied);
     expect(r.chosen).toBeNull();
-    expect(r.allCandidatesCollide).toBe(true);
+    expect(r.all_candidates_collide).toBe(true);
   });
 
   test('validateCandidate accepts a non-colliding /24 and derives gateway/netguard', () => {
     const r = validateCandidate('192.168.50.0/24', ['172.17.0.0/16']);
-    expect(r.chosen).toEqual({ subnet: '192.168.50.0/24', gateway: '192.168.50.1', netguardIp: '192.168.50.2' });
+    expect(r.chosen).toEqual({ subnet: '192.168.50.0/24', gateway: '192.168.50.1', netguard_ip: '192.168.50.2' });
   });
 
   test('validateCandidate rejects a non-/24 prefix', () => {
     const r = validateCandidate('192.168.0.0/16', []);
     expect(r.chosen).toBeNull();
-    expect(r.allCandidatesCollide).toBe(true);
+    expect(r.all_candidates_collide).toBe(true);
   });
 
   test('validateCandidate rejects a colliding /24', () => {
@@ -83,7 +83,7 @@ describe('subnet overlap logic', () => {
     // Docker rejects a subnet whose address has host bits set; the wizard must
     // persist/render the canonical network address, not the raw operator input.
     const r = validateCandidate('192.168.5.10/24', ['172.17.0.0/16']);
-    expect(r.chosen).toEqual({ subnet: '192.168.5.0/24', gateway: '192.168.5.1', netguardIp: '192.168.5.2' });
+    expect(r.chosen).toEqual({ subnet: '192.168.5.0/24', gateway: '192.168.5.1', netguard_ip: '192.168.5.2' });
   });
 
   test('ipv4SubnetsFromInspect keeps the IPv4 range of a dual-stack network', () => {
@@ -114,6 +114,19 @@ describe('pick-subnet CLI (docker absent)', () => {
     expect(out.occupied).toEqual([]);
     expect(out.chosen.subnet).toBe('172.28.0.0/24');
   });
+
+  test('a failed render or unknown subcommand prints {"error"} on stdout', async () => {
+    const dir = freshDir();
+    const bad = await runScript('render-security-overlay.ts', {
+      args: ['render', dir], stdin: JSON.stringify({ toggles: { lan: { enabled: true } } }),
+    });
+    expect(bad.exitCode).toBe(1);
+    expect(JSON.parse(bad.stdout).error).toStartWith('render_failed:');
+    expect(fs.existsSync(path.join(dir, 'docker-compose.security.yml'))).toBe(false);
+    const usage = await runScript('render-security-overlay.ts', { args: ['nope', dir] });
+    expect(usage.exitCode).toBe(1);
+    expect(JSON.parse(usage.stdout)).toEqual({ error: 'usage' });
+  });
 });
 
 // -------------------------------------------------------
@@ -132,7 +145,7 @@ const nftPath = (dir: string) => path.join(dir, '.hermit', 'docker', 'nftables.c
 const allowPath = (dir: string) => path.join(dir, '.hermit', 'docker', 'dnsmasq.allowlist');
 
 const ALL_ON = {
-  network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguardIp: '172.28.0.2' },
+  network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' },
   toggles: {
     lan: { enabled: true, dnsMode: 'enforce' },
     resources: { enabled: true, memLimit: '4g', memswapLimit: '4g', cpus: 2.0, sysctlsEnabled: true },
@@ -219,7 +232,7 @@ describe('render subcommand — partial toggles', () => {
   test('log-only DNS mode sets DNS_LOG_ONLY=1', async () => {
     const dir = freshDir();
     await renderOverlay(dir, {
-      network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguardIp: '172.28.0.2' },
+      network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' },
       toggles: { lan: { enabled: true, dnsMode: 'log-only' }, resources: { enabled: false }, audit: { enabled: false } },
       lanAllowlist: [], fleetDomains: [], additionalDomains: [],
     });

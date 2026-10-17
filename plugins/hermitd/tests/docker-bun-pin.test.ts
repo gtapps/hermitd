@@ -277,7 +277,7 @@ describe('docker-bun-pin.ts', () => {
     fs.writeFileSync(path.join(dir, '.hermit/state/template-manifest.json'), '{ not json');
     const r = await pin(dir);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('not valid JSON');
+    expect(r.stdout).toBe('{"error":"corrupt_manifest:invalid_json"}\n');
     expect(dockerfile(dir)).toBe(LEGACY);
   });
 
@@ -302,6 +302,6 @@ describe('docker-bun-pin.ts', () => {
       env: { AGENT_DIR: path.join(dir, '.hermit') },
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('usage:');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
   });
 });

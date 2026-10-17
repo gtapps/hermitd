@@ -137,7 +137,7 @@ A hermit that has run `/hermit-dashboard-design` owns its dashboard render outri
 The skill writes `.hermit/dashboard-render.ts`; **the file's presence is the
 switch** (no config flag), and `artifact.ts render dashboard` then hands the whole render
 to it — `spawnSync`, 60s timeout, the child's stdout receipt relayed verbatim, a non-zero
-child exit surfaced as exit 1 so step 5's skip-silently rule applies unchanged. An exit-0
+child exit surfaced as `{"error":"render_failed:dashboard"}` at exit 1 so step 5's skip-silently rule applies unchanged. An exit-0
 run whose stdout doesn't parse as a `{path,hash}` receipt is failed the same way, since
 step 1 parses that stdout — the *page* is unvalidated, the *receipt* is core's protocol.
 An explicit `outPath` is rejected rather than ignored (the renderer's contract fixes its

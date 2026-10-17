@@ -1,9 +1,10 @@
+// Output exception: `due` is the later-check routine gate, so it prints bare `SKIP` or `WAKE`.
 import fs from 'node:fs';
 import { runEvidence } from './lib/evidence-runner';
 import { readTasks } from './lib/tasks';
 import path from 'node:path';
 import { appendJsonlLine } from './lib/append-jsonl';
-import { failJson, flagValue, printJson, readJson, readStdinIfFlagged } from './lib/cli';
+import { exitError, failJson, flagValue, printJson, readJson, readStdinIfFlagged } from './lib/cli';
 import { checkKey } from './lib/conversation-key';
 import { scanForInjection } from './lib/injection-scan';
 import { readConfigRaw } from './lib/config-read';
@@ -72,7 +73,7 @@ function chatFlag(args: string[]): string | undefined {
 
 async function main() {
   const [verb, dirArg, ...args] = process.argv.slice(2);
-  if (!dirArg) throw new Error('usage');
+  if (!dirArg) exitError();
   const dir = path.resolve(dirArg);
   const file = path.join(dir, 'state', 'hypotheses.jsonl');
   const rows = readRows(file);
@@ -113,18 +114,16 @@ async function main() {
   if (verb === 'list') {
     const chat = chatFlag(args);
     const visible = chat === undefined ? rows : rows.filter(row => row.chat === chat);
-    for (const row of [...visible.filter(row => row.state === 'pending'), ...visible.filter(row => row.state !== 'pending').slice(-10)]) {
-      const { cmd, output, ...summary } = row;
-      console.log(JSON.stringify(summary));
-    }
+    const listed = [...visible.filter(row => row.state === 'pending'), ...visible.filter(row => row.state !== 'pending').slice(-10)];
+    printJson({ rows: listed.map(({ cmd, output, ...summary }) => summary) });
     return;
   }
-  if (!['cancel', 'check', 'verdict'].includes(verb)) throw new Error('unknown_verb');
+  if (!['cancel', 'check', 'verdict'].includes(verb)) exitError('unknown_verb');
   const chat = chatFlag(args);
   const row = rows.find(row => row.id === args[0] && (chat === undefined || row.chat === chat));
-  if (!row) throw new Error('unknown_id');
+  if (!row) { printJson({ status: 'none', reason: 'unknown_id' }); return; }
   // The row can close between the read above and the locked update (a concurrent cancel or verdict).
-  const noop = () => printJson({ status: 'noop', state: readRows(file).find(r => r.id === row.id)?.state ?? row.state });
+  const noop = () => printJson({ status: 'noop', reason: 'not_pending', state: readRows(file).find(r => r.id === row.id)?.state ?? row.state });
   if (row.state !== 'pending') { noop(); return; }
   if (verb === 'cancel') {
     if (!updatePending(file, row.id, { state: 'cancelled' })) { noop(); return; }

@@ -7,7 +7,7 @@ resolution, the daily digest, monitoring lines, operator notifications, `last_cl
 `heartbeat_result`) is derived deterministically by `heartbeat.ts alert-state` from the returned firing set —
 the subagent never authors any of it. This split exists because a small model (`heartbeat.model`
 set to haiku) asked to author that bookkeeping fabricates fields and flips pending flags.
-`heartbeat_result` is `OK`, `ALERT`, or `INDETERMINATE` (this return was rejected — nothing written).
+`heartbeat_result` is `ok`, `alert`, or `indeterminate` (this return was rejected — nothing written).
 
 This file is read only on the EVALUATE path, once the precheck determines a full LLM tick is warranted.
 

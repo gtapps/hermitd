@@ -151,7 +151,7 @@ describe('final next-steps keys off deployment', () => {
   test('CLI rejects a deployment outside the enum', async () => {
     const r = await runScript('hatch-report.ts', { args: ['final', hatched(), '--deployment', 'kubernetes'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('docker|tmux|interactive');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_deployment' });
   });
 
   test('CLI final exits 0 and prints the report', async () => {
@@ -212,5 +212,6 @@ describe('confirm previews intent, before anything is written', () => {
   test('CLI confirm rejects a non-JSON payload rather than rendering nonsense', async () => {
     const r = await runScript('hatch-report.ts', { args: ['confirm', '/tmp'], stdin: 'not json' });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_answers' });
   });
 });

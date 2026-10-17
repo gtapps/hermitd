@@ -94,7 +94,7 @@ describe('observations.ts: skill-correction row round-trip', () => {
     const r = await runScript('prune-observations.ts', { args: [stateDir] });
     expect(r.exitCode).toBe(0);
     // both rows are fresh — neither should be pruned
-    expect(r.stdout).toContain('pruned 0, kept 2');
+    expect(JSON.parse(r.stdout)).toEqual({ pruned: 0, kept: 2 });
     const after = fs.readFileSync(ledger, 'utf-8');
     expect(after).toContain('skill-correction:my-skill');
     expect(after).toContain(todayYMD(zones[0]));

@@ -3,6 +3,7 @@
 // Zero npm dependencies. Node stdlib only.
 // Usage: bun archive-compiled.ts <hermit-state-dir>
 //   hermit-state-dir: path to .hermit/ in the target project (default: .hermit)
+// Output: `{"archived":N,"retained":N,"skipped":N}`.
 //
 // Retention: keeps the newest KEEP_PER_TYPE artifacts per type; foundational-tagged
 // artifacts and topic pages (type: topic) are always retained and excluded from the
@@ -11,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readFrontmatter, globDir } from './lib/frontmatter';
+import { emitJson } from './lib/cli';
 
 type Json = any;
 
@@ -21,10 +23,7 @@ const compiledDir = path.join(hermitDir, 'compiled');
 const archiveDir = path.join(compiledDir, '.archive');
 
 const fullPaths = globDir(compiledDir, /^[^.].*\.md$/);
-if (fullPaths.length === 0) {
-  console.log('compiled/ does not exist or is empty — nothing to archive.');
-  process.exit(0);
-}
+if (fullPaths.length === 0) emitJson({ archived: 0, retained: 0, skipped: 0 });
 
 fs.mkdirSync(archiveDir, { recursive: true });
 
@@ -90,7 +89,4 @@ for (const [, group] of byType) {
   }
 }
 
-console.log(`archive-compiled: ${archived} archived, ${retained} retained, ${skipped} skipped.`);
-if (archived > 0) {
-  console.log(`Archived to ${archiveDir}`);
-}
+emitJson({ archived, retained, skipped });

@@ -50,7 +50,7 @@ describe('routine-precheck', () => {
     setPause(hermit(dir), { reason: 'operator', by: 'test' });
     const r = await run('weekly-review', dir);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('{"status":"skip"}');
+    expect(r.stdout.trim()).toBe('{"status":"skip","reason":"paused"}');
     const rows = readMetricsRows(dir);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ routine_id: 'weekly-review', event: 'skipped-paused' });
@@ -132,7 +132,7 @@ describe('routine-precheck — wake gate in fallback delivery', () => {
   test('SKIP short-circuits before the started stamp', withDir(async (dir) => {
     writeGatedConfig(dir, writeGate(dir, '#!/usr/bin/env bash\necho SKIP\n'));
     const r = await runScript('routines.ts', { args: ['precheck', 'gated', 'cron-create'], cwd: dir });
-    expect(r.stdout.trim()).toBe('{"status":"skip"}');
+    expect(r.stdout.trim()).toBe('{"status":"skip","reason":"gate_skip"}');
     const rows = readMetricsRows(dir);
     // No `started`: a fire that never opened must not read as abandoned later.
     expect(rows.map((x: any) => x.event)).toEqual(['skipped-precheck']);

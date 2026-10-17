@@ -30,7 +30,7 @@ e. Implement the proposal. Hermit-only native settings go in operator-owned `.he
    > 2. Do the edits and any test/fix loops yourself. You may spawn a nested Explore subagent if the proposal warrants a search. Hermit-only native settings go in operator-owned `.hermit/claude-settings.json`; generated launch settings remain config-derived. Hooks and project-wide permissions go in the hatch-resolved settings file — read `target` from `.hermit/state/hatch-options.json` (`local` → `.claude/settings.local.json`, `committed` → `.claude/settings.json`); when it is absent, ask `.hermit/bin/hermitd-run domain-hatch preflight hermitd` for `target`, or `target_default` when that is null, and map it the same way rather than re-deriving it — its `target_file` is the CLAUDE-APPEND destination, not a settings file. Write those entries there with `Edit`/`Write`, never a shell redirect, or the seeded ask never fires. That native ask is the operator's approval and relays to chat, so the bundled `update-config` skill is not needed for it; a hardened install has the same globs as denies, so report the block instead of routing around it.
    > 3. **Quality gate.** Ask the gate; do not judge the tier or the files yourself:
    >    [Copy the absolute command from `proposal-quality-gate` (Commands) here, with arguments `<absolute path to the PROP file> --files-json '<JSON array of the files you touched, repo-root-relative>'`.]
-   >    One JSON line back: `{"tier","action","reason","focus_files"}`. `SKIP` → no cleanup. `RUN` → invoke `/simplify` with `focus_files` as the target, and briefly summarize the cleanup result. Best-effort: if the gate or `/simplify` errors, note it and continue — never block on this step.
+   >    One JSON object back with `status` and `focus_files`. `skip` → no cleanup. `run` → invoke `/simplify` with `focus_files` as the target, and briefly summarize the cleanup result. Best-effort: if the gate or `/simplify` errors, note it and continue — never block on this step.
    > 4. **Verification.** Read the proposal's `## Verification` section. If it has real steps (more than the HTML-comment placeholder), perform them. If a step fails, attempt **one** fix and re-verify; if it still fails, set `Verification: failed` with the output and stop (do not loop further). If the section is empty or placeholder-only, set `Verification: none defined`.
    > 5. You cannot prompt the operator — if you hit an ambiguous spec or an undecidable/destructive choice at any step, **stop and return an escalation block** rather than guessing.
    >
@@ -76,10 +76,10 @@ e.5. **Quality gate.** Applies to **in-main** implementations only (the `## Skil
 
     Run `proposal-quality-gate` (Commands) with arguments `<path to the PROP file> [--files-json '["path/a","path/b"]']`.
 
-    One JSON line back: `{"tier","action","reason","focus_files"}`. The script owns tier resolution, the session-bookkeeping filter, and the RUN/SKIP call — the same code the dispatched path runs, so the two cannot disagree. Act on `action`:
+    One JSON object back: `{"tier","status","reason","detail","focus_files"}`. The script owns tier resolution, the session-bookkeeping filter, and the run/skip call — the same code the dispatched path runs, so the two cannot disagree. Act on `status`:
 
-    - **`SKIP`** → no cleanup. Proceed to (f). Notification: "PROP-NNN implemented and resolved." (add `Skipped cleanup: <reason>` when the reason is more specific than the budget tier).
-    - **`RUN`** → invoke `/simplify` with `focus_files` as the target:
+    - **`skip`** → no cleanup. Proceed to (f). Notification: "PROP-NNN implemented and resolved." (add `Skipped cleanup: <detail>` when `reason` is not `budget_tier`).
+    - **`run`** → invoke `/simplify` with `focus_files` as the target:
       ```
       /simplify path/a path/b
       ```
@@ -101,7 +101,7 @@ Assemble a record note (Task/Context/Suggested Plan derived from the proposal). 
   - **(if the proposal contains `## Skill Improvement`)** `Resolve the component name to .claude/skills/<name>/SKILL.md. If it exists, read it before writing and author only the behaviors from the ## Skill Improvement body that are not already present; if all of them are already present, change nothing and say so. If it does not exist, never write into the plugin cache, and create a file at that name only after the operator explicitly confirms the authored SKILL.md, which must be complete rather than the corrected fragment alone. Use the source_artifact brief only when present, and validate the result.`
     The guards travel in the bullet because the queued-record workflow picks up the task as ordinary work, so step (e) never runs again.
   - **(if the proposal contains `## Skill Draft`)** `Author the SKILL.md from the source_artifact (see ## Skill Draft), present the final SKILL.md to the operator for confirmation, then install it to the install_target only on confirmation.`
-  - **(if `quality_gate.tier` in `.hermit/config.json` is not `"budget"` — i.e. `"balanced"` or `"quality"`)** Copy `proposal-quality-gate` (Commands) into the note as an absolute command with `<this PROP file>` as its argument, followed by: `On "action":"RUN", run /simplify with its focus_files as the target, then commit.`
+  - **(if `quality_gate.tier` in `.hermit/config.json` is not `"budget"` — i.e. `"balanced"` or `"quality"`)** Copy `proposal-quality-gate` (Commands) into the note as an absolute command with `<this PROP file>` as its argument, followed by: `On "status":"run", run /simplify with its focus_files as the target, then commit.`
     The bullet defers the call rather than making it here: at queue time the implementation hasn't happened, so there is no diff to classify. The future task turn runs the same verb the other two paths run, with no `--files-json` — the working-tree diff is the evidence by then. Copy the Commands entry verbatim with its absolute path: the future task turn has no Commands block.
 
 Open the record and then append the prepared note through `task.ts`; never write `tasks/*.md` directly:

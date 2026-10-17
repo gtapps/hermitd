@@ -46,10 +46,12 @@ const raw = (dir: string, ...p: string[]) =>
 const compiled = (dir: string, ...p: string[]) =>
   path.join(dir, '.hermit', 'compiled', ...p);
 
-// Run archive-raw.ts from inside the workdir; bash captured 2>&1 combined.
-async function runArchive(dir: string): Promise<string> {
+// Run archive-raw.ts from inside the workdir: its stdout JSON, plus the stderr
+// purge log as `stderr`.
+async function runArchive(dir: string): Promise<any> {
   const r = await runScript('archive-raw.ts', { args: ['.hermit'], cwd: dir });
-  return r.stdout + r.stderr;
+  expect(r.exitCode).toBe(0);
+  return { ...JSON.parse(r.stdout), stderr: r.stderr };
 }
 
 // -------------------------------------------------------
@@ -57,15 +59,15 @@ async function runArchive(dir: string): Promise<string> {
 // -------------------------------------------------------
 describe('empty raw/', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     out = await runArchive(h.dir);
   });
   afterAll(() => h.cleanup());
 
-  test('empty raw/: nothing to archive message', () => {
-    expect(out).toContain('nothing to archive');
+  test('empty raw/: zero counts', () => {
+    expect(out).toMatchObject({ archived: 0, retained: 0, skipped: [], pinned: 0, purged: 0 });
   });
 });
 
@@ -74,7 +76,7 @@ describe('empty raw/', () => {
 // -------------------------------------------------------
 describe('expired dated .md with frontmatter', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `note-${PAST}.md`),
@@ -84,7 +86,8 @@ describe('expired dated .md with frontmatter', () => {
   afterAll(() => h.cleanup());
 
   test('md frontmatter: archived (output says 1 archived)', () => {
-    expect(out).toMatch(/^archive-raw: 1 archived, 0 retained, 0 skipped, 0 pinned/m);
+    expect(out).toMatchObject({ archived: 1, retained: 0, pinned: 0 });
+    expect(out.skipped).toHaveLength(0);
   });
 
   test('md frontmatter: file moved to .archive/', () => {
@@ -98,7 +101,7 @@ describe('expired dated .md with frontmatter', () => {
 // -------------------------------------------------------
 describe('expired dated .json via filename fallback', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `snapshot-ha-context-${PAST}.json`), '{"entities":[]}\n');
@@ -107,7 +110,8 @@ describe('expired dated .json via filename fallback', () => {
   afterAll(() => h.cleanup());
 
   test('json filename-date: archived (output says 1 archived)', () => {
-    expect(out).toMatch(/^archive-raw: 1 archived, 0 retained, 0 skipped, 0 pinned/m);
+    expect(out).toMatchObject({ archived: 1, retained: 0, pinned: 0 });
+    expect(out.skipped).toHaveLength(0);
   });
 
   test('json filename-date: file moved to .archive/', () => {
@@ -121,7 +125,7 @@ describe('expired dated .json via filename fallback', () => {
 // -------------------------------------------------------
 describe('-latest alias pinning', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, 'patterns-latest.md'),
@@ -132,11 +136,11 @@ describe('-latest alias pinning', () => {
   afterAll(() => h.cleanup());
 
   test('latest alias: output says 0 archived', () => {
-    expect(out).toMatch(/^archive-raw: 0 archived/m);
+    expect(out).toMatchObject({ archived: 0 });
   });
 
   test('latest alias: pinned count = 2', () => {
-    expect(out).toMatch(/2 pinned/);
+    expect(out.pinned).toBe(2);
   });
 
   test('latest alias: patterns-latest.md still in raw/', () => {
@@ -153,7 +157,7 @@ describe('-latest alias pinning', () => {
 // -------------------------------------------------------
 describe('missing created: key', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, 'no-date.md'), '---\ntype: input\n---\nMissing created field.\n');
@@ -161,16 +165,8 @@ describe('missing created: key', () => {
   });
   afterAll(() => h.cleanup());
 
-  test('missing created: 1 skipped', () => {
-    expect(out).toContain('1 skipped');
-  });
-
-  test('missing created: named in output', () => {
-    expect(out).toContain('no-date.md');
-  });
-
-  test('missing created: reason text', () => {
-    expect(out).toMatch(/missing created/);
+  test('missing created: skipped by name with its reason', () => {
+    expect(out.skipped).toEqual([{ file: 'no-date.md', reason: 'missing_created' }]);
   });
 
   test('missing created: file stays in raw/', () => {
@@ -183,7 +179,7 @@ describe('missing created: key', () => {
 // -------------------------------------------------------
 describe('malformed created: value', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, 'bad-date.md'),
@@ -192,16 +188,8 @@ describe('malformed created: value', () => {
   });
   afterAll(() => h.cleanup());
 
-  test('malformed created: 1 skipped', () => {
-    expect(out).toContain('1 skipped');
-  });
-
-  test('malformed created: named in output', () => {
-    expect(out).toContain('bad-date.md');
-  });
-
-  test('malformed created: unparseable reason', () => {
-    expect(out).toMatch(/unparseable/);
+  test('malformed created: skipped by name, unparseable reason', () => {
+    expect(out.skipped).toEqual([{ file: 'bad-date.md', reason: 'unparseable_created' }]);
   });
 });
 
@@ -210,7 +198,7 @@ describe('malformed created: value', () => {
 // -------------------------------------------------------
 describe('.json with no date anywhere', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, 'nodatefile.json'), '{"state":"unknown"}\n');
@@ -219,7 +207,8 @@ describe('.json with no date anywhere', () => {
   afterAll(() => h.cleanup());
 
   test('json no-date: output says 1 skipped', () => {
-    expect(out).toMatch(/^archive-raw: 0 archived, 0 retained, 1 skipped/m);
+    expect(out).toMatchObject({ archived: 0, retained: 0 });
+    expect(out.skipped).toHaveLength(1);
   });
 
   test('json no-date: file still in raw/', () => {
@@ -232,7 +221,7 @@ describe('.json with no date anywhere', () => {
 // -------------------------------------------------------
 describe('filename rescue', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `snapshot-${PAST}.md`),
@@ -242,7 +231,7 @@ describe('filename rescue', () => {
   afterAll(() => h.cleanup());
 
   test('filename rescue: archived despite bad frontmatter', () => {
-    expect(out).toMatch(/^archive-raw: 1 archived/m);
+    expect(out).toMatchObject({ archived: 1 });
   });
 
   test('filename rescue: file moved to .archive/', () => {
@@ -255,7 +244,7 @@ describe('filename rescue', () => {
 // -------------------------------------------------------
 describe('recent dated .json', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `snapshot-ha-context-${RECENT}.json`), '{"entities":[]}\n');
@@ -264,7 +253,7 @@ describe('recent dated .json', () => {
   afterAll(() => h.cleanup());
 
   test('json recent: output says 1 retained', () => {
-    expect(out).toMatch(/^archive-raw: 0 archived, 1 retained/m);
+    expect(out).toMatchObject({ archived: 0, retained: 1 });
   });
 
   test('json recent: file still in raw/', () => {
@@ -277,7 +266,7 @@ describe('recent dated .json', () => {
 // -------------------------------------------------------
 describe('compiled-reference safety', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `snapshot-ha-context-${PAST}.json`), '{"entities":[]}\n');
@@ -288,7 +277,7 @@ describe('compiled-reference safety', () => {
   afterAll(() => h.cleanup());
 
   test('json compiled-ref safety: output says 1 retained', () => {
-    expect(out).toMatch(/^archive-raw: 0 archived, 1 retained/m);
+    expect(out).toMatchObject({ archived: 0, retained: 1 });
   });
 
   test('json compiled-ref safety: file still in raw/', () => {
@@ -302,7 +291,7 @@ describe('compiled-reference safety', () => {
 // -------------------------------------------------------
 describe('mixed bag', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
   beforeAll(async () => {
     h = makeHermit();
     fs.writeFileSync(raw(h.dir, `audit-${PAST}.md`),
@@ -315,11 +304,12 @@ describe('mixed bag', () => {
   afterAll(() => h.cleanup());
 
   test('mixed: output says 2 archived, 0 retained, 1 skipped, 1 pinned', () => {
-    expect(out).toMatch(/^archive-raw: 2 archived, 0 retained, 1 skipped, 1 pinned/m);
+    expect(out).toMatchObject({ archived: 2, retained: 0, pinned: 1 });
+    expect(out.skipped).toHaveLength(1);
   });
 
   test('mixed: no-created.md named in skip output', () => {
-    expect(out).toContain('no-created.md');
+    expect(out.skipped.map((s: any) => s.file)).toEqual(['no-created.md']);
   });
 
   test('mixed: -latest.json still in raw/', () => {
@@ -355,7 +345,7 @@ test('fail-open: exit 0 with missing state dir', async () => {
 // -------------------------------------------------------
 describe('purge: archive_retention_days set, expired .archive entry deleted', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
 
   beforeAll(async () => {
     h = makeHermit();
@@ -378,10 +368,10 @@ describe('purge: archive_retention_days set, expired .archive entry deleted', ()
     expect(fs.existsSync(raw(h.dir, '.archive', `note-${PAST}.md`))).toBe(false);
   });
   test('purge: output says 1 purged', () => {
-    expect(out).toMatch(/1 purged/);
+    expect(out.purged).toBe(1);
   });
   test('purge: deletion logged to stderr', () => {
-    expect(out).toContain(`purged note-${PAST}.md`);
+    expect(out.stderr).toContain(`purged note-${PAST}.md`);
   });
 });
 
@@ -390,7 +380,7 @@ describe('purge: archive_retention_days set, expired .archive entry deleted', ()
 // -------------------------------------------------------
 describe('purge: archive_retention_days null → no deletion', () => {
   let h: Hermit;
-  let out: string;
+  let out: any;
 
   beforeAll(async () => {
     h = makeHermit();

@@ -192,8 +192,9 @@ describe('cost-reflect table mode: unaffected by --plain', () => {
     const { cchDir } = setup(null, [{ daysAgo: 0, source: 'other' }]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('### Cost by token type');
-    expect(result.stdout).toContain('cache_read');
+    const out = JSON.parse(result.stdout);
+    expect(out.window_days).toBe(7);
+    expect(out.by_type.cache_read).toBeDefined();
   });
 });
 
@@ -205,8 +206,9 @@ describe('cost-reflect table mode: stored dollars, never re-priced', () => {
     ]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('$20.00');
-    expect(result.stdout).not.toContain('cache_read');
+    const out = JSON.parse(result.stdout);
+    expect(out.total_usd).toBe(20);
+    expect(out.by_type).toBeNull();
   });
 
   test('a mixed window shows the split from cost_by_type rows only', async () => {
@@ -219,10 +221,14 @@ describe('cost-reflect table mode: stored dollars, never re-priced', () => {
     ]);
     const result = await runScript('cost-report.ts', { args: ['reflect', cchDir, '7'] });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('$8.00');
-    expect(result.stdout).toContain('cache_read $2.00');
-    expect(result.stdout).toContain('cache_write $0.50');
-    expect(result.stdout).toContain('output $1.50');
-    expect(result.stdout).toContain('input $1.00');
+    const out = JSON.parse(result.stdout);
+    expect(out.total_usd).toBe(8);
+    expect(out.by_type).toEqual({
+      typed_total_usd: 5,
+      cache_read: { cost_usd: 2, pct: 40 },
+      cache_write: { cost_usd: 0.5, pct: 10 },
+      output: { cost_usd: 1.5, pct: 30 },
+      input: { cost_usd: 1, pct: 20 },
+    });
   });
 });

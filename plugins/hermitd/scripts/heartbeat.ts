@@ -22,6 +22,9 @@
 //   bun heartbeat.ts alert-state <state-file>
 //     Applies one alert-state update from stdin.
 //
+// Exception to the helper-output convention: precheck, interval and control-state
+// keep the line grammar heartbeat-monitor.sh parses.
+//
 // The verb is spliced out of process.argv before the module loads, so each
 // module keeps the argv indices it used as a standalone script — 550-odd lines
 // of alert derivation and lull arithmetic stay byte-for-byte unchanged rather
@@ -29,9 +32,7 @@
 // reason it is in routines.ts: a precheck poll runs every interval and has no
 // business parsing the alert-update graph.
 
-export {}; // module scope: every import here is dynamic, and top-level await needs it
-
-const USAGE = 'Usage: bun heartbeat.ts <precheck [--peek] <dir> | tick <dir> | ack-queue <dir> <token> | control-state <dir> | start-check <dir> | start-commit <dir> <task-id> | alert-state <state-file>>';
+import { exitError } from './lib/cli'; // fs only; every verb module stays dynamic
 
 const verb = process.argv[2];
 process.argv.splice(2, 1);
@@ -50,7 +51,7 @@ switch (verb) {
   case 'ack-queue': {
     const { acknowledgeQueue } = await import('./lib/heartbeat/tick');
     const { pinStateDirOrExit } = await import('./lib/cc-compat');
-    const dir = pinStateDirOrExit(process.argv[2], 'heartbeat ack-queue');
+    const dir = pinStateDirOrExit(process.argv[2]);
     console.log(JSON.stringify(acknowledgeQueue(dir, process.argv[3])));
     break;
   }
@@ -58,7 +59,7 @@ switch (verb) {
     const { effectiveHeartbeatMode } = await import('./lib/heartbeat/control');
     const { readConfigRaw } = await import('./lib/config-read');
     const dir = process.argv[2];
-    if (!dir) { console.error(USAGE); process.exit(1); }
+    if (!dir) exitError();
     const mode = effectiveHeartbeatMode(dir);
     console.log(mode === 'stopped' ? 'stopped' : mode === 'auto' && readConfigRaw(dir)?.heartbeat?.enabled === false ? 'disabled' : 'active');
     break;
@@ -75,6 +76,5 @@ switch (verb) {
     await import('./lib/heartbeat/alert-update');
     break;
   default:
-    console.error(USAGE);
-    process.exit(1);
+    exitError();
 }

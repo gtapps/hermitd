@@ -46,7 +46,7 @@ describe('rc-server.ts', () => {
 
       const res = await rcServer(wd.dir, ['gc']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout).toContain('removed bridge-fake123');
+      expect(JSON.parse(res.stdout)).toEqual({ removed: ['bridge-fake123'], kept: [], failed: [] });
       expect(fs.existsSync(wt)).toBe(false);
       expect(git(wd.dir, 'branch', '--list', 'cse-session-xyz').trim()).toBe('');
     } finally {
@@ -71,7 +71,7 @@ describe('rc-server.ts', () => {
 
       const res = await rcServer(wd.dir, ['sweep']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout.trim()).toBe('');
+      expect(res.stdout.trim()).toBe('OK');
       expect(fs.existsSync(wt)).toBe(false);
       expect(git(wd.dir, 'branch', '--list', 'cse-session-sweep').trim()).toBe('');
     } finally {
@@ -98,12 +98,12 @@ describe('rc-server.ts', () => {
     }
   });
 
-  it('gc on a repo with no bridge worktrees is a silent no-op', async () => {
+  it('gc on a repo with no bridge worktrees is a no-op', async () => {
     const wd = setupGitWorkdir();
     try {
       const res = await rcServer(wd.dir, ['gc']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout.trim()).toBe('');
+      expect(JSON.parse(res.stdout)).toEqual({ removed: [], kept: [], failed: [] });
     } finally {
       wd.cleanup();
     }
@@ -146,7 +146,7 @@ describe('rc-server.ts', () => {
 
       const res = await rcServer(wd.dir, ['gc']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout).toContain('removed bridge-committed321');
+      expect(JSON.parse(res.stdout).removed).toEqual(['bridge-committed321']);
       expect(fs.existsSync(wt)).toBe(false);
       expect(git(wd.dir, 'branch', '--list', 'cse-session-committed').trim()).not.toBe('');
     } finally {
@@ -163,7 +163,7 @@ describe('rc-server.ts', () => {
 
       const res = await rcServer(wd.dir, ['gc']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout).toContain('kept bridge-dirty789');
+      expect(JSON.parse(res.stdout).kept).toEqual(['bridge-dirty789']);
       expect(fs.existsSync(wt)).toBe(true);
       expect(git(wd.dir, 'branch', '--list', 'cse-session-dirty').trim()).not.toBe('');
     } finally {
@@ -183,9 +183,19 @@ describe('rc-server.ts', () => {
 
       const res = await rcServer(wd.dir, ['stop']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout).toContain('down');
-      expect(res.stdout).toContain('removed bridge-afterstop');
+      expect(JSON.parse(res.stdout)).toEqual({ status: 'down', gc: { removed: ['bridge-afterstop'], kept: [], failed: [] } });
       expect(fs.existsSync(wt)).toBe(false);
+    } finally {
+      wd.cleanup();
+    }
+  });
+
+  it('stop with nothing to sweep omits gc', async () => {
+    const wd = setupGitWorkdir();
+    try {
+      const res = await rcServer(wd.dir, ['stop']);
+      expect(res.exitCode).toBe(0);
+      expect(JSON.parse(res.stdout)).toEqual({ status: 'down' });
     } finally {
       wd.cleanup();
     }
@@ -196,7 +206,7 @@ describe('rc-server.ts', () => {
     try {
       const res = await rcServer(wd.dir, ['status']);
       expect(res.exitCode).toBe(0);
-      expect(res.stdout.trim()).toBe('down');
+      expect(JSON.parse(res.stdout)).toEqual({ status: 'down' });
     } finally {
       wd.cleanup();
     }
@@ -212,7 +222,7 @@ describe('rc-server.ts', () => {
       try {
         const res = await rcServer(wd.dir, ['status']);
         expect(res.exitCode).toBe(0);
-        expect(res.stdout).toContain('spawns: 1 live (bridge-status456)');
+        expect(JSON.parse(res.stdout)).toEqual({ status: 'down', live_spawns: ['bridge-status456'] });
       } finally {
         holder.kill();
       }
@@ -221,22 +231,22 @@ describe('rc-server.ts', () => {
     }
   });
 
-  it('unknown subcommand exits 2 with usage', async () => {
+  it('unknown subcommand is a usage error', async () => {
     const wd = setupGitWorkdir();
     try {
       const res = await rcServer(wd.dir, ['bogus']);
-      expect(res.exitCode).toBe(2);
-      expect(res.stderr).toContain('Usage: hermitd-run rc-server');
+      expect(res.exitCode).toBe(1);
+      expect(JSON.parse(res.stdout)).toEqual({ error: 'usage' });
     } finally {
       wd.cleanup();
     }
   });
 
-  it('missing subcommand exits 2', async () => {
+  it('missing subcommand is a usage error', async () => {
     const wd = setupGitWorkdir();
     try {
       const res = await rcServer(wd.dir, []);
-      expect(res.exitCode).toBe(2);
+      expect(res.exitCode).toBe(1);
     } finally {
       wd.cleanup();
     }

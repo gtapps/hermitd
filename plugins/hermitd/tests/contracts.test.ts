@@ -1099,14 +1099,24 @@ describe('channel resolver contract', () => {
     expect(result.id).toBe('telegram');
   });
 
-  test('missing config.json: exit 1, JSON error on stdout with detail+path', async () => {
+  test('missing config.json: exit 1, JSON error on stdout only, naming the path', async () => {
     // CLI-path coverage (exit codes) — spawn the resolver directly.
     const r = await runScript('resolve-outbound-channel.ts', { args: ['/nope/missing-dir'] });
     expect(r.exitCode).toBe(1);
+    expect(r.stderr).toBe('');
     const payload = JSON.parse(r.stdout.trim());
-    expect(payload.error).toBe('config_read_failed');
-    expect(payload).toContainKey('detail');
-    expect(payload.path ?? '').toContain('/nope/missing-dir');
+    expect(payload.error).toStartWith('config_read_failed:');
+    expect(payload.error).toContain('/nope/missing-dir');
+  }, 15000);
+
+  test('no eligible channel: exit 0 with a none status', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-resolver-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: {} }));
+      const r = await runScript('resolve-outbound-channel.ts', { args: [dir] });
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_reachable_channel' });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }, 15000);
 
   test("channels.primary: 'primary' would point at the string itself — falls through", () => {
@@ -1414,11 +1424,11 @@ describe('model-invocable inventory', () => {
 describe('channel-setup empty-channels branch', () => {
   const text = read(path.join(SKILLS, 'channel-setup', 'SKILL.md'));
 
-  test('creates the entry through hatch-config.ts --reinit, discarding stdout', () => {
+  test('creates the entry through hatch-config.ts --reinit, reading its stdout', () => {
     expect(text).toContain('hatch-config.ts');
     expect(text).toContain('--reinit');
-    // hatch-config prints the whole config on success; skills must not ingest it.
-    expect(text).toContain('--reinit >/dev/null');
+    // hatch-config prints OK or {"error"} on stdout; discarding stdout hides the error.
+    expect(text).not.toContain('--reinit >/dev/null');
   });
 });
 
@@ -1452,7 +1462,7 @@ describe('channel setup ownership', () => {
   });
 
   test('keeps a live host tmux hermit on the local flow', () => {
-    expect(channelSetup).toContain('liveOwner');
+    expect(channelSetup).toContain('live_owner');
   });
 
   test('names the hermit command for each Docker host state', () => {
@@ -3382,7 +3392,7 @@ describe('heartbeat eval-runner return contract', () => {
   test('SKILL.md run drives the tick verb and marks budget alerts by mark_key', () => {
     expect(skill).toContain('scripts/heartbeat.ts tick');
     expect(skill).toContain('scripts/heartbeat.ts ack-queue');
-    expect(skill).toContain('`delivered: true`');
+    expect(skill).toContain('`status: "delivered"`');
     expect(skill).toContain('--mark-budget-notified <mark_key>');
   });
 

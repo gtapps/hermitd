@@ -10,20 +10,20 @@
 //     --limit=<n>            max results (default 10)
 //
 // Usage as lib:   import { search } from './lib/search' — search(hermitDir, query, opts) => results[]
+//
+// The CLI is a display renderer, not a JSON verb: /recall relays its text to the
+// operator as-is and branches on no field. Errors still print `{"error":"<token>"}`
+// (`usage`, `no_query`, `search_failed`) with exit 1.
 
 import path from 'node:path';
 import { search } from './lib/search';
+import { exitError } from './lib/cli';
 
 type Json = any;
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length === 0) {
-    process.stderr.write(
-      'Usage: bun search.ts <hermit-state-dir> [--type=<t>] [--since=<date>] [--limit=<n>] [--chat=<key>:<chat_id>] <query...>\n'
-    );
-    process.exit(1);
-  }
+  if (args.length === 0) exitError();
 
   const hermitDir = path.resolve(args[0]);
   const opts: Json = {};
@@ -45,17 +45,13 @@ if (import.meta.main) {
   }
 
   const query = queryParts.join(' ').trim();
-  if (!query) {
-    process.stderr.write('Error: no query provided\n');
-    process.exit(1);
-  }
+  if (!query) exitError('no_query');
 
   let results: Json[];
   try {
     results = search(hermitDir, query, opts);
-  } catch (e: any) {
-    process.stderr.write(`Search error: ${e.message}\n`);
-    process.exit(1);
+  } catch {
+    exitError('search_failed');
   }
 
   if (results.length === 0) {

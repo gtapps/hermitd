@@ -23,23 +23,22 @@ for (const args of [['--model', 'sonnet', '--effort', 'low'], ['--model', 'futur
     expect(pending.commands[0].command).toBe(args[0] === '--model' ? '/model' : '/effort');
     expect(pending.commands[0].arg).toBe(args[1]);
     expect(pending.commands.slice(1)).toEqual(args.length === 4 ? [{ command: '/effort', arg: 'low' }] : []);
-    expect(result.stdout.trim().split('\n')).toHaveLength(1);
-    expect(result.stdout).toContain('At the next idle');
+    expect(JSON.parse(result.stdout)).toEqual({ status: 'armed', commands: pending.commands.map(c => `${c.command} ${c.arg}`) });
   }));
 }
 
-for (const [label, value, args] of [
-  ['bad arg', runtime, ['--model', 'sonnet\n/clear']],
-  ['missing flags', runtime, []],
-  ['missing value', runtime, ['--model']],
-  ['unknown flag', runtime, ['--other', 'low']],
-  ['missing runtime', null, ['--model', 'sonnet']],
+for (const [label, value, args, error] of [
+  ['bad arg', runtime, ['--model', 'sonnet\n/clear'], 'invalid_argument'],
+  ['missing flags', runtime, [], 'missing_model_or_effort'],
+  ['missing value', runtime, ['--model'], 'invalid_argument'],
+  ['unknown flag', runtime, ['--other', 'low'], 'invalid_flag'],
+  ['missing runtime', null, ['--model', 'sonnet'], 'no_runtime'],
 ] as const) {
   test(`refuses ${label}`, withDir(async (dir) => {
     const root = value ? seed(dir, value) : path.join(dir, '.hermit');
     const result = await runScript('arm-harness-switch.ts', { cwd: dir, args: [root, ...args] });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(result.stdout)).toEqual({ error });
     expect(readDeferredSwitch(root)).toBeNull();
   }));
 }

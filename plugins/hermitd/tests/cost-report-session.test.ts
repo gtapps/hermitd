@@ -35,8 +35,8 @@ describe('cost-report.ts session: per-task attribution', () => {
       });
       expect(r.exitCode).toBe(0);
       expect(JSON.parse(r.stdout)).toEqual({ cost_usd: 11, tokens: 1100 });
-      expect(taskStandup(f.dir, 7).byPerson[0].promised.map(r => r.cost_usd)).toEqual([3, 3]);
-      expect(taskStandup(f.dir, 120).byPerson[0].promised.map(r => r.cost_usd)).toEqual([11, 3]);
+      expect(taskStandup(f.dir, 7).by_person[0].promised.map(r => r.cost_usd)).toEqual([3, 3]);
+      expect(taskStandup(f.dir, 120).by_person[0].promised.map(r => r.cost_usd)).toEqual([11, 3]);
       if (before !== null) expect(fs.readFileSync(costIndexPath(f.dir), 'utf8')).toBe(before);
       else expect(fs.existsSync(costIndexPath(f.dir))).toBe(false);
     } finally { f.cleanup(); }

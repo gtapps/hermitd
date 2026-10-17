@@ -28,11 +28,11 @@ Otherwise (terminal/dev use or `--maintainer`), run the full breakdown:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/cost-report.ts reflect .hermit
 ```
 
-Capture stdout. If the output starts with "No cost data" or "No spend recorded yet", report that message and stop — there's nothing to send.
+Capture stdout. `status: "empty"` or "No spend recorded yet" → say so and stop; there's nothing to send. On an `error`, say cost data is unavailable and stop.
 
 ## Step 2 — Relay the report
 
-**Terminal:** the script output is already formatted and capped at 1500 characters. Relay it verbatim. Don't summarize, reformat, or add commentary — the output is the report.
+**Terminal:** compose the report from the JSON in under 1500 characters: the window total with turns and sessions, the `by_type` split, `by_model` and `cold_starts` when non-empty, `by_source` (with `more_sources`), and `top_sessions`. Report the figures as given, without commentary.
 
 **Channel (`--plain` output):** reply through that channel's reply tool. The script output is already plain language and jargon-free; no `cache_read`/`cache_write`/token-type labels, no session IDs, no `PROP-`/`T-...`, no slash commands. Relay it **translated into the operator's language** if the inbound message wasn't in English. Translation only; add no commentary and don't reintroduce token-category detail.
 
@@ -53,6 +53,6 @@ To set a preferred channel, add `"primary": "<channel-name>"` inside `channels` 
 
 - **Scheduling:** this skill doesn't self-register a routine. To run it on a schedule, add
   `hermitd:cost-reflect --maintainer` as a routine via `/hermitd:hermit-settings`.
-- **What it measures:** token-type cost composition (cache_read / cache_write / output / input), per-model breakdown (shown when ≥2 models appear, e.g. Opus main + Haiku heartbeat), cold-start turns (context warm-ups with no prior cache hit), and per-session cost attribution. For week-over-week totals, use `/hermitd:hermit-evolution` instead.
+- **What it measures:** cold-start turns are context warm-ups with no prior cache hit; `by_type` shares are of rows that record a split. For week-over-week totals, use `/hermitd:hermit-evolution` instead.
 - **`--plain` mode** (channel-tagged turns only): today's spend vs. a trailing-7-day typical day, drivers named by work (not token type), spend-cap status, and a one-line notional-dollars caveat. No token categories, session IDs, or internal IDs.
 - **Non-technical installs** (`config.operator_profile === 'non-technical'`): a client-chat spend question never reaches this skill, since `channel-responder` deflects it with a plain "handled by your provider" reply. Spend figures stay maintainer-side (terminal, maintainer chat, weekly review), so a channel-tagged run here is expected only from a maintainer-audience surface.

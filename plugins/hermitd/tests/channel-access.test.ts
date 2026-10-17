@@ -207,7 +207,7 @@ for (const channel of ['discord', 'telegram']) {
   });
 }
 
-for (const token of ['no_access_file', 'policy_disabled', 'no_config', 'unsupported_channel', 'invalid_state_dir']) {
+for (const token of ['no_access_file', 'policy_disabled', 'no_config', 'unsupported_channel', 'foreign_state_dir']) {
   test(`CLI retains ${token} refusal without writes`, async () => {
     const f = fixture('discord');
     if (token === 'no_access_file') fs.unlinkSync(f.file);
@@ -215,11 +215,11 @@ for (const token of ['no_access_file', 'policy_disabled', 'no_config', 'unsuppor
     if (token === 'policy_disabled') fs.writeFileSync(f.file, JSON.stringify({ ...access, dmPolicy: 'disabled' }));
     const before = fs.existsSync(f.file) ? fs.readFileSync(f.file) : null;
     const result = await runScript('channel-access.ts', {
-      args: [token === 'invalid_state_dir' ? path.join(f.dir, 'other') : f.dir, 'group-add', token === 'unsupported_channel' ? 'slack' : 'discord', ...groupArgs],
+      args: [token === 'foreign_state_dir' ? path.join(f.dir, 'other') : f.dir, 'group-add', token === 'unsupported_channel' ? 'slack' : 'discord', ...groupArgs],
       env: { AGENT_DIR: f.dir, DISCORD_STATE_DIR: '', TELEGRAM_STATE_DIR: '' },
     });
     expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toEqual({ error: token });
+    expect(JSON.parse(result.stdout)).toEqual({ error: token === 'foreign_state_dir' ? `${token}:${f.dir}` : token });
     expect(fs.existsSync(f.file) ? fs.readFileSync(f.file) : null).toEqual(before);
     expect(rows(f.dir)).toEqual([]);
   });

@@ -7,14 +7,16 @@ import { writeFileAtomic } from './md-write';
 export const HOST_MARKER = '# hermitd: managed host CLI';
 interface Binding { id: string; scope: string; projectPath?: string }
 const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
-export function installHost(project: string, root: string, binding: Binding): void {
+// Returns the `hermitd-cli install` result: a skip status when the target is not ours, else null.
+export function installHost(project: string, root: string, binding: Binding): { status: 'skip'; reason: 'foreign_target'; path: string } | null {
   const target = path.join(os.homedir(), '.local/bin/hermitd');
   let existing: string | null = null;
   try {
     const stat = fs.lstatSync(target);
-    if (stat.isSymbolicLink() || !stat.isFile()) { console.error(`[hermit] Refusing to overwrite foreign ${target}`); return; }
+    const foreign = { status: 'skip', reason: 'foreign_target', path: target } as const;
+    if (stat.isSymbolicLink() || !stat.isFile()) return foreign;
     existing = fs.readFileSync(target, 'utf8');
-    if (!existing.split('\n').includes(HOST_MARKER)) { console.error(`[hermit] Refusing to overwrite foreign ${target}`); return; }
+    if (!existing.split('\n').includes(HOST_MARKER)) return foreign;
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const mp = binding.id.slice('hermitd@'.length);
   const dir = registryDir(mp);
@@ -35,4 +37,5 @@ export function installHost(project: string, root: string, binding: Binding): vo
   writeFileAtomic(bindingFile, JSON.stringify(binding) + '\n');
   // Use the bound marketplace even when invoked from the catalog clone.
   registerInMarketplace(mp, project, fs.existsSync(path.join(project, 'docker-compose.hermit.yml')) ? 'docker' : 'tmux');
+  return null;
 }

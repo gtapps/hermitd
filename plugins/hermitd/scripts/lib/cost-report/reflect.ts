@@ -1,7 +1,7 @@
 // `cost-report.ts reflect [<stateDir>] [<days>] [--plain]` — the "why is my bill
-// like this" report. Table mode is the full per-model/per-source breakdown;
-// --plain is the channel-safe prose answer. Fail-open: any throw becomes a
-// one-line error on stdout at exit 0, never a blocked caller.
+// like this" report. The default mode prints the per-type/per-model/per-source
+// breakdown as one JSON object; --plain is the channel-safe prose answer. Any throw
+// prints {"error":"report_failed"} at exit 1.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,6 +10,8 @@ import { readSettledConfig } from '../config-read';
 import { money, resolveTimezone, budgetLine } from '../spend-status';
 import { todayYMD } from '../time';
 import { costLogPath, hermitDir } from '../cc-compat';
+import { failJson, printJson } from '../cli';
+import { round4 } from '../format';
 
 type Json = any;
 
@@ -21,7 +23,6 @@ const COLD_START_OUTPUT_MAX = 1000; // tokens
 
 const MAX_TOP_SESSIONS = 3;
 const MAX_TOP_SOURCES = 5;
-const MAX_CHARS = 1500;
 
 // --plain mode: a channel-safe, no-jargon spend statement (audit's "plain spend
 // statement" PR). A cutoff of today−7 days spans today plus the 7 prior calendar
@@ -52,13 +53,8 @@ function parseLogEntries(costLog: string): Json[] {
   }
 }
 
-function pct(part: number, total: number) {
-  if (total === 0) return '0%';
-  return Math.round((part / total) * 100) + '%';
-}
-
-function formatCost(n: number) {
-  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+function pct(part: number, total: number): number {
+  return total === 0 ? 0 : Math.round((part / total) * 100);
 }
 
 function storedCost(e: Json): number {
@@ -179,7 +175,7 @@ function report(rawArgs: string[]) {
   });
 
   if (window.length === 0) {
-    process.stdout.write(`No cost data in the last ${days} days.\n`);
+    printJson({ status: 'empty', reason: 'no_cost_data', window_days: days });
     return;
   }
 
@@ -257,107 +253,54 @@ function report(rawArgs: string[]) {
       const typed = Object.entries(s.byType).filter(([, v]) => (v as number) > 0) as [string, number][];
       const dominant = typed.sort((a, b) => b[1] - a[1])[0]?.[0];
       const label = dominant === 'cacheRead' ? 'cache_read' : dominant === 'cacheWrite' ? 'cache_write' : dominant;
-      return { id: sid.slice(0, 8), cost: s.cost, turns: s.turns, dominant: label };
+      return { id: sid.slice(0, 8), cost_usd: round4(s.cost), turns: s.turns, dominant: label ?? null };
     });
 
-  // All source entries sorted desc by cost; tail count used for the '+N more' line
   const allSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]);
 
-  // Percentages are shares of the rows that carry a breakdown, not of `total` — rows
-  // written before cost_by_type existed contribute dollars to `total` but nothing to
+  // Shares are of the rows that carry a breakdown, not of `total` — rows written
+  // before cost_by_type existed contribute dollars to `total` but nothing to
   // `totals`, and dividing by `total` would report cache_read at a few percent on a
   // window that is mostly legacy rows.
   const typedTotal = totals.input + totals.cacheWrite + totals.cacheRead + totals.output;
-  let header = `### Cost by token type (${days}d · ${formatCost(total)} · ${turns} turns / ${sessions} sessions)\n`;
-  if (hasTypeSplit) {
-    const coverage = typedTotal < total ? ` — of ${formatCost(typedTotal)} with a recorded split` : '';
-    header +=
-      `- cache_read ${formatCost(totals.cacheRead)} (${pct(totals.cacheRead, typedTotal)})` +
-      ` · cache_write ${formatCost(totals.cacheWrite)} (${pct(totals.cacheWrite, typedTotal)})` +
-      ` · output ${formatCost(totals.output)} (${pct(totals.output, typedTotal)})` +
-      ` · input ${formatCost(totals.input)} (${pct(totals.input, typedTotal)})${coverage}\n`;
-  }
+  const share = (part: number) => ({ cost_usd: round4(part), pct: pct(part, typedTotal) });
 
-  const coldSection = coldStartTurns > 0
-    ? `\n### Cold starts\n- ${coldStartTurns} turn${coldStartTurns === 1 ? '' : 's'} · ${formatCost(coldStartCost)} (${pct(coldStartCost, total)}) — cache-write, no cache-read, <${COLD_START_OUTPUT_MAX} output tokens\n`
-    : '';
-
-  function buildSourceSection(n: number) {
-    if (n <= 0 || allSources.length === 0) return '';
-    const rest = allSources.length - n;
-    const shown = allSources.slice(0, n);
-    const rows = shown.map(([src, cost]) => {
-      const label = src === 'other' ? `${src} _(non-scheduled)_` : src;
-      return `- ${label}: ${formatCost(cost)} (${pct(cost, total)})`;
-    });
-    if (rest > 0) rows.push(`- +${rest} more sources`);
-    // Footnote only when a routine row is actually displayed — otherwise it dangles.
-    const footnote = shown.some(([src]) => src.startsWith('routine:'))
-      ? `\n_routine model-override subagent cost is included, attributed to its dispatching source_\n`
-      : '';
-    return `\n### Cost by source\n${rows.join('\n')}\n${footnote}`;
-  }
-
-  function buildModelSection() {
-    // Only render when ≥2 distinct models are present — a single-model window learns
-    // nothing new from this vs the combined token-type header.
-    const entries = Object.entries(modelMap);
-    if (entries.length < 2) return '';
-    const rows = entries
-      .sort((a, b) => b[1].cost - a[1].cost)
-      .map(([mdl, { cost, byType }]) => {
-        const components = (
-          [
-            ['cache_read',  byType.cacheRead],
-            ['cache_write', byType.cacheWrite],
-            ['output',      byType.output],
-            ['input',       byType.input],
-          ] as [string, number][]
-        )
-          .filter(([, v]) => v > 0)
-          .map(([label, v]) => `${label} ${formatCost(v)}`)
-          .join(', ');
-        return `- ${mdl} ${formatCost(cost)} (${pct(cost, total)})${components ? ` — ${components}` : ''}`;
-      });
-    return `\n### Cost by model\n${rows.join('\n')}\n`;
-  }
-
-  function buildTopSection(n: number) {
-    if (n <= 0 || topSessions.length === 0) return '';
-    const lines = topSessions.slice(0, n).map(s => {
-      const turns = `${s.turns} turn${s.turns === 1 ? '' : 's'}`;
-      const mostly = s.dominant ? `, mostly ${s.dominant}` : '';
-      return `- ${s.id}: ${formatCost(s.cost)} (${turns}${mostly})`;
-    }).join('\n');
-    return `\n### Top sessions\n${lines}\n`;
-  }
-
-  const modelSection = buildModelSection();
-
-  // Enforce ≤1500 chars. Shed source rows first (lowest-value for operators with
-  // many routines) down to zero, then shed top-sessions — a single monotonic path.
-  for (let m = MAX_TOP_SOURCES; m >= 1; m--) {
-    const body = header + modelSection + coldSection + buildSourceSection(m) + buildTopSection(MAX_TOP_SESSIONS);
-    if (body.length <= MAX_CHARS) {
-      process.stdout.write(body);
-      return;
-    }
-  }
-  for (let n = MAX_TOP_SESSIONS; n >= 0; n--) {
-    const body = header + modelSection + coldSection + buildTopSection(n);
-    if (body.length <= MAX_CHARS || n === 0) {
-      process.stdout.write(body);
-      return;
-    }
-  }
+  printJson({
+    window_days: days,
+    total_usd: round4(total),
+    turns,
+    sessions,
+    by_type: hasTypeSplit
+      ? {
+        typed_total_usd: round4(typedTotal),
+        cache_read: share(totals.cacheRead),
+        cache_write: share(totals.cacheWrite),
+        output: share(totals.output),
+        input: share(totals.input),
+      }
+      : null,
+    // A context warm-up: cache-write, no cache-read, small output.
+    cold_starts: coldStartTurns > 0
+      ? { turns: coldStartTurns, cost_usd: round4(coldStartCost), pct: pct(coldStartCost, total) }
+      : null,
+    by_source: allSources.slice(0, MAX_TOP_SOURCES)
+      .map(([source, cost]) => ({ source, cost_usd: round4(cost), pct: pct(cost, total) })),
+    more_sources: Math.max(0, allSources.length - MAX_TOP_SOURCES),
+    // A single-model window learns nothing from a per-model split.
+    by_model: Object.keys(modelMap).length < 2 ? [] : Object.entries(modelMap).sort((a, b) => b[1].cost - a[1].cost)
+      .map(([model, { cost, byType }]) => ({
+        model, cost_usd: round4(cost), pct: pct(cost, total),
+        cache_read_usd: round4(byType.cacheRead), cache_write_usd: round4(byType.cacheWrite),
+        output_usd: round4(byType.output), input_usd: round4(byType.input),
+      })),
+    top_sessions: topSessions,
+  });
 }
 
 export function run(args: string[]): void {
   try {
     report(args);
-  } catch (err: any) {
-    // Fail-open: never block on a cost-reflect failure
-    process.stdout.write(`cost-reflect: error — ${err.message}\n`);
-    process.exit(0);
+  } catch (err) {
+    failJson(err, 'report_failed');
   }
 }

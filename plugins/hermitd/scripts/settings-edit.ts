@@ -4,15 +4,20 @@
  * Usage: bun settings-edit.ts <config-file> <op> [args...]
  *
  * Operations:
- *   get [dotted.path]        Print the JSON value at path (whole config if path omitted)
+ *   get [dotted.path]        Print {"value":...} at path (whole config if path omitted)
  *   set <dotted.path> <val>  Set a nested leaf, creating parent objects as needed
  *   unset <dotted.path>      Delete a nested leaf (parents are left in place)
  *   toggle <dotted.path>     Boolean flip (absent → true; errors if current isn't boolean)
- *   table                    Print the generated skill argument table
+ *   table                    Print the generated skill argument table (markdown)
  *   show                     Render the operator-facing settings summary from live values
  *   apply-known <arg> <val>  Write one registry-backed setting, validated by kind/enum
  *   history [path] [--limit N]  Print recent audited changes, newest last
  *   record-file HEARTBEAT.md    Record the checklist fingerprint in the audit ledger
+ *
+ * Output: a write prints `OK`, or `{"warnings":[...]}` when validation warned;
+ * `get`, `apply-known`, `history` and `record-file` print one JSON object; a
+ * failure prints `{"error":"<token>[:detail]"}` with exit 1. `table` and `show`
+ * are display renderers (exceptions): their text is pasted or relayed verbatim.
  *
  * Value parsing for `set`: 'none'/'clear' → null; otherwise JSON.parse first
  * (so true, 42, "x", {...} work), falling back to the raw string on parse failure.
@@ -32,7 +37,7 @@ import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
 import { persistConfig } from './lib/config-write';
 import { validate } from './validate-config';
-import { flagValue, flagEq } from './lib/cli';
+import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
 
 /** Static skill documentation rendered from the same rows used by apply-known. */
@@ -131,12 +136,8 @@ function readTargetJson(filePath: string): Json {
   if (raw.trim() === '') return {};
   try {
     return JSON.parse(raw);
-  } catch (err) {
-    console.error(
-      `Refusing to overwrite ${filePath}: file exists but is not valid JSON ` +
-        `(${(err as Error).message}). Fix or remove it, then re-run.`,
-    );
-    process.exit(1);
+  } catch {
+    return exitError('invalid_json');
   }
 }
 
@@ -173,9 +174,9 @@ function arrayIndex(key: string): number | null {
 /** The range error both the leaf and the traversal raise, so they read the same. */
 function indexRangeError(dotted: string, key: string, len: number, appendable: boolean): Error {
   const max = appendable ? len : len - 1;
-  if (max < 0) return new Error(`${dotted}: "${key}" indexes an empty array`);
+  if (max < 0) return new Error(`index_out_of_range:${dotted}: "${key}" indexes an empty array`);
   return new Error(
-    `${dotted}: index out of range — valid indices are 0..${max}` +
+    `index_out_of_range:${dotted}: index out of range — valid indices are 0..${max}` +
       (appendable ? `, where ${len} appends a new entry` : ''),
   );
 }
@@ -239,7 +240,7 @@ export function unsetPath(obj: Json, dotted: string): boolean {
 export function togglePath(obj: Json, dotted: string): Json {
   const current = getPath(obj, dotted);
   if (current !== undefined && typeof current !== 'boolean') {
-    throw new Error(`toggle: value at '${dotted}' is not a boolean (got ${JSON.stringify(current)})`);
+    throw new Error(`not_boolean:${dotted}`);
   }
   return setPath(obj, dotted, current === undefined ? true : !current);
 }
@@ -332,10 +333,12 @@ export function renderShow(config: Json, configPath: string): string {
 
 export interface ApplyResult {
   ok: boolean;
-  /** Human-readable outcome or refusal reason. */
-  message: string;
+  /** Refusal token, and the human-readable detail behind it. */
+  reason?: 'unknown_setting' | 'invalid_value';
+  detail?: string;
   path?: string;
   value?: Json;
+  applies?: string;
 }
 
 export function coerce(setting: Setting, raw: string): { ok: true; value: Json } | { ok: false; message: string } {
@@ -386,18 +389,12 @@ export function coerce(setting: Setting, raw: string): { ok: true; value: Json }
 export function applyKnown(config: Json, arg: string, raw: string): ApplyResult {
   const setting = byArg(arg);
   if (!setting) {
-    return { ok: false, message: `unknown setting "${arg}" — see the argument table in /hermit-settings` };
+    return { ok: false, reason: 'unknown_setting', detail: `unknown setting "${arg}" — see the argument table in /hermit-settings` };
   }
   const coerced = coerce(setting, raw);
-  if (!coerced.ok) return { ok: false, message: coerced.message };
+  if (!coerced.ok) return { ok: false, reason: 'invalid_value', detail: coerced.message };
   setPath(config, setting.path, coerced.value);
-  return {
-    ok: true,
-    message: `${setting.label} → ${coerced.value === null ? 'none' : coerced.value}` +
-      (setting.applies ? ` (applies: ${setting.applies})` : ''),
-    path: setting.path,
-    value: coerced.value,
-  };
+  return { ok: true, path: setting.path, value: coerced.value, applies: setting.applies ?? 'immediately' };
 }
 
 // --- CLI dispatch ---
@@ -405,10 +402,7 @@ export function applyKnown(config: Json, arg: string, raw: string): ApplyResult 
 if (import.meta.main) {
   const [, , targetFile, op, ...rest] = process.argv;
 
-  if (!targetFile || !op) {
-    console.error('Usage: settings-edit.ts <config-file> <op> [args...]');
-    process.exit(1);
-  }
+  if (!targetFile || !op) exitError();
 
   // The state dir is the config's own directory (.hermit/), where the
   // audit ledger lives under state/.
@@ -424,41 +418,23 @@ if (import.meta.main) {
     // form, the value token right after it — otherwise the limit's number reads
     // as the dotted path.
     const dotted = rest.find((a, i) => !a.startsWith('--') && rest[i - 1] !== '--limit');
-    const rows = readHistory(stateDir, dotted, limit);
-    if (rows.length === 0) {
-      console.log(dotted ? `No recorded changes for ${dotted}.` : 'No recorded settings changes.');
-    } else {
-      // capValue already serialized objects/arrays to a capped string — stringifying
-      // again would print them back-slash escaped.
-      const render = (v: Json): string => (typeof v === 'string' ? v : JSON.stringify(v));
-      for (const r of rows) {
-        const change = r.diff
-          ? [
-              ...r.diff.added.map((id) => `+${id}`),
-              ...r.diff.removed.map((id) => `-${id}`),
-              ...Object.entries(r.diff.changed).map(([id, fields]) => `~${id}(${fields.join(',')})`),
-            ].join(' ') || '(reordered)'
-          :`${r.old === undefined ? '(unset)' : render(r.old)} → ${r.new === undefined ? '(removed)' : render(r.new)}`;
-        console.log(`${r.ts}  ${r.path}  ${change}  [${r.actor}]`);
-      }
-    }
-    process.exit(0);
+    // An absent `old` is a key that was unset before; an absent `new`, one removed.
+    // Id-keyed array edits carry `diff` (ids and field names) instead of values.
+    const rows = readHistory(stateDir, dotted, limit)
+      .map(({ ts, path: p, actor, old, new: next, diff }) => (diff ? { ts, path: p, actor, diff } : { ts, path: p, actor, old, new: next }));
+    emitJson({ rows });
   }
 
   // Same reason as history: a malformed config.json must not block this.
   if (op === 'record-file') {
     const name = rest[0];
-    if (name !== 'HEARTBEAT.md') {
-      console.error(`record-file: unsupported file ${name ?? ''}`);
-      process.exit(1);
-    }
+    if (name !== 'HEARTBEAT.md') exitError('unsupported_file');
     const filePath = path.join(stateDir, name);
     let content: string;
     try {
       content = fs.readFileSync(filePath, 'utf8');
     } catch {
-      console.error(`record-file: ${name} not found`);
-      process.exit(1);
+      exitError('not_found');
     }
     const trimmed = content.endsWith('\n') ? content.slice(0, -1) : content;
     const lineCount = trimmed.split('\n').length;
@@ -471,8 +447,7 @@ if (import.meta.main) {
       'heartbeat-edit',
       'HEARTBEAT.md',
     );
-    console.log(previous === current ? 'HEARTBEAT.md unchanged' : `recorded HEARTBEAT.md ${current}`);
-    process.exit(0);
+    emitJson({ status: previous === current ? 'unchanged' : 'recorded', fingerprint: current });
   }
 
   const config = readTargetJson(targetFile);
@@ -491,38 +466,37 @@ if (import.meta.main) {
    * through this path removes the validate-config PostToolUse hook (fs writes
    * never trip it), which is why the check lives here.
    */
-  const persist = (actor = 'settings-edit'): void => {
+  const persist = (actor = 'settings-edit'): string[] => {
     const { newErrors, newWarnings } = persistConfig({
       hermitDir: stateDir, before: existedBefore ? before : undefined, after: config, actor,
       // A new file forgives what an empty config already fails (missing required keys).
       priorErrors: existedBefore ? undefined : validate({}).errors,
     });
-    if (newErrors.length > 0) {
-      console.error(`Refusing to write ${targetFile} — the change is invalid:`);
-      newErrors.forEach((e) => console.error(`  ${e}`));
-      process.exit(1);
-    }
+    if (newErrors.length > 0) emitJson({ error: 'invalid_config', errors: newErrors });
     // Warnings don't block, but they must still be seen: the branches rerouted
     // through this path used to write via Edit/Write, where the validate-config
     // PostToolUse hook surfaced them. Dropping them silently would be a regression.
-    newWarnings.forEach((w) => console.error(`Warning: ${safeForLLM(w)}`));
+    return newWarnings.map((w) => safeForLLM(w));
   };
+  /** A write's receipt: `OK`, or its validation warnings. */
+  const done = (warnings: string[]): never => (warnings.length ? emitJson({ warnings }) : emit('OK'));
 
   switch (op) {
     case 'migrate': {
       const migration = migrations[rest[0]];
-      if (!migration || rest.length !== 1) {
-        console.error('migrate requires a supported version: 1.4.0, hermitd');
-        process.exit(1);
+      if (!migration || rest.length !== 1) exitError('unsupported_migration');
+      try {
+        migration(config);
+      } catch (err) {
+        exitError(`migration_conflict:${(err as Error).message}`);
       }
-      migration(config);
-      if (JSON.stringify(before) !== JSON.stringify(config)) persist(`settings-migrate:${rest[0]}`);
+      done(JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : []);
       break;
     }
 
     case 'get': {
       const value = getPath(config, rest[0]);
-      console.log(JSON.stringify(value, null, 2));
+      emitJson(value === undefined ? { status: 'none', reason: 'not_set' } : { value });
       break;
     }
 
@@ -538,58 +512,49 @@ if (import.meta.main) {
 
     case 'apply-known': {
       const [arg, value] = rest;
-      if (!arg || value === undefined) {
-        console.error('apply-known requires <setting-argument> <value>');
-        process.exit(1);
-      }
+      if (!arg || value === undefined) exitError();
       const result = applyKnown(config, arg, value);
-      if (!result.ok) { console.error(result.message); process.exit(1); }
-      persist();
-      console.log(result.message);
+      if (!result.ok) emitJson({ status: 'refused', reason: result.reason, detail: result.detail });
+      const warnings = persist();
+      emitJson({ path: result.path, value: result.value, applies: result.applies, ...(warnings.length ? { warnings } : {}) });
       break;
     }
 
     case 'set': {
       const dotted = rest[0];
-      if (!dotted) { console.error('set requires a dotted.path argument'); process.exit(1); }
-      if (rest.length < 2) { console.error('set requires a value argument'); process.exit(1); }
+      if (!dotted || rest.length < 2) exitError();
       try {
         setPath(config, dotted, parseValue(rest[1]));
       } catch (err) {
-        console.error((err as Error).message);
-        process.exit(1);
+        failJson(err);
+        process.exit();
       }
-      persist();
+      done(persist());
       break;
     }
 
     case 'unset': {
       const dotted = rest[0];
-      if (!dotted) { console.error('unset requires a dotted.path argument'); process.exit(1); }
-      if (!unsetPath(config, dotted)) {
-        console.log(`${dotted} is not set — nothing to remove`);
-        break;
-      }
-      persist();
+      if (!dotted) exitError();
+      if (!unsetPath(config, dotted)) emitJson({ status: 'none', reason: 'not_set' });
+      done(persist());
       break;
     }
 
     case 'toggle': {
       const dotted = rest[0];
-      if (!dotted) { console.error('toggle requires a dotted.path argument'); process.exit(1); }
+      if (!dotted) exitError();
       try {
         togglePath(config, dotted);
       } catch (err) {
-        console.error((err as Error).message);
-        process.exit(1);
+        failJson(err);
+        process.exit();
       }
-      persist();
+      done(persist());
       break;
     }
 
-    default: {
-      console.error(`Unknown operation: ${op}. Valid ops: get, set, unset, toggle, show, apply-known, history, record-file`);
-      process.exit(1);
-    }
+    default:
+      exitError(`unknown_op:${op}`);
   }
 }

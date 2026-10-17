@@ -354,7 +354,7 @@ function classifyDockerTemplates(
     stderr: 'pipe',
   });
   if (rendered.exitCode !== 0) {
-    throw new Error(`render-docker-templates failed: ${rendered.stderr.toString().trim()}`);
+    throw new Error(`render-docker-templates failed: ${rendered.stdout.toString().trim()}`);
   }
 
   const currentSources = {

@@ -14,7 +14,7 @@ import { validateCronSchedule } from '../validate-config';
 import { pidAlive } from './lockfile';
 import { scanCredentials } from './sanitize';
 import { transcriptPathKey } from './cc-compat';
-import { readJson } from './cli';
+import { readJson, snakeToken } from './cli';
 import { writeFileAtomic } from './md-write';
 
 export type Json = any;
@@ -497,6 +497,22 @@ export function rewriteGitignoreForWorkspace(root: string, templateText: string)
 // ---------------------------------------------------------------------------
 // Reporting
 // ---------------------------------------------------------------------------
+
+/** The `run`/`status` stdout object: the last run's digest, bounded like formatStatus. */
+export function statusDigest(status: Json, backup: Json): Json {
+  if (!status) return { status: 'none', reason: 'no_run_recorded' };
+  const refused = Array.isArray(status.refused) ? status.refused : [];
+  return {
+    result: snakeToken(status.last_result ?? 'unknown'),
+    mode: backup?.mode ?? status.mode ?? 'workspace',
+    last_attempt_at: status.last_attempt_at ?? null,
+    last_success_at: status.last_success_at ?? null,
+    push: status.push ?? 'disabled',
+    ...(status.last_push_error ? { push_error: status.last_push_error } : {}),
+    ...(refused.length ? { refused: refused.length, first_refused: { path: refused[0].path, reason: snakeToken(refused[0].reason) } } : {}),
+    ...(status.last_error ? { last_error: status.last_error } : {}),
+  };
+}
 
 export function formatStatus(status: Json, backup: Json): string {
   if (!status) return 'backup: no run recorded yet';

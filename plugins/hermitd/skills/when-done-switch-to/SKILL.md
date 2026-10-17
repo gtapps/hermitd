@@ -18,4 +18,4 @@ Run the installed verb with the absolute hermit directory:
 .hermit/bin/hermitd-run arm-harness-switch <abs-hermit-dir> --model <model> --effort <effort>
 ```
 
-Quote argument values for the shell. Omit either flag when it was not supplied. Relay the script's one-line response to the operator verbatim, including a refusal as-is.
+Quote argument values for the shell; omit an unsupplied flag. On `armed`, tell the operator its `commands` run at the next idle; relay an `error` as-is.

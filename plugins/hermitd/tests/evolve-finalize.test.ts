@@ -338,7 +338,7 @@ test('process exit 1 on error (no_config)', withProj(async (dir) => {
   const r = await runPinnedScript('evolve-finalize.ts', dir, [dir, `--core=1.2.6`, `--plugin-root=${PR}`]);
   expect(r.exitCode).toBe(1);
   const out = JSON.parse(r.stdout);
-  expect(out.ok).toBe(false);
+  expect(out.error).toBe('finalize_failed');
   expect(out.errors.map((e: any) => e.code)).toContain('no_config');
 }));
 
@@ -347,7 +347,7 @@ test('process exit 1 on mismatch (core_version_mismatch)', withProj(async (dir) 
   const r = await runPinnedScript('evolve-finalize.ts', dir, [dir, `--core=9.9.9`, `--plugin-root=${PR}`]);
   expect(r.exitCode).toBe(1);
   const out = JSON.parse(r.stdout);
-  expect(out.ok).toBe(false);
+  expect(out.error).toBe('finalize_failed');
   expect(out.errors.map((e: any) => e.code)).toContain('core_version_mismatch');
 }));
 

@@ -4,6 +4,8 @@
 # "---Stale Plugin Runtime---" (config newer — a stale install copy is loaded, which
 # evolve cannot fix and must not be asked to).
 # Designed to be called from the SessionStart hook.
+# Output exception: sectioned text, not JSON. startup-context.ts injects it verbatim
+# as hook context, and brief relays the section's lines to the operator.
 #
 # Usage: bash scripts/check-upgrade.sh <plugin_root>
 # Exit: always 0 (advisory only)

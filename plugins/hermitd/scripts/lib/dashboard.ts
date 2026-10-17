@@ -303,7 +303,7 @@ export function loadDashboardState(hermitDir: string): DashboardState {
   }
 
   let byPerson: PersonTasks[] = [];
-  try { byPerson = taskStandup(hermitDir).byPerson; } catch { /* malformed task record: render the rest */ }
+  try { byPerson = taskStandup(hermitDir).by_person; } catch { /* malformed task record: render the rest */ }
 
   return {
     byPerson,

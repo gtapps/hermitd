@@ -13,7 +13,7 @@ it('sqlite checklist items keep separate keys', () => { expect(normalizeItemKey(
 it('symbol differences keep separate checklist keys', () => { expect(normalizeItemKey('- review stale >7d')).not.toBe(normalizeItemKey('- review stale <7d')); });
 it('note and list markers leave the heartbeat item key stable', () => { expect(normalizeItemKey('Check disk [note]')).toBe(normalizeItemKey('- Check disk')); expect(normalizeItemKey('- Check disk')).toBe(normalizeItemKey('- [ ] Check disk')); });
 it('indented item keeps the heartbeat item key', () => { expect(normalizeItemKey('  - Check disk')).toBe(normalizeItemKey('- Check disk')); });
-it('duties foreign root exits 2', async () => { const f = taskFixture(); try { expect((await runScript('duties.ts', { args: ['list', '/foreign'], env: { AGENT_DIR: f.dir } })).exitCode).toBe(2); } finally { f.cleanup(); } });
+it('duties foreign root exits 1', async () => { const f = taskFixture(); try { const r = await runScript('duties.ts', { args: ['list', '/foreign'], env: { AGENT_DIR: f.dir } }); expect(r.exitCode).toBe(1); expect(JSON.parse(r.stdout)).toEqual({ error: `foreign_state_dir:${f.dir}` }); } finally { f.cleanup(); } });
 
 
 it('omits metrics-only routines and retains configured routines without history', async () => {
@@ -26,5 +26,18 @@ it('omits metrics-only routines and retains configured routines without history'
     const rows = JSON.parse(r.stdout).rows;
     expect(rows).not.toContainEqual(expect.objectContaining({ name: 'routine:removed' }));
     expect(rows).toContainEqual({ name: 'routine:new', last_run: null, last_verdict: null });
+  } finally { f.cleanup(); }
+});
+
+it('summary prints requested and observed state as rows; a missing watch is a refusal', async () => {
+  const f = taskFixture();
+  try {
+    f.put('config.json', { routines: [{ id: 'daily', enabled: true, schedule: '0 9 * * *' }] });
+    const r = await runScript('duties.ts', { args: ['summary', f.dir], env: { AGENT_DIR: f.dir } });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).rows).toContainEqual({ name: 'routine:daily', enabled: true, schedule: '0 9 * * *', mode: null, pid: null, last_woke: null, last_event: null });
+    const missing = await runScript('duties.ts', { args: ['record', f.dir, 'watch', 'gone', '--verdict', 'ok'], env: { AGENT_DIR: f.dir } });
+    expect(missing.exitCode).toBe(0);
+    expect(JSON.parse(missing.stdout)).toEqual({ status: 'refused', reason: 'watch_not_found' });
   } finally { f.cleanup(); }
 });

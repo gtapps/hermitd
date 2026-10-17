@@ -12,7 +12,8 @@
 // it stops.
 //
 // Reached via: .hermit/bin/hermitd-run rc-server <subcommand>
-// Subcommands: start | stop | status | gc | sweep
+// Subcommands: start | stop | status | gc | sweep, each printing one JSON object
+// (sweep, the routine monitor's unattended gc, prints `OK`).
 //
 // Status is a single one-shot pane capture, never a tail: the server's TUI
 // redraws its status line continuously and floods any log follower.
@@ -21,6 +22,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmuxSessionAlive, capturePane as tmuxCapturePane } from './lib/tmux';
+import { emit, emitJson, exitError } from './lib/cli';
+
+type Json = any;
 
 const TMUX_SESSION = 'hermit-rc-gate';
 const READY_TIMEOUT_MS = 60_000;
@@ -57,63 +61,50 @@ function repoRoot(): string {
  * leaves the session running when it times out, so 'ready' has to come from the
  * same signal `start` waits on, not from mere liveness.
  */
-function statusFromPane(pane: string): string {
+function statusFromPane(pane: string): Json {
   const cap = pane.match(CAPACITY_RE);
-  if (cap && Number(cap[1]) > 0) return `connected ${cap[1]}/${cap[2]}`;
-  if (READY_RE.test(pane) || URL_RE.test(pane)) return 'ready';
-  return 'starting';
+  if (cap && Number(cap[1]) > 0) return { status: 'connected', connected: Number(cap[1]), capacity: Number(cap[2]) };
+  if (READY_RE.test(pane) || URL_RE.test(pane)) return { status: 'ready' };
+  return { status: 'starting' };
 }
 
-/** Gate status, followed by live spawn worktrees when any can be inspected. */
-function statusLine(): string {
-  const status = sessionAlive() ? statusFromPane(capturePane()) : 'down';
+/** Gate status, plus live spawn worktrees when any can be inspected. */
+function status(): Json {
+  const out = sessionAlive() ? statusFromPane(capturePane()) : { status: 'down' };
   const worktrees = bridgeWorktrees(repoRoot());
-  if (worktrees.length === 0) return status;
+  if (worktrees.length === 0) return out;
   const cwds = liveCwds();
-  if (cwds === null) return status;
-  const live = worktrees.filter(({ dir }) => inUse(cwds, dir)).map(({ name }) => name);
-  return `${status}\nspawns: ${live.length} live${live.length ? ` (${live.join(', ')})` : ''}`;
+  if (cwds === null) return out;
+  return { ...out, live_spawns: worktrees.filter(({ dir }) => inUse(cwds, dir)).map(({ name }) => name) };
 }
 
-function start(): number {
+function start(): Json {
   if (sessionAlive()) {
     const pane = capturePane();
-    const url = pane.match(URL_RE);
-    console.log(statusFromPane(pane) + (url ? ` ${url[0]}` : '') + ' (already open)');
-    return 0;
+    return { ...statusFromPane(pane), url: pane.match(URL_RE)?.[0] ?? null, already_open: true };
   }
 
   const cmd = 'claude remote-control --spawn worktree --no-create-session-in-dir';
   const r = sh('tmux', ['new-session', '-d', '-s', TMUX_SESSION, '-c', repoRoot(), cmd]);
-  if (r.status !== 0) {
-    console.error(`[rc-server] tmux new-session failed: ${r.stderr.trim() || 'unknown error'}`);
-    return 1;
-  }
+  if (r.status !== 0) return { error: 'tmux_failed' };
 
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     Bun.sleepSync(POLL_MS);
-    if (!sessionAlive()) {
-      console.error('[rc-server] the server exited during startup — run `status` after retrying, or check `tmux capture-pane`.');
-      return 1;
-    }
+    if (!sessionAlive()) return { error: 'server_exited' };
     const pane = capturePane();
     // Auth is the one failure worth naming: Remote Control rejects setup-token
     // installs outright, and no workaround exists on this side.
     if (LOGIN_RE.test(pane)) {
       sh('tmux', ['kill-session', '-t', TMUX_SESSION]);
-      console.error("[rc-server] Remote Control needs a claude.ai /login on this machine; this install's auth doesn't support it.");
-      return 1;
+      return { status: 'refused', reason: 'login_required' };
     }
     const url = pane.match(URL_RE);
-    if (url || READY_RE.test(pane)) {
-      console.log(`ready${url ? ` ${url[0]}` : ''}`);
-      return 0;
-    }
+    if (url || READY_RE.test(pane)) return { status: 'ready', url: url?.[0] ?? null };
   }
 
-  console.error(`[rc-server] no Ready line after ${READY_TIMEOUT_MS / 1000}s — session left running; inspect with \`tmux attach -t ${TMUX_SESSION}\`.`);
-  return 1;
+  // The session is left running for inspection (`tmux attach -t hermit-rc-gate`).
+  return { error: 'ready_timeout' };
 }
 
 /**
@@ -245,28 +236,26 @@ function worktreeBranches(root: string): Map<string, string> {
  * is the operator's to resolve; gc reports it and moves on. Committed work is
  * covered separately, by deleting the branch with -d rather than -D.
  *
- * `auto` marks the unattended timer sweep (the `sweep` verb): it reports
- * nothing on success and skips brand-new worktrees, per AUTO_SWEEP_MIN_AGE_MS.
+ * `auto` marks the unattended timer sweep (the `sweep` verb), which skips
+ * brand-new worktrees, per AUTO_SWEEP_MIN_AGE_MS. `kept` lists worktrees holding
+ * uncommitted changes; `failed`, ones git would not remove.
  */
-function gc(auto = false): number {
+function gc(auto = false): Json {
   const root = repoRoot();
   const worktrees = bridgeWorktrees(root);
-  if (worktrees.length === 0) return 0;
+  const result = { removed: [] as string[], kept: [] as string[], failed: [] as string[] };
+  if (worktrees.length === 0) return result;
 
   const cwds = liveCwds();
-  if (cwds === null) {
-    console.error('[rc-server] cannot determine session liveness (no readable /proc, and no usable lsof on darwin) — skipping gc.');
-    return 0;
-  }
+  if (cwds === null) return { status: 'skip', reason: 'liveness_unknown' };
 
   const branches = worktreeBranches(root);
-  let removed = 0;
   for (const { name, dir } of worktrees) {
     if (inUse(cwds, dir)) continue;
     if (auto && worktreeAgeMs(dir) < AUTO_SWEEP_MIN_AGE_MS) continue;
     // Untracked files count: a spawned session's new files are usually the work.
     if (sh('git', ['-C', dir, 'status', '--porcelain']).stdout.trim()) {
-      if (!auto) console.log(`kept ${name} (uncommitted changes)`);
+      result.kept.push(name);
       continue;
     }
     sh('git', ['-C', root, 'worktree', 'unlock', dir]); // absent lock → non-zero, ignored
@@ -274,7 +263,7 @@ function gc(auto = false): number {
       sh('git', ['-C', root, 'worktree', 'remove', dir]).status !== 0 &&
       sh('git', ['-C', root, 'worktree', 'remove', '--force', dir]).status !== 0
     ) {
-      console.error(`[rc-server] could not remove ${name} — left in place.`);
+      result.failed.push(name);
       continue;
     }
     // -d, not -D: the dirty check above only catches *uncommitted* work, so a
@@ -283,34 +272,25 @@ function gc(auto = false): number {
     // destroying the commits behind it.
     const branch = branches.get(dir);
     if (branch) sh('git', ['-C', root, 'branch', '-d', branch]);
-    if (!auto) console.log(`removed ${name}`);
-    removed++;
+    result.removed.push(name);
   }
-  if (removed) sh('git', ['-C', root, 'worktree', 'prune']);
-  return 0;
+  if (result.removed.length) sh('git', ['-C', root, 'worktree', 'prune']);
+  return result;
 }
 
-function stop(): number {
-  if (sessionAlive()) {
-    sh('tmux', ['kill-session', '-t', TMUX_SESSION]);
-    console.log('closed');
-  } else {
-    console.log('down');
-  }
-  return gc();
+function stop(): Json {
+  const alive = sessionAlive();
+  if (alive) sh('tmux', ['kill-session', '-t', TMUX_SESSION]);
+  const swept = gc();
+  const empty = !swept.status && !swept.removed.length && !swept.kept.length && !swept.failed.length;
+  return { status: alive ? 'closed' : 'down', ...(empty ? {} : { gc: swept }) };
 }
 
-function main(argv: string[]): number {
-  switch (argv[0]) {
-    case 'start': return start();
-    case 'stop': return stop();
-    case 'status': console.log(statusLine()); return 0;
-    case 'gc': return gc();
-    case 'sweep': return gc(true);
-    default:
-      console.error('Usage: hermitd-run rc-server <start|stop|status|gc|sweep>');
-      return 2;
-  }
+switch (process.argv[2]) {
+  case 'start': emitJson(start());
+  case 'stop': emitJson(stop());
+  case 'status': emitJson(status());
+  case 'gc': emitJson(gc());
+  case 'sweep': gc(true); emit('OK');
+  default: exitError();
 }
-
-process.exit(main(process.argv.slice(2)));

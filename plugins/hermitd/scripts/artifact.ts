@@ -5,10 +5,10 @@
 //
 // Usage:
 //   bun artifact.ts render <dashboard|proposals|weekly> <hermit-state-dir> [outPath]
-//     Renders the page to disk. Prints {"path":…,"bytes":…,"hash":…} on success;
-//     exits 1 on failure. The refresh protocols in docs/artifacts.md treat any
-//     failure as "skip silently", so the stderr text is diagnostic only — the
-//     exit code is the contract.
+//     Renders the page to disk. Prints {"path":…,"bytes":…,"hash":…} on success,
+//     or {"error":"render_failed:<page>"} (unknown_page, custom_renderer_owns_out_path)
+//     at exit 1. The refresh protocols in docs/artifacts.md treat any failure as
+//     "skip silently".
 //
 //   bun artifact.ts scaffold-strings <language> [generatedISO]
 //     Prints the artifact-strings.json scaffold with every chrome key at its
@@ -21,6 +21,8 @@
 //     Prints the dashboard's render inputs as JSON, for a hermit-local renderer
 //     (see docs/artifacts.md § Custom renderer) to compose its own page from:
 //     {state, themeCss, coreSections, updatedToken}. Read-only; writes nothing.
+//     The camelCase keys are an exception to the helper-output convention: they are
+//     the contract operator-owned renderers read.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +32,7 @@ import { loadProposalsPageState, renderProposalsPage } from './lib/proposals-pag
 import { renderWeeklyArtifact } from './lib/weekly-artifact';
 import { DEFAULT_STRINGS } from './lib/artifact-strings';
 import { CSS } from './lib/artifact-theme';
+import { exitError } from './lib/cli';
 
 interface Rendered { content: string; hash: string }
 
@@ -66,41 +69,25 @@ const PAGES: Record<string, { defaultOut: (dir: string) => string; render: (dir:
   },
 };
 
-const PAGE_NAMES = Object.keys(PAGES).join('|');
-const USAGE = `Usage: bun artifact.ts render <${PAGE_NAMES}> <hermit-state-dir> [outPath]\n` +
-              `       bun artifact.ts state dashboard <hermit-state-dir>\n` +
-              `       bun artifact.ts scaffold-strings <language> [generatedISO]`;
-
-function usage(): never {
-  console.error(USAGE);
-  process.exit(1);
-}
-
 /** Runs the hermit's own dashboard renderer and relays its receipt verbatim. The
  *  child owns the whole render — layout, data, hash — so nothing here inspects or
- *  rewrites its *page*; a non-zero exit propagates as this script's exit 1, which the
+ *  rewrites its *page*; a non-zero exit becomes this script's render_failed, which the
  *  refresh protocol already treats as "skip silently". The `{path,bytes,hash}` receipt
  *  is core's protocol rather than the child's, though, and step 1 of that protocol
  *  JSON.parses this stdout — so a renderer that exits 0 without one is failed here,
- *  landing on the same silent skip instead of throwing inside the calling skill. */
+ *  landing on the same silent skip instead of throwing inside the calling skill. The
+ *  child's stderr passes through as its own diagnostics. */
 function renderCustomDashboard(rendererPath: string, hermitDir: string): never {
   const r = spawnSync(process.execPath, [rendererPath, hermitDir], {
     encoding: 'utf8',
     timeout: 60_000,
     env: { ...process.env, [RENDER_GUARD]: '1' },
   });
-  if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
-  if (r.error) {
-    const what = (r.error as NodeJS.ErrnoException).code === 'ETIMEDOUT' ? 'timed out' : 'failed to start';
-    console.error(`artifact render dashboard: custom renderer ${what}: ${r.error.message}`);
-    process.exit(1);
-  }
-  if (r.status !== 0) process.exit(1);
-  if (!parsesAsReceipt(r.stdout)) {
-    console.error('artifact render dashboard: custom renderer exited 0 without a {path,hash} receipt on stdout');
-    process.exit(1);
-  }
+  if (r.error) exitError(`render_failed:dashboard:${(r.error as NodeJS.ErrnoException).code === 'ETIMEDOUT' ? 'timeout' : 'spawn'}`);
+  if (r.status !== 0) exitError('render_failed:dashboard');
+  if (!parsesAsReceipt(r.stdout)) exitError('render_failed:dashboard:no_receipt');
+  process.stdout.write(r.stdout);
   process.exit(0);
 }
 
@@ -114,22 +101,16 @@ function parsesAsReceipt(stdout: string): boolean {
 }
 
 function verbRender(page: string | undefined, hermitDir: string | undefined, outArg: string | undefined): void {
-  if (!page || !hermitDir) usage();
+  if (!page || !hermitDir) exitError();
   const spec = PAGES[page];
-  if (!spec) {
-    console.error(`artifact render: unknown page "${page}" (expected ${PAGE_NAMES})`);
-    process.exit(1);
-  }
+  if (!spec) exitError(`unknown_page:${page}`);
   if (page === 'dashboard' && !process.env[RENDER_GUARD]) {
     const custom = path.join(hermitDir, CUSTOM_RENDERER);
     if (fs.existsSync(custom)) {
       // The renderer's contract fixes its own out path (<hermitDir>/state/dashboard.html),
       // so honoring an explicit one is impossible — fail loudly instead of writing over
       // the live page while the caller believes it asked for a copy elsewhere.
-      if (outArg) {
-        console.error(`artifact render dashboard: ${CUSTOM_RENDERER} owns the out path; drop the explicit outPath argument`);
-        process.exit(1);
-      }
+      if (outArg) exitError('custom_renderer_owns_out_path');
       renderCustomDashboard(custom, hermitDir);
     }
   }
@@ -139,9 +120,8 @@ function verbRender(page: string | undefined, hermitDir: string | undefined, out
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, content, 'utf8');
     process.stdout.write(JSON.stringify({ path: outPath, bytes: Buffer.byteLength(content), hash }) + '\n');
-  } catch (err: any) {
-    console.error(`artifact render ${page}: failed: ${err?.message ?? err}`);
-    process.exit(1);
+  } catch {
+    exitError(`render_failed:${page}`);
   }
 }
 
@@ -149,7 +129,7 @@ function verbRender(page: string | undefined, hermitDir: string | undefined, out
  *  page keep any default card verbatim, and `themeCss` comes from the live stylesheet
  *  so core-side theme fixes reach custom pages without them being rebuilt. */
 function verbState(page: string | undefined, hermitDir: string | undefined): void {
-  if (page !== 'dashboard' || !hermitDir) usage();
+  if (page !== 'dashboard' || !hermitDir) exitError();
   try {
     const state = loadDashboardState(hermitDir);
     process.stdout.write(JSON.stringify({
@@ -158,9 +138,8 @@ function verbState(page: string | undefined, hermitDir: string | undefined): voi
       coreSections: renderCoreSections(state),
       updatedToken: UPDATED_TOKEN,
     }) + '\n');
-  } catch (err: any) {
-    console.error(`artifact state dashboard: failed: ${err?.message ?? err}`);
-    process.exit(1);
+  } catch {
+    exitError('state_failed:dashboard');
   }
 }
 
@@ -176,5 +155,5 @@ switch (verb) {
   case 'render': verbRender(rest[0], rest[1], rest[2]); break;
   case 'state': verbState(rest[0], rest[1]); break;
   case 'scaffold-strings': verbScaffoldStrings(rest[0], rest[1]); break;
-  default: usage();
+  default: exitError();
 }

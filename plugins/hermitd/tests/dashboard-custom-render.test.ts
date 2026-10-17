@@ -68,6 +68,7 @@ describe('artifact.ts state dashboard', () => {
   test('rejects a page other than dashboard', withHermitDir(async (hermitDir) => {
     const r = await runScript('artifact.ts', { args: ['state', 'proposals', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'usage' });
   }));
 });
 
@@ -107,6 +108,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     writeRenderer(hermitDir, 'process.exit(3);');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'render_failed:dashboard' });
   }));
 
   // The receipt is core's protocol, not the child's: step 1 of the refresh procedure
@@ -116,6 +118,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     writeRenderer(hermitDir, 'console.log("rendered ok");');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'render_failed:dashboard:no_receipt' });
   }));
 
   test('an explicit outPath is rejected, not silently ignored', withHermitDir(async (hermitDir) => {
@@ -123,6 +126,7 @@ process.stdout.write(JSON.stringify({ path: out, bytes: html.length, hash: 'x' }
     const out = path.join(hermitDir, 'state', 'elsewhere.html');
     const r = await runScript('artifact.ts', { args: ['render', 'dashboard', hermitDir, out] });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'custom_renderer_owns_out_path' });
     expect(fs.existsSync(out)).toBe(false);
     // and the live page was not overwritten behind the caller's back
     expect(fs.existsSync(path.join(hermitDir, 'state', 'dashboard.html'))).toBe(false);

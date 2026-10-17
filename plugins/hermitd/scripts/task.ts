@@ -1,11 +1,11 @@
-import { assertStateDir, pinStateDirOrExit } from './lib/cc-compat';
-import { listTasks, mutateTask, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
+import { pinStateDirOrExit } from './lib/cc-compat';
+import { exitError } from './lib/cli';
+import { listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
 
 async function main(): Promise<void> {
   const [verb, dirArg, ...args] = process.argv.slice(2);
-  // The shared helper exits 1; this command's contract uses 2 for invalid args.
-  if (!dirArg || !assertStateDir(dirArg)) throw new Error('invalid_state_dir');
-  const dir = pinStateDirOrExit(dirArg, 'task');
+  if (!dirArg) exitError();
+  const dir = pinStateDirOrExit(dirArg);
   const allowed: Record<string, string[]> = {
     open: ['note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     note: ['actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'check', 'owner', 'muted'],
@@ -47,4 +47,4 @@ async function main(): Promise<void> {
   }
   console.log(JSON.stringify(result));
 }
-main().catch((error: Error) => { console.error(error.message); process.exitCode = 2; });
+main().catch(reportTaskError);

@@ -49,7 +49,7 @@ Invoked from SKILL.md (quick mode and scheduled reflect) whenever ≥1 candidate
 
 **Pin the root.** Once per reflect run, before any judge, triage, or eval-runner dispatch. If this run already has the `Anchor:` line, reuse it. Otherwise:
 Run `proposal-anchor` (Commands).
-Its stdout is one whole `Anchor: root=… memory_dir=…` line, already carrying the `Anchor:` prefix — paste it verbatim as the first line of every subsequent judge, triage, scheduled-checks gate, and eval-runner dispatch this run, and do not re-prefix it. On a non-zero exit there is no line to paste: do not dispatch, rerun with the absolute state dir the error names in place of `.hermit`.
+It prints `{"root","memory_dir"}`. Compose `Anchor: root=<root> memory_dir=<memory_dir>` from them and paste that line as the first line of every subsequent judge, triage, scheduled-checks gate, and eval-runner dispatch this run. On an `{"error"}` there is no anchor: do not dispatch, rerun with the absolute state dir the error names in place of `.hermit`.
 
 ### Three-Condition Rule
 

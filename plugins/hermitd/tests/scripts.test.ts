@@ -1108,7 +1108,7 @@ describe('archive-raw', () => {
     const lint = await runLint(dir);
     lintOut = lint.stdout + lint.stderr;
     const arch = await runScript('archive-raw.ts', { args: [hermit(dir)] });
-    archiveOut = arch.stdout + arch.stderr;
+    archiveOut = arch.stdout;
   });
   afterAll(() => wd.cleanup());
 
@@ -1121,7 +1121,7 @@ describe('archive-raw', () => {
   });
 
   test('archive-raw (review-weekly does not pin, real ref does)', () => {
-    expect(archiveOut).toContain('1 archived, 1 retained');
+    expect(JSON.parse(archiveOut)).toMatchObject({ archived: 1, retained: 1 });
   });
   test('archive-raw (review-named file archived)', () => {
     expect(fs.existsSync(hermit(wd.dir, 'raw', '.archive', 'expired-snap.md'))).toBe(true);
@@ -1175,7 +1175,7 @@ describe('update-alert-state', () => {
       count: 1, consecutive_clean: 0, suppressed: false, first_seen: '2026-07-10', last_seen: '2026-07-10', text: 'Session idle 3h',
     });
     expect(state.total_ticks).toBe(5); // precheck-owned — must survive untouched
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(monitoring).toEqual([]);
     expect(stdout.notifications).toEqual(['Session idle 3h']); // first observation notifies
   }));
@@ -1296,7 +1296,7 @@ describe('update-alert-state', () => {
       alerts, self_eval: {}, total_ticks: 345, last_clean_eval_at: null, last_digest_date: '2026-07-10', // digest already sent today
     }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing new
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.last_clean_eval_at).toBe(NOW);
     expect(stdout.notifications).toEqual([]);
     // Still tracked, still suppressed, still counting — only the damper verdict changed.
@@ -1319,7 +1319,7 @@ describe('update-alert-state', () => {
     }));
     const { state, stdout } = await updateAlertState(dir,
       firingPayload([{ key: 'checklist:invoice1', text: 'An invoice has been overdue since Monday' }]));
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.last_clean_eval_at).toBe(NOW);
     expect(stdout.notifications).toEqual([]);
     expect(state.alerts['checklist:invoice1']).toMatchObject({ count: 3, suppressed: false, consecutive_clean: 0 });
@@ -1330,7 +1330,7 @@ describe('update-alert-state', () => {
       '{"alerts":{},"self_eval":{},"total_ticks":12,"last_clean_eval_at":"2026-07-10T06:00:00.000Z"}');
     const { state, stdout } = await updateAlertState(dir,
       firingPayload([{ key: 'checklist:invoice1', text: 'An invoice is overdue' }]));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.last_clean_eval_at).toBeNull();
     expect(stdout.notifications).toEqual(['An invoice is overdue']);
   }));
@@ -1357,6 +1357,7 @@ describe('update-alert-state', () => {
     const stateFile = hermit(dir, 'state', 'alert-state.json');
     const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: 'not-json' });
     expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_json' });
     expect(fs.existsSync(stateFile)).toBe(false);
   }));
 
@@ -1367,19 +1368,19 @@ describe('update-alert-state', () => {
     write(stateFile, before);
     let r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: 'not-an-array', self_eval_updates: {} }), env: { HERMIT_NOW: NOW } });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before)); // untouched — never coerced to empty and aged
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ key: 'checklist:x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // missing text
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
 
     write(stateFile, before);
     r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: JSON.stringify({ firing: [{ text: 'x' }], self_eval_updates: {} }), env: { HERMIT_NOW: NOW } }); // neither item nor key
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(readJson(stateFile)).toEqual(JSON.parse(before));
   }));
 
@@ -1388,7 +1389,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout, monitoring } = await updateAlertState(dir, '{"firing":null}');
     expect(state).toEqual(JSON.parse(before)); // untouched — last_clean_eval_at and the live alert both survive
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
     expect(monitoring).toHaveLength(0);
   }));
 
@@ -1399,7 +1400,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), before);
     const { state, stdout } = await updateAlertState(dir, 'null');
     expect(state).toEqual(JSON.parse(before));
-    expect(stdout).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'missing_or_malformed_firing' });
+    expect(stdout).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'missing_or_malformed_firing' });
   }));
 
   test('update-alert-state (duplicate firing keys deduped — first occurrence wins)', withDir(async (dir) => {
@@ -1453,7 +1454,7 @@ describe('update-alert-state', () => {
     ]));
     expect(state.alerts).toEqual({});
     expect(stdout.notifications).toEqual([]);
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
   }));
 
   test('update-alert-state (unresolvable key dedups on the key, not the reworded text)', withDir(async (dir) => {
@@ -1527,7 +1528,7 @@ describe('update-alert-state', () => {
     try {
       const r = await runScript('heartbeat.ts', { args: ['alert-state', stateFile], stdin: firingPayload([{ key: 'custom:x', text: 'x' }]), env: { HERMIT_NOW: NOW } });
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'INDETERMINATE', reason: 'write_failed' });
+      expect(JSON.parse(r.stdout.trim())).toMatchObject({ heartbeat_result: 'indeterminate', reason: 'write_failed' });
       expect(fs.readFileSync(stateFile, 'utf-8')).toBe(before); // untouched
     } finally {
       fs.chmodSync(stateSubdir, 0o755);
@@ -1561,7 +1562,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
     write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'Proceed?' }] }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.alerts['micro-proposal-pending:MP-1']).toBeDefined();
     expect(state.alerts['micro-proposal-pending:MP-1'].text).toContain("micro-proposal 'MP-1' awaiting operator input — Proceed?");
   }));
@@ -1722,7 +1723,7 @@ describe('update-alert-state', () => {
         'garbage',
       ],
     }));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(stdout.digest_done).toBeUndefined();
     const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
     expect(digest).not.toContain('Looks already done');
@@ -1733,7 +1734,7 @@ describe('update-alert-state', () => {
     // A refresh that is not an array at all degrades to no refresh.
     seedDecisionDigest(dir);
     const second = await updateAlertState(dir, JSON.stringify({ firing: [], refresh: { nope: true } }));
-    expect(second.stdout.heartbeat_result).not.toBe('INDETERMINATE');
+    expect(second.stdout.heartbeat_result).not.toBe('indeterminate');
     expect(second.stdout.notifications.some((n: string) => n.startsWith('Suppressed alert digest:'))).toBe(true);
   }));
 
@@ -1802,7 +1803,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5,"last_clean_eval_at":"2026-06-01T00:00:00.000Z"}');
     write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
     const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.heartbeat_result).toBe('ALERT');
+    expect(stdout.heartbeat_result).toBe('alert');
     expect(state.last_clean_eval_at).toBeNull();
   }));
 
@@ -1837,7 +1838,7 @@ describe('update-alert-state', () => {
 
     const second = await updateAlertState(dir, firingPayload([]));
     expect(second.stdout.notifications).toEqual([]); // same day — silent
-    expect(second.stdout.heartbeat_result).toBe('ALERT'); // but still never a false OK
+    expect(second.stdout.heartbeat_result).toBe('alert'); // but still never a false OK
 
     // A new day re-notifies: the file is still broken and the operator still can't see their queue.
     write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
@@ -1869,7 +1870,7 @@ describe('update-alert-state', () => {
     write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [] }));
     const { state, stdout } = await updateAlertState(dir, firingPayload([]));
     expect(stdout.notifications).toEqual([]);
-    expect(stdout.heartbeat_result).toBe('OK');
+    expect(stdout.heartbeat_result).toBe('ok');
     expect(state.structured_read_failure_notified_date).toBeNull();
   }));
 
@@ -2012,7 +2013,7 @@ describe('observations.ts observe', () => {
         stdin: 'attacker row',
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state dir must be');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.existsSync(ledgerOf(victim))).toBe(false);
     })();
   }));
@@ -2504,6 +2505,7 @@ describe('update-reflection-state', () => {
     const stateFile = hermit(dir, 'state', 'reflection-state.json');
     const r = await runPinnedScript('update-reflection-state.ts', hermit(dir), [stateFile, payload]);
     expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe('OK\n');
     return readJson(stateFile);
   }
 
@@ -3484,7 +3486,7 @@ describe('routines.ts log-event', () => {
 
     test.serial('log-event (root resolves to state file)', async () => {
       // Fired from the hermit root → unchanged behavior
-      await runScript('routines.ts', { args: ['log-event', 'weekly-review', 'skipped-waiting'], cwd: wd.dir });
+      expect((await runScript('routines.ts', { args: ['log-event', 'weekly-review', 'skipped-waiting'], cwd: wd.dir })).stdout).toBe('OK\n');
       const content = fs.readFileSync(metrics(), 'utf-8');
       expect(content).toContain('"routine_id":"weekly-review","event":"skipped-waiting"');
     });
@@ -3585,16 +3587,16 @@ describe('routines.ts log-event', () => {
   });
 
   describe('no hermit ancestor', () => {
-    // No .hermit/ ancestor → non-zero exit with a clear diagnostic
+    // No .hermit/ ancestor → non-zero exit with a clear error token
     let exitCode = 0;
-    let stderr = '';
+    let stdout = '';
 
     beforeAll(async () => {
       const nohermit = fs.mkdtempSync(path.join(os.tmpdir(), 'no-hermit-'));
       try {
         const r = await runScript('routines.ts', { args: ['log-event', 'x', 'fired'], cwd: nohermit });
         exitCode = r.exitCode;
-        stderr = r.stderr;
+        stdout = r.stdout;
       } finally {
         try { fs.rmSync(nohermit, { recursive: true, force: true }); } catch {}
       }
@@ -3604,7 +3606,7 @@ describe('routines.ts log-event', () => {
       expect(exitCode).not.toBe(0);
     });
     test('log-routine-event (no ancestor diagnostic)', () => {
-      expect(stderr).toContain('could not find .hermit/');
+      expect(JSON.parse(stdout)).toEqual({ error: 'no_hermit_dir' });
     });
   });
 });
@@ -3957,12 +3959,13 @@ describe('pricing', () => {
 });
 
 // -------------------------------------------------------
-// cost-report.ts reflect (subprocess — CWD-relative cost-log read, stdout report)
+// cost-report.ts reflect (subprocess — CWD-relative cost-log read, stdout JSON)
 // -------------------------------------------------------
 
-async function runCostReflect(dir: string): Promise<string> {
+async function runCostReflect(dir: string): Promise<any> {
   const r = await runScript('cost-report.ts', { args: ['reflect', '.hermit'], cwd: dir });
-  return r.stdout + r.stderr;
+  expect(r.exitCode).toBe(0);
+  return JSON.parse(r.stdout);
 }
 
 describe('cost-reflect', () => {
@@ -3970,7 +3973,7 @@ describe('cost-reflect', () => {
   // the 7-day window (today - 1 day). One entry is older than the window (today - 8 days).
   describe('window + sections', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -3990,92 +3993,71 @@ describe('cost-reflect', () => {
     });
     afterAll(() => wd.cleanup());
 
-    // Basic: exits cleanly and produces output
-    test('cost-reflect: produces output', () => {
-      expect(out.length).toBeGreaterThan(0);
-    });
-
     // Grand total = sum of 5 in-window stored dollars (session-OLD and malformed line excluded)
     // 0.03 + 0.195 + 0.024 + 7.5 + 0.021 = 7.77
     test('cost-reflect: total includes all 5 in-window entries', () => {
-      expect(out).toMatch(/7\.7[0-9]/);
+      expect(out.window_days).toBe(7);
+      expect(out.total_usd).toBeCloseTo(7.77, 4);
+      expect(out.turns).toBe(5);
     });
 
     // Pre-window entry excluded (session-OLD would contribute $99 if included)
     test('cost-reflect: pre-window entry excluded', () => {
-      expect(out).not.toMatch(/99\./);
-      expect(out).not.toContain('session-OLD');
+      expect(out.total_usd).toBeLessThan(99);
+      expect(out.top_sessions.map((s: any) => s.id)).not.toContain('session-');
     });
 
-    // Malformed line skipped, output still produced
-    test('cost-reflect: malformed line skipped', () => {
-      expect(out).toContain('$');
-    });
-
-    // Cold-start: section appears AND the content shows exactly 1 turn
+    // Cold-start: exactly 1 turn
     // (entry 2 matches heuristic; entry 5 has cw=0 so it is NOT a cold-start)
-    test('cost-reflect: cold-start section present', () => {
-      expect(out).toContain('Cold starts');
-    });
     test('cost-reflect: 1 cold-start turn detected', () => {
-      expect(out).toMatch(/1 turn.*cache-write/);
+      expect(out.cold_starts).toMatchObject({ turns: 1, cost_usd: 0.195 });
     });
 
-    // sessionB2 is the most expensive (opus, $7.5 output) → first line under Top sessions
+    // sessionB2 is the most expensive (opus, $7.5 output) → first top session
     test('cost-reflect: sessionB (opus output) is top session', () => {
-      const lines = out.split('\n');
-      const i = lines.findIndex((l) => l.includes('Top sessions'));
-      expect(i).toBeGreaterThanOrEqual(0);
-      expect(lines[i] + '\n' + (lines[i + 1] ?? '')).toContain('sessionB');
+      expect(out.top_sessions[0]).toMatchObject({ id: 'sessionB', cost_usd: 7.5 });
     });
 
     // sessionD4: sonnet, cache_read=20K tokens vs output=1K tokens — by token count
     // cache_read>output, but by sub-cost output ($0.015) > cache_read ($0.006) →
-    // dominant must be 'output', not 'cache_read'. Targets only the sessionD line.
+    // dominant must be 'output', not 'cache_read'.
     test('cost-reflect: dominant type by sub-cost not token volume', () => {
-      const dLines = out.split('\n').filter((l) => l.includes('sessionD'));
-      expect(dLines.join('\n')).toMatch(/output/i);
+      const d = out.top_sessions.find((s: any) => s.id === 'sessionD');
+      expect(d.dominant).toBe('output');
     });
 
-    // Output respects ≤1500 char cap
+    // The digest stays verdict-sized
     test('cost-reflect: output ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
+      expect(JSON.stringify(out).length).toBeLessThanOrEqual(1500);
     });
 
-    // Per-model section: fixture mixes sonnet, haiku, opus → section must appear
-    test('cost-reflect: Cost by model section present for mixed-model window', () => {
-      expect(out).toContain('Cost by model');
-    });
-    test('cost-reflect: per-model section contains sonnet row', () => {
-      expect(out).toMatch(/- sonnet /);
-    });
-    test('cost-reflect: per-model section contains haiku row', () => {
-      expect(out).toMatch(/- haiku /);
+    // Per-model rows: fixture mixes sonnet, haiku, opus
+    test('cost-reflect: by_model lists every model in a mixed-model window', () => {
+      expect(out.by_model.map((m: any) => m.model).sort()).toEqual(['haiku', 'opus', 'sonnet']);
     });
   });
 
-  // Single-model window: Cost by model section must be absent
-  test('cost-reflect: Cost by model section absent for single-model window', withDir(async (dir) => {
+  test('cost-reflect: by_model and cold_starts stay empty for a single-model window with no warm-up', withDir(async (dir) => {
     const inWindow = utcDate(daysAgo(1));
     write(path.join(dir, '.claude', 'cost-log.jsonl'), [
-      `{"timestamp":"${inWindow}T10:00:00.000Z","session_id":"s1","model":"sonnet","input_tokens":0,"cache_write_tokens":10000,"cache_read_tokens":0,"output_tokens":500,"total_tokens":10500,"estimated_cost_usd":0.05}`,
       `{"timestamp":"${inWindow}T10:01:00.000Z","session_id":"s1","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":50000,"output_tokens":200,"total_tokens":50200,"estimated_cost_usd":0.018}`,
     ].join('\n'));
     const o = await runCostReflect(dir);
-    expect(o).not.toContain('Cost by model');
+    expect(o.by_model).toEqual([]);
+    expect(o.cold_starts).toBeNull();
   }));
 
+  const EMPTY = { status: 'empty', reason: 'no_cost_data', window_days: 7 };
+
   // Empty log: no entries at all
-  test("cost-reflect: empty log → 'No cost data'", withDir(async (dir) => {
+  test('cost-reflect: empty log → empty status', withDir(async (dir) => {
     write(path.join(dir, '.claude', 'cost-log.jsonl'), '\n');
-    expect(await runCostReflect(dir)).toMatch(/no cost data/i);
+    expect(await runCostReflect(dir)).toEqual(EMPTY);
   }));
 
   // Missing log: .claude/cost-log.jsonl does not exist
-  test("cost-reflect: missing log → 'No cost data' (exit 0)", withDir(async (dir) => {
-    const r = await runScript('cost-report.ts', { args: ['reflect', '.hermit'], cwd: dir });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout + r.stderr).toMatch(/no cost data/i);
+  test('cost-reflect: missing log → empty status (exit 0)', withDir(async (dir) => {
+    expect(await runCostReflect(dir)).toEqual(EMPTY);
   }));
 });
 
@@ -4618,14 +4600,15 @@ describe('cost-reflect source attribution', () => {
   // Fixture log with known source values + legacy untagged entries
   describe('tagged sources', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
+    const source = (name: string) => out.by_source.find((r: any) => r.source === name);
 
     beforeAll(async () => {
       wd = setupWorkdir();
       const d = utcDate(daysAgo(1));
       // Fixture: 4 main-turn entries + 1 subagent:true entry for routine:reflect (haiku).
       // haiku cost: input=10000→$0.008, output=2000→$0.008 = $0.016.
-      // routine:reflect total: $0.06 (main) + $0.016 (subagent) = $0.076 → displayed as $0.08.
+      // routine:reflect total: $0.06 (main) + $0.016 (subagent) = $0.076.
       // turns count must remain 4 (subagent line excluded from turn counter).
       write(path.join(wd.dir, '.claude', 'cost-log.jsonl'), [
         `{"timestamp":"${d}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":100000,"output_tokens":0,"total_tokens":100000,"estimated_cost_usd":0.03}`,
@@ -4639,69 +4622,31 @@ describe('cost-reflect source attribution', () => {
     });
     afterAll(() => wd.cleanup());
 
-    test('cost-reflect: Cost by source section present', () => {
-      expect(out).toContain('Cost by source');
-    });
     test('cost-reflect: heartbeat source row present', () => {
-      expect(out).toContain('heartbeat');
-    });
-    test('cost-reflect: routine:reflect source row present', () => {
-      expect(out).toContain('routine:reflect');
-    });
-    test('cost-reflect: other (non-scheduled) label present', () => {
-      expect(out).toContain('non-scheduled');
+      expect(source('heartbeat')).toBeDefined();
     });
     test('cost-reflect: legacy entry (no source) bucketed to other', () => {
-      expect(out).toContain('other');
-    });
-    test('cost-reflect: routine row triggers subagent footnote', () => {
-      expect(out).toMatch(/subagent/i);
+      // other = $0.09 (tagged) + $0.021 (untagged legacy row)
+      expect(source('other').cost_usd).toBeCloseTo(0.111, 4);
     });
     test('cost-reflect (source fixture): output ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
+      expect(JSON.stringify(out).length).toBeLessThanOrEqual(1500);
     });
     test('cost-reflect: subagent entry folds into routine:reflect row (cost rises)', () => {
-      // routine:reflect = $0.06 (main sonnet) + $0.016 (haiku subagent) = $0.076 → $0.08
-      // Without subagent attribution it would show $0.06; with it, $0.08.
-      const routineLine = out.split('\n').find(l => l.includes('routine:reflect'));
-      expect(routineLine).toBeDefined();
-      expect(routineLine).toMatch(/\$0\.0[78]/); // $0.07 or $0.08 depending on rounding
+      // routine:reflect = $0.06 (main sonnet) + $0.016 (haiku subagent) = $0.076.
+      // Without subagent attribution it would be $0.06.
+      expect(source('routine:reflect').cost_usd).toBeCloseTo(0.076, 4);
     });
     test('cost-reflect: subagent line is excluded from turns count', () => {
       // 4 main-turn entries in fixture (not 5); subagent line must not inflate turns.
-      expect(out).toContain('4 turns');
-    });
-  });
-
-  // No-routine fixture: footnote must be absent when no routine row is displayed (no dangling note)
-  describe('no routine row', () => {
-    let wd: Workdir;
-    let out = '';
-
-    beforeAll(async () => {
-      wd = setupWorkdir();
-      const d = utcDate(daysAgo(1));
-      write(path.join(wd.dir, '.claude', 'cost-log.jsonl'), [
-        `{"timestamp":"${d}T10:00:00.000Z","session_id":"s1","source":"heartbeat","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":100000,"output_tokens":0,"total_tokens":100000,"estimated_cost_usd":0.03}`,
-        `{"timestamp":"${d}T10:02:00.000Z","session_id":"s3","source":"other","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":50000,"output_tokens":5000,"total_tokens":55000,"estimated_cost_usd":0.09}`,
-        '',
-      ].join('\n'));
-      out = await runCostReflect(wd.dir);
-    });
-    afterAll(() => wd.cleanup());
-
-    test('cost-reflect: no routine row → source section still present', () => {
-      expect(out).toContain('Cost by source');
-    });
-    test('cost-reflect: no routine row → no subagent footnote', () => {
-      expect(out).not.toMatch(/subagent/i);
+      expect(out.turns).toBe(4);
     });
   });
 
   // ~20-source cap fixture: verify ≤1500 chars with many distinct routine sources
   describe('many sources cap', () => {
     let wd: Workdir;
-    let out = '';
+    let out: any;
 
     beforeAll(async () => {
       wd = setupWorkdir();
@@ -4715,14 +4660,11 @@ describe('cost-reflect source attribution', () => {
     });
     afterAll(() => wd.cleanup());
 
-    test('cost-reflect: 20-source fixture produces output', () => {
-      expect(out.length).toBeGreaterThan(0);
+    test('cost-reflect: 20-source fixture caps by_source at five', () => {
+      expect(out.by_source).toHaveLength(5);
     });
-    test('cost-reflect: 20-source fixture ≤1500 chars', () => {
-      expect(out.length).toBeLessThanOrEqual(1500);
-    });
-    test('cost-reflect: 20-source fixture shows +N more sources line', () => {
-      expect(out).toContain('more sources');
+    test('cost-reflect: 20-source fixture counts the rest in more_sources', () => {
+      expect(out.more_sources).toBe(15);
     });
   });
 });
@@ -5295,21 +5237,22 @@ describe('channel-log', () => {
   });
 
   describe('scripts/channel-log.ts (subprocess CLI)', () => {
-    test('list-unconsolidated: no DB -> exit 0, empty JSON array', withDir(async (dir) => {
+    test('list-unconsolidated: no DB -> exit 0, empty rows', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'list-unconsolidated']);
       expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toEqual([]);
+      expect(JSON.parse(r.stdout.trim())).toEqual({ rows: [] });
     }));
 
     test('prune: no DB -> exit 0 (not a failure)', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'prune', '90']);
       expect(r.exitCode).toBe(0);
-      expect(r.stdout).toContain('pruned 0');
+      expect(JSON.parse(r.stdout.trim())).toEqual({ deleted: 0 });
     }));
 
     test('unknown subcommand -> exit 1', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'bogus']);
       expect(r.exitCode).toBe(1);
+      expect(r.stdout).toBe('{"error":"usage"}\n');
     }));
 
     test('list-unconsolidated stamps audience from shared_chats', withDir(async (dir) => {
@@ -5324,7 +5267,7 @@ describe('channel-log', () => {
       logMessage(hermitPath, { source: 'discord', chat_id: '4242', direction: 'in', text: 'numeric shared row' });
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       const byChat = Object.fromEntries(rows.map((r: { chat_id: string; audience: string }) => [r.chat_id, r.audience]));
       expect(byChat.C1).toBe('discord:C1');
       expect(byChat.C2).toBe('shared');
@@ -5337,7 +5280,7 @@ describe('channel-log', () => {
       logMessage(hermitPath, { source: 'discord', chat_id: 'C2', direction: 'in', text: 'b' });
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       expect(rows.map((r: { audience: string }) => r.audience).sort()).toEqual(['discord:C1', 'discord:C2']);
     }));
 
@@ -5347,14 +5290,15 @@ describe('channel-log', () => {
 
       const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
       expect(listed.exitCode).toBe(0);
-      const rows = JSON.parse(listed.stdout.trim());
+      const { rows } = JSON.parse(listed.stdout.trim());
       expect(rows.length).toBe(1);
 
       const marked = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'mark-consolidated', String(rows[0].id)]);
       expect(marked.exitCode).toBe(0);
+      expect(marked.stdout).toBe('OK\n');
 
       const listedAfter = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(JSON.parse(listedAfter.stdout.trim())).toEqual([]);
+      expect(JSON.parse(listedAfter.stdout.trim())).toEqual({ rows: [] });
     }));
 
     // channel-log.ts is reachable through a pre-approved
@@ -5371,7 +5315,7 @@ describe('channel-log', () => {
           env: { AGENT_DIR: hermit(mine) },
         });
         expect(r.exitCode).toBe(1);
-        expect(r.stderr).toContain('state dir must be');
+        expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
         expect(unconsolidated(victimPath).rows?.length).toBe(1);
       })();
     }));

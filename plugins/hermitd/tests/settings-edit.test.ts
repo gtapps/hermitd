@@ -117,7 +117,7 @@ describe('settings-edit.ts CLI', () => {
     const file = seedConfig(dir, { agent_name: 'Atlas', remote: true });
     const r = await runScript('settings-edit.ts', { args: [file, 'get'] });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ agent_name: 'Atlas', remote: true });
+    expect(JSON.parse(r.stdout)).toEqual({ value: { agent_name: 'Atlas', remote: true } });
   });
 
   test('get with a dotted path prints the leaf value', async () => {
@@ -125,7 +125,15 @@ describe('settings-edit.ts CLI', () => {
     const file = seedConfig(dir, { quality_gate: { tier: 'balanced' } });
     const r = await runScript('settings-edit.ts', { args: [file, 'get', 'quality_gate.tier'] });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toBe('balanced');
+    expect(JSON.parse(r.stdout)).toEqual({ value: 'balanced' });
+  });
+
+  test('get on an unset path reports not_set', async () => {
+    const dir = freshDir();
+    const file = seedConfig(dir, {});
+    const r = await runScript('settings-edit.ts', { args: [file, 'get', 'quality_gate.tier'] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'not_set' });
   });
 
   test('set a scalar leaf, preserving siblings', async () => {
@@ -133,6 +141,7 @@ describe('settings-edit.ts CLI', () => {
     const file = seedConfig(dir, { agent_name: 'Atlas', language: 'pt', escalation: 'balanced' });
     const r = await runScript('settings-edit.ts', { args: [file, 'set', 'escalation', 'autonomous'] });
     expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('OK');
     expect(readConfig(file)).toEqual({ agent_name: 'Atlas', language: 'pt', escalation: 'autonomous' });
   });
 
@@ -192,6 +201,7 @@ describe('settings-edit.ts CLI', () => {
     const file = seedConfig(dir, { remote: 'yes' });
     const r = await runScript('settings-edit.ts', { args: [file, 'toggle', 'remote'] });
     expect(r.exitCode).not.toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'not_boolean:remote' });
     expect(readConfig(file)).toEqual({ remote: 'yes' });
   });
 
@@ -204,7 +214,7 @@ describe('settings-edit.ts CLI', () => {
     fs.writeFileSync(file, malformed);
     const r = await runScript('settings-edit.ts', { args: [file, 'set', 'agent_name', 'x'] });
     expect(r.exitCode).not.toBe(0);
-    expect(r.stderr).toContain('Refusing to overwrite');
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_json' });
     expect(fs.readFileSync(file, 'utf8')).toBe(malformed);
   });
 
@@ -303,6 +313,7 @@ describe('settings-edit apply-known', () => {
     const file = seedConfig(dir, { agent_name: 'Atlas', escalation: 'balanced', custom_key: 'kept' });
     const r = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'escalation', 'autonomous'] });
     expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ path: 'escalation', value: 'autonomous', applies: 'immediately' });
     const cfg = readConfig(file);
     expect(cfg.escalation).toBe('autonomous');
     expect(cfg.custom_key).toBe('kept');
@@ -313,8 +324,10 @@ describe('settings-edit apply-known', () => {
     const dir = freshDir();
     const file = seedConfig(dir, { escalation: 'balanced' });
     const r = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'escalation', 'aggressive'] });
-    expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('conservative');
+    expect(r.exitCode).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out).toMatchObject({ status: 'refused', reason: 'invalid_value' });
+    expect(out.detail).toContain('conservative');
     expect(readConfig(file).escalation).toBe('balanced'); // unchanged
   });
 
@@ -329,8 +342,8 @@ describe('settings-edit apply-known', () => {
     const dir = freshDir();
     const file = seedConfig(dir, {});
     const r = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'nonesuch', 'x'] });
-    expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('unknown setting');
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ status: 'refused', reason: 'unknown_setting' });
   });
 
   test('coerces booleans from operator vocabulary', () => {
@@ -358,7 +371,7 @@ describe('settings-edit apply-known', () => {
       const cfg: any = {};
       const r = applyKnown(cfg, 'artifact-backend', blank);
       expect(r.ok).toBe(false);
-      expect(r.message).toContain('non-empty');
+      expect(r.detail).toContain('non-empty');
       expect(cfg.artifacts).toBeUndefined();
     }
     const cfg: any = {};
@@ -399,8 +412,10 @@ describe('settings-edit voice', () => {
     const dir = freshDir();
     const file = seedConfig(dir, { voice: { style: 'Concise', prose: null } });
     const r = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'voice', 'Explanatory'] });
-    expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('custom');
+    expect(r.exitCode).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out).toMatchObject({ status: 'refused', reason: 'invalid_value' });
+    expect(out.detail).toContain('custom');
     expect(readConfig(file).voice.style).toBe('Concise');
   });
 
@@ -430,7 +445,9 @@ describe('settings-edit voice', () => {
     const file = seedConfig(dir, { voice: { style: null, prose: null } });
     const r = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'voice', 'custom'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('voice.prose');
+    const out = JSON.parse(r.stdout);
+    expect(out.error).toBe('invalid_config');
+    expect(out.errors.join('\n')).toContain('voice.prose');
     expect(readConfig(file).voice.style).toBeNull();
   });
 
@@ -453,7 +470,9 @@ describe('settings-edit voice', () => {
     const file = seedConfig(dir, { voice: { style: null, prose: null } });
     const r = await runScript('settings-edit.ts', { args: [file, 'set', 'voice.prose', '42'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('voice.prose');
+    const out = JSON.parse(r.stdout);
+    expect(out.error).toBe('invalid_config');
+    expect(out.errors.join('\n')).toContain('voice.prose');
   });
 });
 
@@ -553,6 +572,7 @@ describe('settings-edit unset', () => {
     const file = seedConfig(dir, validConfig());
     const r = await runScript('settings-edit.ts', { args: [file, 'unset', 'nope.not.here'] });
     expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'not_set' });
     expect(auditRows(dir)).toHaveLength(0);
   });
 });
@@ -596,7 +616,8 @@ describe('settings-edit routines by index', () => {
       args: [file, 'set', 'routines.7', JSON.stringify(routine('gap'))],
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('0..1');
+    expect(JSON.parse(r.stdout).error).toStartWith('index_out_of_range:routines.7: ');
+    expect(JSON.parse(r.stdout).error).toContain('0..1');
     expect(readConfig(file).routines).toHaveLength(1);
   });
 });
@@ -608,17 +629,17 @@ describe('settings-edit history', () => {
     await runScript('settings-edit.ts', { args: [file, 'set', 'heartbeat.every', '30m'] });
     await runScript('settings-edit.ts', { args: [file, 'set', 'model', 'opus'] });
 
-    const all = await runScript('settings-edit.ts', { args: [file, 'history'] });
-    expect(all.stdout).toContain('heartbeat.every');
-    expect(all.stdout).toContain('model');
-    expect(all.stdout).toContain('[settings-edit]');
+    const all = JSON.parse((await runScript('settings-edit.ts', { args: [file, 'history'] })).stdout).rows;
+    expect(all).toEqual([
+      { ts: expect.any(String), path: 'heartbeat.every', actor: 'settings-edit', old: '2h', new: '30m' },
+      { ts: expect.any(String), path: 'model', actor: 'settings-edit', new: 'opus' },
+    ]);
 
-    const filtered = await runScript('settings-edit.ts', { args: [file, 'history', 'heartbeat'] });
-    expect(filtered.stdout).toContain('heartbeat.every');
-    expect(filtered.stdout).not.toContain('"opus"');
+    const filtered = JSON.parse((await runScript('settings-edit.ts', { args: [file, 'history', 'heartbeat'] })).stdout).rows;
+    expect(filtered.map((r: any) => r.path)).toEqual(['heartbeat.every']);
 
-    const limited = await runScript('settings-edit.ts', { args: [file, 'history', '--limit', '1'] });
-    expect(limited.stdout.trim().split('\n')).toHaveLength(1);
+    const limited = JSON.parse((await runScript('settings-edit.ts', { args: [file, 'history', '--limit', '1'] })).stdout).rows;
+    expect(limited).toHaveLength(1);
   });
 
   test('an empty ledger reports plainly', async () => {
@@ -626,7 +647,7 @@ describe('settings-edit history', () => {
     const file = seedConfig(dir, validConfig());
     const r = await runScript('settings-edit.ts', { args: [file, 'history'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('No recorded settings changes');
+    expect(JSON.parse(r.stdout)).toEqual({ rows: [] });
   });
 
   test('history names the routine id and field that changed', async () => {
@@ -637,7 +658,7 @@ describe('settings-edit history', () => {
     await runScript('settings-edit.ts', { args: [file, 'set', 'routines.0.schedule', '"0 8 * * *"'] });
     const r = await runScript('settings-edit.ts', { args: [file, 'history', 'routines'] });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('~heartbeat-restart(schedule)');
+    expect(JSON.parse(r.stdout).rows[0].diff).toEqual({ added: [], removed: [], changed: { 'heartbeat-restart': ['schedule'] } });
   });
 });
 
@@ -650,7 +671,7 @@ describe('settings-edit record-file', () => {
 
     const first = await runScript('settings-edit.ts', { args: [file, 'record-file', 'HEARTBEAT.md'] });
     expect(first.exitCode).toBe(0);
-    expect(first.stdout).toContain('recorded HEARTBEAT.md');
+    expect(JSON.parse(first.stdout).status).toBe('recorded');
     const rows = auditRows(dir);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -664,13 +685,13 @@ describe('settings-edit record-file', () => {
 
     const second = await runScript('settings-edit.ts', { args: [file, 'record-file', 'HEARTBEAT.md'] });
     expect(second.exitCode).toBe(0);
-    expect(second.stdout).toContain('unchanged');
+    expect(JSON.parse(second.stdout).status).toBe('unchanged');
     expect(auditRows(dir)).toHaveLength(1);
 
     fs.writeFileSync(heartbeat, '# Heartbeat\n- item one\n- item two\n');
     const third = await runScript('settings-edit.ts', { args: [file, 'record-file', 'HEARTBEAT.md'] });
     expect(third.exitCode).toBe(0);
-    expect(third.stdout).toContain('recorded HEARTBEAT.md');
+    expect(JSON.parse(third.stdout).status).toBe('recorded');
     const after = auditRows(dir);
     expect(after).toHaveLength(2);
     expect(after[1].old).toBe(firstNew);
@@ -678,9 +699,9 @@ describe('settings-edit record-file', () => {
 
     const history = await runScript('settings-edit.ts', { args: [file, 'history', 'HEARTBEAT.md'] });
     expect(history.exitCode).toBe(0);
-    expect(history.stdout).toContain('HEARTBEAT.md');
-    expect(history.stdout).toContain('[heartbeat-edit]');
-    expect(history.stdout.trim().split('\n')).toHaveLength(2);
+    const historyRows = JSON.parse(history.stdout).rows;
+    expect(historyRows).toHaveLength(2);
+    expect(historyRows.every((r: any) => r.path === 'HEARTBEAT.md' && r.actor === 'heartbeat-edit')).toBe(true);
   });
 
   test('an unsupported file name exits 1', async () => {
@@ -688,7 +709,7 @@ describe('settings-edit record-file', () => {
     const file = seedConfig(dir, validConfig());
     const r = await runScript('settings-edit.ts', { args: [file, 'record-file', 'OPERATOR.md'] });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'unsupported_file' });
     expect(auditRows(dir)).toHaveLength(0);
   });
 });

@@ -22,6 +22,15 @@ import { costIndexPath, updateCostIndex } from '../scripts/lib/cost-log';
 const validate = (predicate: string) =>
   runScript('proposal.ts', { args: ['success-signal', '--validate', predicate] });
 
+/** Validate-mode rejection: exit 0 (an expected answer), the reason token. */
+async function invalidReason(predicate: string) {
+  const r = await validate(predicate);
+  expect(r.exitCode).toBe(0);
+  const out = JSON.parse(r.stdout);
+  expect(out.status).toBe('invalid');
+  return out.reason;
+}
+
 /** Run a test body with a throwaway .hermit state dir (sessions/ pre-made). */
 function withStateDir(fn: (sdir: string) => Promise<void> | void, subdir = 'sessions') {
   return async () => {
@@ -87,49 +96,47 @@ async function evaluate(sdir: string, acceptedDate: string, acceptedInSession: s
 
 describe('validate mode', () => {
   test('validate: canonical predicate accepted', async () => {
-    expect((await validate('avg_session_cost_usd < 0.30 over 10 sessions')).exitCode).toBe(0);
+    expect((await validate('avg_session_cost_usd < 0.30 over 10 sessions')).stdout).toBe('OK\n');
   });
 
   test('validate: <= op accepted', async () => {
-    expect((await validate('avg_session_cost_usd <= 0.50 over 5 sessions')).exitCode).toBe(0);
+    expect((await validate('avg_session_cost_usd <= 0.50 over 5 sessions')).stdout).toBe('OK\n');
   });
 
   test('validate: > op accepted', async () => {
-    expect((await validate('avg_session_cost_usd > 0.10 over 3 sessions')).exitCode).toBe(0);
+    expect((await validate('avg_session_cost_usd > 0.10 over 3 sessions')).stdout).toBe('OK\n');
   });
 
   test('validate: >= op accepted', async () => {
-    expect((await validate('avg_session_cost_usd >= 0.05 over 1 session')).exitCode).toBe(0);
+    expect((await validate('avg_session_cost_usd >= 0.05 over 1 session')).stdout).toBe('OK\n');
   });
 
   test('validate: integer threshold accepted', async () => {
-    expect((await validate('avg_session_cost_usd < 1 over 7 sessions')).exitCode).toBe(0);
+    expect((await validate('avg_session_cost_usd < 1 over 7 sessions')).stdout).toBe('OK\n');
   });
 
-  test('validate: bad op rejected (exit non-zero)', async () => {
-    expect((await validate('avg_session_cost_usd ~ 0.30 over 10 sessions')).exitCode).not.toBe(0);
+  test('validate: bad op rejected', async () => {
+    expect(await invalidReason('avg_session_cost_usd ~ 0.30 over 10 sessions')).toBeString();
   });
 
   test('validate: bad op prints reason', async () => {
-    const r = await validate('avg_session_cost_usd ~ 0.30 over 10 sessions');
-    expect(r.stdout + r.stderr).toContain('invalid grammar');
+    expect(await invalidReason('avg_session_cost_usd ~ 0.30 over 10 sessions')).toBe('invalid_grammar');
   });
 
   test('validate: unsupported metric rejected', async () => {
-    expect((await validate('total_tokens < 1000 over 5 sessions')).exitCode).not.toBe(0);
+    expect(await invalidReason('total_tokens < 1000 over 5 sessions')).toBeString();
   });
 
   test('validate: unsupported metric prints reason', async () => {
-    const r = await validate('total_tokens < 1000 over 5 sessions');
-    expect(r.stdout + r.stderr).toContain('unsupported metric');
+    expect(await invalidReason('total_tokens < 1000 over 5 sessions')).toBe('unsupported_metric:total_tokens');
   });
 
   test("validate: missing 'over N sessions' rejected", async () => {
-    expect((await validate('avg_session_cost_usd < 0.30')).exitCode).not.toBe(0);
+    expect(await invalidReason('avg_session_cost_usd < 0.30')).toBeString();
   });
 
   test('validate: missing window number rejected', async () => {
-    expect((await validate('avg_session_cost_usd < 0.30 over sessions')).exitCode).not.toBe(0);
+    expect(await invalidReason('avg_session_cost_usd < 0.30 over sessions')).toBeString();
   });
 });
 
@@ -144,7 +151,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-002', '2026-05-02T10:00:00Z', '0.22');
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.18');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 5 sessions');
-    expect(d.verdict).toBe('INSUFFICIENT_DATA');
+    expect(d.status).toBe('insufficient_data');
   }));
 
   test('evaluate: sessions_counted in INSUFFICIENT_DATA output', withStateDir(async (sdir) => {
@@ -161,7 +168,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-004', '2026-05-04T10:00:00Z', '0.19');
     writeReport(sdir, 'S-005', '2026-05-05T10:00:00Z', '0.21');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 5 sessions');
-    expect(d.verdict).toBe('MET');
+    expect(d.status).toBe('met');
   }));
 
   test('evaluate: observed value in MET output', withStateDir(async (sdir) => {
@@ -178,7 +185,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-002', '2026-05-02T10:00:00Z', '0.40');
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.40');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('UNMET');
+    expect(d.status).toBe('unmet');
   }));
 
   test('evaluate: accepted_in_session excluded from window', withStateDir(async (sdir) => {
@@ -190,7 +197,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.20');
     writeReport(sdir, 'S-004', '2026-05-04T10:00:00Z', '0.20');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'S-001', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('MET');
+    expect(d.status).toBe('met');
   }));
 
   test('evaluate: sessions before accepted_date excluded', withStateDir(async (sdir) => {
@@ -200,7 +207,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-002', '2026-05-02T10:00:00Z', '0.20');
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.20');
     const d = await evaluate(sdir, '2026-05-01T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('INSUFFICIENT_DATA');
+    expect(d.status).toBe('insufficient_data');
   }));
 
   test('evaluate: frozen session reports are ignored', withStateDir(async (sdir) => {
@@ -211,13 +218,13 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.20');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
     // The frozen archive cannot affect task evaluation.
-    expect(d.verdict).toBe('MET');
+    expect(d.status).toBe('met');
   }));
 
   test('evaluate: missing tasks dir returns INSUFFICIENT_DATA (not crash)', withStateDir(async (sdir) => {
     // No tasks/ directory (only state/ exists).
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('INSUFFICIENT_DATA');
+    expect(d.status).toBe('insufficient_data');
   }, 'state'));
 
   test('evaluate: cost_usd=0 sessions excluded (no spurious MET)', withStateDir(async (sdir) => {
@@ -227,7 +234,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-002', '2026-05-02T10:00:00Z', '0.00');
     writeReport(sdir, 'S-003', '2026-05-03T10:00:00Z', '0.00');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('INSUFFICIENT_DATA');
+    expect(d.status).toBe('insufficient_data');
   }));
 
   test('evaluate: unrecorded sessions skipped, recorded ones still count', withStateDir(async (sdir) => {
@@ -238,7 +245,7 @@ describe('evaluate mode', () => {
     writeReport(sdir, 'S-004', '2026-05-04T10:00:00Z', '0.20');
     writeReport(sdir, 'S-005', '2026-05-05T10:00:00Z', '0.20');
     const d = await evaluate(sdir, '2026-04-30T00:00:00Z', 'null', 'avg_session_cost_usd < 0.30 over 3 sessions');
-    expect(d.verdict).toBe('MET');
+    expect(d.status).toBe('met');
     expect(d.sessions_counted).toBe(3);
     expect(d.observed).toBe(0.2);
   }));

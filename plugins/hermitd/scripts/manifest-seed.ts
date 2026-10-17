@@ -4,9 +4,9 @@
 // reliably; this script makes the pristine-baseline correct by construction.
 //
 // Usage: bun manifest-seed.ts <hermit-state-dir>     # e.g. .hermit
-//   stdin: { "pluginVersion": "1.2.9", "entries": [
+//   stdin: { "plugin_version": "1.2.9", "entries": [
 //     { "key": "templates/PROPOSAL.md.template", "file": "/abs/path/to/file" },
-//     { "keyPrefix": "bin", "dir": "/abs/state-templates/bin" }
+//     { "key_prefix": "bin", "dir": "/abs/state-templates/bin" }
 //   ] }
 //
 // Manifest shape (consumed by evolve-plan.ts):
@@ -16,9 +16,12 @@
 // the base hermit-evolve diffs an operator-customized file against.
 //
 // Caller owns which path each `file` points at (upstream template vs on-disk
-// rendered output) — the script only hashes what it is given. For `keyPrefix`
+// rendered output) — the script only hashes what it is given. For `key_prefix`
 // entries it enumerates the SOURCE dir handed in, never the project destination
 // (which may hold operator/add-on files).
+//
+// Output: `{"seeded":N,"preserved":N}` (preserved = foreign keys kept), or
+// `{"error":"<token>[:detail]"}` with exit 1.
 //
 // Fail-loud (exit 1, write nothing) on malformed stdin OR a present-but-invalid
 // existing manifest — consumers (evolve-plan.ts) treat an invalid manifest as
@@ -30,60 +33,56 @@ import path from 'node:path';
 import { sha256 } from './lib/hash';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { writePristineBaselines } from './lib/pristine-baseline';
-
-function die(msg: string): never {
-  console.error(`manifest-seed: ${msg}`);
-  process.exit(1);
-}
+import { emitJson, exitError } from './lib/cli';
 
 function isPlainObject(v: any): boolean {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 const stateDirArg = process.argv[2];
-if (!stateDirArg) die('usage: bun manifest-seed.ts <hermit-state-dir>  (JSON payload on stdin)');
+if (!stateDirArg) exitError();
 // The state dir is not caller-chosen. Reachable through a pre-approved
 // `Bash(bun */scripts/manifest-seed.ts*)` grant that covers every argument, so
 // an unvalidated root let one such call seed a manifest into another project's
 // hermit state. See lib/cc-compat.ts assertStateDir().
-const stateDir = pinStateDirOrExit(stateDirArg, 'manifest-seed');
+const stateDir = pinStateDirOrExit(stateDirArg);
 
 function apply(raw: string): void {
-  if (!raw) die('empty stdin — expected a JSON payload');
+  if (!raw) exitError('empty_stdin');
 
   let payload: any;
   try {
     payload = JSON.parse(raw);
-  } catch (e: any) {
-    die(`stdin is not valid JSON: ${e.message}`);
+  } catch {
+    exitError('invalid_json');
   }
 
-  const pluginVersion = payload?.pluginVersion;
+  const pluginVersion = payload?.plugin_version;
   if (typeof pluginVersion !== 'string' || !pluginVersion.trim()) {
-    die('payload.pluginVersion must be a non-empty string');
+    exitError('invalid_plugin_version');
   }
   const entries = payload?.entries;
   if (!Array.isArray(entries) || entries.length === 0) {
-    die('payload.entries must be a non-empty array');
+    exitError('invalid_entries');
   }
 
   const toHash: { key: string; file: string }[] = [];
   for (const e of entries) {
     if (e && typeof e.key === 'string' && typeof e.file === 'string') {
       toHash.push({ key: e.key, file: e.file });
-    } else if (e && typeof e.keyPrefix === 'string' && typeof e.dir === 'string') {
+    } else if (e && typeof e.key_prefix === 'string' && typeof e.dir === 'string') {
       let names: string[];
       try {
         names = fs
           .readdirSync(e.dir)
           .filter((n) => fs.statSync(path.join(e.dir, n)).isFile())
           .sort();
-      } catch (err: any) {
-        die(`cannot enumerate dir for keyPrefix '${e.keyPrefix}': ${err.message}`);
+      } catch {
+        exitError(`unreadable_dir:${e.key_prefix}`);
       }
-      for (const n of names) toHash.push({ key: `${e.keyPrefix}/${n}`, file: path.join(e.dir, n) });
+      for (const n of names) toHash.push({ key: `${e.key_prefix}/${n}`, file: path.join(e.dir, n) });
     } else {
-      die(`invalid entry (need {key,file} or {keyPrefix,dir}): ${JSON.stringify(e)}`);
+      exitError(`invalid_entry:${JSON.stringify(e)}`);
     }
   }
 
@@ -93,8 +92,8 @@ function apply(raw: string): void {
     let buf: Buffer;
     try {
       buf = fs.readFileSync(file);
-    } catch (err: any) {
-      die(`cannot read file to hash for key '${key}': ${err.message}`);
+    } catch {
+      exitError(`unreadable_file:${key}`);
     }
     seeded[key] = { sha256: sha256(buf), plugin_version: pluginVersion };
     pristine.push({ key, buf });
@@ -108,12 +107,10 @@ function apply(raw: string): void {
     let existing: any;
     try {
       existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    } catch (e: any) {
-      die(`existing template-manifest.json is not valid JSON: ${e.message} — refusing to overwrite`);
+    } catch {
+      exitError('corrupt_manifest:invalid_json');
     }
-    if (!isPlainObject(existing) || !isPlainObject(existing.files)) {
-      die('existing template-manifest.json: missing or invalid `files` object — refusing to overwrite');
-    }
+    if (!isPlainObject(existing) || !isPlainObject(existing.files)) exitError('corrupt_manifest:invalid_files');
     const bad = Object.entries(existing.files)
       .filter(
         ([, v]: [string, any]) =>
@@ -121,7 +118,7 @@ function apply(raw: string): void {
       )
       .map(([k]) => k);
     if (bad.length) {
-      die(`existing template-manifest.json: invalid sha256 in: ${bad.join(', ')} — refusing to overwrite`);
+      exitError(`corrupt_manifest:invalid_sha256:${bad.join(',')}`);
     }
     baseFiles = existing.files;
   }
@@ -148,11 +145,11 @@ function apply(raw: string): void {
   // wrong diff to the migration, which never re-checks the hash.
   try {
     writePristineBaselines(stateDir, pristine);
-  } catch (err: any) {
-    die(err.message);
+  } catch {
+    exitError('pristine_write_failed');
   }
 
-  console.log(`seeded ${Object.keys(seeded).length} entries, preserved ${preserved} foreign keys`);
+  emitJson({ seeded: Object.keys(seeded).length, preserved });
 }
 
 let buf = '';

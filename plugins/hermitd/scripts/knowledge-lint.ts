@@ -9,6 +9,9 @@
 //   type: 'unreferenced' | 'stale' | 'missing-type' | 'oversized' | 'working-set' | 'stale-compiled' | 'line-limit' | 'tag-variant' | 'undeclared-type' | 'unused-declaration' | 'topic-missing-updated'
 // counts: { raw, compiled, archived }
 // options: { verbose: false } — unused-declaration findings only included when verbose=true
+//
+// The CLI is a display renderer, not a JSON verb: /hermit-health relays its
+// grouped report verbatim and branches on no field. Code reads lint() instead.
 
 import fs from 'node:fs';
 import path from 'node:path';

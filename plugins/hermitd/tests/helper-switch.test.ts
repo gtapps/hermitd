@@ -25,7 +25,7 @@ async function run(state: unknown, args = ['--model', 'sonnet']) {
 }
 test('swaps model, preserves valueless flags and quoted paths, and drops worktree', async () => {
   expect(await run(saved)).toEqual({
-    verdict: 'ok', sid: 'session-id', name: 'review', cwd: '/project/worktree',
+    sid: 'session-id', name: 'review', cwd: '/project/worktree',
     flags: "'--name' 'review' '--model' 'sonnet' '--remote-control' '--mcp-config' '/tmp/helper'\\''s folder/mcp.json'",
   });
 });
@@ -54,8 +54,8 @@ for (const [label, state, args] of [
 ] as const) {
   test(`refuses ${label}`, async () => {
     const result = await run(state, [...args]);
-    expect(result.verdict).toBe('refuse');
-    expect(result.reason).not.toContain('\n');
+    expect(result.status).toBe('refused');
+    expect(result.reason).toMatch(/^[a-z_]+$/);
   });
 }
 test('refuses unreadable JSON and missing file', async () => {
@@ -67,7 +67,7 @@ test('refuses unreadable JSON and missing file', async () => {
     }
     const result = await runScript('helper-switch.ts', { args: ['a1b2c3d4', '--model', 'sonnet'], env: { CLAUDE_CONFIG_DIR: dir } });
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout).verdict).toBe('refuse');
+    expect(JSON.parse(result.stdout)).toEqual({ status: 'refused', reason: 'job_state_unreadable' });
   }
 });
 test('CLAUDE_CONFIG_DIR wins over HOME/.claude', async () => {

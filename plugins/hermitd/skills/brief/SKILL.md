@@ -23,7 +23,7 @@ Before composing any brief, determine the dispatch mode:
 
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`.
 2. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary", or no flag).
-3. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty lines.
+3. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows.
 
 Read these bounded digests fresh each turn. With no flag and open resident records, summarize those records in main. Otherwise dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`, passing `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, `daily`, or `default-no-session`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 

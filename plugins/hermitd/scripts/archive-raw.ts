@@ -3,6 +3,8 @@
 // Zero npm dependencies. Node stdlib only.
 // Usage: bun archive-raw.ts <hermit-state-dir>
 //   hermit-state-dir: path to .hermit/ in the target project (default: .hermit)
+// Output: `{"archived":N,"retained":N,"skipped":[{"file","reason"}],"pinned":N,"purged":N}`.
+// Each purged .archive/ entry is also logged on stderr.
 //
 // Safety: a raw artifact is retained if any compiled/ body references its filename.
 
@@ -10,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readFrontmatter, globDir } from './lib/frontmatter';
 import { readSettledConfig } from './lib/config-read';
+import { emitJson } from './lib/cli';
 
 const hermitDir = process.argv[2] || '.hermit';
 const rawDir = path.join(hermitDir, 'raw');
@@ -49,10 +52,7 @@ for (const fullPath of globDir(compiledDir, /^[^.].*\.md$/)) {
 // --- Scan raw/ ---
 const rawFullPaths = globDir(rawDir, /^[^.].*\.(md|json)$/);
 if (rawFullPaths.length === 0) {
-  if (archiveRetentionDays === null) {
-    console.log('raw/ does not exist or is empty — nothing to archive.');
-    process.exit(0);
-  }
+  if (archiveRetentionDays === null) emitJson({ archived: 0, retained: 0, skipped: [], pinned: 0, purged: 0 });
   // archiveRetentionDays configured: skip moves, fall through to purge.
 }
 
@@ -85,13 +85,13 @@ for (const filePath of rawFullPaths) {
       created = filenameDate ? new Date(filenameDate) : null;
     }
     if (!created || isNaN(created.getTime())) {
-      skippedFiles.push({ file: filename, reason: `unparseable created: "${fm.created}"` });
+      skippedFiles.push({ file: filename, reason: 'unparseable_created' });
       continue;
     }
   } else {
     created = filenameDate ? new Date(filenameDate) : null;
     if (!created || isNaN(created.getTime())) {
-      skippedFiles.push({ file: filename, reason: 'missing created: frontmatter and no date in filename' });
+      skippedFiles.push({ file: filename, reason: 'missing_created' });
       continue;
     }
   }
@@ -122,7 +122,7 @@ for (const filePath of rawFullPaths) {
     fs.renameSync(filePath, dest);
     archived++;
   } catch (err: any) {
-    skippedFiles.push({ file: filename, reason: `move failed: ${err.message}` });
+    skippedFiles.push({ file: filename, reason: `move_failed:${err.message}` });
   }
 }
 
@@ -158,10 +158,4 @@ if (archiveRetentionDays !== null) {
   } catch { /* .archive/ may not exist yet */ }
 }
 
-console.log(`archive-raw: ${archived} archived, ${retained} retained, ${skippedFiles.length} skipped, ${pinned} pinned (-latest), ${purged} purged.`);
-if (archived > 0) {
-  console.log(`Archived to ${archiveDir}`);
-}
-for (const { file, reason } of skippedFiles) {
-  console.log(`archive-raw: skipped ${file} — ${reason}`);
-}
+emitJson({ archived, retained, skipped: skippedFiles, pinned, purged });

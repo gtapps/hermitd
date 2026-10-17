@@ -90,7 +90,7 @@ Each row is the same shape: ask the operator for a value, then write it with
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json apply-known <argument> <value>
 ```
 
-Pass the **argument name**, not the dotted path — the script looks the path up, coerces the value by kind, and refuses an out-of-enum value or an unknown argument with exit 1 (this matters: `settings-edit` writes through `fs`, so the `validate-config.ts` PostToolUse hook never sees the write and a bad value would otherwise land silently). On success it prints the confirmation line, including when the change applies; relay that. `none`/`clear` maps to null wherever a row is marked nullable. Compose the prompt itself from the hint and the enum values.
+Pass the **argument name**, not the dotted path — the script looks the path up, coerces the value by kind, and refuses an out-of-enum value or an unknown argument with `status: refused` and a `detail` to relay (this matters: `settings-edit` writes through `fs`, so the `validate-config.ts` PostToolUse hook never sees the write and a bad value would otherwise land silently). On success relay the new `value` and when it `applies`. `none`/`clear` maps to null wherever a row is marked nullable. Compose the prompt itself from the hint and the enum values.
 
 | Argument | Config path | Type | Values | Applies |
 |---|---|---|---|---|

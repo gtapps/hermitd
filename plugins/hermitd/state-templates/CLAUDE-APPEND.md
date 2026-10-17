@@ -24,7 +24,7 @@ Main owns outbound sends and `AskUserQuestion`; a task worker edits only the car
 - **No channel enabled** (no channel entry with `enabled !== false`, excluding `primary`): if `push_notifications === true`, fire `PushNotification(message="<≤200 chars, no markdown, actionable first>", status="proactive")` and respond in conversation. Empty channels config: don't log an issue.
 - **Channel enabled:** compose the audience version(s) and run `.hermit/bin/hermitd-run channel-send .hermit --notice` with `{"client": "<plain>", "maintainer": "<technical/spend detail>"}` on stdin (either key alone is fine).
 
-Delivery failures, degraded legs, and exit-code handling: `skills/channel-responder/outbound.md`.
+Delivery failures, degraded legs, and status handling: `skills/channel-responder/outbound.md`.
 
 **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the five channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`) may be named when the operator asks how to control you.
 

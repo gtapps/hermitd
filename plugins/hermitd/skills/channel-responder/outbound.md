@@ -21,16 +21,16 @@ Use this protocol for proactive notifications (`CLAUDE-APPEND.md` § Operator No
   Compose each version in the operator's configured `language` and apply §0 Message formatting
   to the completed message bodies before sending.
 
-  The script prints `{ "delivered", "degraded", "no_channel", "result" }`.
-  - **Exit 0** — every leg landed. Done.
-  - **Exit 2**: invalid payload (reason on stderr, nothing sent). Fix and re-run;
+  The script prints `{ "status", "reason"?, "result" }`.
+  - **`delivered`**: every leg landed. Done.
+  - **`error`** (`invalid_payload:…`): nothing was sent. Fix and re-run;
     do not push or record a `channel-send-unavailable` issue.
-  - **Exit 1**: a leg failed, including `degraded: true` when unreachable maintainer detail landed
-    only in state/watchdog-events.jsonl. If `push_notifications === true`, fire
+  - **`undelivered`**, or **`degraded`** when unreachable maintainer detail landed
+    only in state/watchdog-events.jsonl: if `push_notifications === true`, fire
     `PushNotification(message="<condensed one line, per § Operator Notification push format>", status="proactive")`,
     record a deduped `channel-send-unavailable` issue.
     The sender persists failed client text to state/watchdog-events.jsonl and reports `undelivered_saved` or `persistence_error` in the client result.
-    Here even `no_channel: true` means an enabled channel is unreachable (unpaired, empty `allowed_users`, or unreadable config).
+    Here even `reason: "no_reachable_channel"` means an enabled channel is unreachable (unpaired, empty `allowed_users`, or unreadable config).
 - Never send a proactive notice through a channel reply tool, and never advise `/<channel>:access`
   for a maintainer chat — the maintainer chat is reached by direct API POST, not `access.json` pairing (it is outbound routing for technical alerts, `docs/security.md` § Tiered disclosure, not reply routing).
 

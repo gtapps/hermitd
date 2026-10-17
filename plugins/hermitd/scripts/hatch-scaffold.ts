@@ -30,17 +30,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { localISOStamp } from './lib/time';
+import { exitError } from './lib/cli';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'state-templates');
 
-function die(msg: string): never {
-  console.error(`hatch-scaffold: ${msg}`);
-  process.exit(1);
-}
-
 const projectRoot = process.argv[2];
-if (!projectRoot) die('usage: bun hatch-scaffold.ts <PROJECT_ROOT> [--reinit=true|false]');
+if (!projectRoot) exitError();
 const reinit = process.argv.slice(3).some((a) => a === '--reinit=true' || a === '--reinit');
 
 const hermit = path.join(projectRoot, '.hermit');

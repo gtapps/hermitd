@@ -393,14 +393,14 @@ No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone li
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json voice-render
    ```
 
-   **Local scope, not the hatch target** — that is the scope Claude Code's own `/config` picker writes and the one that outranks committed settings, and a custom voice file is gitignored, so a committed pointer would name a file a teammate doesn't have. The op refuses any other target. It prints `applied:<style>`; carry that into Phase 5.
+   **Local scope, not the hatch target** — that is the scope Claude Code's own `/config` picker writes and the one that outranks committed settings, and a custom voice file is gitignored, so a committed pointer would name a file a teammate doesn't have. The op refuses any other target. It prints the applied `style`; carry that into Phase 5.
 
 #### Phase 5 — Confirm
 
 Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Refine anytime — just tell me what changed." Then report the style from what Phase 4b step 3 printed:
 
-- **A built-in** (`applied:default` / `applied:Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
-- **A custom voice** (`applied:hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
+- **A built-in** (`default` / `Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
+- **A custom voice** (`hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
 
 Either way the file is a render of `config.json` — say so if the operator asks about editing it directly, so they don't lose an edit at the next restart.
 
@@ -493,14 +493,14 @@ sealed entries the target lacks, and any entries from retired plugin versions it
    (No auto-mode step here: the classifier reads `autoMode` only from user scope, managed settings, or `--settings`, so there is nothing useful to seed into a project settings file. `hermitd-start` renders the hermit's classifier policy into a per-session overlay at every boot and launches with `--settings`.)
 5. If the operator declines: skip, and note: "You may be prompted to approve hook commands during sessions. Run `/hermitd:hermit-settings permissions` to add them later."
 
-**Seed `state/template-manifest.json`** (deferred from Step 2 — now that the `bun */scripts/manifest-seed.ts*` permission is in place). It records the sha256 pristine-baseline that the `hermit-evolve` drift signals depend on. The script computes the hashes (an LLM cannot sha256 reliably). Read the current plugin version from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json`, then run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit` with this JSON on stdin:
+**Seed `state/template-manifest.json`** (deferred from Step 2 — now that the `bun */scripts/manifest-seed.ts*` permission is in place). It records the sha256 pristine-baseline that the `hermit-evolve` drift signals depend on. The script computes the hashes (an LLM cannot sha256 reliably). Read the current plugin version from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit` with this JSON on stdin:
 
 ```json
 {
-  "pluginVersion": "<version>",
+  "plugin_version": "<version>",
   "entries": [
     { "key": "templates/PROPOSAL.md.template", "file": "${CLAUDE_PLUGIN_ROOT}/state-templates/PROPOSAL.md.template" },
-    { "keyPrefix": "bin", "dir": "${CLAUDE_PLUGIN_ROOT}/state-templates/bin" }
+    { "key_prefix": "bin", "dir": "${CLAUDE_PLUGIN_ROOT}/state-templates/bin" }
   ]
 }
 ```
