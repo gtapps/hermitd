@@ -351,6 +351,7 @@ function formatSdkError(\Throwable $error): string
  */
 function checkStatusFor(\Throwable $error): string
 {
+    if ($error instanceof ForbiddenException) return 'invalid';
     if ($error::class === \Exception::class) {
         foreach (['unauthorized', 'unauthenticated'] as $needle) {
             if (stripos($error->getMessage(), $needle) !== false) return 'invalid';

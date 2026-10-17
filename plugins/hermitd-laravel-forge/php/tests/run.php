@@ -562,6 +562,8 @@ check(checkStatusFor(new \RuntimeException('cURL error 6: Could not resolve host
 check(checkStatusFor(new \RuntimeException('cURL error 28: Operation timed out after 30401 milliseconds')) === 'unreachable'
     && checkStatusFor(new \Exception('<html>502 Bad Gateway, Ray ID: 8d4012ab</html>')) === 'unreachable',
     'check does not read a stray 401 in a transport error or 5xx body as invalid');
+check(checkStatusFor(new \Laravel\Forge\Exceptions\ForbiddenException('Forbidden')) === 'invalid',
+    'check maps a 403 to invalid');
 $secretOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([
     'errors' => ['name' => ['Invalid DB_PASSWORD=hunter2trombone', 'Invalid https://app:s3cr3t@example.invalid/path']],
 ]));
