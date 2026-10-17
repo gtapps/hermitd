@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.16] - 2026-10-17
 
 ### Changed
 - Operator-origin `later` rows count as late after `routine_max_lateness_minutes` instead of after a missed daily check.
