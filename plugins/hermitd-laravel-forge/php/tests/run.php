@@ -559,6 +559,9 @@ check(checkStatusFor(new \Exception('{"message":"Unauthenticated."}')) === 'inva
     'check maps the Forge 401 body to invalid');
 check(checkStatusFor(new \RuntimeException('cURL error 6: Could not resolve host: forge.laravel.com')) === 'unreachable',
     'check maps a network error to unreachable');
+check(checkStatusFor(new \RuntimeException('cURL error 28: Operation timed out after 30401 milliseconds')) === 'unreachable'
+    && checkStatusFor(new \Exception('<html>502 Bad Gateway, Ray ID: 8d4012ab</html>')) === 'unreachable',
+    'check does not read a stray 401 in a transport error or 5xx body as invalid');
 $secretOutput = formatSdkError(new \Laravel\Forge\Exceptions\ValidationException([
     'errors' => ['name' => ['Invalid DB_PASSWORD=hunter2trombone', 'Invalid https://app:s3cr3t@example.invalid/path']],
 ]));

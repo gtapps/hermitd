@@ -346,13 +346,15 @@ function formatSdkError(\Throwable $error): string
 /**
  * `check` status for a failed probe call. The SDK throws a bare Exception
  * carrying the response body on 401 (Forge answers `Unauthenticated.`), so
- * auth rejection is matched case-insensitively on the message.
+ * auth rejection is matched case-insensitively on that body only: transport
+ * errors and typed SDK exceptions are never classified by message text.
  */
 function checkStatusFor(\Throwable $error): string
 {
-    $msg = $error->getMessage();
-    foreach (['401', 'unauthorized', 'unauthenticated'] as $needle) {
-        if (stripos($msg, $needle) !== false) return 'invalid';
+    if ($error::class === \Exception::class) {
+        foreach (['unauthorized', 'unauthenticated'] as $needle) {
+            if (stripos($error->getMessage(), $needle) !== false) return 'invalid';
+        }
     }
     return 'unreachable'; // network/egress error, not an auth rejection
 }
