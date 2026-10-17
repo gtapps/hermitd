@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
-- The morning brief lists open proposals under `Pending:` again.
+- The morning brief lists open proposals under `Pending:`, including update proposals the `Updates:` section folds into its `+ N more` or HACS lines.
 
 ## [0.4.24] - 2026-10-17
 
