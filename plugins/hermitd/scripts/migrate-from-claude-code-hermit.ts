@@ -23,7 +23,7 @@ function command(project: string, script: string, args: string[], input?: string
   const result = spawnSync(process.execPath, [path.join(root, 'scripts', script), ...args], {
     cwd: project, input, encoding: 'utf8', env: process.env,
   });
-  if (result.error || result.status !== 0) throw new Error(`${script} failed: ${result.error?.message ?? result.stderr}`);
+  if (result.error || result.status !== 0) throw new Error(`${script} failed: ${result.error?.message ?? (result.stdout.trim() || result.stderr)}`);
 }
 function migrateBlocks(text: string): string {
   const names = [...Object.keys(HERMITD_IDS), ...Object.values(HERMITD_IDS)];
@@ -124,7 +124,7 @@ export function migrateProject(project: string): string[] {
   }
   // The existing seeder owns hashes and pristine writes; do not invoke it when
   // already seeded because it deliberately rewrites its manifest every time.
-  if (entries.length) command(project, 'manifest-seed.ts', [state], JSON.stringify({ pluginVersion: version, entries }));
+  if (entries.length) command(project, 'manifest-seed.ts', [state], JSON.stringify({ plugin_version: version, entries }));
   const seeded = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
   for (const file of managed) {
     if (file.oldKey === file.key) continue;

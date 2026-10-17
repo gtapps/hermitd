@@ -25,9 +25,10 @@ describe('manifest-seed: hashing + shape', () => {
     fs.writeFileSync(f, 'hello world\n');
 
     const r = await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
+      stdin: JSON.stringify({ plugin_version: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
     });
     expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe('{"seeded":1,"preserved":0}\n');
 
     const m = readManifest(dir);
     expect(m.version).toBe(1);
@@ -39,7 +40,7 @@ describe('manifest-seed: hashing + shape', () => {
     const f = path.join(dir, 'sample.txt');
     fs.writeFileSync(f, 'data');
     await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.0.0', entries: [{ key: 'bin/x', file: f }] }),
+      stdin: JSON.stringify({ plugin_version: '1.0.0', entries: [{ key: 'bin/x', file: f }] }),
     });
     const m = readManifest(dir);
     for (const v of Object.values(m.files) as any[]) {
@@ -56,7 +57,7 @@ describe('manifest-seed: pristine baseline copies', () => {
 
       const r = await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
         stdin: JSON.stringify({
-          pluginVersion: '1.2.52',
+          plugin_version: '1.2.52',
           entries: [{ key: 'docker/docker-entrypoint.hermit.sh', file: f }],
         }),
       });
@@ -67,7 +68,7 @@ describe('manifest-seed: pristine baseline copies', () => {
       expect(fs.readFileSync(copy)).toEqual(fs.readFileSync(f));
     }));
 
-  test('keyPrefix entries get one pristine copy each', withDir(async (dir) => {
+  test('key_prefix entries get one pristine copy each', withDir(async (dir) => {
     const src = path.join(dir, 'src-bin');
     fs.mkdirSync(src);
     fs.writeFileSync(path.join(src, 'hermitd-run'), 'run\n');
@@ -75,8 +76,8 @@ describe('manifest-seed: pristine baseline copies', () => {
 
     await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
       stdin: JSON.stringify({
-        pluginVersion: '1.2.52',
-        entries: [{ keyPrefix: 'bin', dir: src }],
+        plugin_version: '1.2.52',
+        entries: [{ key_prefix: 'bin', dir: src }],
       }),
     });
 
@@ -91,13 +92,13 @@ describe('manifest-seed: pristine baseline copies', () => {
 
     fs.writeFileSync(f, 'v1\n');
     await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.0.0', entries: [{ key: 'templates/a', file: f }] }),
+      stdin: JSON.stringify({ plugin_version: '1.0.0', entries: [{ key: 'templates/a', file: f }] }),
     });
     expect(fs.readFileSync(copy, 'utf8')).toBe('v1\n');
 
     fs.writeFileSync(f, 'v2\n');
     await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.0.1', entries: [{ key: 'templates/a', file: f }] }),
+      stdin: JSON.stringify({ plugin_version: '1.0.1', entries: [{ key: 'templates/a', file: f }] }),
     });
     expect(fs.readFileSync(copy, 'utf8')).toBe('v2\n');
   }));
@@ -120,10 +121,10 @@ describe('manifest-seed: foreign-key preservation', () => {
     fs.writeFileSync(f, 'new content');
 
     const r = await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
+      stdin: JSON.stringify({ plugin_version: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('preserved 2 foreign keys');
+    expect(JSON.parse(r.stdout)).toMatchObject({ preserved: 2 });
 
     const m = readManifest(dir);
     // Foreign keys survive untouched.
@@ -135,7 +136,7 @@ describe('manifest-seed: foreign-key preservation', () => {
   }));
 });
 
-describe('manifest-seed: keyPrefix/dir enumeration', () => {
+describe('manifest-seed: key_prefix/dir enumeration', () => {
   test('enumerates the source dir, one entry per file', withDir(async (dir) => {
     const binSrc = path.join(dir, 'src-bin');
     fs.mkdirSync(binSrc);
@@ -144,7 +145,7 @@ describe('manifest-seed: keyPrefix/dir enumeration', () => {
     fs.mkdirSync(path.join(binSrc, 'subdir')); // must be ignored (non-recursive, files only)
 
     const r = await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-      stdin: JSON.stringify({ pluginVersion: '1.0.0', entries: [{ keyPrefix: 'bin', dir: binSrc }] }),
+      stdin: JSON.stringify({ plugin_version: '1.0.0', entries: [{ key_prefix: 'bin', dir: binSrc }] }),
     });
     expect(r.exitCode).toBe(0);
 
@@ -170,10 +171,10 @@ describe('manifest-seed: invalid existing manifest is fatal', () => {
       fs.writeFileSync(f, 'x');
 
       const r = await runPinnedScript('manifest-seed.ts', stateArg(dir), [stateArg(dir)], {
-        stdin: JSON.stringify({ pluginVersion: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
+        stdin: JSON.stringify({ plugin_version: '1.2.9', entries: [{ key: 'templates/a', file: f }] }),
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('manifest-seed');
+      expect(JSON.parse(r.stdout).error).toStartWith('corrupt_manifest:');
       // File left byte-for-byte unchanged.
       expect(fs.readFileSync(manifestPath(dir), 'utf8')).toBe(before);
     }));
@@ -183,8 +184,8 @@ describe('manifest-seed: invalid existing manifest is fatal', () => {
 describe('manifest-seed: malformed stdin is fatal', () => {
   const bad: { name: string; stdin: string }[] = [
     { name: 'invalid JSON', stdin: 'not json' },
-    { name: 'empty entries', stdin: JSON.stringify({ pluginVersion: '1', entries: [] }) },
-    { name: 'missing pluginVersion', stdin: JSON.stringify({ entries: [{ key: 'a', file: '/x' }] }) },
+    { name: 'empty entries', stdin: JSON.stringify({ plugin_version: '1', entries: [] }) },
+    { name: 'missing plugin_version', stdin: JSON.stringify({ entries: [{ key: 'a', file: '/x' }] }) },
     { name: 'empty stdin', stdin: '' },
   ];
   for (const b of bad) {
@@ -215,10 +216,10 @@ describe('manifest-seed: state-dir pin', () => {
       const r = await runScript('manifest-seed.ts', {
         args: [stateArg(victim)],
         env: { AGENT_DIR: stateArg(mine) },
-        stdin: JSON.stringify({ pluginVersion: '9.9.9', entries: [{ key: 'templates/victim', file: f }] }),
+        stdin: JSON.stringify({ plugin_version: '9.9.9', entries: [{ key: 'templates/victim', file: f }] }),
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state dir must be');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.readFileSync(manifestPath(victim), 'utf8')).toBe(before);
     })();
   }));
@@ -236,9 +237,9 @@ describe('manifest-seed: skill-call source-path contract', () => {
     expect(hatch).toContain('state-templates/bin');
   });
 
-  test('docker-setup delegates rendering + pipes the emitted manifestSeed', () => {
+  test('docker-setup delegates rendering + pipes the emitted manifest_seed', () => {
     // The upstream-.template-vs-on-disk-entrypoint source-path contract now lives
-    // in render-docker-templates.ts, which emits the manifestSeed payload; it is
+    // in render-docker-templates.ts, which emits the manifest_seed payload; it is
     // asserted behaviorally in tests/render-docker-templates.test.ts. Here we only
     // check the skill still routes rendering + manifest seeding through the scripts.
     const docker = read('skills/docker-setup/SKILL.md');

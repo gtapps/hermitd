@@ -86,6 +86,7 @@ describe('backup run — workspace mode', () => {
     const f = fixture();
     const res = await run(f);
     expect(res.exitCode).toBe(0);
+    expect(JSON.parse(res.stdout)).toMatchObject({ result: 'committed', push: 'ok' });
 
     const s = status(f);
     expect(s.last_result).toBe('committed');
@@ -326,8 +327,7 @@ describe('backup status', () => {
 
     const res = await run(f, 'status');
     expect(res.exitCode).toBe(0);
-    expect(res.stdout).toContain('backup:');
-    expect(res.stdout.split('\n').length).toBeLessThanOrEqual(7);
+    expect(JSON.parse(res.stdout)).toMatchObject({ result: 'committed', mode: 'workspace' });
     expect(git(f.root, 'rev-parse', 'HEAD').trim()).toBe(head);
   });
 });

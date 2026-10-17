@@ -193,7 +193,8 @@ Use `"$HERMIT_DIR/bin/hermitd-run" sibling-run <plugin-name> <relative.ts> [args
 Core matches `plugin.json.name` through its existing sibling discovery: flat installs or
 the newest sibling version in a versioned cache. It runs the selected TypeScript file
 with inherited stdio and the caller's cwd, forwarding arguments verbatim and returning
-the child's exit code. Resolution exits 2 for no match, 1 for several matches (listing
-paths on stderr), and 3 for an absolute path, any `..`, a path without `.ts`, or a missing
-script. Gates receive `CLAUDE_CONFIG_DIR` and `HERMIT_PLUGIN_ROOT` when set so the shim
+the child's exit code. A resolution failure prints one JSON object on stdout and exits 1:
+`{"error":"no_sibling:<name>"}`, `{"error":"ambiguous_sibling:<name>"}`,
+`{"error":"invalid_script"}` (an absolute path, any `..`, or a path without `.ts`), or
+`{"error":"missing_script"}`. Gates receive `CLAUDE_CONFIG_DIR` and `HERMIT_PLUGIN_ROOT` when set so the shim
 resolves the configured core installation.

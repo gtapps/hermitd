@@ -70,7 +70,7 @@ describe('loadProposalsPageState', () => {
     }
     const state = loadProposalsPageState(hermitDir);
     expect(state.other.length).toBe(20);
-    expect(state.otherOmitted).toBe(5);
+    expect(state.other_omitted).toBe(5);
   }));
 });
 

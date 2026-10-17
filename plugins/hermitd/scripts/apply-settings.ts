@@ -16,15 +16,16 @@
  *                            HERMIT_OBSOLETE_DENY (deny). Prints the applied plan.
  *                            Operator-authored entries are structurally untouchable — removal
  *                            is filtered by the sealed registries, never by shape or heuristic.
- *   artifact-allow           Merge just ["Artifact"] into permissions.allow — kept as its
- *                            own op (not folded into `permissions-sync`) so declining the Artifact
- *                            publish-authorization ask never touches hook permissions.
+ *   artifact-allow           Merge just ["Artifact"] into permissions.allow and print OK — kept
+ *                            as its own op (not folded into `permissions-sync`) so declining the
+ *                            Artifact publish-authorization ask never touches hook permissions.
  *   artifact-revoke          Remove exactly "Artifact" from permissions.allow; absent is a no-op.
  *   voice-render             Render config.json's `voice` block into what Claude Code
  *                            reads: the `outputStyle` key here, plus (style "custom")
  *                            .claude/output-styles/hermit-voice.md from voice.prose,
  *                            verbatim. Target must be settings.local.json. Prints
- *                            "applied:<style>", or "skipped:unset" and writes nothing
+ *                            {"status":"applied","style":"<style>"}, or
+ *                            {"status":"skipped","reason":"unset"} and writes nothing
  *                            when voice.style is unset — which is how an operator's own
  *                            /config pick stays theirs. Takes no arguments: the operator's
  *                            answer travels in config.json, written and audited by
@@ -33,10 +34,12 @@
  *   deny <standard|hardened|ask-only>
  *                            Seed native permissions from state-templates/deny-patterns.json.
  *                            `standard` merges `deny` into permissions.deny and `ask` into
- *                            permissions.ask — purely additive, removes nothing.
- *                            `hardened` merges both arrays into permissions.deny.
- *                            `ask-only` merges ask when the target already carries ≥1 seeded
- *                            deny entry; otherwise prints skip-preserved and writes nothing.
+ *                            permissions.ask (purely additive, removes nothing) and prints
+ *                            {"added":[...]}, the ask entries it added.
+ *                            `hardened` merges both arrays into permissions.deny and prints OK.
+ *                            `ask-only` merges ask (printing {"added":[...]}) when the target
+ *                            already carries ≥1 seeded deny entry; otherwise prints
+ *                            {"status":"skipped","reason":"not_seeded"} and writes nothing.
  *   deny-add <rule>...       Append each exact string to permissions.deny if absent. Creates the
  *                            file and section if missing. Rewrites nothing when every rule is
  *                            already present. Prints {"added": true|false} (true if any was added).
@@ -51,6 +54,7 @@
  *   voice-render, which replaces outputStyle by design — config.json owns that key.
  * - Permission sets are read from state-templates — callers cannot inject arbitrary JSON.
  * - Safe to call under AGENT_HOOK_PROFILE=strict: writes via fs, not the Edit/Write tools.
+ * - A failure prints {"error":"<token>[:detail]"} on stdout and exits 1.
  */
 
 import fs from 'node:fs';
@@ -62,6 +66,7 @@ import { VOICE_FILE_REL, outputStyleFor } from './lib/voice';
 import { writeFileAtomic } from './lib/md-write';
 import { SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from './lib/settings/automode-entries';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
+import { emitJson, exitError, printJson } from './lib/cli';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 
@@ -339,12 +344,8 @@ function readTargetJson(filePath: string): Json {
   if (raw.trim() === '') return {};
   try {
     return JSON.parse(raw);
-  } catch (err) {
-    console.error(
-      `Refusing to overwrite ${filePath}: file exists but is not valid JSON ` +
-        `(${(err as Error).message}). Fix or remove it, then re-run.`,
-    );
-    process.exit(1);
+  } catch {
+    return exitError('invalid_json');
   }
 }
 
@@ -356,7 +357,7 @@ function writeJson(filePath: string, data: Json): void {
 // Merges entries into permissions.<key>, deduping against what's already there,
 // and returns the entries newly added (absent before) — the `allow` op prints
 // these so hermit-evolve's Step 8 report can list what it granted, and the
-// `deny` op's seeding paths print them as `added:` lines.
+// `deny` op's seeding paths print them as `added`.
 function mergePermissionKey(settings: Json, key: 'allow' | 'deny' | 'ask', entries: string[]): string[] {
   settings.permissions ??= {};
   settings.permissions[key] ??= [];
@@ -412,10 +413,7 @@ function mergeAsk(settings: Json, entries: string[]): string[] {
 
 const [, , targetFile, op, ...rest] = process.argv;
 
-if (!targetFile || !op) {
-  console.error('Usage: apply-settings.ts <target-file> <op> [args...]');
-  process.exit(1);
-}
+if (!targetFile || !op) exitError();
 
 const settings = readTargetJson(targetFile);
 // Snapshot before the ops below mutate in place — the audit ledger records what
@@ -452,6 +450,7 @@ switch (op) {
 
   case 'artifact-allow': {
     mergeAllow(settings, ['Artifact']);
+    console.log('OK');
     break;
   }
 
@@ -470,23 +469,17 @@ switch (op) {
     const voice = readSettledConfig(path.join(projectRoot, '.hermit')).voice;
     const style = outputStyleFor(voice);
     if (style === null) {
-      console.log('skipped:unset');
+      printJson({ status: 'skipped', reason: 'unset' });
       readOnly = true;
       break;
     }
     if (voice.style === 'custom') {
-      if (path.basename(targetFile) !== 'settings.local.json') {
-        console.error('voice-render: the style file renders from settings.local.json only');
-        process.exit(1);
-      }
+      if (path.basename(targetFile) !== 'settings.local.json') exitError('not_settings_local');
       // validate-config refuses `custom` without prose, so reaching here with none
       // means the config was hand-edited around that path. Fail loudly rather than
       // render an empty voice.
       const prose = typeof voice.prose === 'string' ? voice.prose.trim() : '';
-      if (prose === '') {
-        console.error('voice-render: voice.style is "custom" but voice.prose is empty — set the prose first');
-        process.exit(1);
-      }
+      if (prose === '') exitError('voice_prose_empty');
       const template = fs.readFileSync(
         path.join(PLUGIN_ROOT, 'state-templates', 'hermit-voice.md.template'),
         'utf8',
@@ -500,16 +493,13 @@ switch (op) {
       fs.mkdirSync(path.dirname(voiceFile), { recursive: true });
       writeFileAtomic(voiceFile, template.replace('{{VOICE_PROSE}}', () => prose));
     }
-    console.log(`applied:${style}`);
+    printJson({ status: 'applied', style });
     break;
   }
 
   case 'deny': {
     const profile = rest[0];
-    if (profile !== 'standard' && profile !== 'hardened' && profile !== 'ask-only') {
-      console.error(`deny requires 'standard', 'hardened', or 'ask-only', got: ${profile ?? '(none)'}`);
-      process.exit(1);
-    }
+    if (profile !== 'standard' && profile !== 'hardened' && profile !== 'ask-only') exitError();
     const { deny: denyEntries, ask: askEntries } = readSeedPatterns(PLUGIN_ROOT);
 
     if (profile === 'ask-only') {
@@ -518,33 +508,30 @@ switch (op) {
       );
       const seeded = denyEntries.some((e) => existingDeny.has(e));
       if (!seeded) {
-        console.log('skip-preserved');
+        printJson({ status: 'skipped', reason: 'not_seeded' });
         readOnly = true;
         break;
       }
       const added = mergeAsk(settings, askEntries);
-      for (const e of added) console.log(`added:${e}`);
+      printJson({ added });
       if (added.length === 0) readOnly = true;
       break;
     }
 
     if (profile === 'hardened') {
       mergeDeny(settings, [...denyEntries, ...askEntries]);
+      console.log('OK');
       break;
     }
 
     mergeDeny(settings, denyEntries);
-    const added = mergeAsk(settings, askEntries);
-    for (const e of added) console.log(`added:${e}`);
+    printJson({ added: mergeAsk(settings, askEntries) });
     break;
   }
 
   case 'deny-add': {
     const rules = rest.filter((r) => r);
-    if (rules.length === 0) {
-      console.error("deny-add requires at least one permission rule");
-      process.exit(1);
-    }
+    if (rules.length === 0) exitError();
     const added = mergePermissionKey(settings, 'deny', rules);
     if (added.length === 0) readOnly = true;
     console.log(JSON.stringify({ added: added.length > 0 }));
@@ -554,25 +541,17 @@ switch (op) {
   case 'channel-env': {
     const channel = rest[0];
     const stateDir = rest[1];
-    if (!channel || !stateDir) {
-      console.error('channel-env requires <CHANNEL_UPPER> and <abs_state_dir> arguments');
-      process.exit(1);
-    }
+    if (!channel || !stateDir) exitError();
     const stateDirKey = channelStateDirKey(channel);
-    if (!stateDirKey) {
-      console.error(`channel-env: "${channel}" is not a valid env-var name — refusing to write a key hermitd-start would never export`);
-      process.exit(1);
-    }
+    // An invalid env-var name is a key hermitd-start would never export.
+    if (!stateDirKey) exitError('invalid_channel_name');
     readOnly = true;
-    console.log(JSON.stringify({ key: stateDirKey, state_dir: stateDir, effective: 'next-start' }));
+    printJson({ key: stateDirKey, state_dir: stateDir, effective: 'next_start' });
     break;
   }
 
-  default: {
-    const validOps = [...SEALED_SETTINGS_OPS, ...TERMINAL_ONLY_SETTINGS_OPS];
-    console.error(`Unknown operation: ${op}. Valid ops: ${validOps.join(', ')}`);
-    process.exit(1);
-  }
+  default:
+    emitJson({ error: `unknown_op:${op}`, valid_ops: [...SEALED_SETTINGS_OPS, ...TERMINAL_ONLY_SETTINGS_OPS] });
 }
 
 if (!readOnly) {

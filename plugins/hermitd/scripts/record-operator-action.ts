@@ -12,9 +12,10 @@ process.stdout.on('error', () => {});
 //   (stdin) UserPromptSubmit — JSON payload with `prompt`. Filter applied, write if kept.
 //   (stdin) SessionStart     — no `prompt` field. Seeds file only if absent (cold start).
 //                              Avoids unattended restarts masking a vanished operator.
-//   --force                  — unconditional write. Used by skills that know they're
-//                              handling a genuine operator action (e.g. channel-responder
-//                              after the allowlist check passes).
+//   --force                  — unconditional write, prints `OK`. Used by skills that know
+//                              they're handling a genuine operator action (e.g.
+//                              channel-responder after the allowlist check passes). The
+//                              stdin modes are hooks and print nothing.
 //
 // Filtered prompts (not operator activity):
 //   [hermit-routine:…   — cron-delivered routine prompts (hermit-routines/SKILL.md:43-54)
@@ -40,6 +41,7 @@ import { hermitDir, sessionId } from './lib/cc-compat';
 import { isAllowedSender, isPassiveChatSync, isSelfMentionedSync } from './lib/channel-auth';
 import { parseChannelEnvelope, type ChannelEnvelope } from './lib/channel-envelope';
 import { readConfigRaw } from './lib/config-read';
+import { emit } from './lib/cli';
 
 type Json = any;
 
@@ -207,7 +209,7 @@ if (import.meta.main) {
   if (process.argv.includes('--force')) {
     write();
     openTurnMarker();
-    process.exit(0);
+    emit('OK');
   }
 
   try {

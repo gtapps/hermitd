@@ -151,7 +151,7 @@ describe('generate-summary CLI mode: state-dir pin', () => {
       env: { AGENT_DIR: hermit(mine) },
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('state dir must be under');
+    expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
     expect(fs.readFileSync(summaryPath, 'utf-8')).toBe(before);
   });
 });

@@ -5,15 +5,22 @@
 // Usage as CLI:   bun knowledge-lint.ts <hermit-state-dir>
 // Usage as lib:   import { lint } from './knowledge-lint' — lint(hermitDir) => { findings, counts }
 //
-// findings: array of { type, file, age, reason }
-//   type: 'unreferenced' | 'stale' | 'missing-type' | 'oversized' | 'working-set' | 'stale-compiled' | 'line-limit' | 'tag-variant' | 'undeclared-type' | 'unused-declaration' | 'topic-missing-updated'
+// findings: array of { type, file, age?, detail }
+//   type: 'unreferenced' | 'stale' | 'missing_type' | 'oversized' | 'working_set' | 'stale_compiled' | 'line_limit' | 'tag_variant' | 'undeclared_type' | 'unused_declaration' | 'topic_missing_updated' | 'schema_missing' | 'schema_empty'
+//   age: whole days since the file's created/updated date, omitted where it does not apply
 // counts: { raw, compiled, archived }
-// options: { verbose: false } — unused-declaration findings only included when verbose=true
+// options: { verbose: false } — unused_declaration findings only included when verbose=true
+//
+// CLI output: one JSON object
+//   { counts, findings: { <type>: [{ file, age?, detail }] } }
+// grouped by finding type; a clean knowledge base has `findings: {}`. --verbose
+// adds unused_declaration findings and `schema_present`. Code reads lint() instead.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { readFrontmatter, readFileWithFrontmatter, newestByType, globDirRecursive } from './lib/frontmatter';
 import { readSettledConfig } from './lib/config-read';
+import { emitJson } from './lib/cli';
 
 type Json = any;
 
@@ -102,17 +109,15 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
   if (rawFiles.length > 0 || compiledArtifacts.length > 0) {
     if (schema === false) {
       findings.push({
-        type: 'schema-missing',
+        type: 'schema_missing',
         file: 'knowledge-schema.md',
-        age: '—',
-        reason: 'knowledge-schema.md not found — type declarations not enforced. Run /hatch or create the file.'
+        detail: 'knowledge-schema.md not found — type declarations not enforced. Run /hatch or create the file.'
       });
     } else if (schema === null) {
       findings.push({
-        type: 'schema-empty',
+        type: 'schema_empty',
         file: 'knowledge-schema.md',
-        age: '—',
-        reason: 'knowledge-schema.md has no declared types — add entries under ## Work Products and ## Raw Captures.'
+        detail: 'knowledge-schema.md has no declared types — add entries under ## Work Products and ## Raw Captures.'
       });
     }
   }
@@ -131,23 +136,22 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
     if (!referenced) {
       const created = raw.fm.created ? new Date(raw.fm.created) : null;
       const ageMs = created && !isNaN(created.getTime()) ? now - created.getTime() : null;
-      const age = ageMs !== null ? Math.floor(ageMs / 86400000) : null;
-      const ageStr = age !== null ? `${age}d` : 'unknown';
+      const age = ageMs !== null ? { age: Math.floor(ageMs / 86400000) } : {};
 
       if (ageMs !== null && ageMs > retentionMs) {
         // Stale subsumes unreferenced — emit only stale to avoid double-counting
         findings.push({
           type: 'stale',
           file: `raw/${filename}`,
-          age: ageStr,
-          reason: `Past retention (>${retentionDays}d) and unreferenced.`
+          ...age,
+          detail: `Past retention (>${retentionDays}d) and unreferenced.`
         });
       } else {
         findings.push({
           type: 'unreferenced',
           file: `raw/${filename}`,
-          age: ageStr,
-          reason: 'Possibly unreferenced — no compiled/ body mentions this filename.'
+          ...age,
+          detail: 'Possibly unreferenced — no compiled/ body mentions this filename.'
         });
       }
     }
@@ -155,10 +159,9 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
     // Schema: undeclared raw type
     if (schema && raw.fm.type && !schema.rawCaptures.has(raw.fm.type)) {
       findings.push({
-        type: 'undeclared-type',
+        type: 'undeclared_type',
         file: `raw/${filename}`,
-        age: '—',
-        reason: `Type \`${raw.fm.type}\` not declared in knowledge-schema.md ## Raw Captures.`
+        detail: `Type \`${raw.fm.type}\` not declared in knowledge-schema.md ## Raw Captures.`
       });
     }
   }
@@ -169,10 +172,9 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
     for (const declared of schema.rawCaptures) {
       if (!usedRawTypes.has(declared)) {
         findings.push({
-          type: 'unused-declaration',
+          type: 'unused_declaration',
           file: 'raw/',
-          age: '—',
-          reason: `Type \`${declared}\` declared in knowledge-schema.md but no raw/ files use it.`
+          detail: `Type \`${declared}\` declared in knowledge-schema.md but no raw/ files use it.`
         });
       }
     }
@@ -185,10 +187,9 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
     // Working set size
     if (workingSet.length > workingSetWarn) {
       findings.push({
-        type: 'working-set',
+        type: 'working_set',
         file: 'compiled/',
-        age: '—',
-        reason: `Working set has ${workingSet.length} active types (warn threshold: ${workingSetWarn}).`
+        detail: `Working set has ${workingSet.length} active types (warn threshold: ${workingSetWarn}).`
       });
     }
 
@@ -207,10 +208,10 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
       if (now - lastTouchMs > staleCutoffMs) {
         const age = Math.floor((now - lastTouchMs) / 86400000);
         findings.push({
-          type: 'stale-compiled',
+          type: 'stale_compiled',
           file: `compiled/${a.file}`,
-          age: `${age}d`,
-          reason: `Stale (>${STALE_COMPILED_DAYS}d, not foundational).`
+          age,
+          detail: `Stale (>${STALE_COMPILED_DAYS}d, not foundational).`
         });
       }
     }
@@ -219,20 +220,18 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
       // Missing type
       if (!a.fm.type) {
         findings.push({
-          type: 'missing-type',
+          type: 'missing_type',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: 'No `type` field in frontmatter — won\'t be grouped at session start.'
+          detail: 'No `type` field in frontmatter — won\'t be grouped at session start.'
         });
       }
 
       // Topic pages are update-in-place — they must carry an `updated` field
       if (a.fm.type === 'topic' && !a.fm.updated) {
         findings.push({
-          type: 'topic-missing-updated',
+          type: 'topic_missing_updated',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: 'Topic pages are update-in-place — add an `updated` field.'
+          detail: 'Topic pages are update-in-place — add an `updated` field.'
         });
       }
 
@@ -242,18 +241,16 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
         findings.push({
           type: 'oversized',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: `Body is ${a.bodyChars} chars (budget: ${compiledBudgetChars}). Exceeds the compiled budget — compact or split; foundational bodies are truncated at injection.`
+          detail: `Body is ${a.bodyChars} chars (budget: ${compiledBudgetChars}). Exceeds the compiled budget — compact or split; foundational bodies are truncated at injection.`
         });
       }
 
       // Line count violations
       if (a.lineCount > LINE_LIMIT) {
         findings.push({
-          type: 'line-limit',
+          type: 'line_limit',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: `${a.lineCount} lines (limit: ${LINE_LIMIT}).`
+          detail: `${a.lineCount} lines (limit: ${LINE_LIMIT}).`
         });
       }
 
@@ -261,20 +258,18 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
       const offenders = (a.fm.tags || []).filter((t: string) => TAG_VARIANTS.includes(t));
       if (offenders.length > 0) {
         findings.push({
-          type: 'tag-variant',
+          type: 'tag_variant',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: `Tag [${offenders.join(', ')}] — did you mean \`foundational\`?`
+          detail: `Tag [${offenders.join(', ')}] — did you mean \`foundational\`?`
         });
       }
 
       // Schema: undeclared compiled type
       if (schema && a.fm.type && !schema.workProducts.has(a.fm.type)) {
         findings.push({
-          type: 'undeclared-type',
+          type: 'undeclared_type',
           file: `compiled/${a.file}`,
-          age: '—',
-          reason: `Type \`${a.fm.type}\` not declared in knowledge-schema.md ## Work Products.`
+          detail: `Type \`${a.fm.type}\` not declared in knowledge-schema.md ## Work Products.`
         });
       }
     }
@@ -285,10 +280,9 @@ function lint(hermitDir: string, options: Json = {}): { findings: Json[]; counts
       for (const declared of schema.workProducts) {
         if (!usedCompiledTypes.has(declared)) {
           findings.push({
-            type: 'unused-declaration',
+            type: 'unused_declaration',
             file: 'compiled/',
-            age: '—',
-            reason: `Type \`${declared}\` declared in knowledge-schema.md but no compiled/ files use it.`
+            detail: `Type \`${declared}\` declared in knowledge-schema.md but no compiled/ files use it.`
           });
         }
       }
@@ -322,38 +316,7 @@ if (import.meta.main) {
   const hermitDir = args.find(a => !a.startsWith('--')) || '.hermit';
   const { findings, counts, schemaPresent } = lint(hermitDir, { verbose });
 
-  if (findings.length === 0) {
-    console.log(`Knowledge base is clean. (${counts.raw} raw, ${counts.compiled} compiled, ${counts.archived} archived)`);
-    if (verbose && !schemaPresent) {
-      console.log('info: knowledge-schema.md missing — type declarations not enforced');
-    }
-    process.exit(0);
-  }
-
-  // Group by type
-  const groups = new Map<string, Json[]>();
-  for (const f of findings) {
-    if (!groups.has(f.type)) groups.set(f.type, []);
-    groups.get(f.type)!.push(f);
-  }
-
-  for (const [type, items] of groups) {
-    console.log(`\n${type} (${items.length}):`);
-    for (const item of items) {
-      console.log(`  ${item.file} [${item.age}] — ${item.reason}`);
-    }
-  }
-
-  // Advice
-  console.log('');
-  if (groups.has('stale')) console.log('Stale raw files will be archived on next weekly review.');
-  if (groups.has('oversized')) console.log('Oversized compiled artifacts exceed the compiled budget — compact or split them.');
-  if (groups.has('topic-missing-updated')) console.log('Topic pages are update-in-place — set `updated` whenever you merge new findings.');
-  if (groups.has('unreferenced')) console.log('Possibly unreferenced — verify before cleanup.');
-  if (groups.has('missing-type')) console.log('Add a `type` field to frontmatter for proper grouping at session start.');
-  if (groups.has('undeclared-type')) console.log('Undeclared types — add entries to knowledge-schema.md or remove unused type values.');
-  if (groups.has('schema-empty')) console.log('Add type declarations to knowledge-schema.md — Work Products and Raw Captures sections.');
-  if (groups.has('schema-missing')) console.log('Create knowledge-schema.md (run /hatch or copy the template).');
-
-  console.log(`\n(${counts.raw} raw, ${counts.compiled} compiled, ${counts.archived} archived)`);
+  const groups: Record<string, Json[]> = {};
+  for (const { type, ...f } of findings) (groups[type] ??= []).push(f);
+  emitJson({ counts, ...(verbose ? { schema_present: schemaPresent } : {}), findings: groups });
 }

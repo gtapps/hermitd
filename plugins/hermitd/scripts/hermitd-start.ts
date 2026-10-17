@@ -995,7 +995,7 @@ function applyArtifactGrant(config: Json): void {
     if (revoke && readJson(target)?.permissions?.allow?.includes('Artifact') !== true) continue;
     const r = spawnSync('bun', [script, target, op], { stdio: 'pipe', encoding: 'utf-8' });
     if (r.status !== 0) {
-      console.log(`[hermit] WARNING: boot grant '${op}' failed: ${(r.stderr || '').trim()}; continuing boot.`);
+      console.log(`[hermit] WARNING: boot grant '${op}' failed: ${(r.stdout || r.stderr || '').trim()}; continuing boot.`);
       continue;
     }
     console.log(`[hermit] Artifact publish grant ${revoke ? 'removed' : 'ensured'} (permissions.allow in ${target})`);
@@ -1033,12 +1033,13 @@ function applyVoiceRender(config: Json): void {
   const script = path.join(PLUGIN_ROOT, 'scripts', 'apply-settings.ts');
   const r = spawnSync('bun', [script, '.claude/settings.local.json', 'voice-render'], { stdio: 'pipe', encoding: 'utf-8' });
   if (r.status !== 0) {
-    console.log(`[hermit] WARNING: voice render failed: ${(r.stderr || '').trim()} — continuing boot.`);
+    console.log(`[hermit] WARNING: voice render failed: ${(r.stdout || r.stderr || '').trim()} — continuing boot.`);
     return;
   }
-  const out = (r.stdout || '').trim();
-  if (out.startsWith('applied:')) {
-    console.log(`[hermit] Voice: outputStyle ${out.slice('applied:'.length)} in the launch overlay, style file rendered`);
+  let out: Json = null;
+  try { out = JSON.parse(r.stdout); } catch { /* unexpected stdout: skip the notice, keep booting */ }
+  if (out?.status === 'applied') {
+    console.log(`[hermit] Voice: outputStyle ${out.style} in the launch overlay, style file rendered`);
   }
 }
 

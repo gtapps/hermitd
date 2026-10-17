@@ -4,7 +4,7 @@ process.stdout.on('error', () => {});
 //
 // Usage: bun transcript-digest.ts <state-dir> [--days D] [--sessions N] [--dir <transcript-dir>]
 // Output: ONE stdout JSON object (verdict-sized) — see mergeDigests. Exit 0 always
-// except on unusable arguments (exit 1).
+// except on unusable arguments (`{"error":"usage"}`, exit 1).
 //
 // WHY THIS EXISTS: the hermit's self-knowledge loop (reflect) establishes
 // cross-session patterns from self-authored reports — the model summarizing its
@@ -46,6 +46,7 @@ import {
   readTailLines,
 } from './lib/cc-compat';
 import { classifySource } from './lib/trigger-source';
+import { exitError } from './lib/cli';
 import { resolveHermitNowMs } from './lib/time';
 import { appendObservation, resolveSessionId } from './lib/observations';
 
@@ -288,10 +289,7 @@ function deferLoopPattern(out: any): string | null {
 
 function main(argv: string[]): number {
   const args = parseArgs(argv);
-  if (!args) {
-    process.stderr.write('usage: transcript-digest.ts <state-dir> [--days D] [--sessions N] [--dir <transcript-dir>]\n');
-    return 1;
-  }
+  if (!args) exitError();
   const now = resolveHermitNowMs();
   const cutoffMs = now - args.days * DAY_MS;
   // Derive the transcript dir from the hermit root, not raw path.resolve(stateDir):
@@ -311,7 +309,7 @@ function main(argv: string[]): number {
   // hard refusal, so that branch stays unpinned.
   let hermitRoot: string | null = null;
   const rootOnce = () => (hermitRoot ??= path.isAbsolute(args.stateDir)
-    ? pinStateDirOrExit(args.stateDir, 'transcript-digest')
+    ? pinStateDirOrExit(args.stateDir)
     : resolveHermitRoot());
 
   let dir = args.dir;

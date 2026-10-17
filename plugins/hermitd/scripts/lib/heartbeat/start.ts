@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emitJson, printJson, readJson, snakeToken } from '../cli';
+import { emit, exitError, printJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { isGuest } from '../guest-marker';
 import { pidAlive } from '../lockfile';
@@ -125,7 +125,7 @@ export async function run(verb: string, args: string[]): Promise<void> {
   if (!hermitDir) {
     // heartbeat-monitor.sh always passes its dir and falls back to 1800 on any
     // non-integer `interval` output, so a usage error here is a real failure.
-    emitJson({ error: 'usage' });
+    exitError();
   }
   const config = readConfigRaw(hermitDir) ?? {};
   const sessionIndex = args.indexOf('--session-id');
@@ -138,6 +138,7 @@ export async function run(verb: string, args: string[]): Promise<void> {
     writeJson(path.join(hermitDir, 'state', 'heartbeat-monitor.control.json'), { mode: 'stopped' });
     writeJson(runtimePath(hermitDir), {});
     fs.rmSync(livenessPath(hermitDir), { force: true });
+    emit('OK');
   }
   else if (verb === 'start-check') cmdCheck(hermitDir, config);
   else await cmdCommit(hermitDir, config, args[1] ?? '');

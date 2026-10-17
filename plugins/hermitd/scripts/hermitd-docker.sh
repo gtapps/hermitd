@@ -51,6 +51,16 @@ _oauth_hint() {
   echo "      Run: hermitd docker login"
 }
 
+# Quiet on success and on the expected container / no-marketplace skips.
+_install_host_cli() {
+  local out
+  out=$("$SCRIPT_DIR/hermitd-run" hermitd-cli install) || true
+  case "$out" in
+    OK|'{"status":"skip","reason":"container"}'|'{"status":"skip","reason":"no_marketplace"}') ;;
+    *) echo "[hermit] Host CLI install: $out" >&2 ;;
+  esac
+}
+
 _require_running() {
   local services
   if ! services="$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>&1)"; then
@@ -284,7 +294,7 @@ case "$CMD" in
     echo "Detach with: Ctrl+B then D"
     echo "Status: hermitd status"
     _oauth_hint
-    "$SCRIPT_DIR/hermitd-run" hermitd-cli install >/dev/null || echo "[hermit] Host CLI installation failed." >&2
+    _install_host_cli
     ;;
 
   down)
@@ -492,7 +502,7 @@ case "$CMD" in
     _warn_if_entrypoint_stale
     echo "[hermit] Container restarted."
     _oauth_hint
-    "$SCRIPT_DIR/hermitd-run" hermitd-cli install >/dev/null || echo "[hermit] Host CLI installation failed." >&2
+    _install_host_cli
     ;;
 
   update)
@@ -810,7 +820,7 @@ JSEOF
     echo "Verify with:  hermitd status"
     echo "Attach with:  hermitd attach"
     _oauth_hint
-    "$SCRIPT_DIR/hermitd-run" hermitd-cli install >/dev/null || echo "[hermit] Host CLI installation failed." >&2
+    _install_host_cli
     ;;
 
   *)

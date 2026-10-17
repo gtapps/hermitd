@@ -16,13 +16,13 @@
  * Prints a single JSON object to stdout and always exits 0 — callers inspect
  * fields, not the exit code. Any probe that errors degrades to null/false.
  *   {
- *     "dockerVersion": "Docker version 27.0.3, build ..." | null,
- *     "configExists": true,
- *     "isWSL": false,
+ *     "docker_version": "Docker version 27.0.3, build ..." | null,
+ *     "config_exists": true,
+ *     "is_wsl": false,
  *     "existing": { "dockerfile": false, "entrypoint": false, "compose": false },
- *     "gitconfigExists": true,
- *     "memory": { "pathKey": "-home-user-project", "seedExists": false },
- *     "liveOwner": { "mode": "tmux", "ageSecs": 42 | null } | null
+ *     "gitconfig_exists": true,
+ *     "memory": { "path_key": "-home-user-project", "seed_exists": false },
+ *     "live_owner": { "mode": "tmux", "age_secs": 42 | null } | null
  *   }
  */
 
@@ -55,7 +55,7 @@ function dockerVersion(): string | null {
  * Fresh proves alive; stale proves nothing (see lib/liveness). A live host tmux
  * session is the one extra proof: it owns the state even when its liveness files
  * went stale (routines off, long heartbeat), which the container's entrypoint
- * cannot see. `ageSecs` is null when that session has written no liveness file.
+ * cannot see. `age_secs` is null when that session has written no liveness file.
  */
 function liveOwner(projectRoot: string, hermitDir: string) {
   try {
@@ -67,7 +67,7 @@ function liveOwner(projectRoot: string, hermitDir: string) {
     const verdict = residentLiveness(rt, sessionName, REAL_LIVENESS_DEPS(hermitRoot));
     if (otherRuntimeLive(verdict, 'docker') === null && verdict.state !== 'alive') return null;
     const age = verdict.evidence.livenessAgeSecs;
-    return { mode, ageSecs: age === null ? null : Math.round(age) };
+    return { mode, age_secs: age === null ? null : Math.round(age) };
   } catch {
     return null;
   }
@@ -83,20 +83,20 @@ function probe(projectRoot: string, hermitDir: string) {
   // `pwd | sed 's|/|-|g'` form replaced slashes only and mis-keyed any dotted path.
   const pathKey = transcriptPathKey(projectRoot);
   return {
-    dockerVersion: dockerVersion(),
-    configExists: fs.existsSync(path.join(projectRoot, hermitDir, 'config.json')),
-    isWSL: projectRoot.startsWith('/mnt/c/') || projectRoot.startsWith('/mnt/d/'),
+    docker_version: dockerVersion(),
+    config_exists: fs.existsSync(path.join(projectRoot, hermitDir, 'config.json')),
+    is_wsl: projectRoot.startsWith('/mnt/c/') || projectRoot.startsWith('/mnt/d/'),
     existing: {
       dockerfile: fs.existsSync(path.join(projectRoot, 'Dockerfile.hermit')),
       entrypoint: fs.existsSync(path.join(projectRoot, 'docker-entrypoint.hermit.sh')),
       compose: fs.existsSync(path.join(projectRoot, 'docker-compose.hermit.yml')),
     },
-    gitconfigExists: fs.existsSync(path.join(home, '.gitconfig')),
+    gitconfig_exists: fs.existsSync(path.join(home, '.gitconfig')),
     memory: {
-      pathKey,
-      seedExists: fs.existsSync(path.join(transcriptDirFor(projectRoot), 'memory', 'MEMORY.md')),
+      path_key: pathKey,
+      seed_exists: fs.existsSync(path.join(transcriptDirFor(projectRoot), 'memory', 'MEMORY.md')),
     },
-    liveOwner: liveOwner(projectRoot, hermitDir),
+    live_owner: liveOwner(projectRoot, hermitDir),
   };
 }
 

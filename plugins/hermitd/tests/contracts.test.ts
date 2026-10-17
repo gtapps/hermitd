@@ -1099,14 +1099,24 @@ describe('channel resolver contract', () => {
     expect(result.id).toBe('telegram');
   });
 
-  test('missing config.json: exit 1, JSON error on stdout with detail+path', async () => {
+  test('missing config.json: exit 1, JSON error on stdout only, naming the path', async () => {
     // CLI-path coverage (exit codes) — spawn the resolver directly.
     const r = await runScript('resolve-outbound-channel.ts', { args: ['/nope/missing-dir'] });
     expect(r.exitCode).toBe(1);
+    expect(r.stderr).toBe('');
     const payload = JSON.parse(r.stdout.trim());
-    expect(payload.error).toBe('config_read_failed');
-    expect(payload).toContainKey('detail');
-    expect(payload.path ?? '').toContain('/nope/missing-dir');
+    expect(payload.error).toStartWith('config_read_failed:');
+    expect(payload.error).toContain('/nope/missing-dir');
+  }, 15000);
+
+  test('no eligible channel: exit 0 with a none status', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-resolver-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: {} }));
+      const r = await runScript('resolve-outbound-channel.ts', { args: [dir] });
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_reachable_channel' });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }, 15000);
 
   test("channels.primary: 'primary' would point at the string itself — falls through", () => {
@@ -1414,11 +1424,11 @@ describe('model-invocable inventory', () => {
 describe('channel-setup empty-channels branch', () => {
   const text = read(path.join(SKILLS, 'channel-setup', 'SKILL.md'));
 
-  test('creates the entry through hatch-config.ts --reinit, discarding stdout', () => {
+  test('creates the entry through hatch-config.ts --reinit, reading its stdout', () => {
     expect(text).toContain('hatch-config.ts');
     expect(text).toContain('--reinit');
-    // hatch-config prints the whole config on success; skills must not ingest it.
-    expect(text).toContain('--reinit >/dev/null');
+    // hatch-config prints OK or {"error"} on stdout; discarding stdout hides the error.
+    expect(text).not.toContain('--reinit >/dev/null');
   });
 });
 
@@ -1452,7 +1462,7 @@ describe('channel setup ownership', () => {
   });
 
   test('keeps a live host tmux hermit on the local flow', () => {
-    expect(channelSetup).toContain('liveOwner');
+    expect(channelSetup).toContain('live_owner');
   });
 
   test('names the hermit command for each Docker host state', () => {
@@ -1866,6 +1876,20 @@ describe('weekly-review consolidation delegation contract', () => {
     const block = (text: string) => extractBlock(text, '<!-- weekly-review-consolidation-schema:start -->', '<!-- weekly-review-consolidation-schema:end -->');
     expect(block(refFile)).toBe(block(skill));
   });
+
+});
+
+// Pinned scripts refuse any state dir but `.hermit`, and skills fail open on that
+// refusal, so a misspelled dir in a script call silently skips the step.
+test('no script call in skills, agents or templates passes a misspelled .hermit dir', () => {
+  const files = [SKILLS, AGENTS, TEMPLATES].flatMap((root) =>
+    (fs.readdirSync(root, { recursive: true }) as string[])
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => path.join(root, f)));
+  const offenders = files.flatMap((file) =>
+    [...read(file).matchAll(/scripts\/[\w-]+\.(?:ts|sh)[^\n`]*?\s(\.hermit[\w-]+)(?=[\s`]|$)/gm)]
+      .map((m) => `${path.relative(PLUGIN_ROOT, file)}: ${m[1]}`));
+  expect(offenders).toEqual([]);
 });
 
 // ============================================================
@@ -3382,7 +3406,7 @@ describe('heartbeat eval-runner return contract', () => {
   test('SKILL.md run drives the tick verb and marks budget alerts by mark_key', () => {
     expect(skill).toContain('scripts/heartbeat.ts tick');
     expect(skill).toContain('scripts/heartbeat.ts ack-queue');
-    expect(skill).toContain('`delivered: true`');
+    expect(skill).toContain('`status: "delivered"`');
     expect(skill).toContain('--mark-budget-notified <mark_key>');
   });
 
@@ -3500,31 +3524,30 @@ describe('hermit-evolve permission delegation contract', () => {
 
 // ---------- stale-plugin-runtime header (config ahead of loaded plugin) ----------
 //
-// check-upgrade.sh emits two different headers, and which one appears decides whether a
+// check-upgrade.sh reports two different statuses, and which one appears decides whether a
 // hermit runs hermit-evolve. Config-ahead means a stale install copy got loaded: evolve
 // reads that as up-to-date, and finalizing would downgrade the applied stamp. So the
-// header has to stay distinct and its consumers must not treat it as an upgrade —
-// without this pin a later prose edit can quietly collapse both headers back into one
-// "any banner -> run evolve" rule, which is the loop this contract exists to prevent.
+// status (and the section startup-context.ts renders from it) has to stay distinct and
+// its consumers must not treat it as an upgrade. Without this pin a later prose edit can
+// quietly collapse both back into one "any banner -> run evolve" rule, which is the loop
+// this contract exists to prevent. The rendered text is pinned in scripts.test.ts.
 describe('stale plugin runtime header', () => {
   const HEADER = '---Stale Plugin Runtime---';
+  const STATUS = 'stale_plugin_runtime';
   const emitter = read(path.join(SCRIPTS, 'check-upgrade.sh'));
+  const renderer = read(path.join(SCRIPTS, 'startup-context.ts'));
   const sessionStart = read(path.join(SKILLS, 'resident-start', 'SKILL.md'));
   const brief = read(path.join(SKILLS, 'brief', 'SKILL.md'));
 
-  test('check-upgrade.sh emits the header without an evolve directive', () => {
-    expect(emitter).toContain(HEADER);
-    // The branch may NAME hermit-evolve (to say it cannot help) but must never carry
-    // the slash-command directive form that resident-start acts on, nor REQUIRED.
-    const staleBranch = emitter.slice(emitter.indexOf(`echo "${HEADER}"`), emitter.indexOf('echo "---Upgrade Available---"'));
-    expect(staleBranch.length).toBeGreaterThan(0);
-    expect(staleBranch).not.toContain('/hermitd:hermit-evolve');
-    expect(staleBranch).not.toContain('REQUIRED');
+  test('check-upgrade.sh reports the stale status; startup-context.ts renders the header', () => {
+    expect(emitter).toContain(`"${STATUS}"`);
+    expect(renderer).toContain(`'${STATUS}'`);
+    expect(renderer).toContain(`title = 'Stale Plugin Runtime'`);
   });
 
-  test('both banner consumers recognize the header', () => {
+  test('both banner consumers recognize the stale case', () => {
     expect(sessionStart).toContain(HEADER);
-    expect(brief).toContain(HEADER);
+    expect(brief).toContain(STATUS);
   });
 });
 

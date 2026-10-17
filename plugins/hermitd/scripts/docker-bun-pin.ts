@@ -20,7 +20,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emitJson } from './lib/cli';
+import { emitJson, exitError } from './lib/cli';
 import { sha256 } from './lib/hash';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { writePristineBaselines } from './lib/pristine-baseline';
@@ -34,23 +34,18 @@ const TEMPLATE = path.resolve(
   'Dockerfile.hermit.template',
 );
 
-function die(msg: string): never {
-  console.error(`docker-bun-pin: ${msg}`);
-  process.exit(1);
-}
-
 function isPlainObject(v: any): boolean {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 const [stateDirArg, bunVersion, pluginVersion] = process.argv.slice(2);
 if (!stateDirArg || !bunVersion || !pluginVersion) {
-  die('usage: bun docker-bun-pin.ts <hermit-state-dir> <bun-version> <plugin-version>');
+  exitError();
 }
 // Same pin as manifest-seed.ts: the state dir is not caller-chosen, and the
 // allow-list grant for this script (`Bash(bun */scripts/docker-bun-pin.ts*)`)
 // covers every argument.
-const stateDir = pinStateDirOrExit(stateDirArg, 'docker-bun-pin');
+const stateDir = pinStateDirOrExit(stateDirArg);
 
 // The ENV/RUN half of the canonical install, lifted from the shipped template:
 // everything from the `# Bun is the hermit runtime` comment through the
@@ -60,14 +55,14 @@ function canonicalInstallBlock(): string {
   let tmpl: string;
   try {
     tmpl = fs.readFileSync(TEMPLATE, 'utf8');
-  } catch (err: any) {
-    die(`cannot read the shipped Dockerfile template: ${err.message}`);
+  } catch {
+    exitError('template_unreadable');
   }
   const lines = tmpl.split('\n');
   const start = lines.findIndex((l) => l.startsWith('# Bun is the hermit runtime'));
   const end = lines.findIndex((l) => l.startsWith('RUN curl -fsSL https://bun.sh/install'));
   if (start === -1 || end === -1 || end < start) {
-    die('shipped Dockerfile template no longer carries the bun install block — refusing to guess');
+    exitError('template_missing_bun_block');
   }
   return lines.slice(start, end + 1).join('\n');
 }
@@ -82,11 +77,11 @@ function readManifest(): { path: string; data: any } | null {
   let existing: any;
   try {
     existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  } catch (e: any) {
-    die(`existing template-manifest.json is not valid JSON: ${e.message} — refusing to overwrite`);
+  } catch {
+    exitError('corrupt_manifest:invalid_json');
   }
   if (!isPlainObject(existing) || !isPlainObject(existing.files)) {
-    die('existing template-manifest.json: missing or invalid `files` object — refusing to overwrite');
+    exitError('corrupt_manifest:invalid_files');
   }
   return { path: manifestPath, data: existing };
 }
@@ -109,8 +104,8 @@ function writeBaseline(manifest: { path: string; data: any } | null): void {
   fs.renameSync(tmp, manifest.path);
   try {
     writePristineBaselines(stateDir, [{ key: MANIFEST_KEY, buf: template }]);
-  } catch (err: any) {
-    die(err.message);
+  } catch {
+    exitError('pristine_write_failed');
   }
 }
 

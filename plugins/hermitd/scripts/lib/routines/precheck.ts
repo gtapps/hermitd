@@ -4,7 +4,8 @@
 // which stays the single writer — the #464 dedup guard and JSONL schema live in exactly
 // one place.
 // Usage: bun routines.ts precheck <routine-id> [delivery]
-// Output (stdout, one JSON line): {"status":"skip"} | {"status":"proceed"}, the latter
+// Output (stdout, one JSON line): {"status":"skip","reason":"paused"|"gate_skip"} |
+// {"status":"proceed"}, the latter
 // optionally with `reflect`: the reflect gate's run verdict object, so the skill does
 // not re-run that script (which would append its observation rows a second time).
 // Side effect: stamps skipped-paused | skipped-precheck |
@@ -26,7 +27,6 @@ import { BUILTIN_REFLECT, readReflectGate, runGate } from './gate';
 type Json = any;
 
 const PROCEED = { status: 'proceed' };
-const SKIP = { status: 'skip' };
 
 const id = process.argv[2];
 const delivery = process.argv[3] || 'cron-create';
@@ -87,7 +87,7 @@ function reflectGate(routine: Json | null): Json | null {
   const gate = runGate(routine, HERMIT_ROOT, consumedMark() || utcISOStamp());
   if (gate.verdict === 'skip') {
     stamp('skipped-precheck');
-    emitJson(SKIP);
+    emitJson({ status: 'skip', reason: 'gate_skip' });
   }
   if (gate.verdict === 'error') stamp('precheck-error', gate.detail);
   return gate.reflect ?? null;
@@ -152,7 +152,7 @@ try {
 }
 if (paused) {
   stamp('skipped-paused');
-  emitJson(SKIP);
+  emitJson({ status: 'skip', reason: 'paused' });
 }
 
 // Runs before the `started` stamp: a gate skip means this fire never opened, so it

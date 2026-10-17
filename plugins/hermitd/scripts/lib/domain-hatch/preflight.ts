@@ -16,36 +16,42 @@ import { readJson } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { resolvePlugin, isResolveError, pluginList, type ResolvedPlugin } from './resolve';
 import { readTargetState, targetFile, type Target, type CoreScope } from './target';
-import { planBlock } from './block';
+import { planBlock, type BlockAction } from './block';
 
 type Json = any;
 
 export type Action =
-  | 'bootstrap-core'
-  | 'upgrade-core-package'
-  | 'upgrade-core-applied'
+  | 'bootstrap_core'
+  | 'upgrade_core_package'
+  | 'upgrade_core_applied'
   | 'full'
   | 'verify';
 
+/** Ordered commands that clear a stale or missing core. */
+const NEXT_STEPS: Partial<Record<Action, (pluginId: string) => string[]>> = {
+  bootstrap_core: (id) => ['/hermitd:hatch', `/${id}:hatch`],
+  upgrade_core_package: (id) => ['hermitd update', '/hermitd:hermit-evolve', `/${id}:hatch`],
+  upgrade_core_applied: (id) => ['/hermitd:hermit-evolve', `/${id}:hatch`],
+};
+
 export interface Preflight {
-  ok: boolean;
   error?: string;
-  message?: string;
-  plugin?: string;
+  plugin: string;
   self_version?: string | null;
   stamped_version?: string | null;
   core_floor?: string | null;
   core_installed?: string | null;
   core_applied?: string | null;
   action?: Action;
-  remedy?: string;
+  /** Ordered commands that clear a stale or missing core, on the upgrade and bootstrap actions only. */
+  next_steps?: string[];
   target?: Target | null;
   target_default?: Target;
   target_file?: string;
   core_scope?: CoreScope;
   needs_target_question?: boolean;
   marker?: string | null;
-  append_action?: string;
+  append_action?: BlockAction;
 }
 
 // `>=1.2.30` and `^1.2.30` both appear in the fleet's manifests. Bun's semver
@@ -83,15 +89,10 @@ export interface PreflightInput {
 export function preflight(input: PreflightInput): Preflight {
   const { pluginId, hermitDir, projectRoot, corePluginRoot } = input;
 
-  // Raw, not settled: absent/unreadable config IS the bootstrap-core signal.
+  // Raw, not settled: absent/unreadable config IS the bootstrap_core signal.
   const config = readConfigRaw(hermitDir);
   if (config === null) {
-    return {
-      ok: true,
-      plugin: pluginId,
-      action: 'bootstrap-core',
-      remedy: `Core hermit is not initialized in this project. Have the operator type /hermitd:hatch, then re-run /${pluginId}:hatch after it finishes.`,
-    };
+    return { plugin: pluginId, action: 'bootstrap_core', next_steps: NEXT_STEPS.bootstrap_core!(pluginId) };
   }
 
   const list = pluginList(input.stdinJson);
@@ -113,7 +114,7 @@ export function preflight(input: PreflightInput): Preflight {
 
   const resolved = resolvePlugin(list, pluginId, projectRoot, corePluginRoot);
   if (isResolveError(resolved)) {
-    return { ok: false, error: resolved.error, message: resolved.message, plugin: pluginId, ...targetFields };
+    return { error: resolved.error, plugin: pluginId, ...targetFields };
   }
   const self: ResolvedPlugin = resolved;
 
@@ -131,20 +132,15 @@ export function preflight(input: PreflightInput): Preflight {
   // to run hermit-evolve when the package itself is old sends them to a command
   // that will report up-to-date and change nothing.
   const floor = self.required_core_version;
-  let action: Action;
-  let remedy: string | undefined;
-  if (!satisfiesFloor(coreInstalled, floor)) {
-    action = 'upgrade-core-package';
-    remedy = `Installed core is ${coreInstalled ?? 'unknown'} but ${pluginId} requires ${floor}. Update the plugin first with hermitd update, then run /hermitd:hermit-evolve, then re-run this hatch.`;
-  } else if (!satisfiesFloor(coreApplied, floor)) {
-    action = 'upgrade-core-applied';
-    remedy = `Core code is current (${coreInstalled}) but this project is still migrated to ${coreApplied ?? 'none'}, below the required ${floor}. Run /hermitd:hermit-evolve, then re-run this hatch.`;
-  } else {
-    action = stamped !== null && self.version !== null && stamped === self.version ? 'verify' : 'full';
-  }
+  const action: Action = !satisfiesFloor(coreInstalled, floor)
+    ? 'upgrade_core_package'
+    : !satisfiesFloor(coreApplied, floor)
+      ? 'upgrade_core_applied'
+      : stamped !== null && self.version !== null && stamped === self.version ? 'verify' : 'full';
+  const nextSteps = NEXT_STEPS[action]?.(pluginId);
 
   let marker: string | null = null;
-  let appendAction: string | undefined;
+  let appendAction: BlockAction | undefined;
   if (state.target) {
     const foreign = list
       .map((e: Json) => String(e?.id ?? '').split('@')[0])
@@ -162,7 +158,6 @@ export function preflight(input: PreflightInput): Preflight {
   }
 
   return {
-    ok: true,
     plugin: pluginId,
     self_version: self.version,
     stamped_version: stamped,
@@ -170,7 +165,7 @@ export function preflight(input: PreflightInput): Preflight {
     core_installed: coreInstalled,
     core_applied: coreApplied,
     action,
-    ...(remedy ? { remedy } : {}),
+    ...(nextSteps ? { next_steps: nextSteps } : {}),
     ...targetFields,
     marker,
     ...(appendAction ? { append_action: appendAction } : {}),

@@ -84,7 +84,8 @@ test('failed tmux discovery retains discovered Docker rows and corrupt projects'
   expect(rows.find((r: any) => r.name === 'demo').state).toBe('error');
 });
 test('container install is a no-op outside any project', async () => {
-  const f = fixture(); expect((await f.run(['install'], f.root, { container: 'docker' })).exitCode).toBe(0);
+  const f = fixture(); const r = await f.run(['install'], f.root, { container: 'docker' });
+  expect(r.exitCode).toBe(0); expect(JSON.parse(r.stdout)).toEqual({ status: 'skip', reason: 'container' });
   expect(fs.existsSync(path.join(f.root, '.local'))).toBe(false);
 });
 test('pause/watchdog/run preserve args, cwd, and exit codes', async () => {
@@ -99,7 +100,7 @@ test('pause/watchdog/run preserve args, cwd, and exit codes', async () => {
 test('host install creates bin, is idempotent, warns about PATH, and follows a refreshed installPath', async () => {
   const f = fixture(); const shim = path.join(f.root, '.local/bin/hermitd');
   const first = await f.run(['install'], f.p);
-  expect(first.exitCode).toBe(0); expect(first.stderr).toContain('to PATH');
+  expect(first.exitCode).toBe(0); expect(first.stdout).toBe('OK\n'); expect(first.stderr).toContain('to PATH');
   expect(fs.existsSync(shim)).toBe(true); const mtime = fs.statSync(shim).mtimeMs;
   expect((await f.run(['install'], f.p)).exitCode).toBe(0); expect(fs.statSync(shim).mtimeMs).toBe(mtime);
   write(path.join(f.fresh, 'scripts/hermitd-exec.sh'), '#!/bin/sh\nprintf "fresh:%s\\n" "$*"\n');
@@ -154,7 +155,7 @@ sed 's/"enabled":true/"enabled":'"$enabled"'/g' "$LIST"
 test('host install refuses foreign file and notices earlier PATH tool', async () => {
   const f = fixture(); const shim = path.join(f.root, '.local/bin/hermitd');
   write(shim, '#!/bin/sh\necho foreign\n');
-  expect((await f.run(['install'], f.p)).stderr).toContain('Refusing');
+  expect(JSON.parse((await f.run(['install'], f.p)).stdout)).toEqual({ status: 'skip', reason: 'foreign_target', path: shim });
   expect(fs.readFileSync(shim, 'utf8')).toContain('echo foreign'); fs.unlinkSync(shim);
   write(path.join(f.bin, 'hermitd'), '#!/bin/sh\nexit 0\n');
   const r = await f.run(['install'], f.p);

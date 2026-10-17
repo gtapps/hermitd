@@ -74,8 +74,9 @@ async function apply(dir: string, input: unknown) {
     env: { AGENT_DIR: hermit(dir) },
     stdin: typeof input === 'string' ? input : JSON.stringify(input),
   });
-  expect(r.exitCode).toBe(0);
-  return JSON.parse(r.stdout.trim());
+  const out = JSON.parse(r.stdout.trim());
+  expect(r.exitCode).toBe('error' in out ? 1 : 0);
+  return out;
 }
 
 const FINDINGS_LINE = '- [reflect] PROP-042 auto-resolved (shipped in #612)';
@@ -99,7 +100,7 @@ const bodyOf = (content: string) => content.slice(content.indexOf('\n---', 3));
 describe('apply-reflection-actions: happy paths', () => {
   test('auto-resolve patches frontmatter and metrics, preserving frozen journal', withTmp(async (dir) => {
     const result = await apply(dir, { resolution_actions: [AUTO_RESOLVE] });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 1, nudge: 0, skip: 0 });
     expect(result.errors).toBeUndefined();
 
@@ -129,7 +130,7 @@ describe('apply-reflection-actions: happy paths', () => {
         shell_findings_line: '- [reflect] PROP-042 nudged: 3 sessions stale',
       }],
     });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 0, nudge: 1, skip: 0 });
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(PROPOSAL_MD);
     expect(fs.existsSync(metricsPath(dir))).toBe(false);
@@ -140,7 +141,7 @@ describe('apply-reflection-actions: happy paths', () => {
     const result = await apply(dir, {
       resolution_actions: [{ proposal_id: 'PROP-042', action: 'skip' }],
     });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 0, nudge: 0, skip: 1 });
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(PROPOSAL_MD);
     expect(fs.readFileSync(shellPath(dir), 'utf-8')).toBe(SHELL_MD);
@@ -155,13 +156,13 @@ describe('apply-reflection-actions: happy paths', () => {
         { proposal_id: 'PROP-042', action: 'skip' },
       ],
     });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 1, nudge: 1, skip: 1 });
   }));
 
   test('empty resolution_actions → ok with all-zero counts', withTmp(async (dir) => {
     const result = await apply(dir, { resolution_actions: [] });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 0, nudge: 0, skip: 0 });
   }));
 });
@@ -171,31 +172,28 @@ describe('apply-reflection-actions: transactionality (invalid batch = zero write
     const result = await apply(dir, {
       resolution_actions: [AUTO_RESOLVE, { proposal_id: 'PROP-042', action: 'bogus' }],
     });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('bogus');
+    expect(result.error).toBe('invalid_action:1:unknown_action');
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(PROPOSAL_MD);
     expect(fs.existsSync(metricsPath(dir))).toBe(false);
     expect(fs.readFileSync(shellPath(dir), 'utf-8')).toBe(SHELL_MD);
   }));
 
-  test('auto-resolve with frontmatter_patch: null → ok:false, nothing written', withTmp(async (dir) => {
+  test('auto-resolve with frontmatter_patch: null → error, nothing written', withTmp(async (dir) => {
     const result = await apply(dir, {
       resolution_actions: [{ ...AUTO_RESOLVE, frontmatter_patch: null }],
     });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('frontmatter_patch');
+    expect(result.error).toBe('invalid_action:0:missing_frontmatter_patch');
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(PROPOSAL_MD);
     expect(fs.existsSync(metricsPath(dir))).toBe(false);
   }));
 
   // Stale-runner guard: a runner still emitting the removed field is rejected
   // outright rather than having its row silently dropped.
-  test('a non-null metrics_event is rejected → ok:false, nothing written', withTmp(async (dir) => {
+  test('a non-null metrics_event is rejected → error, nothing written', withTmp(async (dir) => {
     const result = await apply(dir, {
       resolution_actions: [{ ...AUTO_RESOLVE, metrics_event: '{"type":"resolved"}' }],
     });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('metrics_event');
+    expect(result.error).toBe('invalid_action:0:metrics_event_rejected');
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(PROPOSAL_MD);
     expect(fs.existsSync(metricsPath(dir))).toBe(false);
   }));
@@ -204,30 +202,27 @@ describe('apply-reflection-actions: transactionality (invalid batch = zero write
     const result = await apply(dir, {
       resolution_actions: [{ ...AUTO_RESOLVE, metrics_event: null }],
     });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied).toEqual({ auto_resolve: 1, nudge: 0, skip: 0 });
   }));
 
-  test('proposal_id with no matching file (PROP-999) → ok:false', withTmp(async (dir) => {
+  test('proposal_id with no matching file (PROP-999) → error', withTmp(async (dir) => {
     const result = await apply(dir, {
       resolution_actions: [{ ...AUTO_RESOLVE, proposal_id: 'PROP-999' }],
     });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('no matching proposal file');
+    expect(result.error).toBe('invalid_action:0:no_such_proposal');
   }));
 
-  test('malformed proposal_id shape (PROP-x) → ok:false', withTmp(async (dir) => {
+  test('malformed proposal_id shape (PROP-x) → error', withTmp(async (dir) => {
     const result = await apply(dir, {
       resolution_actions: [{ ...AUTO_RESOLVE, proposal_id: 'PROP-x' }],
     });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('PROP-<digits>');
+    expect(result.error).toBe('invalid_action:0:bad_proposal_id');
   }));
 
-  test('malformed stdin → ok:false, still exit 0', withTmp(async (dir) => {
+  test('malformed stdin → invalid_json, exit 1', withTmp(async (dir) => {
     const result = await apply(dir, 'not json');
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain('stdin');
+    expect(result.error).toBe('invalid_json');
   }));
 });
 
@@ -244,7 +239,7 @@ describe('apply-reflection-actions: edges', () => {
         frontmatter_patch: { status: 'resolved' },
       }],
     });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(fs.readFileSync(p1, 'utf-8')).toMatch(/^status: resolved$/m);
     expect(fs.readFileSync(p12, 'utf-8')).toBe(mk('PROP-12'));
   }));
@@ -254,7 +249,7 @@ describe('apply-reflection-actions: edges', () => {
   // silently rather than erroring.
   test('auto-resolve writes exactly one well-formed resolved line', withTmp(async (dir) => {
     const result = await apply(dir, { resolution_actions: [AUTO_RESOLVE] });
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.errors).toBeUndefined();
 
     const written = fs.readFileSync(metricsPath(dir), 'utf-8');
@@ -288,7 +283,7 @@ describe('apply-reflection-actions: edges', () => {
     const truncated = '---\nid: PROP-042\nstatus: proposed\n\nbody with no terminator\n';
     fs.writeFileSync(proposalPath(dir), truncated);
     const result = await apply(dir, { resolution_actions: [AUTO_RESOLVE] });
-    expect(result.ok).toBe(false);
+    expect(result.error).toBe('invalid_action:0:frontmatter_unparseable');
     expect(fs.readFileSync(proposalPath(dir), 'utf-8')).toBe(truncated);
   }));
 
@@ -306,7 +301,7 @@ describe('apply-reflection-actions: edges', () => {
         stdin: JSON.stringify({ resolution_actions: [AUTO_RESOLVE] }),
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state dir must be');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.readFileSync(proposalPath(victim), 'utf-8')).toBe(before);
     } finally {
       t.cleanup();
@@ -334,7 +329,7 @@ describe('apply-reflection-actions: pending-ask reconciliation', () => {
     seedAsk(dir, { proposal_id: 'PROP-042' });
     const result = await apply(dir, { resolution_actions: [AUTO_RESOLVE] });
 
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(result.applied.auto_resolve).toBe(1);
     expect(result.errors).toBeUndefined();
     expect(pending(dir)).toHaveLength(0);
@@ -345,7 +340,7 @@ describe('apply-reflection-actions: pending-ask reconciliation', () => {
     seedAsk(dir, { proposal_id: 'PROP-999' });
     const result = await apply(dir, { resolution_actions: [AUTO_RESOLVE] });
 
-    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
     expect(pending(dir)).toHaveLength(1);
   }));
 

@@ -967,7 +967,7 @@ Rota body.
     expect(r.stdout.length).toBeLessThanOrEqual(1200);
     expect(r.stdout).toContain('---Compaction Pointers---');
     for (const banned of ['---Operator Context (OPERATOR.md)---', '---Active Session---', '---Compiled Knowledge---',
-      '---Schema Drift---', '---Storage Drift---', '---Last Report---', '---Upgrade Check---']) {
+      '---Schema Drift---', '---Storage Drift---', '---Last Report---', '---Upgrade Available---', '---Stale Plugin Runtime---']) {
       expect(r.stdout).not.toContain(banned);
     }
   }));

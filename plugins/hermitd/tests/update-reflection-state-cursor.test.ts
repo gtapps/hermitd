@@ -71,15 +71,14 @@ describe('update-reflection-state --scheduled-check-run', () => {
   test('rejects outcome arguments without writing state', withTmp(async (stateFile) => {
     const r = await runPinnedScript('update-reflection-state.ts', rootOf(stateFile), [stateFile, '--scheduled-check-run', CHECK_ID, '--outcome', 'empty']);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('Usage');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
     expect(fs.existsSync(stateFile)).toBe(false);
   }));
 
-  test('missing id argument → exit 1 with usage on stderr', withTmp(async (stateFile) => {
+  test('missing id argument → exit 1 with a usage error', withTmp(async (stateFile) => {
     const r = await runCursor(stateFile);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('Usage');
-    expect(r.stderr).toContain('--scheduled-check-run');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
     expect(fs.existsSync(stateFile)).toBe(false);
   }));
 });
@@ -97,12 +96,20 @@ describe('update-reflection-state --graduation-cursor', () => {
     fs.writeFileSync(stateFile, JSON.stringify(existing, null, 2) + '\n');
     const r = await runGrad(stateFile);
     expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe('OK\n');
     const after = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
     expect(after.last_quick_hash).toBe('abc123');
     expect(after.counters.total_runs).toBe(5);
     expect(after.counters.last_run_at).toBe('2026-07-01T09:00:00.000Z');
     expect(typeof after.counters.last_graduation_at).toBe('string');
     expect(after.counters.last_graduation_at).not.toBe(existing.counters.last_run_at);
+  }));
+
+  test('a failed write is a real failure: write_failed, exit 1', withTmp(async (stateFile) => {
+    fs.mkdirSync(stateFile);
+    const r = await runGrad(stateFile);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toBe('{"error":"write_failed"}\n');
   }));
 });
 
@@ -128,7 +135,7 @@ describe('update-reflection-state: state-dir pin', () => {
         env: { AGENT_DIR: rootOf(myStateFile), HERMIT_NOW: NOW },
       });
       expect(r.exitCode).toBe(1);
-      expect(r.stderr).toContain('state file must be under');
+      expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
       expect(fs.readFileSync(victimFile, 'utf-8')).toBe(before);
     } finally {
       fs.rmSync(victimDir, { recursive: true, force: true });
@@ -148,7 +155,7 @@ describe('update-reflection-state: state-dir pin', () => {
       env: { AGENT_DIR: root, HERMIT_NOW: NOW },
     });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain('state file must be under');
+    expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
     expect(fs.readFileSync(operatorMd, 'utf-8')).toBe(before);
   }));
 });

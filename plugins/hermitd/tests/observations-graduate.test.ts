@@ -54,7 +54,7 @@ function fixture(opts: { ledger?: string; cursor?: string | null; minSessions?: 
 async function graduate(stateDir: string, args: string[] = []) {
   const r = await runPinnedScript('observations.ts', stateDir, ['graduate', stateDir, ...args]);
   expect(r.exitCode).toBe(0);
-  return JSON.parse(r.stdout.trim());
+  return JSON.parse(r.stdout.trim()).candidates;
 }
 
 describe('observations.ts graduate', () => {

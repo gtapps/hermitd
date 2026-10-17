@@ -2,15 +2,17 @@
 //
 // Validate mode (grammar check only — no state reads, so no state dir):
 //   proposal.ts success-signal --validate "<predicate>"
-//   Exits 0 + prints "OK" if valid. Exits 1 + prints a reason if invalid — callers
-//   (proposal-create, proposal-act) branch on that exit code, so it must stay
-//   non-zero even though every other proposal.ts verb exits 0.
+//   Prints `OK` if valid, else `{"status":"invalid","reason":"<token>"}`; both exit 0
+//   (an invalid predicate is an expected answer, not a failure). Reasons:
+//   `invalid_grammar`, `unsupported_metric:<name>`, `invalid_values`.
 //
 // Evaluate mode (check predicate against session reports):
 //   proposal.ts success-signal <stateDir> "<accepted_date>" "<accepted_in_session|null>" "<predicate>"
-//   Prints one JSON line:
-//     {"verdict":"MET|UNMET|INSUFFICIENT_DATA","metric":"...","op":"...","threshold":N,"window":N,"observed":N,"sessions_counted":N}
-//   Never throws — any failure emits INSUFFICIENT_DATA.
+//   Prints one JSON object:
+//     {"status":"met|unmet|insufficient_data","metric":"...","op":"...","threshold":N,"window":N,"observed":N,"sessions_counted":N}
+//   Never throws — any evaluation failure emits insufficient_data.
+//
+// A missing argument in either mode prints `{"error":"usage"}` and exits 1.
 //
 // v1 grammar (one metric):
 //   avg_session_cost_usd <OP> <NUMBER> over <N> sessions
@@ -18,6 +20,7 @@
 
 import path from 'node:path';
 import { readTaskReports } from '../task-report';
+import { emit, emitJson, exitError, printJson } from '../cli';
 
 type Json = any;
 
@@ -53,34 +56,17 @@ function applyOp(observed: number, op: string, threshold: number): boolean {
 // ─── Validate mode ────────────────────────────────────────────────────────────
 
 function runValidate(predicate: string) {
-  const parsed = parseSignal(predicate);
-  if (!parsed) {
-    // Give a specific reason.
-    const m = GRAMMAR.exec(predicate.trim());
-    if (!m) {
-      process.stdout.write(
-        `invalid grammar; expected: avg_session_cost_usd <OP> <NUMBER> over <N> sessions (OP: < <= > >=)\n`
-      );
-    } else if (!SUPPORTED_METRICS.has(m[1])) {
-      process.stdout.write(`unsupported metric '${m[1]}'; v1 supports: ${[...SUPPORTED_METRICS].join(', ')}\n`);
-    } else {
-      process.stdout.write(`invalid predicate values\n`);
-    }
-    process.exit(1);
-  }
-  process.stdout.write('OK\n');
-  process.exit(0);
+  if (parseSignal(predicate)) emit('OK');
+  const m = GRAMMAR.exec(predicate.trim());
+  const reason = !m ? 'invalid_grammar' : !SUPPORTED_METRICS.has(m[1]) ? `unsupported_metric:${m[1]}` : 'invalid_values';
+  emitJson({ status: 'invalid', reason });
 }
 
 // ─── Evaluate mode ────────────────────────────────────────────────────────────
 
-function emit(obj: Json) {
-  process.stdout.write(JSON.stringify(obj) + '\n');
-}
-
 function emitInsufficient(parsed: Json) {
-  emit({
-    verdict: 'INSUFFICIENT_DATA',
+  printJson({
+    status: 'insufficient_data',
     metric: parsed ? parsed.metric : null,
     op: parsed ? parsed.op : null,
     threshold: parsed ? parsed.threshold : null,
@@ -113,8 +99,8 @@ function runEvaluate(stateDir: string, acceptedDateStr: string, acceptedInSessio
   candidates.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   if (candidates.length < parsed.window) {
-    emit({
-      verdict: 'INSUFFICIENT_DATA',
+    printJson({
+      status: 'insufficient_data',
       metric: parsed.metric,
       op: parsed.op,
       threshold: parsed.threshold,
@@ -139,8 +125,8 @@ function runEvaluate(stateDir: string, acceptedDateStr: string, acceptedInSessio
   }
 
   const met = applyOp(observed, parsed.op, parsed.threshold);
-  emit({
-    verdict: met ? 'MET' : 'UNMET',
+  printJson({
+    status: met ? 'met' : 'unmet',
     metric: parsed.metric,
     op: parsed.op,
     threshold: parsed.threshold,
@@ -154,20 +140,10 @@ function runEvaluate(stateDir: string, acceptedDateStr: string, acceptedInSessio
 
 export function run(args: string[]): void {
   if (args[0] === '--validate') {
-    if (args.length < 2) {
-      process.stdout.write('usage: proposal.ts success-signal --validate "<predicate>"\n');
-      process.exit(1);
-    }
+    if (args.length < 2) exitError();
     runValidate(args.slice(1).join(' '));
   } else {
-    if (args.length < 4) {
-      process.stdout.write(
-        'usage: proposal.ts success-signal <stateDir> "<accepted_date>" "<accepted_in_session|null>" "<predicate>"\n'
-      );
-      // Fail open — emit INSUFFICIENT_DATA so reflect doesn't crash.
-      emitInsufficient(null);
-      return;
-    }
+    if (args.length < 4) exitError();
     const [stateDir, acceptedDate, acceptedInSession, ...rest] = args;
     runEvaluate(stateDir, acceptedDate, acceptedInSession, rest.join(' '));
   }

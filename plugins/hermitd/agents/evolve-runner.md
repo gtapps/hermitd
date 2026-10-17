@@ -73,8 +73,8 @@ never block:
   When the CHANGELOG step's anchor line is absent (operator-customized base), follow the standard
   deferred-migration path: skip this step only and continue.
 - **Version bump (step 9):** run `evolve-finalize.ts` and parse its stdout JSON. Use `core.confirmed` as
-  `vNEW` in the report — NOT `plan.to`. If the script exits non-zero, `core.matched` is false, or `errors`
-  is non-empty, return `Upgrade: blocked: config version bump failed — <joined error messages>` and omit
+  `vNEW` in the report — NOT `plan.to`. If it prints `error`, return
+  `Upgrade: blocked: config version bump failed — <joined errors[].message>` and omit
   the rest of the report **except the `Context reload:` line** — steps 6/7 may already have rewritten
   project instructions on disk, and a blocked version bump does not undo those writes.
   Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —

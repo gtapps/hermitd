@@ -256,10 +256,10 @@ describe('reflect-precheck: drift capture', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  test('a foreign state-dir argv is refused (exit 1, stderr)', async () => {
+  test('a foreign state-dir argv is refused (exit 1, foreign_state_dir)', async () => {
     const result = await runScript('reflect-precheck.ts', { args: ['/nonexistent/dir', PLUGIN_ROOT] });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('reflect-precheck.ts');
+    expect(result.stdout).toStartWith('{"error":"foreign_state_dir:');
   });
 
   test('no drift written when hermit dirs are clean', async () => {

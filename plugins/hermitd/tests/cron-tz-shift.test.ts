@@ -22,7 +22,7 @@ const shift = (tz: string, now: string, cron: string, fromTz: string) =>
     env: { TZ: tz, HERMIT_CRON_TZ_SHIFT_NOW: now },
   });
 
-// checkStdout cases: exit 0, exact stdout, and no WARN on stderr.
+// checkStdout cases: exit 0, exact `cron`, no `warning`, and nothing on stderr.
 // [name, expected-stdout, TZ, NOW, cron, from-tz]
 const STDOUT_CASES: [string, string, string, string, string, string][] = [
   // --- No-shift cases ---
@@ -48,8 +48,8 @@ const STDOUT_CASES: [string, string, string, string, string, string][] = [
   ['hour range/step, shifted start off field-min', '0 8-23/6 * * *', 'UTC', S, '0 9-21/6 * * *', 'Europe/Lisbon'],
 ];
 
-// checkWarn cases: exit 0, stdout matches, stderr contains the pattern.
-// [name, expected-stdout, stderr-pattern, TZ, NOW, cron, from-tz]
+// checkWarn cases: exit 0, `cron` matches, `warning` is unshiftable_cron, `detail` contains the pattern.
+// [name, expected-stdout, detail-pattern, TZ, NOW, cron, from-tz]
 const WARN_CASES: [string, string, string, string, string, string, string][] = [
   ['DOM-restricted pass-through',     '0 4 1 * *',    'DOM',             'UTC', S, '0 4 1 * *',    'Europe/Lisbon'],
   ['mixed day-wrap DOW restricted',   '0 0,12 * * 0', 'mixed day-wrap',  'UTC', S, '0 0,12 * * 0', 'Europe/Lisbon'],
@@ -62,7 +62,7 @@ describe('cron-tz-shift (shift + pass-through)', () => {
     test(name, async () => {
       const r = await shift(tz, now, cron, fromTz);
       expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe(expected);
+      expect(JSON.parse(r.stdout)).toEqual({ cron: expected });
       expect(r.stderr.trim()).toBe('');
     });
   }
@@ -73,8 +73,10 @@ describe('cron-tz-shift (WARN pass-through)', () => {
     test(name, async () => {
       const r = await shift(tz, now, cron, fromTz);
       expect(r.exitCode).toBe(0);
-      expect(r.stdout.trim()).toBe(expected);
-      expect(r.stderr).toContain(pattern);
+      const out = JSON.parse(r.stdout);
+      expect(out.cron).toBe(expected);
+      expect(out.warning).toBe('unshiftable_cron');
+      expect(out.detail).toContain(pattern);
     });
   }
 });
@@ -82,11 +84,13 @@ describe('cron-tz-shift (WARN pass-through)', () => {
 describe('cron-tz-shift (exit non-zero)', () => {
   test('malformed cron (not 5 fields)', async () => {
     const r = await shift('UTC', S, 'garbage', 'Europe/Lisbon');
-    expect(r.exitCode).not.toBe(0);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).error).toStartWith('invalid_cron:');
   });
 
   test('bad HERMIT_CRON_TZ_SHIFT_NOW', async () => {
     const r = await shift('UTC', 'not-a-date', '0 4 * * *', 'Europe/Lisbon');
-    expect(r.exitCode).not.toBe(0);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_now' });
   });
 });

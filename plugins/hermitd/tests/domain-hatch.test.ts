@@ -13,7 +13,7 @@ import { runScript, SCRIPTS_DIR, PLUGIN_ROOT } from './helpers/run';
 import { satisfiesFloor, preflight } from '../scripts/lib/domain-hatch/preflight';
 import { resolvePlugin, isResolveError } from '../scripts/lib/domain-hatch/resolve';
 import { ensureHatchTarget, readTargetState, optionsPath } from '../scripts/lib/domain-hatch/target';
-import { planBlock, applyBlock, splitResident, planResidentRemoval, templatePath } from '../scripts/lib/domain-hatch/block';
+import { planBlock, applyBlock, splitResident, planResidentRemoval, templatePath, syncBlocks } from '../scripts/lib/domain-hatch/block';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-domain-hatch-');
 afterAll(cleanup);
@@ -157,30 +157,30 @@ describe('preflight', () => {
   test('no config.json means core was never hatched', () => {
     const s = scaffold();
     fs.rmSync(path.join(s.hermit, 'config.json'));
-    expect(run(s).action).toBe('bootstrap-core');
+    expect(run(s)).toEqual({ plugin: PLUGIN, action: 'bootstrap_core', next_steps: ['/hermitd:hatch', `/${PLUGIN}:hatch`] });
   });
 
   // The bug the five hatches shipped: HA checked 1.0.16, fitness 1.0.26, feed
   // 1.2.22, forge 1.1.1, while every manifest declared >=1.2.30.
   test('a stale installed package is reported as a package problem', () => {
     const r = run(scaffold({ coreInstalled: '1.2.28', coreApplied: '1.2.28' }));
-    expect(r.action).toBe('upgrade-core-package');
+    expect(r.action).toBe('upgrade_core_package');
     expect(r.core_floor).toBe('>=1.2.30');
-    expect(r.remedy).toContain('hermitd update');
-    expect(r.remedy).not.toContain('Run /hermitd:hermit-evolve, then re-run');
+    expect(r.next_steps).toEqual(['hermitd update', '/hermitd:hermit-evolve', `/${PLUGIN}:hatch`]);
   });
 
   // The distinction that matters: hermit-evolve advances applied state and can
   // never advance installed code, so the two cases need different advice.
   test('current package with stale applied state is an evolve problem', () => {
     const r = run(scaffold({ coreInstalled: '1.2.33', coreApplied: '1.2.28' }));
-    expect(r.action).toBe('upgrade-core-applied');
-    expect(r.remedy).toContain('hermit-evolve');
-    expect(r.remedy).not.toContain('hermitd update');
+    expect(r.action).toBe('upgrade_core_applied');
+    expect(r.next_steps).toEqual(['/hermitd:hermit-evolve', `/${PLUGIN}:hatch`]);
   });
 
   test('full on a first run, verify when the stamped version already matches', () => {
-    expect(run(scaffold({ selfVersion: '1.0.4' })).action).toBe('full');
+    const full = run(scaffold({ selfVersion: '1.0.4' }));
+    expect(full.action).toBe('full');
+    expect(full.next_steps).toBeUndefined();
     expect(run(scaffold({ selfVersion: '1.0.4', selfStamped: '1.0.3' })).action).toBe('full');
     expect(run(scaffold({ selfVersion: '1.0.4', selfStamped: '1.0.4' })).action).toBe('verify');
   });
@@ -194,8 +194,8 @@ describe('preflight', () => {
       corePluginRoot: s.coreRoot,
       stdinJson: s.stdinJson,
     });
-    expect(r.ok).toBe(false);
     expect(r.error).toBe('plugin_not_installed');
+    expect(r.action).toBeUndefined();
   });
 
   // coreScope() resolves a user-scope core (its user branch ignores
@@ -214,7 +214,7 @@ describe('preflight', () => {
       corePluginRoot: s.coreRoot,
       stdinJson: JSON.stringify(list),
     });
-    expect(r.ok).toBe(true);
+    expect(r.error).toBeUndefined();
     expect(r.action).toBe('full');
   });
 
@@ -232,7 +232,6 @@ describe('preflight', () => {
       corePluginRoot: s.coreRoot,
       stdinJson: '[]',
     });
-    expect(r.ok).toBe(false);
     expect(r.error).toBe('plugin_list_unavailable');
     expect(r.target).toBe('local');
     expect(r.target_file).toBe('CLAUDE.local.md');
@@ -362,8 +361,8 @@ describe('sync-block', () => {
     const target = path.join(s.root, 'CLAUDE.md');
 
     const raw = applyBlock(planBlock(s.install, PLUGIN, target, []));
-    expect(raw.action).toBe('needs-rendering');
-    expect(raw.ok).toBe(false);
+    expect(raw.action).toBe('needs_rendering');
+    expect(raw.written).toBe(false);
     expect(fs.existsSync(target)).toBe(false);
 
     const rendered = applyBlock(planBlock(s.install, PLUGIN, target, [], `${MARKER}\n\nstandard\n\n${CLOSING}\n`));
@@ -392,7 +391,6 @@ describe('sync-block', () => {
     fs.writeFileSync(target, `# Project\n\n${MARKER}\na\n${CLOSING}\n\n${MARKER}\nb\n${CLOSING}\n`);
     const res = applyBlock(planBlock(s.install, PLUGIN, target, []));
     expect(res.action).toBe('ambiguous');
-    expect(res.ok).toBe(false);
     expect(res.written).toBe(false);
   });
 });
@@ -416,10 +414,9 @@ describe('CLI contract', () => {
     expect(res.error).toBe('plugin_not_installed');
   });
 
-  // The exit code is the half the library boundary cannot assert, and the whole
-  // domain-hatch protocol rests on it: every domain hatch parses preflight's
-  // stdout and branches on the fields, so a resolution failure has to arrive as
-  // exit 0 + JSON, not as a nonzero the caller reads as "no verdict".
+  // The exit code is the half the library boundary cannot assert: a resolution
+  // failure is `{error,...}` at exit 1, and still carries the target fields
+  // hermit-evolve reads.
   //
   // Asserts the exit code and the verdict SHAPE, never the specific error code:
   // the plugin-list seam is gone, so this reaches the live `claude plugin list
@@ -430,38 +427,104 @@ describe('CLI contract', () => {
   // purpose — "absent" and "cannot tell" earn different operator advice).
   // Pinning the code here would fail on CI. The sibling library-boundary test
   // above owns the specific-code assertion, where the list is stubbed.
-  test('preflight exits 0 on a resolution failure (CLI-level invariant)', async () => {
+  test('preflight exits 1 on a resolution failure and keeps the target fields (CLI-level invariant)', async () => {
     const s = scaffold();
     const r = await runScript('domain-hatch.ts', {
       args: ['preflight', 'not-a-plugin'],
       env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
     });
-    expect(r.exitCode).toBe(0);
+    expect(r.exitCode).toBe(1);
     const out = JSON.parse(r.stdout);
-    expect(out.ok).toBe(false);
-    expect(typeof out.error).toBe('string');
+    expect(out.error).toMatch(/^plugin_/);
+    expect(out.plugin).toBe('not-a-plugin');
+    expect(out.needs_target_question).toBe(true);
+    expect(out).not.toHaveProperty('ok');
+    expect(out).not.toHaveProperty('message');
   });
 
-  test('ensure-target then sync-block write the core marker from CLAUDE_PLUGIN_ROOT', async () => {
-    const s = scaffold();
-    const marker = 'hermitd: Session Discipline';
+  const CORE_MARKER = 'hermitd: Session Discipline';
+  function coreTemplate(s: ReturnType<typeof scaffold>, body = '## Session Discipline') {
     fs.mkdirSync(path.join(s.coreRoot, 'state-templates'), { recursive: true });
     fs.writeFileSync(
       path.join(s.coreRoot, 'state-templates', 'CLAUDE-APPEND.md'),
-      `<!-- ${marker} -->\n\n## Session Discipline\n\n<!-- /${marker} -->\n`,
+      `<!-- ${CORE_MARKER} -->\n\n${body}\n\n<!-- /${CORE_MARKER} -->\n`,
     );
+  }
+
+  test('ensure-target then sync-block write the core marker from CLAUDE_PLUGIN_ROOT', async () => {
+    const s = scaffold();
+    coreTemplate(s);
     const env = { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit };
     const ensure = await runScript('domain-hatch.ts', {
       args: ['ensure-target', 'hermitd', '--target', 'local'],
       env,
     });
     expect(ensure.exitCode).toBe(0);
+    const ensured = JSON.parse(ensure.stdout);
+    expect(ensured).toMatchObject({ action: 'created', target: 'local', path: optionsPath(s.hermit) });
+    expect(ensured).not.toHaveProperty('ok');
     const sync = await runScript('domain-hatch.ts', {
       args: ['sync-block', 'hermitd'],
       env,
     });
     expect(sync.exitCode).toBe(0);
-    expect(fs.readFileSync(path.join(s.root, 'CLAUDE.local.md'), 'utf8')).toContain(marker);
+    const target = path.join(s.root, 'CLAUDE.local.md');
+    expect(JSON.parse(sync.stdout)).toEqual({
+      action: 'append',
+      written: true,
+      resident: 'skip',
+      marker: `<!-- ${CORE_MARKER} -->`,
+      target_file: target,
+    });
+    expect(fs.readFileSync(target, 'utf8')).toContain(CORE_MARKER);
+  });
+
+  test('sync-block refuses a duplicated marker at exit 0 and writes nothing', async () => {
+    const s = scaffold({ hatchOptions: { target: 'local', core_install_scope: 'local', stamped_at: 'x', stamped_by: 'y', version: '1.0.0' } });
+    coreTemplate(s);
+    const target = path.join(s.root, 'CLAUDE.local.md');
+    const block = `<!-- ${CORE_MARKER} -->\na\n<!-- /${CORE_MARKER} -->\n`;
+    fs.writeFileSync(target, `${block}\n${block}`);
+    const r = await runScript('domain-hatch.ts', {
+      args: ['sync-block', 'hermitd'],
+      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'refused', reason: 'ambiguous_marker', file: target });
+    expect(fs.readFileSync(target, 'utf8')).toBe(`${block}\n${block}`);
+  });
+
+  test('sync-block reports needs_rendering for a mode-annotated template without --rendered-stdin', async () => {
+    const s = scaffold({ hatchOptions: { target: 'local', core_install_scope: 'local', stamped_at: 'x', stamped_by: 'y', version: '1.0.0' } });
+    coreTemplate(s, '<!-- mode:standard-only -->\nstandard\n<!-- /mode:standard-only -->');
+    const r = await runScript('domain-hatch.ts', {
+      args: ['sync-block', 'hermitd'],
+      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'needs_rendering' });
+    expect(fs.existsSync(path.join(s.root, 'CLAUDE.local.md'))).toBe(false);
+  });
+
+  test('sync-block without a stamped target is no_target at exit 1', async () => {
+    const s = scaffold();
+    coreTemplate(s);
+    const r = await runScript('domain-hatch.ts', {
+      args: ['sync-block', 'hermitd'],
+      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'no_target' });
+  });
+
+  test('a missing verb is a usage error on stdout', async () => {
+    const s = scaffold();
+    const r = await runScript('domain-hatch.ts', {
+      args: ['preflight'],
+      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'usage' });
   });
 
   // bad_target is CLI-only argv validation (ensureHatchTarget() has no
@@ -534,11 +597,30 @@ describe('resident block splitting', () => {
     expect(fs.readFileSync(target, 'utf8')).toContain('Other content.');
   });
 
+  test('syncBlocks refuses an ambiguous resident block before writing either file', () => {
+    const s = scaffold();
+    const template = TEMPLATE.replace('Some rules.', 'Shared rules.\n<!-- resident-only -->\nResident duties.\n<!-- /resident-only -->');
+    fs.writeFileSync(templatePath(s.install), template);
+    const sharedPath = path.join(s.root, 'CLAUDE.md');
+    const residentPath = path.join(s.hermit, 'RESIDENT.md');
+    const block = `${MARKER}\na\n${CLOSING}\n`;
+    fs.writeFileSync(residentPath, `${block}\n${block}`);
+    expect(syncBlocks(s.install, PLUGIN, sharedPath, residentPath, [])).toEqual({ status: 'refused', reason: 'ambiguous_marker', file: residentPath });
+    expect(fs.existsSync(sharedPath)).toBe(false);
+    expect(fs.readFileSync(residentPath, 'utf8')).toBe(`${block}\n${block}`);
+
+    fs.rmSync(residentPath);
+    expect(syncBlocks(s.install, PLUGIN, sharedPath, residentPath, [])).toEqual({
+      action: 'append', written: true, resident: 'append', marker: MARKER, target_file: sharedPath,
+    });
+    expect(fs.readFileSync(residentPath, 'utf8')).toContain('Resident duties.');
+  });
+
   test('rendered stdin still carrying mode markers is refused', () => {
     const s = scaffold();
     const rendered = TEMPLATE.replace('Some rules.', '<!-- mode:standard-only -->\nSome rules.\n<!-- /mode:standard-only -->');
     const target = path.join(s.root, 'CLAUDE.md');
-    expect(applyBlock(planBlock(s.install, PLUGIN, target, [], rendered)).action).toBe('needs-rendering');
+    expect(applyBlock(planBlock(s.install, PLUGIN, target, [], rendered)).action).toBe('needs_rendering');
     expect(fs.existsSync(target)).toBe(false);
   });
 });

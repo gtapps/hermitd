@@ -16,4 +16,9 @@ function formatTokens(n: number): string {
   return kStr(n) + ' tokens';
 }
 
-export { kStr, formatTokens };
+// Rounds a dollar amount to 4 decimal places.
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+export { kStr, formatTokens, round4 };

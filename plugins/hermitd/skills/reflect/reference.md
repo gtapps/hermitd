@@ -41,16 +41,16 @@ Run this step only if `resolution_check` is listed in `phases_json`.
 
    **If `success_signal` is non-null** — run the predicate:
    Run `proposal-success-signal` (Commands) with arguments `"<accepted_date>" "<accepted_in_session|null>" "<success_signal>"`.
-   Parse the one JSON line on stdout. Branch on `verdict`:
-   - `INSUFFICIENT_DATA` → skip; add nothing to `resolution_actions` for this proposal.
-   - `MET` → auto-resolve. Populate one `resolution_actions` entry:
+   Parse its JSON. Branch on `status`:
+   - `insufficient_data` → skip; add nothing to `resolution_actions` for this proposal.
+   - `met` → auto-resolve. Populate one `resolution_actions` entry:
      ```json
      { "proposal_id": "PROP-NNN",
        "action": "auto-resolve",
        "frontmatter_patch": { "status": "resolved", "resolved_date": "<now ISO>" },
        "shell_findings_line": "PROP-NNN resolved — success signal met: avg session cost $<observed> over <sessions_counted> sessions (target <op> $<threshold>)." }
      ```
-   - `UNMET` → nudge if debounce allows. Check `last_sparse_nudge.<PROP-NNN>` (from dispatch prompt or
+   - `unmet` → nudge if debounce allows. Check `last_sparse_nudge.<PROP-NNN>` (from dispatch prompt or
      reflection-state.json if not in prompt). If present and < 7 days elapsed, skip (add nothing).
      Otherwise, populate one `resolution_actions` entry:
      ```json
@@ -76,10 +76,10 @@ Run this step only if `resolution_check` is listed in `phases_json`.
 
    If the pattern is **absent** from all 3:
    - **Frequent** (`original_cadence_days ≤ 14`) and ≥ 14 days elapsed since `accepted_date`:
-     → auto-resolve (same entry shape as the `MET` branch above). Do not emit a metrics row —
+     → auto-resolve (same entry shape as the `met` branch above). Do not emit a metrics row —
      `apply-reflection-actions.ts` derives the `resolved` row from `proposal_id`.
    - **Sparse** (`original_cadence_days > 14`) and elapsed ≥ `2 × original_cadence_days` since
-     `accepted_date` and debounce allows (same `last_sparse_nudge` check as UNMET branch):
+     `accepted_date` and debounce allows (same `last_sparse_nudge` check as `unmet` branch):
      → nudge (populate `shell_findings_line`:
      `"PROP-NNN appears resolved (pattern absent 3/3 recent records, original cadence Nd, Xd since accept). Run /hermitd:proposal-act resolve PROP-NNN to confirm."`)
    - Elapsed guard not yet met: add `action: "skip"`, no other fields.
@@ -88,7 +88,7 @@ Run this step only if `resolution_check` is listed in `phases_json`.
    batch was empty).
 
 **e.** Set the top-level `last_sparse_nudge` return field to the union of every proposal nudged this
-   run: for each `resolution_actions` entry with `action: "nudge"` (both the UNMET and sparse-pattern
+   run: for each `resolution_actions` entry with `action: "nudge"` (both the `unmet` and sparse-pattern
    branches above), add `{ "PROP-NNN": "<now ISO>" }`. Emit `{}` if no proposal was nudged. This
    top-level map is the only nudge write-back — the calling session merges it into `reflection-state.json`
    to honour the 7-day debounce. Do not return nudge timestamps inside the individual `resolution_actions`

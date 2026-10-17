@@ -1,5 +1,5 @@
 // `routines.ts log-event <routine-id> <event> [delivery]` — appends one line to
-// state/routine-metrics.jsonl. Events: dispatched | fired | skipped-waiting |
+// state/routine-metrics.jsonl and prints `OK`. Events: dispatched | fired | skipped-waiting |
 // skipped-paused | skipped-late | skipped-precheck | precheck-error | started. delivery:
 // cron-create (default) | monitor. The monitor stamps `dispatched` at emit; the
 // session still owns `started` and `fired`. `precheck-error` rows carry a
@@ -19,10 +19,7 @@ import { utcISOStamp } from '../time';
 import { appendJsonlLine } from '../append-jsonl';
 import { lastRoutineEvent } from './history';
 import { findHermitDir } from '../cc-compat';
-
-// Deliberately not an enum check: the shell version accepted any event string,
-// and rejecting one here would refuse input that used to be recorded.
-const USAGE = 'Usage: routines.ts log-event <routine-id> <event> [delivery]';
+import { emit, exitError } from '../cli';
 
 // Only the CLI verb walks: a CronCreate prompt fires with cwd set to the
 // session's primary working directory, which may be a subdirectory of the hermit
@@ -94,7 +91,7 @@ export function logRoutineEvent(
   // appendFileSync throws when the resolved dir has no state/ (a scaffolded-but-
   // unfinished hatch, a worktree's partial copy). Return that as the documented
   // error string rather than letting it escape — `run()` below does not catch,
-  // so a throw here surfaces as a stack trace instead of one stderr line.
+  // so a throw here surfaces as a stack trace instead of one error object.
   try {
     return appendJsonlLine(
       metrics,
@@ -114,20 +111,9 @@ export function logRoutineEvent(
 
 export function run(args: string[]): void {
   const [id, event, delivery] = args;
-  if (!id || !event) {
-    process.stderr.write(`${USAGE}\n`);
-    process.exit(1);
-  }
+  if (!id || !event) exitError();
   const hermit = nearestHermitDir(process.cwd());
-  if (!hermit) {
-    process.stderr.write(
-      `routines.ts log-event: could not find .hermit/ in any parent of ${process.cwd()}\n`,
-    );
-    process.exit(1);
-  }
-  const err = logRoutineEvent(id, event, hermit, delivery || 'cron-create');
-  if (err) {
-    process.stderr.write(`routines.ts log-event: ${err}\n`);
-    process.exit(1);
-  }
+  if (!hermit) exitError('no_hermit_dir');
+  if (logRoutineEvent(id, event, hermit, delivery || 'cron-create')) exitError('append_failed');
+  emit('OK');
 }

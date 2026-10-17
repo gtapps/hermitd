@@ -16,16 +16,16 @@ Steps are independent — read files and run scripts concurrently where possible
 1. `.hermit/compiled/review-weekly-*.md` — glob all, sort by `week` frontmatter
    descending, read the 8 most recent. Extract per-file: `week`, `total_cost_usd`,
    `proposals_created`, `proposals_resolved`.
-2. Partial-week total: from the step 5 `cost-report.ts reflect` output (the header
-   total), when the review file for the current week doesn't exist yet. Skip if
+2. Partial-week total: from the step 5 `cost-report.ts reflect` output (its
+   `total_usd`), when the review file for the current week doesn't exist yet. Skip if
    step 5 is unavailable.
 3. `.hermit/state/proposal-metrics.jsonl` — scan from the end (most recent first); stop
    at entries older than 30 days. Use `resolved_at` and `created_at` to compute resolution days.
 4. Run `proposal-metrics` (Commands) and
    capture stdout. Skip gracefully if unavailable. (Steps 4 and 5 may run concurrently.)
 5. Run `cost-report-reflect` (Commands) with arguments `30` and capture
-   stdout. This produces a 30-day cost breakdown including a `### Cost by source` section. Skip
-   gracefully if unavailable.
+   stdout. This prints a 30-day cost breakdown as one JSON object, including `by_source`. Skip
+   gracefully if unavailable or `status: "empty"`.
 6. `.hermit/config.json` — read `routines[]` (id, schedule, enabled), `monitors[]`
    (id, enabled), `heartbeat.every`.
 7. Run `routines-health` (Commands) with arguments `--days 30` and capture
@@ -41,14 +41,15 @@ Steps are independent — read files and run scripts concurrently where possible
 
 **Cost:** From review files, extract `total_cost_usd` per week and show the 4 most recent as a
 trend with Δ% between the two most recent weeks. If fewer than 2 reviews exist, note "not enough
-data". From the step 5 output, locate the `### Cost by source` block and compute two buckets:
-**scheduled** (sum of all `routine:*` and `heartbeat` lines) vs **interactive** (the `other`
-line). Note that watches (Monitor tool) cost ~0 tokens when quiet and will not appear. If step 5
+data". From the step 5 output's `by_source` entries, compute two buckets:
+**scheduled** (sum of all `routine:*` and `heartbeat` sources) vs **interactive** (the `other`
+source). Note that watches (Monitor tool) cost ~0 tokens when quiet and will not appear. If step 5
 is unavailable, omit the split.
 
 **Proposal velocity:** From `proposal-metrics.jsonl`, median days `created_at` → `resolved_at`
-for proposals resolved in the last 30 days. From step 4 output, show the acceptance-by-source
-table (rows with n>0 only). Note any triggered kill gates.
+for proposals resolved in the last 30 days. From step 4's `segments`, show an acceptance-by-source
+table (survival and acceptance rates with their counts, segments with `sample` > 0 only). Note
+any segment whose `status` is `kill`, with its `kill_reasons`.
 
 **Routines & watches:** From config.json, list enabled routines with their `schedule` cron
 string. Use the step 7 output for 30-day fire counts, and flag any routine whose `incomplete`,

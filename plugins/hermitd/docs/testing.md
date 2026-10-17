@@ -51,13 +51,13 @@ Each hook can be tested in isolation. Stop hooks expect JSON on stdin:
 # cost-tracker (Stop hook — always runs)
 cat tests/fixtures/stop-hook-input.json | bun scripts/cost-tracker.ts
 
-# check-upgrade (SessionStart hook) — three outcomes, driven by the stamp in
+# check-upgrade (run by the SessionStart hook) — three outcomes, driven by the stamp in
 # .hermit/config.json vs the plugin.json at the root you pass:
-#   stamp older  -> ---Upgrade Available---     (run hermit-evolve)
-#   stamp equal  -> silent
-#   stamp newer  -> ---Stale Plugin Runtime---  (a stale install copy is loaded;
-#                                                evolve cannot fix it)
-# An unparseable version on either side is silent.
+#   stamp older  -> {"status":"upgrade_available",...}     (run hermit-evolve)
+#   stamp equal  -> OK
+#   stamp newer  -> {"status":"stale_plugin_runtime",...}  (a stale install copy is
+#                                                           loaded; evolve cannot fix it)
+# An unparseable version on either side prints OK.
 bash scripts/check-upgrade.sh .
 ```
 

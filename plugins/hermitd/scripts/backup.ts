@@ -6,9 +6,12 @@
  * costs no tokens and keeps working when the session is rate-limited, wedged, or
  * logged out. The doctor's `backup` check is the only path back into a model turn.
  *
- *   bun scripts/backup.ts run       # commit (+push); always exits 0
+ *   bun scripts/backup.ts run       # commit (+push); prints the run's digest object
  *   bun scripts/backup.ts setup     # terminal-only wizard; writes config.backup
- *   bun scripts/backup.ts status    # print the last run's digest
+ *   bun scripts/backup.ts status    # print the last run's digest object
+ *
+ * `run` and `status` exit 0 whatever the backup's own result (a failed run is a
+ * recorded result, not a script failure); only a crash prints {"error"} and exits 1.
  *
  * What this never does, in any mode: pull, fetch, rebase, merge, reset, force-push,
  * --no-verify, or rewrite the repo's remote config. A backup that mutates the live
@@ -22,7 +25,7 @@ import { spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock } from './lib/lockfile';
 import { readConfigRaw, readSettledConfig, agentNameFromConfig } from './lib/config-read';
 import { readRuntimeJson } from './lib/runtime';
-import { flagValue } from './lib/cli';
+import { flagValue, printJson, exitError } from './lib/cli';
 import { defaultConfigDir } from './lib/setup-token';
 import { safe } from './lib/sanitize';
 import { utcISOStamp } from './lib/time';
@@ -36,6 +39,7 @@ import {
   currentBranch,
   treeUnsafe,
   formatStatus,
+  statusDigest,
   git,
   hasWorkspaceMarker,
   hostRepoRemotes,
@@ -95,12 +99,12 @@ function doRun(hermitDir: string, root: string, configDir: string, quiet = false
   const config = readSettledConfig(hermitDir);
   const backup: Json = config?.backup ?? {};
   if (backup.enabled !== true) {
-    if (!quiet) process.stderr.write('backup: not configured (run `backup setup` from a terminal)\n');
+    if (!quiet) printJson({ status: 'skip', reason: 'not_configured' });
     return null;
   }
 
   if (!acquireLock(lockPath(hermitDir), LOCK_STALE_MS)) {
-    if (!quiet) process.stderr.write('backup: another run holds the lock\n');
+    if (!quiet) printJson({ status: 'skip', reason: 'locked' });
     return null;
   }
 
@@ -199,7 +203,7 @@ function doRun(hermitDir: string, root: string, configDir: string, quiet = false
 
     doPush(repo, root, backup, status);
     writeBackupStatus(hermitDir, status);
-    if (!quiet) process.stderr.write(formatStatus(status, backup) + '\n');
+    if (!quiet) printJson(statusDigest(status, backup));
     return { status };
   } catch (e: any) {
     return fail(status, 'error', safe(e?.message ?? e).slice(0, 200));
@@ -211,7 +215,7 @@ function doRun(hermitDir: string, root: string, configDir: string, quiet = false
     s.last_result = result;
     s.last_error = message;
     writeBackupStatus(hermitDir, s);
-    if (!quiet) process.stderr.write(formatStatus(s, backup) + '\n');
+    if (!quiet) printJson(statusDigest(s, backup));
     return { status: s };
   }
 }
@@ -436,7 +440,7 @@ async function doSetup(hermitDir: string, root: string, configDir: string, argv:
       path.join(import.meta.dir, 'settings-edit.ts'), path.join(hermitDir, 'config.json'), 'set', 'backup', block,
     ], { encoding: 'utf-8' });
     if (res.status !== 0) {
-      process.stderr.write(`backup setup: settings-edit rejected the block — ${safe(res.stderr).slice(0, 300)}\n`);
+      process.stderr.write(`backup setup: settings-edit rejected the block — ${safe(res.stdout).slice(0, 300)}\n`);
       return 1;
     }
 
@@ -481,23 +485,23 @@ async function main(): Promise<void> {
 
   if (verb === 'run') {
     doRun(hermitDir, root, configDir);
-    process.exit(0); // never block the watchdog tick, whatever happened
+    process.exit(0);
   }
   if (verb === 'status') {
     const config = readSettledConfig(hermitDir);
-    process.stdout.write(formatStatus(readBackupStatus(hermitDir), config?.backup ?? {}) + '\n');
+    printJson(statusDigest(readBackupStatus(hermitDir), config?.backup ?? {}));
     process.exit(0);
   }
   if (verb === 'setup') {
     process.exit(await doSetup(hermitDir, root, configDir, process.argv.slice(3)));
   }
-  process.stderr.write('usage: backup <run|setup|status>\n');
-  process.exit(1);
+  exitError();
 }
 
 if (import.meta.main) {
   main().catch((e) => {
-    process.stderr.write(`backup: ${safe(e?.message ?? e)}\n`);
-    process.exit(process.argv[2] === 'setup' ? 1 : 0);
+    if (process.argv[2] === 'setup') process.stderr.write(`backup: ${safe(e?.message ?? e)}\n`);
+    else printJson({ error: `backup_failed:${safe(e?.message ?? e)}` });
+    process.exit(1);
   });
 }

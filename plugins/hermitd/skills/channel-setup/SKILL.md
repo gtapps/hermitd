@@ -23,21 +23,21 @@ Activate a channel, adding the `config.json` entry first when there isn't one. L
 
 2. **No compose file.** If `docker-compose.hermit.yml` is absent at the project root, continue with the local/tmux flow below.
 
-3. **Live tmux hermit.** Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/docker-preflight.ts "$(pwd)"`. If its `liveOwner` is non-null, a host tmux hermit owns this project despite the compose file: continue with the local/tmux flow below.
+3. **Live tmux hermit.** Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/docker-preflight.ts "$(pwd)"`. If its `live_owner` is non-null, a host tmux hermit owns this project despite the compose file: continue with the local/tmux flow below.
 
 4. **Compose present.** Run `docker compose -f docker-compose.hermit.yml ps --status running --format '{{.Service}}'`. Non-zero exit → print its output, stop. If `hermit` is absent from the output: after channel selection, run steps 2 and 4, skip 3, then stop with `hermitd start` and "re-run this skill to pair". If `hermit` is present: docker-running.
 
-5. **docker-running.** After channel selection, skip step 3 (the container installs channel plugins at boot). Run step 4; a `SKIP … HTTP 401` or `403` from its `channel-bot-id.ts` line is reported as "token rejected by <platform>, fix it before restarting". If this run created the config entry or wrote the token → stop: "The bot is offline until the container restarts and loads it: `hermitd restart`, then DM the bot for a code and re-run this skill. Still no code after a restart: `hermitd docker logs --tail=60` shows the plugin's own error (wrong token, missing Message Content intent, install failure), and `/hermitd:hermit-doctor` checks the token." Otherwise run §5, §6, §6a, §6b, and §6c against the host-visible channel `<state_dir>`, passing the absolute project `.hermit` directory as `<hermit_state_dir>` to `channel-access.ts`. No restart prompt is needed for an already-running bot. Continue with §6d, §6e, then §7 for each paired channel. Add to the pairing question: "No code from the bot? It has not loaded the token: `hermitd restart`, then re-run this skill."
+5. **docker-running.** After channel selection, skip step 3 (the container installs channel plugins at boot). Run step 4; a `channel-bot-id.ts` skip with `http_401` or `http_403` is reported as "token rejected by <platform>, fix it before restarting". If this run created the config entry or wrote the token → stop: "The bot is offline until the container restarts and loads it: `hermitd restart`, then DM the bot for a code and re-run this skill. Still no code after a restart: `hermitd docker logs --tail=60` shows the plugin's own error (wrong token, missing Message Content intent, install failure), and `/hermitd:hermit-doctor` checks the token." Otherwise run §5, §6, §6a, §6b, and §6c against the host-visible channel `<state_dir>`, passing the absolute project `.hermit` directory as `<hermit_state_dir>` to `channel-access.ts`. No restart prompt is needed for an already-running bot. Continue with §6d, §6e, then §7 for each paired channel. Add to the pairing question: "No code from the bot? It has not loaded the token: `hermitd restart`, then re-run this skill."
 
 Read `.hermit/config.json`. Collect all entries under `channels` that are valid objects, tracking which are disabled (`enabled: false`).
 
 **Adding an entry.** Where a branch below says *create the entry*, run (`<name>` is the lowercase channel key — `discord`, `telegram` — never the capitalized option label):
 
 ```
-echo '{"channels":{"<name>":{"enabled":true}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit >/dev/null
+echo '{"channels":{"<name>":{"enabled":true}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit
 ```
 
-The script fills `enabled`, `dm_channel_id: null`, `default_chat_id: null`, and `state_dir` (`.claude.local/channels/<name>`), validates the whole config, preserves every other key, and merges onto an existing entry rather than replacing it. Discard stdout — it prints the full config. A non-zero exit means nothing was written: report the `hatch-config:` line it printed on stderr and stop — never fall through into steps 2–6 against a channel that isn't in `config.json`.
+The script fills `enabled`, `dm_channel_id: null`, `default_chat_id: null`, and `state_dir` (`.claude.local/channels/<name>`), validates the whole config, preserves every other key, and merges onto an existing entry rather than replacing it. It prints `OK`. On `error` nothing was written: report it and stop — never fall through into steps 2–6 against a channel that isn't in `config.json`.
 
 - If no channels configured: offer to add one — `AskUserQuestion` (header: "Channel") with options **Discord**, **Telegram**, **Cancel**. On **Cancel**, stop without writing. Otherwise create the entry and continue with that channel selected. Do not offer iMessage here: step 4 defines token vars for Discord and Telegram only.
 - If entries exist but all are disabled: name them, then ask with `AskUserQuestion` (header: "Channel") — the disabled channel names plus **Cancel** — which to re-enable. On **Cancel**, stop without writing. Otherwise create the entry for the chosen name (this flips `enabled` and leaves `dm_channel_id`, `default_chat_id`, `state_dir`, and `allowed_users` intact) and continue with it selected.
@@ -137,7 +137,7 @@ Operator pastes the token via Other, or selects Skip.
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts .hermit <channel> --write
    ```
-   Writes `bot_user_id` (and `bot_username`) into the channel's `config.json` entry, overwriting a stale value from a previous bot. A `SKIP …` line is a non-event — report it and continue; setup never fails on it.
+   Writes `bot_user_id` (and `bot_username`) into the channel's `config.json` entry, overwriting a stale value from a previous bot. A `skip` status is a non-event — report it and continue; setup never fails on it.
 
 **If token already configured:** also run steps 6 and 7 before proceeding to step 5.
 
@@ -243,7 +243,7 @@ Drop Access ctrl when `channels.<channel>.allowed_users` is already present, pre
 Merge the answer through the existing reinit command:
 
 ```bash
-echo '{"channels":{"<channel>":{"allowed_users":<selected_string_array>}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit >/dev/null
+echo '{"channels":{"<channel>":{"allowed_users":<selected_string_array>}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit
 ```
 
 Omit `allowed_users` when the row was dropped or Allow everyone was chosen. Never use Edit/Write on `config.json`. Stop on a non-zero merge exit as in Adding an entry. Repeating the same answers must leave the file byte-identical. Continue to §6b.
@@ -292,7 +292,7 @@ Show Recall scope only if a group was added in §6c. Show Operators only if `cha
 Merge the answered per-channel keys in one payload, omitting unselected keys and keys whose default is absence:
 
 ```bash
-echo '{"channels":{"<channel>":{<answered_per_channel_keys>}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit >/dev/null
+echo '{"channels":{"<channel>":{<answered_per_channel_keys>}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit
 ```
 
 Never use Edit/Write on `config.json`. Stop on a non-zero merge exit as in Adding an entry. Omission preserves existing values on reinit; do not describe an existing override as cleared by omission. If a key is already customized, show that current value as the recommendation and preserve it unless an explicit replacement was selected. When the operator selects an absence default (`Each chat only itself`, `Inherit global setting`, `First allowed user`) for a key that is currently set, clear it with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json unset channels.<channel>.<key>`; stop on a non-zero exit. Repeating the same answers must leave the file byte-identical.

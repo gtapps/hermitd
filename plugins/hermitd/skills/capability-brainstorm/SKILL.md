@@ -15,7 +15,7 @@ After ≥8 invocations, run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts metrics .hermit --source=capability-brainstorm
 ```
 
-Triage-survival < 25% or acceptance < 30% → cut this skill rather than tune it — the signal-to-noise ratio isn't there. `INSUFFICIENT` output means the ≥8-verdict sample hasn't been reached yet; wait and re-check.
+`status: "kill"` (survival < 25% or acceptance < 30%) → cut this skill rather than tune it; the signal-to-noise ratio isn't there. `insufficient_data` means under 8 triage verdicts so far; wait and re-check.
 
 ## 1. Gather capability signals (harness-context — read before dispatch)
 

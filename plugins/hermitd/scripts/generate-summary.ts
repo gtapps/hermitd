@@ -200,7 +200,7 @@ if (import.meta.main) {
     // a hook is not reachable through that Bash grant. Containment, not
     // equality: argv here is <hermit>/state, and the bound is that branch
     // alone — nothing this mode writes lives outside it.
-    run(pinUnderStateDirOrExit(process.argv[2], 'generate-summary.ts', 'state dir', 'state'));
+    run(pinUnderStateDirOrExit(process.argv[2], 'state'));
     process.exit(0);
   }
 

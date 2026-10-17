@@ -34,12 +34,12 @@ test('the channel library wrappers answer history and is-trusted', async () => {
   try {
     const history = await run('history', '--source', 'discord', '--chat-id', '123', '--limit', '2');
     expect(history.code).toBe(0);
-    expect(JSON.parse(history.stdout).map((r: { text: string }) => r.text)).toEqual(['second', 'third']);
-    expect(JSON.parse((await run('history', '--source', 'discord', '--chat-id', '999')).stdout)).toEqual([]);
+    expect(JSON.parse(history.stdout).rows.map((r: { text: string }) => r.text)).toEqual(['second', 'third']);
+    expect(JSON.parse((await run('history', '--source', 'discord', '--chat-id', '999')).stdout)).toEqual({ rows: [] });
     expect(await run('history', '--source', 'discord')).toEqual({ stdout: '{"error":"missing_chat_id"}\n', code: 1 });
     expect(await run('history', '--source', 'discord', '--chat-id', '123', '--limit', '0')).toEqual({ stdout: '{"error":"invalid_limit"}\n', code: 1 });
     expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123')).toEqual({ stdout: 'OK\n', code: 0 });
-    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u2', '--chat-id', '123')).toEqual({ stdout: '{"error":"untrusted"}\n', code: 1 });
+    expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u2', '--chat-id', '123')).toEqual({ stdout: '{"status":"untrusted"}\n', code: 0 });
     expect(await run('is-trusted', '--source', 'discord', '--user-id', 'u1', '--chat-id', '123', '--name', 'x')).toEqual({ stdout: '{"error":"invalid_options"}\n', code: 1 });
     for (const verb of ['bind', 'update', 'unbind', 'lookup', 'list', 'prune', 'helper-status', 'await-agent', 'chat-lookup', 'thread-create']) {
       expect(await run(verb, '--chat-id', '123')).toEqual({ stdout: '{"error":"unknown_verb"}\n', code: 1 });
@@ -70,8 +70,8 @@ test("state dir must be this project's before reads or Discord requests", async 
   } });
   const env = { AGENT_DIR: ownDir, HERMIT_DISCORD_API_URL: server.url.toString().replace(/\/$/, ''), DISCORD_STATE_DIR: tokenDir };
   try {
-    expect(await cli(foreignDir, ['history', '--source', 'discord', '--chat-id', '123'], env)).toEqual({ stdout: '', code: 1 });
-    expect(await cli(foreignDir, ['thread-open', '--source', 'discord', '--chat-id', '123', '--message-id', '9', '--name', 'x'], env)).toEqual({ stdout: '', code: 1 });
+    expect(await cli(foreignDir, ['history', '--source', 'discord', '--chat-id', '123'], env)).toMatchObject({ stdout: expect.stringMatching(/^\{"error":"foreign_state_dir:/), code: 1 });
+    expect(await cli(foreignDir, ['thread-open', '--source', 'discord', '--chat-id', '123', '--message-id', '9', '--name', 'x'], env)).toMatchObject({ stdout: expect.stringMatching(/^\{"error":"foreign_state_dir:/), code: 1 });
     expect(requests).toBe(0);
   } finally {
     server.stop(true);
@@ -90,7 +90,7 @@ test('the literal .hermit from the project root passes the pin', async () => {
   delete env.CLAUDE_PROJECT_DIR;
   const child = Bun.spawn([process.execPath, path.resolve(import.meta.dir, '../scripts/conversation.ts'), '.hermit', 'history', '--source', 'discord', '--chat-id', '123'], { cwd: root, stdout: 'pipe', stderr: 'pipe', env });
   const [stdout, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-  expect({ stdout, code }).toEqual({ stdout: '[]\n', code: 0 });
+  expect({ stdout, code }).toEqual({ stdout: '{"rows":[]}\n', code: 0 });
 });
 
 

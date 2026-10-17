@@ -6,7 +6,7 @@ A commitment lives in `.hermit/tasks/T-YYYYMMDD-HHMMSS[-x].md`. `scripts/task.ts
 
 Frontmatter contains scalars and flow arrays, with nullable fields set to `null`. Older records gain missing nullable fields on decode. The body contains Progress, Decisions, Approvals, Outcome and Lessons. Appending through the writer creates a missing section. Free text is normalized by the record codec.
 
-Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State targets are pinned to the current project; writes are locked and atomic. Contract violations exit 2 with stable error codes.
+Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State targets are pinned to the current project; writes are locked and atomic. A contract violation prints `{"error":"<code>"}` and exits 1. A refusal the record's state causes (`not_found`, `not_open`, `owner_busy`, `stale_result`, `approver_required`, `check_needs_evidence`) prints `{"status":"refused","reason":"<code>"}` and exits 0, as do `task-check.ts` (`stale_check`, `no_open_check`) and `duties.ts record` (`watch_not_found`).
 
 | Verb | Contract |
 | --- | --- |

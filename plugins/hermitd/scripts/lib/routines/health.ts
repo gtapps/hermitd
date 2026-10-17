@@ -14,8 +14,8 @@ import path from 'node:path';
 import { hermitDir as resolveHermitDir, costLogPath } from '../cc-compat';
 import { scanRoutineCostWindow } from '../cost-log';
 import { emptyEntry, readRoutineHistory, type RoutineHistoryEntry } from './history';
+import { exitError } from '../cli';
 
-const USAGE = 'Usage: routines.ts health [hermit-dir] [--days N]';
 const DEFAULT_DAYS = 14;
 const MAX_DAYS = 365;
 
@@ -79,14 +79,10 @@ export function run(args: string[]): void {
     const arg = args[i];
     if (arg === '--days') {
       const parsed = Number(args[++i]);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_DAYS) {
-        process.stderr.write(`routines.ts health: --days must be an integer 1-${MAX_DAYS}\n`);
-        process.exit(1);
-      }
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_DAYS) exitError('invalid_days');
       days = parsed;
     } else if (arg.startsWith('--')) {
-      process.stderr.write(`${USAGE}\n`);
-      process.exit(1);
+      exitError();
     } else if (dir === null) {
       dir = arg;
     }
@@ -101,8 +97,7 @@ export function run(args: string[]): void {
   try {
     hermit = dir && path.isAbsolute(dir) ? dir : resolveHermitDir();
   } catch {
-    process.stderr.write('routines.ts health: could not resolve the hermit state dir\n');
-    process.exit(1);
+    exitError('no_hermit_dir');
   }
 
   process.stdout.write(JSON.stringify(buildRoutineHealth(hermit, days), null, 2) + '\n');

@@ -3,14 +3,16 @@
  * proposals/ (files, Node stdlib only) plus the episodic channel log
  * (state/channel-log.sqlite, PROP-010) as a fourth source when present.
  *
- * Usage as lib:   require('./search').search(hermitDir, query, opts) => results[]
+ * Usage as lib:   import { search } from './search' — search(hermitDir, query, opts) => hits[]
  *
- * results: Array<{ path, relPath, type, title, date, score, snippets, channel? }>
- *   snippets: Array<{ line, startLine, text }>: matching line plus surrounding context.
- *     line/startLine are file-relative (frontmatter offset included), so file:line resolves.
- *     Channel-log hits (type:'channel') carry a bounded excerpt instead and set
- *     `channel: { source, chat_id, direction, sender }` — untrusted, operator-authored
- *     external input, not a file the printer should render a `:line` ref for.
+ * hits, ranked best first, already in search.ts's stdout shape:
+ *   File hit:    { source: 'file', path, date?, title?, snippets: [{ line, start_line, text }] }
+ *     path is relative to hermitDir; title only when it differs from the filename;
+ *     line is the matching line, start_line the first context line, both file-relative
+ *     (frontmatter offset included) so path:line resolves.
+ *   Channel hit: { source: 'channel', untrusted: true, title, date?, text }
+ *     a bounded, safeForLLM-sanitized excerpt of past chat text: operator- or
+ *     member-authored external input, not a file, so no line refs.
  *
  * opts: { type?: string, since?: string (ISO date), limit?: number, chat?: string }
  *   chat: when present, also scopes compiled/ by frontmatter `audience` and
@@ -96,11 +98,11 @@ function countHits(text: string, terms: string[]): number {
  * Each snippet includes the matching line + one line of context above and below.
  * lineOffset is the number of lines preceding `body` in the source file (frontmatter
  * + stripped leading blanks) so the returned line numbers resolve against the real file.
- * Returns Array<{ line, startLine, text }>; both line numbers are 1-indexed, file-relative.
+ * Returns Array<{ line, start_line, text }>; both line numbers are 1-indexed, file-relative.
  */
-function extractSnippets(body: string, terms: string[], lineOffset: number): Array<{ line: number; startLine: number; text: string }> {
+function extractSnippets(body: string, terms: string[], lineOffset: number): Array<{ line: number; start_line: number; text: string }> {
   const lines = (body || '').split('\n');
-  const snippets: Array<{ line: number; startLine: number; text: string }> = [];
+  const snippets: Array<{ line: number; start_line: number; text: string }> = [];
 
   for (let i = 0; i < lines.length && snippets.length < MAX_SNIPPETS_PER_FILE; i++) {
     const lower = lines[i].toLowerCase();
@@ -109,11 +111,11 @@ function extractSnippets(body: string, terms: string[], lineOffset: number): Arr
     const contextStart = Math.max(0, i - 1);
     const contextEnd = Math.min(lines.length - 1, i + 1);
     const contextText = lines.slice(contextStart, contextEnd + 1).join('\n');
-    const text = contextText.slice(0, SNIPPET_MAX_CHARS).trimEnd();
+    const text = contextText.slice(0, SNIPPET_MAX_CHARS).split('\n').map(l => l.trimEnd()).join('\n').trimEnd();
 
     snippets.push({
       line: lineOffset + i + 1,
-      startLine: lineOffset + contextStart + 1,
+      start_line: lineOffset + contextStart + 1,
       text,
     });
   }
@@ -149,7 +151,7 @@ function excerptAround(text: string, terms: string[], maxChars: number): string 
  * @param {number}  [opts.limit] - max results to return (default 10)
  * @param {string}  [opts.chat]  - `<key>:<chat_id>`; scopes compiled/ by `audience`
  *   and skips sessions/ and proposals/ when the resolved scope is non-null
- * @returns {Array<{path, relPath, type, title, date, score, snippets}>}
+ * @returns hits in stdout shape (see the header)
  */
 function search(hermitDir: string, query: string, opts?: Json): Json[] {
   const o = opts || {};
@@ -180,7 +182,7 @@ function search(hermitDir: string, query: string, opts?: Json): Json[] {
         path.join(hermitDir, 'tasks'),
       ];
 
-  const results: Json[] = [];
+  const results: Array<{ score: number; hit: Json }> = [];
 
   for (const dir of dirs) {
     const files = globDirRecursive(dir);
@@ -220,17 +222,15 @@ function search(hermitDir: string, query: string, opts?: Json): Json[] {
       const snippets = extractSnippets(body, terms, lineOffset);
       const relPath = path.relative(hermitDir, filePath);
 
-      // Derive type label: prefer frontmatter type, fall back to parent dir name
-      const typeLabel = fm.type || relPath.split(path.sep)[0] || 'unknown';
-
       results.push({
-        path: filePath,
-        relPath,
-        type: typeLabel,
-        title: fm.title || path.basename(filePath, '.md'),
-        date: dateStr ? dateStr.slice(0, 10) : null,
         score,
-        snippets,
+        hit: {
+          source: 'file',
+          path: relPath,
+          ...(dateStr ? { date: dateStr.slice(0, 10) } : {}),
+          ...(fm.title && fm.title !== path.basename(filePath, '.md') ? { title: fm.title } : {}),
+          snippets,
+        },
       });
     }
   }
@@ -251,26 +251,23 @@ function search(hermitDir: string, query: string, opts?: Json): Json[] {
       const score = Math.max(1, countHits(row.text, terms)) * recencyBoost(row.ts);
       const excerpt = safeForLLM(excerptAround(row.text, terms, CHANNEL_EXCERPT_MAX_CHARS));
 
+      // untrusted travels with the safeForLLM call: the text is external input
+      // that reaches context unreviewed.
       results.push({
-        path: null,
-        relPath: `channel:${row.source}:${row.chat_id}`,
-        type: 'channel',
-        title: safeForLLM(`${row.direction === 'in' ? 'from' : 'to'} ${row.source} (${row.chat_id})`),
-        date: row.ts ? row.ts.slice(0, 10) : null,
         score,
-        snippets: [{ line: null, startLine: null, text: excerpt }],
-        channel: {
-          source: row.source,
-          chat_id: row.chat_id,
-          direction: row.direction,
-          sender: row.sender,
+        hit: {
+          source: 'channel',
+          untrusted: true,
+          title: safeForLLM(`${row.direction === 'in' ? 'from' : 'to'} ${row.source} (${row.chat_id})`),
+          ...(row.ts ? { date: row.ts.slice(0, 10) } : {}),
+          text: excerpt,
         },
       });
     }
   }
 
-  results.sort((a: Json, b: Json) => b.score - a.score);
-  return results.slice(0, limit);
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit).map(r => r.hit);
 }
 
 export { search };

@@ -25,15 +25,16 @@ describe('docker-preflight.ts', () => {
     const dir = freshDir();
     const out = await run(dir);
 
-    // dockerVersion is host-dependent — string or null, never throws.
-    expect(out.dockerVersion === null || typeof out.dockerVersion === 'string').toBe(true);
-    expect(out.configExists).toBe(false);
+    // docker_version is host-dependent — string or null, never throws.
+    expect(out.docker_version === null || typeof out.docker_version === 'string').toBe(true);
+    expect(out.config_exists).toBe(false);
+    expect(out.is_wsl).toBe(false);
     expect(out.existing).toEqual({ dockerfile: false, entrypoint: false, compose: false });
-    expect(typeof out.gitconfigExists).toBe('boolean');
+    expect(typeof out.gitconfig_exists).toBe('boolean');
     // path key is derived from the project root passed in — keyed off the supplied
     // logical path, not a resolved one — using CC's scheme via cc-compat.
-    expect(out.memory.pathKey).toBe(transcriptPathKey(dir));
-    expect(typeof out.memory.seedExists).toBe('boolean');
+    expect(out.memory.path_key).toBe(transcriptPathKey(dir));
+    expect(typeof out.memory.seed_exists).toBe('boolean');
   });
 
   test('detects config.json and existing docker files', async () => {
@@ -44,12 +45,12 @@ describe('docker-preflight.ts', () => {
     fs.writeFileSync(path.join(dir, 'docker-compose.hermit.yml'), 'services: {}\n');
 
     const out = await run(dir);
-    expect(out.configExists).toBe(true);
+    expect(out.config_exists).toBe(true);
     expect(out.existing.dockerfile).toBe(true);
     expect(out.existing.compose).toBe(true);
     expect(out.existing.entrypoint).toBe(false);
   });
-  // liveOwner mirrors the entrypoint's split-brain guard and hermitd-start's
+  // live_owner mirrors the entrypoint's split-brain guard and hermitd-start's
   // shouldRefuseBoot: a non-docker runtime_mode that is not cleanly
   // shut down, backed by a liveness file inside the 600s freshness window.
   function seedOwner(dir: string, runtime: object, ageSecs = 0) {
@@ -66,7 +67,7 @@ describe('docker-preflight.ts', () => {
 
   test('no runtime.json: no live owner', async () => {
     const out = await run(freshDir());
-    expect(out.liveOwner).toBe(null);
+    expect(out.live_owner).toBe(null);
   });
 
   test('live tmux owner: reported with mode and liveness age', async () => {
@@ -74,33 +75,33 @@ describe('docker-preflight.ts', () => {
     seedOwner(dir, { runtime_mode: 'tmux' });
 
     const out = await run(dir);
-    expect(out.liveOwner.mode).toBe('tmux');
-    expect(out.liveOwner.ageSecs).toBeGreaterThanOrEqual(0);
-    expect(out.liveOwner.ageSecs).toBeLessThan(600);
+    expect(out.live_owner.mode).toBe('tmux');
+    expect(out.live_owner.age_secs).toBeGreaterThanOrEqual(0);
+    expect(out.live_owner.age_secs).toBeLessThan(600);
   });
 
-  // The reason liveOwner is not a call into shouldRefuseBoot: a running Docker
+  // The reason live_owner is not a call into shouldRefuseBoot: a running Docker
   // hermit is the supported case for re-running /docker-setup over an existing
   // container, so it must never gate the wizard.
   test('a live docker owner never gates the wizard', async () => {
     const dir = freshDir();
     seedOwner(dir, { runtime_mode: 'docker' });
 
-    expect((await run(dir)).liveOwner).toBe(null);
+    expect((await run(dir)).live_owner).toBe(null);
   });
 
   test('cleanly-stopped owner is definitively dead, not live', async () => {
     const dir = freshDir();
     seedOwner(dir, { runtime_mode: 'tmux', shutdown_completed_at: '2026-07-24T11:00:00Z' });
 
-    expect((await run(dir)).liveOwner).toBe(null);
+    expect((await run(dir)).live_owner).toBe(null);
   });
 
   test('stale liveness proves nothing: no live owner', async () => {
     const dir = freshDir();
     seedOwner(dir, { runtime_mode: 'tmux' }, 660);
 
-    expect((await run(dir)).liveOwner).toBe(null);
+    expect((await run(dir)).live_owner).toBe(null);
   });
 
   // The fake tmux answers only the exact-match target, so this also pins `=name`:
@@ -114,8 +115,8 @@ describe('docker-preflight.ts', () => {
       '#!/usr/bin/env bash\n[ "$1 $2 $3" = "has-session -t =hermit-demo" ] && exit 0\nexit 1\n', { mode: 0o755 });
 
     const out = await run(dir, { PATH: `${bin}:${process.env.PATH}` });
-    expect(out.liveOwner.mode).toBe('tmux');
-    expect(out.liveOwner.ageSecs).toBeGreaterThanOrEqual(660);
+    expect(out.live_owner.mode).toBe('tmux');
+    expect(out.live_owner.age_secs).toBeGreaterThanOrEqual(660);
   });
 
   // The older `pwd | sed 's|/|-|g'` scheme replaced slashes only, so any dotted
@@ -126,8 +127,8 @@ describe('docker-preflight.ts', () => {
     fs.mkdirSync(dir, { recursive: true });
 
     const out = await run(dir);
-    expect(out.memory.pathKey).toBe(transcriptPathKey(dir));
-    expect(out.memory.pathKey).not.toContain('.');
+    expect(out.memory.path_key).toBe(transcriptPathKey(dir));
+    expect(out.memory.path_key).not.toContain('.');
   });
 
   test('the seed probe follows CLAUDE_CONFIG_DIR, not ~/.claude', async () => {
@@ -137,7 +138,7 @@ describe('docker-preflight.ts', () => {
     fs.mkdirSync(seedDir, { recursive: true });
     fs.writeFileSync(path.join(seedDir, 'MEMORY.md'), '# seed\n');
 
-    expect((await run(dir, { CLAUDE_CONFIG_DIR: configDir })).memory.seedExists).toBe(true);
-    expect((await run(dir)).memory.seedExists).toBe(false); // blanked: falls back to ~/.claude
+    expect((await run(dir, { CLAUDE_CONFIG_DIR: configDir })).memory.seed_exists).toBe(true);
+    expect((await run(dir)).memory.seed_exists).toBe(false); // blanked: falls back to ~/.claude
   });
 });

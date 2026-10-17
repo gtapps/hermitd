@@ -26,7 +26,7 @@ test('add, list, due, check and exactly one verdict round trip', withDir(async d
   expect(JSON.parse(checked.stdout)).toMatchObject({ id, output: 'held', exit: 0, timed_out: false, late: false });
   expect(ledger(dir)[0].state).toBe('pending');
   expect((await call(dir, 'verdict', [id, 'held', '--reason-stdin'], 'evidence holds')).exitCode).toBe(0);
-  expect((await call(dir, 'verdict', [id, 'broken', '--reason-stdin'], 'again')).stdout.trim()).toBe('{\"status\":\"noop\",\"state\":\"held\"}');
+  expect((await call(dir, 'verdict', [id, 'broken', '--reason-stdin'], 'again')).stdout.trim()).toBe('{\"status\":\"noop\",\"reason\":\"not_pending\",\"state\":\"held\"}');
   expect(ledger(dir)).toHaveLength(1);
   expect(ledger(dir)[0]).toMatchObject({ state: 'held', output: 'held', reason: 'evidence holds' });
   expect((await call(dir, 'due', [], '', '2026-09-10T09:00:00Z')).stdout.trim()).toBe('SKIP');
@@ -43,8 +43,8 @@ test('next fire follows configured cron and disabled routines have none', withDi
 test('cancelled entries never run', withDir(async dir => {
   const id = await add(dir, 'touch forbidden');
   expect((await call(dir, 'cancel', [id])).exitCode).toBe(0);
-  expect((await call(dir, 'cancel', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"state\":\"cancelled\"}');
-  expect((await call(dir, 'check', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"state\":\"cancelled\"}');
+  expect((await call(dir, 'cancel', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"reason\":\"not_pending\",\"state\":\"cancelled\"}');
+  expect((await call(dir, 'check', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"reason\":\"not_pending\",\"state\":\"cancelled\"}');
   expect(fs.existsSync(path.join(dir, 'forbidden'))).toBe(false);
 }));
 
@@ -131,7 +131,7 @@ test('commandless rows check without a subprocess and close with one verdict', w
   expect(fs.existsSync(path.join(dir, 'forbidden'))).toBe(false);
   expect((await call(dir, 'verdict', [id, 'held', '--reason-stdin'], 'review landed')).exitCode).toBe(0);
   expect(ledger(dir)[0]).toMatchObject({ state: 'held', exit: null, output: '' });
-  expect((await call(dir, 'check', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"state\":\"held\"}');
+  expect((await call(dir, 'check', [id])).stdout.trim()).toBe('{\"status\":\"noop\",\"reason\":\"not_pending\",\"state\":\"held\"}');
   expect((await call(dir, 'due')).stdout.trim()).toBe('SKIP');
 }));
 
@@ -147,9 +147,9 @@ test('chat rows are stored, listed by asking chat and returned by check', withDi
   expect(added.exitCode).toBe(0);
   const id = JSON.parse(added.stdout).id;
   expect(ledger(dir)[0]).toMatchObject({ id, chat: 'discord:123' });
-  expect(JSON.parse((await call(dir, 'list', ['--chat', 'discord:123'])).stdout)).toMatchObject({ id, chat: 'discord:123' });
-  expect((await call(dir, 'list', ['--chat', 'discord:999'])).stdout).toBe('');
-  expect(JSON.parse((await call(dir, 'list')).stdout)).toMatchObject({ id, chat: 'discord:123' });
+  expect(JSON.parse((await call(dir, 'list', ['--chat', 'discord:123'])).stdout).rows).toMatchObject([{ id, chat: 'discord:123' }]);
+  expect(JSON.parse((await call(dir, 'list', ['--chat', 'discord:999'])).stdout)).toEqual({ rows: [] });
+  expect(JSON.parse((await call(dir, 'list')).stdout).rows).toMatchObject([{ id, chat: 'discord:123' }]);
   expect(JSON.parse((await call(dir, 'check', [id])).stdout)).toMatchObject({ id, chat: 'discord:123' });
 }));
 
@@ -158,10 +158,10 @@ test('scoped cancellation rejects other chats and malformed keys without mutatio
   const added = await call(dir, 'add', ['--claim', 'B', '--due', NOW, '--origin', 'operator', '--chat', 'discord:b']);
   const id = JSON.parse(added.stdout).id;
   const before = ledger(dir);
-  for (const [chat, error] of [['discord:a', 'unknown_id'], ['bad key', 'invalid_key']]) {
+  for (const [chat, exitCode, output] of [['discord:a', 0, { status: 'none', reason: 'unknown_id' }], ['bad key', 1, { error: 'invalid_key' }]] as const) {
     const result = await call(dir, 'cancel', [id, '--chat', chat]);
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toEqual({ error });
+    expect(result.exitCode).toBe(exitCode);
+    expect(JSON.parse(result.stdout)).toEqual(output);
     expect(ledger(dir)).toEqual(before);
   }
   const valueless = await call(dir, 'cancel', [id, '--chat']);
@@ -182,8 +182,8 @@ test('scoped check and verdict reject other chats while unscoped verdict still c
     ['verdict', [id, 'held', '--reason-stdin', '--chat', 'discord:b']],
   ] as const) {
     const result = await call(dir, verb, [...args], 'review landed');
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toEqual({ error: 'unknown_id' });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ status: 'none', reason: 'unknown_id' });
     expect(ledger(dir)).toEqual(before);
   }
   expect((await call(dir, 'verdict', [id, 'held', '--reason-stdin'], 'review landed')).exitCode).toBe(0);
@@ -197,8 +197,8 @@ test('legacy rows are unknown to scoped verbs and cancellable without scope', wi
   for (const verb of ['cancel', 'check', 'verdict']) {
     const args = verb === 'verdict' ? [id, 'held', '--reason-stdin'] : [id];
     const result = await call(dir, verb, [...args, '--chat', 'discord:a'], 'review landed');
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toEqual({ error: 'unknown_id' });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ status: 'none', reason: 'unknown_id' });
     expect(ledger(dir)).toEqual(before);
   }
   expect((await call(dir, 'cancel', [id])).stdout.trim()).toBe(JSON.stringify({ id, state: 'cancelled' }));
@@ -211,8 +211,8 @@ test('legacy rows without a chat still list and execute their command', withDir(
     id: 'legacy', claim: 'fix holds', cmd: 'printf held', due: NOW,
     origin: 'operator', session: null, created_at: NOW, state: 'pending',
   }) + '\n');
-  expect(JSON.parse((await call(dir, 'list')).stdout)).toMatchObject({ id: 'legacy', state: 'pending' });
-  expect((await call(dir, 'list', ['--chat', 'discord:123'])).stdout).toBe('');
+  expect(JSON.parse((await call(dir, 'list')).stdout).rows).toMatchObject([{ id: 'legacy', state: 'pending' }]);
+  expect(JSON.parse((await call(dir, 'list', ['--chat', 'discord:123'])).stdout)).toEqual({ rows: [] });
   const checked = await call(dir, 'check', ['legacy']);
   expect(checked.exitCode).toBe(0);
   expect(JSON.parse(checked.stdout)).toMatchObject({ id: 'legacy', cmd: 'printf held', exit: 0, output: 'held' });
@@ -276,7 +276,7 @@ test('reminder check avoids subprocesses, reports lateness and closes sent in it
     expect(JSON.parse((await call(dir, 'check', [id], '', time)).stdout).late).toBe(late);
   }
   expect((await call(dir, 'verdict', [id, 'sent', '--reason-stdin', '--chat', 'discord:123'], 'delivered')).exitCode).toBe(0);
-  expect(JSON.parse((await call(dir, 'list')).stdout).state).toBe('sent');
+  expect(JSON.parse((await call(dir, 'list')).stdout).rows[0].state).toBe('sent');
 }));
 
 test('sent rejects a claim without changing the row', withDir(async dir => {

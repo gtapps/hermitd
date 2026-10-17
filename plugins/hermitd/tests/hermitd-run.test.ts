@@ -146,11 +146,11 @@ describe('hermitd-exec.sh name guard', () => {
   });
 
   test('a real script name dispatches to bun', async () => {
-    // proposal.ts with no verb prints its own usage and exits 1 — proof the
+    // proposal.ts with no verb prints its own usage error and exits 1 — proof the
     // name resolved to scripts/proposal.ts and bun ran it.
     const r = await bash(HERMIT_EXEC, ['proposal'], {});
     expect(r.exitCode).toBe(1);
-    expect(r.stdout + r.stderr).toContain('proposal.ts');
+    expect(r.stdout).toBe('{"error":"usage"}\n');
   });
 });
 

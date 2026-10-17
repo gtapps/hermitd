@@ -1,10 +1,12 @@
+// `is-trusted` prints `OK` for a trusted sender and `{"status":"untrusted"}` otherwise, both at
+// exit 0: a caller must read stdout, never the exit code alone, to decide trust.
 import { conversationKey, checkKey } from './lib/conversation-key';
 import { isTrustedController } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { createThread, isGuildChannelType, lookupChat } from './lib/channel-chats';
 import { conversationHistory } from './lib/channel-log';
 import { readSettledConfig } from './lib/config-read';
-import { failJson } from './lib/cli';
+import { emit, emitJson, exitError, failJson, printJson } from './lib/cli';
 
 function options(args: string[]): Record<string, string> {
   const result: Record<string, string> = {};
@@ -22,16 +24,16 @@ function options(args: string[]): Record<string, string> {
 
 async function main(): Promise<void> {
   const [argvDir, verb, key, ...args] = process.argv.slice(2);
-  if (!argvDir || !verb) throw new Error('usage');
+  if (!argvDir || !verb) exitError();
   // The sealed grant covers every argument, so pin the state dir before any verb.
   // thread-open reads the bot token from that dir.
   // See cc-compat.ts for the shared project pin.
-  const dir = pinStateDirOrExit(argvDir, 'conversation.ts');
+  const dir = pinStateDirOrExit(argvDir);
   // Thin wrappers for the channel library calls channel-responder makes around a
   // task thread. A CLI verb rides the script's allow-list grant; the
   // `bun -e` import the skill used to name draws a classifier denial and matches
   // no prefix rule (apply-settings.ts), so on a live hermit the call never ran.
-  if (!['history', 'thread-open', 'is-trusted'].includes(verb)) throw new Error('unknown_verb');
+  if (!['history', 'thread-open', 'is-trusted'].includes(verb)) exitError('unknown_verb');
   const opts = options(key ? [key, ...args] : args);
   const require = (names: string[], optional: string[] = []) => {
     if (Object.keys(opts).some(k => !names.includes(k) && !optional.includes(k))) throw new Error('invalid_options');
@@ -43,7 +45,7 @@ async function main(): Promise<void> {
       require(['source', 'chat_id'], ['limit']);
       const limit = opts.limit === undefined ? 100 : Number(opts.limit);
       if (!Number.isInteger(limit) || limit <= 0) throw new Error('invalid_limit');
-      console.log(JSON.stringify(conversationHistory(dir, opts.source, opts.chat_id, { limit })));
+      printJson({ rows: conversationHistory(dir, opts.source, opts.chat_id, { limit }) });
       return;
     }
     case 'thread-open': {
@@ -79,11 +81,9 @@ async function main(): Promise<void> {
     }
     case 'is-trusted': {
       require(['source', 'user_id', 'chat_id']);
-      // Asserts, not answers: a denial is the `untrusted` error so a caller reading
-      // only the exit code fails closed, like every other verb here.
-      if (!isTrustedController(config, opts.source, opts.user_id, opts.chat_id)) throw new Error('untrusted');
-      console.log('OK');
-      return;
+      // An untrusted sender is an expected answer, not a failure: callers branch on stdout.
+      if (isTrustedController(config, opts.source, opts.user_id, opts.chat_id)) emit('OK');
+      emitJson({ status: 'untrusted' });
     }
   }
 }

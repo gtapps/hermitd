@@ -292,7 +292,7 @@ describe('routines.ts finish — run record', () => {
     ]);
     setPause(hermit(dir), { reason: 'operator', by: 'test' });
     const r = await runScript('routines.ts', { args: ['precheck', 'cal'], cwd: dir });
-    expect(r.stdout.trim()).toBe('{"status":"skip"}');
+    expect(r.stdout.trim()).toBe('{"status":"skip","reason":"paused"}');
     expect(fs.existsSync(hermit(dir, 'state', 'routine-run.json'))).toBe(false);
   }));
 });

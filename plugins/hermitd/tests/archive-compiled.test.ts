@@ -72,11 +72,11 @@ describe('basic rotation', () => {
   });
 
   test('rotation: 1 archived in output', () => {
-    expect(out).toContain('1 archived');
+    expect(JSON.parse(out).archived).toBe(1);
   });
 
   test('rotation: 2 retained in output', () => {
-    expect(out).toContain('2 retained');
+    expect(JSON.parse(out).retained).toBe(2);
   });
 });
 
@@ -107,7 +107,7 @@ describe('foundational exemption', () => {
   });
 
   test('foundational: 0 archived in output', () => {
-    expect(out).toContain('0 archived');
+    expect(JSON.parse(out).archived).toBe(0);
   });
 });
 
@@ -136,7 +136,7 @@ describe('skipped artifacts', () => {
   });
 
   test('skipped: 2 skipped in output', () => {
-    expect(out).toContain('2 skipped');
+    expect(JSON.parse(out).skipped).toBe(2);
   });
 });
 
@@ -157,7 +157,7 @@ describe('topic exemption', () => {
   afterAll(() => h.cleanup());
 
   test('topic: nothing archived', () => {
-    expect(out).toContain('0 archived');
+    expect(JSON.parse(out).archived).toBe(0);
   });
 
   test('topic: all four pages still on disk', () => {
@@ -167,7 +167,7 @@ describe('topic exemption', () => {
   });
 
   test('topic: 4 retained in output', () => {
-    expect(out).toContain('4 retained');
+    expect(JSON.parse(out).retained).toBe(4);
   });
 });
 

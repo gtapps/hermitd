@@ -1,6 +1,7 @@
 // Updates reflection-state.json after a reflect run — increments diagnostic counters,
 // sets last_reflection/last_run_at, preserves all other keys.
-// Zero npm dependencies, Node stdlib only. Always exits 0 on I/O failure (fail-open).
+// Zero npm dependencies, Node stdlib only. Prints `OK`; a failed write prints
+// `{"error":"write_failed"}` and exits 1, a bad argument `{"error":"<token>"}`.
 // Usage: bun update-reflection-state.ts <state-file-path> '<json-payload>'
 //    or: bun update-reflection-state.ts <state-file-path> --quick-hash <hash>
 //    or: bun update-reflection-state.ts <state-file-path> --graduation-cursor [<iso>]
@@ -32,11 +33,12 @@
 //
 // --scheduled-check-run writes only scheduled_checks.<id>.last_run for the
 // session skill's step-4b cursor, preserving all other fields. Extra arguments
-// are rejected. Fails open: a bad write logs to stderr and exits 0.
+// are rejected.
 
 import fs from 'node:fs';
 import { resolveHermitNowMs } from './lib/time';
 import { pinUnderStateDirOrExit } from './lib/cc-compat';
+import { emit, exitError } from './lib/cli';
 
 type Json = any;
 
@@ -59,53 +61,40 @@ const arg3 = process.argv[3];
 // sessions/task records or bin/hermitd-run with a counters blob. The only argument
 // production ever passes is `state/reflection-state.json`.
 const stateFile = stateFileArg
-  ? pinUnderStateDirOrExit(stateFileArg, 'update-reflection-state', 'state file', 'state')
+  ? pinUnderStateDirOrExit(stateFileArg, 'state')
   : stateFileArg;
+
+function writeState(state: Json): never {
+  try {
+    fs.writeFileSync(stateFile!, JSON.stringify(state, null, 2) + '\n', 'utf-8');
+  } catch {
+    exitError('write_failed');
+  }
+  emit('OK');
+}
 
 if (arg3 === '--quick-hash') {
   const hash = process.argv[4];
-  if (!stateFile || !hash) {
-    console.error('Usage: bun update-reflection-state.ts <state-file-path> --quick-hash <hash>');
-    process.exit(1);
-  }
+  if (!stateFile || !hash) exitError();
   let state: Json = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); } catch { /* first run before state file exists */ }
   state.last_quick_hash = hash;
-  try {
-    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-  } catch (err: any) {
-    console.error(`update-reflection-state: write failed: ${err.message}`);
-  }
-  process.exit(0);
+  writeState(state);
 }
 
 if (arg3 === '--graduation-cursor') {
   const explicit = process.argv[4];
-  if (!stateFile) {
-    console.error('Usage: bun update-reflection-state.ts <state-file-path> --graduation-cursor [<iso>]');
-    process.exit(1);
-  }
-  if (explicit && Number.isNaN(Date.parse(explicit))) {
-    console.error(`update-reflection-state: --graduation-cursor value is not an ISO timestamp: ${explicit}`);
-    process.exit(1);
-  }
+  if (!stateFile) exitError();
+  if (explicit && Number.isNaN(Date.parse(explicit))) exitError('invalid_cursor');
   let state: Json = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); } catch { /* first run */ }
   if (!state.counters || typeof state.counters !== 'object') state.counters = {};
   state.counters.last_graduation_at = explicit ?? new Date().toISOString();
-  try {
-    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-  } catch (err: any) {
-    console.error(`update-reflection-state: write failed: ${err.message}`);
-  }
-  process.exit(0);
+  writeState(state);
 }
 
 if (arg3 === '--reset-counters') {
-  if (!stateFile) {
-    console.error('Usage: bun update-reflection-state.ts <state-file-path> --reset-counters');
-    process.exit(1);
-  }
+  if (!stateFile) exitError();
   let state: Json = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); } catch { /* first run */ }
   if (!state.counters || typeof state.counters !== 'object') state.counters = {};
@@ -115,20 +104,12 @@ if (arg3 === '--reset-counters') {
   state.counters.judge_suppress_by_code = {};
   state.counters.judge_since = new Date().toISOString();
   delete state.counters.judge_window;
-  try {
-    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-  } catch (err: any) {
-    console.error(`update-reflection-state: write failed: ${err.message}`);
-  }
-  process.exit(0);
+  writeState(state);
 }
 
 if (arg3 === '--scheduled-check-run') {
   const id = process.argv[4];
-  if (!stateFile || !id || process.argv.length > 5) {
-    console.error('Usage: bun update-reflection-state.ts <state-file-path> --scheduled-check-run <id>');
-    process.exit(1);
-  }
+  if (!stateFile || !id || process.argv.length > 5) exitError();
   let state: Json = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); } catch { /* first run before state file exists */ }
   if (!state.scheduled_checks || typeof state.scheduled_checks !== 'object') state.scheduled_checks = {};
@@ -136,27 +117,18 @@ if (arg3 === '--scheduled-check-run') {
   const check = state.scheduled_checks[id];
   const nowIso = new Date(resolveHermitNowMs()).toISOString();
   check.last_run = nowIso.slice(0, 10);
-  try {
-    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-  } catch (err: any) {
-    console.error(`update-reflection-state: write failed: ${err.message}`);
-  }
-  process.exit(0);
+  writeState(state);
 }
 
 const payloadJson = arg3;
 
-if (!stateFile || !payloadJson) {
-  console.error('Usage: bun update-reflection-state.ts <state-file-path> \'<json-payload>\'');
-  process.exit(1);
-}
+if (!stateFile || !payloadJson) exitError();
 
 let payload: Json;
 try {
   payload = JSON.parse(payloadJson);
-} catch (err: any) {
-  console.error(`update-reflection-state: invalid payload JSON: ${err.message}`);
-  process.exit(1);
+} catch {
+  exitError('invalid_payload');
 }
 
 let state: Json = {};
@@ -280,10 +252,4 @@ const updated = {
   counters: c,
 };
 
-try {
-  fs.writeFileSync(stateFile, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
-} catch (err: any) {
-  console.error(`update-reflection-state: write failed: ${err.message}`);
-}
-
-process.exit(0);
+writeState(updated);

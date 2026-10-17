@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
+import { emitJson, exitError } from './lib/cli';
 import { sanitizeLanguage } from './lib/operator-language';
 
 type Json = any;
@@ -77,9 +78,7 @@ if (import.meta.main) {
   try {
     config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (e: any) {
-    process.stderr.write(`resolve-outbound-channel: cannot read ${configPath}: ${e.message}\n`);
-    process.stdout.write(JSON.stringify({ error: 'config_read_failed', detail: e.message, path: configPath }) + '\n');
-    process.exit(1);
+    exitError(`config_read_failed:${e.message}`);
   }
 
   const result = resolve(config.channels);
@@ -87,11 +86,8 @@ if (import.meta.main) {
     // Surface the operator's language so channel-composing skills (the model
     // path) reply in it. Additive + sanitized; omitted when null/invalid.
     const language = sanitizeLanguage(config.language);
-    const payload = language ? { ...result, language } : result;
-    process.stdout.write(JSON.stringify(payload) + '\n');
-    process.exit(0);
+    emitJson(language ? { ...result, language } : result);
   } else {
-    process.stdout.write(JSON.stringify({ error: 'no_reachable_channel' }) + '\n');
-    process.exit(1);
+    emitJson({ status: 'none', reason: 'no_reachable_channel' });
   }
 }

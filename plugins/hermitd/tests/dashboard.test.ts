@@ -136,11 +136,11 @@ describe('escapeHtml', () => {
 describe('loadDashboardState', () => {
   test('degrades to placeholders when all state files are missing', withHermitDir((hermitDir) => {
     const state = loadDashboardState(hermitDir);
-    expect(state.agentName).toBe('Hermit');
-    expect(state.executionState).toBe('unknown');
-    expect(state.aliveNow).toBe(false); // no liveness files -> unknown, never "alive"
-    expect(state.todayCostUsd).toBe(0);
-    expect(state.todayTokens).toBe(0);
+    expect(state.agent_name).toBe('Hermit');
+    expect(state.execution_state).toBe('unknown');
+    expect(state.alive_now).toBe(false); // no liveness files -> unknown, never "alive"
+    expect(state.today_cost_usd).toBe(0);
+    expect(state.today_tokens).toBe(0);
     expect(state.alerts).toEqual([]);
     expect(state.proposals.open).toEqual([]);
     expect(state.proposals.other).toEqual([]);
@@ -157,25 +157,25 @@ describe('loadDashboardState', () => {
     });
 
     const state = loadDashboardState(hermitDir);
-    expect(state.agentName).toBe('shelly');
-    expect(state.executionState).toBe('in_flight');
-    expect(state.todayCostUsd).toBe(0.42);
-    expect(state.todayTokens).toBe(125000);
+    expect(state.agent_name).toBe('shelly');
+    expect(state.execution_state).toBe('in_flight');
+    expect(state.today_cost_usd).toBe(0.42);
+    expect(state.today_tokens).toBe(125000);
     expect(state.alerts).toHaveLength(1);
     expect(state.alerts[0].message).toBe('Daily budget at 92%');
   }));
 
-  test('aliveNow is true when a shared liveness file is fresh', withHermitDir((hermitDir) => {
+  test('alive_now is true when a shared liveness file is fresh', withHermitDir((hermitDir) => {
     writeLivenessFile(hermitDir, 30); // 30s old, well under the 600s threshold
     const state = loadDashboardState(hermitDir);
-    expect(state.aliveNow).toBe(true);
+    expect(state.alive_now).toBe(true);
   }));
 
-  test('aliveNow is false when the shared liveness file is stale', withHermitDir((hermitDir) => {
+  test('alive_now is false when the shared liveness file is stale', withHermitDir((hermitDir) => {
     writeJson(hermitDir, 'state/execution.json', { state: 'idle', at: new Date().toISOString() });
     writeLivenessFile(hermitDir, 900); // past the 600s freshness threshold
     const state = loadDashboardState(hermitDir);
-    expect(state.aliveNow).toBe(false); // stale proves nothing, never "alive"
+    expect(state.alive_now).toBe(false); // stale proves nothing, never "alive"
   }));
 
   test('skips suppressed alerts and reads a readable message for message-less budget alerts', withHermitDir((hermitDir) => {
@@ -200,8 +200,8 @@ describe('loadDashboardState', () => {
       { id: 'PROP-010-accepted-100000', title: '"Long-open accept"', status: 'accepted', created, accepted_date: accepted },
       'body');
     const state = loadDashboardState(hermitDir);
-    expect(state.proposals.oldestOpenAccepted?.id).toBe('PROP-010-accepted-100000');
-    expect(state.proposals.oldestOpenAccepted?.ageDays).toBe(3); // since accepted, not 40 since created
+    expect(state.proposals.oldest_open_accepted?.id).toBe('PROP-010-accepted-100000');
+    expect(state.proposals.oldest_open_accepted?.age_days).toBe(3); // since accepted, not 40 since created
   }));
 
   test('splits proposed/accepted (open, with body) from resolved/dismissed (one-liners)', withHermitDir((hermitDir) => {
@@ -224,7 +224,7 @@ describe('loadDashboardState', () => {
     // Resolved rows are one-liners: no body field on the ProposalRow shape.
     expect((state.proposals.other[0] as any).body).toBeUndefined();
 
-    expect(state.proposals.oldestOpenAccepted?.id).toBe('PROP-002-accepted-100000');
+    expect(state.proposals.oldest_open_accepted?.id).toBe('PROP-002-accepted-100000');
   }));
 
   // Regression for the 2026-07-12 incident: a bulk Bash `mv` rename left
@@ -283,7 +283,7 @@ describe('loadDashboardState', () => {
     }
     const state = loadDashboardState(hermitDir);
     expect(state.proposals.other.length).toBe(20);
-    expect(state.proposals.otherOmitted).toBe(5);
+    expect(state.proposals.other_omitted).toBe(5);
   }));
 
   test('reads latest weekly review and computes deltas against the prior week', withHermitDir((hermitDir) => {
@@ -296,65 +296,65 @@ describe('loadDashboardState', () => {
     const state = loadDashboardState(hermitDir);
     expect(state.weekly).not.toBeNull();
     expect(state.weekly!.week).toBe('2026-W27');
-    expect(state.weekly!.costUsd).toBeCloseTo(3.20, 5);
-    expect(state.weekly!.priorCostUsd).toBeCloseTo(3.65, 5);
-    expect(state.weekly!.hasPrior).toBe(true);
-    expect(state.weekly!.bodyHtml).toContain('<strong>14 sessions</strong>');
+    expect(state.weekly!.cost_usd).toBeCloseTo(3.20, 5);
+    expect(state.weekly!.prior_cost_usd).toBeCloseTo(3.65, 5);
+    expect(state.weekly!.has_prior).toBe(true);
+    expect(state.weekly!.body_html).toContain('<strong>14 sessions</strong>');
   }));
 
   test('weekly review with no prior week omits comparison fields', withHermitDir((hermitDir) => {
     writeWeekly(hermitDir, '2026-W27', { week: '2026-W27', total_cost_usd: '3.20' }, 'Body.');
     const state = loadDashboardState(hermitDir);
-    expect(state.weekly!.hasPrior).toBe(false);
-    expect(state.weekly!.priorCostUsd).toBeNull();
+    expect(state.weekly!.has_prior).toBe(false);
+    expect(state.weekly!.prior_cost_usd).toBeNull();
   }));
 
-  test('lastBrief is null when state/last-brief.json is absent', withHermitDir((hermitDir) => {
+  test('last_brief is null when state/last-brief.json is absent', withHermitDir((hermitDir) => {
     const state = loadDashboardState(hermitDir);
-    expect(state.lastBrief).toBeNull();
+    expect(state.last_brief).toBeNull();
   }));
 
-  test('lastBrief is null when text is blank', withHermitDir((hermitDir) => {
+  test('last_brief is null when text is blank', withHermitDir((hermitDir) => {
     writeLastBrief(hermitDir, 'morning', '   ');
     const state = loadDashboardState(hermitDir);
-    expect(state.lastBrief).toBeNull();
+    expect(state.last_brief).toBeNull();
   }));
 
   test('reads lastBrief kind, text, and generated_at', withHermitDir((hermitDir) => {
     writeLastBrief(hermitDir, 'evening', 'Working on the artifact hub. 3 proposals resolved.', '2026-07-05T22:00:00Z');
     const state = loadDashboardState(hermitDir);
-    expect(state.lastBrief?.kind).toBe('evening');
-    expect(state.lastBrief?.text).toBe('Working on the artifact hub. 3 proposals resolved.');
-    expect(state.lastBrief?.generatedAt).toBe('2026-07-05T22:00:00Z');
+    expect(state.last_brief?.kind).toBe('evening');
+    expect(state.last_brief?.text).toBe('Working on the artifact hub. 3 proposals resolved.');
+    expect(state.last_brief?.generated_at).toBe('2026-07-05T22:00:00Z');
   }));
 
-  test('compiledIndex is empty when compiled/ has no docs', withHermitDir((hermitDir) => {
+  test('compiled_index is empty when compiled/ has no docs', withHermitDir((hermitDir) => {
     const state = loadDashboardState(hermitDir);
-    expect(state.compiledIndex.docs).toEqual([]);
-    expect(state.compiledIndex.omitted).toBe(0);
+    expect(state.compiled_index.docs).toEqual([]);
+    expect(state.compiled_index.omitted).toBe(0);
   }));
 
-  test('compiledIndex excludes review-weekly files and uses frontmatter title when present', withHermitDir((hermitDir) => {
+  test('compiled_index excludes review-weekly files and uses frontmatter title when present', withHermitDir((hermitDir) => {
     writeWeekly(hermitDir, '2026-W27', { week: '2026-W27' }, 'body');
     writeCompiledDoc(hermitDir, 'architecture-decisions.md', { title: '"Architecture Decisions"' }, 'body');
     writeCompiledDoc(hermitDir, 'no-frontmatter-doc.md', null, 'plain body, no frontmatter');
     const state = loadDashboardState(hermitDir);
-    const names = state.compiledIndex.docs.map(d => d.name).sort();
+    const names = state.compiled_index.docs.map(d => d.name).sort();
     expect(names).toEqual(['architecture-decisions.md', 'no-frontmatter-doc.md']);
-    expect(state.compiledIndex.docs.find(d => d.name === 'architecture-decisions.md')?.title).toBe('Architecture Decisions');
-    expect(state.compiledIndex.docs.find(d => d.name === 'no-frontmatter-doc.md')?.title).toBe('no-frontmatter-doc.md');
+    expect(state.compiled_index.docs.find(d => d.name === 'architecture-decisions.md')?.title).toBe('Architecture Decisions');
+    expect(state.compiled_index.docs.find(d => d.name === 'no-frontmatter-doc.md')?.title).toBe('no-frontmatter-doc.md');
   }));
 
-  test('compiledIndex caps at 20 and reports the omitted count', withHermitDir((hermitDir) => {
+  test('compiled_index caps at 20 and reports the omitted count', withHermitDir((hermitDir) => {
     for (let i = 0; i < 25; i++) {
       writeCompiledDoc(hermitDir, `doc-${String(i).padStart(2, '0')}.md`, null, 'body');
     }
     const state = loadDashboardState(hermitDir);
-    expect(state.compiledIndex.docs.length).toBe(20);
-    expect(state.compiledIndex.omitted).toBe(5);
+    expect(state.compiled_index.docs.length).toBe(20);
+    expect(state.compiled_index.omitted).toBe(5);
   }));
 
-  test('compiledIndex is newest-first by mtime, so a recent doc is not hidden by an alphabetically-late name', withHermitDir((hermitDir) => {
+  test('compiled_index is newest-first by mtime, so a recent doc is not hidden by an alphabetically-late name', withHermitDir((hermitDir) => {
     // 20 older docs whose names sort BEFORE the newest, plus one recent doc whose
     // name sorts LAST — under an alphabetical cap it would fall into the omitted bucket.
     for (let i = 0; i < 20; i++) {
@@ -367,8 +367,8 @@ describe('loadDashboardState', () => {
     fs.utimesSync(recent, new Date('2026-07-05T00:00:00Z'), new Date('2026-07-05T00:00:00Z'));
 
     const state = loadDashboardState(hermitDir);
-    expect(state.compiledIndex.docs[0].name).toBe('zzz-newest.md');
-    expect(state.compiledIndex.omitted).toBe(1);
+    expect(state.compiled_index.docs[0].name).toBe('zzz-newest.md');
+    expect(state.compiled_index.omitted).toBe(1);
   }));
 });
 

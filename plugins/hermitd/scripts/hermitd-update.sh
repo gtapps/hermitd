@@ -349,4 +349,9 @@ if [ "$EVOLVE_SENT" = true ]; then
   echo "  hermit-evolve auto-started (unattended) — hermit config is upgrading."
 fi
 
-"$SCRIPT_DIR/hermitd-run" hermitd-cli install >/dev/null || echo "[hermit] Host CLI installation failed." >&2
+# Quiet on success and on the expected container / no-marketplace skips.
+install_out=$("$SCRIPT_DIR/hermitd-run" hermitd-cli install) || true
+case "$install_out" in
+  OK|'{"status":"skip","reason":"container"}'|'{"status":"skip","reason":"no_marketplace"}') ;;
+  *) echo "[hermit] Host CLI install: $install_out" >&2 ;;
+esac

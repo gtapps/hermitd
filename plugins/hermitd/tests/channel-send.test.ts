@@ -141,7 +141,7 @@ describe('channel-send CLI', () => {
     }
   });
 
-  test('dead listener -> exit non-zero with a stderr reason', async () => {
+  test('dead listener -> exit non-zero with an error token', async () => {
     const wd = setupChannelWorkdir();
     try {
       const r = await runChannelSend({
@@ -149,7 +149,7 @@ describe('channel-send CLI', () => {
         env: { HERMIT_TELEGRAM_API_URL: 'http://127.0.0.1:1' },
       });
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr.length).toBeGreaterThan(0);
+      expect(JSON.parse(r.stdout).error).toBeString();
     } finally {
       wd.cleanup();
     }
@@ -163,7 +163,7 @@ describe('channel-send CLI', () => {
       }));
       const r = await runChannelSend({ args: [hermit(wd.dir), 'hello'] });
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr).toContain('missing_token');
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'missing_token' });
     } finally {
       wd.cleanup();
     }
@@ -175,7 +175,7 @@ describe('channel-send CLI', () => {
       write(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: {} }));
       const r = await runChannelSend({ args: [hermit(wd.dir), 'hello'] });
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr).toContain('no_reachable_channel');
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'no_reachable_channel' });
     } finally {
       wd.cleanup();
     }
@@ -187,7 +187,7 @@ describe('channel-send CLI', () => {
       // No config.json written at all.
       const r = await runChannelSend({ args: [hermit(wd.dir), 'hello'] });
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr).toContain('config_read_failed');
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'config_read_failed' });
     } finally {
       wd.cleanup();
     }
@@ -201,8 +201,8 @@ describe('channel-send CLI', () => {
   // The state-dir pin. `Bash(bun */scripts/channel-send.ts*)` pre-approves every
   // argument, so an unvalidated root let one allowed call send with *another*
   // project's bot token to *that* project's chat. Both modes pin separately —
-  // covering each keeps a later edit from dropping one silently. Exit 2, not 1:
-  // this is "the caller got it wrong, nothing was sent", not a failed delivery.
+  // covering each keeps a later edit from dropping one silently. The error is
+  // "the caller got it wrong, nothing was sent", not a failed delivery.
   for (const [mode, tail] of [['--tier', ['hello']], ['--notice', ['--notice']]] as const) {
     test(`a foreign state dir is refused in ${mode} mode before anything is sent`, async () => {
       const stub = startHttpStub();
@@ -216,9 +216,8 @@ describe('channel-send CLI', () => {
           stdin: '{"client":"x"}',
           env: { AGENT_DIR: hermit(mine.dir), HERMIT_TELEGRAM_API_URL: stub.url },
         });
-        expect(r.exitCode).toBe(2);
-        expect(r.stderr).toContain("state dir must be this project's");
-        expect(r.stdout.trim()).toBe('');
+        expect(r.exitCode).toBe(1);
+        expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
         expect(stub.requests.length).toBe(0);
       } finally {
         stub.stop();
@@ -293,7 +292,7 @@ describe('channel-send CLI', () => {
         env: { HERMIT_TELEGRAM_API_URL: stub.url },
       });
       expect(r.exitCode).not.toBe(0);
-      expect(r.stderr).toContain('invalid --tier value');
+      expect(r.stdout).toContain('invalid --tier value');
       expect(stub.requests.length).toBe(0);
     } finally {
       stub.stop();
@@ -467,8 +466,8 @@ describe('channel-send --notice --routine', () => {
     const wd = setupChannelWorkdir();
     try {
       const r = await runChannelSend({ args: [hermit(wd.dir), '--routine', 'weekly', 'hi'] });
-      expect(r.exitCode).toBe(2);
-      expect(r.stderr).toContain('--routine requires --notice');
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toContain('--routine requires --notice');
     } finally {
       wd.cleanup();
     }
@@ -534,7 +533,7 @@ describe('channel-send --notice --routine', () => {
     const wd = setupChannelWorkdir({}, routines('discord:42'));
     try {
       const r = await send(wd, { client: 'TEAM ONLY' }, stub, 'weekly');
-      expect(r.exitCode).toBe(1);
+      expect(r.exitCode).toBe(0);
       expect(JSON.parse(r.stdout).result.client).toMatchObject({ ok: false, undelivered_saved: true });
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('12345');
@@ -553,7 +552,7 @@ describe('channel-send --notice --routine', () => {
 // channel-send.ts --notice — the model-facing proactive-notify CLI boundary.
 // Drives the subprocess (not sendOperatorNotice in-process) so these tests also
 // cover payload parsing/validation and the normalized
-// {delivered,degraded,no_channel,result} stdout contract, not just the routing sendOperatorNotice
+// {status,reason?,result} stdout contract, not just the routing sendOperatorNotice
 // already owns (covered above).
 describe('channel-send CLI --notice', () => {
   const findings = (wd: Workdir) => (fs.existsSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl')) ? fs.readFileSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl'), 'utf8') : '');
@@ -564,14 +563,14 @@ describe('channel-send CLI --notice', () => {
       env: { HERMIT_TELEGRAM_API_URL: stub.url },
     });
 
-  test('client only -> client chat receives it, exit 0, delivered:true', async () => {
+  test('client only -> client chat receives it, exit 0, status delivered', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
       const r = await runNotice(wd, { client: 'plain notice' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('12345');
       expect(stub.requests[0].body.text).toBe('plain notice');
@@ -582,16 +581,16 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('failed client send persists the original text and preserves exit 1', async () => {
+  test('failed client send persists the original text and reports undelivered', async () => {
     const stub = startHttpStub();
     stub.setStatus(500);
     const wd = setupChannelWorkdir();
     const text = 'Please confirm\nthis exact client notice.';
     try {
       const result = await runNotice(wd, { client: text }, stub);
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       const out = JSON.parse(result.stdout);
-      expect(out.delivered).toBe(false);
+      expect(out.status).toBe('undelivered');
       expect(out.result.client.ok).toBe(false);
       expect(out.result.client.undelivered_saved).toBe(true);
       const events = findings(wd).trim().split('\n').map(line => JSON.parse(line));
@@ -611,9 +610,9 @@ describe('channel-send CLI --notice', () => {
     fs.mkdirSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl'));
     try {
       const result = await runNotice(wd, { client: 'Keep this text' }, stub);
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       const out = JSON.parse(result.stdout);
-      expect(out.delivered).toBe(false);
+      expect(out.status).toBe('undelivered');
       expect(out.result.client.undelivered_saved).toBe(false);
       expect(out.result.client.persistence_error).toBeString();
     } finally {
@@ -629,7 +628,7 @@ describe('channel-send CLI --notice', () => {
       const r = await runNotice(wd, { maintainer: 'ops detail' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('99999');
     } finally {
@@ -645,7 +644,7 @@ describe('channel-send CLI --notice', () => {
       const r = await runNotice(wd, { maintainer: 'ops detail' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('12345');
     } finally {
@@ -661,7 +660,7 @@ describe('channel-send CLI --notice', () => {
       const r = await runNotice(wd, { client: 'PLAIN', maintainer: 'FULL DETAIL' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(2);
       const byChat = Object.fromEntries(stub.requests.map((req) => [req.body.chat_id, req.body.text]));
       expect(byChat['12345']).toBe('PLAIN');
@@ -679,7 +678,7 @@ describe('channel-send CLI --notice', () => {
       const r = await runNotice(wd, { client: 'PLAIN', maintainer: 'FULL DETAIL' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.text).toBe('FULL DETAIL');
     } finally {
@@ -688,14 +687,14 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('non-technical, no maintainer chat -> maintainer text suppressed to Findings, delivered:true, exit 0', async () => {
+  test('non-technical, no maintainer chat -> maintainer text suppressed to Findings, status delivered, exit 0', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir({}, { operator_profile: 'non-technical' });
     try {
       const r = await runNotice(wd, { maintainer: 'SECRET DETAIL' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(0);
       expect(findings(wd)).toContain('SECRET DETAIL');
     } finally {
@@ -711,7 +710,7 @@ describe('channel-send CLI --notice', () => {
       const r = await runNotice(wd, { maintainer: 'DOCTOR ALERT', fallback: 'primary' }, stub);
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.delivered).toBe(true);
+      expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('12345');
       expect(stub.requests[0].body.text).toBe('DOCTOR ALERT');
@@ -722,16 +721,15 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('configured maintainer unreachable -> degraded:true, Findings written', async () => {
+  test('configured maintainer unreachable -> status degraded, Findings written', async () => {
     const stub = startHttpStub();
     stub.setStatus(500);
     const wd = setupChannelWorkdir({ maintainer_channel_id: '99999' });
     try {
       const r = await runNotice(wd, { maintainer: 'USD DETAIL' }, stub);
       const out = JSON.parse(r.stdout);
-      expect(out.degraded).toBe(true);
-      expect(out.delivered).toBe(false);
-      expect(r.exitCode).toBe(1);
+      expect(out.status).toBe('degraded');
+      expect(r.exitCode).toBe(0);
       expect(findings(wd)).toContain('USD DETAIL');
     } finally {
       stub.stop();
@@ -739,7 +737,7 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('partial delivery (maintainer suppressed, client unreachable) -> exit 1, not success', async () => {
+  test('partial delivery (maintainer suppressed, client unreachable) -> undelivered, not success', async () => {
     const wd = setupWorkdir();
     write(hermit(wd.dir, 'config.json'), JSON.stringify({
       operator_profile: 'non-technical',
@@ -753,15 +751,15 @@ describe('channel-send CLI --notice', () => {
       const out = JSON.parse(r.stdout);
       // The maintainer leg landed in its intended Findings home, but the client
       // leg reached nobody — reporting delivered here would drop it silently.
-      expect(out.delivered).toBe(false);
-      expect(r.exitCode).toBe(1);
+      expect(out.status).toBe('undelivered');
+      expect(r.exitCode).toBe(0);
       expect(findings(wd)).toContain('DETAIL');
     } finally {
       wd.cleanup();
     }
   });
 
-  test('no channel at all -> no_channel:true, exit 1', async () => {
+  test('no channel at all -> undelivered with no_reachable_channel, exit 0', async () => {
     const wd = setupWorkdir();
     write(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: {} }));
     try {
@@ -769,10 +767,9 @@ describe('channel-send CLI --notice', () => {
         args: [hermit(wd.dir), '--notice'],
         stdin: JSON.stringify({ client: 'hello' }),
       });
-      expect(r.exitCode).not.toBe(0);
+      expect(r.exitCode).toBe(0);
       const out = JSON.parse(r.stdout);
-      expect(out.no_channel).toBe(true);
-      expect(out.delivered).toBe(false);
+      expect(out).toMatchObject({ status: 'undelivered', reason: 'no_reachable_channel' });
     } finally {
       wd.cleanup();
     }
@@ -791,14 +788,13 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('malformed JSON on stdin -> exit 1, stderr message, no stdout JSON', async () => {
+  test('malformed JSON on stdin -> exit 1, invalid_payload error', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
       const r = await runNotice(wd, 'not json', stub);
-      expect(r.exitCode).toBe(2); // usage error, not a delivery failure
-      expect(r.stderr).toContain('invalid JSON');
-      expect(r.stdout.trim()).toBe('');
+      expect(r.exitCode).toBe(1); // caller error, not a delivery failure
+      expect(JSON.parse(r.stdout).error).toStartWith('invalid_payload:invalid JSON');
       expect(stub.requests.length).toBe(0);
     } finally {
       stub.stop();
@@ -811,8 +807,8 @@ describe('channel-send CLI --notice', () => {
     const wd = setupChannelWorkdir();
     try {
       const r = await runNotice(wd, { maintainr: 'x' }, stub);
-      expect(r.exitCode).toBe(2); // usage error, not a delivery failure
-      expect(r.stderr).toContain('unknown field');
+      expect(r.exitCode).toBe(1); // caller error, not a delivery failure
+      expect(r.stdout).toContain('unknown field');
       expect(stub.requests.length).toBe(0);
     } finally {
       stub.stop();
@@ -825,8 +821,8 @@ describe('channel-send CLI --notice', () => {
     const wd = setupChannelWorkdir();
     try {
       const r = await runNotice(wd, {}, stub);
-      expect(r.exitCode).toBe(2); // usage error, not a delivery failure
-      expect(r.stderr).toContain('at least one of client/maintainer is required');
+      expect(r.exitCode).toBe(1); // caller error, not a delivery failure
+      expect(r.stdout).toContain('at least one of client/maintainer is required');
       expect(stub.requests.length).toBe(0);
     } finally {
       stub.stop();
@@ -839,8 +835,8 @@ describe('channel-send CLI --notice', () => {
     const wd = setupChannelWorkdir();
     try {
       const r = await runNotice(wd, { maintainer: 'x', fallback: 'nope' }, stub);
-      expect(r.exitCode).toBe(2); // usage error, not a delivery failure
-      expect(r.stderr).toContain('invalid fallback');
+      expect(r.exitCode).toBe(1); // caller error, not a delivery failure
+      expect(r.stdout).toContain('invalid fallback');
       expect(stub.requests.length).toBe(0);
     } finally {
       stub.stop();
@@ -855,8 +851,8 @@ describe('channel-send CLI --notice', () => {
         args: [hermit(wd.dir), '--notice', '--tier', 'client'],
         stdin: JSON.stringify({ client: 'x' }),
       });
-      expect(r.exitCode).toBe(2); // usage error, not a delivery failure
-      expect(r.stderr).toContain('mutually exclusive');
+      expect(r.exitCode).toBe(1); // caller error, not a delivery failure
+      expect(r.stdout).toContain('mutually exclusive');
     } finally {
       wd.cleanup();
     }

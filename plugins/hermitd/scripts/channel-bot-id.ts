@@ -9,9 +9,10 @@
 // lib/prompt-stages/channel-reply-reminder.ts can surface it.
 //
 // Run at pairing time (channel-setup / docker-setup) and by hermit-evolve's
-// backfill. Best-effort by contract: any failure prints one SKIP line and
-// exits 0, because a hermit that can't learn its own id must still finish
-// setup.
+// backfill. Best-effort by contract: any failure prints
+// {"status":"skip","reason":"<token>","channel":…} and exits 0, because a hermit
+// that can't learn its own id must still finish setup. Success prints
+// {"channel","bot_user_id","bot_username","written"}.
 //
 // Usage: bun channel-bot-id.ts <hermit-dir> <channel> [--write]
 //
@@ -24,47 +25,51 @@ import { readConfigRaw } from './lib/config-read';
 import { auditConfigChange } from './lib/config-audit';
 import { readChannelToken } from './lib/channel-token';
 import { CHANNEL_PROBES, extractBotIdentity } from './lib/channel-probe';
-import { emit } from './lib/cli';
+import { emitJson, exitError } from './lib/cli';
 
 const TIMEOUT_MS = Number(process.env.HERMIT_DOCTOR_LIVENESS_TIMEOUT_MS) || 5000;
+
+function skip(channel: string | undefined, reason: string): never {
+  return emitJson({ status: 'skip', reason, channel: channel ?? null });
+}
 
 async function main(): Promise<void> {
   // Positionals only — a `--write` written before them (the natural flag order)
   // must not be read as the hermit dir.
   const [hermitDirArg, channel] = process.argv.slice(2).filter(a => !a.startsWith('--'));
   const write = process.argv.includes('--write');
-  if (!hermitDirArg || !channel) emit('SKIP usage: channel-bot-id.ts <hermit-dir> <channel> [--write]');
+  if (!hermitDirArg || !channel) exitError();
 
   const hermitDir = path.resolve(hermitDirArg);
   const config = readConfigRaw(hermitDir);
   const entry = config?.channels?.[channel];
-  if (!entry || typeof entry !== 'object') emit(`SKIP ${channel}: no channel entry in config.json`);
+  if (!entry || typeof entry !== 'object') skip(channel, 'no_channel_entry');
 
   const buildProbe = CHANNEL_PROBES[channel];
   // Not an error: iMessage has no bot account to ask about, and a third-party
   // channel has no probe here. Both still work — the reminder matches whatever
   // the entry carries, so the operator can set the keys by hand.
-  if (!buildProbe) emit(`SKIP ${channel}: no identity probe for this platform — set bot_user_id manually if its mentions need recognizing`);
+  if (!buildProbe) skip(channel, 'no_identity_probe');
 
   const token = readChannelToken(hermitDir, channel, entry);
-  if (!token) emit(`SKIP ${channel}: no token configured — run /channel-setup`);
+  if (!token) skip(channel, 'no_token');
 
   const probe = buildProbe(token);
   let body: any;
   try {
     const resp = await fetch(probe.url, { headers: probe.headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!resp.ok) emit(`SKIP ${channel}: probe returned HTTP ${resp.status}`);
+    if (!resp.ok) skip(channel, `http_${resp.status}`);
     body = await resp.json();
   } catch (e: any) {
     // Never interpolate the error: a Telegram fetch failure can echo the URL,
     // and the URL carries the token.
-    emit(`SKIP ${channel}: probe failed (${e?.name === 'TimeoutError' ? 'timeout' : 'network error'})`);
+    skip(channel, e?.name === 'TimeoutError' ? 'probe_timeout' : 'probe_network_error');
   }
 
   const { id, username } = extractBotIdentity(channel, body);
-  if (!id) emit(`SKIP ${channel}: probe response carried no bot id`);
+  if (!id) skip(channel, 'no_bot_id');
 
-  let written = '';
+  let written = false;
   if (write) {
     // Merge into the existing entry — never replace it. Re-running setup after
     // a bot swap must overwrite a stale id, so this is write-always, not
@@ -81,17 +86,17 @@ async function main(): Promise<void> {
     try {
       fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', 'utf8');
       fs.renameSync(tmp, configPath);
-    } catch (e: any) {
+    } catch {
       // Same cleanup the sibling writers do: a failed write must not leave a
       // half-written config.json.tmp behind in the state dir.
       try { fs.unlinkSync(tmp); } catch {}
-      emit(`SKIP ${channel}: config write failed (${e?.code || e?.message || 'error'})`);
+      skip(channel, 'config_write_failed');
     }
     auditConfigChange(hermitDir, before, config, 'channel-bot-id');
-    written = ' written';
+    written = true;
   }
 
-  emit(`${channel} bot_user_id=${id} bot_username=${username ?? '-'}${written}`);
+  emitJson({ channel, bot_user_id: id, bot_username: username ?? null, written });
 }
 
-main().catch((e: any) => emit(`SKIP capture failed: ${e?.message || e}`));
+main().catch(() => skip(undefined, 'capture_failed'));

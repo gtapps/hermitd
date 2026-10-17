@@ -24,12 +24,11 @@
 //
 // The stamp only ever moves forward: see the monotonicity guard in finalize().
 //
-// Stdout: one JSON object matching FinalizeResult.
-// Exit 0: ok:true and core confirmed on-disk.
-// Exit 1: any error (no_core_target, no_config, config_json_invalid,
-//          config_unreadable, plugin_json_unreadable, core_version_mismatch,
-//          core_version_regression, bad_sibling_arg, write_failed, verify_failed,
-//          fatal).
+// Stdout, exit 0: one JSON object matching FinalizeResult (ok:true, core confirmed on-disk).
+// Stdout, exit 1: {"error":"finalize_failed","errors":[{code,message}]} where each code is
+//          no_core_target, no_config, config_json_invalid, config_unreadable,
+//          plugin_json_unreadable, core_version_mismatch, core_version_regression,
+//          write_failed, verify_failed or fatal.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -408,7 +407,7 @@ if (import.meta.main) {
     // argument, and this script rewrites config.json wholesale — an
     // unvalidated root let one such call stamp _hermit_versions into another
     // project's config. See lib/cc-compat.ts assertStateDir().
-    result = finalize({ hermitDir: pinStateDirOrExit(hermitDir, 'evolve-finalize'), core, pluginRoot, siblings });
+    result = finalize({ hermitDir: pinStateDirOrExit(hermitDir), core, pluginRoot, siblings });
   } catch (e: any) {
     result = {
       ok: false,
@@ -420,6 +419,5 @@ if (import.meta.main) {
       errors: [{ code: 'fatal', message: e.message }],
     };
   }
-  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-  process.exit(result.ok ? 0 : 1);
+  emitJson(result.ok ? result : { error: 'finalize_failed', errors: result.errors });
 }
