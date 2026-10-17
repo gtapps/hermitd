@@ -25,10 +25,10 @@ Check whether `.hermit/config.json` exists.
   After it finishes, come back and type `/hermitd-homeassistant:hatch`.
   ```
 - If it is present: run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant` and parse the JSON verdict. Branch on `action`:
-  - `upgrade-core-package` / `upgrade-core-applied` → relay the `remedy` string verbatim to the operator and stop.
+  - `upgrade_core_package` / `upgrade_core_applied` → tell the operator to run the `next_steps` commands in order, then stop.
   - `verify` → `AskUserQuestion`: "Already set up. Re-verify HA access only (skip setup wizard)?". Yes → skip to §5. No → continue.
   - `full` → continue with setup.
-  - `ok: false` → relay `message` and stop.
+  - `error`, or any `domain-hatch` command in this skill that prints `error` → relay it and stop.
 
 ### 2. Verify .env
 
@@ -140,6 +140,8 @@ Then write the block:
 ```bash
 .hermit/bin/hermitd-run domain-hatch sync-block hermitd-homeassistant
 ```
+
+If it prints `status` `refused`, tell the operator and stop.
 
 It appends the `<!-- hermitd-homeassistant: Home Assistant Workflow -->` block when the marker is absent and skips when it is already present. Refreshing an existing block on a version bump is `hermit-evolve`'s job, not hatch's.
 

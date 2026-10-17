@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
 - `ha-agent-lab` prints one JSON object per command: failures are `{"error":"<token>:<detail>"}` on stdout with exit 1, and expected outcomes (a write blocked by `ha_safety_mode`, an invalid artifact, a missing config id, an empty snapshot) exit 0 with a `status`. Shapes are in `docs/cli-reference.md` § Output.
 - `audit-automations`, `audit-scripts`, `automation-diff`, `integration-health` and `updates` print findings as JSON, and their skills render the scheduled-check blocks, which keep their shape.
 - `boot mcp-config` reports missing keys as `{"status":"missing_keys"}` at exit 0; `native-permissions.ts` prints `OK` or one JSON object instead of throwing.
