@@ -96,7 +96,7 @@ test('feed-brief binds dispatch and verification to the original run ID', () => 
   expect(phase).toContain('the generated `run_id` to copy exactly');
   expect(phase).toContain('Use the original expected ID');
   expect(phase).toContain('do not re-read the raw file');
-  expect(phase).toContain('Run ID generation or verification fails');
+  expect(phase).toContain('verification prints `status: "rejected"`');
   expect(phase).toContain('without dispatching');
   expect(phase).toContain('`sources_skipped`');
   expect(phase).toContain('do not re-dispatch');

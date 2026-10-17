@@ -34,8 +34,8 @@ Resolve `<slot>` from the flag before starting. All filenames below use that res
 Before dispatch, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/source-fetch-result.ts new-run "<absolute-output-path>"`.
 The path is the output-path contract's `<absolute-project-root>/tmp/feed-source-items-<slot>.json`.
 It deletes the previous output so a fetch that writes nothing surfaces as a missing file.
-Keep its returned UUID as the expected `run_id` for this invocation; never infer it from an
-existing file or the agent's reply. If generation fails, follow the wholesale fetch-failure
+Keep its printed `run_id` as the expected ID for this invocation; never infer it from an
+existing file or the agent's reply. If it prints `error`, follow the wholesale fetch-failure
 path below without dispatching.
 
 Dispatch the `@hermitd-feed:source-fetcher` subagent (model: haiku) to fetch all `web` and `rss`
@@ -50,15 +50,16 @@ extraction only. After the agent returns, run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/source-fetch-result.ts verify "<absolute-output-path>" "<expected-run-id>"
 ```
 
-Use the original expected ID, not an ID read from the output. On exit 0, consume only the
-accepted JSON printed by this command; do not re-read the raw file for candidate items.
+Use the original expected ID, not an ID read from the output. It prints either
+`{"status":"rejected","reason":...}` or the accepted payload. Consume only that accepted JSON;
+do not re-read the raw file for candidate items.
 The verifier checks run identity and the envelope, not whether network fetches occurred.
 
 **Reconcile against the file, not the reply** (mapping owned by `${CLAUDE_PLUGIN_ROOT}/docs/schema.md` §5). The
 agent's reply is a claim; only the verified file payload is eligible for reconciliation. This classifies `web`/`rss` sources only —
 `chrome`/`reddit`/`reddit-home`/`x` sources are absent from `sources[]` by design and are
 classified in Phase 2:
-- Run ID generation or verification fails (including missing/unreadable/malformed output, an invalid envelope, or an absent/mismatched `run_id`) → every `web`/`rss` source in `feed-sources.md` goes to
+- Run ID generation fails, or verification prints `status: "rejected"` → every `web`/`rss` source in `feed-sources.md` goes to
   `sources_skipped`. Continue to Phase 2 — do not re-dispatch the agent — and note the wholesale
   fetch failure in the brief's Source notes.
 - A `web`/`rss` source with no entry in `sources[]` → `sources_skipped`, regardless of what the
@@ -74,8 +75,8 @@ classified in Phase 2:
 For each source whose type is `chrome`, `reddit`, `reddit-home`, or `x`:
 
 - **`reddit`:** try `bun ${CLAUDE_PLUGIN_ROOT}/scripts/reddit-fetch.ts <subreddit> [limit]` FIRST.
-  - Exit 0 → parse the JSON array (`title, url, score, comments, permalink`) into the item format.
-  - Exit 1 → fall back to Chrome (below). If Chrome is unavailable, skip and mark the source in `sources_skipped`.
+  - `posts` → map each post (`title, url, score, comments, permalink`) into the item format.
+  - `status: "unavailable"` or `error` → fall back to Chrome (below). If Chrome is unavailable, skip and mark the source in `sources_skipped`.
 - **`chrome` / `reddit-home` / `x`:** these require a running Chrome. Check whether the Chrome MCP tools are
   available (search `mcp__claude-in-chrome__` via ToolSearch). If Chrome is not available, SKIP the source
   gracefully and mark it in `sources_skipped` — Chrome availability is a deployment concern; do not attempt
@@ -182,7 +183,7 @@ tags: [brief]
 top_categories: [Cat A, Cat B, Cat C]  # top 5 by item count, verbatim from feed-categories.md
 item_count: 8                          # total items included
 sources_used: [Source A, Source B]     # sources that contributed ≥1 item
-sources_skipped: [Source C]            # sources that failed or were unavailable (fetch errors, Chrome down, script exit 1)
+sources_skipped: [Source C]            # sources that failed or were unavailable (fetch errors, Chrome down, script reported unavailable)
 sources_quiet: [Source D]              # sources fetched cleanly but contributed 0 items (quiet day — not a reliability signal)
 fetch_log:                             # per-source efficiency array from Phase 2.5; omit if that step produced no data
   - source: Source A
@@ -195,7 +196,7 @@ fetch_log:                             # per-source efficiency array from Phase 
 
 - Copy the Phase 2.5 array directly into `fetch_log`; omit the key if Phase 2.5 produced no data.
 - **`sources_skipped` vs `sources_quiet` are distinct — never collapse them.** A fetch that *failed*
-  (network error, Chrome unavailable, script exit 1) goes in `sources_skipped`. A source that returned
+  (network error, Chrome unavailable, script reported unavailable) goes in `sources_skipped`. A source that returned
   cleanly but yielded nothing worth including goes in `sources_quiet`. This distinction is what makes the
   weekly source-performance signal accurate.
 - **`top_categories`:** use only exact category names from `feed-categories.md` — no abbreviations or invented

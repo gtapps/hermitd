@@ -18,11 +18,17 @@ function run(...args: string[]) {
   return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
-function expectRejected(...args: string[]) {
+function expectRejected(reason: string, ...args: string[]) {
+  const result = run(...args);
+  expect(result.code).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toEqual({ status: 'rejected', reason });
+}
+
+function expectUsageError(...args: string[]) {
   const result = run(...args);
   expect(result.code).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain('Source fetch verification failed:');
+  expect(JSON.parse(result.stdout)).toEqual({ error: 'usage' });
 }
 
 afterEach(() => {
@@ -36,7 +42,7 @@ test('new-run emits distinct UUIDs without candidate data', () => {
   for (const result of [first, second]) {
     expect(result.code).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout.trim()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(JSON.parse(result.stdout).run_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   }
   expect(first.stdout).not.toBe(second.stdout);
 });
@@ -46,14 +52,14 @@ test('new-run deletes the previous output before dispatch', () => {
   const result = run('new-run', path);
   expect(result.code).toBe(0);
   expect(existsSync(path)).toBe(false);
-  expectRejected('verify', path, result.stdout.trim());
+  expectRejected('missing_output', 'verify', path, JSON.parse(result.stdout).run_id);
 });
 
 test('an unsuccessful replacement leaves an old file rejected and untouched', () => {
   const original = JSON.stringify({ run_id: 'earlier-run', sources: [{ name: 'Example', status: 'ok', items: [] }] });
   const path = fixture(original);
   // A failed writer leaves this previous payload in place, regardless of its reply.
-  expectRejected('verify', path, 'current-run');
+  expectRejected('run_id_mismatch', 'verify', path, 'current-run');
   expect(readFileSync(path, 'utf8')).toBe(original);
 });
 
@@ -69,7 +75,7 @@ test('current-run output preserves unchanged articles, quiet sources, and partia
   expect(result.code).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual(payload);
-  expectRejected('verify', path, 'overlapping-run');
+  expectRejected('run_id_mismatch', 'verify', path, 'overlapping-run');
 });
 
 test('current-run empty sources array is accepted', () => {
@@ -82,18 +88,18 @@ test('current-run empty sources array is accepted', () => {
 for (const payload of [null, [], 'text', 1, {}, { sources: [] }, { run_id: 1, sources: [] },
   { run_id: 'current-run' }, { run_id: 'current-run', sources: {} }]) {
   test(`rejects invalid envelope ${JSON.stringify(payload)}`, () => {
-    expectRejected('verify', fixture(JSON.stringify(payload)), 'current-run');
+    expectRejected('invalid_payload', 'verify', fixture(JSON.stringify(payload)), 'current-run');
   });
 }
 
 test('malformed, missing, and unreadable file targets emit no candidate data', () => {
   const path = fixture('not json');
-  expectRejected('verify', path, 'current-run');
-  expectRejected('verify', `${path}.missing`, 'current-run');
-  expectRejected('verify', fixtures[0], 'current-run');
+  expectRejected('invalid_payload', 'verify', path, 'current-run');
+  expectRejected('missing_output', 'verify', `${path}.missing`, 'current-run');
+  expectRejected('invalid_payload', 'verify', fixtures[0], 'current-run');
 });
 
 for (const args of [[], ['unknown'], ['new-run'], ['new-run', 'relative.json'], ['new-run', '/file.json', 'extra'], ['verify'], ['verify', 'relative.json', 'run'],
   ['verify', '/file.json', ''], ['verify', '/file.json', 'run', 'extra']]) {
-  test(`rejects invalid invocation ${JSON.stringify(args)}`, () => expectRejected(...args));
+  test(`rejects invalid invocation ${JSON.stringify(args)}`, () => expectUsageError(...args));
 }

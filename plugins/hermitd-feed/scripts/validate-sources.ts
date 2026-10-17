@@ -2,7 +2,8 @@
 /**
  * PostToolUse hook: validate feed-sources.md table format.
  * Passes through (exit 0) unless the edited file's basename is feed-sources.md.
- * Exits 1 with violations on stderr when the table is malformed.
+ * When the table is malformed, prints a PostToolUse `decision: "block"` with the
+ * violations as the reason, so Claude sees them and can fix the edit.
  */
 
 import { basename } from "node:path";
@@ -115,9 +116,8 @@ async function main(): Promise<void> {
 
   const violations = validateSourcesTable(markdown);
   if (violations.length > 0) {
-    process.stderr.write("feed-sources.md validation failed:\n");
-    for (const v of violations) process.stderr.write(`  ${v}\n`);
-    process.exit(1);
+    const reason = ["feed-sources.md validation failed:", ...violations.map((v) => `  ${v}`)].join("\n");
+    console.log(JSON.stringify({ decision: "block", reason }));
   }
   process.exit(0);
 }

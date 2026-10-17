@@ -2,8 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- `source-fetch-result.ts` and `reddit-fetch.ts` print one JSON object; a rejected verify and an unavailable subreddit exit 0 with `status` and `reason`.
+
 ### Fixed
 - Briefs no longer skip every web and RSS source after one oversized fetch result; the previous `tmp/feed-source-items-<slot>.json` is deleted before each fetch.
+- `feed-sources.md` table violations now reach Claude: the `validate-sources` hook returns a PostToolUse block decision instead of exiting 1.
 
 ## [0.2.4] - 2026-10-02
 
