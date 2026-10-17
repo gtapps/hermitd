@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.7] - 2026-10-17
 
 ### Changed
 - Requires core `>=1.4.16`, whose `domain-hatch` and `proposal metrics` print one JSON object.
@@ -8,6 +8,7 @@
 - `weekly-patterns` reports `trend: "insufficient_data"`.
 
 ### Fixed
+- `/hatch` relays `next_steps` when core needs bootstrapping and the `remedy` when core is below the floor. A refused block sync names the file with the duplicate marker.
 - `domain-brainstorm` parses the triage outcome in the shape `proposal-create` prints.
 
 ### Upgrade Instructions
