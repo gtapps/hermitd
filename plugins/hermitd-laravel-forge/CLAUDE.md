@@ -21,7 +21,7 @@ The agent calls `forge.php <command>` directly via Bash. The SDK handles all HTT
 
 - **Surface-then-approve on every write.** Preview first, relay the canonical target, invoke the execution command for native approval. No exceptions.
 - **Write approval.** Curated deploy/reboot and generic plan execution use Claude Code native approval. Generic execution also re-captures the request and enforces its hash, expiry, policy, and single use.
-- **Never echo, cat, or Read `.env`.** Check credential state with `forge.php check` (self-reports `missing`/`invalid`/`unreachable`/`ok`).
+- **Never echo, cat, or Read `.env`.** Check credential state with `forge.php check` (one JSON object; branch on `status`: `missing`, `invalid`, `unreachable`, or `ok`).
 - **Deployment and server logs may contain secrets.** Scrub before relay and before persistence (the CLAUDE-APPEND secret-hygiene rule).
 - **Generic dispatch reaches the whole SDK minus two deny tiers** (`secrets`, `destructive`), because the Forge API token is what authorizes an operation; this plugin owns autonomy and context hygiene, not authorization. Reads go through `call`, writes through `preview` → approval → `execute <plan-id>`. Reachability is derived from the installed SDK by reflection and from the captured HTTP verb, never from a hand-maintained list. `forge.php policy` prints the effective state.
 - **`php/forge-operation.php` is the security-critical file.** Capture, canonicalization, plan storage, and the hash check live there, with no CLI parsing or output formatting, so `php/tests/run.php` drives it directly. Its Blocks A and B run first in the suite for a reason: if the captured request is not what the SDK would really send, every other guarantee is decorative.

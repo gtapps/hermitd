@@ -129,7 +129,7 @@ hermitd-fitness (this plugin)
   ├── state-templates/    CLAUDE-APPEND.md + gate scripts (installed by hatch)
   └── docs/               knowledge-schema.md
 
-hermitd (core, required ≥ 1.3.3)
+hermitd (core, required ≥ 1.4.16)
   └── Session lifecycle, routines, channels, memory, cost tracking
 ```
 

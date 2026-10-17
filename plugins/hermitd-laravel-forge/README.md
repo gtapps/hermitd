@@ -117,7 +117,7 @@ Everything else — model, heartbeat, idle behavior, per-routine model — is co
 
 ## Requirements
 
-- `hermitd` ≥1.3.3 (core)
+- `hermitd` ≥1.4.16 (core)
 - PHP 8.5+ with `ext-json` and `ext-curl`
 - Composer (for the SDK install at hatch time)
 

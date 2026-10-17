@@ -26,7 +26,7 @@ Anything operator-facing (deploy success/failure, escalations) is relayed via th
 
 ### Credentials
 
-- **Never `cat`, `echo`, `grep`, or Read `.env`** to check the token — run `forge.php check` instead. It self-reports `missing`/`invalid`/`unreachable`/`ok` without revealing the value.
+- **Never `cat`, `echo`, `grep`, or Read `.env`** to check the token — run `forge.php check` instead. It prints one JSON object with `status` of `missing`, `invalid`, `unreachable`, or `ok`, without revealing the value.
 
 ### Secret hygiene
 
