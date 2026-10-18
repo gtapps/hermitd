@@ -167,6 +167,22 @@ function validateTable(config: Json, rows: Record<string, Spec>, errors: string[
 function validate(config: Json): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
+  function validateChat(chat: Json, location: string, owner: 'routine' | 'watch', rearm = false): void {
+    if (chat === undefined || chat === null) return;
+    if (!isKey(chat)) {
+      errors.push(`${location}: chat must be "<channel>:<chat_id>"`);
+    } else if (rearm) {
+      warnings.push(`${location}: chat on "heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
+    } else {
+      const channel = chat.slice(0, chat.indexOf(':'));
+      if (!isDict(config.channels?.[channel])) {
+        warnings.push(`${location}: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
+      } else if (!DIRECT_SEND_CHANNELS.includes(channel) && !config.channels[channel].send_script) {
+        warnings.push(`${location}: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats, or a channel with send_script, can own a ${owner}`);
+      }
+    }
+  }
+
   validateTable(config, TABLE, errors);
   if (config.tasks !== undefined && (!config.tasks || typeof config.tasks !== 'object' || Array.isArray(config.tasks))) {
     errors.push('tasks: expected object');
@@ -276,20 +292,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           warnings.push(`routines[${i}]: effort has no effect without "model"; it applies only to the model-override subagent`);
         }
       }
-      if (r.chat !== undefined && r.chat !== null) {
-        if (!isKey(r.chat)) {
-          errors.push(`routines[${i}]: chat must be "<channel>:<chat_id>"`);
-        } else if (r.id === 'heartbeat-restart') {
-          warnings.push(`routines[${i}]: chat on "heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
-        } else {
-          const channel = r.chat.slice(0, r.chat.indexOf(':'));
-          if (!isDict(config.channels?.[channel])) {
-            warnings.push(`routines[${i}]: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
-          } else if (!DIRECT_SEND_CHANNELS.includes(channel) && !config.channels[channel].send_script) {
-            warnings.push(`routines[${i}]: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats, or a channel with send_script, can own a routine`);
-          }
-        }
-      }
+      validateChat(r.chat, `routines[${i}]`, 'routine', r.id === 'heartbeat-restart');
       if (r.precheck !== undefined && r.precheck !== null) {
         const preErr = validatePrecheckValue(r.precheck);
         if (preErr) {
@@ -760,6 +763,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
   } else if (Array.isArray(config.monitors)) {
     const ids = new Set();
     config.monitors.forEach((m: Json, i: number) => {
+      validateChat(m.chat, `monitors[${i}]`, 'watch');
       if (!m.id || typeof m.id !== 'string') {
         errors.push(`monitors[${i}]: missing or invalid id`);
       } else {
