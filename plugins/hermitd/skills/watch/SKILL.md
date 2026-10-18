@@ -46,11 +46,10 @@ This is the **sole source of truth**.
       "task_id": "bmg9y1le3",
       "command": "tail -f deploy.log",
       "timeout_ms": 1800000,
-      "description": "errors in deploy.log",
+      "description": "errors in deploy.log (notify with --watch deploy-errors)",
       "started_at": "2026-04-12T15:00:00Z",
       "source": "config",
-      "class": "stream",
-      "chat": "telegram:-100777"
+      "class": "stream"
     },
     {
       "id": "session-migration-1775991600-b7c1",
@@ -97,7 +96,7 @@ or record write that already completed.
      while true; do <check-command> && echo "<brief-event-description>"; sleep <interval_secs>; done
      ```
 5. Invoke Monitor tool with all 3 required params:
-   - `description`: the operator's instruction text (shown in every notification)
+   - `description`: the operator's instruction text plus ` (notify with --watch <id>)` (shown in every notification)
    - `command`: the constructed command
    - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
 6. Read `state/monitors.runtime.json` (create if missing: `{"monitors": [], "last_cleared": null}`)
@@ -125,10 +124,10 @@ Called automatically by resident-start on a genuine boot. Can also be called man
       the actual value at registration time (see Notes). If the var is unset,
       log a warning and skip that watch.
    b. Invoke Monitor tool:
-      - `description`: from config entry
+      - `description`: from config entry, plus ` (notify with --watch <id>)`
       - `command`: the resolved command string
       - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
-   c. Append to registry with `source: "config"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration. Copy the config entry's `chat` when present.
+   c. Append to registry with `source: "config"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration.
 4. Write registry back
 5. If any watches were registered during an open task record turn, note them with its id:
    ```bash
@@ -213,7 +212,7 @@ or watch id.
 
 ## Watch duty records
 
-Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, so client notices reach the chat its registry entry names, and send them before removing that entry. Session watches keep their record-thread routing.
+Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, before removing its entry; client notices then reach the watch's `chat`. Session watches keep their record-thread routing.
 
 When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This updates only its `last_event_at` and `last_verdict`; listings are labeled since session start.
 

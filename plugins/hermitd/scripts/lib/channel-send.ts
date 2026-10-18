@@ -355,7 +355,10 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     const owned = notice.routine
       ? ownedChat(config.routines, notice.routine)
       : notice.watch
-        ? ownedChat(readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors, notice.watch)
+        // A config watch's chat is read live from config.json, like a routine's;
+        // an ad-hoc watch's lives on its registry entry.
+        ? ownedChat(config.monitors, notice.watch)
+          ?? ownedChat(readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors, notice.watch)
         : null;
     const target = owned ?? clientTarget;
     // Drop the client leg when the maintainer text already landed in that same
