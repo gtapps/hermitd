@@ -93,7 +93,7 @@ Generates the weekly review for the current ISO week.
      Spend: $<total_cost_usd> this week (vs $<prior week's total_cost_usd>, if a prior file exists) — an estimate, not a bill
      ```
      Followed by the `Topic pages:` findings from step 3 when present, plus a final line listing whichever of the dashboard/weekly-review URLs were returned (e.g. `📎 <dashboard url> · 📎 <weekly-review url>` — omit either half that wasn't returned).
-   - Deliver via `channel-send.ts --notice` (see CLAUDE-APPEND.md § Operator Notification), with two
+   - Deliver via `channel-send.ts --notice` (see prompts/resident.md § Operator Notification), with two
      audience versions of the same composed message:
      - `client` = the composed message **with the Spend line omitted**
      - `maintainer` = the **complete message including the Spend line** — the full richer version of

@@ -82,7 +82,7 @@ Do NOT invoke `proposal-triage` directly in this skill — `/hermitd:proposal-cr
 
 ## 4. Emit batch message
 
-Send one message per `CLAUDE-APPEND.md` § Operator Notification (`channel-send.ts --notice`; it asks for decisions, so it needs a `client` leg):
+Send one message per `prompts/resident.md` § Operator Notification (`channel-send.ts --notice`; it asks for decisions, so it needs a `client` leg):
 
 ```
 🧠 Capability brainstorm (<N> idea(s))

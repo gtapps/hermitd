@@ -252,7 +252,7 @@ proposed_agent_name: <name>          # optional
 ---
 ```
 
-A skill alone by default. Add `proposed_routine` when the procedure is schedulable (object: `id`, `schedule` cron, `skill` invocation string). Add `proposed_agent_name` when a sub-step's intermediate context dwarfs its conclusion — a thin skill plus a `.claude/agents/<name>.md` worker (the Delegation rule in CLAUDE-APPEND.md). No numeric thresholds; the shape is a judgment.
+A skill alone by default. Add `proposed_routine` when the procedure is schedulable (object: `id`, `schedule` cron, `skill` invocation string). Add `proposed_agent_name` when a sub-step's intermediate context dwarfs its conclusion — a thin skill plus a `.claude/agents/<name>.md` worker (the Delegation rule in prompts/resident.md). No numeric thresholds; the shape is a judgment.
 
 Body (concise — fits the `compiled/` char-budget/lint contract; do NOT write a full SKILL.md here):
 - The recurring steps in order

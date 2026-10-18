@@ -74,7 +74,7 @@ Send `!stop` or `!pause` from your channel and the assistant is blocked from eve
 
 ## How do I move my hermit to another machine?
 
-`git clone` handles your tracked files. Copy `.hermit/` — at minimum `OPERATOR.md`, `HEARTBEAT.md`, `RESIDENT.md`, and `config.json` (plus `claude-settings.json` if you created it); copy `tasks/` to preserve commitments; `proposals/`, `raw/`, `compiled/` and frozen archives preserve history, and `state/`, `bin/`, `templates/` regenerate on their own. Copy `.claude/settings.local.json` too if `.hermit/state/hatch-options.json` shows `"target": "local"` — that file carries hermit's hook permissions and deny patterns. Never copy `.env` or `.claude.local/`; recreate those secrets and channel state dirs on the destination and re-pair channels. The gitignored `.claude/output-styles/hermit-voice.md` doesn't travel with the clone, but copying `config.json` is enough on its own — the next boot re-renders it. A skill or agent your hermit created for you (rather than one you wrote yourself) is excluded the same way when `target` is `"local"`, but via `.git/info/exclude` rather than `.gitignore` — that file lives outside `.hermit/` and a `git clone` never carries it, so recreate or re-request that skill on the destination.
+`git clone` handles your tracked files. Copy `.hermit/` — at minimum `OPERATOR.md`, `HEARTBEAT.md` and `config.json` (plus `claude-settings.json` if you created it); copy `tasks/` to preserve commitments; `proposals/`, `raw/`, `compiled/` and frozen archives preserve history, and `state/`, `bin/`, `templates/` regenerate on their own. Copy `.claude/settings.local.json` too if `.hermit/state/hatch-options.json` shows `"target": "local"` — that file carries hermit's hook permissions and deny patterns. Never copy `.env` or `.claude.local/`; recreate those secrets and channel state dirs on the destination and re-pair channels. The gitignored `.claude/output-styles/hermit-voice.md` doesn't travel with the clone, but copying `config.json` is enough on its own — the next boot re-renders it. A skill or agent your hermit created for you (rather than one you wrote yourself) is excluded the same way when `target` is `"local"`, but via `.git/info/exclude` rather than `.gitignore` — that file lives outside `.hermit/` and a `git clone` never carries it, so recreate or re-request that skill on the destination.
 
 On the destination: run `/hermitd:hatch` (it preserves OPERATOR.md, config.json, and HEARTBEAT.md on re-init), then `/hermitd:hermit-evolve` if the plugin version differs. Update the machine-specific `config.json` fields: `timezone`, `channels.*.default_chat_id`, `channels.*.dm_channel_id`, `tmux_session_name`, `permission_mode`.
 
@@ -117,10 +117,10 @@ By design, no. OPERATOR.md is human-curated — the hermit reads it but never wr
 
 ## OPERATOR.md vs CLAUDE.md — where does it go?
 
-- **OPERATOR.md** — project context the operator curates: priorities, constraints, stakeholder notes, approval rules. Loaded at session start. Never auto-edited.
-- **CLAUDE.md** (or **CLAUDE.local.md**) — behavioral instructions for Claude Code: "when X happens, do Y", skill-invocation patterns, coding conventions. Loaded on every invocation (sessions, heartbeats, routines, channel messages) and edited normally.
+- **OPERATOR.md** holds operator-curated context and instructions for the hermit. Its first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction, including when the hermit's own subagents compact. Never auto-edited.
+- **CLAUDE.md** (or **CLAUDE.local.md**) holds project-wide context and instructions using Claude Code's native memory loading.
 
-Rule of thumb: *what the project is* → OPERATOR.md. *What Claude should do* → CLAUDE.md.
+Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermit → `OPERATOR.md`.
 
 ---
 

@@ -14,3 +14,5 @@ Why: <one line>
 Scope change: <none | what changed>
 Next step: <what the operator decides next>
 Evidence: <branch, files, commands>
+
+For the hermit's past work, ask the resident with SendMessage instead of reading its state.

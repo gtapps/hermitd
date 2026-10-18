@@ -2288,7 +2288,7 @@ test('overlay-missing: buildClaudeCommand exits 1 and prints the refusal when st
 describe('resident prompt launch requirement', () => {
   test('command appends the absolute resident path', async () => {
     const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
-    expect(cmd[cmd.indexOf('--append-system-prompt-file') + 1]).toBe(path.resolve('.hermit/RESIDENT.md'));
+    expect(cmd[cmd.indexOf('--append-system-prompt-file') + 1]).toBe(path.resolve('.hermit/state/resident-system-prompt.md'));
   });
   test('boot writes helper-system-prompt.md with project root and resident name', async () => {
     const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
@@ -2298,14 +2298,20 @@ describe('resident prompt launch requirement', () => {
     expect(file).not.toContain('{{');
     expect(cmd).not.toContain(path.resolve('.hermit/state/helper-system-prompt.md'));
   });
-  test('missing resident exits 1 and stamps runtime even at the current version', async () => {
-    const version = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin/plugin.json'), 'utf8')).version;
-    writeConfig({ _hermit_versions: { 'hermitd': version } });
-    const child = Bun.spawn([process.execPath, '-e', `import { requireResident } from ${JSON.stringify(HERMIT_START_TS)}; requireResident();`], { cwd: tmpdir, stdout: 'pipe', stderr: 'pipe' });
+  test('launch composes resident and shared rules without RESIDENT.md', async () => {
+    expect(fs.existsSync('.hermit/RESIDENT.md')).toBe(false);
+    const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
+    const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
+    expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toEndWith(rules);
+    expect(cmd.filter(arg => arg === '--append-system-prompt-file')).toHaveLength(1);
+  });
+  test('missing shipped prompt refuses launch clearly', async () => {
+    const child = Bun.spawn([process.execPath, '-e', `import { readShippedPrompt } from ${JSON.stringify(HERMIT_START_TS)}; readShippedPrompt('missing.md');`], { cwd: tmpdir, stdout: 'pipe', stderr: 'pipe' });
     const out = await new Response(child.stdout).text();
     expect(await child.exited).toBe(1);
-    expect(out).toContain('[hermit] RESIDENT.md not found. Run `claude`');
-    expect(JSON.parse(fs.readFileSync('.hermit/state/runtime.json', 'utf8')).last_start_error).toBe('resident-missing');
+    expect(out).toContain('Shipped prompt prompts/missing.md not found or unreadable; refusing to launch');
   });
 });
 

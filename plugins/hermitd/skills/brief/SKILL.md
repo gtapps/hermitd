@@ -15,7 +15,7 @@ Provide a concise executive summary of recent task activity. Designed for mornin
 
 ## Always-On Delivery Rule
 
-If `config.always_on` is `true`, deliver all operator-facing output per `CLAUDE-APPEND.md § Operator Notification`. The terminal is unmonitored in always-on mode. For the push-fallback branch, condense the brief to a single line (per § Operator Notification push format): include whichever of open proposal count and active heartbeat alerts are present and non-zero; omit zero or unavailable fields. Example: `Brief: 16 proposals open, 1 alert — open CC to view`. In interactive mode, output to terminal. This applies to all flags below.
+If `config.always_on` is `true`, deliver all operator-facing output per `prompts/resident.md § Operator Notification`. The terminal is unmonitored in always-on mode. For the push-fallback branch, condense the brief to a single line (per § Operator Notification push format): include whichever of open proposal count and active heartbeat alerts are present and non-zero; omit zero or unavailable fields. Example: `Brief: 16 proposals open, 1 alert — open CC to view`. In interactive mode, output to terminal. This applies to all flags below.
 
 ## Dispatch
 

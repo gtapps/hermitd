@@ -109,7 +109,7 @@ function operatorLanguage(agentDir: string): string | null {
 }
 
 // Build the post-compaction delta capsule: the ONLY injection on
-// source === "compact". Carries hermit lifecycle state (never assumed
+// source === "compact" alongside OPERATOR.md. Carries hermit lifecycle state (never assumed
 // preserved by the native summary — its quality varies) plus file pointers;
 // bodies, catalog, cost, and upgrade status stay out — they are not
 // continuity state. Fail-open per-field — one missing/malformed
@@ -149,11 +149,6 @@ function buildCompactionPointers(agentDir: string): string {
     if (report) parts.push(`latest task: tasks/${path.basename(report.source_path)}`);
   } catch {}
 
-  try {
-    if (fs.statSync(path.resolve(agentDir, 'OPERATOR.md')).size > 0) {
-      parts.push('operator context: OPERATOR.md (not re-read; consult before outward-facing actions)');
-    }
-  } catch {}
 
   try {
     if (fs.readdirSync(path.resolve(agentDir, 'proposals')).some(f => f.endsWith('.md'))) {
@@ -325,7 +320,16 @@ function main(source: string | null, sessionId: string | null) {
   persistScanRecord(source);
 }
 
-// Post-compaction path: the delta capsule is the ONLY injection. The native
+function readOperatorContext(): string {
+  try {
+    const lines = fs.readFileSync(path.resolve(AGENT_DIR, 'OPERATOR.md'), 'utf8').split('\n').slice(0, 50).join('\n');
+    return lines.trim() ? guarded('OPERATOR.md', lines.slice(0, BUDGETS.operator)) : '';
+  } catch {
+    return '';
+  }
+}
+
+// Post-compaction path: bounded operator instructions plus a delta capsule. The native
 // summary carries the narrative; full sections would re-inject up to HARD_CAP
 // chars of state the session just paid to summarize.
 function emitCompactCapsule(): void {
@@ -350,6 +354,9 @@ function emitCompactCapsule(): void {
     process.stdout.write(header + sliced.slice(0, cut) + '\n');
   } catch {
     // fail-open — a broken capsule must never block startup
+  } finally {
+    const operator = readOperatorContext();
+    if (operator) process.stdout.write(`---Operator Context (OPERATOR.md)---\n${operator}\n`);
   }
 }
 
@@ -378,15 +385,8 @@ function emitFullContext(source: string | null) {
   // -------------------------------------------------------
   // 1. Operator context (priority 1, budget 2000)
   // -------------------------------------------------------
-  const operatorPath = path.resolve(AGENT_DIR, 'OPERATOR.md');
-  try {
-    const lines = fs.readFileSync(operatorPath, 'utf-8').split('\n').slice(0, 50).join('\n');
-    if (lines.trim()) {
-      emit('Operator Context (OPERATOR.md)', guarded('OPERATOR.md', lines.slice(0, BUDGETS.operator)));
-    }
-  } catch {
-    // No OPERATOR.md — skip silently
-  }
+  const operator = readOperatorContext();
+  if (operator) emit('Operator Context (OPERATOR.md)', operator);
 
   try {
     const policy = fs.readFileSync(path.resolve(AGENT_DIR, 'TASKS.md'), 'utf8');

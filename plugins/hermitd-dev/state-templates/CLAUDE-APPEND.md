@@ -28,7 +28,7 @@ Before starting code changes:
 
 Execution state lives in `.hermit/state/execution.json`; commitments live in task records. Use core task commands to read or update records.
 
-Core rules (artifact frontmatter, tag discipline, proposals) apply to all dev work — see the `## Session Discipline (hermitd)` block above.
+Files in the operator's project follow that project's conventions; hermit knowledge and proposals follow their owning skills.
 
 <!-- resident-only -->
 ## Before Archiving a Task

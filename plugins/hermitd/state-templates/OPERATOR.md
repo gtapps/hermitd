@@ -1,4 +1,6 @@
-# Operator Context
+# Operator Context and Instructions
+
+<!-- Only the hermit reads this file. -->
 
 <!-- This file is operator-curated context the model can't infer from config.json.
      It answers three questions:

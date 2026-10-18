@@ -825,17 +825,6 @@ function copyOauthAccount(stagedDir: string): void {
  *  `resumable` is false for restarts someone asked for (cmdRestart: manual, login renewal),
  *  which start fresh as before; only restarts the watchdog detects resume. */
 async function doRestart(sessionName: string, reason: string, runtime: Json, timezone: string, resumable = true): Promise<void> {
-  if (runtime.last_start_error === 'resident-missing'
-    && !fs.existsSync(path.join(HERMIT_ROOT, 'RESIDENT.md'))) {
-    if (runtime.last_start_error_notified !== 'resident-missing') {
-      pushOperatorMessage('[hermit] RESIDENT.md not found. Run `claude` in this project and ask it to run /hermitd:hermit-evolve, then start again.');
-      runtime.last_start_error_notified = 'resident-missing';
-      writeRuntimeJson(runtime);
-      appendEvent('resident-missing', 'operator notified; restart skipped');
-    }
-    return;
-  }
-
   if (!tryAcquireLifecycleLock()) {
     process.stderr.write('[watchdog] lifecycle lock held — backing off restart\n');
     return;
@@ -1132,7 +1121,7 @@ function maybeSpawnBackup(config: Json): void {
  *  Exactly the token heartbeat-monitor.sh emits, and nothing else. Two reasons it
  *  cannot drift: record-operator-action.ts's isRoutinePrompt drops this string so
  *  the wake is not miscounted as operator activity (a false positive there
- *  defers routine work), and the CLAUDE-APPEND routing rule the model follows is
+ *  defers routine work), and the resident prompt routing rule the model follows is
  *  written against this literal. Any wording around it — "please", "the operator
  *  asked" — is both unnecessary and, per the peer-framing probes, the thing that
  *  flips a model to refusing. The heartbeat emission test pins the literal. */
