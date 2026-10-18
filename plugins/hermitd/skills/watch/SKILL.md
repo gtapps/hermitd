@@ -49,7 +49,8 @@ This is the **sole source of truth**.
       "description": "errors in deploy.log",
       "started_at": "2026-04-12T15:00:00Z",
       "source": "config",
-      "class": "stream"
+      "class": "stream",
+      "chat": "telegram:-100777"
     },
     {
       "id": "session-migration-1775991600-b7c1",
@@ -100,7 +101,7 @@ or record write that already completed.
    - `command`: the constructed command
    - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
 6. Read `state/monitors.runtime.json` (create if missing: `{"monitors": [], "last_cleared": null}`)
-7. Append entry to `monitors[]` with `source: "adhoc"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration.
+7. Append entry to `monitors[]` with `source: "adhoc"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration. On a channel turn from a chat other than that channel's home chat (`default_chat_id`, else `dm_channel_id`), record `chat: "<sourceKey>:<chat_id>"` for the asking chat if the channel is Discord, Telegram, or has `send_script`. Otherwise omit `chat`. An ad-hoc watch never records a different chat.
 8. Write registry back
 9. When running inside an open task record, note the watch with its id:
    ```bash
@@ -127,7 +128,7 @@ Called automatically by resident-start on a genuine boot. Can also be called man
       - `description`: from config entry
       - `command`: the resolved command string
       - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
-   c. Append to registry with `source: "config"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration.
+   c. Append to registry with `source: "config"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration. Copy the config entry's `chat` when present.
 4. Write registry back
 5. If any watches were registered during an open task record turn, note them with its id:
    ```bash
@@ -211,6 +212,8 @@ or watch id.
   config watches. Monitors are session-scoped.
 
 ## Watch duty records
+
+When a stream/poll watch's registry entry has `chat`, pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting its events, so client notices reach that chat. Session watches keep their record-thread routing.
 
 When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This updates only its `last_event_at` and `last_verdict`; listings are labeled since session start.
 

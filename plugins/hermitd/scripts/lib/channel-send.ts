@@ -21,6 +21,7 @@ import { resolveProjectScript, projectRootOf } from './routines/gate';
 import { readChannelToken, channelStateDir } from './channel-token';
 import { recordChannelHealth } from './channel-health';
 import { appendJsonlLine } from './append-jsonl';
+import { readJson } from './cli';
 import { isKey } from './conversation-key';
 import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
@@ -265,12 +266,25 @@ export interface OperatorNotice {
   timeoutMs?: number;
   /** The routine whose fire sends this notice; its `chat`, when set, takes the client leg. */
   routine?: string;
+  /** The watch whose events send this notice; its registry `chat` takes the client leg. */
+  watch?: string;
 }
 
 /** The owning chat of routine `id` as a send target, or null when it has none. */
 function routineChat(config: Json, id: string | undefined): { id: string; chat_id: string } | null {
   if (!id || !Array.isArray(config.routines)) return null;
   const chat = config.routines.find((r: Json) => r?.id === id)?.chat;
+  if (!isKey(chat)) return null;
+  const at = chat.indexOf(':');
+  return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
+}
+
+/** The owning chat of watch `id`, as recorded in the runtime registry. */
+function watchChat(hermitDir: string, id: string | undefined): { id: string; chat_id: string } | null {
+  if (!id) return null;
+  const registry = readJson(path.join(hermitDir, 'state/monitors.runtime.json'));
+  if (!Array.isArray(registry?.monitors)) return null;
+  const chat = registry.monitors.find((watch: Json) => watch?.id === id)?.chat;
   if (!isKey(chat)) return null;
   const at = chat.indexOf(':');
   return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
@@ -347,9 +361,9 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   }
 
   if (notice.client) {
-    // A routine's own chat takes the client leg; the maintainer leg above kept
+    // A routine's or watch's own chat takes the client leg; the maintainer leg above kept
     // the home routing, so technical detail never reaches a team chat.
-    const owned = routineChat(config, notice.routine);
+    const owned = routineChat(config, notice.routine) ?? watchChat(hermitDir, notice.watch);
     const target = owned ?? clientTarget;
     // Drop the client leg when the maintainer text already landed in that same
     // chat: either via the 'client' fallback to the home chat, or because
@@ -376,6 +390,14 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
           logRoutineEvent(notice.routine, 'chat-undelivered', hermitDir, 'channel-send', failure);
           await sendOperatorNotice(hermitDir, {
             maintainer: { text: `Routine ${notice.routine} could not post to its chat ${failure}`, fallback: 'client' },
+            timeoutMs: notice.timeoutMs,
+          });
+        } else if (owned && notice.watch) {
+          await sendOperatorNotice(hermitDir, {
+            maintainer: {
+              text: `Watch ${notice.watch} could not post to its chat ${owned.id}:${owned.chat_id}: ${out.client.error ?? 'send failed'}`,
+              fallback: 'client',
+            },
             timeoutMs: notice.timeoutMs,
           });
         }

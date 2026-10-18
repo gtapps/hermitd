@@ -549,6 +549,135 @@ describe('channel-send --notice --routine', () => {
   });
 });
 
+describe('channel-send --notice --watch', () => {
+  const readState = (wd: Workdir, name: string) =>
+    (fs.existsSync(hermit(wd.dir, 'state', name)) ? fs.readFileSync(hermit(wd.dir, 'state', name), 'utf8') : '');
+  const watches = (chat: unknown) => {
+    const wd = setupChannelWorkdir();
+    write(hermit(wd.dir, 'state', 'monitors.runtime.json'), JSON.stringify({ monitors: [{ id: 'weekly', chat }] }));
+    return wd;
+  };
+  const send = (wd: Workdir, payload: object, stub: { url: string }, watch?: string) =>
+    runChannelSend({
+      args: [hermit(wd.dir), '--notice', ...(watch ? ['--watch', watch] : [])],
+      stdin: JSON.stringify(payload),
+      env: { HERMIT_TELEGRAM_API_URL: stub.url },
+    });
+
+  test('--watch without --notice is a usage error', async () => {
+    const wd = setupChannelWorkdir();
+    try {
+      const r = await runChannelSend({ args: [hermit(wd.dir), '--watch', 'weekly', 'hi'] });
+      expect(r.exitCode).toBe(1);
+      expect(r.stdout).toContain('--watch requires --notice');
+    } finally {
+      wd.cleanup();
+    }
+  });
+
+  test('a tagged notice sends the client leg to the owning chat and keeps the maintainer leg home', async () => {
+    const stub = startHttpStub();
+    const wd = watches('telegram:-100777');
+    try {
+      const r = await send(wd, { client: 'PLAIN', maintainer: 'MAINT' }, stub, 'weekly');
+      expect(r.exitCode).toBe(0);
+      expect(stub.requests.map(q => [q.body.chat_id, q.body.text])).toEqual([['12345', 'MAINT'], ['-100777', 'PLAIN']]);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('an owning-chat send leaves the home route health alone', async () => {
+    const stub = startHttpStub();
+    const wd = watches('telegram:-100777');
+    try {
+      expect((await send(wd, { client: 'PLAIN' }, stub, 'weekly')).exitCode).toBe(0);
+      expect(readState(wd, 'channel-health.json')).toBe('');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('an owning chat on a disabled channel sends nothing there', async () => {
+    const stub = startHttpStub();
+    const wd = watches('discord:42');
+    try {
+      const cfgPath = hermit(wd.dir, 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      cfg.channels.discord = { enabled: false };
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+      const r = await send(wd, { client: 'TEAM ONLY' }, stub, 'weekly');
+      expect(JSON.parse(r.stdout).result.client).toMatchObject({ ok: false, error: 'channel_disabled' });
+      expect(stub.requests.every(q => q.body.text !== 'TEAM ONLY')).toBe(true);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('an untagged notice, or an unknown watch, goes home', async () => {
+    const stub = startHttpStub();
+    const wd = watches('telegram:-100777');
+    try {
+      expect((await send(wd, { client: 'A' }, stub)).exitCode).toBe(0);
+      expect((await send(wd, { client: 'B' }, stub, 'other')).exitCode).toBe(0);
+      expect(stub.requests.map(q => q.body.chat_id)).toEqual(['12345', '12345']);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('an unreachable owning chat keeps the content out of the home chat and tells the operator', async () => {
+    const stub = startHttpStub();
+    const wd = watches('discord:42');
+    try {
+      const r = await send(wd, { client: 'TEAM ONLY' }, stub, 'weekly');
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout).result.client).toMatchObject({ ok: false, undelivered_saved: true });
+      expect(stub.requests.length).toBe(1);
+      expect(stub.requests[0].body.chat_id).toBe('12345');
+      expect(stub.requests[0].body.text).toContain('Watch weekly could not post to its chat discord:42');
+      expect(stub.requests[0].body.text).not.toContain('TEAM ONLY');
+      expect(readState(wd, 'watchdog-events.jsonl')).toContain('undelivered-client-notice');
+      expect(readState(wd, 'routine-metrics.jsonl')).toBe('');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+});
+
+describe('channel-send watch usage and fallback', () => {
+  test('--routine and --watch are mutually exclusive', async () => {
+    const r = await runChannelSend({ args: ['--notice', '--routine', 'weekly', '--watch', 'weather'] });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain('mutually exclusive');
+  });
+
+  test.each([undefined, null, 'invalid', 42])('missing or invalid watch chat %p goes home', async (chat) => {
+    const wd = setupChannelWorkdir();
+    const stub = startHttpStub();
+    try {
+      write(hermit(wd.dir, 'state', 'monitors.runtime.json'), JSON.stringify({ monitors: [{ id: 'weather', chat }] }));
+      const send = () => runChannelSend({
+        args: [hermit(wd.dir), '--notice', '--watch', 'weather'],
+        stdin: JSON.stringify({ client: 'HOME' }),
+        env: { HERMIT_TELEGRAM_API_URL: stub.url },
+      });
+      expect((await send()).exitCode).toBe(0);
+      fs.unlinkSync(hermit(wd.dir, 'state', 'monitors.runtime.json'));
+      expect((await send()).exitCode).toBe(0);
+      expect(stub.requests.map(q => q.body.chat_id)).toEqual(['12345', '12345']);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+});
+
 // channel-send.ts --notice — the model-facing proactive-notify CLI boundary.
 // Drives the subprocess (not sendOperatorNotice in-process) so these tests also
 // cover payload parsing/validation and the normalized

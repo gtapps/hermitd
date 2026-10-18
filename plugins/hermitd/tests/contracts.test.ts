@@ -404,6 +404,31 @@ describe('passive chats validation', () => {
 });
 
 describe('monitors validation', () => {
+  test('chat must be a conversation key on a configured direct-send channel', () => {
+    const channels = { discord: { enabled: true }, telegram: { enabled: true }, imessage: { enabled: true } };
+    const monitor = { id: 'cpu', description: 'CPU watch', command: 'true' };
+    for (const chat of [undefined, null, 'discord:1287345098123456789', 'telegram:-100123']) {
+      const out = runValidate({ channels, monitors: [{ ...monitor, chat }] });
+      expect(out.errors).toEqual([]);
+      expect(out.warnings.some((w: string) => w.includes('chat'))).toBe(false);
+    }
+    for (const chat of ['1287345098123456789', 42, {}]) {
+      const bad = runValidate({ channels, monitors: [{ ...monitor, chat }] });
+      expect(bad.errors.some((e: string) => e.includes('monitors[0]: chat must be'))).toBe(true);
+    }
+    const unknown = runValidate({ channels, monitors: [{ ...monitor, chat: 'unknown:123' }] });
+    expect(unknown.warnings.some((w: string) => w.includes('not configured'))).toBe(true);
+    const unreachable = runValidate({ channels, monitors: [{ ...monitor, chat: 'imessage:abc' }] });
+    expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached') && w.includes('can own a watch'))).toBe(true);
+    const custom = runValidate({
+      channels: { imessage: { enabled: true, send_script: 'scripts/send.sh' } },
+      monitors: [{ ...monitor, chat: 'imessage:abc' }],
+    });
+    expect(custom.warnings.some((w: string) => w.includes('chat'))).toBe(false);
+    const anchor = runValidate({ channels, monitors: [{ ...monitor, id: 'heartbeat-restart', chat: 'discord:1' }] });
+    expect(anchor.warnings.some((w: string) => w.includes('ignored'))).toBe(false);
+  });
+
   test('a fully valid monitor entry produces no errors or warnings', () => {
     const out = runValidate({ monitors: [
       { id: 'cpu', description: 'CPU watch', command: 'top -bn1',

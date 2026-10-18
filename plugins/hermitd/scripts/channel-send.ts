@@ -13,14 +13,15 @@
 //              argv length/newline edges — the form spawnSync callers use).
 //   Prints `OK` once sent, else {"error":"<token>"} at exit 1.
 //
-// Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id>]
+// Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id> | --watch <id>]
 //   Reads a JSON payload on stdin: { client?, maintainer?, sensitive?, fallback? }.
 //   This is the model-facing proactive-notify entry — it is the sole reachable
 //   path to sendOperatorNotice()'s two-audience routing (dedup, Findings
 //   fallback, tier disclosure). The model never resolves a channel itself; this
 //   script does. `--routine <id>` names the routine whose fire is sending: when
 //   that routine has a `chat`, the client leg goes there instead of the home
-//   chat. Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
+//   chat. `--watch <id>` uses the watch runtime registry entry’s `chat` the same way.
+//   Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
 //     delivered    every requested leg landed where it was meant to
 //     degraded     every leg was accepted, but maintainer detail fell back to Findings
 //     undelivered  a leg failed to land (`reason: no_reachable_channel` when none could)
@@ -42,12 +43,13 @@ async function readStdin(): Promise<string> {
 function parseArgs(
   argv: string[],
 ): { mode: 'tier'; tier: 'client' | 'maintainer'; positionals: string[] }
-  | { mode: 'notice'; routine?: string; positionals: string[] }
+  | { mode: 'notice'; routine?: string; watch?: string; positionals: string[] }
   | { error: string } {
   const positionals: string[] = [];
   let tier: 'client' | 'maintainer' | null = null;
   let notice = false;
   let routine: string | undefined;
+  let watch: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--tier') {
       const v = argv[i + 1];
@@ -60,13 +62,19 @@ function parseArgs(
       routine = argv[i + 1];
       if (!routine || routine.startsWith('--')) return { error: 'missing --routine value' };
       i++;
+    } else if (argv[i] === '--watch') {
+      watch = argv[i + 1];
+      if (!watch || watch.startsWith('--')) return { error: 'missing --watch value' };
+      i++;
     } else {
       positionals.push(argv[i]);
     }
   }
   if (notice && tier !== null) return { error: '--notice and --tier are mutually exclusive' };
+  if (routine !== undefined && watch !== undefined) return { error: '--routine and --watch are mutually exclusive' };
+  if (watch !== undefined && !notice) return { error: '--watch requires --notice' };
   if (routine !== undefined && !notice) return { error: '--routine requires --notice' };
-  if (notice) return { mode: 'notice', routine, positionals };
+  if (notice) return { mode: 'notice', routine, watch, positionals };
   return { mode: 'tier', tier: tier ?? 'client', positionals };
 }
 
@@ -126,7 +134,7 @@ function legDelivered(r: SendResult): boolean {
   return r.ok === true && r.delivered !== false;
 }
 
-async function runNotice(hermitDir: string, routine?: string): Promise<void> {
+async function runNotice(hermitDir: string, routine?: string, watch?: string): Promise<void> {
   const raw = (await readStdin()).trim();
   if (!raw) exitError('invalid_payload:empty');
   const p = parseNotice(raw);
@@ -138,6 +146,7 @@ async function runNotice(hermitDir: string, routine?: string): Promise<void> {
       ? { text: p.maintainer, fallback: p.fallback ?? 'client', sensitive: p.sensitive }
       : undefined,
     routine,
+    watch,
   });
 
   const legs = [out.client, out.maintainer].filter((r): r is SendResult => !!r);
@@ -165,7 +174,7 @@ async function main(): Promise<void> {
     if (!hermitDir || parsed.positionals.length > 1) exitError();
     // Pinned after the arity check so a missing positional still prints the
     // usage error rather than the pin error.
-    await runNotice(pinStateDirOrExit(hermitDir), parsed.routine);
+    await runNotice(pinStateDirOrExit(hermitDir), parsed.routine, parsed.watch);
     return;
   }
 
