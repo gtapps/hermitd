@@ -4,6 +4,8 @@
 
 ### Added
 - Watches take an optional `chat`, sending their notices to that chat like routines; an ad-hoc watch started from a team chat reports back there.
+### Changed
+- The calibration rule covers saying one of the hermit's own actions did not happen: it checks its records first, and no record leaves the claim unverified.
 
 ### Fixed
 - `apply-settings` `permissions-plan`, `permissions-sync`, `deny` and `deny-add` refuse the settings file that is not the stamped hatch target, so `/hermitd:hermit-evolve` no longer writes the sealed allow and deny sets into `settings.local.json` on committed-target hermits; the evolve runner re-runs a refused call once on the file it names.
