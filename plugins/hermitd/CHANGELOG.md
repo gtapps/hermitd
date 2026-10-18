@@ -4,6 +4,7 @@
 
 ### Added
 - Watches take an optional `chat`, sending their notices to that chat like routines; an ad-hoc watch started from a team chat reports back there.
+
 ### Changed
 - The calibration rule covers saying one of the hermit's own actions did not happen: it checks its records first, and no record leaves the claim unverified.
 
