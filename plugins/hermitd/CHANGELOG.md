@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- The calibration rule covers saying one of the hermit's own actions did not happen: it checks its records first, since its context may have been reset.
+
 ### Fixed
 - `apply-settings` `permissions-plan`, `permissions-sync`, `deny` and `deny-add` refuse the settings file that is not the stamped hatch target, so `/hermitd:hermit-evolve` no longer writes the sealed allow and deny sets into `settings.local.json` on committed-target hermits; the evolve runner re-runs a refused call once on the file it names.
 - `/hermitd:hatch` stamps the settings target before its first settings or `CLAUDE.md` write, and `/hermitd:hermit-doctor`'s `permission-rules` fix names the stamped target's settings file.
