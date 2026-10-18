@@ -419,9 +419,8 @@ function closingMarkerFor(marker: string): string {
 // foreignNames are other registered plugin names — their block markers fence this block so
 // it can never swallow a sibling's, even without a closing marker.
 function markerOnward(text: string, marker: string, foreignNames: string[] = []): string | null {
-  const m = marker;
   const lines = text.split('\n');
-  const start = lines.findIndex(l => l.trim() === m);
+  const start = lines.findIndex(l => l.trim() === marker);
   if (start === -1) return null;
 
   const isForeignMarker = (line: string): boolean => {
@@ -435,7 +434,7 @@ function markerOnward(text: string, marker: string, foreignNames: string[] = [])
     if (isForeignMarker(lines[i])) { limit = i; break; }
   }
 
-  const close = closingMarkerFor(m);
+  const close = closingMarkerFor(marker);
   for (let i = start + 1; i < limit; i++) {
     if (lines[i].trim() === close) return lines.slice(start, i + 1).join('\n');
   }

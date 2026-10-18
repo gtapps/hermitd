@@ -407,7 +407,7 @@ No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone li
 
 #### Phase 5 — Confirm
 
-Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Refine anytime — just tell me what changed." Then report the style from what Phase 4b step 3 printed:
+Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Edit it anytime; tell me what changed and I'll propose the edit." Then report the style from what Phase 4b step 3 printed:
 
 - **A built-in** (`default` / `Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
 - **A custom voice** (`hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
@@ -710,7 +710,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deploym
 Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
 
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
-- Otherwise: `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they refine OPERATOR.md by telling you what changed.
+- Otherwise: `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you what changed and you propose the edit.
 
 `--deployment` is the one thing it cannot read: Quick Turn 3 asks for it and nothing persists it. On the Advanced branch, pass the deployment the operator described, or `interactive` if they didn't say.
 

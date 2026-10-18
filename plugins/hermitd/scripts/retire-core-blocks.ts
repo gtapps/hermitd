@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { markerOnward, isAmbiguousBlock, closingMarkerFor } from './evolve-plan';
 import { writeFileAtomic } from './lib/md-write';
-import { printJson } from './lib/cli';
+import { emitJson, exitError } from './lib/cli';
 
 const MARKER = '<!-- hermitd: Session Discipline -->';
 const CLOSE = closingMarkerFor(MARKER);
@@ -42,7 +42,11 @@ export function retireCoreBlocks(hermitDir: string, write = writeFileAtomic): Re
     // Retire an immediately preceding separator and its blank lines, preserving
     // the operator's preceding line terminator. Otherwise leave spacing alone.
     const separator = /(?:^|\n)[ \t]*---[ \t]*\r?\n(?:[ \t]*\r?\n)*$/.exec(text.slice(0, start));
-    if (separator) start = separator.index + (separator[0].startsWith('\n') ? 1 : 0);
+    // A leading frontmatter's closing fence belongs to the operator, not the block.
+    const frontmatter = /^---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?$/m.exec(text);
+    const fenceAt = frontmatter?.index === 0 ? frontmatter[0].lastIndexOf('\n') + 1 : -1;
+    const separatorAt = separator ? separator.index + (separator[0].startsWith('\n') ? 1 : 0) : -1;
+    if (separator && separatorAt !== fenceAt) start = separatorAt;
     changes.push({ file, before: text, after: text.slice(0, start) + text.slice(end), removed: text.slice(start, end) });
   }
   if (!changes.length) return { status: 'noop' };
@@ -64,5 +68,6 @@ export function retireCoreBlocks(hermitDir: string, write = writeFileAtomic): Re
 }
 
 if (import.meta.main) {
-  printJson(process.argv.length === 3 ? retireCoreBlocks(process.argv[2]) : { error: 'usage' });
+  if (process.argv.length !== 3) exitError('usage');
+  emitJson(retireCoreBlocks(process.argv[2]));
 }

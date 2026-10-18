@@ -624,7 +624,7 @@ function readShippedPrompt(name: string): string {
   }
 }
 
-function writeHelperSystemPrompt(residentName: string): void {
+function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
   const helper = readShippedPrompt('helper.md');
   const resident = readShippedPrompt('resident.md');
@@ -757,7 +757,7 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
   // A resident without its pause gate must not boot.
   const overlay = renderLaunchOverlay(config);
   if (!overlay) process.exit(1);
-  writeHelperSystemPrompt(name);
+  writeSystemPrompts(name);
   cmd.push('--settings', overlay);
   cmd.push('--append-system-prompt-file', path.resolve(STATE_DIR, 'resident-system-prompt.md'));
 

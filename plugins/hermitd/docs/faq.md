@@ -100,7 +100,7 @@ For full removal, follow [How do I uninstall a hermit?](#how-do-i-uninstall-a-he
 
 ```bash
 rm -rf .hermit/
-# Remove the "hermitd: Session Discipline" block from CLAUDE.md
+# If CLAUDE.md still has a "hermitd: Session Discipline" block from an older install, remove it
 # Then re-run:
 /hermitd:hatch
 ```

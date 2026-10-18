@@ -51,6 +51,15 @@ test('without a separator only block bytes are removed and backed up', withDir(d
   expect(fs.readFileSync(result.backup, 'utf8')).toBe(`# CLAUDE.md\n\n${block}`);
 }));
 
+test('a frontmatter closing fence above the block is kept', withDir(dir => {
+  const file = path.join(dir, 'CLAUDE.md');
+  fs.writeFileSync(file, `---\ntitle: Project\n---\n${block}After\n`);
+  const result = retireCoreBlocks(path.join(dir, '.hermit'));
+  if (!('backup' in result)) throw new Error(JSON.stringify(result));
+  expect(fs.readFileSync(file, 'utf8')).toBe('---\ntitle: Project\n---\nAfter\n');
+  expect(fs.readFileSync(result.backup, 'utf8')).toBe(`# CLAUDE.md\n\n${block}`);
+}));
+
 test('backup failure leaves all source bytes intact', withDir(dir => {
   const hermit = path.join(dir, '.hermit');
   fs.rmdirSync(path.join(hermit, 'state'));
