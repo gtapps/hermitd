@@ -113,7 +113,7 @@ describe('CLAUDE-APPEND size budget', () => {
     // Conversation progress/report routing adds one always-loaded dispatch line,
     // funded from existing headroom; the watch skill owns the full protocol.
     // Chat controls now use ! instead of /; the spelling change adds no bytes.
-    // The calibration rule's own-actions clause (+166 B) is funded from headroom, no raise.
+    // The calibration rule's own-actions clause (+259 B) is funded from headroom, no raise.
     expect(Buffer.byteLength(append, 'utf8')).toBeLessThanOrEqual(10450);
   });
 });
