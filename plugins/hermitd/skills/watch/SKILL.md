@@ -213,7 +213,7 @@ or watch id.
 
 ## Watch duty records
 
-When a stream/poll watch's registry entry has `chat`, pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting its events, so client notices reach that chat. Session watches keep their record-thread routing.
+Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, so client notices reach the chat its registry entry names, and send them before removing that entry. Session watches keep their record-thread routing.
 
 When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This updates only its `last_event_at` and `last_verdict`; listings are labeled since session start.
 
