@@ -357,8 +357,11 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
       : notice.watch
         // A config watch's chat is read live from config.json, like a routine's;
         // an ad-hoc watch's lives on its registry entry.
-        ? ownedChat(config.monitors, notice.watch)
-          ?? ownedChat(readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors, notice.watch)
+        ? ownedChat(
+          Array.isArray(config.monitors) && config.monitors.some((m: Json) => m?.id === notice.watch)
+            ? config.monitors
+            : readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors,
+          notice.watch)
         : null;
     const target = owned ?? clientTarget;
     // Drop the client leg when the maintainer text already landed in that same

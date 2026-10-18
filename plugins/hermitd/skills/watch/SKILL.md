@@ -206,13 +206,14 @@ or watch id.
 - **Filesystem events in Docker:** Use `inotifywait` (from `inotify-tools`, included in the hermit base image) instead of `fswatch` (macOS-only). Example stream command: `inotifywait -m -r --format '%w%f %e' -e modify,create,delete src/`.
 - **Config hot-reload:** Config watches do NOT hot-reload during a session.
   Changes to `config.json` monitors only apply at the next session start
-  or after a manual `/watch stop <id>` + `/watch start`.
+  or after a manual `/watch stop <id>` + `/watch start`. A watch's `chat` is
+  the exception: it is read at send time.
 - On session start: the registry is cleared unconditionally before registering
   config watches. Monitors are session-scoped.
 
 ## Watch duty records
 
-Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, before removing its entry; client notices then reach the watch's `chat`. Session watches keep their record-thread routing.
+Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, before removing its entry. Session watches keep their record-thread routing.
 
 When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This updates only its `last_event_at` and `last_verdict`; listings are labeled since session start.
 

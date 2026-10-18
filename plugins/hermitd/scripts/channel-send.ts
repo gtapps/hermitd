@@ -20,7 +20,8 @@
 //   fallback, tier disclosure). The model never resolves a channel itself; this
 //   script does. `--routine <id>` names the routine whose fire is sending: when
 //   that routine has a `chat`, the client leg goes there instead of the home
-//   chat. `--watch <id>` uses the watch runtime registry entry’s `chat` the same way.
+//   chat. `--watch <id>` does the same with the config watch’s `chat`, or an
+//   ad-hoc watch’s runtime registry entry `chat`.
 //   Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
 //     delivered    every requested leg landed where it was meant to
 //     degraded     every leg was accepted, but maintainer detail fell back to Findings

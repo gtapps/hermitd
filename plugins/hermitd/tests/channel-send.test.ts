@@ -605,6 +605,23 @@ describe('channel-send --notice --watch', () => {
     }
   });
 
+  test('a config watch without a chat goes home even when its registry entry has one', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      write(hermit(wd.dir, 'state', 'monitors.runtime.json'), JSON.stringify({ monitors: [{ id: 'weekly', source: 'config', chat: 'telegram:-100111' }] }));
+      const cfgPath = hermit(wd.dir, 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      cfg.monitors = [{ id: 'weekly' }];
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+      expect((await send(wd, { client: 'PLAIN' }, stub, 'weekly')).exitCode).toBe(0);
+      expect(stub.requests.map(q => q.body.chat_id)).toEqual(['12345']);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('an owning-chat send leaves the home route health alone', async () => {
     const stub = startHttpStub();
     const wd = watches('telegram:-100777');
