@@ -52,7 +52,7 @@
       "name": "hermitd-homeassistant",
       "source": "./plugins/hermitd-homeassistant",
       "description": "Build, manage, monitor, and troubleshoot your Home Assistant setup with Hermit.",
-      "version": "0.4.24",
+      "version": "0.4.25",
       "category": "home-automation",
       "author": {
         "name": "gtapps",
