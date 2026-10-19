@@ -11,7 +11,7 @@ Files GitHub issues via a configured GitHub App so they're attributed to a bot i
 
 ## Install
 
-Requires `hermitd` ≥1.4.16. Upgrade core with `/hermitd:hermit-evolve` before installing or running this plugin.
+Requires `hermitd` ≥1.4.17. Upgrade core with `/hermitd:hermit-evolve` before installing or running this plugin.
 
 ```bash
 claude plugin install hermitd-scribe --marketplace gtapps/hermitd --scope local

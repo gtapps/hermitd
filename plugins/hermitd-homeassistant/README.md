@@ -142,7 +142,7 @@ hermitd-homeassistant (this plugin)
   ├── bin/ha-agent-lab    CLI launcher (runs src/cli.ts with bun)
   ├── src/*.ts            TypeScript modules (REST client, policy, simulation, apply, history, silence)
 
-hermitd (core, required ≥ 1.4.16)
+hermitd (core, required ≥ 1.4.17)
   └── Session lifecycle, proposals, reflect, memory, cost tracking
 ```
 
