@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Hatch no longer writes an instruction block into `CLAUDE.md`; the plugin's skills, agents and hooks carry its guidance. Requires hermitd 1.4.17.
+
 ### Fixed
 - The morning brief lists open proposals under `Pending:`, including update proposals the `Updates:` section folds into its `+ N more` or HACS lines.
 

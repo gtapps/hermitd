@@ -119,6 +119,6 @@ Adapt the greeting and section headers to the operator's configured language. Ke
 
 ## Delivery
 
-- If invoked as a routine, or `config.always_on` is `true` in `.hermit/config.json`: deliver the composed brief via the Operator Notification protocol in CLAUDE.md (core resolves the channel and falls back to push when no channel is reachable). The terminal is unmonitored in always-on mode. For the push-fallback branch, condense to a single line (per § Operator Notification push format): lead with any overnight anomaly or open `Awaiting decision:` count, then energy/cost if flagged. Example: `House OK overnight, 2 awaiting decision, 14kWh: open CC to view`.
+- If invoked as a routine, or `config.always_on` is `true` in `.hermit/config.json`: deliver the composed brief via the Operator Notification protocol (core resolves the channel and falls back to push when no channel is reachable). The terminal is unmonitored in always-on mode. For the push-fallback branch, condense to a single line (per § Operator Notification push format): lead with any overnight anomaly or open `Awaiting decision:` count, then energy/cost if flagged. Example: `House OK overnight, 2 awaiting decision, 14kWh: open CC to view`.
 - Otherwise (invoked on demand in an interactive session): output to terminal.
 - Never include secrets, tokens, or internal file paths in the brief.

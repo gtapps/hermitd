@@ -9,7 +9,6 @@ A Home Assistant domain layer for `hermitd`: skills, subagents, a safety hook, a
 - `hooks/mcp-safety-gate.ts` + `hooks.json`: PreToolUse on `mcp__homeassistant__.*`, the whole server namespace; read-only tools are allow-listed inside the gate
 - `bin/ha-agent-lab` + `src/*.ts`: the CLI (REST client, WebSocket client, policy engine, simulation, apply). `src/policy.ts` is shared by the CLI and the hook.
 - Permissions: native asks are installed by hatch via `scripts/native-permissions.ts`
-- `state-templates/CLAUDE-APPEND.md`: block injected into the target project by `hatch`
 - `.claude-plugin/hermit-meta.json`: `required_core_version`, `requires`, `hermit.boot_skill`
 - `SAFETY.md`: the safety model; `docs/cli-reference.md`: command usage examples
 
@@ -50,7 +49,7 @@ REST docs: https://developers.home-assistant.io/docs/api/rest/ ; WebSocket docs:
 
 ## Hatch target routing
 
-Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant`; Step 6 asks the Visibility question only when `needs_target_question` says so, records it with `domain-hatch ensure-target hermitd-homeassistant --target <choice>`, and writes the block with `domain-hatch sync-block hermitd-homeassistant`. Hatch appends when the marker is absent and skips otherwise; refreshing the block on a version bump is `hermit-evolve`'s job.
+Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant`; its Native approval rules step asks Visibility only when `needs_target_question` says so and records the choice with `domain-hatch ensure-target hermitd-homeassistant --target <choice>`.
 
 ## Development
 
