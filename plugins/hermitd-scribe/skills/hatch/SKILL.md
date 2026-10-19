@@ -1,6 +1,6 @@
 ---
 name: hatch
-description: One-time setup for hermit-scribe — installs publication approval rules and registers the plugin version. Run once per project.
+description: One-time setup for hermit-scribe: installs publication approval rules and registers the plugin version. Run once per project.
 disable-model-invocation: true
 ---
 
@@ -23,10 +23,10 @@ Run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-scribe`. If it print
 
 Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>` on every hatch, including when the version is current. It prints `OK`, or `{"status":"installed","deny_conflicts":[...]}` naming operator denies that still override these asks: name them in the final report. If it fails, stop.
 
-### 3. Stamp version
+### 2. Stamp version
 
 Write `_hermit_versions["hermitd-scribe"]` into `.hermit/config.json` with the current plugin version. Registering here also makes `hermit-scribe` a resolvable Conventional-Commits scope for `file-issue.ts classify` (which reads `_hermit_versions`).
 
-### 4. Final report
+### 3. Final report
 
 Print: "hermit-scribe active. Issue filing goes through `/hermitd-scribe:hermit-scribe`, always with an in-session preview before posting." Then name any `deny_conflicts` from step 1.5 as operator denies that block those commands outright.

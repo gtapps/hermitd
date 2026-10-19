@@ -14,8 +14,12 @@ function removeBlocks(text: string): { after: string; removed: string } | null {
   const seen = new Set<string>();
   let opening: { key: string; start: number } | undefined;
   const markers = /^[ \t]*<!-- (\/?)([^:\s]+): ([^\r\n]*?) -->[ \t]*\r?$/gm;
-  for (const match of text.matchAll(markers)) {
-    if (!match[2].includes('hermit')) continue;
+  const matches = [...text.matchAll(markers)].filter(match => match[2].includes('hermit'));
+  // A leading frontmatter's closing fence belongs to the operator, not the block.
+  // Only text above the first marker can be frontmatter; a later `---` is a block separator.
+  const frontmatter = /^---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?$/m.exec(text.slice(0, matches[0]?.index ?? 0));
+  const fenceAt = frontmatter?.index === 0 ? frontmatter[0].lastIndexOf('\n') + 1 : -1;
+  for (const match of matches) {
     const key = `${match[2]}: ${match[3]}`;
     if (!match[1]) {
       if (opening || seen.has(key)) return null;
@@ -29,9 +33,6 @@ function removeBlocks(text: string): { after: string; removed: string } | null {
       // Retire an immediately preceding separator and its blank lines, preserving
       // the operator's preceding line terminator. Otherwise leave spacing alone.
       const separator = /(?:^|\n)[ \t]*---[ \t]*\r?\n(?:[ \t]*\r?\n)*$/.exec(text.slice(0, start));
-      // A leading frontmatter's closing fence belongs to the operator, not the block.
-      const frontmatter = /^---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?$/m.exec(text);
-      const fenceAt = frontmatter?.index === 0 ? frontmatter[0].lastIndexOf('\n') + 1 : -1;
       const separatorAt = separator ? separator.index + (separator[0].startsWith('\n') ? 1 : 0) : -1;
       if (separator && separatorAt !== fenceAt) start = separatorAt;
       spans.push({ start, end });
@@ -56,12 +57,14 @@ export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, u
       if (error.code === 'ENOENT') continue;
       return { error: 'target_unreadable' };
     }
+    // RESIDENT.md is deleted as a whole, including all operator text, so its markers need no parse.
+    if (file === resident) {
+      changes.push({ file, before, after: '', removed: before });
+      continue;
+    }
     const parsed = removeBlocks(before);
     if (parsed === null) return { error: 'invalid_markers' };
-    if (file === resident || parsed.after !== before) {
-      // RESIDENT.md is deleted as a whole, including all operator text.
-      changes.push({ file, before, after: parsed.after, removed: file === resident ? before : parsed.removed });
-    }
+    if (parsed.after !== before) changes.push({ file, before, after: parsed.after, removed: parsed.removed });
   }
   if (!changes.length) return { status: 'noop' };
 

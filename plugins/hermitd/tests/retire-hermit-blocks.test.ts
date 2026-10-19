@@ -62,6 +62,21 @@ test('a frontmatter closing fence above the block is kept', withDir(dir => {
   expect(fs.readFileSync(result.backup, 'utf8')).toBe(`# CLAUDE.md\n\n${block}`);
 }));
 
+test('separators above consecutive blocks are retired when the file starts with one', withDir(dir => {
+  const file = path.join(dir, 'CLAUDE.local.md');
+  fs.writeFileSync(file, `---\n${block}\n---\n${sibling}`);
+  expect('changed' in retireHermitBlocks(path.join(dir, '.hermit'))).toBe(true);
+  expect(fs.readFileSync(file, 'utf8')).toBe('\n');
+}));
+
+test('unbalanced markers in RESIDENT.md do not block retirement', withDir(dir => {
+  const hermit = path.join(dir, '.hermit');
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), block);
+  fs.writeFileSync(path.join(hermit, 'RESIDENT.md'), `${OPEN}\nUnclosed`);
+  expect(retireHermitBlocks(hermit)).toMatchObject({ changed: ['CLAUDE.md', '.hermit/RESIDENT.md'], deleted: ['.hermit/RESIDENT.md'] });
+  expect(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe('');
+}));
+
 test('backup failure leaves all source bytes intact', withDir(dir => {
   const hermit = path.join(dir, '.hermit');
   fs.rmdirSync(path.join(hermit, 'state'));

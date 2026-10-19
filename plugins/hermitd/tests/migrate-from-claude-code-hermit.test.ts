@@ -52,6 +52,14 @@ test('1.4.8 customized wrapper, memory, ledger, and no-write rerun', () => {
   expect(fs.existsSync(path.join(f.root, '.gitignore'))).toBe(false);
   expect(fs.existsSync(path.join(f.root, '.worktreeinclude'))).toBe(false);
 });
+test('an unstamped project with old blocks in CLAUDE.local.md syncs the local settings file', () => {
+  const f = fixture();
+  fs.rmSync(path.join(f.state, 'state/hatch-options.json'));
+  write(path.join(f.root, 'CLAUDE.local.md'), '<!-- claude-code-hermit: Session Discipline -->\nrules\n<!-- /claude-code-hermit: Session Discipline -->\n');
+  migrateProject(f.root);
+  expect(fs.existsSync(path.join(f.root, '.claude/settings.json'))).toBe(false);
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, '.claude/settings.local.json'), 'utf8')).permissions.allow.length).toBeGreaterThan(1);
+});
 test('workspace backup ignore policy stays tracked', () => {
   const f = fixture();
   write(path.join(f.root, '.gitignore'), '# .claude-code-hermit state is tracked here (backup: workspace mode)\n.env\n');

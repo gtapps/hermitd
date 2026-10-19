@@ -1,6 +1,6 @@
 // Read-only analyzer for the hermit-evolve skill. Computes the deterministic
-// comparisons the skill would otherwise do in-context — version gap, the
-// bounded CHANGELOG slice, new config keys, and changed templates/bin —
+// comparisons the skill would otherwise do in-context (version gap, the
+// bounded CHANGELOG slice, new config keys, and changed templates/bin)
 // and emits one JSON "plan" to stdout. The skill
 // acts on the plan instead of reading and diffing whole files itself.
 //

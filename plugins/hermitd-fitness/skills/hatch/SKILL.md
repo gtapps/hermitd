@@ -165,13 +165,13 @@ Use Edit to make the changes.
 
 Re-read `.hermit/config.json` now — the wizard has been running since Step 1 and the on-disk file may have changed. Apply the merges below to that fresh copy.
 
-### 7a — Stamp version
+### 6a — Stamp version
 
 Set `_hermit_versions["hermitd-fitness"]` to `self_version` from Step 1's preflight.
 
 If the key already exists: update the value. If absent: add it alongside the existing `_hermit_versions["hermitd"]` entry.
 
-### 7b — Merge routines
+### 6b — Merge routines
 
 In the `routines` array, check for each of these four IDs. For any that are **absent**, add the entry. For any that are **present** (by `id`), skip (do not clobber existing operator edits).
 
@@ -202,7 +202,7 @@ In the `routines` array, check for each of these four IDs. For any that are **ab
 }
 ```
 
-### 7c: Merge the weekly patterns routine
+### 6c: Merge the weekly patterns routine
 
 Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 

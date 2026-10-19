@@ -30,7 +30,10 @@ export function migrateProject(project: string): string[] {
   const report: string[] = [];
   command(project, 'settings-edit.ts', [path.join(state, 'config.json'), 'migrate', 'hermitd']);
 
-  const targetState = readTargetState(state, { core_scope: null, target: 'committed' });
+  // Old markers supply the fallback when no hatch choice was recorded.
+  const local = read(path.join(project, 'CLAUDE.local.md')) ?? '';
+  const fallback = local.includes('<!-- claude-code-hermit:') ? 'local' : 'committed';
+  const targetState = readTargetState(state, { core_scope: null, target: fallback });
   const target = targetState.target ?? targetState.target_default;
   // Rewriting existing lines preserves both normal and workspace-backup policy.
   // No ignore block is inserted, even when a file or managed marker is absent.

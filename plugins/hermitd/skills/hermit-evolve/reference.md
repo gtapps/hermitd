@@ -53,7 +53,7 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
 
 First determine `hatch_target` for settings routing in Step 8:
 
-Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
+Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain (the stamped file first, then install-scope detection), so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
 
 If it returns `needs_target_question: true` the project has no stamped target. Use the returned `target_default` and stamp it with `domain-hatch-ensure-target` (Commands) with arguments `--target <target_default>`, so the next run of anything reads an answered file instead of re-deriving.
 

@@ -160,7 +160,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run proposal metrics *)',
   // The shared domain-hatch protocol, pinned per verb for the same reason:
   // `domain-hatch *` would hand every caller `ensure-target`
-  // — writes to core state — when most of a
+  // (which writes to core state) when most of a
   // hatch run only needs to read `preflight`.
   'Bash(.hermit/bin/hermitd-run domain-hatch preflight *)',
   'Bash(.hermit/bin/hermitd-run domain-hatch ensure-target *)',

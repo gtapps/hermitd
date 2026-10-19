@@ -34,11 +34,11 @@ test("stamps _hermit_versions[\"hermitd-scribe\"] into config.json", () => {
 
 test("installs native rules before stamping, including current versions", () => {
   const install = text.indexOf('scripts/native-permissions.ts');
-  const update = text.indexOf('### 3. Stamp version');
+  const update = text.indexOf('### 2. Stamp version');
   assertTrue(install > 0 && install < update, 'approval installation precedes version stamp');
   assertTrue(text.includes('including when the version is current'), 'version skips cannot skip approval installation');
   assertTrue(text.includes('If it fails, stop.'), 'installation failure stops the hatch');
-  assertTrue(text.includes('deny_conflicts') && text.indexOf('deny_conflicts', text.indexOf('### 4. Final report')) > 0, 'final report names deny conflicts');
+  assertTrue(text.includes('deny_conflicts') && text.indexOf('deny_conflicts', text.indexOf('### 3. Final report')) > 0, 'final report names deny conflicts');
   assertTrue(text.includes('domain-hatch preflight hermitd-scribe'), 'uses core target resolution');
   assertTrue(text.includes('`.claude/settings.local.json`') && text.includes('`.claude/settings.json`'), 'both project settings scopes are supported');
 });
