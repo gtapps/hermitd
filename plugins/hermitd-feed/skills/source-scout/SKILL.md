@@ -61,7 +61,7 @@ Proactively discover and add new RSS/web sources to `feed-sources.md`. Complemen
    (`title`, `type: source-candidates`, `created`, `tags: [source-scout]`) listing each candidate's name,
    URL, the gap it addresses, and a one-line "why this looked promising" note.
 
-   **`--scheduled` only:** notify the operator per CLAUDE.md § Operator Notification with a one-line summary
+   **`--scheduled` only:** notify the operator per the Operator Notification protocol with a one-line summary
    ("N unverified source candidate(s) found — see .hermit/compiled/source-candidates-<date>.md"). Don't queue a
    micro-approval: verification requires an interactive WebFetch only the operator can trigger. The operator
    reviews the file and, for any candidate they want, runs `/source-scout` interactively (or edits

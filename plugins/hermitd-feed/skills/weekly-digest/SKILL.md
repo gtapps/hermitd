@@ -62,7 +62,7 @@ Produce a weekly synthesis from the archived brief notes. All data comes from
 
    Tone: slightly more reflective than an evening brief. One paragraph of narrative before the lists is fine.
 
-5. **Deliver** via the Operator Notification protocol in CLAUDE.md § Operator Notification (core resolves
+5. **Deliver** via the Operator Notification protocol (core resolves
    the channel and falls back to push when no channel is reachable). `text` is the digest from step 4.
    - For the push-fallback branch, condense to a single line (per § Operator Notification push format): lead with the week's
      dominant theme, then the brief count. Example: `Quiet week on AI infra, 12 briefs — open CC to read`.
