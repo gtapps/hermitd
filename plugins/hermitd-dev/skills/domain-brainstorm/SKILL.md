@@ -60,7 +60,7 @@ Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 
 ### Gate 3 — Emit batch message
 
-Send one message per the Operator Notification protocol in CLAUDE.md.
+Send one message per the Operator Notification protocol.
 
 Zero-emit:
 ```

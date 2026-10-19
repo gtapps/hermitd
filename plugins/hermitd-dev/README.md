@@ -31,13 +31,11 @@ hermitd start
 
 ## What you get
 
-**Git safety, two layers.** Prose rules apply at every profile via CLAUDE-APPEND.md (feature-branch pushes only, no `--no-verify`, no commits to protected branches, no force-push). At strict profile, `git-push-guard` backs them with hard `bash`-time blocking.
-
-**Works with any agent.** The CLAUDE-APPEND.md template, injected into your project's `CLAUDE.md`, gives every code-writing agent the same rules: clean tree before starting, branch from `protected_branches[0]`, name as `<prefix>/<slug>`, follow the project's own workflow and use `/simplify` for cleanup. Native `Agent` tool, the built-in `Plan`/`Explore` agents, your own subagent : they all read the same rules.
+**Git safety.** Core's approval prompts cover risky git operations. On always-on hermits, `git-push-guard` adds hard `bash`-time blocking at strict profile.
 
 **Engineering discipline skills.** Two autonomous skills for recurring dev situations: `diagnosing-bugs` builds a tight, red-capable feedback loop before hypothesising (complements `/code-review`'s static reading — it doesn't run repros); `resolving-merge-conflicts` resolves in-progress git conflicts autonomously in 5 steps — never `--abort`, always runs project checks after.
 
-Two hooks, one instruction template, hatch, and three generic development skills.
+Two hooks, hatch, and three generic development skills.
 
 ---
 
@@ -80,7 +78,7 @@ claude plugin update hermitd-dev@hermitd --scope local
 /hermitd-dev:hatch
 ```
 
-Core `hermit-evolve` syncs the dev instruction block on upgrade.
+Core `hermit-evolve` runs dev migrations on upgrade.
 
 ---
 
@@ -101,8 +99,8 @@ Full safety model in [Git Safety](#git-safety). Everything else — model, heart
 
 By default Claude Code will happily push to main, run `git commit --no-verify`, and force-push your branch. dev-hermit makes that progressively harder, gated by hook profile:
 
-- **`minimal`** — no enforcement; only prose rules in CLAUDE-APPEND.md
-- **`standard`** — no enforcement; only prose rules
+- **`minimal`** — no push-guard enforcement
+- **`standard`** — no push-guard enforcement
 - **`strict`** (default after `/hatch`) — `git-push-guard` active
 
 The `git-push-guard` hook (strict only) blocks:
@@ -126,7 +124,6 @@ See [docs/GIT-SAFETY.md](docs/GIT-SAFETY.md) for the full safety model and the t
 
 - **`worktree-boundary-guard` hook**: Blocks edits outside a linked worktree.
 - **`git-push-guard` hook** — Strict-profile-only `PreToolUse` Bash hook. Blocks the dangerous git operations listed above.
-- **`state-templates/CLAUDE-APPEND.md`** — Injected into your project's `CLAUDE.md` by `/hatch`. The rules-of-the-road every agent reads when working on this project.
 - **`hatch` skill** : One-time setup wizard. Idempotent and re-runnable. Captures protected branches and hook profile. Installs `git-push-guard` at strict by default.
 
 - **`domain-brainstorm` skill**: Operator-invoked ideas grounded in git churn, manifest drift, and README coverage.
@@ -158,7 +155,7 @@ These are Claude Code built-ins — no installation needed:
 
 ## Contributing
 
-Bug fixes, doc improvements, sharper rules in CLAUDE-APPEND.md — all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for design constraints and PR workflow.
+Bug fixes, doc improvements, skill improvements — all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for design constraints and PR workflow.
 
 - [Open an issue](https://github.com/gtapps/hermitd/issues) — bugs, ideas, questions
 - [Start a discussion](https://github.com/gtapps/hermitd/discussions) — broader topics, customization

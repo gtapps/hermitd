@@ -84,8 +84,7 @@ try {
   assert('relative path inside the worktree is allowed', runEdit('src/a.js', wt), 0);
   assert('edit into main source is blocked', runEdit(path.join(mainRepo, 'plugins', 'x.js'), wt), 2);
   assert('relative path escaping into main is blocked', runEdit('../../../README.md', wt), 2);
-  // The background-session recovery coaching lives here, not in the always-loaded
-  // CLAUDE-APPEND: it is only actionable at the moment this block fires.
+  // Background-session recovery coaching is actionable when this guard fires.
   assertIncludes('block reason carries background-session retry coaching',
     blockReason(path.join(mainRepo, 'plugins', 'x.js'), wt), 're-attempt the edit');
   assert('write to main .hermit/ is allowed (carve-out)', runEdit(path.join(mainRepo, '.hermit', 'state', 'execution.json'), wt), 0);
