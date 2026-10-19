@@ -167,7 +167,7 @@ Channels:
   discord  enabled  allowed_users: [123456789]  briefing chat: 987654321  morning_brief: 07:00  state_dir: /abs/path/...
   (or "No channels configured")
 ```
-"briefing chat" is `default_chat_id` — where unattended sends go — say "not paired yet" when the pin is empty.
+"briefing chat" is `default_chat_id`, where unattended sends go; say "not paired yet" when the pin is empty.
 Ask what to do next, offering: add discord / add telegram / remove <name> / edit <name> / primary <name> / primary clear / done (default done).
 Offer `add <name>` only for a channel absent from `channels`.
 Loop until operator says "done":

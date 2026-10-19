@@ -355,3 +355,18 @@ export const SHUTDOWN: Localized<ShutdownMessages> = {
     inProgress: () => 'A desligar — volto assim que o reinício terminar.',
   },
 };
+
+// ---------- owned-chat parent fallback (lib/channel-send.ts) ----------
+
+export interface OwnedChatMessages {
+  threadUnreachable(): string;
+}
+
+export const OWNED_CHAT: Localized<OwnedChatMessages> = {
+  en: {
+    threadUnreachable: () => '(the original thread is no longer reachable)',
+  },
+  'pt-PT': {
+    threadUnreachable: () => '(o tópico original já não está acessível)',
+  },
+};

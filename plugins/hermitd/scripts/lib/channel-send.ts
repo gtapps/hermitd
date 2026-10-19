@@ -26,6 +26,7 @@ import { isKey } from './conversation-key';
 import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
+import { OWNED_CHAT, resolveLocale } from './messages';
 
 type Json = any;
 
@@ -275,7 +276,8 @@ async function fallbackToParent(
   if (!chat || (chat.type !== 10 && chat.type !== 11) || !chat.parent_id) return unchanged;
   const parent = await lookupChat(hermitDir, opts.config, chat.parent_id);
   if (!isGuildChannelType(parent)) return unchanged;
-  const sent = await sendToChannel(hermitDir, `(the original thread is no longer reachable)\n${text}`, {
+  const note = OWNED_CHAT[resolveLocale(opts.config?.language)].threadUnreachable();
+  const sent = await sendToChannel(hermitDir, `${note}\n${text}`, {
     ...opts, target: { id: target.id, chat_id: chat.parent_id }, recordHealth: false,
   });
   return { ...sent, route: 'parent' };
@@ -389,13 +391,18 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
         ? { ok: false, error: `findings_append_failed: ${err}`, route: 'findings', suppressed: true, delivered: false }
         : { ok: true, route: 'findings', suppressed: true, delivered: !degraded };
     };
-    if (maintainerTarget) {
-      const merged = !!notice.client && sameChat(maintainerTarget, target);
+    // Send the maintainer text, carrying the client text with it when both share a chat.
+    const sendMaintainer = async (legTarget: { id: string; chat_id: string } | null, opts: SendOptions): Promise<SendResult> => {
+      const merged = !!notice.client && sameChat(legTarget, target);
       if (merged && owned?.id === 'discord') await lookupChat(hermitDir, config, owned.chat_id);
       const r = await sendToChannel(hermitDir, merged ? `${notice.client}\n\n${m.text}` : m.text, {
-        target: maintainerTarget, sensitive: m.sensitive, recordHealth: false, timeoutMs: notice.timeoutMs, config,
+        ...opts, target: legTarget ?? undefined, timeoutMs: notice.timeoutMs, config,
       });
       if (merged) mergedResult = r;
+      return r;
+    };
+    if (maintainerTarget) {
+      const r = await sendMaintainer(maintainerTarget, { sensitive: m.sensitive, recordHealth: false });
       // Configured but unreachable → Findings. Configured routing intent wins
       // over the fallback: a bad chat id must never spill technical/spend
       // detail into the client chat.
@@ -405,12 +412,7 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     } else {
       // fallback 'client' on a technical profile, or explicit 'primary' on any
       // profile, with no maintainer channel: send to the primary chat.
-      const merged = !!notice.client && sameChat(clientTarget, target);
-      if (merged && owned?.id === 'discord') await lookupChat(hermitDir, config, owned.chat_id);
-      const r = await sendToChannel(hermitDir, merged ? `${notice.client}\n\n${m.text}` : m.text, {
-        target: clientTarget ?? undefined, timeoutMs: notice.timeoutMs, config,
-      });
-      if (merged) mergedResult = r;
+      const r = await sendMaintainer(clientTarget, {});
       out.maintainer = { ...r, route: 'client', delivered: r.ok };
     }
   }

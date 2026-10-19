@@ -23,7 +23,7 @@
 import path from 'node:path';
 import { search } from './lib/search';
 import { emitJson, exitError } from './lib/cli';
-import { cachedChat, lookupChat } from './lib/channel-chats';
+import { lookupChat } from './lib/channel-chats';
 import { readConfigRaw } from './lib/config-read';
 
 type Json = any;
@@ -58,7 +58,8 @@ if (import.meta.main) {
   try {
     if (opts.chat?.startsWith('discord:')) {
       const chatId = opts.chat.slice('discord:'.length);
-      if (chatId && !cachedChat(hermitDir, chatId)) await lookupChat(hermitDir, readConfigRaw(hermitDir), chatId);
+      // lookupChat answers from the cache first, so only a miss reaches Discord.
+      if (chatId) await lookupChat(hermitDir, readConfigRaw(hermitDir), chatId);
     }
     hits = search(hermitDir, query, opts);
   } catch {

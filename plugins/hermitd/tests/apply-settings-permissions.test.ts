@@ -379,6 +379,7 @@ describe('literal-path hermitd-run grants', () => {
     'Bash(.hermit/bin/hermitd-run later list *)',
     'Bash(.hermit/bin/hermitd-run later cancel *)',
     'Bash(.hermit/bin/hermitd-run later verdict *)',
+    'Bash(.hermit/bin/hermitd-run later deliver *)',
     'Bash(.hermit/bin/hermitd-run later due *)',
   ];
 

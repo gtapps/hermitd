@@ -16,7 +16,7 @@
 // Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id> | --watch <id>]
 //   Reads a JSON payload on stdin: { client?, maintainer?, sensitive?, fallback? }.
 //   This is the model-facing proactive-notify entry — it is the sole reachable
-//   path to sendOperatorNotice()'s two-audience routing (dedup, Findings
+//   path to sendOperatorNotice()'s two-audience routing (same-chat merge, Findings
 //   fallback, tier disclosure). The model never resolves a channel itself; this
 //   script does. `--routine <id>` names the routine whose fire is sending: when
 //   that routine has a `chat`, the client leg goes there instead of the home
