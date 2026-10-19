@@ -640,7 +640,6 @@ describe('watchdog state-write failure', () => {
           expect(fs.existsSync(path.join(h.dir, 'hermit-start-called'))).toBe(false);
         }
         fs.chmodSync(state(h), 0o700);
-        fs.writeFileSync(path.join(h.dir, '.hermit', 'RESIDENT.md'), '# Resident');
         const recovered = await watchdog(h, 'run', { env });
         expect(recovered.exitCode).toBe(0);
         expect(recovered.stderr).not.toContain('[watchdog] fatal:');

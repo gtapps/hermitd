@@ -3,26 +3,21 @@
 // Everything the five domain hatches used to do in prose is asserted here
 // against real files: the version floor read from the manifest (four hatches
 // hardcoded a stale one), the two distinct stale-core remedies, the
-// missing-`target`-key repair, and the marker rules delegated to evolve-plan.
+// missing-`target`-key repair, and stamped settings targets.
 
 import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { freshDirFactory } from './helpers/workdir';
-import { runScript, SCRIPTS_DIR, PLUGIN_ROOT } from './helpers/run';
+import { runScript, SCRIPTS_DIR } from './helpers/run';
 import { satisfiesFloor, preflight } from '../scripts/lib/domain-hatch/preflight';
 import { resolvePlugin, isResolveError } from '../scripts/lib/domain-hatch/resolve';
 import { ensureHatchTarget, readTargetState, optionsPath } from '../scripts/lib/domain-hatch/target';
-import { planBlock, applyBlock, splitResident, planResidentRemoval, templatePath, syncBlocks } from '../scripts/lib/domain-hatch/block';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-domain-hatch-');
 afterAll(cleanup);
 
 const PLUGIN = 'hermitd-feed';
-const MARKER = '<!-- hermitd-feed: Feed Workflow -->';
-const CLOSING = '<!-- /hermitd-feed: Feed Workflow -->';
-const TEMPLATE = `---\n\n${MARKER}\n\n## Feed\n\nSome rules.\n\n${CLOSING}\n`;
-
 // A project with core hatched plus a fake installed domain plugin, wired the
 // way `claude plugin list --json` would report it.
 function scaffold(opts: {
@@ -58,7 +53,6 @@ function scaffold(opts: {
     path.join(install, '.claude-plugin', 'hermit-meta.json'),
     JSON.stringify({ required_core_version: opts.floor ?? '>=1.2.30' }),
   );
-  fs.writeFileSync(path.join(install, 'state-templates', 'CLAUDE-APPEND.md'), TEMPLATE);
 
   // A fake core plugin root, so core's own installed version is controllable.
   const coreRoot = path.join(root, 'installed', 'hermitd');
@@ -219,7 +213,7 @@ describe('preflight', () => {
   });
 
   // hermit-evolve takes hatch_target from this verb and has no fallback of its
-  // own; the stamped file and the marker probe need no plugin list, so an
+  // own; the stamped file needs no plugin list, so an
   // unreadable list must not strand it without a target.
   test('an unresolvable plugin still reports the target', () => {
     const s = scaffold({
@@ -238,7 +232,7 @@ describe('preflight', () => {
     expect(r.needs_target_question).toBe(false);
   });
 
-  test('reports the target and the block action once a target exists', () => {
+  test('reports the target once it exists', () => {
     const s = scaffold({
       hatchOptions: { target: 'committed', core_install_scope: 'project', stamped_at: 'x', stamped_by: 'y', version: '1.0.0' },
     });
@@ -246,8 +240,6 @@ describe('preflight', () => {
     expect(r.target).toBe('committed');
     expect(r.target_file).toBe('CLAUDE.md');
     expect(r.needs_target_question).toBe(false);
-    expect(r.marker).toBe(MARKER);
-    expect(r.append_action).toBe('append'); // no CLAUDE.md in the scratch project yet
   });
 });
 
@@ -289,106 +281,11 @@ describe('ensureHatchTarget', () => {
     expect(JSON.parse(fs.readFileSync(optionsPath(s.hermit), 'utf8')).target).toBe('local');
   });
 
-  // hermit-evolve's fallback chain checked both CLAUDE files before falling
-  // back to scope detection. Losing that would flip the offered default for
-  // any project whose block is already placed.
-  test('an existing core block outranks the scope-derived default', () => {
-    const s = scaffold();
-    const scope = { core_scope: 'project' as const, target: 'committed' as const };
-    expect(readTargetState(s.hermit, scope, s.root).target_default).toBe('committed');
-
-    fs.writeFileSync(path.join(s.root, 'CLAUDE.local.md'), '<!-- hermitd: Session Discipline -->\n');
-    expect(readTargetState(s.hermit, scope, s.root).target_default).toBe('local');
-  });
-
   test('rewriting identical content is a no-op', () => {
     const s = scaffold();
     const args = { target: 'local' as const, core_scope: 'local' as const, stampedBy: `${PLUGIN}:hatch`, version: '1.0.4' };
     ensureHatchTarget(s.hermit, args);
     expect(ensureHatchTarget(s.hermit, args).action).toBe('unchanged');
-  });
-});
-
-describe('sync-block', () => {
-  test('core has no template to append to an empty target', () => {
-    const target = path.join(freshDir(), 'CLAUDE.local.md');
-    const plan = planBlock(PLUGIN_ROOT, 'hermitd', target, []);
-    expect(plan.action).toBe('no_template');
-    expect(fs.existsSync(target)).toBe(false);
-  });
-
-  test('appends when the marker is absent, then skips once present', () => {
-    const s = scaffold();
-    const target = path.join(s.root, 'CLAUDE.md');
-    fs.writeFileSync(target, '# Project\n');
-
-    const first = applyBlock(planBlock(s.install, PLUGIN, target, []));
-    expect(first.action).toBe('append');
-    expect(first.written).toBe(true);
-    expect(fs.readFileSync(target, 'utf8')).toContain(MARKER);
-
-    const second = applyBlock(planBlock(s.install, PLUGIN, target, []));
-    expect(second.action).toBe('skip');
-    expect(second.written).toBe(false);
-  });
-
-  test('replaces only when rendered content is piped in and differs', () => {
-    const s = scaffold();
-    const target = path.join(s.root, 'CLAUDE.md');
-    fs.writeFileSync(target, '# Project\n');
-    applyBlock(planBlock(s.install, PLUGIN, target, []));
-
-    const same = planBlock(s.install, PLUGIN, target, [], TEMPLATE);
-    expect(same.action).toBe('skip');
-
-    const changed = TEMPLATE.replace('Some rules.', 'Different rules.');
-    const res = applyBlock(planBlock(s.install, PLUGIN, target, [], changed));
-    expect(res.action).toBe('replace');
-    const text = fs.readFileSync(target, 'utf8');
-    expect(text).toContain('Different rules.');
-    expect(text.split(MARKER).length - 1).toBe(1);
-  });
-
-  // A mode-annotated template is rendered by its own plugin; appending the raw
-  // text would drop both mode regions and their fence comments into CLAUDE.md.
-  test('refuses a template that must be rendered when nothing is piped in', () => {
-    const s = scaffold();
-    const modeTemplate = `${MARKER}\n\n<!-- mode:standard-only -->\nstandard\n<!-- /mode:standard-only -->\n\n${CLOSING}\n`;
-    fs.writeFileSync(path.join(s.install, 'state-templates', 'CLAUDE-APPEND.md'), modeTemplate);
-    const target = path.join(s.root, 'CLAUDE.md');
-
-    const raw = applyBlock(planBlock(s.install, PLUGIN, target, []));
-    expect(raw.action).toBe('needs_rendering');
-    expect(raw.written).toBe(false);
-    expect(fs.existsSync(target)).toBe(false);
-
-    const rendered = applyBlock(planBlock(s.install, PLUGIN, target, [], `${MARKER}\n\nstandard\n\n${CLOSING}\n`));
-    expect(rendered.action).toBe('append');
-    expect(rendered.written).toBe(true);
-  });
-
-  // `$&` in a replacement string is a substitution pattern, not a literal.
-  test('a replacement block containing $-patterns is written verbatim', () => {
-    const s = scaffold();
-    const target = path.join(s.root, 'CLAUDE.md');
-    fs.writeFileSync(target, '# Project\n');
-    applyBlock(planBlock(s.install, PLUGIN, target, []));
-
-    const line = "Use `sed 's/x/$&/'` and `$'y'`.";
-    const dollar = TEMPLATE.replace('Some rules.', () => line);
-    expect(applyBlock(planBlock(s.install, PLUGIN, target, [], dollar)).action).toBe('replace');
-    expect(fs.readFileSync(target, 'utf8')).toContain(line);
-  });
-
-  // Never add a third copy: with the marker duplicated, a replace could hit the
-  // wrong instance and an append would compound it.
-  test('refuses a duplicated marker instead of appending again', () => {
-    const s = scaffold();
-    const target = path.join(s.root, 'CLAUDE.md');
-    fs.writeFileSync(target, `# Project\n\n${MARKER}\na\n${CLOSING}\n\n${MARKER}\nb\n${CLOSING}\n`);
-    const res = applyBlock(planBlock(s.install, PLUGIN, target, []));
-    expect(res.action).toBe('ambiguous');
-    expect(res.written).toBe(false);
   });
 });
 
@@ -439,81 +336,6 @@ describe('CLI contract', () => {
     expect(out).not.toHaveProperty('message');
   });
 
-  const CORE_MARKER = 'hermitd: Session Discipline';
-  function coreTemplate(s: ReturnType<typeof scaffold>, body = '## Session Discipline') {
-    fs.mkdirSync(path.join(s.coreRoot, 'state-templates'), { recursive: true });
-    fs.writeFileSync(
-      path.join(s.coreRoot, 'state-templates', 'CLAUDE-APPEND.md'),
-      `<!-- ${CORE_MARKER} -->\n\n${body}\n\n<!-- /${CORE_MARKER} -->\n`,
-    );
-  }
-
-  test('ensure-target then sync-block write the core marker from CLAUDE_PLUGIN_ROOT', async () => {
-    const s = scaffold();
-    coreTemplate(s);
-    const env = { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit };
-    const ensure = await runScript('domain-hatch.ts', {
-      args: ['ensure-target', 'hermitd', '--target', 'local'],
-      env,
-    });
-    expect(ensure.exitCode).toBe(0);
-    const ensured = JSON.parse(ensure.stdout);
-    expect(ensured).toMatchObject({ action: 'created', target: 'local', path: optionsPath(s.hermit) });
-    expect(ensured).not.toHaveProperty('ok');
-    const sync = await runScript('domain-hatch.ts', {
-      args: ['sync-block', 'hermitd'],
-      env,
-    });
-    expect(sync.exitCode).toBe(0);
-    const target = path.join(s.root, 'CLAUDE.local.md');
-    expect(JSON.parse(sync.stdout)).toEqual({
-      action: 'append',
-      written: true,
-      resident: 'skip',
-      marker: `<!-- ${CORE_MARKER} -->`,
-      target_file: target,
-    });
-    expect(fs.readFileSync(target, 'utf8')).toContain(CORE_MARKER);
-  });
-
-  test('sync-block refuses a duplicated marker at exit 0 and writes nothing', async () => {
-    const s = scaffold({ hatchOptions: { target: 'local', core_install_scope: 'local', stamped_at: 'x', stamped_by: 'y', version: '1.0.0' } });
-    coreTemplate(s);
-    const target = path.join(s.root, 'CLAUDE.local.md');
-    const block = `<!-- ${CORE_MARKER} -->\na\n<!-- /${CORE_MARKER} -->\n`;
-    fs.writeFileSync(target, `${block}\n${block}`);
-    const r = await runScript('domain-hatch.ts', {
-      args: ['sync-block', 'hermitd'],
-      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'refused', reason: 'ambiguous_marker', file: target });
-    expect(fs.readFileSync(target, 'utf8')).toBe(`${block}\n${block}`);
-  });
-
-  test('sync-block reports needs_rendering for a mode-annotated template without --rendered-stdin', async () => {
-    const s = scaffold({ hatchOptions: { target: 'local', core_install_scope: 'local', stamped_at: 'x', stamped_by: 'y', version: '1.0.0' } });
-    coreTemplate(s, '<!-- mode:standard-only -->\nstandard\n<!-- /mode:standard-only -->');
-    const r = await runScript('domain-hatch.ts', {
-      args: ['sync-block', 'hermitd'],
-      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'needs_rendering' });
-    expect(fs.existsSync(path.join(s.root, 'CLAUDE.local.md'))).toBe(false);
-  });
-
-  test('sync-block without a stamped target is no_target at exit 1', async () => {
-    const s = scaffold();
-    coreTemplate(s);
-    const r = await runScript('domain-hatch.ts', {
-      args: ['sync-block', 'hermitd'],
-      env: { CLAUDE_PLUGIN_ROOT: s.coreRoot, AGENT_DIR: s.hermit },
-    });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'no_target' });
-  });
-
   test('a missing verb is a usage error on stdout', async () => {
     const s = scaffold();
     const r = await runScript('domain-hatch.ts', {
@@ -559,65 +381,5 @@ describe('CLI contract', () => {
 
   test('the script is on disk where hermitd-exec.sh would dispatch it', () => {
     expect(fs.existsSync(path.join(SCRIPTS_DIR, 'domain-hatch.ts'))).toBe(true);
-  });
-});
-
-describe('resident block splitting', () => {
-  test('marked instructions reach two files and both skip on a second run', () => {
-    const s = scaffold();
-    const template = TEMPLATE.replace('Some rules.', 'Shared rules.\n<!-- resident-only -->\nResident duties.\n<!-- /resident-only -->');
-    const split = splitResident(template);
-    const sharedPath = path.join(s.root, 'CLAUDE.md');
-    const residentPath = path.join(s.hermit, 'RESIDENT.md');
-    for (const [target, content] of [[sharedPath, split.shared], [residentPath, split.resident]]) {
-      expect(applyBlock(planBlock(s.install, PLUGIN, target, [], content)).written).toBe(true);
-      expect(applyBlock(planBlock(s.install, PLUGIN, target, [], content)).action).toBe('skip');
-      expect(fs.readFileSync(target, 'utf8')).toContain(MARKER);
-      expect(fs.readFileSync(target, 'utf8')).toContain(CLOSING);
-    }
-    expect(fs.readFileSync(sharedPath, 'utf8')).not.toContain('Resident duties.');
-    expect(fs.readFileSync(residentPath, 'utf8')).not.toContain('Shared rules.');
-    expect(fs.readFileSync(residentPath, 'utf8')).toContain('Resident duties.');
-  });
-
-  test('unmarked input creates no resident file and removes a stale plugin block', () => {
-    const s = scaffold();
-    const split = splitResident(TEMPLATE);
-    expect(split.resident).toBe('');
-    const target = path.join(s.hermit, 'RESIDENT.md');
-    const shared = planBlock(s.install, PLUGIN, path.join(s.root, 'CLAUDE.md'), [], split.shared);
-    expect(applyBlock(planResidentRemoval(shared, target, [])).action).toBe('skip');
-    expect(fs.existsSync(target)).toBe(false);
-    fs.writeFileSync(target, TEMPLATE + '\nOther content.\n');
-    expect(applyBlock(planResidentRemoval(shared, target, [])).written).toBe(true);
-    expect(fs.readFileSync(target, 'utf8')).not.toContain(MARKER);
-    expect(fs.readFileSync(target, 'utf8')).toContain('Other content.');
-  });
-
-  test('syncBlocks refuses an ambiguous resident block before writing either file', () => {
-    const s = scaffold();
-    const template = TEMPLATE.replace('Some rules.', 'Shared rules.\n<!-- resident-only -->\nResident duties.\n<!-- /resident-only -->');
-    fs.writeFileSync(templatePath(s.install), template);
-    const sharedPath = path.join(s.root, 'CLAUDE.md');
-    const residentPath = path.join(s.hermit, 'RESIDENT.md');
-    const block = `${MARKER}\na\n${CLOSING}\n`;
-    fs.writeFileSync(residentPath, `${block}\n${block}`);
-    expect(syncBlocks(s.install, PLUGIN, sharedPath, residentPath, [])).toEqual({ status: 'refused', reason: 'ambiguous_marker', file: residentPath });
-    expect(fs.existsSync(sharedPath)).toBe(false);
-    expect(fs.readFileSync(residentPath, 'utf8')).toBe(`${block}\n${block}`);
-
-    fs.rmSync(residentPath);
-    expect(syncBlocks(s.install, PLUGIN, sharedPath, residentPath, [])).toEqual({
-      action: 'append', written: true, resident: 'append', marker: MARKER, target_file: sharedPath,
-    });
-    expect(fs.readFileSync(residentPath, 'utf8')).toContain('Resident duties.');
-  });
-
-  test('rendered stdin still carrying mode markers is refused', () => {
-    const s = scaffold();
-    const rendered = TEMPLATE.replace('Some rules.', '<!-- mode:standard-only -->\nSome rules.\n<!-- /mode:standard-only -->');
-    const target = path.join(s.root, 'CLAUDE.md');
-    expect(applyBlock(planBlock(s.install, PLUGIN, target, [], rendered)).action).toBe('needs_rendering');
-    expect(fs.existsSync(target)).toBe(false);
   });
 });

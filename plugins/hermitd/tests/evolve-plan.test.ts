@@ -1,10 +1,9 @@
 // bun test port of tests/test-evolve-plan.sh — drives scripts/evolve-plan.ts
 // (issue #211, the read-only pre-pass analyzer for hermit-evolve) against
 // fixture project trees. Covers version gap, bounded CHANGELOG slice, deep
-// config-key diff, template/bin byte-compare, separator-aware CLAUDE-APPEND
-// diff, the no_config vs 0.0.0 distinction, and operator-value preservation.
+// config-key diff, template/bin byte-compare, the no_config vs 0.0.0 distinction, and operator-value preservation.
 // Also covers registry-driven sibling hermit plans (work_pending, gap, no-gap
-// CLAUDE-APPEND drift, path-unresolved, detected-but-unregistered, leak guard).
+// path-unresolved, detected-but-unregistered, leak guard).
 //
 // Usage: bun test tests/evolve-plan.test.ts   (from the plugin root)
 
@@ -15,7 +14,7 @@ import path from 'node:path';
 
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { markerOnward, extractSiblingMarker, classifyDockerTemplates } from '../scripts/evolve-plan';
+import { classifyDockerTemplates } from '../scripts/evolve-plan';
 import { render, renderSources } from '../scripts/render-docker-templates';
 
 const MARKER = '<!-- hermitd: Session Discipline -->';
@@ -63,8 +62,6 @@ Run the evolve skill.
   "heartbeat": {"enabled": true, "waiting_timeout": null}
 }
 `);
-  fs.writeFileSync(path.join(PR, 'state-templates', 'CLAUDE-APPEND.md'),
-    `---\n\n${MARKER}\n## Session Discipline\n\nbody line\n`);
   fs.writeFileSync(path.join(PR, 'state-templates', 'SHELL.md.template'), 'SHELL TEMPLATE V1\n');
   fs.writeFileSync(path.join(PR, 'state-templates', 'SESSION-REPORT.md.template'), 'REPORT TEMPLATE\n');
   fs.writeFileSync(path.join(PR, 'state-templates', 'PROPOSAL.md.template'), 'PROPOSAL TEMPLATE\n');
@@ -97,10 +94,6 @@ Run the evolve skill.
 ### Added
 - initial sibling release
 `);
-  fs.writeFileSync(
-    path.join(SP, 'state-templates', 'CLAUDE-APPEND.md'),
-    `---\n\n${SIBLING_MARKER}\n## Dev Workflow\n\ndev body line\n`,
-  );
 
   // Empty plugin list fixture — used by existing tests to avoid spawning claude.
   EMPTY_PLUGIN_LIST = path.join(os.tmpdir(), 'hermit-empty-plugin-list.json');
@@ -132,9 +125,8 @@ const writeConfig = (proj: string, content: string) =>
 /** Run evolve-plan and return the parsed plan.
  *  pluginListPath defaults to the empty-list fixture so tests don't spawn claude.
  *  Pass an explicit path for sibling tests that need a populated plugin list. */
-async function runPlan(proj: string, hatchTarget?: string, pluginListPath?: string): Promise<any> {
+async function runPlan(proj: string, _target?: string, pluginListPath?: string): Promise<any> {
   const args = [hermitDir(proj)];
-  if (hatchTarget !== undefined) args.push(`--hatch-target=${hatchTarget}`);
   args.push(`--plugin-list-json=${pluginListPath ?? EMPTY_PLUGIN_LIST}`);
   const r = await runScript('evolve-plan.ts', { args, env: { CLAUDE_PLUGIN_ROOT: PR } });
   expect(r.exitCode).toBe(0);
@@ -401,7 +393,6 @@ for (const body of ['', `${MARKER}\nEdited rules.\n`, `${MARKER}\n${MARKER}\n`])
     writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.7"}}');
     fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'), body);
     const d = await runPlan(proj, 'local');
-    expect(Object.keys(d).filter(key => /^(claude_append_|resident_)/.test(key))).toEqual([]);
     expect(d.work_pending).toBe(false);
   }));
 }
@@ -463,17 +454,6 @@ test('operator value preserved: set quality_gate.tier not re-listed', withProj(a
   const paths = d.new_config_keys.map((k: any) => k.path);
   expect(paths).not.toContain('quality_gate');
   expect(paths).not.toContain('heartbeat.waiting_timeout');
-}));
-
-// -------------------------------------------------------
-// 10. no_hatch_target: required flag missing -> errors[no_hatch_target]
-// -------------------------------------------------------
-
-test('no_hatch_target: missing flag -> errors[no_hatch_target], exit 0', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
-  const d = await runPlan(proj); // no --hatch-target flag (runPlan asserts exit 0)
-  const codes = d.errors.map((e: any) => e.code);
-  expect(codes).toContain('no_hatch_target');
 }));
 
 // -------------------------------------------------------
@@ -782,37 +762,6 @@ test('sibling no-gap: up_to_date=true, no changelog_slice, work_pending reflects
   expect(d.work_pending).toBe(true);
 }));
 
-test('no-gap + changed CLAUDE-APPEND block -> claude_append_changed=true, no Edit intent implied', withProj(async (proj) => {
-  writeConfig(proj, JSON.stringify({
-    _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.3' },
-  }));
-  // Write a stale sibling block in the target CLAUDE.local.md
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${SIBLING_MARKER}\n## Dev Workflow\n\nSTALE dev body\n`);
-  const pl = writePluginList([siblingEntry(proj)]);
-  const d = await runPlan(proj, 'local', pl);
-  const s = d.siblings[0];
-  expect(s.up_to_date).toBe(true);             // no version gap
-  expect(s.claude_append_changed).toBe(true);  // but block is stale
-  // old_block is present so the skill can report what drifted (advisory only, no Edit for no-gap)
-  expect(s.claude_append_old_block).toContain('STALE dev body');
-  expect(d.work_pending).toBe(true);           // drift alone triggers work_pending
-}));
-
-test('gap + changed CLAUDE-APPEND block -> both up_to_date=false and claude_append_changed=true', withProj(async (proj) => {
-  writeConfig(proj, JSON.stringify({
-    _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.1' },
-  }));
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${SIBLING_MARKER}\n## Dev Workflow\n\nOLD dev body\n`);
-  const pl = writePluginList([siblingEntry(proj)]);
-  const d = await runPlan(proj, 'local', pl);
-  const s = d.siblings[0];
-  expect(s.up_to_date).toBe(false);
-  expect(s.claude_append_changed).toBe(true);
-  expect(s.claude_append_old_block).toContain('OLD dev body');
-}));
-
 test('siblings_path_unresolved: registered sibling not found in plugin list', withProj(async (proj) => {
   writeConfig(proj, JSON.stringify({
     _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.1' },
@@ -916,258 +865,16 @@ test('from > to (downgrade): treated as no-gap, warning emitted', withProj(async
   expect(d.siblings_warnings?.some((w: string) => w.includes('downgrade'))).toBe(true);
 }));
 
-test('work_pending: all current + no drift -> false', withProj(async (proj) => {
+test('work_pending: all current -> false', withProj(async (proj) => {
   writeConfig(proj, JSON.stringify({
     _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.3' },
   }));
-  // Write correct core AND sibling blocks so both are drift-free.
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${MARKER}\n## Session Discipline\n\nbody line\n\n---\n\n${SIBLING_MARKER}\n## Dev Workflow\n\ndev body line\n`);
   const pl = writePluginList([siblingEntry(proj)]);
   const d = await runPlan(proj, 'local', pl);
   expect(d.up_to_date).toBe(true);
-  expect(d).not.toHaveProperty('claude_append_changed');
   expect(d.siblings[0].up_to_date).toBe(true);
-  expect(d.siblings[0].claude_append_changed).toBe(false);
   expect(d.work_pending).toBe(false);
 }));
-
-// -------------------------------------------------------
-// 13. Block-bounds regressions: two live mis-slices found by running the
-// pre-fix helpers against the real shipped templates (not idealized fixtures).
-// -------------------------------------------------------
-
-// Defect A: extractSiblingMarker used to return the FIRST HTML comment line in
-// a template, so a leading "<!-- mode:standard-only -->" annotation
-// was mistaken for the block marker. Since mode markers are stripped
-// before install, that "marker" never
-// exists in the target -> append branch -> the full un-rendered template
-// (both mode variants + mode markers) would be appended to the operator's file.
-//
-// Defect C: even with marker discovery fixed, a template whose block still
-// carries mode: markers is raw/un-rendered content that core cannot compare
-// or write — computeSiblings/_diffClaudeAppendByText must refuse to sync it
-// at all (needs_render), not just avoid the append branch.
-function writeDevLikeSibling(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-devlike-sp-'));
-  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'state-templates'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.claude-plugin', 'plugin.json'), '{"version":"0.4.3"}\n');
-  fs.writeFileSync(path.join(root, 'CHANGELOG.md'),
-    '# Changelog\n\n## [0.4.3] - 2026-06-01\n### Fixed\n- x\n\n## [0.4.1] - 2026-05-01\n### Added\n- init\n');
-  fs.writeFileSync(
-    path.join(root, 'state-templates', 'CLAUDE-APPEND.md'),
-    [
-      '<!-- mode:standard-only -->',
-      '',
-      '<!-- /mode:standard-only -->',
-      '---',
-      '<!-- hermitd-dev: Development Workflow -->',
-      '## Development Workflow',
-      '',
-      '- rendered body',
-      '<!-- mode:safety-only -->',
-      '- safety-only body',
-      '<!-- /mode:safety-only -->',
-      '<!-- /hermitd-dev: Development Workflow -->',
-      '',
-    ].join('\n'),
-  );
-  return root;
-}
-
-test('REGRESSION defect A: marker discovery picks the dev block marker, not the leading mode: comment', withProj(async (proj) => {
-  const devLikeRoot = writeDevLikeSibling();
-  try {
-    writeConfig(proj, JSON.stringify({
-      _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.1' },
-    }));
-    // Target carries a correctly-rendered block, as a real hatch would produce (no mode: markers).
-    fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-      '# Project\n\n---\n\n<!-- hermitd-dev: Development Workflow -->\n' +
-      '## Development Workflow\n\n- rendered body\n<!-- /hermitd-dev: Development Workflow -->\n');
-    const pl = writePluginList([{
-      id: 'hermitd-dev@hermitd', version: '0.4.3', scope: 'local',
-      enabled: true, installPath: devLikeRoot, projectPath: proj,
-    }]);
-    const d = await runPlan(proj, 'local', pl);
-    const s = d.siblings.find((x: any) => x.name === 'hermitd-dev');
-    expect(s).toBeDefined();
-    expect(s.marker).toBe('<!-- hermitd-dev: Development Workflow -->');
-  } finally {
-    try { fs.rmSync(devLikeRoot, { recursive: true, force: true }); } catch {}
-  }
-}));
-
-test('REGRESSION defect C: template requiring rendering is never synced, never leaks raw mode: content into the plan', withProj(async (proj) => {
-  const devLikeRoot = writeDevLikeSibling();
-  try {
-    writeConfig(proj, JSON.stringify({
-      _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.1' },
-    }));
-    // No target block installed at all — the historically-dangerous case (append branch).
-    const pl = writePluginList([{
-      id: 'hermitd-dev@hermitd', version: '0.4.3', scope: 'local',
-      enabled: true, installPath: devLikeRoot, projectPath: proj,
-    }]);
-    const d = await runPlan(proj, 'local', pl);
-    const s = d.siblings.find((x: any) => x.name === 'hermitd-dev');
-    expect(s).toBeDefined();
-    expect(s.claude_append_needs_render).toBe(true);
-    expect('claude_append_old_block' in s).toBe(false);
-    // The guarantee: no raw un-rendered template content anywhere in the plan.
-    expect(JSON.stringify(d)).not.toContain('<!-- mode:');
-  } finally {
-    try { fs.rmSync(devLikeRoot, { recursive: true, force: true }); } catch {}
-  }
-}));
-
-// needs_render must still surface on the plan (Step 7 defers the sync on a version
-// gap) but must not by itself pin work_pending. Rationale: see the siblingWorkNeeded
-// comment in buildPlan() in evolve-plan.ts.
-test('needs_render alone (no version gap) is surfaced but does not pin work_pending', withProj(async (proj) => {
-  const devLikeRoot = writeDevLikeSibling();
-  try {
-    // Registered version matches installed -> no gap. needs_render must still surface.
-    writeConfig(proj, JSON.stringify({
-      _hermit_versions: { 'hermitd': '1.1.7', 'hermitd-dev': '0.4.3' },
-    }));
-    // Core's own block drift-free, so work_pending reflects only the sibling.
-    fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-      `# Project\n\n---\n\n${MARKER}\n## Session Discipline\n\nbody line\n`);
-    const pl = writePluginList([{
-      id: 'hermitd-dev@hermitd', version: '0.4.3', scope: 'local',
-      enabled: true, installPath: devLikeRoot, projectPath: proj,
-    }]);
-    const d = await runPlan(proj, 'local', pl);
-    const s = d.siblings.find((x: any) => x.name === 'hermitd-dev');
-    expect(s.up_to_date).toBe(true);
-    expect(s.claude_append_needs_render).toBe(true);
-    expect(s.claude_append_changed).toBe(false);
-    expect(d.work_pending).toBe(false);
-  } finally {
-    try { fs.rmSync(devLikeRoot, { recursive: true, force: true }); } catch {}
-  }
-}));
-
-// Defect B: markerOnward used to stop at the FIRST standalone "---" line
-// after the marker, with no concept of a closing marker. hermitd-laravel-forge's
-// real template has a closing marker at line 76 but seven internal standalone
-// "---" lines starting at line 7 — the old heuristic truncated its block to 6
-// of 77 lines, so drift past line 6 was silently invisible.
-test('REGRESSION defect B: markerOnward spans through the closing marker, ignoring internal --- lines (forge-shaped fixture)', () => {
-  const marker = '<!-- hermitd-laravel-forge: Forge Workflow -->';
-  const closing = '<!-- /hermitd-laravel-forge: Forge Workflow -->';
-  const text = [
-    marker,
-    '## Laravel Forge',
-    '- line 1',
-    '---',
-    '### Safety rule',
-    '- line 2',
-    '---',
-    '- line 3',
-    closing,
-  ].join('\n');
-  const block = markerOnward(text, marker);
-  expect(block).not.toBeNull();
-  expect(block!.split('\n')).toHaveLength(text.split('\n').length); // full fixture, not truncated to 4
-  expect(block).toContain('line 3');
-  expect(block!.trim().endsWith(closing)).toBe(true);
-});
-
-// -------------------------------------------------------
-// 14. Adjacency / no-clobber: reconstructs this repo's real CLAUDE.local.md
-// shape (core block immediately followed by dev block). Two independent
-// guards (the "---" fallback and the fence against a foreign block marker)
-// must each stop core's block before dev's, so a replace Edit can never
-// swallow or strand the adjacent sibling block.
-// -------------------------------------------------------
-
-test('adjacency: core block bounded before dev block via the --- fallback', () => {
-  const coreMarker = '<!-- hermitd: Session Discipline -->';
-  const devMarker = '<!-- hermitd-dev: Development Workflow -->';
-  const text = `# Project prose\n\n---\n\n${coreMarker}\n## Session Discipline\ncore body\n\n---\n\n${devMarker}\n## Development Workflow\ndev body\n`;
-
-  const coreBlock = markerOnward(text, coreMarker, ['hermitd-dev']);
-  expect(coreBlock).not.toBeNull();
-  expect(coreBlock).not.toContain('dev body');
-  expect(coreBlock).not.toContain(devMarker);
-
-  const devBlock = markerOnward(text, devMarker, ['hermitd']);
-  expect(devBlock).not.toBeNull();
-  expect(devBlock).toContain('dev body');
-});
-
-test('adjacency: fence still holds when the intervening --- is missing', () => {
-  const coreMarker = '<!-- hermitd: Session Discipline -->';
-  const devMarker = '<!-- hermitd-dev: Development Workflow -->';
-  // No "---" between the two blocks -> only the foreign-marker fence can stop core's block.
-  const text = `# Project prose\n\n---\n\n${coreMarker}\n## Session Discipline\ncore body\n\n${devMarker}\n## Development Workflow\ndev body\n`;
-
-  const coreBlock = markerOnward(text, coreMarker, ['hermitd-dev']);
-  expect(coreBlock).not.toBeNull();
-  expect(coreBlock).not.toContain('dev body');
-  expect(coreBlock).not.toContain(devMarker);
-});
-
-// -------------------------------------------------------
-// 15. Legacy-upgrade idempotence: a target block installed before this fix
-// (no closing marker) syncs exactly once against a template that now has one,
-// then stabilizes — no migration script, just the existing replace path.
-// -------------------------------------------------------
-
-test('legacy-upgrade idempotence: closing-marker-less target converges to the paired template in one pass', withProj(async (proj) => {
-  const legacyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-legacy-sp-'));
-  try {
-    const name = 'test-legacy-hermit';
-    const marker = `<!-- ${name}: Test Workflow -->`;
-    const closing = `<!-- /${name}: Test Workflow -->`;
-    fs.mkdirSync(path.join(legacyRoot, '.claude-plugin'), { recursive: true });
-    fs.mkdirSync(path.join(legacyRoot, 'state-templates'), { recursive: true });
-    fs.writeFileSync(path.join(legacyRoot, '.claude-plugin', 'plugin.json'), '{"version":"1.0.0"}\n');
-    fs.writeFileSync(path.join(legacyRoot, 'CHANGELOG.md'), '# Changelog\n\n## [1.0.0] - 2026-01-01\n### Added\n- init\n');
-    const tmplText = `${marker}\n## Test Workflow\n- line one\n- line two\n${closing}\n`;
-    fs.writeFileSync(path.join(legacyRoot, 'state-templates', 'CLAUDE-APPEND.md'), tmplText);
-
-    writeConfig(proj, JSON.stringify({
-      _hermit_versions: { 'hermitd': '1.1.7', [name]: '0.9.0' },
-    }));
-    const targetPath = path.join(proj, 'CLAUDE.local.md');
-    // Legacy shape: block installed by a pre-fix hatch, no closing marker.
-    const legacyTargetText = `# Project\n\n---\n\n${marker}\n## Test Workflow\n- line one\n- line two\n`;
-    fs.writeFileSync(targetPath, legacyTargetText);
-
-    const pl = writePluginList([{
-      id: `${name}@hermitd`, version: '1.0.0', scope: 'local', enabled: true,
-      installPath: legacyRoot, projectPath: proj,
-    }]);
-
-    const first = await runPlan(proj, 'local', pl);
-    const s1 = first.siblings.find((x: any) => x.name === name);
-    expect(s1).toBeDefined();
-    expect(s1.up_to_date).toBe(false); // real version gap -> Step 7 would apply the Edit
-    expect(s1.claude_append_changed).toBe(true);
-    expect(s1.claude_append_old_block).toBeDefined();
-    expect(legacyTargetText).toContain(s1.claude_append_old_block); // exact substring, safe as an Edit old_string
-
-    // Apply the replace exactly as hermit-evolve Step 7 would.
-    const updated = legacyTargetText.replace(s1.claude_append_old_block, tmplText.trimEnd());
-    fs.writeFileSync(targetPath, updated + '\n');
-
-    const second = await runPlan(proj, 'local', pl);
-    const s2 = second.siblings.find((x: any) => x.name === name);
-    expect(s2.claude_append_changed).toBe(false);
-  } finally {
-    try { fs.rmSync(legacyRoot, { recursive: true, force: true }); } catch {}
-  }
-}));
-
-// -------------------------------------------------------
-// 16. Ambiguity guard: a duplicated marker in the target must never be
-// auto-edited (old_string wouldn't be unique) and must never fall through
-// to append (which would add a third copy).
-// -------------------------------------------------------
 
 test('changelog root tokens resolve to each owning plugin install', withProj(async (proj) => {
   const coreRoot = path.join(proj, 'core-install');
@@ -1182,7 +889,7 @@ test('changelog root tokens resolve to each owning plugin install', withProj(asy
   }));
   const pluginList = writePluginList([{ ...siblingEntry(proj), installPath: siblingRoot }]);
   const result = await runScript('evolve-plan.ts', {
-    args: [hermitDir(proj), '--hatch-target=local', `--plugin-list-json=${pluginList}`],
+    args: [hermitDir(proj), `--plugin-list-json=${pluginList}`],
     env: { CLAUDE_PLUGIN_ROOT: coreRoot },
   });
   expect(result.exitCode).toBe(0);

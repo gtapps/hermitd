@@ -1,8 +1,6 @@
 // Operator-facing surfaces must not name a plugin-root doc by a bare path.
 //
-// CLAUDE-APPEND blocks are cat'd verbatim into a downstream operator's
-// CLAUDE.md, and SessionStart injections are emitted into operator context —
-// both read from the operator's project cwd, where a bare `docs/foo.md`
+// Resident prompts and SessionStart injections enter operator context and read from the operator's project cwd, where a bare `docs/foo.md`
 // resolves to `<operator-project>/docs/foo.md` and does not exist (the docs
 // live only under the plugin root). This guard fails on any such bare ref so
 // the class of bug can't creep back in. Allowed forms all resolve:

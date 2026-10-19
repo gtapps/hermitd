@@ -9,7 +9,7 @@ Record notes only inside an open record's turn, using `bun ${CLAUDE_PLUGIN_ROOT}
 
 Pause and think about your recent work.
 
-**Silent by default.** Only notify the operator (per CLAUDE.md § Operator Notification) if reflect produces an outcome: a proposal candidate, a micro-approval, a resolved proposal, a graduated observation, or a cost spike.
+**Silent by default.** Only notify the operator (per § Operator Notification) if reflect produces an outcome: a proposal candidate, a micro-approval, a resolved proposal, a graduated observation, or a cost spike.
 
 Rare-branch procedures live in `${CLAUDE_PLUGIN_ROOT}/skills/reflect/branches.md`. "Read branches.md § X" means: read that section now and follow it exactly — it is normative.
 

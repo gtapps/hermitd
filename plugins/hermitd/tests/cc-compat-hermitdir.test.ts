@@ -254,7 +254,7 @@ describe('hermitDir()', () => {
 // -------------------------------------------------------------------------
 // assertStateDir() — worktree projections
 //
-// The CLAUDE-APPEND commands pass the relative `.hermit`. From a
+// The resident prompt commands pass the relative `.hermit`. From a
 // worktree that resolves to the projection while every accepted root is main's,
 // so the pin has to normalize it or refuse the spelling the hermit itself ships.
 // AGENT_DIR pins hermitDir() to a known root so these assert the argv side only.

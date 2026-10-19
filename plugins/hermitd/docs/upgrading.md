@@ -55,7 +55,7 @@ claude plugin update hermitd@hermitd --scope local
 /hermitd:hermit-evolve
 ```
 
-This detects the version gap, shows what changed, prompts for new settings, refreshes templates and the Docker entrypoint, and updates the CLAUDE.md session discipline block.
+This detects the version gap, shows what changed, prompts for new settings, refreshes templates and the Docker entrypoint.
 
 ### 4. What if I don't upgrade?
 
@@ -83,7 +83,7 @@ Hermits (e.g., `hermitd-dev`) upgrade the same way — the wrappers above update
 claude plugin update hermitd-dev@your-org --scope local
 ```
 
-Then `/hermitd:hermit-evolve` — it detects hermit version gaps automatically and updates their CLAUDE-APPEND blocks.
+Then `/hermitd:hermit-evolve` — it detects hermit version gaps automatically and runs their migrations.
 
 Each hermit's version is tracked independently in `config.json`:
 
@@ -113,7 +113,7 @@ These aren't upgrades — just how your project evolves:
 1. Keep `plugin.json` version updated
 2. Maintain a `CHANGELOG.md`
 3. Optionally provide `UPGRADE.md` with hermit-specific instructions
-4. Keep core `prompts/` current, or the domain plugin's marked instruction template when it ships one
+4. Keep guidance current in core `prompts/` or the domain plugin's skills, agents and hooks
 
 ---
 
@@ -123,4 +123,4 @@ Per-version upgrade instructions live in [CHANGELOG.md](../CHANGELOG.md) under e
 
 For a full list of what changed in each release, see [CHANGELOG.md](../CHANGELOG.md).
 
-Core rules load through generated resident and helper system prompts. Evolve retires legacy core blocks with `retire-core-blocks`, backing up the exact removed bytes under `.hermit/state/` before deletion. Move your own lines from that backup to OPERATOR.md for the hermit or CLAUDE.md for every project session, then restart the resident. Sibling block upgrades keep their own marker-based flow.
+Core rules load through generated resident and helper system prompts. Evolve backs up and retires hermit guidance from operator instruction files with `retire-hermit-blocks`. Move your own lines from that backup to OPERATOR.md for the hermit or CLAUDE.md for every project session, then restart the resident. Domain plugins keep guidance in their own skills, agents and hooks.

@@ -30,7 +30,7 @@ Before the setup-mode gate or any file writes, gather context silently. Run all 
 2. **Silent hermit detection + core scope detection** (split out so it's available before the mode gate without an operator prompt):
    - **Core scope detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role core-scope`. It emits `{ "core_scope": "local"|"project"|"user"|null, "target": "committed"|"local" }` — set `core_install_scope` from `core_scope` and `hatch_target` from `target`. (project → committed; local/user/null → local, the safer default the operator can override in Advanced.)
    - **Sibling hermit detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role siblings --core-root "${CLAUDE_PLUGIN_ROOT}"`. It emits a JSON array of the project-or-local + enabled hermit siblings (each carrying `plugin`, `id`, `marketplace_name`, `installPath`), already excluding user-scope, disabled, cross-project, and `hermitd` itself.
-   - Stash the array as `detected_hermits`. Step 3 reads `state-templates/CLAUDE-APPEND.md` and `plugin.json` from each entry's `installPath` directly.
+   - Stash the array as `detected_hermits`. Step 3 reads activation metadata from each entry's `installPath` directly.
    - Note: sibling detection is intentionally restrictive. A hermit installed at user scope does NOT auto-detect — operator can install it at project scope and re-run, or activate via `/hermit-settings`.
 
 3. **Detect git-init eligibility** — run in parallel with items 1–2. Set `git_init_eligible = true` if and only if all three hold:
@@ -82,7 +82,7 @@ Pass `--reinit=true` only when Step 1 recorded `is_reinit = true`; otherwise `--
 
 Parse the JSON it prints — `{ created, overwritten, preserved, operator_existed }` — and **remember `operator_existed` for Step 5a** (the OPERATOR.md guard).
 
-The reasoned artifacts are NOT scaffolded here: `config.json` (Step 5), the OPERATOR.md *content* draft (Step 5a), and the CLAUDE.local.md / CLAUDE.md block (Step 6) keep their own steps.
+The reasoned artifacts are NOT scaffolded here: `config.json` (Step 5), the OPERATOR.md *content* draft (Step 5a) keep their own steps.
 
 - `state/template-manifest.json` is seeded at the end of Step 8, once the `bun */scripts/manifest-seed.ts*` permission is in place.
 
@@ -95,7 +95,6 @@ Use the `detected_hermits` list cached in Step 1.5 (no re-globbing).
 If the list is non-empty:
 - Present the candidates and ask: "Activate a hermit for this project?"
 - If the operator selects one: record the full entry from `detected_hermits` as `activated_hermit` (carries `plugin`, `id`, `marketplace_name`, `installPath`).
-  - Read `<activated_hermit.installPath>/state-templates/CLAUDE-APPEND.md` and append it to the target project's CLAUDE.md (in Step 6).
   - Read `<activated_hermit.installPath>/.claude-plugin/hermit-meta.json`: if it declares a `hermit.boot_skill` field (e.g. `"/hermitd-homeassistant:ha-boot"`), record it for step 5 to write as `boot_skill` in `config.json`. This replaces the default `/hermitd:resident-start` bootstrap so the domain hermit's custom boot logic fires on every always-on launch. If the field is absent, leave `boot_skill` unset (core behavior).
   - Step 5 sends `activated_hermit.plugin` as `slug` together with the `boot_skill` above in the `hatch-config.ts` answers payload. Do not read the sibling's `plugin.json` version — core does not stamp `_hermit_versions` for an activated hermit.
 - If the list is empty or the operator declines: skip.
@@ -193,7 +192,7 @@ questions: [
   },
   {
     header: "Visibility",
-    question: "Where should hermit-personal hatch outputs live? (CLAUDE.md block, hook permissions, deny patterns, hermit-created skills/agents)",
+    question: "Where should hermit-personal hatch outputs live? (hook permissions, deny patterns, hermit-created skills/agents)",
     // Build options with recommended at index 0 based on hatch_target:
     // When hatch_target == "local":
     //   options: [
@@ -414,12 +413,6 @@ Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR
 
 Either way the file is a render of `config.json` — say so if the operator asks about editing it directly, so they don't lose an edit at the next restart.
 
-### 6. Install the activated sibling's instructions
-
-Core rules are supplied by the launcher's role prompts; do not write a core block to any CLAUDE file or RESIDENT.md.
-
-If a hermit was activated in Step 3, run `domain-hatch sync-block <activated_hermit.plugin>` through hermitd-run. If its marker already exists, ask whether to keep it (default) or replace it; Quick keeps it silently. Preserve the hatch-resolved target and sibling block routing.
-
 ### 7. Update .gitignore
 
 Use `${CLAUDE_SKILL_DIR}/../../state-templates/GITIGNORE-APPEND.txt`.
@@ -474,7 +467,7 @@ sealed entries the target lacks, and any entries from retired plugin versions it
 
 - `bun */scripts/<name>.ts`; Stop hooks (cost-tracker) and precheck scripts (`heartbeat.ts precheck`, reflect-precheck), scoped to plugin scripts only. Includes `manifest-seed.ts`, which the seeding sub-step below runs to write the template-manifest baseline (deferred from Step 2 so the permission is in place first). Includes `channel-log.ts`, which weekly-review's consolidation step runs unattended to list/mark/prune the episodic channel log. Includes `proposal.ts`; the single proposal CLI. Its create/patch/routine verbs perform every `.hermit/` state-dir write proposal-create and proposal-act make; without it, proposal creation and every accept/defer/dismiss/resolve mutation would be functionally denied in background/worktree sessions (the harness's isolation guard blocks the Write/Edit tools there, not Bash). Its resolve-id/gate/queue-micro/micro/index/metrics/success-signal verbs are the proposal-act/proposal-create/reflect mechanics; without them, ID resolution, gate-verdict routing, and micro-approval queuing would all be functionally denied headlessly. Includes `apply-reflection-actions.ts` and `transcript-digest.ts`; reflect's transactional resolution-action apply and its behavioral-telemetry digest; without these a scheduled reflect silently degrades to introspection-only and never resolves a proposal. Includes `setup-token-mint.ts`; the login-token renewal driver `/relogin` runs; that skill exists to be driven from chat when the hermit's login is about to lapse, so a permission prompt there is an outright denial and the renewal it was meant to perform never happens
 - `.hermit/bin/hermitd-run proposal micro *` / `proposal metrics *` — domain plugins (HA's `ha-morning-brief`, the `domain-brainstorm` skills) reach core's shared scripts through the project-resident `bin/hermitd-run`, since their own `${CLAUDE_PLUGIN_ROOT}` can't resolve core's versioned cache dir. Each grant is pinned to the one verb that plugin needs, never a bare `hermitd-run proposal *` — that would also expose `create`, `patch` and `routine`, i.e. arbitrary state-dir writes. The space before `*` is a word boundary — matches `proposal micro .hermit brief-cycle`, not a `micro…`-prefixed verb — and `hermitd-exec.sh` additionally rejects `/`/`..` in the script name, so the route can't reach a script outside core's `scripts/`. Without these, headless domain briefs and brainstorm metrics checks are functionally denied
-- `.hermit/bin/hermitd-run domain-hatch preflight *` / `ensure-target *` / `sync-block *` — the shared domain-hatch protocol every domain plugin's `/hatch` runs: the core-version floor check, the CLAUDE target resolution, and the CLAUDE-APPEND block write. Pinned per verb for the same reason as above — a bare `domain-hatch *` would hand every caller `ensure-target` and `sync-block`, which write core state and the operator's `CLAUDE.md`, when most of a hatch run only reads `preflight`. Without these, a domain hatch cannot check whether core is new enough for it and would proceed against a core it declares it cannot run on
+- `.hermit/bin/hermitd-run domain-hatch preflight *` / `ensure-target *` — the shared domain-hatch protocol checks core's version floor and resolves and stamps the settings target. Grants stay pinned per verb so a read-only preflight call cannot write core state.
 - `.hermit/bin/hermitd-run channel-send *` / `observations observe *` / `task note *` / `task list *` — the scripts the model invokes **ad hoc mid-session**, rather than from a skill's verbatim command block. The resident prompt names the send, observation and task-note routes; sibling skills use task notes and listings. Notes apply only inside an open record's turn, with no note otherwise. Their `bun */scripts/<name>.ts` twins are wildcarded-interpreter rules, which auto mode suspends (`docs/security.md` § Auto-mode Classifier), so on the fleet's default permission mode the model was left hand-deriving a versioned plugin-cache path — and the shortenings it improvises (an env-var prefix) both draw classifier denials and fall outside every prefix-match rule. `channel-send` is granted mode-less rather than verb-pinned because it has modes (`--notice`/`--tier`), not verbs; that is safe only because `channel-send.ts` pins its own state dir, so the grant confers exactly what the existing `bun */scripts/channel-send.ts*` entry already confers. Without these, proactive operator notifications and settled-knowledge bookkeeping are classifier-stochastic on an auto-mode install
 - `bash -c 'AGENT_DIR=...` — SessionStart hook that loads session context on every startup
 - `Edit` on `.hermit/**`; scripts maintain runtime state and skills update operator-editable content without prompting (Edit rules cover all file-editing tools, including Write)
@@ -569,7 +562,7 @@ Replaces Steps 3-4 with batched turns + confirm; resumes shared Steps 5-9 after 
 
 Only fires if `detected_hermits` from Step 1.5 is non-empty. Same prompt shape as Step 3 of the Advanced branch — uses the cached candidate list, does not re-glob. If multiple hermits detected, list all + Skip. If none, this turn is skipped entirely.
 
-If a hermit is selected: record the full entry from `detected_hermits` as `activated_hermit` (carries `plugin`, `id`, `marketplace_name`, `installPath`). Read `<activated_hermit.installPath>/state-templates/CLAUDE-APPEND.md` and stash for Step 6's CLAUDE.md append. Read `<activated_hermit.installPath>/.claude-plugin/hermit-meta.json` for the `hermit.boot_skill` field; stash it for Step 5's `hatch-config.ts` answers payload.
+If a hermit is selected: record the full entry from `detected_hermits` as `activated_hermit` (carries `plugin`, `id`, `marketplace_name`, `installPath`). Read `<activated_hermit.installPath>/.claude-plugin/hermit-meta.json` for the `hermit.boot_skill` field; stash it for Step 5's `hatch-config.ts` answers payload.
 
 ### Quick Turn 2 — Identity batch (one `AskUserQuestion`, 3 questions)
 
@@ -687,7 +680,6 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + dm_channel_id=null + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
-| Step 6 | activated sibling block | apply silently to `hatch_target` file (default "keep" if marker already present) |
 | Step 7 | .gitignore append | apply silently (per-line idempotent) |
 | Step 7a | .worktreeinclude managed block | apply silently (marker-block idempotent — skip if marker already present) |
 | Step 7.5 | git init (fresh dirs only) | run `git init` if `git_init_eligible`; omit otherwise |

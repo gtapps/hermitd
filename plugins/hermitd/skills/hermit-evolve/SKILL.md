@@ -52,11 +52,9 @@ Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
 Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
-Context reload: <required (comma-separated plugin names) | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
   <name current>              (no version gap)
-  <name block-drifted>        (no gap but CLAUDE-APPEND differs from template — advisory only, not edited)
   <name path-unresolved>      (in _hermit_versions but no project-effective plugin-list match)
   <name SKIPPED-by-finalizer> (finalizer's siblings_skipped — never report as upgraded)
 Siblings detected but not activated: <name ... | none>
@@ -88,7 +86,6 @@ conversation. Stop.
 
 **Print the summary** from the report fields. Omit lines where nothing changed. End with "Run /hermitd:hermit-settings to adjust any settings." if settings were added.
 
-**Project-context reload notice.** If `Context reload` is `required (<names>)`, append this to the summary in every delivery mode: "Project instructions updated for <names>. Run `/compact` to load them now; `/clear` or restarting the Claude session also works. `/reload-plugins` alone does not reload CLAUDE.md." If the field is `no`, omit the notice. Deliver it on a `blocked:` report too — a blocked version bump does not undo a CLAUDE-APPEND write, and a re-run sees the block as already current, so this is the only time the operator hears about it. Never issue `/compact`, `/clear`, or a restart on the operator's behalf.
 
 **Resolve deferrals by execution and delivery mode.** If "Deferred for operator" is non-empty:
 - **Interactive execution:** for each deferred-migration block, present its `instruction` + `options` to the operator via `AskUserQuestion`, then apply the chosen branch inline (this is the only place changelog/migration text re-enters the main loop, and only for the rare deferred step). **A branch that changes `.hermit/config.json` is applied with settings-edit verbs, never the Edit or Write tool** — `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get|set|unset <dotted.path> [value]`, using the harness-substituted path. That keeps the change validated and in the settings ledger, and under the strict profile a tool write to `config.json` is hook-blocked outright. If a verb refuses, treat the branch as not applied and fall through to the version-bump caveat below.
@@ -133,8 +130,7 @@ If Upgrade Instructions reported `restart_required` in Operator notes, use that 
 **Deliver the result.** Compose a condensed one-line message such as `"Hermit upgraded: vOLD → vNEW.
 N settings added, M templates refreshed."` Omit segments where nothing changed. **Append the
 deferred/auto-applied segments**: settings set to defaults (Step 4), permission entries added (Step
-8), template conflicts parked as `.new` (Step 5), any deferred migrations, and the project-context
-reload notice when required — so the operator can follow up via `/hermit-settings`. **Append each
+8), template conflicts parked as `.new` (Step 5), any deferred migrations — so the operator can follow up via `/hermit-settings`. **Append each
 non-`none` Operator notes line after that list**, one line each.
 
 - **Automated-maintainer:** deliver through `channel-send.ts --notice` with

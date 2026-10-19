@@ -51,26 +51,24 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
 
 ### 1. Resolve hatch target, then run the pre-pass
 
-First determine `hatch_target` (the pre-pass needs it, and so do Steps 6, 7, 8):
+First determine `hatch_target` for settings routing in Step 8:
 
-Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then core's own block in `CLAUDE.local.md` or `CLAUDE.md`, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
+Run `domain-hatch-preflight` (Commands) and take `target` as `hatch_target`. It owns the whole chain — the stamped file first, then install-scope detection — so hatch, evolve and every domain hatch resolve the target identically. A `plugin_*` `error` at exit 1 still carries the target fields; read them the same way.
 
 If it returns `needs_target_question: true` the project has no stamped target. Use the returned `target_default` and stamp it with `domain-hatch-ensure-target` (Commands) with arguments `--target <target_default>`, so the next run of anything reads an answered file instead of re-deriving.
 
-Then run the deterministic pre-pass — a single read-only analyzer that computes the version gap, the bounded CHANGELOG slice, new config keys, changed templates/bin, and the CLAUDE-APPEND block diff, so the steps below act on its output instead of reading and diffing whole files:
+Then run the deterministic pre-pass — a single read-only analyzer that computes the version gap, the bounded CHANGELOG slice, new config keys, and changed templates/bin, so the steps below act on its output instead of reading and diffing whole files:
 
-Run `evolve-plan` (Commands) with arguments `--hatch-target=<hatch_target>`.
+Run `evolve-plan` (Commands).
 
 Parse stdout as JSON (the "plan"). The plan's `errors` array is the **sole error channel** — objects of `{code, message}`:
 
 - If `errors` contains an entry with `code == "no_config"` → report "No config found — type `/hermitd:hatch` first, in a terminal or the Claude app." and stop.
-- Else if `errors` is non-empty (any other code, e.g. `no_hatch_target`) **or** stdout is not valid JSON → report "evolve-plan failed: <joined messages> — re-run or report." and stop. Do not fall back to reading and diffing the files by hand.
+- Else if `errors` is non-empty (any other code) **or** stdout is not valid JSON → report "evolve-plan failed: <joined messages> — re-run or report." and stop. Do not fall back to reading and diffing the files by hand.
 
 **Stale-runtime check (before everything else):** if the plan's `loaded_core_older_than_applied` is `true`, this session loaded an older plugin copy (v`to`) than the version this hermit has already applied (v`from`) — a stale install, not a pending upgrade. Report: "This session is running plugin v<to>, older than this hermit's applied state v<from> — a stale plugin install. hermit-evolve cannot fix it: update the install that resolves to this plugin root, then re-run." **Stop there.** Do not run any other step: Step 7's sibling migrations would apply while Step 9 refuses to stamp, leaving siblings migrated but unstamped and replaying on the next run. Sibling work waits until the install is fixed — sibling stamps stay where they are and re-plan cleanly.
 
-**Version check:** the plan reports `from`, `to`, `up_to_date`, and `work_pending`. If `work_pending` is `false` (core current AND no sibling gap, drift, path-unresolved, or warnings), report "You're up to date (v<to>). Nothing to upgrade." and stop. If `up_to_date` is `true` but `work_pending` is `true` (sibling-only work), run only Steps 7, 8, 9, and 10 — the core-content steps (2 through 6) have no pending work when core is current. (Sibling migrations and CLAUDE-APPEND sync happen inside Step 7.) Otherwise (core has a gap) run all steps.
-
-Before entering either the full or sibling-only path, initialize `context_reload_targets` as an empty ordered list. Add a plugin name only after its CLAUDE-APPEND write succeeds; Step 10 uses this list to distinguish instructions that changed on disk from drift or refresh work that was only reported.
+**Version check:** the plan reports `from`, `to`, `up_to_date`, and `work_pending`. If `work_pending` is `false` (core current AND no sibling gap, path-unresolved, or warnings), report "You're up to date (v<to>). Nothing to upgrade." and stop. If `up_to_date` is `true` but `work_pending` is `true` (sibling-only work), run only Steps 7, 8, 9, and 10 — the core-content steps (2 through 6) have no pending work when core is current. (Sibling migrations happen inside Step 7.) Otherwise (core has a gap) run all steps.
 
 **Snapshot the config for the audit ledger.** Once the version check above has decided the run proceeds (so a stop-here run writes nothing), record what `config.json` looked like before any migration touches it:
 
@@ -92,7 +90,6 @@ Within `changelog_slice` (already ordered oldest-first), each version entry may 
 4. **Delegated mode:** if a step is interactive (poses an either/or), do not ask. Apply the non-destructive default (e.g. a delete/cleanup offer → keep the file; a single command such as `deny ask-only`) and note the outcome for step 10. If the step has **no safe default**, **defer** — skip it and record a verbatim deferred-migration block per the Delegated mode rules. A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category: never execute it and never record it as a deferred-migration block; copy its text verbatim, marker included, into the Operator notes collected for step 10.
 
 The CHANGELOG.md `### Upgrade Instructions` sections are the single source of truth for migrations — do not skip or merely display them. The same pattern applies to sibling-hermit upgrades in Step 7.
-
 
 **Any instruction that changes `.hermit/config.json` is applied with settings-edit verbs — never the Edit or Write tool**, whatever wording the instruction uses ("read config.json and set…", "edit config.json", "add the key"). Read with `get`, then write one key per call:
 
@@ -122,7 +119,6 @@ Special-default keys — the **only** keys this step writes, because their value
 
 ### 4b. Legacy plan-table check
 
-
 ### 5. Update templates
 
 `templates_changed` is a list of classified file objects `{ name, class }`. Each entry represents a file that differs from upstream or is absent. Resolve by class:
@@ -143,7 +139,6 @@ Only update files in `templates/`:
 
 - `SESSION-REPORT.md.template`
 - `PROPOSAL.md.template`
-
 
 ### 5a. Migrate obsidian/ surface
 
@@ -236,8 +231,6 @@ Report the per-entry outcome (`merged(3-way)`, `merged(3-way; <n> conflicts reso
 
 Remove every resolved Hermit env key and every `*_BOT_TOKEN` from `.claude/settings.local.json`'s env object; remove `language`, and remove `outputStyle` only when it equals `outputStyleFor(config.voice)`. The resolved keys are config.env without AGENT_HOOK_PROFILE plus each channel's state-dir key; also remove the legacy AGENT_HOOK_PROFILE key. Preserve unrelated settings and a null-voice operator style. Leave malformed JSON intact and report it.
 
-Core instructions come from role prompts at launch; do not refresh a core block in CLAUDE files or RESIDENT.md.
-
 ### 7. Hermit upgrades
 
 The plan's `siblings[]` array is the authoritative list (registry-driven from `_hermit_versions`; path-resolved by `evolve-plan.ts` with the project-scope + realpath filter). Do not re-run `claude plugin list --json` here.
@@ -247,26 +240,9 @@ For each entry in `plan.siblings`:
 - **Version gap (`up_to_date == false`):**
   - Read the sibling's `changelog_slice` (already bounded to the gap range, oldest-first).
   - **Execute migrations** — within `changelog_slice`, find each version's `### Upgrade Instructions` section and execute every instruction in version order. Same rules as Step 2b: non-interactive default on ambiguous steps; defer if no safe default; a step or line whose text begins with `**Operator action required:**` is copied verbatim into Operator notes, never executed and never deferred.
-  - **Sync CLAUDE-APPEND block** — apply the Edit **only here, on a version gap**, branching on the sibling's flags first:
-    - `sibling.claude_append_needs_render` → report `<name> block refresh deferred to /<name>:hatch (template requires rendering)`; apply no Edit. Core cannot render a template carrying `mode:` markers — that is the owning plugin's own hatch's job.
-    - `sibling.resident_missing` → report `<name> resident-missing, run /<name>:hatch to install it`; apply nothing.
-    - `sibling.claude_append_block_missing` → report `<name> block-missing — run /<name>:hatch to install it`; apply no Edit. **Never append a sibling's block** — core has no way to guarantee an append would render it the way the sibling's own hatch does.
-    - `sibling.claude_append_ambiguous` → report `<name> block-ambiguous — the marker appears more than once, manual review needed`; apply no Edit.
-    - `sibling.claude_append_changed !== true` → report `<name> block current`; apply no Edit and add no reload target. The plan only supplies `claude_append_old_block` for a block that actually differs, so an already-current block has nothing to replace — treating it as the append case would duplicate the block.
-    - Otherwise: read the sibling template and split its shared and resident parts with `splitResident` from `scripts/lib/domain-hatch/block.ts`, keeping its opening and closing markers. Update RESIDENT.md first if `sibling.resident_changed`, targeting `sibling.resident_old_block`; refuse an ambiguous resident block. Then replace `sibling.claude_append_old_block` in the hatch-resolved CLAUDE file with the marker-onward shared part beginning at `sibling.marker`. Preserve the existing separator and all surrounding text. Never append a missing sibling block. After the replacements succeed, add `<name>` to `context_reload_targets`.
   - Collect the sibling name for the `--sibling=<name>=<to>` flag in Step 9.
 
-- **No version gap (`up_to_date == true`) + `claude_append_changed == true`:**
-  - **Do NOT apply a CLAUDE-APPEND Edit.** We cannot distinguish a deliberate operator edit from a missed sync at this diff level; auto-writing would clobber operator changes.
-  - Report by cause, checking the specific flags before falling back to the generic label:
-    - `sibling.resident_missing` → `<name> resident-missing, run /<name>:hatch to install it`; apply nothing.
-    - `sibling.claude_append_block_missing` → `<name> block-missing — run /<name>:hatch to install it`.
-    - `sibling.claude_append_ambiguous` → `<name> block-ambiguous — the marker appears more than once, manual review needed`.
-    - Otherwise → `<name> block-drifted` — advisory note for the operator to review manually.
-
-- **No version gap + `claude_append_changed == false` (or absent):** report `<name> current`, skip. (`claude_append_needs_render` may also be set here — it is a static property of the sibling's template, not pending work; core only acts on it inside the version-gap branch above.)
-
-Keep `context_reload_targets` deduplicated in stable order (core first, then `plan.siblings` order). Never add a target for an unchanged block, a no-gap `block-drifted` advisory, `claude_append_needs_render`, `claude_append_block_missing`, or `claude_append_ambiguous`; none of those branches wrote project instructions.
+- **No version gap (`up_to_date == true`):** report `<name> current`, skip.
 
 If `plan.siblings_path_unresolved` is non-empty, report each as `<name> path-unresolved` (registered in `_hermit_versions` but not found in the project-effective plugin list).
 
@@ -303,7 +279,3 @@ where `<resolved-settings-file>` is `.claude/settings.local.json` (local) or `.c
   - `settings_added` lists the dotted paths it actually added, confirmed against its re-read. Report those as the added settings in Step 10 — not the keys Step 4 recorded, which are only what the plan expected.
   - `audit_scope` reports whether the Step 1 snapshot was usable: `whole_run` means this upgrade's config changes are attributed in the settings ledger, `version_only` means only the version stamp was recorded. Carry it into the Step 10 report. It is never a failure: a `version_only` upgrade succeeded, it just left less history behind.
   - If it prints `error`, the bump did not land: set the `Upgrade:` line in the Step 10 report to `blocked: config version bump failed (<joined errors>)` and stop.
-
-### Report field: Context reload
-
-Always fill this field, whatever path the run took — including a core-only upgrade with no siblings, and a run blocked by the Step 9 finalizer after Steps 6/7 already wrote. In the final report, emit `Context reload: no` when the list is empty. Otherwise emit `Context reload: required (<names>)`, joining `context_reload_targets` with `, `.

@@ -49,7 +49,7 @@ Six limits sit on that command:
   spelled as an `@<abs-path>` mention so Claude Code injects it at launch; a
   worktree does not carry the hermit's untracked state.
 - `<abs>/.hermit/state/helper-system-prompt.md` is written at boot
-  and gated like `RESIDENT.md`. Pass it as `--append-system-prompt-file` (a
+  and gated like `config.json`. Pass it as `--append-system-prompt-file` (a
   system-prompt file is not expanded, so `@<abs-path>` mentions still belong
   in the prompt). The appended text reaches the helper's main conversation
   and forks, not its non-fork subagents.

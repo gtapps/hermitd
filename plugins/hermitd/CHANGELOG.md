@@ -6,7 +6,7 @@
 - Watches take an optional `chat`, sending their notices to that chat like routines; an ad-hoc watch started from a team chat reports back there.
 
 ### Changed
-- Core rules reach residents and helpers through their own system prompts; OPERATOR.md reloads after compaction, and legacy core blocks are backed up and retired from operator instruction files.
+- Core rules reach residents and helpers through their own system prompts; OPERATOR.md reloads after compaction. Every hermit instruction block is backed up and removed from operator instruction files, and `.hermit/RESIDENT.md` is deleted. `domain-hatch sync-block` is removed: hermit plugins keep their guidance in their own skills, agents and hooks.
 - The calibration rule covers saying one of the hermit's own actions did not happen: it checks its records first, and no record leaves the claim unverified.
 
 ### Fixed
@@ -14,7 +14,7 @@
 - `/hermitd:hatch` stamps the settings target before its first settings or `CLAUDE.md` write, and `/hermitd:hermit-doctor`'s `permission-rules` fix names the stamped target's settings file.
 
 ### Upgrade Instructions
-1. Run `.hermit/bin/hermitd-run retire-core-blocks .hermit`. On `{"error":"<token>"}`, report the error and leave the migration unresolved; never remove a block by hand. `{"status":"noop"}` needs no backup. A `changed` result names the files and the `backup` path containing the exact removed bytes.
+1. Run `.hermit/bin/hermitd-run retire-hermit-blocks .hermit`. On `{"error":...}`, record a deferred-migration block naming this command and the returned error, including any `backup`, `changed`, `deleted` and `failed` fields; never remove a block by hand. `{"status":"noop"}` needs no backup. A `changed` result names the files and the `backup` path containing the exact removed bytes. `deleted` lists `.hermit/RESIDENT.md`, whose full original text is in the backup.
 2. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/state/resident-system-prompt.md)` ask entry. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/state/resident-system-prompt.md*)' 'Bash(*>.hermit/state/resident-system-prompt.md*)'`, adding `'Edit(*.hermit/state/resident-system-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/helper-system-prompt.md)` or `Edit(*.hermit/RESIDENT.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip.
 3. Report the `backup` path from step 1 when present, and say: move your own lines into OPERATOR.md (hermit-only) or your CLAUDE.md (every session). Do not move or rewrite operator text automatically.
 4. Report `restart_required` in Operator notes. The resident must restart to load its generated system prompt, even if routine reconciliation reports healthy. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.

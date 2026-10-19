@@ -33,7 +33,7 @@ A hatched folder can hold more than one session, so every state file has exactly
 
 ## Hatch target routing
 
-`scripts/domain-hatch.ts` owns target resolution and stamping for every consumer: core `hatch`, `hermit-evolve`, `docker-setup`, and every domain hatch. Routing derives from the plugin's install scope (`claude plugin list --json`): `local` → `CLAUDE.local.md` + `.claude/settings.local.json`; `project` → `CLAUDE.md` + `.claude/settings.json`; `user` or undetectable → the `.local` files. Advanced mode lets the operator override via the Visibility prompt. The result is stamped into `state/hatch-options.json` by `domain-hatch.ts` alone. Domain hatches reach it only through `.hermit/bin/hermitd-run domain-hatch <preflight|ensure-target|sync-block> <plugin-id>`: `preflight` returns `target`/`target_file`/`target_default`/`needs_target_question` plus the version verdict, `ensure-target` records an operator override, `sync-block` writes a sibling instruction block into the resolved file. `hermit-evolve` steps 6 to 8 are target-aware and will not re-add committed files after a `.local` migration.
+`scripts/domain-hatch.ts` owns target resolution and stamping for every consumer: core `hatch`, `hermit-evolve`, `docker-setup`, and every domain hatch. Routing derives from the plugin's install scope (`claude plugin list --json`): `local` → `.claude/settings.local.json`; `project` → `.claude/settings.json`; `user` or undetectable → the `.local` file. Advanced mode lets the operator override via the Visibility prompt. The result is stamped into `state/hatch-options.json` by `domain-hatch.ts` alone. Domain hatches reach it only through `.hermit/bin/hermitd-run domain-hatch <preflight|ensure-target> <plugin-id>`: `preflight` returns `target`/`target_file`/`target_default`/`needs_target_question` plus the version verdict, `ensure-target` records an operator override. `hermit-evolve` steps 6 to 8 are target-aware and will not re-add committed files after a `.local` migration.
 
 ## Migrations and feature defaults
 
@@ -55,7 +55,7 @@ An installed hermit belongs to its operator; they rewrite it and the plugin keep
 |---|---|
 | `routines[]`, `boot_skill`, `shutdown_skill`, `monitors[]` | any skill string, including their own local plugins' skills |
 | `config.env`, `docker.packages`, `docker.recommended_plugins` | arbitrary values |
-| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md`, sibling instruction blocks, `docker/` | free-form rewrite; on-disk beats template (see the `hermitd-docker update` gotcha below) |
+| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md`, `docker/` | free-form rewrite; on-disk beats template (see the `hermitd-docker update` gotcha below) |
 
 Above the contract line, give skills data + goal + voice and let the model compose; don't hardcode content, edge-case copy, checklists, or opinions about how the operator should work. Loose is not vague: a skill still states its goal and verdict shape precisely.
 
