@@ -15,5 +15,6 @@
     "gtapps"
   ],
   "homepage": "https://github.com/gtapps/hermitd",
-  "repository": "https://github.com/gtapps/hermitd"
+  "repository": "https://github.com/gtapps/hermitd",
+  "icon": "./assets/icon.png"
 }
