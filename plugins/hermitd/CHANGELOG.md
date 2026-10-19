@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
+
 ## [1.4.17] - 2026-10-19
 
 ### Added
