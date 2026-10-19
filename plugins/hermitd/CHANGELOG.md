@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.17] - 2026-10-19
 
 ### Added
 - Watches take an optional `chat`, sending their notices to that chat like routines; an ad-hoc watch started from a team chat reports back there.
