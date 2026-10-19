@@ -55,7 +55,7 @@ Run before anything else. Abort the release if any step fails.
    If any test fails, stop and fix before releasing.
 
 3. **Run the plugin-validator agent in `release` mode** (`plugin-validator <slug> release`) to cross-reference plugin integrity. Pass it the plugin slug explicitly so it knows which plugin to audit:
-   - Skills referenced in the plugin README, `AGENTS.md`, or `state-templates/CLAUDE-APPEND.md` match actual `plugins/<slug>/skills/` directories
+   - Skills referenced in the plugin README or `AGENTS.md` match actual `plugins/<slug>/skills/` directories
    - Agents referenced in the plugin README or `AGENTS.md` match actual `plugins/<slug>/agents/` files
    - Hook scripts referenced in `plugins/<slug>/hooks/hooks.json` exist in `plugins/<slug>/scripts/`
    - State-template JSON files parse correctly
@@ -150,7 +150,6 @@ No `config.json` changes required.
 For each new skill, agent, or hook added since the last release of this plugin, detect missing entries and add them in one pass:
 
 - Plugin README component descriptions and any affected `plugins/<slug>/AGENTS.md` constraints (keep inventories out of instruction files)
-- `plugins/<slug>/state-templates/CLAUDE-APPEND.md` quick reference (if the template exists for this plugin)
 - `plugins/<slug>/docs/skills.md` (if the doc exists)
 - Hook descriptions in the plugin README or relevant docs if the hook surface area changed
 

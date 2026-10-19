@@ -16,8 +16,7 @@ Before changing a plugin, read its `plugins/<slug>/AGENTS.md`. Load only the gui
 - Keep schemas, permissions, hook protocols, and command interfaces strict; keep operator-authored content flexible and upgrade-safe. Features default on except those requiring credentials/configuration, real per-invocation spend, or destructive actions. Cover new and existing installations.
 - Skills state the present inputs, goal, workflow, and result. Keep history in changelogs or code comments and branch-specific detail in referenced sibling files. Use fully namespaced plugin agent references.
 - Hook stdout, tool output, and skill-driven reads enter operator context. Use scripts for deterministic work and bounded log/database summaries; do not ask the model to read unbounded state or reproduce calculations. Print verdict-sized digests, and add always-loaded instructions only when their recurring behavioral value justifies the context cost.
-- `state-templates/CLAUDE-APPEND.md` is installed product content, separate from development instructions. Describe behavior there without restating config values such as schedules, channel IDs, identity, or mode flags.
-- Core's `scripts/domain-hatch.ts` and `lib/domain-hatch/` own target resolution and `state/hatch-options.json`. Consumers use `domain-hatch preflight`, `ensure-target`, and `sync-block`; read those contracts before changing routing.
+- Core's `scripts/domain-hatch.ts` and `lib/domain-hatch/` own target resolution and `state/hatch-options.json`. Consumers use `domain-hatch preflight` and `ensure-target`; read those contracts before changing routing.
 - Before changing plugin storage or routine registration, read [the storage contract](plugins/hermitd/docs/plugin-hermit-storage.md) or [routine authoring](plugins/hermitd/docs/routine-authoring.md), respectively.
 
 ## Development and verification
