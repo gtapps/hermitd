@@ -75,7 +75,6 @@ interface ClaudeAppendDiffResult {
   missing?: boolean;
 }
 
-const MARKER = '<!-- hermitd: Session Discipline -->';
 const TEMPLATE_FILES = [
   'PROPOSAL.md.template',
 ];
@@ -417,13 +416,11 @@ function closingMarkerFor(marker: string): string {
 //   Phase B3: fence/EOF, right-trimmed of trailing blank lines.
 // Used on both the template (which skips its own leading "---") and the
 // target CLAUDE file, so the two are compared apples-to-apples.
-// When marker is omitted, defaults to the core MARKER constant. foreignNames
-// are other registered plugin names — their block markers fence this block so
+// foreignNames are other registered plugin names — their block markers fence this block so
 // it can never swallow a sibling's, even without a closing marker.
-function markerOnward(text: string, marker?: string, foreignNames: string[] = []): string | null {
-  const m = marker ?? MARKER;
+function markerOnward(text: string, marker: string, foreignNames: string[] = []): string | null {
   const lines = text.split('\n');
-  const start = lines.findIndex(l => l.trim() === m);
+  const start = lines.findIndex(l => l.trim() === marker);
   if (start === -1) return null;
 
   const isForeignMarker = (line: string): boolean => {
@@ -437,7 +434,7 @@ function markerOnward(text: string, marker?: string, foreignNames: string[] = []
     if (isForeignMarker(lines[i])) { limit = i; break; }
   }
 
-  const close = closingMarkerFor(m);
+  const close = closingMarkerFor(marker);
   for (let i = start + 1; i < limit; i++) {
     if (lines[i].trim() === close) return lines.slice(start, i + 1).join('\n');
   }
@@ -588,33 +585,6 @@ function computeResident(
   plan.resident_changed = result.changed || plan.resident_missing;
   if (result.old_block !== undefined) plan.resident_old_block = result.old_block;
   if (result.ambiguous) plan.resident_ambiguous = true;
-}
-
-function computeClaudeAppend(plan: Json, pluginRoot: string, hermitDir: string, hatchTarget: string, config: Json, errors: Json[]) {
-  let tmplText: string;
-  try {
-    tmplText = fs.readFileSync(path.join(pluginRoot, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
-  } catch (e: any) {
-    errors.push({ code: 'claude_append_template_unreadable', message: e.message });
-    return;
-  }
-
-  const projectRoot = path.resolve(hermitDir, '..');
-  const targetFile = path.join(projectRoot, hatchTarget === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
-  const foreignNames = getRegisteredNames(config);
-
-  computeResident(plan, tmplText, MARKER, hermitDir, foreignNames, errors);
-  const result = _diffClaudeAppendByText(splitResident(tmplText).shared, MARKER, targetFile, errors, {
-    markerMissing: 'claude_append_marker_missing',
-    targetUnreadable: 'claude_target_unreadable',
-  }, { foreignNames });
-  if (result === null) return;
-  plan.claude_append_changed = result.changed;
-  if (result.changed && result.old_block !== undefined) {
-    plan.claude_append_old_block = result.old_block;
-  }
-  if (result.needs_render) plan.claude_append_needs_render = true;
-  if (result.ambiguous) plan.claude_append_ambiguous = true;
 }
 
 // Load the claude plugin list --json inventory.
@@ -920,7 +890,6 @@ function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
     errors.push({ code: 'docker_templates_classify_failed', message: e.message });
   }
 
-  computeClaudeAppend(plan, pluginRoot, hermitDir, hatchTarget, config, errors);
 
   // Sibling hermit plans — registry-driven from _hermit_versions.
   // Plugin list load failures are non-fatal: core upgrade proceeds; siblings[] will be empty.
@@ -954,12 +923,7 @@ function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
   );
   const siblingsUnassessed =
     plan.siblings_path_unresolved.length > 0 || (plan.siblings_warnings?.length ?? 0) > 0;
-  // Core's own block can drift or become ambiguous even when the version stamp is
-  // current (e.g. a stray duplicate left by a prior bad sync) — mirror the sibling
-  // check above so that case isn't swallowed by the "already up to date" short-circuit.
-  const coreAppendWorkNeeded =
-    plan.claude_append_changed === true || plan.claude_append_ambiguous === true || plan.resident_changed === true || plan.resident_missing === true;
-  plan.work_pending = !plan.up_to_date || coreAppendWorkNeeded || siblingWorkNeeded || siblingsUnassessed;
+  plan.work_pending = !plan.up_to_date || siblingWorkNeeded || siblingsUnassessed;
 
   return plan;
 }

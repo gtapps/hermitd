@@ -67,14 +67,14 @@ function hatched(o: HatchedOpts = {}): string {
 describe('final reports disk truth, not a remembered file list', () => {
   const clean = (out: any) => {
     const o = out.observed;
-    return !!o.claude_block && o.gitignore && o.worktreeinclude && !!o.permissions_file && o.missing_bin_scripts.length === 0;
+    return o.gitignore && o.worktreeinclude && !!o.permissions_file && o.missing_bin_scripts.length === 0;
   };
 
   test('a fully-completed hatch observes everything present and names the agent', () => {
     const root = hatched({ claudeTarget: 'CLAUDE.local.md', gitignore: true, worktreeinclude: true, settings: 'local', git: true });
     const out = finalData(observe(root), 'docker');
     expect(out.agent_name).toBe('Atlas');
-    expect(out.observed.claude_block).toBe('CLAUDE.local.md');
+    expect(out.observed).not.toHaveProperty('claude_block');
     expect(out.observed.permissions_file).toBe('.claude/settings.local.json');
     expect(clean(out)).toBe(true);
   });
@@ -117,9 +117,9 @@ describe('final reports disk truth, not a remembered file list', () => {
     expect(Object.keys(out.observed)).not.toContain('git_repo');
   });
 
-  test('a "keep" on the CLAUDE block still finds the existing marker', () => {
+  test('legacy CLAUDE blocks are not part of hatch completion', () => {
     const root = hatched({ claudeTarget: 'CLAUDE.md', gitignore: true, worktreeinclude: true, settings: 'local' });
-    expect(finalData(observe(root), 'tmux').observed.claude_block).toBe('CLAUDE.md');
+    expect(finalData(observe(root), 'tmux').observed).not.toHaveProperty('claude_block');
   });
 
   test('an aborted hatch (no config.json) reports incomplete, not success', () => {

@@ -160,7 +160,7 @@ function pinnedRoot(resolved: string, matches: (root: string) => boolean): strin
 }
 
 // A worktree projection named as the state dir means the caller's own root, one
-// level up. The commands the CLAUDE-APPEND block documents pass the relative
+// level up. The commands the resident prompt documents pass the relative
 // `.hermit`, which from a `claude --worktree` session resolves to the
 // projection while every accepted root is main's — so without this the pin
 // refuses the very spelling the hermit ships. Not a widening: a projection can

@@ -125,7 +125,7 @@ Header fields:
   - `capability` — new agent, skill, or heartbeat item
   - `constraint` — OPERATOR.md refinement
   - `bug` — incorrect or broken behavior
-- `Tags:` — JSON array of lowercase hyphenated tags, 1–2 per document; reuse existing vocabulary before introducing new tags (see CLAUDE-APPEND.md tag discipline). Callers may supply specific tags — e.g. `capability-brainstorm` passes `["capability-brainstorm","ideation"]`. Omit or `[]` if none.
+- `Tags:` — JSON array of lowercase hyphenated tags, 1–2 per document; reuse existing vocabulary before introducing new tags. Callers may supply specific tags — e.g. `capability-brainstorm` passes `["capability-brainstorm","ideation"]`. Omit or `[]` if none.
 - `Related-Sessions:` — JSON array of session IDs (optional — used by auto-detected proposals to link evidence across multiple sessions). Omit or `[]` if none.
 - `Findings:`; optional one-line summary. Inside an open record's turn, record a note with `task.ts note` separately.
 

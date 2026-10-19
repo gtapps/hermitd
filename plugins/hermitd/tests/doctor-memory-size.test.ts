@@ -131,9 +131,9 @@ describe('doctor memory-size check', () => {
   });
 });
 
-test('missing resident and legacy core duties warn', () => {
+test('missing resident and legacy core duties do not affect size checks', () => {
   const result = scenario({ residentMissing: true, claude: '<!-- hermitd: Session Discipline -->\n## Watches\nWatch duties.\n<!-- /hermitd: Session Discipline -->' });
-  expect(result.status).toBe('warn');
-  expect(result.detail).toContain('RESIDENT.md is missing');
-  expect(result.detail).toContain('legacy resident duties');
+  expect(result.status).toBe('ok');
+  expect(result.detail).not.toContain('RESIDENT.md');
+  expect(result.detail).not.toContain('legacy resident duties');
 });

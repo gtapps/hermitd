@@ -615,25 +615,26 @@ function hermitFile(name: string): string {
   return path.resolve(path.dirname(STATE_DIR), name);
 }
 
-function requireResident(): void {
+function readShippedPrompt(name: string): string {
   try {
-    fs.readFileSync(hermitFile('RESIDENT.md'), 'utf8');
+    return fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts', name), 'utf8');
   } catch {
-    console.log('[hermit] RESIDENT.md not found. Run `claude` in this project and ask it to run /hermitd:hermit-evolve, then start again.');
-    writeRuntimeJson({ ...(readRuntimeJson() ?? {}), last_start_error: 'resident-missing' });
+    console.log(`[hermit] Shipped prompt prompts/${name} not found or unreadable; refusing to launch. Reinstall the hermitd plugin.`);
     process.exit(1);
   }
 }
 
-function writeHelperSystemPrompt(residentName: string): void {
-  const rendered = renderTemplate(
-    fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'helper-system-prompt.md.template'), 'utf8'),
-    {
-      PROJECT_ROOT: hermitFile('..'),
-      RESIDENT_NAME: residentName,
-    },
-  );
-  writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), rendered);
+function writeSystemPrompts(residentName: string): void {
+  // Read every source before writing either generated prompt.
+  const helper = readShippedPrompt('helper.md');
+  const resident = readShippedPrompt('resident.md');
+  const rules = readShippedPrompt('rules.md');
+  const rendered = renderTemplate(helper, {
+    PROJECT_ROOT: hermitFile('..'),
+    RESIDENT_NAME: residentName,
+  });
+  writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), `${rendered}\n${rules}`);
+  writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), `${resident}\n${rules}`);
 }
 
 /** Build the claude launch command from config. */
@@ -756,9 +757,9 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
   // A resident without its pause gate must not boot.
   const overlay = renderLaunchOverlay(config);
   if (!overlay) process.exit(1);
-  writeHelperSystemPrompt(name);
+  writeSystemPrompts(name);
   cmd.push('--settings', overlay);
-  cmd.push('--append-system-prompt-file', hermitFile('RESIDENT.md'));
+  cmd.push('--append-system-prompt-file', path.resolve(STATE_DIR, 'resident-system-prompt.md'));
 
   if (pyTruthy(config.model)) {
     cmd.push('--model', config.model);
@@ -1535,7 +1536,6 @@ async function main(): Promise<void> {
   const isAlwaysOn = !noTmuxFlag && pyTruthy(tools.tmux);
   const willBootstrap = steps.length > 0 && !setupMode && isAlwaysOn;
   const resume = willBootstrap ? resumeId : undefined;
-  requireResident();
   const cmd = buildClaudeCommand(config, tools, { resume });
   if (willBootstrap) {
     let bootstrap: string;
@@ -1819,7 +1819,7 @@ export {
   resolveStateDir,
   buildClaudeCommand,
   peerName,
-  requireResident,
+  readShippedPrompt,
   renderLaunchOverlay,
   seedWorkspaceTrust,
   seedChromeOnboarding,

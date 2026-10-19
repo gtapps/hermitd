@@ -58,7 +58,7 @@ The wizard sets up your agent's identity (name, language, timezone, [autonomy le
 
 ### OPERATOR.md
 
-Hermit reads this at every session start. Be specific — the more precise you are, the better it performs.
+Hermit reads this at startup, `/clear` and after compaction. Be specific — the more precise you are, the better it performs.
 
 Good:
 
@@ -80,9 +80,9 @@ Not useful:
 A web app. Be careful.
 ```
 
-The whole file is loaded on session start — write what matters, keep it short. Update anytime: just tell Hermit "update OPERATOR.md with [your change]."
+The first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction. The same section also reaches the hermit's own subagents when they compact. Keep essential instructions within this limit. Edit OPERATOR.md yourself; the hermit can propose a change for you to apply.
 
-Behavioral "when X, do Y" rules belong in `CLAUDE.md`, not here — see [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
+Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermit → `OPERATOR.md`. Both files can hold context and instructions. See [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
 
 ---
 

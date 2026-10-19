@@ -21,7 +21,7 @@ The continuously running layer inside Claude Code owns lifecycle, scheduling, ch
 
 ## Shipped agent workflows
 
-The resident handles operator contact. Isolated workers return a verdict or composed operator message to it. Use delegation where the intermediate context materially exceeds the result, and account for dispatch/completion turns; trivial bookkeeping belongs in a script or the current turn. The installed workflow contract is in `state-templates/CLAUDE-APPEND.md`, not this development guide.
+The resident handles operator contact. Isolated workers return a verdict or composed operator message to it. Use delegation where the intermediate context materially exceeds the result, and account for dispatch/completion turns; trivial bookkeeping belongs in a script or the current turn. The installed workflow contract is in `prompts/resident.md`, not this development guide.
 
 ## Runtime and Docker changes
 

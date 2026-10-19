@@ -232,19 +232,11 @@ Report the per-entry outcome (`merged(3-way)`, `merged(3-way; <n> conflicts reso
 - **If `manifest_bootstrap` was true:** include the full managed set — every `templates/` and `bin/` file (and the entrypoint, if deployed), hashing whatever is now on-disk after any overwrites. This is the one-time baseline seeding.
 - **Run** `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [ ... ] }` on stdin. The script hashes each on-disk file, merges into the existing `files` map — preserving untouched prefixes, sibling-hermit keys, and the `docker/docker-compose.hermit.yml.template` / `docker/Dockerfile.hermit.template` baselines `/docker-setup` records (Step 10 reads them) — and writes `{ "version": 1, "files": { ... } }`. It refuses to overwrite a present-but-corrupt manifest. - **Ordering:** run this *after* Step 8 has ensured the plugin permissions, so `bun */scripts/manifest-seed.ts*` is allowed. The files resolved in Steps 5/5b/5c are stable on disk, so deferring the manifest write to after Step 8 does not change the recorded hashes.
 
-### 6. Update CLAUDE-APPEND block
+### 6. Clean up session settings
 
-The target file is determined by `hatch_target` (resolved in Step 1):
-- `hatch_target == "local"` → `CLAUDE.local.md`
-- `hatch_target == "committed"` → `CLAUDE.md`
+Remove every resolved Hermit env key and every `*_BOT_TOKEN` from `.claude/settings.local.json`'s env object; remove `language`, and remove `outputStyle` only when it equals `outputStyleFor(config.voice)`. The resolved keys are config.env without AGENT_HOOK_PROFILE plus each channel's state-dir key; also remove the legacy AGENT_HOOK_PROFILE key. Preserve unrelated settings and a null-voice operator style. Leave malformed JSON intact and report it.
 
-Read the template and obtain its `shared` and `resident` parts using the exported `splitResident` in `scripts/lib/domain-hatch/block.ts`. Keep the plugin opening and closing markers in each part. Apply in this order, even at an equal version:
-
-1. **RESIDENT.md first.** If `resident_changed` or `resident_missing`, apply a targeted Edit in `.hermit/RESIDENT.md` with `old_string = resident_old_block` and the resident part as `new_string`. When the block is missing, append it (create the file when absent). If `resident_ambiguous`, report the ambiguity and leave that file untouched.
-2. **Settings cleanup.** Remove every resolved Hermit env key and every `*_BOT_TOKEN` from `.claude/settings.local.json`'s env object; remove `language`, and remove `outputStyle` only when it equals `outputStyleFor(config.voice)`. The resolved keys are config.env without AGENT_HOOK_PROFILE plus each channel's state-dir key; also remove the legacy AGENT_HOOK_PROFILE key. Preserve unrelated settings and a null-voice operator style. Leave malformed JSON intact and report it.
-3. **CLAUDE block last.** If `claude_append_changed`, use the usual keep/replace prompt. On replace, target `claude_append_old_block` with the marker-onward shared part, or append the full shared part when missing. Preserve the separator already above an existing block. Do not read the whole target when the plan supplies the exact old block.
-
-An operator "keep" or `claude_append_ambiguous` leaves the CLAUDE file untouched, but does not suppress the resident update. Report `CLAUDE-APPEND: kept (resident duties duplicated until you accept the shrink)`. Report `RESIDENT: created | updated | unchanged`. After the targeted Edit or append succeeds, add `hermitd` to `context_reload_targets` — either block changing is enough. For this upgrade, `Context reload: required` means restart now with `hermitd-start --resume`.
+Core instructions come from role prompts at launch; do not refresh a core block in CLAUDE files or RESIDENT.md.
 
 ### 7. Hermit upgrades
 
@@ -261,7 +253,7 @@ For each entry in `plan.siblings`:
     - `sibling.claude_append_block_missing` → report `<name> block-missing — run /<name>:hatch to install it`; apply no Edit. **Never append a sibling's block** — core has no way to guarantee an append would render it the way the sibling's own hatch does.
     - `sibling.claude_append_ambiguous` → report `<name> block-ambiguous — the marker appears more than once, manual review needed`; apply no Edit.
     - `sibling.claude_append_changed !== true` → report `<name> block current`; apply no Edit and add no reload target. The plan only supplies `claude_append_old_block` for a block that actually differs, so an already-current block has nothing to replace — treating it as the append case would duplicate the block.
-    - Otherwise: same replace procedure as Step 6, using `sibling.marker`, `sibling.resident_old_block` and `sibling.claude_append_old_block`, resident first. After the replacement succeeds, add `<name>` to `context_reload_targets`.
+    - Otherwise: read the sibling template and split its shared and resident parts with `splitResident` from `scripts/lib/domain-hatch/block.ts`, keeping its opening and closing markers. Update RESIDENT.md first if `sibling.resident_changed`, targeting `sibling.resident_old_block`; refuse an ambiguous resident block. Then replace `sibling.claude_append_old_block` in the hatch-resolved CLAUDE file with the marker-onward shared part beginning at `sibling.marker`. Preserve the existing separator and all surrounding text. Never append a missing sibling block. After the replacements succeed, add `<name>` to `context_reload_targets`.
   - Collect the sibling name for the `--sibling=<name>=<to>` flag in Step 9.
 
 - **No version gap (`up_to_date == true`) + `claude_append_changed == true`:**

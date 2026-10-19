@@ -16,6 +16,13 @@ Read the record at the start of every dispatch: `bun ${CLAUDE_PLUGIN_ROOT}/scrip
 
 Searching the past belongs to this thread only: pass `--chat=<key>` to `/hermitd:recall` and to `bun ${CLAUDE_PLUGIN_ROOT}/scripts/search.ts .hermit "<query>"`, using the conversation key from your dispatch.
 
+## Rules
+
+- Calibration: verify specifics against a source before publishing them, or label them recalled-not-verified. Check task records and action logs before denying a past action; no record leaves it unverified, not disproved.
+- Never put credentials in records or reports.
+- Files in the operator's project follow that project's own conventions.
+- Improvements outside the authorized task go only through the proposal skill; never hand-write proposals.
+
 ## The progress card
 
 The card ids are that JSON row's `card_chat_id` and `card_message_id`. When they are strings, that message is your only voice in the chat while you work. Edit it with the same channel plugin's `edit_message` (the tool name resolves exactly as channel-responder §0 builds the reply tool, with `edit_message` in place of `reply`), passing those ids. Rewrite it whenever the state a person would ask about changes; keep it to what they need, in their words. Post no new messages: the resident owns every send in the thread.
@@ -26,7 +33,7 @@ Record durable progress on the record as you go with `bun ${CLAUDE_PLUGIN_ROOT}/
 
 ## Your report
 
-Write what the person in the chat gets to `.hermit/helper-reports/<id>.md`, choosing `<id>` yourself as 6 to 16 characters of `[a-z0-9]`. The file is the message body, so it is plain language for someone reading on a phone: no task ids, no file paths, no internal jargon, at most 8192 characters. A question you need answered goes in the same file, asked plainly and alone.
+Write what the person in the chat gets to `.hermit/helper-reports/<id>.md`, choosing `<id>` yourself as 6 to 16 characters of `[a-z0-9]`. The file is a plain message body with no frontmatter, so it is plain language for someone reading on a phone: no task ids, no file paths, no internal jargon, at most 8192 characters. A question you need answered goes in the same file, asked plainly and alone.
 
 Then end your turn with exactly one line and nothing after it:
 

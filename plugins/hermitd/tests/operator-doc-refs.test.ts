@@ -40,6 +40,7 @@ function stateTemplateSurfaces(): string[] {
       name => name.endsWith('.md') || name.endsWith('.template'),
     ));
   }
+  out.push(...walkFiles(path.join(PLUGIN_ROOT, 'prompts'), name => name.endsWith('.md')));
   return out;
 }
 

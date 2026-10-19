@@ -13,7 +13,7 @@ disable Artifacts entirely via Claude Code's own `disableArtifact`,
 `CLAUDE_CODE_DISABLE_ARTIFACT`, or `permissions.deny`). Only reachable from the
 interactive TUI session (`hermitd-start`'s surface); absent under `claude -p`.
 Runs in **main only, never a subagent** — publishing is a main-session-owned
-notification action, same as `CLAUDE-APPEND.md` § Operator Notification, and subagent
+notification action, same as `prompts/resident.md` § Operator Notification, and subagent
 `Artifact` tool availability is unverified.
 
 Unattended (non-interactive/channel) sessions cannot answer the first-publish
@@ -195,7 +195,7 @@ matching the dashboard's existing no-URL-re-post convention — with one excepti
 when the refresh returns a URL, the flow that just created one or more proposals
 appends a single bare `📎 <url>` line to its own announcement, whether it created
 one proposal or several. No fragment, and no proposal id or title in the link text
-(`PROP-NNN` in an operator-facing message violates CLAUDE-APPEND.md § Channel voice).
+(`PROP-NNN` in an operator-facing message violates prompts/resident.md § Channel voice).
 When no URL is returned — the page is disabled, publish is unauthorized, or the
 publish failed — the line is omitted entirely and the rest of the message is unaffected.
 

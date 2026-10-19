@@ -156,7 +156,7 @@ export const isStructuredKey = (key: string): boolean =>
 export const DOCTOR_PREFIX = 'doctor:';
 
 // Strip internal ids that must never reach the operator channel. The banned set
-// is the closed list in state-templates/CLAUDE-APPEND.md § Channel voice:
+// is the closed list in prompts/resident.md § Channel voice:
 // "No internal IDs (PROP-NNN, task, MP-…)". Applied only to structured-keyed
 // notifications (the sole id-injection path); model text is id-free by the
 // reference.md contract, so it is never scrubbed (no false positives on legit

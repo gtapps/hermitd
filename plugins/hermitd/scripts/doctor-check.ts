@@ -1,7 +1,6 @@
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 import { isLoggingEnabled } from './lib/channel-log';
-import { markerOnward } from './evolve-plan';
 // Fail-open: a failing check records "fail" in its own entry; the orchestrator
 // never crashes and the process always exits 0.
 
@@ -1733,19 +1732,11 @@ function checkMemorySize(p: DoctorPaths = PATHS) {
 
   try {
     const parts: string[] = [];
-    if (!fs.existsSync(path.join(p.hermitDir, 'RESIDENT.md'))) {
-      parts.push('RESIDENT.md is missing; run /hermitd:hermit-evolve before starting the resident');
-    }
-
     for (const name of ['CLAUDE.md', 'CLAUDE.local.md']) {
       const filePath = path.join(projectRoot, name);
       if (!fs.existsSync(filePath)) continue;
       try {
         const text = fs.readFileSync(filePath, 'utf8');
-        const block = markerOnward(text, '<!-- hermitd: Session Discipline -->');
-        if (block && /^## (Watches|Operator Notification)\s*$/m.test(block)) {
-          parts.push(`${name}: legacy resident duties are duplicated; run /hermitd:hermit-evolve to shrink the core block`);
-        }
         const lines = countLines(text);
         if (lines >= CLAUDE_WARN_LINES) {
           parts.push(`${name}: ${lines} lines (>=${CLAUDE_WARN_LINES}); trim it with Claude Code's own /doctor (not /hermit-doctor): send it from chat or type it in a terminal session`);

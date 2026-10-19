@@ -395,49 +395,16 @@ test('invalid manifest sha256 -> error before template/bin classification', with
 }));
 
 // -------------------------------------------------------
-// 5a. CLAUDE-APPEND identical (target has leading ---) -> not changed
-// -------------------------------------------------------
-
-test('CLAUDE-APPEND identical (modulo leading ---) -> changed=false, no old_block', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# My Project\n\nstuff\n\n---\n\n${MARKER}\n## Session Discipline\n\nbody line\n`);
-  const d = await runPlan(proj, 'local');
-  expect(d.claude_append_changed).toBe(false);
-  // should omit old_block when unchanged
-  expect('claude_append_old_block' in d).toBe(false);
-}));
-
-// -------------------------------------------------------
-// 5b. CLAUDE-APPEND different -> changed + exact old_block
-// -------------------------------------------------------
-
-test('CLAUDE-APPEND different -> changed=true, old_block is exact marker-onward', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
-  const target = path.join(proj, 'CLAUDE.local.md');
-  fs.writeFileSync(target,
-    `# My Project\n\nstuff\n\n---\n\n${MARKER}\n## Session Discipline\n\nOLD body line\n`);
-  const d = await runPlan(proj, 'local');
-  expect(d.claude_append_changed).toBe(true);
-  const ob: string = d.claude_append_old_block;
-  expect(ob.startsWith(MARKER)).toBe(true);
-  expect(ob).toContain('OLD body line');
-  // must be an exact substring of the target file (so a targeted Edit will match)
-  expect(fs.readFileSync(target, 'utf-8')).toContain(ob);
-}));
-
-// -------------------------------------------------------
-// 5c. CLAUDE-APPEND marker absent -> changed (append case), no old_block
-// -------------------------------------------------------
-
-test('CLAUDE-APPEND marker absent -> changed=true (append), no old_block', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'), '# My Project\n\nno hermit block here\n');
-  const d = await runPlan(proj, 'local');
-  expect(d.claude_append_changed).toBe(true);
-  // append case must omit old_block
-  expect('claude_append_old_block' in d).toBe(false);
-}));
+// Core blocks are retired by the deterministic migration, never planned here.
+for (const body of ['', `${MARKER}\nEdited rules.\n`, `${MARKER}\n${MARKER}\n`]) {
+  test(`core plan omits instruction block fields: ${body.length}`, withProj(async (proj) => {
+    writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.7"}}');
+    fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'), body);
+    const d = await runPlan(proj, 'local');
+    expect(Object.keys(d).filter(key => /^(claude_append_|resident_)/.test(key))).toEqual([]);
+    expect(d.work_pending).toBe(false);
+  }));
+}
 
 // -------------------------------------------------------
 // 6. no_config: missing config.json -> errors[no_config], no top-level error key
@@ -959,7 +926,7 @@ test('work_pending: all current + no drift -> false', withProj(async (proj) => {
   const pl = writePluginList([siblingEntry(proj)]);
   const d = await runPlan(proj, 'local', pl);
   expect(d.up_to_date).toBe(true);
-  expect(d.claude_append_changed).toBe(false);
+  expect(d).not.toHaveProperty('claude_append_changed');
   expect(d.siblings[0].up_to_date).toBe(true);
   expect(d.siblings[0].claude_append_changed).toBe(false);
   expect(d.work_pending).toBe(false);
@@ -1201,63 +1168,6 @@ test('legacy-upgrade idempotence: closing-marker-less target converges to the pa
 // auto-edited (old_string wouldn't be unique) and must never fall through
 // to append (which would add a third copy).
 // -------------------------------------------------------
-
-test('ambiguity guard: marker appears twice in target -> ambiguous, no old_block', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${MARKER}\n## Session Discipline\n\nfirst body\n\n---\n\n${MARKER}\n## Session Discipline\n\nsecond body\n`);
-  const d = await runPlan(proj, 'local');
-  expect(d.claude_append_ambiguous).toBe(true);
-  expect('claude_append_old_block' in d).toBe(false);
-}));
-
-// REGRESSION: work_pending must reflect drift/ambiguity in CORE's own block even
-// when core itself is up_to_date, so a stray duplicate (e.g. left by a prior bad
-// sync) is never swallowed by the "already up to date" short-circuit and the skill
-// still runs Step 6 to report it.
-test('REGRESSION: core up_to_date but its own block is ambiguous -> work_pending=true', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.7"}}'); // matches PR plugin.json -> up_to_date
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${MARKER}\n## Session Discipline\n\nfirst body\n\n---\n\n${MARKER}\n## Session Discipline\n\nsecond body\n`);
-  const d = await runPlan(proj, 'local');
-  expect(d.up_to_date).toBe(true);
-  expect(d.claude_append_ambiguous).toBe(true);
-  expect(d.work_pending).toBe(true);
-}));
-
-test('REGRESSION: core up_to_date but its own block drifted -> work_pending=true', withProj(async (proj) => {
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.7"}}');
-  fs.writeFileSync(path.join(proj, 'CLAUDE.local.md'),
-    `# Project\n\n---\n\n${MARKER}\n## Session Discipline\n\nSTALE body\n`);
-  const d = await runPlan(proj, 'local');
-  expect(d.up_to_date).toBe(true);
-  expect(d.claude_append_changed).toBe(true);
-  expect(d.work_pending).toBe(true);
-}));
-
-test('resident drift remains pending at equal version and with ambiguous shared blocks', withProj(async (proj) => {
-  const plugin = path.join(proj, 'plugin');
-  fs.cpSync(PR, plugin, { recursive: true });
-  const full = `${MARKER}\nShared.\n<!-- resident-only -->\n## Watches\nResident.\n<!-- /resident-only -->\n<!-- /hermitd: Session Discipline -->\n`;
-  fs.writeFileSync(path.join(plugin, 'state-templates/CLAUDE-APPEND.md'), full);
-  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.7"}}');
-  fs.writeFileSync(path.join(proj, 'CLAUDE.md'), full);
-  const read = async () => {
-    const r = await runScript('evolve-plan.ts', { args: [hermitDir(proj), '--hatch-target=committed', `--plugin-list-json=${EMPTY_PLUGIN_LIST}`], env: { CLAUDE_PLUGIN_ROOT: plugin } });
-    expect(r.exitCode).toBe(0);
-    return JSON.parse(r.stdout);
-  };
-  const legacy = await read();
-  expect(legacy.resident_missing).toBe(true);
-  expect(legacy.resident_changed).toBe(true);
-  expect(legacy.claude_append_changed).toBe(true);
-  expect(legacy.work_pending).toBe(true);
-  fs.writeFileSync(path.join(proj, 'CLAUDE.md'), full + full);
-  const ambiguous = await read();
-  expect(ambiguous.claude_append_ambiguous).toBe(true);
-  expect(ambiguous.resident_changed).toBe(true);
-}));
-
 
 test('changelog root tokens resolve to each owning plugin install', withProj(async (proj) => {
   const coreRoot = path.join(proj, 'core-install');

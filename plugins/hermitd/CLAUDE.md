@@ -10,7 +10,7 @@ Standard Claude Code plugin layout (`agents/`, `skills/`, `hooks/hooks.json`, `s
 
 ## Subagent delegation
 
-The shipped hermit is main-as-orchestrator: the long-lived main session delegates a sub-step to an isolated-context subagent when the step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict. A dispatch costs the `CLAUDE.md`/`CLAUDE.local.md` re-seed plus at least two main turns at full context (dispatch and completion ingestion), so batch dispatches and keep trivial sub-steps inline. A delegated step returns a verdict plus an optional `operator_message`; main owns `AskUserQuestion` and operator notification. The operator-facing version is in `state-templates/CLAUDE-APPEND.md` § Rules.
+The shipped hermit is main-as-orchestrator: the long-lived main session delegates a sub-step to an isolated-context subagent when the step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict. A dispatch costs the `CLAUDE.md`/`CLAUDE.local.md` re-seed plus at least two main turns at full context (dispatch and completion ingestion), so batch dispatches and keep trivial sub-steps inline. A delegated step returns a verdict plus an optional `operator_message`; main owns `AskUserQuestion` and operator notification. The operator-facing version is in `prompts/resident.md` § Rules.
 
 ## Per-project state
 
@@ -20,7 +20,7 @@ Installed state lives in the target project's `.hermit/`:
 - `proposals/PROP-NNN-<slug>-HHMMSS.md`
 - `state/` machine state: runtime, alert and reflection state, metrics JSONL, monitor registry
 - `raw/` domain inputs and `compiled/` durable domain outputs (injected at session start). Both flat, no subdirectories; `raw/.archive/` holds expired artifacts. Contract: [plugin-hermit-storage](docs/plugin-hermit-storage.md).
-- `knowledge-schema.md`, `config.json`, and `OPERATOR.md` (operator-curated: draft changes, confirm before writing; hard-blocked in always-on mode)
+- `knowledge-schema.md`, `config.json`, and `OPERATOR.md` (operator-curated: the hermit proposes changes and the operator applies them; hard-blocked in always-on mode)
 - `bin/` lifecycle scripts, `docker/`, `HEARTBEAT.md`, `TASKS.md`; the full set is `state-templates/`
 
 ### State ownership under residency
@@ -33,7 +33,7 @@ A hatched folder can hold more than one session, so every state file has exactly
 
 ## Hatch target routing
 
-`scripts/domain-hatch.ts` owns target resolution and stamping for every consumer: core `hatch`, `hermit-evolve`, `docker-setup`, and every domain hatch. Routing derives from the plugin's install scope (`claude plugin list --json`): `local` → `CLAUDE.local.md` + `.claude/settings.local.json`; `project` → `CLAUDE.md` + `.claude/settings.json`; `user` or undetectable → the `.local` files. Advanced mode lets the operator override via the Visibility prompt. The result is stamped into `state/hatch-options.json` by `domain-hatch.ts` alone. Domain hatches reach it only through `.hermit/bin/hermitd-run domain-hatch <preflight|ensure-target|sync-block> <plugin-id>`: `preflight` returns `target`/`target_file`/`target_default`/`needs_target_question` plus the version verdict, `ensure-target` records an operator override, `sync-block` writes the CLAUDE-APPEND block into the resolved file. `hermit-evolve` steps 6 to 8 are target-aware and will not re-add committed files after a `.local` migration.
+`scripts/domain-hatch.ts` owns target resolution and stamping for every consumer: core `hatch`, `hermit-evolve`, `docker-setup`, and every domain hatch. Routing derives from the plugin's install scope (`claude plugin list --json`): `local` → `CLAUDE.local.md` + `.claude/settings.local.json`; `project` → `CLAUDE.md` + `.claude/settings.json`; `user` or undetectable → the `.local` files. Advanced mode lets the operator override via the Visibility prompt. The result is stamped into `state/hatch-options.json` by `domain-hatch.ts` alone. Domain hatches reach it only through `.hermit/bin/hermitd-run domain-hatch <preflight|ensure-target|sync-block> <plugin-id>`: `preflight` returns `target`/`target_file`/`target_default`/`needs_target_question` plus the version verdict, `ensure-target` records an operator override, `sync-block` writes a sibling instruction block into the resolved file. `hermit-evolve` steps 6 to 8 are target-aware and will not re-add committed files after a `.local` migration.
 
 ## Migrations and feature defaults
 
@@ -55,7 +55,7 @@ An installed hermit belongs to its operator; they rewrite it and the plugin keep
 |---|---|
 | `routines[]`, `boot_skill`, `shutdown_skill`, `monitors[]` | any skill string, including their own local plugins' skills |
 | `config.env`, `docker.packages`, `docker.recommended_plugins` | arbitrary values |
-| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md`, the CLAUDE-APPEND block, `docker/` | free-form rewrite; on-disk beats template (see the `hermitd-docker update` gotcha below) |
+| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md`, sibling instruction blocks, `docker/` | free-form rewrite; on-disk beats template (see the `hermitd-docker update` gotcha below) |
 
 Above the contract line, give skills data + goal + voice and let the model compose; don't hardcode content, edge-case copy, checklists, or opinions about how the operator should work. Loose is not vague: a skill still states its goal and verdict shape precisely.
 
@@ -74,7 +74,7 @@ Constraints:
 - **Runtime is Bun, no build step.** Hooks and scripts are `.ts` run directly by `bun`; skills are plain markdown. The minimum Bun version is `required_bun_version` in `.claude-plugin/hermit-meta.json`, read dynamically by `doctor-check` and the `hermitd-start` preflight; the Docker template pins its own `BUN_VERSION`, bump both together.
 - **No runtime dependencies.** Shipped code imports only the standard library and Bun built-ins (`Bun.*`, `bun:*`, `node:*`). Root `package.json` is dev-only toolchain (`bunx tsc`, test fuzzing); nothing under `plugins/` imports from `node_modules` outside `*.test.ts`.
 - **Hooks fail open on transient errors** (catch, exit 0) and read stdin to completion even when unused. Intentional policy gates may block through the hook's documented denial contract; preserve those decisions.
-- **`state-templates/CLAUDE-APPEND.md` describes behavior, never config values or plugin paths** (routine schedules, channel user IDs, brief times, `permission_mode`, `agent_name`, `escalation`). Those load structurally from `config.json` every session start; restated values leak into the operator's `CLAUDE.md` and from there into OPERATOR.md prose. Naming a routine by `id` or its `enabled` state is fine.
+- **`prompts/resident.md` describes behavior, never config values or plugin paths** (routine schedules, channel user IDs, brief times, `permission_mode`, `agent_name`, `escalation`). Those load structurally from `config.json` every session start; restated values leak into the operator's `CLAUDE.md` and from there into OPERATOR.md prose. Naming a routine by `id` or its `enabled` state is fine.
 - **`state-templates/config.json.template` is the source of default config.** Skills, `hatch` especially, overlay operator choices onto it rather than declaring a parallel default object in prose. `tests/template-skill-sync.test.ts` checks that every top-level template key is referenced by name in `hatch/SKILL.md`.
 - **`SKILL.md` is what every invocation pays for; siblings are progressive disclosure.** Keep the path every run takes in `SKILL.md`; move what a branch needs only sometimes into a sibling (`reference.md`, `branches.md`) that the branch `Read`s by section. Trim prose before either.
 - **Keep the script-mediation boundary.** State costs tokens only where it crosses into context: hook stdout, skill-driven `Read`s, helper-script output, and native tool results (`CronList` returning full prompt text per entry counts). Hooks and helpers print verdict-sized digests, never raw logs or state dumps. Skills never `Read` unbounded surfaces (`cost-log.jsonl`, `*.jsonl` event logs, the channel DB); front them with a script that returns a bounded summary (`cost-report.ts`, `heartbeat.ts precheck`, `lib/search.ts`). A fixed-line log tail is the ceiling, not the norm, and the wrong shape for per-period questions (reflect's cost-spike detector reads `state/cost-index.json` day totals because a 20-line tail of `cost-log.jsonl` spans one date on a busy install). Session-start injection (`startup-context.ts`, `generate-summary.ts`) is the largest recurring cost; a new section there must justify its per-session tokens against how often it changes behavior. No numeric budgets: this is a rule about where digestion happens, not a size quota.

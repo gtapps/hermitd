@@ -5263,17 +5263,13 @@ describe('restart resume', () => {
   }
 });
 
-test('resident missing notifies once and restarts when the file appears', withHermit(async (h) => {
+test('legacy resident-missing stamp does not prevent restart without RESIDENT.md', withHermit(async (h) => {
   writeConfig(h);
   patchRuntime(h, { last_start_error: 'resident-missing' });
   writeFakeTmux(h, 1);
   writeFakePgrep(h, 1);
   expect((await watchdog(h, 'run')).exitCode).toBe(0);
-  expect((await watchdog(h, 'run')).exitCode).toBe(0);
-  expect(fs.existsSync(path.join(h.dir, 'hermit-start-called'))).toBe(false);
-  const events = fs.readFileSync(eventsFile(h), 'utf8').split('\n').filter(line => line.includes('operator notified; restart skipped'));
-  expect(events.length).toBe(1);
-  fs.writeFileSync(path.join(h.dir, '.hermit/RESIDENT.md'), '# Resident');
-  expect((await watchdog(h, 'run')).exitCode).toBe(0);
+  expect(await waitForStartMarker(h)).toBe(true);
   expect(fs.readFileSync(eventsFile(h), 'utf8')).toContain('tree-verified');
+  expect(fs.readFileSync(eventsFile(h), 'utf8')).not.toContain('operator notified; restart skipped');
 }));

@@ -100,7 +100,7 @@ Each hermit's version is tracked independently in `config.json`:
 
 These aren't upgrades — just how your project evolves:
 
-- **OPERATOR.md** — Edit directly or tell your hermit. Keep critical context in the first 50 lines.
+- **OPERATOR.md** — Edit directly; your hermit can propose a change for you to apply. Keep critical context and instructions in the first 50 lines and 2,000 characters; they reload at start, `/clear` and compaction.
 - **Custom agents** — Add/modify/remove files in `.claude/agents/`. Live immediately.
 - **Custom skills** — Add/modify in `.claude/skills/`. Live immediately.
 - **Config** — `/hermitd:hermit-settings` or edit `config.json` directly.
@@ -113,7 +113,7 @@ These aren't upgrades — just how your project evolves:
 1. Keep `plugin.json` version updated
 2. Maintain a `CHANGELOG.md`
 3. Optionally provide `UPGRADE.md` with hermit-specific instructions
-4. Keep `state-templates/CLAUDE-APPEND.md` current
+4. Keep core `prompts/` current, or the domain plugin's marked instruction template when it ships one
 
 ---
 
@@ -123,4 +123,4 @@ Per-version upgrade instructions live in [CHANGELOG.md](../CHANGELOG.md) under e
 
 For a full list of what changed in each release, see [CHANGELOG.md](../CHANGELOG.md).
 
-Evolve compares shared CLAUDE instructions and `.hermit/RESIDENT.md` even at an equal version. It writes resident duties first, cleans legacy local settings, then offers the shared-block shrink. Restart with `hermitd-start --resume` after this migration.
+Core rules load through generated resident and helper system prompts. Evolve retires legacy core blocks with `retire-core-blocks`, backing up the exact removed bytes under `.hermit/state/` before deletion. Move your own lines from that backup to OPERATOR.md for the hermit or CLAUDE.md for every project session, then restart the resident. Sibling block upgrades keep their own marker-based flow.

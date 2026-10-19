@@ -141,13 +141,13 @@ Your hermit handles domain-specific work. Core handles session lifecycle.
 
 | File                                  | Purpose                                                            |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| `skills/hatch/SKILL.md`               | Optional — setup/init skill. Checks core prerequisite, appends CLAUDE-APPEND.md, is idempotent |
-| `state-templates/CLAUDE-APPEND.md`    | Shared rules and resident duties, split by sync-block into CLAUDE and RESIDENT.md |
+| `skills/hatch/SKILL.md`               | Optional — setup/init skill. Checks core prerequisite, appends marked domain instruction template, is idempotent |
+| `marked domain instruction template`    | Shared rules and resident duties, split by sync-block into CLAUDE and RESIDENT.md |
 | `skills/domain-session/SKILL.md`      | Your main workflow, bookended with core's session lifecycle        |
 
 ### Hatch pattern (optional)
 
-Only needed if your hermit has setup steps beyond what core's `/hermitd:hatch` does (e.g. appending a domain CLAUDE-APPEND.md, creating extra state dirs, registering routines). If your plugin is a thin layer of agents/skills with no setup needed, skip this entirely.
+Only needed if your hermit has setup steps beyond what core's `/hermitd:hatch` does (e.g. appending a marked domain instruction template, creating extra state dirs, registering routines). If your plugin is a thin layer of agents/skills with no setup needed, skip this entirely.
 
 Name the skill simply `hatch` — the plugin namespace already disambiguates it from core's hatch (`/hermitd-your-domain:hatch` vs `/hermitd:hatch`).
 
@@ -354,14 +354,14 @@ Use `scheduled_checks` only for `trigger: "session"` skills that run at task com
 
 ### Operator notification routing
 
-Skills should say "notify the operator" instead of referencing specific channels. Core's CLAUDE-APPEND.md includes a routing section that handles delivery transparently: conversation output in interactive mode, channel `reply` tool in always-on mode. This keeps your hermit plugin channel-agnostic.
+Skills should say "notify the operator" instead of referencing specific channels. Core's `prompts/resident.md` includes the Operator Notification routing section: conversation output in interactive mode and `channel-send --notice` in always-on mode. This keeps your hermit plugin channel-agnostic.
 
 ### Checklist before publishing
 
 - [ ] Every agent has `disallowedTools`
 - [ ] Destructive agents use `isolation: worktree`
 - [ ] If present, `hatch` checks for core and is idempotent
-- [ ] CLAUDE-APPEND.md has a marker comment
+- [ ] marked domain instruction template has a marker comment
 - [ ] Skills use "notify the operator" instead of channel-specific references
 - [ ] Hooks are profile-gated
 - [ ] Zero dependencies — no `package.json`, no build step

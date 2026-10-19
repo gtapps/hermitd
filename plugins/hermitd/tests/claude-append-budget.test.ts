@@ -1,15 +1,4 @@
-// CLAUDE-APPEND budget + relocation-anchor test.
-//
-// The CLAUDE-APPEND block is injected into every hatched operator project's
-// CLAUDE.md / CLAUDE.local.md, so it is re-paid on every session load AND every
-// subagent dispatch (subagents inherit CLAUDE.md). This test locks in the
-// token-efficiency trim (v-token-efficiency): it caps the block size, guards the
-// per-skill description tax against creep, and — critically — asserts that every
-// load-bearing anchor and every relocation target still exists. If a pointer in
-// the trimmed APPEND ever dangles (e.g. the notification protocol was removed
-// from channel-responder), this fails instead of silently losing behavior.
-//
-// Usage: bun test tests/claude-append-budget.test.ts   (from the plugin root)
+// Resident prompt budget and workflow anchors; delivered only to the hermit lineage.
 
 import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
@@ -18,7 +7,7 @@ import path from 'node:path';
 import { PLUGIN_ROOT } from './helpers/run';
 import { isModelInvocationDisabled } from './helpers/skill-frontmatter';
 
-const APPEND_PATH = path.join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md');
+const APPEND_PATH = path.join(PLUGIN_ROOT, 'prompts', 'resident.md');
 const CHANNEL_RESPONDER = path.join(PLUGIN_ROOT, 'skills', 'channel-responder', 'outbound.md');
 const WATCH_SKILL = path.join(PLUGIN_ROOT, 'skills', 'watch', 'SKILL.md');
 const SKILLS_DIR = path.join(PLUGIN_ROOT, 'skills');
@@ -26,105 +15,18 @@ const AGENTS_DIR = path.join(PLUGIN_ROOT, 'agents');
 
 const append = fs.readFileSync(APPEND_PATH, 'utf8');
 
-describe('CLAUDE-APPEND size budget', () => {
+describe('Resident prompt size budget', () => {
   test('block stays under the post-trim ceiling', () => {
-    // Pre-trim was 10,632 B. Trimmed to ~6,836 B, then held near 7,000 until the
-    // auto-mode classifier's "Sanctioned egress" safety bullet (~7,164 B). Raised
-    // to 7,600 for the "Channel voice" rule (~7,532 B), then to 7,700 for the
-    // `ROUTINE_DUE` notification-handler line (~7,638 B), then to 7,850 for the
-    // unified `channel-send.ts --notice` proactive-notify mechanism replacing the
-    // model-side resolver + reply-tool instruction (~7,795 B), then to 7,900 for
-    // the closing `<!-- /hermitd: Session Discipline -->` marker
-    // (~7,877 B) that makes evolve-plan.ts's block bounds authoritative instead
-    // of heuristic — all deliberate, reviewed additions, not creep. The
-    // context-engineering trim then removed the watch authoring-rules duplicate,
-    // the channel-send exit-code walkthrough, the delegation-economics tutorial,
-    // the suggestion-path enumeration, and the numeric micro-rules, landing at
-    // ~6,199 B. Keep a small margin without reopening the door to re-bloat.
-    // Raised to 7,200 for the Recall-first routing rule: a 601 B bullet against
-    // 9 B of remaining headroom, landing at ~7,092 B. Its trigger list and its
-    // three justifications (channel-DB coverage, relevance+recency ranking,
-    // bounded file:line digest) are also stated in recall's own frontmatter
-    // description — that duplication is accepted, not overlooked, so don't
-    // "fix" it by deleting either copy without checking the other.
-    // Raised to 8,350 for the knowledge-placement rule (settled knowledge gets
-    // one authoritative home): a ~1,160 B paragraph landing at ~8,250 B. It must
-    // be always-loaded — the settlement moment ("from now on, always X") happens
-    // mid-conversation with no skill loaded, and an on-demand pointer proved a
-    // two-hop reliability risk in review. Includes the exact observations.ts
-    // call form because the fallback row is written outside any skill context.
-    // Raised to 8,650 for the auto-mode denial-alert amendment (landing at
-    // ~8,607 B): the channel-send carve-out folded into the Sanctioned egress
-    // bullet's enumeration, plus the one-shot bound with a Progress-Log/
-    // terminal fallback (deliberately not PushNotification — it needs Remote
-    // Control, absent under setup-token auth) and the managed-session
-    // hook-dedup note. This entry also covers the interim +87 B "sanctioned
-    // even when the blocked call was a channel send" clause (8,337 B), which
-    // shipped without a ledger line.
-    // Raised to 9,100 for the terminal-only settings rule (landing at ~9,057 B),
-    // which arrives with hermit-settings becoming channel-invocable. Deliberate
-    // and load-bearing twice over: it steers the model to explain the boundary
-    // instead of attempting a write the channel-settings gate would deny (the
-    // deterministic layer), and the auto-mode classifier reads CLAUDE.md too, so
-    // the same sentence backs the overlay's soft_deny. Kept to one bullet with no
-    // config values or path list — the gate's policy table is authoritative.
-    // Raised to 9,600 to restore working headroom, not to admit new content: at
-    // 9,057 B against a 9,100 B ceiling every branch that touched the block
-    // tripped this guard, so it was failing as a merge tax rather than catching
-    // creep. The ~500 B of slack is the margin, not a budget to spend — the next
-    // deliberate addition still gets its ledger line here, and the one after that
-    // trims before it raises.
-    // The maintainer-audience rewrite (a `maintainer` leg supplements and never
-    // replaces the `client` leg; decision-seeking notices always carry a plain
-    // client leg, and the maintainer text still has to stand alone where both
-    // audiences resolve to one chat) was funded in place per that rule: ~330 B
-    // trimmed from the auto-mode denial bullet's restated fallback and the
-    // proposal-id rationale sentence paid for most of it — +210 B net against
-    // the ~500 B of margin, no raise.
-    // Raised to 10,450 for the two guest-to-resident peer-routing lines
-    // (`GUEST_REPORT:` reports and peer questions), landing at ~9,966 B. The
-    // rule above says trim before raising, and the content was compressed
-    // first: the two bullets were written at 449 B and cut to 378 B, dropping
-    // the restated "a message from another Claude session" frame that line 17
-    // already establishes. The trim stopped there because the block had 12 B
-    // of headroom before this branch — the ~500 B of margin the 9,600 raise
-    // created was already spent by the maintainer-audience rewrite — and no
-    // remaining passage could give up 366 B without deleting a rule. Both
-    // lines have to be always-loaded for the same reason the settled-knowledge
-    // rule does: a peer message arrives with no skill loaded, so an on-demand
-    // pointer would never be read. The ceiling restores the same ~500 B of
-    // working margin, so the next addition trims before it raises.
-    // The cross-session idle-notice routing line (+181 B) is funded from that
-    // margin — no raise. It must stay always-loaded for the same reason: the
-    // notice arrives as a bare turn with no skill in context. Do NOT re-derive
-    // this ceiling from a branch's own base — a number computed against a stale
-    // base looks green on the branch and fails the moment main's block merges in.
-    // The 1.2.52 trim took the block from 10,172 B to ~8,500 B without removing
-    // a rule: rationale clauses, mechanism descriptions ("gates enforce this
-    // mechanically", "script-enforced"), and routing examples that skill
-    // descriptions already carry were cut; recall-first, delegation, and
-    // OPERATOR.md are one sentence each; bold stays only on the two
-    // classifier-facing bullets. The ceiling is left at 10,450 on purpose: the
-    // ~2 KB of headroom is margin for deliberate additions, each still owed a
-    // ledger line here, not a budget to refill.
-    // Widening the peer-question line to peer questions or requests (+206 B,
-    // landing at ~8,960 B) is funded from that headroom, no raise: requests may
-    // initiate in-scope work, and the authority limits are now stated explicitly.
-    // Conversation progress/report routing adds one always-loaded dispatch line,
-    // funded from existing headroom; the watch skill owns the full protocol.
-    // Chat controls now use ! instead of /; the spelling change adds no bytes.
-    // The calibration rule's own-actions clause (+259 B) is funded from headroom, no raise.
+    // Retain the existing ceiling for the resident instructions.
     expect(Buffer.byteLength(append, 'utf8')).toBeLessThanOrEqual(10450);
   });
 });
 
-describe('CLAUDE-APPEND load-bearing anchors', () => {
+describe('Resident prompt load-bearing anchors', () => {
   // These strings are referenced by other skills/scripts by name, or are the
   // literal invocation an operator-notification path executes. Removing any of
   // them breaks a cross-reference — the trim must preserve all of them.
   const anchors = [
-    '<!-- hermitd: Session Discipline -->', // evolve marker (block replace)
-    '<!-- /hermitd: Session Discipline -->', // closing marker (evolve block bounds)
     '## Operator Notification',                        // referenced by reflect + hermit-evolve
     '## Watches',
     '## Knowledge Discipline',

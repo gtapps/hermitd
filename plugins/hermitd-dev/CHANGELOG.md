@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- The development rules point to project conventions and owning skills without referring to a core CLAUDE block.
+
 ## [0.4.22] - 2026-10-17
 
 ### Changed

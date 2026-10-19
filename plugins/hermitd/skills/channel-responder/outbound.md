@@ -1,7 +1,7 @@
-Use this protocol for proactive notifications (`CLAUDE-APPEND.md` § Operator Notification). Main owns sends and any `AskUserQuestion`; delegates return composed messages.
+Use this protocol for proactive notifications (`prompts/resident.md` § Operator Notification). Main owns sends and any `AskUserQuestion`; delegates return composed messages.
 
 - **If no channel is enabled** (channels block absent, `channels === {}`, or every channel-config entry has `enabled === false` — exclude the `primary` string pointer when iterating):
-  - If `push_notifications === true` in `config.json`, fire `PushNotification(message="<condensed one line, per `CLAUDE-APPEND.md` § Operator Notification push format>", status="proactive")`. Push is best-effort; do not retry on failure and do not log a `channel-send-unavailable` issue for this branch — the operator's empty-channels config is intentional.
+  - If `push_notifications === true` in `config.json`, fire `PushNotification(message="<condensed one line, per `prompts/resident.md` § Operator Notification push format>", status="proactive")`. Push is best-effort; do not retry on failure and do not log a `channel-send-unavailable` issue for this branch — the operator's empty-channels config is intentional.
   - Respond in conversation either way (the conversation response is the durable record).
 - **If at least one channel is enabled**, compose the audience version(s) and deliver them in one
   call — do not resolve the channel yourself, the script owns routing:

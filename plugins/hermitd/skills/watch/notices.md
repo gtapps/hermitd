@@ -26,7 +26,7 @@ On a background-task completion, match its task id to a live entry's
 
 1. On `blocked <waitingFor>`, remove `poll_task_id` from the entry and write
    the registry; the entry stays live for the helper's idle notice. Send one
-   operator notice per CLAUDE-APPEND § Operator Notification with a `client`
+   operator notice per prompts/resident.md § Operator Notification with a `client`
    leg, in the record's task thread when it has one, otherwise the channel.
    Say the helper is waiting on `<waitingFor>` and offer the ways on: answer
    it in Remote Control when `config.json`'s `remote` is `true`, reply here
@@ -80,7 +80,7 @@ before its turn's idle notice waits for that notice):
    stopped for the retry is no longer running.
 3. When a matching report has an entry record with a conversation, post it in
    that thread through § Posting a report in a task thread below instead of the
-   channel notice. Otherwise notify the operator per CLAUDE-APPEND § Operator Notification with a `client`
+   channel notice. Otherwise notify the operator per prompts/resident.md § Operator Notification with a `client`
    leg. For an idle notice, if a `GUEST_REPORT:` from sender X is in this
    conversation, carry that report block instead of the quoted status line. With no such
    report, use `"<note>: <name> finished its turn. Last status: «<one-line status>»"`.

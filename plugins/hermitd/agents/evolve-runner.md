@@ -85,6 +85,8 @@ Everything else (version gates 0/0b, the plan pre-pass, classification, copies, 
 step-9 config write — the `new_config_keys` merge and the `_hermit_versions` bump, both performed by
 `evolve-finalize.ts` in one atomic write) runs exactly as `reference.md` specifies.
 
+Never echo credential values in your report.
+
 ## Return value — the report (your final message, nothing else)
 
 Return only this structured report. It is the single thing that re-enters the main session, so keep it
@@ -99,8 +101,6 @@ Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
 Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
-CLAUDE-APPEND: <updated | unchanged | kept (resident duties duplicated until you accept the shrink)>
-RESIDENT: <created | updated | unchanged>
 Context reload: <required (comma-separated plugin names) | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)

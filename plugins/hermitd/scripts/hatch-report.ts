@@ -33,7 +33,6 @@ const CONFIG_REFERENCE_URL =
   'https://github.com/gtapps/hermitd/blob/main/plugins/hermitd/docs/config-reference.md';
 
 const DEPLOYMENTS = ['docker', 'tmux', 'interactive'];
-const CLAUDE_MARKER = 'hermitd: Session Discipline';
 const WORKTREE_MARKER = '# >>> hermitd';
 
 function has(file: string, needle: string): boolean {
@@ -49,7 +48,6 @@ export interface Observed {
   stateDir: boolean;
   config: Json | null;
   hatchOptions: Json | null;
-  claudeBlock: 'CLAUDE.md' | 'CLAUDE.local.md' | null;
   gitignore: boolean;
   worktreeinclude: boolean;
   settingsFile: string | null;
@@ -70,9 +68,6 @@ export function observe(root: string): Observed {
     // Raw, not settled: a null config here IS the "hatch did not complete" signal.
     config: readConfigRaw(hermit),
     hatchOptions: readJson(path.join(hermit, 'state', 'hatch-options.json')),
-    claudeBlock: has(path.join(root, 'CLAUDE.md'), CLAUDE_MARKER) ? 'CLAUDE.md'
-      : has(path.join(root, 'CLAUDE.local.md'), CLAUDE_MARKER) ? 'CLAUDE.local.md'
-      : null,
     gitignore: has(path.join(root, '.gitignore'), '.hermit'),
     worktreeinclude: has(path.join(root, '.worktreeinclude'), WORKTREE_MARKER),
     settingsFile,
@@ -183,7 +178,6 @@ export function finalData(o: Observed, deployment: string): Json {
     agent_name: c.agent_name ?? null,
     // A missing git repo is not reported: existing projects legitimately vary.
     observed: {
-      claude_block: o.claudeBlock,
       gitignore: o.gitignore,
       worktreeinclude: o.worktreeinclude,
       permissions_file: o.settingsFile,

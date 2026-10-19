@@ -1,9 +1,9 @@
 # Frontmatter Conventions
 
-Artifacts created by hermit skills and operators should include YAML frontmatter.
+Knowledge artifacts in `.hermit/raw/` and `.hermit/compiled/` require YAML frontmatter. Other hermit records use frontmatter only when their owning writer specifies it; files in the operator's project follow that project's conventions. Task-worker reports are plain message bodies with no frontmatter.
 Conventions for grep-ability and future tooling — not enforced by a validator.
 
-## Core field rules (all artifacts)
+## Core field rules (knowledge artifacts and writer-defined records)
 
 | Field | Required | Notes |
 |---|---|---|

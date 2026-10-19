@@ -310,14 +310,11 @@ describe('ensureHatchTarget', () => {
 });
 
 describe('sync-block', () => {
-  // Claude Code reads a leading "---" as frontmatter and drops the block up to the next sibling's "---".
-  test('core block written into an empty target does not open with a frontmatter fence', () => {
+  test('core has no template to append to an empty target', () => {
     const target = path.join(freshDir(), 'CLAUDE.local.md');
-    const template = fs.readFileSync(templatePath(PLUGIN_ROOT), 'utf8');
-
-    const res = applyBlock(planBlock(PLUGIN_ROOT, 'hermitd', target, [], splitResident(template).shared, false));
-    expect(res.action).toBe('append');
-    expect(fs.readFileSync(target, 'utf8').trimStart().startsWith('---')).toBe(false);
+    const plan = planBlock(PLUGIN_ROOT, 'hermitd', target, []);
+    expect(plan.action).toBe('no_template');
+    expect(fs.existsSync(target)).toBe(false);
   });
 
   test('appends when the marker is absent, then skips once present', () => {

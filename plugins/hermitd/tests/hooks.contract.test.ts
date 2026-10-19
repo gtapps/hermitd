@@ -177,7 +177,7 @@ describe('cost-tracker budget message', () => {
   // Chat voice contract: composeBudgetMessage is the one deterministic
   // (non-model) channel sender that composes prose, so it's the only place a
   // forbidden-string assertion can enforce actual output; the rule itself is
-  // the Channel voice paragraph in state-templates/CLAUDE-APPEND.md.
+  // the Channel voice paragraph in prompts/resident.md.
   test('composeBudgetMessage never leaks internal IDs or token jargon', () => {
     const periods = [
       { period: 'daily', spend: 5.2, cap: 5, ratio: 1.04, level: 'breach' },
@@ -958,7 +958,7 @@ Rota body.
 
   test('startup-context (source=compact, full state → ≤1200 chars, no full-capsule sections)', withDir(async (dir) => {
     write(hermit(dir, 'state', 'runtime.json'), '{"session_state":"waiting","waiting_reason":"operator_input"}');
-    write(hermit(dir, 'OPERATOR.md'), '# Operator\nContext body that must never be re-injected on compact.\n');
+    write(hermit(dir, 'OPERATOR.md'), '# Operator\nOperator instructions re-injected on compact.\n');
     write(hermit(dir, 'sessions', 'S-001-REPORT.md'), '# Report\n## Overview\nReport body text stays out.\n');
     const r = await runScript('startup-context.ts', {
       cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
@@ -966,7 +966,7 @@ Rota body.
     expect(r.exitCode).toBe(0);
     expect(r.stdout.length).toBeLessThanOrEqual(1200);
     expect(r.stdout).toContain('---Compaction Pointers---');
-    for (const banned of ['---Operator Context (OPERATOR.md)---', '---Active Session---', '---Compiled Knowledge---',
+    for (const banned of ['---Active Session---', '---Compiled Knowledge---',
       '---Schema Drift---', '---Storage Drift---', '---Last Report---', '---Upgrade Available---', '---Stale Plugin Runtime---']) {
       expect(r.stdout).not.toContain(banned);
     }
@@ -985,11 +985,12 @@ Rota body.
     expect(r.stdout).toContain(`latest task: tasks/${record.id}.md`);
     expect(r.stdout).not.toContain('latest report:');
     expect(r.stdout).not.toContain('Task body text');
-    expect(r.stdout).toContain('operator context: OPERATOR.md');
+    expect(r.stdout).toContain('---Operator Context (OPERATOR.md)---');
+    expect(r.stdout).not.toContain('operator context: OPERATOR.md');
     expect(r.stdout).toContain('proposals dir: proposals/');
     expect(r.stdout).not.toMatch(/^last progress: /m);
     expect(r.stdout).not.toContain('Report body text');
-    expect(r.stdout).not.toContain('Secret operator body');
+    expect(r.stdout).toContain('Secret operator body');
     expect(r.stdout).not.toContain('Proposal body');
   }));
 
@@ -1045,13 +1046,14 @@ Rota body.
       cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.length).toBeLessThanOrEqual(1200);
+    expect(r.stdout.split('---Operator Context')[0].length).toBeLessThanOrEqual(1200);
+    expect(r.stdout).toContain('---Operator Context (OPERATOR.md)---\ncontext\n');
     // The trailing line is cut mid-sentence, proving the capsule hit the cap here.
     expect(r.stdout).not.toContain('to reconstruct context.');
     expect(r.stdout).toContain('operator language: pt (reply in this language)');
     // Line-boundary truncation: every emitted pointer line is intact, not a
     // partial fragment of the field that follows it.
-    for (const line of r.stdout.trimEnd().split('\n').slice(1)) {
+    for (const line of r.stdout.split('---Operator Context')[0].trimEnd().split('\n').slice(1)) {
       expect(line).toMatch(/^(operator language|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir): /);
     }
   }));

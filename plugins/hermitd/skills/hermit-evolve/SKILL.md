@@ -52,8 +52,6 @@ Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
 Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
-CLAUDE-APPEND: <updated | unchanged | kept (resident duties duplicated until you accept the shrink)>
-RESIDENT: <created | updated | unchanged>
 Context reload: <required (comma-separated plugin names) | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
@@ -130,6 +128,8 @@ costs one Bash call instead of loading the routines skill. Route on its JSON `st
 If reconciliation fails, append that failure and the manual `hermit-routines load` next action to
 the report.
 
+If Upgrade Instructions reported `restart_required` in Operator notes, use that route even when reconciliation reports healthy; do not re-arm against the previous resident prompt.
+
 **Deliver the result.** Compose a condensed one-line message such as `"Hermit upgraded: vOLD → vNEW.
 N settings added, M templates refreshed."` Omit segments where nothing changed. **Append the
 deferred/auto-applied segments**: settings set to defaults (Step 4), permission entries added (Step
@@ -138,7 +138,7 @@ reload notice when required — so the operator can follow up via `/hermit-setti
 non-`none` Operator notes line after that list**, one line each.
 
 - **Automated-maintainer:** deliver through `channel-send.ts --notice` with
-  `{"maintainer":"<complete condensed result>"}` on stdin and no `client` leg. Follow CLAUDE-APPEND.md
+  `{"maintainer":"<complete condensed result>"}` on stdin and no `client` leg. Follow prompts/resident.md
   § Operator Notification fallback behavior.
 - **Direct-channel-reply or inline:** return the result only to the invoking conversation. Do not
   send a second proactive notice.

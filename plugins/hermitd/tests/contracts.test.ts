@@ -3334,7 +3334,7 @@ describe('proactive-notify unification contract', () => {
 
   test('channel-responder outbound.md and CLAUDE-APPEND both point to the same --notice mechanism', () => {
     const responder = read(path.join(SKILLS, 'channel-responder', 'outbound.md'));
-    const append = read(path.join(TEMPLATES, 'CLAUDE-APPEND.md'));
+    const append = read(path.join(PLUGIN_ROOT, 'prompts', 'resident.md'));
     // Both name the script through bin/hermitd-run: outbound.md is also read
     // from the operator's CLAUDE.md, where `<plugin_root>` has no definition.
     expect(responder).toContain('hermitd-run channel-send');
@@ -3646,7 +3646,7 @@ describe('task-worker agent contract', () => {
 // whose own subprocess tests were updated leaves these callers failing at runtime.
 test('skill command strings match the script verbs and flags they call', () => {
   const pins: [string, string[]][] = [
-    [path.join(TEMPLATES, 'CLAUDE-APPEND.md'), ['hermitd-run observations observe .hermit skill-preference-applied']],
+    [path.join(PLUGIN_ROOT, 'prompts', 'resident.md'), ['hermitd-run observations observe .hermit skill-preference-applied']],
     [path.join(SKILLS, 'reflect', 'SKILL.md'), ['observations.ts graduate .hermit', '--graduation-cursor']],
     [path.join(SKILLS, 'task', 'SKILL.md'), [
       "conversation.ts .hermit thread-open --source '<sourceKey>' --chat-id '<chat_id>' --message-id '<message_id>' --name '<title>'",
