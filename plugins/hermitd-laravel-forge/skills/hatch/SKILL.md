@@ -114,29 +114,7 @@ If `php` is not found at this point: re-run Step 2.
 
 ---
 
-## Step 5 — CLAUDE.md / CLAUDE.local.md inject
-
-**Resolve target file**: Step 1's preflight already returned `target`, `target_file`, `target_default` and `needs_target_question`.
-
-If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored, operator-personal) / **Committed files** (shared with teammates). Then record it:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-laravel-forge --target <choice>
-```
-
-Then write the block:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch sync-block hermitd-laravel-forge
-```
-
-On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
-
-It appends the `<!-- hermitd-laravel-forge: Forge Workflow -->` block when the marker is absent and skips when it is already present; `hermit-evolve` handles replacement on upgrade.
-
----
-
-## Step 6 — Knowledge-schema extension
+## Step 5 — Knowledge-schema extension
 
 Read `.hermit/knowledge-schema.md`.
 
@@ -150,7 +128,7 @@ Use Edit. Skip if already present (idempotent).
 
 ---
 
-## Step 7 — Stamp + register in config.json
+## Step 6 — Stamp + register in config.json
 
 Re-read `.hermit/config.json` now — the wizard has been running since Step 1 and the on-disk file may have changed. Apply the merges below to that fresh copy.
 
@@ -174,11 +152,18 @@ Write the updated `config.json` via Write tool (full file replacement for valid 
 
 ## Native approval rules
 
-Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
+If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored, operator-personal) / **Committed files** (shared with teammates). Then record it:
+
+```bash
+.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-laravel-forge --target <choice>
+```
+
+
+Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`.
 
 Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. It prints `OK`; `{"status":"installed","deny_conflicts":[...]}` means existing operator denies override those asks, so name them in the final report. On `{"error":...}`, surface the error and stop.
 
-## Step 8 — Final report
+## Step 7 — Final report
 
 ```
 hermitd-laravel-forge {version} setup complete.
@@ -190,12 +175,10 @@ Installation summary:
   ✓ Forge SDK installed → .hermit/forge-runtime/vendor/
   ✓ .env: FORGE_API_TOKEN present, API check: ok
   ✓ .gitignore: .env covered
-  ✓ CLAUDE.md: Forge Workflow block injected (or already present)
   ✓ knowledge-schema.md: deploy-incident type added (or already present)
   ✓ config.json: _hermit_versions stamped, forge-failed-deploys routine registered
 
 Next steps:
-  - Restart Claude Code so the updated CLAUDE.md loads.
   - Run /hermitd:hermit-routines load to activate the daily estate scan.
   - In Docker: the forge-runtime/ vendor is in your project tree (bind-mounted/persistent) — it survives container restarts.
 

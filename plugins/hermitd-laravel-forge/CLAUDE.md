@@ -9,7 +9,7 @@ A Laravel Forge domain layer for `hermitd`: deployment skills, server/site manag
 - `php/forge-operation.php`: the write gateway: request capture, canonicalization, plan store, hash-checked execution
 - `php/forge-lib.php`: derived predicates (`isEndpointMethod`, `takesOrgFirst`), deny tiers, policy loading, output scrubber
 - `php/composer.json` + `php/composer.lock`: shipped; `php/vendor/` is gitignored
-- `state-templates/CLAUDE-APPEND.md`: Forge Workflow block injected by hatch; `DOCKER.md`: apt deps + DNS allowlist for `/docker-setup`
+- `DOCKER.md`: apt deps + DNS allowlist for `/docker-setup`
 
 ## Architecture
 
@@ -22,13 +22,13 @@ The agent calls `forge.php <command>` directly via Bash. The SDK handles all HTT
 - **Surface-then-approve on every write.** Preview first, relay the canonical target, invoke the execution command for native approval. No exceptions.
 - **Write approval.** Curated deploy/reboot and generic plan execution use Claude Code native approval. Generic execution also re-captures the request and enforces its hash, expiry, policy, and single use.
 - **Never echo, cat, or Read `.env`.** Check credential state with `forge.php check` (one JSON object; branch on `status`: `missing`, `invalid`, `unreachable`, or `ok`).
-- **Deployment and server logs may contain secrets.** Scrub before relay and before persistence (the CLAUDE-APPEND secret-hygiene rule).
+- **Deployment and server logs may contain secrets.** Scrub before relay and before persistence.
 - **Generic dispatch reaches the whole SDK minus two deny tiers** (`secrets`, `destructive`), because the Forge API token is what authorizes an operation; this plugin owns autonomy and context hygiene, not authorization. Reads go through `call`, writes through `preview` → approval → `execute <plan-id>`. Reachability is derived from the installed SDK by reflection and from the captured HTTP verb, never from a hand-maintained list. `forge.php policy` prints the effective state.
 - **`php/forge-operation.php` is the security-critical file.** Capture, canonicalization, plan storage, and the hash check live there, with no CLI parsing or output formatting, so `php/tests/run.php` drives it directly. Its Blocks A and B run first in the suite for a reason: if the captured request is not what the SDK would really send, every other guarantee is decorative.
 
 ## Hatch target routing
 
-Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`; Step 5 records any override with `domain-hatch ensure-target hermitd-laravel-forge --target <choice>` and writes the block with `domain-hatch sync-block hermitd-laravel-forge`.
+Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-laravel-forge`; its Native approval rules step records Visibility with `domain-hatch ensure-target hermitd-laravel-forge --target <choice>` when `needs_target_question` is true.
 
 ## Development
 
