@@ -159,10 +159,9 @@ for (const reason of ['execution-not-idle', 'stale-identity', 'idle-too-fresh', 
 test('policy hash excludes learned channel routing and version stamps but includes policy', () => {
   const f = fixture();
   try {
-    const config = { channels: { discord: { enabled: true, dm_channel_id: 'one', default_chat_id: 'two' } }, _hermit_versions: { core: '1' } };
+    const config = { channels: { discord: { enabled: true, default_chat_id: 'two' } }, _hermit_versions: { core: '1' } };
     f.put('config.json', config);
     const before = contextPolicyHash(f.dir);
-    config.channels.discord.dm_channel_id = 'three';
     config.channels.discord.default_chat_id = 'four';
     config._hermit_versions.core = '2';
     f.put('config.json', config);

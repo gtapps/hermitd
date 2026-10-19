@@ -23,8 +23,7 @@ once, and it stays silent until it resolves. A send that never reached the opera
 on the next run rather than counted as delivered.
 Every run sends the same two-leg notice and `channel-send.ts` resolves each leg against this
 install's own config: the maintainer leg reaches the configured `maintainer_channel_id`, else the
-primary chat on a `technical` profile (the client leg is dropped there, since both landed in one
-chat), else `state/watchdog-events.jsonl` on a `non-technical` one. A configured maintainer destination that
+primary chat on a `technical` profile (both parts arrive together there), else `state/watchdog-events.jsonl` on a `non-technical` one. A configured maintainer destination that
 is unreachable fails closed to `state/watchdog-events.jsonl` and never spills into the primary chat.
 
 `--maintainer` is accepted and ignored (routine strings may still pass it): audience is decided by
@@ -88,12 +87,12 @@ the row's own tier and the operator's config, not by the flag.
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice
    ```
    One payload, whatever the invocation:
-   `{"client": "<plain headline for the rows without a tier, plus the one next step>", "maintainer": "<complete summary, every row>"}`.
+   `{"client": "<plain headline for the rows without a tier, plus the one next step>", "maintainer": "<technical rows only>"}`.
    The client leg is the only part of this notice that can land in a client chat, so write it to the
    channel voice rule — no check ids, file paths, USD or token figures; what is wrong in plain words
-   and what the operator should do about it. The maintainer leg is the complete richer version of
-   the same notice, never a tiered-rows-only fragment, because it stands alone wherever both
-   audiences resolve to one chat. Omit `client` when every new row is tiered. Send no `fallback`
+   and what the operator should do about it. The maintainer leg carries only technical rows
+   (IDs, paths, spend, diagnostics and errors). When both audiences share a chat the script sends
+   both parts together, so neither repeats the other. Omit `client` when every new row is tiered. Send no `fallback`
    key: its default is what routes a maintainer leg to `state/watchdog-events.jsonl` on a `non-technical` install.
 
    When doctor was invoked from a channel, do not quote a tiered row back into your reply; say a

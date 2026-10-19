@@ -619,9 +619,8 @@ async function applyBudgetCheck(costIdx: Json, timezone: string, budgetConfig: J
     if (newPeriods.length > 0) {
       // Full USD/cap/ratio detail is maintainer-tier; on a stock install (no
       // maintainer channel, technical profile) it falls back to the primary chat,
-      // byte-identical to today. When a pause is in force, the client chat also
-      // gets a plain localized "paused until X" line — dropped by sendOperatorNotice
-      // when the maintainer text already landed in that same chat.
+      // together with the plain localized "paused until X" client line when
+      // a pause is in force.
       const message = composeBudgetMessage(newPeriods, result.action, until, timezone, locale);
       const clientLine = until ? BUDGET[locale].clientPaused(friendlyBoundary(until, timezone)) : undefined;
       const res = await sendOperatorNotice(HERMIT_DIR, {

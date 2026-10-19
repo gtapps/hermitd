@@ -18,7 +18,6 @@ export function contextPolicyHash(dir: string): string {
   delete config._hermit_versions;
   for (const channel of Object.values(config.channels ?? {})) {
     if (channel && typeof channel === 'object') {
-      delete (channel as Json).dm_channel_id;
       delete (channel as Json).default_chat_id;
     }
   }

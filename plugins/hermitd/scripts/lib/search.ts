@@ -169,7 +169,7 @@ function search(hermitDir: string, query: string, opts?: Json): Json[] {
     const separator = o.chat.indexOf(':');
     const key = separator < 0 ? o.chat : o.chat.slice(0, separator);
     const chatId = separator < 0 ? '' : o.chat.slice(separator + 1);
-    scope = recallScope(readConfigRaw(hermitDir), key, chatId);
+    scope = recallScope(readConfigRaw(hermitDir), key, chatId, hermitDir);
   }
   const scoped = scope != null;
 

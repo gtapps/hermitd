@@ -18,7 +18,7 @@ Read the following (gracefully skip any file that doesn't exist). The sources ar
 1. `.hermit/state/alert-state.json` — the `alerts` object, keyed by alert id (`checklist:*`, `proposal-pending:PROP-NNN`, `micro-proposal-pending:*`). Each entry has `text`, `count`, `first_seen`, `last_seen`, `suppressed`, `consecutive_clean`.
 2. `.hermit/state/runtime.json` — `last_activity`, `session_id`.
 3. `.hermit/state/reflection-state.json` — `last_reflection` timestamp, `counters` (including `judge_suppress_by_code` map and run/output fields), and `queue` (pending micro-proposals and reflect candidates).
-4. `.hermit/config.json` — `routines` array (id, schedule, enabled); `channels` object (each channel's `default_chat_id` and `dm_channel_id`).
+4. `.hermit/config.json` — `routines` array (id, schedule, enabled); `channels` object (each channel's `default_chat_id`).
 5. `.hermit/proposals/PROP-*.md` — glob; count by `status` frontmatter field, and read `id`, `title`, `accepted_date`, `resolved_date`, `tags` for the stale-proposal and fragile-zone analysis.
 6. `.hermit/state/micro-proposals.json` — count entries with `status: "pending"`.
 7. Glob counts: `.hermit/raw/**` (excluding `.archive/`), `.hermit/compiled/**`, `.hermit/raw/.archive/**`.
@@ -41,7 +41,7 @@ Read the following (gracefully skip any file that doesn't exist). The sources ar
 
 **Knowledge:** Report glob counts for raw (excl. archive), compiled, and archived files. Omit if all three are zero and the directories are missing. If the operator explicitly asked to check or lint knowledge ("check knowledge", "lint knowledge", "knowledge health"), also run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-lint.ts .hermit` and list its `findings` by type (`file`, `age` in days, `detail`) beneath the counts, each type with its fix from [reference.md](reference.md). It is read-only.
 
-**Channel availability:** From `config.json.channels`, for each configured channel, check whether `default_chat_id` or (failing that) `dm_channel_id` is set — the same fallback chain the outbound resolver uses. Report "ready" or "not yet paired (no chat id — send a message first)".
+**Channel availability:** From `config.json.channels`, for each configured channel, check whether `default_chat_id` is set — the same home field the outbound resolver uses. Report "ready" or "not yet paired (no chat id — send a message first)".
 
 **Fragile zones:** From the last five normalized task records, identify repeated themes in cancelled outcomes and open waiting reasons. Combine these with proposal tags for dismissed or blocked proposals. Surface the top two or three themes with the actual outcomes; unconfirmed is not completed. If none recur, report "No fragile zones detected."
 

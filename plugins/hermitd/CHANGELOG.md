@@ -6,10 +6,15 @@
 - Watches take an optional `chat`, sending their notices to that chat like routines; an ad-hoc watch started from a team chat reports back there.
 
 ### Changed
+- Unattended sends and home trust use only `default_chat_id`; `dm_channel_id` is removed.
+- Client and maintainer notice parts arrive together when both audiences share a chat.
+- A Discord thread's recall includes its parent channel's scope.
+- A chat-bound reminder is sent by `later deliver`, which marks it sent only after delivery.
 - Core rules reach residents and helpers through their own system prompts; OPERATOR.md reloads after compaction. Every hermit instruction block is backed up and removed from operator instruction files, and `.hermit/RESIDENT.md` is deleted. `domain-hatch sync-block` is removed: hermit plugins keep their guidance in their own skills, agents and hooks.
 - The calibration rule covers saying one of the hermit's own actions did not happen: it checks its records first, and no record leaves the claim unverified.
 
 ### Fixed
+- A routine, watch or reminder whose public Discord thread was deleted or locked posts in its text or announcement parent channel.
 - `apply-settings` `permissions-plan`, `permissions-sync`, `deny` and `deny-add` refuse the settings file that is not the stamped hatch target, so `/hermitd:hermit-evolve` no longer writes the sealed allow and deny sets into `settings.local.json` on committed-target hermits; the evolve runner re-runs a refused call once on the file it names.
 - `/hermitd:hatch` stamps the settings target before its first settings or `CLAUDE.md` write, and `/hermitd:hermit-doctor`'s `permission-rules` fix names the stamped target's settings file.
 
@@ -18,6 +23,13 @@
 2. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/state/resident-system-prompt.md)` ask entry. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/state/resident-system-prompt.md*)' 'Bash(*>.hermit/state/resident-system-prompt.md*)'`, adding `'Edit(*.hermit/state/resident-system-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/helper-system-prompt.md)` or `Edit(*.hermit/RESIDENT.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip.
 3. Report the `backup` path from step 1 when present, and say: move your own lines into OPERATOR.md (hermit-only) or your CLAUDE.md (every session). Do not move or rewrite operator text automatically.
 4. Report `restart_required` in Operator notes. The resident must restart to load its generated system prompt, even if routine reconciliation reports healthy. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
+5. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate channel-home` and report its receipt. This seeds an empty home from the retired field when it is not the maintainer chat, preserves an existing home, and deletes the retired field.
+6. List project `.claude/skills/**`, `.claude/agents/**` and `CLAUDE.md` lines that read `dm_channel_id`, with file and line. Skip silently if none. Otherwise **defer per SKILL.md Step 10** with `options: ["Send them through channel-send", "Leave them, I'll fix them"]`, no `on_resolve`; apply the selected branch in attended Step 10 only:
+   - *Rewrite*: rewrite those sends to `.hermit/bin/hermitd-run channel-send .hermit --notice`, adding `--routine <id>` for a routine's skill, with the text as `client` in the JSON stdin payload. Preserve unrelated operator text and report each file changed.
+   - *Leave them, I'll fix them*: change nothing and tell the operator those lines now send nothing.
+7. List local `--notice` templates whose `maintainer` text repeats the `client` text or says it must stand alone, with file and line. Skip silently if none. Otherwise **defer per SKILL.md Step 10** with `options: ["Trim the maintainer part to technical detail", "Leave them"]`, no `on_resolve`; apply the selected branch in attended Step 10 only:
+   - *Trim*: keep only spend, IDs, diagnostics and errors in `maintainer`; preserve the client message and unrelated operator edits. Report each file changed.
+   - *Leave them*: change nothing.
 
 ## [1.4.16] - 2026-10-17
 

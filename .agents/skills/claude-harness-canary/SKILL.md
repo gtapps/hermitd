@@ -216,7 +216,7 @@ Seed exactly one eligible fake channel:
     "primary": "canary",
     "canary": {
       "enabled": true,
-      "dm_channel_id": "canary-chat"
+      "default_chat_id": "canary-chat"
     }
   }
 }

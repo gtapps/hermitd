@@ -50,7 +50,7 @@ function setupChannelWorkdir(configExtra: object = {}): Workdir {
   fs.writeFileSync(path.join(stateDir, '.env'), 'TELEGRAM_BOT_TOKEN=test-token\n');
   write(hermit(wd.dir, 'config.json'), JSON.stringify({
     timezone: 'UTC',
-    channels: { telegram: { enabled: true, dm_channel_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
+    channels: { telegram: { enabled: true, default_chat_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
     ...configExtra,
   }));
   return wd;
@@ -81,11 +81,11 @@ describe('channel-status-responder', () => {
     }
   });
 
-  test('routes the reply to the chat it was asked on (group id), not dm_channel_id', async () => {
+  test('routes the reply to the chat it was asked on (group id), not default_chat_id', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
-      // Asked in a Telegram group: chat_id is the group id, distinct from dm_channel_id (12345).
+      // Asked in a Telegram group: chat_id is the group id, distinct from default_chat_id (12345).
       const groupPayload = JSON.stringify({ prompt: envelope('!status', 'u1', '-1001234567890') });
       const r = await runScript('user-prompt-pipeline.ts', {
         stdin: groupPayload,
@@ -136,7 +136,7 @@ describe('channel-status-responder', () => {
     const wd = setupChannelWorkdir({
       channels: {
         telegram: {
-          enabled: true, dm_channel_id: '12345', allowed_users: ['u1'],
+          enabled: true, default_chat_id: '12345', allowed_users: ['u1'],
           state_dir: '.claude.local/channels/telegram', bot_username: 'ourbot',
         },
       },
@@ -299,7 +299,7 @@ describe('channel-status-responder', () => {
   test('untrusted sender (no allowlist, non-DM chat) -> redacted coarse status', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir({
-      channels: { telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+      channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
       budget: { daily_usd: 5, weekly_usd: null, monthly_usd: null, action: 'alert' },
     });
     try {
@@ -370,7 +370,7 @@ describe('channel-status-responder', () => {
       const stub = startHttpStub();
       const wd = setupChannelWorkdir({
         language: 'português',
-        channels: { telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+        channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
       });
       try {
         await openTask(wd, 'segredo');

@@ -199,6 +199,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run later list *)',
   'Bash(.hermit/bin/hermitd-run later cancel *)',
   'Bash(.hermit/bin/hermitd-run later verdict *)',
+  'Bash(.hermit/bin/hermitd-run later deliver *)',
   'Bash(.hermit/bin/hermitd-run later due *)',
   // Backup's read-and-snapshot verbs. `setup` is deliberately absent: it writes
   // backup.remote through a settings-edit subprocess the settings gate never sees

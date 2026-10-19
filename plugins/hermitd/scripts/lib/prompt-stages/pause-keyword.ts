@@ -63,8 +63,7 @@ export function run(ctx: StageContext): StageResult | void {
   if (!action) return;
 
   // Stricter gate than a plain reply: pausing is state-mutating, so an unconfigured
-  // channel trusts only the operator's pinned home chat (chat_id === default_chat_id,
-  // falling back to dm_channel_id until the pin is seeded), not accept-all.
+  // channel trusts only the operator's pinned home chat (chat_id === default_chat_id).
   if (!isTrustedController(config, sourceRaw, userId, env.chatId)) return; // unauthorized — silent no-op
 
   const by = safeForLLM(senderLabel(env).slice(0, MAX_BY_LEN));

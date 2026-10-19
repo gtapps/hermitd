@@ -25,7 +25,7 @@ function withDir(fn: (dir: string) => Promise<void> | void) {
 
 const ELIGIBLE_CHANNELS = {
   primary: 'telegram',
-  telegram: { dm_channel_id: '12345', allowed_users: ['u1'] },
+  telegram: { default_chat_id: '12345', allowed_users: ['u1'] },
 };
 
 function setConfig(dir: string, over: Partial<Record<string, unknown>> = {}) {
@@ -97,7 +97,7 @@ describe('ask-gate', () => {
 
   test('always_on: true, channel ineligible (empty allowed_users) — allow', withDir(async (dir) => {
     setConfig(dir, {
-      channels: { primary: 'telegram', telegram: { dm_channel_id: '12345', allowed_users: [] } },
+      channels: { primary: 'telegram', telegram: { default_chat_id: '12345', allowed_users: [] } },
     });
     const r = await run(ASK_PAYLOAD, dir);
     expect(r.exitCode).toBe(0);

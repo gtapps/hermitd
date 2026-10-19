@@ -14,8 +14,8 @@ Use this protocol for proactive notifications (`prompts/resident.md` § Operator
     (spend detail, FYI diagnostics, or explicitly mandated maintainer-only sends).
     Any decision, reply or operator action requires a plain client version.
   - Actionable content with technical detail → `{ "client": "<plain headline + the ask>",
-    "maintainer": "<full detail incl. figures>" }`. The maintainer text must be the **complete
-    richer version of the same notice**, since a shared destination drops the client leg.
+    "maintainer": "<technical detail and figures only>" }`. When both audiences share a chat,
+    the script sends both parts together. Neither part repeats the other.
   - add `"sensitive": true` for credential-bearing text (keeps it out of the searchable channel log).
 
   Compose each version in the operator's configured `language` and apply §0 Message formatting

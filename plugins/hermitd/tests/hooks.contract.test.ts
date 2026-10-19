@@ -198,7 +198,7 @@ describe('cost-tracker budget message', () => {
 
 describe('channel-hook', () => {
   /**
-   * dm_channel_id is only learned from a reply sent during a turn an inbound
+   * default_chat_id is only learned from a reply sent during a turn an inbound
    * message from that same chat opened, so a persist case has to supply the
    * transcript the hook derives that from.
    */
@@ -213,22 +213,22 @@ describe('channel-hook', () => {
     });
   }
 
-  test('channel-hook (persist dm_channel_id)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"dm_channel_id":null}}}');
+  test('channel-hook (persist default_chat_id)', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"default_chat_id":null}}}');
     const r = await runScript('channel-hook.ts', {
       stdin: inboundReply(dir, 'mcp__discord__reply', 'plugin:discord:discord', '123456'), cwd: dir,
     });
     expect(r.exitCode).toBe(0);
-    expect(readJson(hermit(dir, 'config.json')).channels.discord.dm_channel_id).toBe('123456');
+    expect(readJson(hermit(dir, 'config.json')).channels.discord.default_chat_id).toBe('123456');
   }));
 
-  test('channel-hook (proactive reply does not learn dm_channel_id)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"dm_channel_id":"D1"}}}');
+  test('channel-hook (proactive reply does not learn default_chat_id)', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"default_chat_id":"D1"}}}');
     const r = await runScript('channel-hook.ts', {
       stdin: '{"tool_name":"mcp__discord__reply","tool_input":{"chat_id":"briefs-chat"}}', cwd: dir,
     });
     expect(r.exitCode).toBe(0);
-    expect(readJson(hermit(dir, 'config.json')).channels.discord.dm_channel_id).toBe('D1');
+    expect(readJson(hermit(dir, 'config.json')).channels.discord.default_chat_id).toBe('D1');
   }));
 
   test('channel-hook (skip unconfigured)', withDir(async (dir) => {
@@ -251,12 +251,12 @@ describe('channel-hook', () => {
   }));
 
   test('channel-hook (plugin_ prefix)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"dm_channel_id":null}}}');
+    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"enabled":true,"default_chat_id":null}}}');
     const r = await runScript('channel-hook.ts', {
       stdin: inboundReply(dir, 'plugin_discord_discord_reply', 'plugin:discord:discord', '789'), cwd: dir,
     });
     expect(r.exitCode).toBe(0);
-    expect(readJson(hermit(dir, 'config.json')).channels.discord.dm_channel_id).toBe('789');
+    expect(readJson(hermit(dir, 'config.json')).channels.discord.default_chat_id).toBe('789');
   }));
 
   test('channel-hook (empty stdin)', withDir(async (dir) => {
@@ -264,13 +264,13 @@ describe('channel-hook', () => {
     expect(r.exitCode).toBe(0);
   }));
 
-  test('channel-hook (iMessage persist dm_channel_id)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"channels":{"imessage":{"enabled":true,"dm_channel_id":null}}}');
+  test('channel-hook (iMessage persist default_chat_id)', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{"channels":{"imessage":{"enabled":true,"default_chat_id":null}}}');
     const r = await runScript('channel-hook.ts', {
       stdin: inboundReply(dir, 'mcp__imessage__reply', 'plugin:imessage:imessage', '+15550001234'), cwd: dir,
     });
     expect(r.exitCode).toBe(0);
-    expect(readJson(hermit(dir, 'config.json')).channels.imessage.dm_channel_id).toBe('+15550001234');
+    expect(readJson(hermit(dir, 'config.json')).channels.imessage.default_chat_id).toBe('+15550001234');
   }));
 
   test('channel-hook (channel-replies.jsonl single entry)', withDir(async (dir) => {
@@ -903,7 +903,7 @@ Rota body.
     write(hermit(dir, 'state', 'micro-proposals.json'),
       '{"pending":[{"id":"MP-20260701-0","status":"pending"},{"id":"MP-20260701-1","status":"resolved"}]}');
     write(hermit(dir, 'config.json'),
-      '{"channels":{"primary":"discord","discord":{"enabled":true,"dm_channel_id":"999888"}}}');
+      '{"channels":{"primary":"discord","discord":{"enabled":true,"default_chat_id":"999888"}}}');
     const r = await runScript('startup-context.ts', {
       cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
     });

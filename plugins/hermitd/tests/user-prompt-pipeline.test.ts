@@ -50,7 +50,7 @@ function setupChannelWorkdir(channelExtra: Record<string, unknown> = {}): Workdi
     timezone: 'UTC',
     channels: {
       telegram: {
-        enabled: true, dm_channel_id: '12345', allowed_users: ['u1'],
+        enabled: true, default_chat_id: '12345', allowed_users: ['u1'],
         state_dir: '.claude.local/channels/telegram', ...channelExtra,
       },
     },

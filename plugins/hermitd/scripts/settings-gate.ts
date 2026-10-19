@@ -202,7 +202,7 @@ function operatorChat(key: string): boolean {
   const at = key.indexOf(':');
   const ch = readConfigRaw(hermitDir())?.channels?.[key.slice(0, at)];
   const chatId = key.slice(at + 1);
-  return [ch?.default_chat_id ?? ch?.dm_channel_id, ch?.maintainer_channel_id]
+  return [ch?.default_chat_id, ch?.maintainer_channel_id]
     .some(id => id != null && String(id) === chatId);
 }
 

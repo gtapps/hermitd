@@ -24,7 +24,7 @@ function setupWithChannel(budgetConfig: object, opts: { maintainerChannelId?: st
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(path.join(stateDir, '.env'), 'TELEGRAM_BOT_TOKEN=test-token\n');
   fs.writeFileSync(path.join(cchDir, 'state', 'runtime.json'), JSON.stringify({ cc_session_id: 'test-session' }));
-  const telegram: Record<string, unknown> = { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' };
+  const telegram: Record<string, unknown> = { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' };
   if (opts.maintainerChannelId) {
     telegram.maintainer_channel_id = opts.maintainerChannelId;
 
@@ -66,6 +66,7 @@ describe('cost-tracker: budget push on breach (send succeeds)', () => {
     expect(stub.requests.length).toBe(1);
     expect(stub.requests[0].body.text).toContain('Budget cap reached');
     expect(stub.requests[0].body.text).toContain("today's spend");
+    expect(stub.requests[0].body.text).toContain("I've paused work until");
   });
 
   test('flips the alert entry to notified:true on a confirmed send', () => {
@@ -166,7 +167,7 @@ function setupCustom(config: object): { dir: string; cchDir: string } {
 }
 
 const telegram = (extra: object = {}) => ({
-  telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram', ...extra },
+  telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram', ...extra },
 });
 
 describe('cost-tracker: pt-PT budget push (stock, single message)', () => {

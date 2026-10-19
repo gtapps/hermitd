@@ -75,16 +75,14 @@ export function isAllowedSender(config: Json, source: string, userId: string | n
  * Stricter gate for state-mutating (pause/resume/snooze) and disclosure (status)
  * paths. An explicit allowed_users list still wins — but when none is configured
  * this does NOT fall back to accept-all (as isAllowedSender does). Instead it
- * trusts only the operator's pinned home chat (chat_id === default_chat_id, or
- * the learned dm_channel_id until the pin is seeded), so on a no-allowlist
- * channel a stranger in a group can't freeze the hermit or read its status,
+ * trusts only the operator's pinned home chat (chat_id === default_chat_id). On
+ * a no-allowlist channel a stranger in a group can't freeze the hermit or read its status,
  * while the operator's own chat keeps working with zero config.
  *
  * The anchor is the *pinned* home rather than the last-learned DM so control
  * authority can't be acquired by messaging from a new chat: default_chat_id is
- * seeded once by channel-hook and moved only from the terminal. Same fallback
- * chain as resolve-outbound-channel's proactiveChatId (duplicated rather than
- * imported — an auth gate shouldn't depend on the delivery module).
+ * seeded once by channel-hook and moved only from the terminal. Same home field
+ * as resolve-outbound-channel's proactiveChatId (duplicated rather than imported — an auth gate shouldn't depend on the delivery module).
  *
  * Caveat: if the operator's home IS a group/server channel, its chat_id equals
  * the group's and every member matches — those installs must set allowed_users.
@@ -98,22 +96,25 @@ export function isTrustedController(
   if (Array.isArray(ch?.allowed_users)) {
     return isAllowedSender(config, source, userId); // explicit list (incl. [] lockdown) wins
   }
-  // `||`, not `??`: an empty-string pin must not mask a working dm_channel_id and
-  // lock the operator out of control entirely. Truthiness on both sides so a pair
-  // of empty values can never match either.
-  const home = ch?.default_chat_id || ch?.dm_channel_id; // no list -> pinned-home binding
+  const home = ch?.default_chat_id; // no list -> pinned-home binding
   return !!home && !!chatId && String(home) === String(chatId);
 }
 
 // Home/maintainer rule has its prose twin in channel-responder §1c.
-export function recallScope(config: Json, key: string, chatId: string): Json | null {
+export function recallScope(config: Json, key: string, chatId: string, hermitDir: string): Json | null {
   const ch = channelEntry(config, key);
   const own = { source: key, chat_id: chatId };
   if (!ch) return { own, shared: [] };
-  const home = ch.default_chat_id || ch.dm_channel_id;
+  const home = ch.default_chat_id;
   if (chatId && (chatId === ch.maintainer_channel_id
     || (chatId === home && config.operator_profile !== 'non-technical'))) return null;
   const shared: { source: string; chat_id: string }[] = [];
+  const chat = normalizeChannelSource(key) === 'discord' ? cachedChat(hermitDir, chatId) : null;
+  if (chat && [10, 11, 12].includes(chat.type) && chat.parent_id) {
+    if (chat.parent_id === ch.maintainer_channel_id
+      || (chat.parent_id === home && config.operator_profile !== 'non-technical')) return null;
+    shared.push({ source: key, chat_id: chat.parent_id });
+  }
   for (const [source, entry] of iterChannelConfigs(config)) {
     if (!Array.isArray(entry.shared_chats)) continue; // a malformed value grants nothing
     for (const chat_id of entry.shared_chats) shared.push({ source, chat_id });

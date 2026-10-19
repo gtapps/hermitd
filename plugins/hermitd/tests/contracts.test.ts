@@ -299,7 +299,7 @@ describe('stderr sanitization', () => {
   }), 15000);
 
   test('channel hook strips chat_id control chars', withTmpdir(async (dir) => {
-    writeConfig(dir, { channels: { discord: { enabled: true, dm_channel_id: null } } });
+    writeConfig(dir, { channels: { discord: { enabled: true, default_chat_id: null } } });
     const chatId = 'abc\n\x1b[31mFAKE\x1b[0m';
     // The save path is only reached when a matching inbound envelope opened the
     // turn, so the hostile id has to arrive on both legs to reach the log line
@@ -315,7 +315,7 @@ describe('stderr sanitization', () => {
       cwd: dir,
       env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
     });
-    expect(r.stderr).toContain('saved discord.dm_channel_id');
+    expect(r.stderr).toContain('seeded discord.default_chat_id');
     expect(r.stderr).not.toContain('\x1b');
     expect(r.stderr).not.toContain('\nFAKE');
   }), 15000);
@@ -1019,19 +1019,19 @@ describe('channel resolver contract', () => {
     // telegram is listed first; primary points at discord — discord must win.
     const { code, result } = runResolver({ channels: {
       primary: 'discord',
-      telegram: { enabled: true, dm_channel_id: 'T1' },
-      discord: { enabled: true, dm_channel_id: 'D1' },
+      telegram: { enabled: true, default_chat_id: 'T1' },
+      discord: { enabled: true, default_chat_id: 'D1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('discord');
     expect(result.chat_id).toBe('D1');
   });
 
-  test('primary channel missing dm_channel_id falls through to first eligible in config order', () => {
+  test('primary channel missing default_chat_id falls through to first eligible in config order', () => {
     const { code, result } = runResolver({ channels: {
       primary: 'discord',
-      discord: { enabled: true, dm_channel_id: null },
-      telegram: { enabled: true, dm_channel_id: 'T1' },
+      discord: { enabled: true, default_chat_id: null },
+      telegram: { enabled: true, default_chat_id: 'T1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('telegram');
@@ -1040,8 +1040,8 @@ describe('channel resolver contract', () => {
   test('no primary — first eligible entry in config order wins (no hardcoded slug list)', () => {
     // telegram listed first should win — proves there's no built-in preference for discord.
     const { code, result } = runResolver({ channels: {
-      telegram: { enabled: true, dm_channel_id: 'T1' },
-      discord: { enabled: true, dm_channel_id: 'D1' },
+      telegram: { enabled: true, default_chat_id: 'T1' },
+      discord: { enabled: true, default_chat_id: 'D1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('telegram');
@@ -1049,7 +1049,7 @@ describe('channel resolver contract', () => {
 
   test('a future/third-party channel slug is picked up without resolver changes', () => {
     const { code, result } = runResolver({ channels: {
-      whatsapp: { enabled: true, dm_channel_id: 'W1' },
+      whatsapp: { enabled: true, default_chat_id: 'W1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('whatsapp');
@@ -1058,67 +1058,52 @@ describe('channel resolver contract', () => {
   test('primary channel with enabled:false is skipped (policy gate)', () => {
     const { code, result } = runResolver({ channels: {
       primary: 'discord',
-      discord: { enabled: false, dm_channel_id: 'D1' },
-      telegram: { enabled: true, dm_channel_id: 'T1' },
+      discord: { enabled: false, default_chat_id: 'D1' },
+      telegram: { enabled: true, default_chat_id: 'T1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('telegram');
   });
 
-  // The pin is the whole point of default_chat_id: dm_channel_id keeps tracking
-  // the operator's last inbound chat, but unattended sends must not follow it.
-  test('default_chat_id pins the proactive target — a moved dm_channel_id does not', () => {
+  test('an unseeded home is not eligible for proactive sends', () => {
+    const { code } = runResolver({ channels: { discord: { enabled: true } } });
+    expect(code).not.toBe(0);
+  });
+
+  test('the pinned home makes a channel eligible', () => {
     const { code, result } = runResolver({ channels: {
-      discord: { enabled: true, dm_channel_id: 'MOVED', default_chat_id: 'HOME' },
+      discord: { enabled: true, default_chat_id: 'HOME' },
     } });
     expect(code).toBe(0);
     expect(result.chat_id).toBe('HOME');
   });
 
-  test('no pin — resolution falls back to the learned dm_channel_id (pre-pin installs)', () => {
-    const { code, result } = runResolver({ channels: {
-      discord: { enabled: true, dm_channel_id: 'D1' },
-    } });
-    expect(code).toBe(0);
-    expect(result.chat_id).toBe('D1');
-  });
-
-  test('a pin alone makes a channel eligible — eligibility reads the same fallback chain', () => {
-    const { code, result } = runResolver({ channels: {
-      discord: { enabled: true, dm_channel_id: null, default_chat_id: 'HOME' },
-    } });
-    expect(code).toBe(0);
-    expect(result.chat_id).toBe('HOME');
-  });
-
-  // resolveTarget's third argument became an extractor function so the proactive
-  // target could express a fallback chain. Maintainer routing shares that helper
-  // and must keep resolving its own single field.
+  // Maintainer routing shares resolveTarget but resolves its own field.
   test('maintainer routing is unaffected by the proactive pin', () => {
     const channels = {
-      discord: { enabled: true, dm_channel_id: 'MOVED', default_chat_id: 'HOME', maintainer_channel_id: 'M1' },
+      discord: { enabled: true, default_chat_id: 'HOME', maintainer_channel_id: 'M1' },
     };
     expect(resolveMaintainerTarget(channels)?.chat_id).toBe('M1');
     expect(resolve(channels)?.chat_id).toBe('HOME');
   });
 
   test('validator rejects channels.primary referencing a missing channel', () => {
-    const result = validate({ channels: { primary: 'ghost', discord: { dm_channel_id: 'D1' } } });
+    const result = validate({ channels: { primary: 'ghost', discord: { default_chat_id: 'D1' } } });
     expect(
       (result.errors ?? []).some((e: string) => e.includes('primary') && e.includes('ghost')),
     ).toBe(true);
   });
 
   test('validator accepts channels.primary pointing to an existing channel', () => {
-    const result = validate({ channels: { primary: 'discord', discord: { dm_channel_id: 'D1' } } });
+    const result = validate({ channels: { primary: 'discord', discord: { default_chat_id: 'D1' } } });
     const primaryErrors = (result.errors ?? []).filter((e: string) => e.includes('primary'));
     expect(primaryErrors).toEqual([]);
   });
 
   test('allowed_users: [] disables the channel for proactive sends', () => {
     const { code, result } = runResolver({ channels: {
-      discord: { enabled: true, dm_channel_id: 'D1', allowed_users: [] },
-      telegram: { enabled: true, dm_channel_id: 'T1' },
+      discord: { enabled: true, default_chat_id: 'D1', allowed_users: [] },
+      telegram: { enabled: true, default_chat_id: 'T1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('telegram');
@@ -1147,7 +1132,7 @@ describe('channel resolver contract', () => {
   test("channels.primary: 'primary' would point at the string itself — falls through", () => {
     const { code, result } = runResolver({ channels: {
       primary: 'primary',
-      discord: { enabled: true, dm_channel_id: 'D1' },
+      discord: { enabled: true, default_chat_id: 'D1' },
     } });
     expect(code).toBe(0);
     expect(result.id).toBe('discord');
@@ -1156,7 +1141,7 @@ describe('channel resolver contract', () => {
   test("validator rejects channels.primary pointing at the string 'primary' (self)", () => {
     const result = validate({ channels: {
       primary: 'primary',
-      discord: { dm_channel_id: 'D1' },
+      discord: { default_chat_id: 'D1' },
     } });
     expect(
       (result.errors ?? []).some(
@@ -1166,21 +1151,21 @@ describe('channel resolver contract', () => {
   });
 
   test('channels.primary must be a string', () => {
-    const result = validate({ channels: { primary: 42, discord: { dm_channel_id: 'D1' } } });
+    const result = validate({ channels: { primary: 42, discord: { default_chat_id: 'D1' } } });
     expect(
       (result.errors ?? []).some((e: string) => e.includes('primary') && e.includes('string')),
     ).toBe(true);
   });
 
   test('validator rejects a numeric allowed_users entry (would break the string sender gate)', () => {
-    const result = validate({ channels: { discord: { dm_channel_id: 'D1', allowed_users: [123456789012345678] } } });
+    const result = validate({ channels: { discord: { default_chat_id: 'D1', allowed_users: [123456789012345678] } } });
     expect(
       (result.errors ?? []).some((e: string) => e.includes('allowed_users') && e.includes('string')),
     ).toBe(true);
   });
 
   test('validator accepts string allowed_users entries', () => {
-    const result = validate({ channels: { discord: { dm_channel_id: 'D1', allowed_users: ['123456789012345678'] } } });
+    const result = validate({ channels: { discord: { default_chat_id: 'D1', allowed_users: ['123456789012345678'] } } });
     expect((result.errors ?? []).filter((e: string) => e.includes('allowed_users'))).toEqual([]);
   });
 });
@@ -3004,7 +2989,7 @@ describe('doctor channel-liveness check', () => {
   function seedChannel(dir: string, port: number | undefined, tokenLine = 'TELEGRAM_BOT_TOKEN=dummy') {
     writeConfig(dir, {
       ...BASE_CONFIG,
-      channels: { telegram: { enabled: true, dm_channel_id: '1', state_dir: 'chan' } },
+      channels: { telegram: { enabled: true, default_chat_id: '1', state_dir: 'chan' } },
     });
     const chanDir = path.join(dir, 'chan');
     fs.mkdirSync(chanDir, { recursive: true });
@@ -3072,7 +3057,7 @@ describe('doctor channel-liveness check', () => {
       ...BASE_CONFIG,
       channels: {
         telegram: {
-          enabled: true, dm_channel_id: '1', state_dir: 'chan', bot_user_id: botId,
+          enabled: true, default_chat_id: '1', state_dir: 'chan', bot_user_id: botId,
           ...(botUsername === undefined ? {} : { bot_username: botUsername }),
         },
       },

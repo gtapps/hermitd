@@ -460,9 +460,6 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         && ch.operators.some((id: string) => !ch.allowed_users.includes(id))) {
         warnings.push(`channels.${name}.operators: includes an id absent from allowed_users`);
       }
-      if (ch.dm_channel_id !== undefined && ch.dm_channel_id !== null && typeof ch.dm_channel_id !== 'string') {
-        errors.push(`channels.${name}.dm_channel_id: must be string or null`);
-      }
       if (ch.maintainer_channel_id !== undefined && ch.maintainer_channel_id !== null && typeof ch.maintainer_channel_id !== 'string') {
         errors.push(`channels.${name}.maintainer_channel_id: must be string or null`);
       }
@@ -472,11 +469,10 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (ch.settings_policy !== undefined) {
         warnings.push(retiredKeyWarning(`channels.${name}.settings_policy`));
       }
-      // The pinned proactive home must not be the maintainer chat: unlike
-      // dm_channel_id, nothing re-learns this field, so a collision here sends
+      // The pinned proactive home must not be the maintainer chat: a collision sends
       // every briefing to the maintainer chat until the operator rebinds from
       // the terminal. It also collapses control authority (isTrustedController)
-      // onto the outbound-routing chat. Warn (like the dm collision below) so
+      // onto the outbound-routing chat. Warn so
       // doctor reports it.
       if (ch.default_chat_id != null && ch.maintainer_channel_id != null &&
           String(ch.default_chat_id) === String(ch.maintainer_channel_id)) {
@@ -484,17 +480,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           `channels.${name}.default_chat_id equals maintainer_channel_id — proactive sends are pinned to the maintainer chat and it now carries control authority too; re-point it with /hermitd:hermit-settings at the terminal`,
         );
       }
-      // If the maintainer chat also sits in dm_channel_id the primary DM binding
-      // was clobbered (fixed in channel-hook's persistDmChannelId) or was
-      // configured to the same chat — either way that chat now satisfies the
-      // DM-bound operator-trust check too and pairing will never self-correct
-      // until a real DM arrives. Surface it so doctor's config check reports it.
-      if (ch.dm_channel_id != null && ch.maintainer_channel_id != null &&
-          String(ch.dm_channel_id) === String(ch.maintainer_channel_id)) {
-        warnings.push(
-          `channels.${name}.dm_channel_id equals maintainer_channel_id — the maintainer chat is bound as the operator DM, so it carries control authority too; send a message from the real DM chat to re-pair`,
-        );
-      }
+
     }
     if (config.channels.primary !== undefined) {
       const primary = config.channels.primary;

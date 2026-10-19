@@ -33,7 +33,7 @@ function withDir(fn: (dir: string) => Promise<void> | void) {
     // Default config: the operator's DM is chat_id "1" (matching the test envelopes).
     // With no allowed_users set, that DM is the trusted controller — the allowlist
     // tests below overwrite this config with their own.
-    write(hermit(wd.dir, 'config.json'), '{"channels":{"discord":{"dm_channel_id":"1"}}}');
+    write(hermit(wd.dir, 'config.json'), '{"channels":{"discord":{"default_chat_id":"1"}}}');
     try { await fn(wd.dir); } finally { wd.cleanup(); }
   };
 }
@@ -42,7 +42,7 @@ const run = (prompt: string, dir: string) =>
   runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt }), cwd: dir });
 
 describe('pause-keyword', () => {
-  test('"!pause" from the operator DM (no allowlist, chat_id matches dm_channel_id) — sets flag, exit 0', withDir(async (dir) => {
+  test('"!pause" from the operator DM (no allowlist, chat_id matches default_chat_id) — sets flag, exit 0', withDir(async (dir) => {
     const r = await run('<channel source="discord" chat_id="1" user="U1">!pause</channel>', dir);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain('paused');
@@ -185,7 +185,7 @@ describe('pause-keyword', () => {
   // groups. The suffix must name THIS bot: one aimed at another bot in a shared
   // group is not ours to act on. bot_username is stored bare (no leading '@').
   describe('@botname addressing', () => {
-    const withHandle = '{"channels":{"discord":{"dm_channel_id":"1","bot_username":"ourbot"}}}';
+    const withHandle = '{"channels":{"discord":{"default_chat_id":"1","bot_username":"ourbot"}}}';
 
     test('suffix naming this bot — acts', withDir(async (dir) => {
       write(hermit(dir, 'config.json'), withHandle);
@@ -232,7 +232,7 @@ describe('pause-keyword', () => {
   describe('leading self-mention addressing', () => {
     const SELF_ID = '1503162355876499589';
     const withIdentity =
-      `{"channels":{"discord":{"dm_channel_id":"1","bot_username":"ourbot","bot_user_id":"${SELF_ID}"}}}`;
+      `{"channels":{"discord":{"default_chat_id":"1","bot_username":"ourbot","bot_user_id":"${SELF_ID}"}}}`;
 
     test('Discord mention of this bot before the command — acts', withDir(async (dir) => {
       write(hermit(dir, 'config.json'), withIdentity);
@@ -318,14 +318,14 @@ describe('pause-keyword', () => {
       // Off-convention config keyed solely by the qualified form: the auth gate
       // resolves by the normalized bare name (matching the send path), so this
       // trusts nobody and the pause is not applied.
-      write(hermit(dir, 'config.json'), '{"channels":{"plugin:discord:discord":{"dm_channel_id":"1"}}}');
+      write(hermit(dir, 'config.json'), '{"channels":{"plugin:discord:discord":{"default_chat_id":"1"}}}');
       const r = await run('<channel source="plugin:discord:discord" chat_id="1" user="U1">!pause</channel>', dir);
       expect(r.exitCode).toBe(0);
       expect(isPaused(hermit(dir)).paused).toBe(false);
     }));
 
     test('genericity pin: an unrecognized custom channel plugin normalizes the same way', withDir(async (dir) => {
-      write(hermit(dir, 'config.json'), '{"channels":{"crm":{"dm_channel_id":"1"}}}');
+      write(hermit(dir, 'config.json'), '{"channels":{"crm":{"default_chat_id":"1"}}}');
       const r = await run('<channel source="plugin:acme-crm:crm" chat_id="1" user="U1">!pause</channel>', dir);
       expect(r.exitCode).toBe(0);
       expect(isPaused(hermit(dir)).paused).toBe(true);
