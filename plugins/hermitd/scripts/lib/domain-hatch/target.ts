@@ -1,7 +1,7 @@
 // Core-owned read/repair/write of state/hatch-options.json.
 //
-// This file records the operator's global choice of where hermit blocks go
-// (committed CLAUDE.md vs gitignored CLAUDE.local.md) plus the core install
+// This file records the operator's global choice of settings visibility
+// (committed vs gitignored local files) plus the core install
 // scope that choice was derived from. It is core state: before this module,
 // five domain hatches each carried their own prose copy of the detection and
 // stamping rules, one of which (feed) had already dropped the
@@ -61,41 +61,17 @@ function isTarget(v: unknown): v is Target {
   return v === 'local' || v === 'committed';
 }
 
-// Core's own CLAUDE-APPEND marker. Where core already put its block is a
-// stronger signal of the operator's intent than re-deriving install scope, so
-// it outranks the scope default — this preserves hermit-evolve's fallback
-// chain, which checked both files before falling back to detection.
-const CORE_MARKER = 'hermitd: Session Discipline';
-
-function fileHasCoreMarker(projectRoot: string, name: string): boolean {
-  try { return fs.readFileSync(path.join(projectRoot, name), 'utf8').includes(CORE_MARKER); } catch { return false; }
-}
-
-// Full precedence chain, in one place for core hatch, hermit-evolve and every
-// domain hatch:
-//   1. hatch-options.json `target`
-//   2. core's block already in CLAUDE.local.md  -> local
-//   3. core's block already in CLAUDE.md        -> committed
-//   4. scope-derived default from coreScope()
-// Only (1) counts as answered; (2) and (3) inform the default a caller offers
-// but still leave the file unstamped, so it gets repaired on the next write.
+// Prefer the stamped target, then the install-scope default.
 export function readTargetState(
   hermitDir: string,
   scopeDefault: { core_scope: CoreScope; target: Target },
-  projectRoot?: string,
 ): TargetState {
   const existing = readOptions(hermitDir);
   const usable = existing && isTarget(existing.target);
 
-  let fallback: Target = scopeDefault.target;
-  if (!usable && projectRoot) {
-    if (fileHasCoreMarker(projectRoot, 'CLAUDE.local.md')) fallback = 'local';
-    else if (fileHasCoreMarker(projectRoot, 'CLAUDE.md')) fallback = 'committed';
-  }
-
   return {
     target: usable ? existing.target : null,
-    target_default: fallback,
+    target_default: scopeDefault.target,
     core_scope: scopeDefault.core_scope,
     needs_target_question: !usable,
     present: !!usable,

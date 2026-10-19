@@ -77,6 +77,6 @@ Keep the entire brief under 14 lines (10 when the `Updates:` section is absent �
 
 ## Delivery
 
-- If invoked as a routine, or `config.always_on` is `true` in `.hermit/config.json`: deliver the composed brief via the Operator Notification protocol in CLAUDE.md (core resolves the channel and falls back to push when no channel is reachable). The terminal is unmonitored in always-on mode. For the push-fallback branch, condense to a single line (per § Operator Notification push format): lead with the security verdict (open doors, unlocked, open windows) or `secure`, then any anomaly. Example: `House secure, garage door still open: open CC to view`.
+- If invoked as a routine, or `config.always_on` is `true` in `.hermit/config.json`: deliver the composed brief via the Operator Notification protocol (core resolves the channel and falls back to push when no channel is reachable). The terminal is unmonitored in always-on mode. For the push-fallback branch, condense to a single line (per § Operator Notification push format): lead with the security verdict (open doors, unlocked, open windows) or `secure`, then any anomaly. Example: `House secure, garage door still open: open CC to view`.
 - Otherwise (invoked on demand in an interactive session): output to terminal.
 - Never include secrets, tokens, or internal file paths in the brief.

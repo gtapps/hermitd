@@ -7,7 +7,7 @@
 // hermit-meta.json, so four hatches would proceed against a core too old for
 // them. The floor is read from the manifest here and nowhere else.
 //
-// Writes nothing. `ensure-target` and `sync-block` own the mutations, so a
+// Writes nothing. `ensure-target` owns target mutations, so a
 // hatch can always ask this what it is looking at before changing anything.
 
 import path from 'node:path';
@@ -16,7 +16,6 @@ import { readJson } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { resolvePlugin, isResolveError, pluginList, type ResolvedPlugin } from './resolve';
 import { readTargetState, targetFile, type Target, type CoreScope } from './target';
-import { planBlock, type BlockAction } from './block';
 
 type Json = any;
 
@@ -50,8 +49,6 @@ export interface Preflight {
   target_file?: string;
   core_scope?: CoreScope;
   needs_target_question?: boolean;
-  marker?: string | null;
-  append_action?: BlockAction;
 }
 
 // `>=1.2.30` and `^1.2.30` both appear in the fleet's manifests. Bun's semver
@@ -98,12 +95,12 @@ export function preflight(input: PreflightInput): Preflight {
   const list = pluginList(input.stdinJson);
 
   // Target resolution is computed first and reported unconditionally: none of
-  // it depends on resolving the plugin (the stamped file and the CLAUDE-marker
-  // probe are pure filesystem reads). hermit-evolve takes hatch_target from
+  // it depends on resolving the plugin (the stamped file and scope
+  // detection do not require resolving the sibling). hermit-evolve takes hatch_target from
   // this verb and has no fallback of its own, so returning early on a plugin
   // list that could not be read would strand it with no target at all.
   const scope = coreScope(list as any, projectRoot);
-  const state = readTargetState(hermitDir, scope, projectRoot);
+  const state = readTargetState(hermitDir, scope);
   const targetFields = {
     target: state.target,
     target_default: state.target_default,
@@ -139,24 +136,6 @@ export function preflight(input: PreflightInput): Preflight {
       : stamped !== null && self.version !== null && stamped === self.version ? 'verify' : 'full';
   const nextSteps = NEXT_STEPS[action]?.(pluginId);
 
-  let marker: string | null = null;
-  let appendAction: BlockAction | undefined;
-  if (state.target) {
-    const foreign = list
-      .map((e: Json) => String(e?.id ?? '').split('@')[0])
-      .filter((n: string) => n && n !== pluginId);
-    // planBlock already reads the template and derives the marker; taking both
-    // off its result avoids a second read and parse of the same file.
-    const plan = planBlock(
-      self.installPath,
-      pluginId,
-      path.join(projectRoot, targetFile(state.target)),
-      foreign,
-    );
-    marker = plan.marker;
-    appendAction = plan.action;
-  }
-
   return {
     plugin: pluginId,
     self_version: self.version,
@@ -167,7 +146,5 @@ export function preflight(input: PreflightInput): Preflight {
     action,
     ...(nextSteps ? { next_steps: nextSteps } : {}),
     ...targetFields,
-    marker,
-    ...(appendAction ? { append_action: appendAction } : {}),
   };
 }

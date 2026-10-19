@@ -106,4 +106,4 @@ sources before they silently waste fetch budget.
 ## Output
 
 Print the tables to the conversation. Do NOT write to any file — this skill is read-only and never
-modifies `feed-sources.md`. Source removals require operator approval per project rules.
+modifies `feed-sources.md`. Source removals require operator approval.

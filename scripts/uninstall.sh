@@ -250,11 +250,7 @@ Clean up the shared-file leftovers from uninstalling hermitd in this project. De
 
 Check these item classes:
 
-1. In whichever of CLAUDE.md or CLAUDE.local.md contains it, remove the core block from the opening marker:
-<!-- hermitd: Session Discipline -->
-through the closing marker:
-<!-- /hermitd: Session Discipline -->
-Include any blank line or standalone separator immediately above the opening marker. If the block predates the closing marker, fall back to the first standalone separator after the opening marker, or end of file. Leave every other plugin's marked block alone.
+1. In CLAUDE.md and CLAUDE.local.md, remove each block whose marker name contains `hermit`, from its opening marker through its matching closing marker, including any blank line or standalone separator directly above it. If a marker has no match, flag it and ask.
 
 2. In whichever of .claude/settings.local.json or .claude/settings.json contains them, inspect for hermit-attributable settings. Illustrative examples are permissions.allow or permissions.deny entries referencing hermit scripts or paths; the Artifact grant, which must be flagged rather than auto-deleted; outputStyle when it names hermit-voice; env keys ending in _STATE_DIR; and the boot-written mirror keys language, crossSessionInbound, and isolatePeerMachines. Do not remove sandbox because hermit never writes it. There is no hooks key to clean. Flag any generic permission or setting I may still want.
 

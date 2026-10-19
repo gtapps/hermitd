@@ -6,7 +6,6 @@ A fitness/training domain layer for `hermitd`: skills, a Strava data subagent, S
 
 - `skills/`: `hatch`, `fitness-brief` (`--morning|--evening|--slot <name>`; owns Strava connectivity, activity sync, RPE binding, and the Run deep-dive), `activity-deep-dive`, `capture-activity-rpe` (auto-triggered from channel replies), `set-rpe`, `weekly-coaching-patterns`, `weekly-load-review` (weekly training load vs. rolling baseline), `monday-planning` (weekly training plan suggestion), `domain-brainstorm` (operator-invoked only)
 - `agents/strava-data-cruncher.md`: Haiku bulk-aggregation subagent; owns the per-invocation API-call cap
-- `state-templates/CLAUDE-APPEND.md`: the Fitness Workflow block
 - Permissions: native asks are installed by hatch via `scripts/native-permissions.ts`
 - `docs/knowledge-schema.md`: work-product types, state-file owners and shapes, retention
 
@@ -28,7 +27,7 @@ The `weekly-coaching-patterns` routine invokes `reflect --check-id weekly-coachi
 
 ## Hatch target routing
 
-Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness`; Step 5 asks the Visibility question only when `needs_target_question` says so, records it with `domain-hatch ensure-target hermitd-fitness --target <choice>`, and writes the block with `domain-hatch sync-block hermitd-fitness`.
+Core's `scripts/domain-hatch.ts` owns target resolution and `hatch-options.json`. `/hatch` Step 1 runs `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness`; its Native approval rules step asks Visibility only when `needs_target_question` says so and records the choice with `domain-hatch ensure-target hermitd-fitness --target <choice>`.
 
 ## Strava API
 

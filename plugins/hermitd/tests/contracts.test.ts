@@ -3332,7 +3332,7 @@ describe('proactive-notify unification contract', () => {
     expect(weeklyReview).toContain('--notice');
   });
 
-  test('channel-responder outbound.md and CLAUDE-APPEND both point to the same --notice mechanism', () => {
+  test('channel-responder outbound.md and the resident prompt both point to the same --notice mechanism', () => {
     const responder = read(path.join(SKILLS, 'channel-responder', 'outbound.md'));
     const append = read(path.join(PLUGIN_ROOT, 'prompts', 'resident.md'));
     // Both name the script through bin/hermitd-run: outbound.md is also read

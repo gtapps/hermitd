@@ -5,12 +5,8 @@ name: Cross-Plugin Guards
 # The hatch/hermit-meta/core-scripts globs cover the domain-hatch contract: a
 # hatch rewrite, a changed core floor declaration, and the shared script itself
 # all have to re-run that guard, and none of them would trigger any single
-# plugin's own workflow. The CLAUDE-APPEND and plugin.json globs exist for the
-# same reason: the contract asserts the template's marker pair and the
-# version-triple agreement, so edits to either must re-run it. Core's own
-# plugin.json (bumped on every release) and CLAUDE-APPEND are negated: the
-# contract never reads core's manifest or template, so those edits can't
-# change its outcome.
+# plugin's own workflow. The plugin.json globs also cover version-triple
+# agreement; core's own manifest is excluded because the contract does not read it.
 # The hooks/** glob plus the three dev guard scripts cover the hook stdin
 # contract: every fleet hook keeps its own sealed stdin copy, so a drifted drain
 # or fail direction is only caught by re-running that corpus here.
@@ -22,8 +18,6 @@ on:
       - 'plugins/*/.claude-plugin/hermit-meta.json'
       - 'plugins/*/.claude-plugin/plugin.json'
       - '!plugins/hermitd/.claude-plugin/plugin.json'
-      - 'plugins/*/state-templates/CLAUDE-APPEND.md'
-      - '!plugins/hermitd/state-templates/CLAUDE-APPEND.md'
       - 'plugins/hermitd/scripts/**'
       - 'plugins/*/hooks/**'
       - 'plugins/hermitd-dev/scripts/git-push-guard.ts'
@@ -41,8 +35,6 @@ on:
       - 'plugins/*/.claude-plugin/hermit-meta.json'
       - 'plugins/*/.claude-plugin/plugin.json'
       - '!plugins/hermitd/.claude-plugin/plugin.json'
-      - 'plugins/*/state-templates/CLAUDE-APPEND.md'
-      - '!plugins/hermitd/state-templates/CLAUDE-APPEND.md'
       - 'plugins/hermitd/scripts/**'
       - 'plugins/*/hooks/**'
       - 'plugins/hermitd-dev/scripts/git-push-guard.ts'

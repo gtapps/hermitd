@@ -40,8 +40,7 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      `/hermitd-fitness:activity-deep-dive <id>` (cap 3; inside an open record's turn, pipe skipped IDs into
      `.hermit/bin/hermitd-run task note .hermit <task-id>`, otherwise skip the note). Advance the cursor file to the highest new ID.
      Hold the newest new activity's id/name/sport for step 4 — do **not** write
-     `state/strava-pending-rpe.json` here. That file's writer contract (see `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`
-     and `CLAUDE.md` § Memory Conventions) is
+     `state/strava-pending-rpe.json` here. That file's writer contract (see `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`) is
      write-only-after-confirmed-delivery, precisely so a failed or push-only send can't bind
      a future RPE reply to an activity the operator was never actually told about.
 
@@ -82,7 +81,7 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      accumulate daily with no retention cap (per `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`), so never
      glob-read the whole `brief-*.md` set.
 
-4. **Deliver** per the Operator Notification protocol in CLAUDE.md (core resolves the
+4. **Deliver** per the Operator Notification protocol (core resolves the
    channel and falls back to push when no channel is reachable). Routines can fire while the terminal is unmonitored.
    Push-fallback: a single line per § Operator Notification push format, leading with
    the thing most worth knowing.
@@ -93,7 +92,7 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      {"activity_id": <id>, "name": "<name>", "sport": "<Run|Ride|WeightTraining|…>", "synced_at": "<ISO 8601>"}
      ```
      so a channel RPE reply binds correctly (`capture-activity-rpe` reads and deletes it) —
-     the same write-after-confirmed-send guard documented in `CLAUDE.md` § Memory Conventions.
+     the same write-after-confirmed-send guard documented in `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`.
 
 5. **Archive.** Write `.hermit/compiled/brief-<slot>-<date>.md`:
    ```yaml

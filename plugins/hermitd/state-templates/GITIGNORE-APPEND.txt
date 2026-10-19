@@ -20,7 +20,6 @@
 .hermit/HEARTBEAT.md
 .hermit/knowledge-schema.md
 .hermit/cost-summary.md
-.hermit/RESIDENT.md
 .hermit/claude-settings.json
 .hermit/dashboard-render.ts
 .hermit/helper-reports/

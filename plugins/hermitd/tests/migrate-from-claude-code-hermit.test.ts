@@ -15,13 +15,10 @@ function fixture() {
   write(path.join(state, 'state/hatch-options.json'), JSON.stringify({ target: 'local' }));
   write(path.join(state, 'state/template-manifest.json'), JSON.stringify({ version: 1, files: { 'bin/hermit-run': { sha256: sha256('original'), plugin_version: '1.4.8' } } }));
   write(path.join(state, 'bin/hermit-run'), 'customized wrapper');
-  const blocks = 'Operator /claude-code-hermit:untouched\n<!-- claude-code-hermit: Session Discipline -->\n/claude-code-hermit:resident-start .claude-code-hermit/bin/hermit-run task list .claude-code-hermit\n<!-- /claude-code-hermit: Session Discipline -->\n<!-- claude-code-dev-hermit: Dev -->\n/claude-code-dev-hermit:hatch\n<!-- /claude-code-dev-hermit: Dev -->\n';
-  write(path.join(root, 'CLAUDE.local.md'), blocks);
-  write(path.join(state, 'RESIDENT.md'), blocks);
   write(path.join(root, '.claude/agent-memory/claude-code-hermit-proposal-triage/MEMORY.md'), 'memory');
   write(path.join(root, '.claude/settings.local.json'), JSON.stringify({ permissions: { allow: ['Edit(.claude-code-hermit/**)'], deny: ['Edit(*.claude-code-hermit/tasks/**)'], ask: ['Edit(*.claude-code-hermit/config.json)', 'Bash(ssh *)'] } }));
   write(path.join(state, 'state/hypotheses.jsonl'), JSON.stringify({ id: 'later-1', state: 'pending', cmd: '.claude-code-hermit/bin/hermit-run status' }) + '\n');
-  return { root, state, blocks };
+  return { root, state };
 }
 function snapshot(root: string): Record<string, { bytes: string; mtime: number; mode: number }> {
   const result: Record<string, { bytes: string; mtime: number; mode: number }> = {};
@@ -31,20 +28,12 @@ function snapshot(root: string): Record<string, { bytes: string; mtime: number; 
   }
   return result;
 }
-test('1.4.8 local and resident blocks, customized wrapper, memory, ledger, and no-write rerun', () => {
+test('1.4.8 customized wrapper, memory, ledger, and no-write rerun', () => {
   const f = fixture();
   const ledger = fs.readFileSync(path.join(f.state, 'state/hypotheses.jsonl'), 'utf8');
   const report = migrateProject(f.root);
   expect(report.join('\n')).toContain('re-arm these');
   expect(report.join('\n')).toContain('Customized file saved');
-  for (const file of [path.join(f.root, 'CLAUDE.local.md'), path.join(f.state, 'RESIDENT.md')]) {
-    const text = fs.readFileSync(file, 'utf8');
-    expect(text).toContain('Operator /claude-code-hermit:untouched');
-    expect(text).toContain('<!-- hermitd: Session Discipline -->');
-    expect(text).toContain('<!-- /hermitd: Session Discipline -->');
-    expect(text).toContain('/hermitd:resident-start .hermit/bin/hermitd-run task list .hermit\n');
-    expect(text).toContain('<!-- /hermitd-dev: Dev -->');
-  }
   expect(fs.readFileSync(path.join(f.state, 'bin/hermit-run.bak'), 'utf8')).toBe('customized wrapper');
   expect(fs.existsSync(path.join(f.state, 'bin/hermit-run'))).toBe(false);
   const manifest = JSON.parse(fs.readFileSync(path.join(f.state, 'state/template-manifest.json'), 'utf8'));
@@ -63,10 +52,13 @@ test('1.4.8 local and resident blocks, customized wrapper, memory, ledger, and n
   expect(fs.existsSync(path.join(f.root, '.gitignore'))).toBe(false);
   expect(fs.existsSync(path.join(f.root, '.worktreeinclude'))).toBe(false);
 });
-test('duplicate markers refuse without changing instructions', () => {
-  const f = fixture(); write(path.join(f.root, 'CLAUDE.local.md'), f.blocks + f.blocks);
-  expect(() => migrateProject(f.root)).toThrow('Duplicate or ambiguous marker');
-  expect(fs.readFileSync(path.join(f.root, 'CLAUDE.local.md'), 'utf8')).toBe(f.blocks + f.blocks);
+test('an unstamped project with old blocks in CLAUDE.local.md syncs the local settings file', () => {
+  const f = fixture();
+  fs.rmSync(path.join(f.state, 'state/hatch-options.json'));
+  write(path.join(f.root, 'CLAUDE.local.md'), '<!-- claude-code-hermit: Session Discipline -->\nrules\n<!-- /claude-code-hermit: Session Discipline -->\n');
+  migrateProject(f.root);
+  expect(fs.existsSync(path.join(f.root, '.claude/settings.json'))).toBe(false);
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, '.claude/settings.local.json'), 'utf8')).permissions.allow.length).toBeGreaterThan(1);
 });
 test('workspace backup ignore policy stays tracked', () => {
   const f = fixture();

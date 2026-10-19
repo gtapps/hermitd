@@ -76,8 +76,7 @@ never block:
 - **Version bump (step 9):** run `evolve-finalize.ts` and parse its stdout JSON. Use `core.confirmed` as
   `vNEW` in the report — NOT `plan.to`. If it prints `error`, return
   `Upgrade: blocked: config version bump failed — <joined errors[].message>` and omit
-  the rest of the report **except the `Context reload:` line** — steps 6/7 may already have rewritten
-  project instructions on disk, and a blocked version bump does not undo those writes.
+  the rest of the report.
   Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —
   `version_only` is not a failure and never blocks.
 
@@ -101,11 +100,9 @@ Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
 Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
-Context reload: <required (comma-separated plugin names) | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
   <name current>              (no version gap)
-  <name block-drifted>        (no gap but CLAUDE-APPEND differs from template — advisory only, not edited)
   <name path-unresolved>      (in _hermit_versions but no project-effective plugin-list match)
   <name SKIPPED-by-finalizer> (finalizer's siblings_skipped — never report as upgraded)
 Siblings detected but not activated: <name ... | none>
@@ -128,6 +125,6 @@ with the gate's exact message and omit the rest. If the plan's `loaded_core_olde
 `true`, return `Upgrade: blocked: stale plugin runtime — <the Step 1 message>` and omit the rest; that
 check runs in Step 1, **before** the `work_pending` rule below ever applies.
 Never report that state as `already up to date`. If `plan.work_pending` is `false` (core current AND
-no sibling gap AND no CLAUDE-APPEND drift), return `Upgrade: already up to date` alone.
+no sibling gap or unresolved sibling work), return `Upgrade: already up to date` alone.
 When core is current but `work_pending` is `true` (sibling-only work), use `Upgrade: core current v<to>`
 and still process Steps 3, 4, 7, 8, 9.

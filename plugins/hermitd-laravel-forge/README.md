@@ -60,7 +60,7 @@ claude plugin install hermitd-laravel-forge --marketplace gtapps/hermitd --scope
 /hermitd-laravel-forge:hatch
 ```
 
-The wizard triggers `hermitd:hatch` if the core hermit isn't ready, prompts for your `FORGE_API_TOKEN`, installs `laravel/forge-sdk` into an isolated runtime tree (`.hermit/forge-runtime/`), injects the Forge Workflow block into your `CLAUDE.md`, and registers the daily estate scan.
+The wizard triggers `hermitd:hatch` if the core hermit isn't ready, prompts for your `FORGE_API_TOKEN`, installs `laravel/forge-sdk` into an isolated runtime tree (`.hermit/forge-runtime/`), and registers the daily estate scan.
 
 > **Just trying it?** After `hatch`, run `hermitd start --no-tmux` for sessions, routines, heartbeat, and the learning loop without 24/7 autonomy. Run `/hermitd:channel-setup` first if you want Discord or Telegram.
 

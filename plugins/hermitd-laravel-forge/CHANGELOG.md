@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Hatch no longer writes an instruction block into `CLAUDE.md`; the plugin's skills, agents and hooks carry its guidance. Requires hermitd 1.4.17.
+
 ### Fixed
 - `forge.php check` reports a rejected or forbidden (403) token as `invalid` instead of `unreachable`
 - `forge.php failed-deploys` pauses after a rate-limited deployment fetch

@@ -141,7 +141,6 @@ hermitd-homeassistant (this plugin)
   ├── hooks/              mcp-safety-gate.ts + hooks.json
   ├── bin/ha-agent-lab    CLI launcher (runs src/cli.ts with bun)
   ├── src/*.ts            TypeScript modules (REST client, policy, simulation, apply, history, silence)
-  └── state-templates/    CLAUDE-APPEND.md (injected by hatch)
 
 hermitd (core, required ≥ 1.4.16)
   └── Session lifecycle, proposals, reflect, memory, cost tracking

@@ -1,16 +1,6 @@
 # Git Safety
 
-Two layers of protection: prose rules in `state-templates/CLAUDE-APPEND.md` (always active) and the `git-push-guard` hook (strict profile only).
-
----
-
-## Prose Rules (Always Active)
-
-Injected into the project's `CLAUDE.md` by `/hatch`. Push only feature branches and open PRs through the project's workflow or the forge CLI. Never bypass hooks, commit or push to protected branches, or force-push outside the narrow explicit-refspec lease allowance. See `state-templates/CLAUDE-APPEND.md` §Git Safety for the authoritative rules.
-
-These apply to whatever agent the operator uses — native `Agent` tool, the built-in `Plan`/`Explore` research agents, custom subagents, the main session. They depend on the agent reading and following the rules; LLMs sometimes ignore prose. That's what the hook is for.
-
----
+Git safety uses core's native approval prompts and the `git-push-guard` hook (strict profile only).
 
 ## git-push-guard Hook (Strict Profile)
 
@@ -104,8 +94,6 @@ Core hermit seeds native Claude Code `permissions.deny` / `permissions.ask` at h
 
 ---
 
-## Why Two Layers?
+## Approval prompts and push guard
 
-Prose rules are the universal floor — they work at every profile level and don't depend on hook infrastructure. The hook is a safety net for strict deployments where you want a hard `bash`-time block, not just a behavioral constraint.
-
-The plugin's identity in v0.3.0+: a thin safety layer around (a) the strict hook, (b) the injected CLAUDE-APPEND prose. Operators who want softer enforcement run at `standard` and trust the prose; operators who want belt-and-suspenders run at `strict`.
+Core seeds approval prompts for risky operations. The strict push guard adds a hard `bash`-time block on always-on hermits.

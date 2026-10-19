@@ -39,25 +39,12 @@ const phpFloor = (composerJson.require.php as string).replace(/^[<>=^~]+/, '');
 ok(`still states its own PHP floor (${phpFloor}, from composer.json)`,
   new RegExp(`PHP ${phpFloor.replace(/\./g, '\\.')}\\+? is required`).test(hatchText));
 
-// CLAUDE-APPEND token-efficiency guard. The block is re-paid on every session
-// load and every subagent dispatch, so the size ceiling keeps the trim from
-// creeping back, and the safety rules it was not allowed to touch must stay.
-console.log('\nstate-templates/CLAUDE-APPEND.md:');
-const appendPath = path.join(import.meta.dir, '..', 'state-templates', 'CLAUDE-APPEND.md');
-ok('CLAUDE-APPEND exists', fs.existsSync(appendPath), appendPath);
-if (fs.existsSync(appendPath)) {
-  const append = fs.readFileSync(appendPath, 'utf-8');
-  // Pre-trim 2,993 B → ~2,265 B.
-  ok('under post-trim ceiling (~2265 B)', Buffer.byteLength(append, 'utf-8') <= 2600, `${Buffer.byteLength(append, 'utf-8')} B`);
-
-  ok('keeps the deploy and reboot previews', append.includes('preview-deploy <server> <site>') && append.includes('preview-reboot'));
-  ok('relays the target before execution', append.includes('relay the canonical target to the operator, then run the write command for native approval'));
-  ok('keeps the outage consequence', append.includes('A wrong reboot causes an outage'));
-  // Replaced the closed-allowlist assertion: reads no longer use an allowlist,
-  // so asserting it would keep the template documenting a guarantee the code
-  // does not make. The plan hash is the guarantee that took its place.
-  ok('keeps the plan-bound write fact', append.includes('hash-checked plan'));
-  ok('keeps secret hygiene', append.includes('[REDACTED]'));
-}
+const servers = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/forge-servers/SKILL.md'), 'utf-8');
+const deploy = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/forge-deploy/SKILL.md'), 'utf-8');
+const logs = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills/forge-logs/SKILL.md'), 'utf-8');
+ok('keeps the deploy and reboot previews', deploy.includes('preview-deploy <server> <site>') && servers.includes('preview-reboot'));
+ok('keeps the outage consequence', servers.includes('A wrong reboot causes an outage'));
+ok('keeps the plan-bound write fact', servers.includes('execute <plan-id>') && servers.includes('mismatch'));
+ok('keeps secret hygiene', logs.includes('[REDACTED]'));
 
 process.exit(summary() === 0 ? 0 : 1);

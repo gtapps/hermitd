@@ -256,7 +256,7 @@ function resolveTarget(verb: string, target: string): string {
 }
 
 /** The hermit-dir files a shell write must raise the native prompt for. */
-export const PROTECTED_FILES = ['config.json', 'RESIDENT.md', 'claude-settings.json', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md'];
+export const PROTECTED_FILES = ['config.json', 'claude-settings.json', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md'];
 // A nested file's directory is optional so `$STATE/<basename>` matches the way
 // `$DIR/config.json` does: the hook cannot tell which directory a variable names.
 const PROTECTED_FILE_ALT = PROTECTED_FILES
@@ -420,7 +420,7 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
     // The file being WRITTEN is the last path in the match — `cp <src> <dest>`
     // and `tee`/`sed -i <file>` both put it at the end, and the redirect
     // alternative starts at `>` so it holds only one. Taking the first would
-    // name the source of `cp .../config.json .../RESIDENT.md` in the prompt.
+    // name the source of `cp .../config.json .../claude-settings.json` in the prompt.
     const names = fileWrite[0].match(new RegExp(PROTECTED_FILE_ALT, 'g'));
     return [...listen, names ? names[names.length - 1] : 'config.json'];
   }

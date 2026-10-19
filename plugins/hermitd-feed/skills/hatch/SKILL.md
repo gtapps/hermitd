@@ -32,9 +32,9 @@ If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fe
 - **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
-  > "hermitd-feed {self_version} is already installed. Skip to Step 6 to re-verify, or reply 'full' to re-run the full wizard."
+  > "hermitd-feed {self_version} is already installed. Skip to Step 4 to re-verify, or reply 'full' to re-run the full wizard."
 
-  Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 6; **full** → continue from Step 2.
+  Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 4; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
 - **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
@@ -67,41 +67,19 @@ Ask the operator (use `AskUserQuestion`, one prompt per decision or batched):
 4. **Enrichments** — `story_arcs` (cross-reference developing stories into briefs) on/off; `follow_up_cta` (append a `/deep-dive` reply prompt to top-tier items) on/off. Defaults: both off.
 5. **Reaction feedback** — track 👍/👎 reactions on delivered briefs for the weekly source signal, on/off. Default off. (Note: the reaction→feedback-line producer is a channel-layer concern; enabling this only turns on the message-registry write and weekly aggregation — see `docs/schema.md`.)
 
-Convert each `HH:MM` to a cron expression for Step 6 (`M H * * *` for daily slots; `M H * * 0` for a Sunday weekly). Hold the answers in context.
+Convert each `HH:MM` to a cron expression for Step 4 (`M H * * *` for daily slots; `M H * * 0` for a Sunday weekly). Hold the answers in context.
 
 ---
 
-## Step 5 — CLAUDE.md / CLAUDE.local.md inject
-
-**Resolve target file:** Step 1's preflight already returned `target`, `target_file`, `target_default` and `needs_target_question`.
-
-If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored, operator-personal) / **Committed files** (shared with teammates). Then record it:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-feed --target <choice>
-```
-
-Then write the block:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch sync-block hermitd-feed
-```
-
-On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
-
-It appends the `<!-- hermitd-feed: Feed Workflow -->` block when the marker is absent (creating `target_file` if needed) and skips when it is already present; `hermit-evolve` handles block replacement on upgrade.
-
----
-
-## Step 6 — Stamp and register in config.json
+## Step 4 — Stamp and register in config.json
 
 Re-read `.hermit/config.json` now — the wizard has been running since Step 1 and the on-disk file may have changed. Apply the merges below to that fresh copy.
 
-### 6a — Stamp version
+### 4a — Stamp version
 
 Set `_hermit_versions["hermitd-feed"]` to `self_version` from Step 1's preflight.
 
-### 6b — Write the feed config block
+### 4b — Write the feed config block
 
 Set `config.feed` from the Step 3 answers:
 
@@ -120,7 +98,7 @@ Set `config.feed` from the Step 3 answers:
 
 If `config.feed` already exists, merge (keep operator edits; only fill absent keys).
 
-### 6c — Merge routines
+### 4c — Merge routines
 
 In the `routines` array, for each of these IDs that is **absent** (by `id`), add it using the crons from Step 3; skip any already present. Set `enabled` from the slot/weekly enable answers.
 
@@ -145,7 +123,7 @@ In the `routines` array, for each of these IDs that is **absent** (by `id`), add
 }
 ```
 
-### 6d: Merge the source-scout routine
+### 4d: Merge the source-scout routine
 
 Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
@@ -155,7 +133,7 @@ Merge these entries into `config.routines` by id. Create the array if absent. Ap
 
 The monthly routine invokes unattended source discovery directly; candidates remain unverified for operator review.
 
-### 6e — Register the brief archive
+### 4e — Register the brief archive
 
 Ensure `config.storage_drift` is an object and `config.storage_drift.ignore` is an array. If either is
 absent or malformed, normalize it while preserving any valid sibling keys and existing array entries.
@@ -167,7 +145,7 @@ Write the updated `config.json` using the Write tool (full-file replacement to k
 
 ---
 
-## Step 7 — Knowledge-schema extension
+## Step 5 — Knowledge-schema extension
 
 Read `.hermit/knowledge-schema.md`. If the string `brief-summary:` is absent, append under `## Work Products` (create the header if only a stub exists):
 
@@ -189,7 +167,7 @@ If already present: skip. Use Edit.
 
 ---
 
-## Step 8 — Final report
+## Step 6 — Final report
 
 Print a structured summary:
 
@@ -201,7 +179,6 @@ Installation summary:
   ✓ Registries: feed-sources.md / feed-categories.md / FEEDS.md seeded (or already present){; starter pack applied if opted in}
   ✓ .gitignore: tmp/ covered
   ✓ config.json: feed block written, _hermit_versions stamped, {K}/3 routines added, source-scout routine registered, briefs archive registered in storage_drift.ignore
-  ✓ CLAUDE.md: Feed Workflow block injected (or already present)
   ✓ knowledge-schema.md: brief types added (or already present)
 
 Next steps:

@@ -48,7 +48,6 @@ skills/              : diagnosis, merge conflicts, domain brainstorm
 hooks/hooks.json     : registers both guards
 scripts/             : git-push-guard.ts, worktree-boundary-guard.ts, their tests, lib/find-hermit-dir.ts and its test
 tests/               — run-all.sh + skill-structure.test.ts
-state-templates/     — CLAUDE-APPEND.md (injected into target project's CLAUDE.md)
 docs/                — user-facing documentation
 .claude-plugin/      — plugin manifest + hermit-meta.json
 ```

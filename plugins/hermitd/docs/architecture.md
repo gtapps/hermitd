@@ -177,7 +177,7 @@ your-project/
 │   ├── config.json
 │   ├── OPERATOR.md           # Human-curated context — never edit autonomously; always confirm changes
 │   └── HEARTBEAT.md
-└── CLAUDE.md (session discipline appended)
+└── CLAUDE.md (operator-authored project guidance)
 ```
 
 No `package.json`, no `node_modules`, no build step.

@@ -12,7 +12,7 @@
 //   bun domain-hatch.ts preflight <plugin-id>
 //     Read-only. Prints one JSON verdict: which of the two stale-core cases
 //     applies (if any), whether this is a full run or a re-verify, the resolved
-//     CLAUDE target, and what the CLAUDE-APPEND block needs. An unresolved
+//     settings target. An unresolved
 //     plugin is `{error:"plugin_*",...}` at exit 1 and still carries the target
 //     fields, which hermit-evolve reads either way.
 //
@@ -21,30 +21,19 @@
 //     verb exists so domain hatches stop carrying their own copy of the
 //     detection and stamping rules.
 //
-//   bun domain-hatch.ts sync-block <plugin-id> [--rendered-stdin]
-//     Appends the plugin's CLAUDE-APPEND block when absent, replaces it only
-//     when rendered content is piped in and differs, refuses on a duplicated
-//     marker. Version-driven refresh stays hermit-evolve's.
-//
 // stateDir/projectRoot are always derived from hermitDir(), never argv: this
 // script is reachable through a pre-approved
 // `Bash(.hermit/bin/hermitd-run domain-hatch <verb> *)` grant that
 // covers every argument, so a `--state-dir`/`--project-root` override would
-// have let one such call point ensure-target/sync-block at another project's
-// state or CLAUDE.md. The plugin list is always live for the same reason: a
-// forged list (the removed `--plugin-list-file` test seam) steers
-// resolvePlugin() -> installPath -> planBlock(), which reads the CLAUDE-APPEND
-// block from that path and writes it into the operator's CLAUDE.md — a forged
-// list is attacker-authored content landing in the file that steers the agent.
+// have let one such call point ensure-target at another project's state.
+// The plugin list is always live so resolution reflects installed plugins.
 // Tests exercise this at the library boundary (lib/domain-hatch/*) with
 // explicit roots instead of shelling out to this CLI with overrides.
 //
 // Every verb's argv beyond <plugin-id> is allow-listed below; anything else
 // exits 1 with `unexpected_args` rather than being silently ignored.
 //
-// Verb dispatch is lazy: preflight is the hot path (every hatch run, including
-// the re-verify that changes nothing) and has no business loading the block
-// writer to do its job.
+// Verb dispatch loads only the selected operation.
 //
 // Output follows the helper convention: one JSON object, exit 1 iff it carries
 // `error`.
@@ -59,14 +48,6 @@ const argv = process.argv.slice(2);
 const verb = argv[0];
 const pluginId = argv[1];
 const rest = argv.slice(2);
-
-async function readStdinIfFlagged(flag: string): Promise<string | undefined> {
-  if (!argv.includes(flag)) return undefined;
-  let buf = '';
-  process.stdin.setEncoding('utf8');
-  for await (const chunk of process.stdin) buf += chunk;
-  return buf;
-}
 
 async function main(): Promise<void> {
   if (!verb || !pluginId) exitError('usage');
@@ -111,31 +92,6 @@ async function main(): Promise<void> {
       version: unresolved ? '0.0.0' : (resolved.version ?? '0.0.0'),
     });
     emitJson(unresolved ? { ...res, resolve_warning: resolved.error } : res);
-  }
-
-  if (verb === 'sync-block') {
-    if (rest.length && rest.join(' ') !== '--rendered-stdin') exitError('unexpected_args');
-    const [{ syncBlocks }, { readTargetState, targetFile }, { resolvePlugin, isResolveError, pluginList }, { coreScope }] =
-      await Promise.all([
-        import('./lib/domain-hatch/block'),
-        import('./lib/domain-hatch/target'),
-        import('./lib/domain-hatch/resolve'),
-        import('./resolve-siblings'),
-      ]);
-    const list = pluginList();
-    const resolved = resolvePlugin(list, pluginId, projectRoot, PLUGIN_ROOT);
-    if (isResolveError(resolved)) exitError(resolved.error);
-
-    const state = readTargetState(stateDir, coreScope(list as any, projectRoot), projectRoot);
-    if (!state.target) exitError('no_target');
-
-    const rendered = await readStdinIfFlagged('--rendered-stdin');
-    const foreign = list
-      .map((e: any) => String(e?.id ?? '').split('@')[0])
-      .filter((n: string) => n && n !== pluginId);
-
-    const target = path.join(projectRoot, targetFile(state.target));
-    emitJson(syncBlocks(resolved.installPath, pluginId, target, path.join(stateDir, 'RESIDENT.md'), foreign, rendered));
   }
 
   exitError('usage');

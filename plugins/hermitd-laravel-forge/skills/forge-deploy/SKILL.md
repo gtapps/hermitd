@@ -63,9 +63,9 @@ The `TERMINAL` line carries only numeric IDs (never display names) — Forge ser
 
 When the `TERMINAL …` notification arrives:
 
-- **`status=finished`** → tell the operator the deploy succeeded, via the **Operator Notification protocol in CLAUDE.md** (core resolves the channel; falls back to a push). No artifact.
-- **`status=failed` / `failed-build` / `cancelled`** → (1) fetch the log with `deploy-log <server-id> <site-id> <deploy-id>` using the numeric IDs from the `TERMINAL` line, **scrub it**, and write a `deploy-incident` artifact (template below); (2) notify the operator of the failure via the **Operator Notification protocol in CLAUDE.md**, including the incident path.
-- **`status=timeout`** → the watch hit its ~15 min cap without reaching a terminal state. Notify the operator (via the **Operator Notification protocol in CLAUDE.md**) that the deploy is still unresolved and point them at `deploy-history` / `deploy-status` to follow up. No incident — a timeout is not a confirmed failure.
+- **`status=finished`** → tell the operator the deploy succeeded, via the **Operator Notification protocol** (core resolves the channel; falls back to a push). No artifact.
+- **`status=failed` / `failed-build` / `cancelled`** → (1) fetch the log with `deploy-log <server-id> <site-id> <deploy-id>` using the numeric IDs from the `TERMINAL` line, **scrub it**, and write a `deploy-incident` artifact (template below); (2) notify the operator of the failure via the **Operator Notification protocol**, including the incident path.
+- **`status=timeout`** → the watch hit its ~15 min cap without reaching a terminal state. Notify the operator (via the **Operator Notification protocol**) that the deploy is still unresolved and point them at `deploy-history` / `deploy-status` to follow up. No incident — a timeout is not a confirmed failure.
 
 Scrubbing happens here, in this step — never in the watch command. The watcher only emits metadata, so no raw log line is ever written by the unattended subprocess.
 

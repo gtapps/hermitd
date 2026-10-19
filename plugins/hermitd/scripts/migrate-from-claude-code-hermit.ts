@@ -2,9 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { HERMITD_IDS } from './settings-edit';
-import { markerOnward, isAmbiguousBlock, closingMarkerFor, extractSiblingMarker } from './evolve-plan';
-import { readTargetState, targetFile } from './lib/domain-hatch/target';
+import { readTargetState } from './lib/domain-hatch/target';
 import { writeFileAtomic } from './lib/md-write';
 import { sha256 } from './lib/hash';
 
@@ -25,23 +23,6 @@ function command(project: string, script: string, args: string[], input?: string
   });
   if (result.error || result.status !== 0) throw new Error(`${script} failed: ${result.error?.message ?? (result.stdout.trim() || result.stderr)}`);
 }
-function migrateBlocks(text: string): string {
-  const names = [...Object.keys(HERMITD_IDS), ...Object.values(HERMITD_IDS)];
-  for (const [old, next] of Object.entries(HERMITD_IDS)) {
-    const marker = extractSiblingMarker(text, old);
-    if (!marker) continue;
-    const block = markerOnward(text, marker, names.filter(name => name !== old));
-    if (!block || isAmbiguousBlock(text, marker, block)) throw new Error(`Duplicate or ambiguous marker: ${marker}`);
-    let replacement = block.replace(marker, marker.replace(old, next))
-      .replace(closingMarkerFor(marker), closingMarkerFor(marker).replace(old, next));
-    for (const [source, dest] of Object.entries(HERMITD_IDS)) replacement = replacement.replaceAll(`/${source}:`, `/${dest}:`);
-    replacement = replacement.replaceAll('.claude-code-hermit/bin/hermit-run', '.hermit/bin/hermitd-run')
-      .replaceAll('.claude-code-hermit', '.hermit');
-    text = text.replace(block, () => replacement);
-  }
-  return text;
-}
-
 export function migrateProject(project: string): string[] {
   project = fs.realpathSync(project);
   const state = path.join(project, '.hermit');
@@ -49,16 +30,11 @@ export function migrateProject(project: string): string[] {
   const report: string[] = [];
   command(project, 'settings-edit.ts', [path.join(state, 'config.json'), 'migrate', 'hermitd']);
 
-  // Old markers supply the fallback until the first rename; the target owner
-  // still resolves the recorded hatch choice and the final filename.
+  // Old markers supply the fallback when no hatch choice was recorded.
   const local = read(path.join(project, 'CLAUDE.local.md')) ?? '';
   const fallback = local.includes('<!-- claude-code-hermit:') ? 'local' : 'committed';
-  const targetState = readTargetState(state, { core_scope: null, target: fallback }, project);
+  const targetState = readTargetState(state, { core_scope: null, target: fallback });
   const target = targetState.target ?? targetState.target_default;
-  for (const file of [path.join(project, targetFile(target)), path.join(state, 'RESIDENT.md')]) {
-    const text = read(file);
-    if (text !== null) writeChanged(file, migrateBlocks(text));
-  }
   // Rewriting existing lines preserves both normal and workspace-backup policy.
   // No ignore block is inserted, even when a file or managed marker is absent.
   for (const name of ['.gitignore', '.worktreeinclude']) {

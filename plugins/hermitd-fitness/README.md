@@ -72,7 +72,7 @@ claude plugin install hermitd-fitness --marketplace gtapps/hermitd --scope local
 /hermitd-fitness:hatch
 ```
 
-The wizard triggers `hermitd:hatch` if the core hermit isn't ready, prompts you to fill in `.env` with your four Strava credentials, writes `.mcp.json` with the Strava MCP server entry, drops the four routine prompt templates into `.hermit/compiled/`, injects the Fitness Workflow block into your `CLAUDE.md`, and registers the routines.
+The wizard triggers `hermitd:hatch` if the core hermit isn't ready, prompts you to fill in `.env` with your four Strava credentials, writes `.mcp.json` with the Strava MCP server entry, drops the four routine prompt templates into `.hermit/compiled/`, and registers the routines.
 
 > **Just trying it?** After `hatch`, restart Claude Code (required to pick up the new `.mcp.json`), approve the `strava` MCP server, then run `hermitd start --no-tmux` for sessions, routines, heartbeat, and the learning loop without 24/7 autonomy. Run `/hermitd:channel-setup` first if you want Discord or Telegram.
 
@@ -126,7 +126,7 @@ Everything else — model, heartbeat, idle behavior, per-routine model — is co
 hermitd-fitness (this plugin)
   ├── skills/             hatch, fitness-brief, activity-deep-dive, capture-activity-rpe, set-rpe
   ├── agents/             strava-data-cruncher (Haiku bulk aggregator)
-  ├── state-templates/    CLAUDE-APPEND.md + gate scripts (installed by hatch)
+  ├── state-templates/    gate scripts (installed by hatch)
   └── docs/               knowledge-schema.md
 
 hermitd (core, required ≥ 1.4.16)

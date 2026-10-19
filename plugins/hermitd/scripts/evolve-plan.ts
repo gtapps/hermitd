@@ -1,8 +1,7 @@
-import { splitResident } from './lib/domain-hatch/block';
 // Read-only analyzer for the hermit-evolve skill. Computes the deterministic
-// comparisons the skill would otherwise do in-context — version gap, the
-// bounded CHANGELOG slice, new config keys, changed templates/bin, and the
-// CLAUDE-APPEND block diff — and emits one JSON "plan" to stdout. The skill
+// comparisons the skill would otherwise do in-context (version gap, the
+// bounded CHANGELOG slice, new config keys, and changed templates/bin)
+// and emits one JSON "plan" to stdout. The skill
 // acts on the plan instead of reading and diffing whole files itself.
 //
 // Also computes sibling hermit plans (registry-driven from _hermit_versions)
@@ -13,7 +12,7 @@ import { splitResident } from './lib/domain-hatch/block';
 // the `errors` array (objects of {code, message}), never thrown. No stdin
 // (skill-invoked, like doctor-check.ts / resolve-outbound-channel.ts).
 //
-// Usage: bun evolve-plan.ts [hermit-dir] --hatch-target=<local|committed>
+// Usage: bun evolve-plan.ts [hermit-dir]
 //                           [--plugin-list-json=<path>]
 //
 // --plugin-list-json: inject claude plugin list --json output from a file (for
@@ -49,30 +48,6 @@ interface SiblingPlanEntry {
   up_to_date: boolean;
   changelog_slice?: string;
   changelog_versions?: string[];
-  resident_changed?: boolean;
-  resident_old_block?: string;
-  resident_missing?: boolean;
-  claude_append_changed?: boolean;
-  claude_append_old_block?: string;
-  claude_append_needs_render?: boolean;
-  claude_append_block_missing?: boolean;
-  claude_append_ambiguous?: boolean;
-  marker?: string;
-}
-
-// Result of diffing a CLAUDE-APPEND block against a target file. `changed` with
-// no `old_block` means "append the full template" (marker/file absent — core
-// only). `ambiguous` means the marker occurs more than once in the target —
-// refuse to touch it. `needs_render` means the template carries mode: markers
-// core cannot render — sync is skipped entirely, deferred to the owning
-// plugin's own hatch. `missing` (siblings only) means the block isn't
-// installed at all — never auto-append a sibling's block.
-interface ClaudeAppendDiffResult {
-  changed: boolean;
-  old_block?: string;
-  ambiguous?: boolean;
-  needs_render?: boolean;
-  missing?: boolean;
 }
 
 const TEMPLATE_FILES = [
@@ -401,91 +376,7 @@ function classifyDockerTemplates(
   return out;
 }
 
-// "<!-- name: Title -->" -> "<!-- /name: Title -->"
-function closingMarkerFor(marker: string): string {
-  return marker.replace(/^<!--\s*/, '<!-- /');
-}
-
-// Bounds of a CLAUDE-APPEND block, in strict precedence order:
-//   Phase A: fence — never cross into another registered plugin's block (a
-//            ceiling, not a candidate end).
-//   Phase B1: closing marker, inclusive. Standalone "---" is ignored in this
-//             branch — an explicit closing marker always wins over a heuristic.
-//   Phase B2: first standalone "---", exclusive (today's behavior; what
-//             legacy closing-marker-less blocks rely on).
-//   Phase B3: fence/EOF, right-trimmed of trailing blank lines.
-// Used on both the template (which skips its own leading "---") and the
-// target CLAUDE file, so the two are compared apples-to-apples.
-// foreignNames are other registered plugin names — their block markers fence this block so
-// it can never swallow a sibling's, even without a closing marker.
-function markerOnward(text: string, marker: string, foreignNames: string[] = []): string | null {
-  const lines = text.split('\n');
-  const start = lines.findIndex(l => l.trim() === marker);
-  if (start === -1) return null;
-
-  const isForeignMarker = (line: string): boolean => {
-    const t = line.trim();
-    if (!t.startsWith('<!--') || !t.endsWith('-->')) return false;
-    return foreignNames.some(n => t.startsWith(`<!-- ${n}:`) || t.startsWith(`<!-- /${n}:`));
-  };
-
-  let limit = lines.length;
-  for (let i = start + 1; i < lines.length; i++) {
-    if (isForeignMarker(lines[i])) { limit = i; break; }
-  }
-
-  const close = closingMarkerFor(marker);
-  for (let i = start + 1; i < limit; i++) {
-    if (lines[i].trim() === close) return lines.slice(start, i + 1).join('\n');
-  }
-
-  for (let i = start + 1; i < limit; i++) {
-    if (lines[i].trim() === '---') return lines.slice(start, i).join('\n');
-  }
-
-  let end = limit;
-  while (end > start + 1 && lines[end - 1].trim() === '') end--;
-  return lines.slice(start, end).join('\n');
-}
-
-// Ambiguity guard for a marker block: the marker line must appear at most once,
-// and the resolved block must occur exactly once in the target — otherwise a
-// replace Edit's old_string wouldn't be unique (could hit the wrong instance),
-// and the caller must NOT fall through to append, which would add a third copy.
-// Exported because domain-hatch's sync-block applies the same guard: two
-// writers touching one block have to agree on when it is safe to replace, or a
-// block gets rewritten by one and refused by the other.
-function isAmbiguousBlock(targetText: string, marker: string, targetBlock: string): boolean {
-  const markerLineCount = targetText.split('\n').filter(l => l.trim() === marker).length;
-  const occurrences = targetText.split(targetBlock).length - 1;
-  return markerLineCount > 1 || occurrences > 1;
-}
-
-// Find the plugin's own CLAUDE-APPEND opening marker: "<!-- <name>: <Title> -->".
-// Name-anchored so an unrelated leading comment (e.g. dev-hermit's
-// "<!-- mode:standard-only -->") can never be mistaken for the block marker.
-// Cannot match a closing marker, since "<!-- /name:" never matches the
-// "<!-- name:" prefix. Returns null if no such comment line is found.
-function extractSiblingMarker(text: string, name: string): string | null {
-  const prefix = `<!-- ${name}:`;
-  for (const line of text.split('\n')) {
-    const t = line.trim();
-    if (t.startsWith(prefix) && t.endsWith('-->')) return t;
-  }
-  return null;
-}
-
-// A template block carrying mode: markers must be rendered by its own plugin
-// before install. Core cannot
-// render it, so the raw text is neither a valid comparison base nor a valid
-// replacement payload, so sync must be skipped entirely for such a block.
-function requiresRendering(blockText: string): boolean {
-  return /<!--\s*\/?mode:/.test(blockText);
-}
-
-// Registered sibling plugin names: the keys of _hermit_versions, minus core
-// itself. Shared by computeClaudeAppend (as the fence for core's own block)
-// and computeSiblings (as the fence for each sibling's block).
+// Registered sibling names are the registry keys other than core.
 function getRegisteredNames(config: Json): string[] {
   const versions: Record<string, string> = isPlainObject(config._hermit_versions)
     ? config._hermit_versions
@@ -496,95 +387,6 @@ function getRegisteredNames(config: Json): string[] {
 // Safe realpath: returns p unchanged if the path can't be resolved (ENOENT etc.)
 function safeRealpath(p: string): string {
   try { return fs.realpathSync(p); } catch { return p; }
-}
-
-// Internal: diff a CLAUDE-APPEND block against what's in the target file.
-// tmplText: the template file content (already read by caller).
-// marker: the HTML-comment marker line.
-// targetFile: path to CLAUDE.local.md or CLAUDE.md.
-// opts.foreignNames: other registered plugin names, used to fence block bounds.
-// opts.sibling: true when diffing a sibling hermit's block — governs the
-//   missing-marker rule below. Core may append its own missing block; a
-//   sibling never may, since core cannot render a sibling's template and an
-//   un-rendered append would corrupt the target (see requiresRendering).
-// Returns null on error (error pushed); a result object on success.
-function _diffClaudeAppendByText(
-  tmplText: string,
-  marker: string,
-  targetFile: string,
-  errors: Json[],
-  codes: { markerMissing: string; targetUnreadable: string },
-  opts: { foreignNames?: string[]; sibling?: boolean } = {},
-): ClaudeAppendDiffResult | null {
-  const foreignNames = opts.foreignNames ?? [];
-  const tmplBlock = markerOnward(tmplText, marker, foreignNames);
-  if (tmplBlock === null) {
-    errors.push({ code: codes.markerMissing, message: `marker "${marker}" not found in template` });
-    return null;
-  }
-
-  if (requiresRendering(tmplBlock)) {
-    return { changed: false, needs_render: true };
-  }
-
-  let targetText: string | null = null;
-  try {
-    targetText = fs.readFileSync(targetFile, 'utf8');
-  } catch (e: any) {
-    if (e && e.code !== 'ENOENT') {
-      errors.push({ code: codes.targetUnreadable, message: `${targetFile} unreadable: ${e.message}` });
-      return null;
-    }
-    // file missing -> append case (targetText stays null)
-  }
-
-  const targetBlock = targetText === null ? null : markerOnward(targetText, marker, foreignNames);
-
-  if (targetBlock === null) {
-    // file missing or marker absent — append case, no old_block. Siblings
-    // never auto-append: core cannot render their template, so it can only
-    // report and defer to the sibling's own hatch.
-    return opts.sibling ? { changed: true, missing: true } : { changed: true };
-  }
-
-  if (isAmbiguousBlock(targetText!, marker, targetBlock)) {
-    return { changed: true, ambiguous: true };
-  }
-
-  const changed = normTrailing(targetBlock) !== normTrailing(tmplBlock);
-  const result: ClaudeAppendDiffResult = { changed };
-  if (changed) result.old_block = targetBlock;
-  return result;
-}
-
-function computeResident(
-  plan: Json, template: string, marker: string, hermitDir: string, foreignNames: string[], errors: Json[],
-): void {
-  const resident = splitResident(template).resident;
-  if (!resident) return;
-  const target = path.join(hermitDir, 'RESIDENT.md');
-  const result = _diffClaudeAppendByText(resident, marker, target, errors, {
-    markerMissing: 'resident_marker_missing', targetUnreadable: 'resident_target_unreadable',
-  }, { foreignNames });
-  if (!result) return;
-  // Read again rather than trust `result`: the diff short-circuits on
-  // needs_render before it ever opens the target, and a mode-fenced sibling whose
-  // resident block was never installed is exactly the case worth reporting.
-  // Guarded like the diff's own read — an unreadable RESIDENT.md is one warning,
-  // not a throw that collapses the whole plan into a fatal.
-  let targetText: string | null = null;
-  try {
-    targetText = fs.readFileSync(target, 'utf8');
-  } catch (e: any) {
-    if (e && e.code !== 'ENOENT') {
-      errors.push({ code: 'resident_target_unreadable', message: `${target} unreadable: ${e.message}` });
-      return;
-    }
-  }
-  plan.resident_missing = targetText === null || markerOnward(targetText, marker, foreignNames) === null;
-  plan.resident_changed = result.changed || plan.resident_missing;
-  if (result.old_block !== undefined) plan.resident_old_block = result.old_block;
-  if (result.ambiguous) plan.resident_ambiguous = true;
 }
 
 // Load the claude plugin list --json inventory.
@@ -644,8 +446,6 @@ function resolveProjectEffectivePlugin(projectEffective: any[], name: string): a
 function computeSiblings(
   config: Json,
   pluginList: any[],
-  hermitDir: string,
-  hatchTarget: string,
   projectRoot: string,
   siblingWarnings: string[],
 ): { siblings: SiblingPlanEntry[]; siblings_path_unresolved: string[]; siblings_detected_unregistered: string[] } {
@@ -664,8 +464,6 @@ function computeSiblings(
     (e.scope === 'project' || e.scope === 'local') &&
     safeRealpath(String(e.projectPath || '')) === realRoot
   );
-
-  const targetFile = path.join(projectRoot, hatchTarget === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
 
   for (const name of registeredNames) {
     const entry = resolveProjectEffectivePlugin(projectEffective, name);
@@ -718,46 +516,6 @@ function computeSiblings(
       }
     }
 
-    // CLAUDE-APPEND drift — computed for all siblings so no-gap drift can be
-    // reported as advisory (block-drifted). Edit is only applied on a version gap.
-    const claudeAppendPath = path.join(installPath, 'state-templates', 'CLAUDE-APPEND.md');
-    let tmplText: string | null = null;
-    try {
-      tmplText = fs.readFileSync(claudeAppendPath, 'utf8');
-    } catch {
-      // No CLAUDE-APPEND.md for this sibling — skip block comparison
-    }
-
-    if (tmplText !== null) {
-      const marker = extractSiblingMarker(tmplText, name);
-      if (marker !== null) {
-        sibling.marker = marker;
-        const localErrors: Json[] = [];
-        const foreignNames = ['hermitd', ...registeredNames.filter(n => n !== name)];
-        computeResident(sibling, tmplText, marker, hermitDir, foreignNames, localErrors);
-        const diffResult = _diffClaudeAppendByText(splitResident(tmplText).shared, marker, targetFile, localErrors, {
-          markerMissing: `sibling_${name}_marker_missing`,
-          targetUnreadable: `sibling_${name}_target_unreadable`,
-        }, { foreignNames, sibling: true });
-        if (localErrors.length > 0) {
-          siblingWarnings.push(...localErrors.map((e: Json) => `${name}: ${e.message}`));
-        }
-        if (diffResult !== null) {
-          sibling.claude_append_changed = diffResult.changed;
-          if (diffResult.changed && diffResult.old_block !== undefined) {
-            sibling.claude_append_old_block = diffResult.old_block;
-          }
-          if (diffResult.needs_render) sibling.claude_append_needs_render = true;
-          if (diffResult.missing) sibling.claude_append_block_missing = true;
-          if (diffResult.ambiguous) sibling.claude_append_ambiguous = true;
-        }
-      } else {
-        siblingWarnings.push(
-          `${name}: no "<!-- ${name}: … -->" marker in state-templates/CLAUDE-APPEND.md — block sync skipped`
-        );
-      }
-    }
-
     siblings.push(sibling);
   }
 
@@ -780,20 +538,13 @@ function computeSiblings(
   return { siblings, siblings_path_unresolved, siblings_detected_unregistered };
 }
 
-function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
+function buildPlan({ hermitDir, pluginRoot, pluginListJsonPath }: {
   hermitDir: string;
   pluginRoot: string;
-  hatchTarget: string | null;
   pluginListJsonPath?: string | null;
 }): Json {
   const errors: Json[] = [];
   const plan: Json = { errors };
-
-  if (hatchTarget !== 'local' && hatchTarget !== 'committed') {
-    errors.push({ code: 'no_hatch_target', message: '--hatch-target=<local|committed> is required' });
-    return plan;
-  }
-  plan.hatch_target = hatchTarget;
 
   const configPath = path.join(hermitDir, 'config.json');
   let config: Json;
@@ -823,7 +574,7 @@ function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
   // Config stamped AHEAD of the loaded plugin: this session loaded a stale install copy,
   // not a hermit awaiting an upgrade. `up_to_date` deliberately collapses "ahead" into
   // "current", so it cannot carry this — and `work_pending` can still be true here via a
-  // sibling gap or CLAUDE-APPEND drift, which would walk the runner into Step 7's
+  // sibling gap, which would walk the runner into Step 7's
   // migrations and then Step 9, where finalizing with the older `to` would downgrade the
   // applied stamp without reversing anything. Separate blocking field, consumed by the
   // skill's Version check BEFORE any step runs.
@@ -899,28 +650,14 @@ function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
     siblingWarnings.push(`plugin-list unavailable: ${pluginListError}`);
   }
 
-  const siblingResult = computeSiblings(config, pluginList, hermitDir, hatchTarget, projectRoot, siblingWarnings);
+  const siblingResult = computeSiblings(config, pluginList, projectRoot, siblingWarnings);
   plan.siblings = siblingResult.siblings;
   plan.siblings_path_unresolved = siblingResult.siblings_path_unresolved;
   plan.siblings_detected_unregistered = siblingResult.siblings_detected_unregistered;
   if (siblingWarnings.length > 0) plan.siblings_warnings = siblingWarnings;
 
-  // work_pending: true when core or any sibling needs attention (version gap or
-  // CLAUDE-APPEND drift). Drives the short-circuit in SKILL.md Step 1 —
-  // "already up to date" only when nothing to do for core OR any registered sibling.
-  // Siblings we could not fully assess (path-unresolved, or a plugin-list/CHANGELOG
-  // warning) also keep work_pending true so the skill runs Step 7 and surfaces them
-  // instead of silently reporting "up to date".
-  // `claude_append_needs_render` is deliberately NOT part of this test: it is a
-  // static property of the sibling's template (dev-hermit's always carries mode:
-  // markers), not evidence of pending work. Including it would pin work_pending
-  // true forever for every project with dev-hermit registered, so hermit-evolve
-  // could never report "up to date" again. On a real version gap `!s.up_to_date`
-  // already fires — the only case where Step 7 acts on the flag.
-  const siblingWorkNeeded = plan.siblings.some(
-    (s: SiblingPlanEntry) =>
-      !s.up_to_date || s.claude_append_changed || s.claude_append_ambiguous || s.resident_changed || s.resident_missing
-  );
+  // Unassessed siblings keep the runner active so it can surface warnings.
+  const siblingWorkNeeded = plan.siblings.some((s: SiblingPlanEntry) => !s.up_to_date);
   const siblingsUnassessed =
     plan.siblings_path_unresolved.length > 0 || (plan.siblings_warnings?.length ?? 0) > 0;
   plan.work_pending = !plan.up_to_date || siblingWorkNeeded || siblingsUnassessed;
@@ -930,25 +667,23 @@ function buildPlan({ hermitDir, pluginRoot, hatchTarget, pluginListJsonPath }: {
 
 function parseArgs(argv: string[]) {
   let hermitDir: string | null = null;
-  let hatchTarget: string | null = null;
   let pluginListJsonPath: string | null = null;
   for (const a of argv) {
-    if (a.startsWith('--hatch-target=')) hatchTarget = a.slice('--hatch-target='.length);
-    else if (a.startsWith('--plugin-list-json=')) pluginListJsonPath = a.slice('--plugin-list-json='.length);
+    if (a.startsWith('--plugin-list-json=')) pluginListJsonPath = a.slice('--plugin-list-json='.length);
     else if (!a.startsWith('--') && hermitDir === null) hermitDir = a;
   }
-  return { hermitDir: hermitDir || '.hermit', hatchTarget, pluginListJsonPath };
+  return { hermitDir: hermitDir || '.hermit', pluginListJsonPath };
 }
 
-export { buildPlan, cmpSemver, changelogSlice, newConfigKeys, markerOnward, extractSiblingMarker, closingMarkerFor, isAmbiguousBlock, requiresRendering, classifyFiles, classifyDockerEntrypoint, classifyDockerTemplates };
+export { buildPlan, cmpSemver, changelogSlice, newConfigKeys, classifyFiles, classifyDockerEntrypoint, classifyDockerTemplates };
 export type { ClassifiedFile, FileClass };
 
 if (import.meta.main) {
-  const { hermitDir, hatchTarget, pluginListJsonPath } = parseArgs(process.argv.slice(2));
+  const { hermitDir, pluginListJsonPath } = parseArgs(process.argv.slice(2));
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;
   try {
-    plan = buildPlan({ hermitDir: path.resolve(hermitDir), pluginRoot, hatchTarget, pluginListJsonPath });
+    plan = buildPlan({ hermitDir: path.resolve(hermitDir), pluginRoot, pluginListJsonPath });
   } catch (e: any) {
     plan = { errors: [{ code: 'fatal', message: e.message }] };
   }

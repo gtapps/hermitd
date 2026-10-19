@@ -15,7 +15,7 @@ claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 /hermitd-dev:hatch
 ```
 
-The wizard configures protected branches, installs strict hook enforcement with an explicit opt-out, syncs dev instructions, and offers Context7.
+The wizard configures protected branches, installs strict hook enforcement with an explicit opt-out, and offers Context7.
 
 **Already set up?** Re-run `/hermitd-dev:hatch` any time. Every key offers `Keep current (<value>)` as the recommended option, so you can sweep through with Enter-presses to fast-confirm — or change individual values.
 
@@ -23,7 +23,7 @@ The wizard configures protected branches, installs strict hook enforcement with 
 
 ## The Dev Cycle
 
-After `/hatch`, agents follow Git Safety and Branch Discipline in CLAUDE.md, with resident task bookkeeping in `.hermit/RESIDENT.md`.
+After `/hatch`, git safety uses core's approval prompts and the strict push guard.
 
 ### 1. Plan
 
@@ -31,14 +31,7 @@ Break the task into ordered steps in the Progress Log. Skip for trivial single-s
 
 ### 2. Branch and implement
 
-Per `§Branch Discipline` in the injected CLAUDE.md:
-
-1. Verify clean working tree (`git status --porcelain` empty).
-2. Branch from the first entry of `protected_branches` (defaults to `main`): `git checkout -b <prefix>/<slug> origin/<base>`.
-3. Name the branch `<prefix>/<slug>` where `prefix ∈ {feature, fix, chore, hotfix}`.
-4. Inside an open record's turn, pipe the creation note into `.hermit/bin/hermitd-run task note .hermit <id>`. Otherwise skip the note.
-
-Then write the code. The CLAUDE.md `§Git Safety` rules apply throughout: feature-branch pushes only, no `--no-verify`, no commits to protected, no force-push. At strict hook profile, `git-push-guard` blocks the dangerous commands at `bash` time.
+Follow the project's development workflow. Core's approval prompts and, on always-on hermits, `git-push-guard` at strict enforce git safety.
 
 ### 3. Verify and publish
 
@@ -81,7 +74,7 @@ The setup wizard offers `context7` from `claude-plugins-official`. See [Recommen
 
 - **First session in a new project?** Let the agent orient itself before starting work — read existing code, review tests, scan the README.
 - **Talk to your hermit.** "What slowed you down?" / "Suggest improvements" — feedback feeds into the learning loop.
-- **After plugin updates**, run `/hermitd:hermit-evolve` to sync the dev block.
+- **After plugin updates**, run `/hermitd:hermit-evolve` to run dev migrations.
 - **Proposals have categories.** Dev-specific prefixes (`[missing-tests]`, `[tech-debt]`, `[dependency]`, `[tooling]`, `[architecture]`) keep things organized.
 - **"What should I be fixing?"** Run `/hermitd-dev:domain-brainstorm`. It reads git churn, manifest drift, and README coverage to surface at most 2 grounded improvement ideas as PROPs : no manual triage needed.
 - **Channel activation**: run `/hermitd:channel-setup` for messaging between operator and hermit.

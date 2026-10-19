@@ -159,13 +159,12 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(.hermit/bin/hermitd-run proposal metrics *)',
   // The shared domain-hatch protocol, pinned per verb for the same reason:
-  // `domain-hatch *` would hand every caller `ensure-target` and `sync-block`
-  // — writes to core state and to the operator's CLAUDE.md — when most of a
+  // `domain-hatch *` would hand every caller `ensure-target`
+  // (which writes to core state) when most of a
   // hatch run only needs to read `preflight`.
   'Bash(.hermit/bin/hermitd-run domain-hatch preflight *)',
   'Bash(.hermit/bin/hermitd-run domain-hatch ensure-target *)',
-  'Bash(.hermit/bin/hermitd-run domain-hatch sync-block *)',
-  // The three routes above exist because a domain plugin can't resolve core's
+  // The two routes above exist because a domain plugin can't resolve core's
   // path. The ones below exist for a different reason: they are the routes the
   // model reaches for with no pre-resolved path of its own: channel-send and
   // observations during a turn, and the
@@ -237,6 +236,7 @@ const HERMIT_ALLOW = [
 // an entry still in HERMIT_ALLOW — this registry is what makes a deletion or a respelling
 // reach already-hatched hermits.
 const HERMIT_OBSOLETE = [
+  'Bash(.hermit/bin/hermitd-run domain-hatch sync-block *)',
   'Bash(python3:*)',
   'Bash(node:*)',
   'Edit(.claude/.claude-code-hermit/**)',
@@ -304,6 +304,9 @@ const HERMIT_OBSOLETE = [
 // settings. Not extended with the five legacy hardened extras: those are still
 // legitimate Hardened seeds, and sync would re-strip them every run.
 const HERMIT_OBSOLETE_DENY = [
+  'Bash(*> *.hermit/RESIDENT.md*)',
+  'Bash(*>.hermit/RESIDENT.md*)',
+  'Edit(*.hermit/RESIDENT.md)',
   'Bash(*API_KEY*)',
   'Bash(*SECRET*)',
   'Bash(*TOKEN*)',

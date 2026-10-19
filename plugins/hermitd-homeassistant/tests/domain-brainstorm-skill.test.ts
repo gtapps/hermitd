@@ -70,13 +70,6 @@ test('proposal tags carry brainstorm provenance', () => {
   expect(skillBody).toContain('tags: [capability-brainstorm]');
 });
 
-test('every title prefix the HA APPEND advertises is one the skill emits', () => {
-  const append = readFileSync(join(PLUGIN_ROOT, 'state-templates', 'CLAUDE-APPEND.md'), 'utf8');
-  const prefixes = [...append.matchAll(/^- \*\*(\[[a-z-]+\])\*\*/gm)].map((m) => m[1]);
-  expect(prefixes.length).toBeGreaterThan(0);
-  for (const prefix of prefixes) expect(skillBody).toContain(prefix);
-});
-
 // --- Boundary guard: suppression framing ---
 // Gate 0 legitimately reads integration-health-degraded-domains.json and
 // pattern-analysis as SUPPRESSION FILTERS. The assertion is positive (they

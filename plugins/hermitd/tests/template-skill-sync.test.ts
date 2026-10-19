@@ -175,7 +175,7 @@ describe('.worktreeinclude template', () => {
     ]);
   });
 
-  // bin/hermitd-run is the one executable in the block — the CLAUDE-APPEND
+  // bin/hermitd-run is the one executable in the block; the resident prompt
   // commands need it at the relative path inside a worktree. The rest of bin/
   // are lifecycle wrappers (start/stop/update/docker) that act on the main
   // hermit; a worktree copy of those is a footgun, so the whole dir must not

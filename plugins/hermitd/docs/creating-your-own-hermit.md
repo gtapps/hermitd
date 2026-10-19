@@ -141,13 +141,12 @@ Your hermit handles domain-specific work. Core handles session lifecycle.
 
 | File                                  | Purpose                                                            |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| `skills/hatch/SKILL.md`               | Optional — setup/init skill. Checks core prerequisite, appends marked domain instruction template, is idempotent |
-| `marked domain instruction template`    | Shared rules and resident duties, split by sync-block into CLAUDE and RESIDENT.md |
+| `skills/hatch/SKILL.md`               | Optional — setup/init skill. Checks core prerequisite and version registration; is idempotent |
 | `skills/domain-session/SKILL.md`      | Your main workflow, bookended with core's session lifecycle        |
 
 ### Hatch pattern (optional)
 
-Only needed if your hermit has setup steps beyond what core's `/hermitd:hatch` does (e.g. appending a marked domain instruction template, creating extra state dirs, registering routines). If your plugin is a thin layer of agents/skills with no setup needed, skip this entirely.
+Only needed if your hermit has setup steps beyond what core's `/hermitd:hatch` does (e.g. creating extra state dirs, registering routines). If your plugin is a thin layer of agents/skills with no setup needed, skip this entirely.
 
 Name the skill simply `hatch` — the plugin namespace already disambiguates it from core's hatch (`/hermitd-your-domain:hatch` vs `/hermitd:hatch`).
 
@@ -157,9 +156,9 @@ name: hatch
 description: Initialize your domain hermit. Requires hermitd core.
 ---
 
-Check that `.hermit/` exists. If not: "Run `/hermitd:hatch` first."
-Check if CLAUDE.md contains the marker comment. If found: "Already initialized." Stop.
-Otherwise: run `domain-hatch sync-block <plugin>` through hermitd-run. Wrap resident duties in `<!-- resident-only -->` and `<!-- /resident-only -->`; keep shared rules outside.
+Run `.hermit/bin/hermitd-run domain-hatch preflight <plugin>` and follow its core prerequisite verdict.
+Use preflight `verify` and `config.json`'s `_hermit_versions` for hatch idempotency.
+Keep guidance in the plugin's skills, agent bodies and hooks.
 ```
 
 ### Custom boot skill
@@ -361,7 +360,6 @@ Skills should say "notify the operator" instead of referencing specific channels
 - [ ] Every agent has `disallowedTools`
 - [ ] Destructive agents use `isolation: worktree`
 - [ ] If present, `hatch` checks for core and is idempotent
-- [ ] marked domain instruction template has a marker comment
 - [ ] Skills use "notify the operator" instead of channel-specific references
 - [ ] Hooks are profile-gated
 - [ ] Zero dependencies — no `package.json`, no build step

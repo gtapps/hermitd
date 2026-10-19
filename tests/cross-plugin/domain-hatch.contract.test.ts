@@ -14,7 +14,6 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { extractSiblingMarker, closingMarkerFor } from '../../plugins/hermitd/scripts/evolve-plan';
 import { isModelInvocationDisabled } from '../../plugins/hermitd/tests/helpers/skill-frontmatter';
 
 const REPO_ROOT = path.resolve(import.meta.dir, '../..');
@@ -26,8 +25,6 @@ interface DomainHatch {
   text: string;
 }
 
-const templatePathFor = (slug: string) =>
-  path.join(PLUGINS_DIR, slug, 'state-templates', 'CLAUDE-APPEND.md');
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A plugin is in scope when it has a hatch, declares a core dependency, and
@@ -82,7 +79,7 @@ describe('discovery', () => {
   test('scribe reads the shared target without resolving or stamping it', () => {
     const text = fs.readFileSync(path.join(PLUGINS_DIR, 'hermitd-scribe/skills/hatch/SKILL.md'), 'utf8');
     expect(text).toContain('domain-hatch preflight hermitd-scribe');
-    expect(text).toContain('`target_file` from step 1.5');
+    expect(text).toContain('Map `target` (or `target_default` when absent)');
     expect(text).not.toContain('hatch-options.json');
     expect(text).not.toContain('domain-hatch ensure-target');
     expect(text).toContain('If it prints `error`');
@@ -141,14 +138,6 @@ for (const { slug, text } of HATCHES) {
       expect(text).toContain(`domain-hatch preflight ${slug}`);
     });
 
-    test('records the operator choice via ensure-target', () => {
-      expect(text).toContain(`domain-hatch ensure-target ${slug} --target`);
-    });
-
-    test('writes the block via sync-block', () => {
-      expect(text).toContain(`domain-hatch sync-block ${slug}`);
-    });
-
     test('stamps its own version into _hermit_versions, sourced from the preflight verdict', () => {
       expect(text).toContain(`_hermit_versions["${slug}"]`);
       expect(
@@ -162,58 +151,27 @@ for (const { slug, text } of HATCHES) {
       }
     });
 
-    test('consumes the preflight verdict fields instead of re-deriving them', () => {
-      expect(
-        /`target`[\s\S]{0,60}`target_file`[\s\S]{0,60}`target_default`[\s\S]{0,60}`needs_target_question`/.test(
-          text,
-        ),
-      ).toBe(true);
-    });
+    if (text.includes('## Native approval rules')) {
+      test('records the operator choice via ensure-target', () => {
+        expect(text).toContain(`domain-hatch ensure-target ${slug} --target`);
+      });
 
-    test('Visibility prompt still offers .local vs committed', () => {
-      expect(/Visibility[\s\S]{0,240}`\.local` files[\s\S]{0,120}Committed files/.test(text)).toBe(
-        true,
-      );
-    });
+      test('consumes the preflight target fields for native permissions', () => {
+        for (const field of ['target', 'target_default', 'needs_target_question']) {
+          expect(text).toContain('`' + field + '`');
+        }
+      });
+
+      test('Visibility prompt still offers .local vs committed', () => {
+        expect(/Visibility[\s\S]{0,240}`\.local` files[\s\S]{0,120}Committed files/.test(text)).toBe(true);
+      });
+    }
 
     test('does not read hatch-options.json directly', () => {
       expect(text).not.toContain('hatch-options.json');
     });
 
-    // sync-block replaces between the markers, so the template must carry both.
-    // The open marker is read from the template itself, never hardcoded — dev's
-    // SKILL.md never names its marker.
-    // Reuses evolve-plan's own marker resolver instead of a second regex: that
-    // heuristic has a documented bug history (unrelated leading comments
-    // mistaken for the block marker) a from-scratch regex would re-expose.
-    // Read lazily (inside each test, not at collection) so a plugin missing
-    // its template fails exactly the test that needs it, with the path in the
-    // message, instead of aborting the whole file's collection from discover().
-    const loadTemplate = () => {
-      const templateText = fs.readFileSync(templatePathFor(slug), 'utf-8');
-      return { templateText, open: extractSiblingMarker(templateText, slug) };
-    };
 
-    test('CLAUDE-APPEND template carries a matched marker pair', () => {
-      const { templateText, open } = loadTemplate();
-      expect(open).toBeTruthy();
-      expect(templateText).toContain(closingMarkerFor(open!));
-    });
-
-    // The deleted per-plugin tests pinned each marker literal. The template is
-    // now the single source of truth (sync-block derives the marker from it,
-    // block.ts falls back to APPEND when the target's block has a stale name),
-    // so pin the skill prose to the template instead: any marker the skill
-    // names must be the template's own. Dev's SKILL.md names none,
-    // which passes vacuously; a rename that touches only one
-    // side fails here.
-    test('any marker the skill names matches the template', () => {
-      const { open } = loadTemplate();
-      const named = text.match(new RegExp(`<!-- /?${escapeRe(slug)}:[^>]*-->`, 'g')) ?? [];
-      for (const marker of named) {
-        expect([open, closingMarkerFor(open!)]).toContain(marker);
-      }
-    });
   });
 }
 
@@ -274,10 +232,10 @@ describe('core side of the contract', () => {
 
   test('each verb is granted separately, never as one wildcard', () => {
     const applySettings = fs.readFileSync(path.join(coreScripts, 'apply-settings.ts'), 'utf-8');
-    for (const verb of ['preflight', 'ensure-target', 'sync-block']) {
+    for (const verb of ['preflight', 'ensure-target']) {
       expect(applySettings).toContain(`bin/hermitd-run domain-hatch ${verb} *`);
     }
-    // A bare `domain-hatch *` would hand every caller the two mutating verbs.
+    // A bare `domain-hatch *` would hand every caller the mutating verb.
     expect(applySettings).not.toContain('bin/hermitd-run domain-hatch *');
   });
 
@@ -296,12 +254,7 @@ describe('core side of the contract', () => {
     expect(hatch).toContain('already initialized');
   });
 
-  test('the marker parser stays single-sourced in evolve-plan', () => {
-    const block = fs.readFileSync(path.join(coreScripts, 'lib', 'domain-hatch', 'block.ts'), 'utf-8');
-    expect(block).toContain("from '../../evolve-plan'");
-    const evolvePlan = fs.readFileSync(path.join(coreScripts, 'evolve-plan.ts'), 'utf-8');
-    expect(evolvePlan).toMatch(/export \{[^}]*isAmbiguousBlock/);
-  });
+
 });
 
 // Only the cross-plugin half lives here. The core-side inventory (which of
@@ -309,6 +262,16 @@ describe('core side of the contract', () => {
 // plugins/hermitd/tests/contracts.test.ts § model-invocable
 // inventory — and this workflow's path filters do not even watch core's
 // non-hatch skill dirs, so a copy here would never fire on an edit to them.
+describe('instruction delivery', () => {
+  for (const slug of pluginSlugs()) {
+    test(`${slug}: hatch writes no instruction block`, () => {
+      const text = fs.readFileSync(path.join(PLUGINS_DIR, slug, 'skills/hatch/SKILL.md'), 'utf8');
+      expect(text).not.toMatch(/(?:append|inject|replace|update|write)[^\n]{0,120}CLAUDE(?:\.local)?\.md/i);
+      expect(text).not.toMatch(/<!-- \/?[^:\s]*hermit[^:\s]*:/);
+    });
+  }
+});
+
 describe('operator-only wizard contract', () => {
   test('every hatch skill disables model invocation', () => {
     const hatchSkills = [...pluginSlugs(), 'hermitd']

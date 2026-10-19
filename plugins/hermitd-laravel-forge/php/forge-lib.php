@@ -255,7 +255,7 @@ const SECRET_NAME_PATTERN = 'KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL';
  * This is where context hygiene actually belongs. Log-reading methods return
  * free-form strings and were reachable long before the deny tiers existed, so no
  * method-name policy could ever cover them. Redacts to [REDACTED], matching the
- * secret-hygiene vocabulary in CLAUDE-APPEND.
+ * secret-hygiene vocabulary in the log skills.
  *
  * Regex redaction, not a parser: it is a strong net, not a proof.
  */

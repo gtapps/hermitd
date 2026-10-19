@@ -112,7 +112,7 @@ describe('manifest-seed: foreign-key preservation', () => {
         version: 1,
         files: {
           'templates/some-addon': { sha256: 'a'.repeat(64), plugin_version: '0.9.0' },
-          'sibling-hermit/CLAUDE-APPEND.md': { sha256: 'b'.repeat(64), plugin_version: '0.9.0' },
+          'sibling-hermit/state-template.md': { sha256: 'b'.repeat(64), plugin_version: '0.9.0' },
           'templates/a': { sha256: 'c'.repeat(64), plugin_version: '0.9.0' },
         },
       }) + '\n',
@@ -129,7 +129,7 @@ describe('manifest-seed: foreign-key preservation', () => {
     const m = readManifest(dir);
     // Foreign keys survive untouched.
     expect(m.files['templates/some-addon'].sha256).toBe('a'.repeat(64));
-    expect(m.files['sibling-hermit/CLAUDE-APPEND.md'].sha256).toBe('b'.repeat(64));
+    expect(m.files['sibling-hermit/state-template.md'].sha256).toBe('b'.repeat(64));
     // Re-seeded key overwritten with the real hash + new version.
     expect(m.files['templates/a'].sha256).toBe(sha256(fs.readFileSync(f)));
     expect(m.files['templates/a'].plugin_version).toBe('1.2.9');

@@ -125,29 +125,7 @@ Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status --probe` and present the
 - Connection refused → check `HOMEASSISTANT_LOCAL_URL` in `.env`.
 - Auth error → check `HOMEASSISTANT_TOKEN`.
 
-### 6. Append to CLAUDE.md / CLAUDE.local.md
-
-**Resolve target file:** Step 1's preflight already returned `target`, `target_file`, `target_default` and `needs_target_question`.
-
-If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored — operator-personal) / **Committed files** (shared with teammates). Then record it:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-homeassistant --target <choice>
-```
-
-Then write the block:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch sync-block hermitd-homeassistant
-```
-
-On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
-
-It appends the `<!-- hermitd-homeassistant: Home Assistant Workflow -->` block when the marker is absent and skips when it is already present. Refreshing an existing block on a version bump is `hermit-evolve`'s job, not hatch's.
-
-Stray-block migration (block stranded in the non-target file after a target flip) is handled one-shot by the Upgrade Instructions in this version's CHANGELOG entry, executed by `hermit-evolve` Step 7. Hatch itself stays focused on target-aware setup and steady-state refresh.
-
-### 6.5 Safety mode
+### 6. Safety mode
 
 Read `ha_safety_mode` from `.hermit/config.json`.
 
@@ -158,7 +136,7 @@ Read `ha_safety_mode` from `.hermit/config.json`.
 
 Write the chosen value to `config.json` as `ha_safety_mode`. Default to `ask` if the operator skips or is unsure.
 
-### 6.55 HA Assist control (optional)
+### 6.1 HA Assist control (optional)
 
 Read `ha_assist_control_enabled` from `.hermit/config.json`.
 
@@ -167,7 +145,7 @@ Read `ha_assist_control_enabled` from `.hermit/config.json`.
   - **Yes** → write `ha_assist_control_enabled: true` to `config.json`.
   - **No / skip** → leave the key absent (fail-closed default; CLI remains available for automation triggering).
 
-### 6.56 HA update one-tap apply (optional)
+### 6.2 HA update one-tap apply (optional)
 
 Read `ha_update_auto_apply` from `.hermit/config.json`.
 
@@ -176,7 +154,7 @@ Read `ha_update_auto_apply` from `.hermit/config.json`.
   - **Yes** → write `ha_update_auto_apply: true` to `config.json`.
   - **No / skip** → leave the key absent (fail-closed default; every pending update stays a proposal you apply yourself in the HA UI).
 
-### 6.6 Knowledge-schema extension
+### 6.3 Knowledge-schema extension
 
 Read `.hermit/knowledge-schema.md`.
 
@@ -266,7 +244,14 @@ Each routine owns its cadence and passes findings through reflection gates into 
 
 ## Native approval rules
 
-Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
+If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored — operator-personal) / **Committed files** (shared with teammates). Then record it:
+
+```bash
+.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-homeassistant --target <choice>
+```
+
+
+Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-homeassistant`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`.
 
 Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. It prints `OK`, or `{"status":"installed","deny_conflicts":[...]}` naming operator denies that still override these asks (tell the operator), or `{"error":...}` with exit 1 (relay it and stop).
 
@@ -279,7 +264,6 @@ hatch complete
   ✓  .env verified (user-managed)
   ✓  CLI: bin/ha-agent-lab boot status --probe → OK / FAILED
   ✓  .mcp.json: homeassistant entry written / already present
-  ✓  CLAUDE.md updated
   ✓  config.json stamped v<version>
   ✓  boot_skill: /hermitd-homeassistant:ha-boot (set | already set | operator override preserved)
   ✓  Routines registered: daily-ha-context, morning-brief, evening-brief, ha-patterns, ha-safety-audit, ha-integration-health, ha-update-check

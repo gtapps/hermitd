@@ -48,7 +48,7 @@ Set them in your project `.env` (loaded by Docker hermit via `env_file:`) or in 
 
 ## Setup
 
-Run `/hermitd-scribe:hatch` after configuring the env vars above. It appends or version-refreshes the Issue Filing block in your `CLAUDE.md`/`CLAUDE.local.md` and stamps `_hermit_versions["hermitd-scribe"]` in `.hermit/config.json`. Re-run hatch after an upgrade to refresh the block.
+Run `/hermitd-scribe:hatch` after configuring the env vars above. It installs publication approval rules and stamps `_hermit_versions["hermitd-scribe"]` in `.hermit/config.json`. Re-run hatch after an upgrade to refresh the approval rules.
 
 ## Usage
 
@@ -109,7 +109,7 @@ hermitd-scribe/
   │     └── issue-sanitizer.md  redacts non-hermit content from draft body
   ├── scripts/
   ├── skills/hatch/
-  │     └── SKILL.md            version-gated setup/refresh: block + version stamp
+  │     └── SKILL.md            publication approval rules + version stamp
   └── skills/hermit-scribe/
         ├── SKILL.md            trigger phrases + filing flow
         └── file-issue.ts       stdlib: JWT → install token → POST /issues; --check flag

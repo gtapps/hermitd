@@ -32,9 +32,9 @@ If it does exist, run `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fi
 - **`bootstrap_core` / `upgrade_core_package` / `upgrade_core_applied`** → tell the operator to run the `next_steps` commands in order, then stop. An older core prints the dashed form of these with a `remedy` instead: relay `remedy` and stop.
 - **`verify`** → say:
 
-  > "hermitd-fitness {self_version} is already installed. Skip to Step 7 to re-verify the installation, or reply 'full' to re-run the full wizard."
+  > "hermitd-fitness {self_version} is already installed. Skip to Step 6 to re-verify the installation, or reply 'full' to re-run the full wizard."
 
-  Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 7; **full** → continue from Step 2.
+  Use `AskUserQuestion`: "(verify / full)" — **verify** → skip to Step 6; **full** → continue from Step 2.
 - **`full`** → continue from Step 2.
 - **`error`**, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
@@ -129,31 +129,7 @@ install -m 755 "${CLAUDE_PLUGIN_ROOT}/state-templates/bin/fitness-weekly-pattern
 
 This read-only gate calls `fitness-lab.ts weekly-patterns` through core's `hermitd-run sibling-run`. It translates the reported trend into `SKIP` or `WAKE`; the trend rule remains in `fitness-lab.ts`. Invalid output or a failed child returns non-zero, so the routine monitor records the gate error and wakes normally.
 
-## Step 5 — CLAUDE.md / CLAUDE.local.md inject
-
-**Resolve target file:** Step 1's preflight already returned `target`, `target_file`, `target_default` and `needs_target_question`.
-
-If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored — operator-personal) / **Committed files** (shared with teammates). Then record it:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-fitness --target <choice>
-```
-
-Then write the block:
-
-```bash
-.hermit/bin/hermitd-run domain-hatch sync-block hermitd-fitness
-```
-
-On `status: "refused"` (marker duplicated in `file`, nothing written), have the operator remove the duplicate and re-run; on `"needs_rendering"`, report it.
-
-It appends the `<!-- hermitd-fitness: Fitness Workflow -->` block when the marker is absent (creating `target_file` if needed) and skips when it is already present; `hermit-evolve` handles block replacement on upgrade.
-
-Stray-block migration (block stranded in the non-target file after a target flip) is handled one-shot by the Upgrade Instructions in this version's CHANGELOG entry, executed by `hermit-evolve` Step 7. Hatch itself stays focused on target-aware setup.
-
----
-
-## Step 6 — Knowledge-schema extension
+## Step 5 — Knowledge-schema extension
 
 Read `.hermit/knowledge-schema.md`.
 
@@ -185,17 +161,17 @@ Use Edit to make the changes.
 
 ---
 
-## Step 7 — Stamp and register in config.json
+## Step 6 — Stamp and register in config.json
 
 Re-read `.hermit/config.json` now — the wizard has been running since Step 1 and the on-disk file may have changed. Apply the merges below to that fresh copy.
 
-### 7a — Stamp version
+### 6a — Stamp version
 
 Set `_hermit_versions["hermitd-fitness"]` to `self_version` from Step 1's preflight.
 
 If the key already exists: update the value. If absent: add it alongside the existing `_hermit_versions["hermitd"]` entry.
 
-### 7b — Merge routines
+### 6b — Merge routines
 
 In the `routines` array, check for each of these four IDs. For any that are **absent**, add the entry. For any that are **present** (by `id`), skip (do not clobber existing operator edits).
 
@@ -226,7 +202,7 @@ In the `routines` array, check for each of these four IDs. For any that are **ab
 }
 ```
 
-### 7c: Merge the weekly patterns routine
+### 6c: Merge the weekly patterns routine
 
 Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
@@ -240,11 +216,18 @@ Write the updated `config.json` using Write tool (full file replacement to ensur
 
 ## Native approval rules
 
-Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`. Its `target_file` is the instruction destination, not the settings file.
+If `needs_target_question` is true, ask with `AskUserQuestion` (header: "Visibility") — `target_default` at position 0 with `(recommended)`: **`.local` files** (gitignored — operator-personal) / **Committed files** (shared with teammates). Then record it:
+
+```bash
+.hermit/bin/hermitd-run domain-hatch ensure-target hermitd-fitness --target <choice>
+```
+
+
+Resolve the project settings target through `.hermit/bin/hermitd-run domain-hatch preflight hermitd-fitness`. Map `target` (or `target_default` when absent): `local` to `.claude/settings.local.json`, `committed` to `.claude/settings.json`.
 
 Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/native-permissions.ts <resolved-settings-file>`. Name any `deny_conflicts` it prints in the final report. On `error`, relay it and stop.
 
-## Step 8 — Final report
+## Step 7 — Final report
 
 Print a structured summary:
 
@@ -256,7 +239,6 @@ Installation summary:
   ✓ .env: all four Strava credentials present
   ✓ .mcp.json: strava server entry written (or was already present)
   ✓ .gitignore: .mcp.json and .env covered
-  ✓ CLAUDE.md: Fitness Workflow block injected (or was already present)
   ✓ knowledge-schema.md: fitness types added (or were already present)
   ✓ config.json: _hermit_versions stamped, {K}/4 routines added, weekly-coaching-patterns routine registered with precheck
 
