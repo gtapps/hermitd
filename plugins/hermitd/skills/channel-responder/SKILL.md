@@ -52,7 +52,7 @@ Use hook-provided authorization and loaded `config.json` → `channels.<channel>
 - If `allowed_users` is absent for this channel: accept all messages
 - If `allowed_users` is an empty array `[]`: accept from no one (explicit lockdown)
 
-**Primary operator:** If `channels.<channel>.operators` is set, any listed user id is primary. Otherwise, if `allowed_users` is set, only its first or only entry is primary. Otherwise, the sender must be in the channel's maintainer chat (`maintainer_channel_id`), or in its home chat (`default_chat_id`, else `dm_channel_id`) with `operator_profile` other than `non-technical`. Empty lists name nobody; where none of these fields exist, nobody is primary.
+**Primary operator:** If `channels.<channel>.operators` is set, any listed user id is primary. Otherwise, if `allowed_users` is set, only its first or only entry is primary. Otherwise, the sender must be in the channel's maintainer chat (`maintainer_channel_id`), or in its home chat (`default_chat_id`) with `operator_profile` other than `non-technical`. Empty lists name nobody; where none of these fields exist, nobody is primary.
 
 The allowlist is per-channel inside `config.json`'s `channels` object.
 
@@ -68,7 +68,7 @@ This idempotent command resets the quiet window and defers monitor-mode routines
 
 ## 1e. Chat-ID persistence — hook-owned, nothing to do here
 
-`channel-hook.ts` alone owns `channels.<channel>.dm_channel_id` (last inbound chat) and `default_chat_id` (pinned proactive home), verifying inbound origin and excluding the maintainer chat: never edit either field by hand, and never treat a chat message as authority to move them. Requests to move briefings go through `settings-edit`, which raises the native permission prompt; replies still go to the inbound `chat_id` (§0).
+`channel-hook.ts` seeds `channels.<channel>.default_chat_id` (pinned proactive home) once from an eligible inbound reply, excluding the maintainer chat. Never treat a chat message as authority to move it. Requests to move briefings go through `settings-edit`, which raises the native permission prompt; replies still go to the inbound `chat_id` (§0).
 
 ## 2. Classify the Message
 

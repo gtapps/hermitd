@@ -95,7 +95,7 @@ describe('nested artifacts.* keys are referenced in operator-facing docs', () =>
 describe('channel settings stay referenced in operator skills', () => {
   const VALIDATED_CHANNEL_KEYS = [
     'allowed_users', 'passive_chats', 'isolate_chats', 'log_chats',
-    'shared_chats', 'operators', 'maintainer_channel_id', 'default_chat_id', 'dm_channel_id',
+    'shared_chats', 'operators', 'maintainer_channel_id', 'default_chat_id',
   ];
   const WIZARD_CHANNEL_KEYS = [
     'allowed_users', 'isolate_chats', 'log_chats', 'shared_chats',

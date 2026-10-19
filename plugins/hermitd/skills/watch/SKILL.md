@@ -100,7 +100,7 @@ or record write that already completed.
    - `command`: the constructed command
    - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
 6. Read `state/monitors.runtime.json` (create if missing: `{"monitors": [], "last_cleared": null}`)
-7. Append entry to `monitors[]` with `source: "adhoc"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration. On a channel turn from a chat other than that channel's home chat (`default_chat_id`, else `dm_channel_id`), record `chat: "<sourceKey>:<chat_id>"` for the asking chat if the channel is Discord, Telegram, or has `send_script`. Otherwise omit `chat`. An ad-hoc watch never records a different chat.
+7. Append entry to `monitors[]` with `source: "adhoc"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration. On a channel turn from a chat other than that channel's home chat (`default_chat_id`), record `chat: "<sourceKey>:<chat_id>"` for the asking chat if the channel is Discord, Telegram, or has `send_script`. Otherwise omit `chat`. An ad-hoc watch never records a different chat.
 8. Write registry back
 9. When running inside an open task record, note the watch with its id:
    ```bash

@@ -834,3 +834,58 @@ describe('migrate hermitd', () => {
     }
   });
 });
+
+describe('migrate channel-home', () => {
+  test('seeds empty homes, excludes maintainers, preserves pins, and runs once', async () => {
+    const file = seedConfig(freshDir(), {
+      channels: {
+        primary: 'discord',
+        discord: { default_chat_id: '', dm_channel_id: 'HOME', custom: 'preserved' },
+        telegram: { default_chat_id: null, dm_channel_id: 'T1' },
+        custom: { dm_channel_id: 'M1', maintainer_channel_id: 'M1', send_script: 'send' },
+        pinned: { default_chat_id: 'PIN', dm_channel_id: 'OTHER' },
+        empty: { dm_channel_id: '' },
+      },
+    });
+    const args = [file, 'migrate', 'channel-home'];
+    const result = await runScript('settings-edit.ts', { args });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('OK');
+    expect(readConfig(file).channels).toEqual({
+      primary: 'discord', discord: { default_chat_id: 'HOME', custom: 'preserved' },
+      telegram: { default_chat_id: 'T1' },
+      custom: { maintainer_channel_id: 'M1', send_script: 'send' },
+      pinned: { default_chat_id: 'PIN' }, empty: {},
+    });
+    const ledger = path.join(path.dirname(file), 'state/settings-audit.jsonl');
+    const audit = fs.readFileSync(ledger, 'utf8');
+    const bytes = fs.readFileSync(file, 'utf8');
+    const mtime = fs.statSync(file).mtimeMs;
+    const again = await runScript('settings-edit.ts', { args });
+    expect(again.exitCode).toBe(0);
+    expect(again.stdout.trim()).toBe('OK');
+    expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+    expect(fs.statSync(file).mtimeMs).toBe(mtime);
+    expect(fs.readFileSync(ledger, 'utf8')).toBe(audit);
+  });
+
+  test('retired home does not grant runtime routing, trust, or unscoped recall', async () => {
+    const { resolve } = await import('../scripts/resolve-outbound-channel');
+    const { isTrustedController, recallScope } = await import('../scripts/lib/channel-auth');
+    const { contextPolicyHash } = await import('../scripts/lib/context-policy');
+    const { validate } = await import('../scripts/validate-config');
+    const dir = freshDir();
+    const config = { channels: { discord: { dm_channel_id: 'LEGACY' } } };
+    const file = seedConfig(dir, config);
+    const hermit = path.dirname(file);
+    expect(resolve(config.channels)).toBeNull();
+    expect(isTrustedController(config, 'discord', 'U1', 'LEGACY')).toBe(false);
+    expect(recallScope(config, 'discord', 'LEGACY', hermit)).not.toBeNull();
+    const before = contextPolicyHash(hermit);
+    config.channels.discord.dm_channel_id = 'OTHER';
+    fs.writeFileSync(file, JSON.stringify(config));
+    expect(contextPolicyHash(hermit)).not.toBe(before);
+    const result = validate({ channels: { discord: { dm_channel_id: 123, maintainer_channel_id: '123' } } });
+    expect([...result.errors, ...result.warnings].some(line => line.includes('dm_channel_id'))).toBe(false);
+  });
+});

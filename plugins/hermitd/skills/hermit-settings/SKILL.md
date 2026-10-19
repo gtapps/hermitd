@@ -167,7 +167,7 @@ Channels:
   discord  enabled  allowed_users: [123456789]  briefing chat: 987654321  morning_brief: 07:00  state_dir: /abs/path/...
   (or "No channels configured")
 ```
-"briefing chat" is `default_chat_id` — where unattended sends go — falling back to the learned `dm_channel_id` when the pin isn't seeded yet (say "not paired yet" when both are empty).
+"briefing chat" is `default_chat_id` — where unattended sends go — say "not paired yet" when the pin is empty.
 Ask what to do next, offering: add discord / add telegram / remove <name> / edit <name> / primary <name> / primary clear / done (default done).
 Offer `add <name>` only for a channel absent from `channels`.
 Loop until operator says "done":
@@ -293,7 +293,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
     - Custom → operator types raw cron
   - Skill to run (full slash-command name, e.g. `hermitd:brief` for plugin skills, `ha-refresh-context` for local project skills)
   - Enabled (yes/no, default yes)
-  - On a channel turn from a chat other than that channel's home chat (`default_chat_id`, else `dm_channel_id`), add
+  - On a channel turn from a chat other than that channel's home chat (`default_chat_id`), add
     `"chat": "<sourceKey>:<chat_id>"` for the asking chat so the routine's notices post back there. Only Discord and
     Telegram chats can own a routine; elsewhere, add it without `chat` and say its notices go to the home chat.
     Binding a new routine to the asking chat applies without a prompt; any other `chat` value raises the native

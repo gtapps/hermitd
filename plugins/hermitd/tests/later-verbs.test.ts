@@ -303,3 +303,62 @@ test('reminder injection still closes without delivery', withDir(async dir => {
   expect((await call(dir, 'check', [id])).stdout.trim()).toBe('{"status":"injection_suspect","class":"override"}');
   expect(ledger(dir)[0].state).toBe('indeterminate');
 }));
+
+for (const scenario of ['chat', 'parent', 'both_fail', 'no_chat', 'no_send_path', 'sent', 'cancelled', 'wrong_chat', 'claim'] as const) {
+  test(`deliver: ${scenario}`, withDir(async dir => {
+    const state = path.join(dir, 'discord');
+    fs.mkdirSync(state);
+    fs.writeFileSync(path.join(state, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+    writeConfig(dir, { channels: { discord: { state_dir: state }, imessage: { enabled: true } } });
+    const posts: { route: string; text: string }[] = [];
+    const gets: string[] = [];
+    const server = Bun.serve({ port: 0, async fetch(req) {
+      const route = new URL(req.url).pathname;
+      if (req.method === 'GET') {
+        gets.push(route);
+        return Response.json(route === '/channels/THREAD' ? { type: 11, parent_id: 'PARENT' } : { type: 0 });
+      }
+      posts.push({ route, text: (await req.json() as any).content });
+      const fail = scenario === 'both_fail' || (scenario === 'parent' && route === '/channels/THREAD/messages');
+      return Response.json(fail ? { code: 10003, message: 'gone' } : { id: 'sent' }, { status: fail ? 404 : 200 });
+    } });
+    const api = server.url.toString().replace(/\/$/, '');
+    const invoke = (verb: string, args: string[], stdin = '') => runScript('later.ts', {
+      cwd: dir, args: [verb, path.join(dir, '.hermit'), ...args], stdin,
+      env: { HERMIT_NOW: NOW, HERMIT_DISCORD_API_URL: api },
+    });
+    try {
+      const chat = scenario === 'no_send_path' ? 'imessage:THREAD' : 'discord:THREAD';
+      const added = await invoke('add', ['--claim', 'remember', '--due', NOW, '--origin', 'operator',
+        ...(scenario === 'claim' ? [] : ['--remind']), ...(scenario === 'no_chat' ? [] : ['--chat', chat])]);
+      expect(added.exitCode).toBe(0);
+      const id = JSON.parse(added.stdout).id;
+      if (scenario !== 'no_chat' && scenario !== 'no_send_path') expect(gets).toEqual(['/channels/THREAD']);
+      if (scenario === 'sent') expect((await invoke('verdict', [id, 'sent', '--reason-stdin'], 'already sent')).exitCode).toBe(0);
+      if (scenario === 'cancelled') expect((await invoke('cancel', [id])).exitCode).toBe(0);
+      const before = ledger(dir);
+      const result = await invoke('deliver', [id, '--text-stdin', ...(scenario === 'wrong_chat' ? ['--chat', 'discord:OTHER'] : [])], 'CLIENT');
+      expect(result.exitCode).toBe(0);
+      const out = JSON.parse(result.stdout);
+      if (scenario === 'chat' || scenario === 'parent') {
+        expect(out).toEqual({ id, state: 'sent', route: scenario });
+        expect(ledger(dir)[0]).toMatchObject({ state: 'sent', chat: 'discord:THREAD' });
+        const repeat = await invoke('deliver', [id, '--text-stdin'], 'repeat');
+        expect(repeat.exitCode).toBe(0);
+        expect(JSON.parse(repeat.stdout).status).toBe('noop');
+        expect(posts).toHaveLength(scenario === 'parent' ? 2 : 1);
+        if (scenario === 'parent') expect(posts[1]).toEqual({ route: '/channels/PARENT/messages', text: '(the original thread is no longer reachable)\nCLIENT' });
+      } else if (scenario === 'claim') {
+        expect(out).toEqual({ status: 'delivered', route: 'chat' });
+        expect(ledger(dir)).toEqual(before);
+        expect(posts).toHaveLength(1);
+      } else {
+        if (scenario === 'no_chat' || scenario === 'no_send_path') expect(out).toEqual({ status: 'unsupported', reason: scenario });
+        else if (scenario === 'both_fail') expect(out).toEqual({ status: 'undelivered', reason: 'discord_10003' });
+        else expect(out.status).toBe(scenario === 'wrong_chat' ? 'none' : 'noop');
+        expect(ledger(dir)).toEqual(before);
+        expect(posts).toHaveLength(scenario === 'both_fail' ? 2 : 0);
+      }
+    } finally { server.stop(true); }
+  }));
+}

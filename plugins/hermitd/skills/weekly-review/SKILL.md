@@ -94,12 +94,10 @@ Generates the weekly review for the current ISO week.
      ```
      Followed by the `Topic pages:` findings from step 3 when present, plus a final line listing whichever of the dashboard/weekly-review URLs were returned (e.g. `📎 <dashboard url> · 📎 <weekly-review url>` — omit either half that wasn't returned).
    - Deliver via `channel-send.ts --notice` (see prompts/resident.md § Operator Notification), with two
-     audience versions of the same composed message:
+     audience parts:
      - `client` = the composed message **with the Spend line omitted**
-     - `maintainer` = the **complete message including the Spend line** — the full richer version of
-       the same notice, not a spend-only fragment, because the client leg is dropped in favor of the
-       maintainer's dedup partner only when both resolve to the same chat, in which case the
-       maintainer text (the complete one) is what's sent.
+     - `maintainer` = the **Spend line plus technical detail only**. When both audiences share
+       a chat the script sends the two parts together, so neither repeats the other.
    - If a leg didn't land (`status` not `delivered`; on an `error`, fix the payload and
      re-run instead), follow § Operator Notification's fallback (push if
      enabled, log to Findings) rather than a bespoke branch here — weekly-review is a recurring

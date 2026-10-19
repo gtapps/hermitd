@@ -43,7 +43,7 @@ function setupChannelWorkdir(telegramExtra: object = {}, configExtra: object = {
     ...configExtra,
     channels: {
       primary: 'telegram',
-      telegram: { enabled: true, dm_channel_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram', ...telegramExtra },
+      telegram: { enabled: true, default_chat_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram', ...telegramExtra },
     },
   }));
   return wd;
@@ -245,7 +245,7 @@ describe('permission-denied-notify', () => {
     try {
       write(hermit(wd.dir, 'config.json'), JSON.stringify({
         always_on: false,
-        channels: { primary: 'telegram', telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+        channels: { primary: 'telegram', telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
       }));
       const r = await run(DENIAL_PAYLOAD, wd.dir, stub.url);
       expect(r.exitCode).toBe(0);
@@ -297,7 +297,7 @@ describe('permission-denied-notify', () => {
   // diagnostic actually targets, or this install gets nothing.
   test('maintainer configured with no proactive client target still sends', async () => {
     const stub = startHttpStub();
-    const wd = setupChannelWorkdir({ maintainer_channel_id: '99999', dm_channel_id: undefined });
+    const wd = setupChannelWorkdir({ maintainer_channel_id: '99999', default_chat_id: undefined });
     try {
       const r = await run(DENIAL_PAYLOAD, wd.dir, stub.url);
       expect(r.exitCode).toBe(0);

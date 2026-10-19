@@ -16,7 +16,7 @@ function fixture() {
   const dir = path.join(wd.dir, '.hermit');
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: {
-    telegram: { enabled: true, allowed_users: ['u1'], dm_channel_id: '12345', bot_username: 'bot', bot_user_id: '777' },
+    telegram: { enabled: true, allowed_users: ['u1'], default_chat_id: '12345', bot_username: 'bot', bot_user_id: '777' },
   } }));
   fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ version: 1, cc_session_id: 'resident', runtime_mode: 'interactive' }));
   return { wd, dir };

@@ -25,6 +25,7 @@ import { readJson } from './cli';
 import { isKey } from './conversation-key';
 import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
+import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
 
 type Json = any;
 
@@ -32,9 +33,11 @@ export interface SendResult {
   ok: boolean;
   status?: number;
   error?: string;
-  // Set by sendOperatorNotice on the maintainer leg: where the tiered
-  // resolution actually landed. Absent on a plain sendToChannel call.
-  route?: 'client' | 'maintainer_channel' | 'findings';
+  platform_code?: number;
+  partial?: boolean;
+  // Notice audience routing, or chat/parent routing for an owned send.
+  // Absent on a plain sendToChannel call.
+  route?: 'client' | 'maintainer_channel' | 'findings' | 'chat' | 'parent';
   // True only when route === 'findings' — the notice was written to state/watchdog-events.jsonl instead of crossing a channel.
   suppressed?: boolean;
   // Set by sendOperatorNotice on the maintainer leg: did the notice reach its
@@ -114,7 +117,8 @@ async function sendPlatform(
       let body: Json;
       try { body = await resp.json(); } catch { signal.throwIfAborted(); }
       const error = (platform === 'telegram' ? body?.description : body?.message) || `${platform}_http_${resp.status}`;
-      const failure = { ok: false, status: resp.status, error };
+      const failure: SendResult = { ok: false, status: resp.status, error };
+      if (platform === 'discord' && typeof body?.code === 'number') failure.platform_code = body.code;
       if (resp.status !== 429 || attempt > 0) return failure;
       const delayMs = retryDelayMs(platform, resp, body);
       if (delayMs === null || delayMs >= deadline - performance.now()) return failure;
@@ -218,9 +222,14 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
       if (!token) return { ok: false, error: 'missing_token' };
       // Ordered parts share one timeout budget; stop at the first failed part.
       result = { ok: false };
+      let accepted = false;
       for (const part of splitMessage(text, sender.maxLen)) {
         result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())));
-        if (!result.ok) break;
+        if (!result.ok) {
+          if (accepted) result.partial = true;
+          break;
+        }
+        accepted = true;
       }
     }
     // Record reachability for ask-gate's redirect-target check (advisory, never
@@ -249,6 +258,42 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
+}
+
+type OwnedSendResult = SendResult & { route: 'chat' | 'parent' };
+
+/** Only a confirmed rejection of a public thread can move content to its parent. */
+async function fallbackToParent(
+  hermitDir: string, target: { id: string; chat_id: string }, text: string,
+  result: SendResult, opts: SendOptions,
+): Promise<OwnedSendResult> {
+  const unchanged: OwnedSendResult = { ...result, route: 'chat' };
+  if (result.ok || target.id !== 'discord' || result.partial
+    || ![10003, 50083, 160005].includes(result.platform_code ?? 0)
+    || !getEnabledChannels(opts.config).includes(target.id)) return unchanged;
+  const chat = cachedChat(hermitDir, target.chat_id);
+  if (!chat || (chat.type !== 10 && chat.type !== 11) || !chat.parent_id) return unchanged;
+  const parent = await lookupChat(hermitDir, opts.config, chat.parent_id);
+  if (!isGuildChannelType(parent)) return unchanged;
+  const sent = await sendToChannel(hermitDir, `(the original thread is no longer reachable)\n${text}`, {
+    ...opts, target: { id: target.id, chat_id: chat.parent_id }, recordHealth: false,
+  });
+  return { ...sent, route: 'parent' };
+}
+
+/** Deliver unattended output to its owning chat, preserving a safe public parent fallback. */
+export async function sendToOwnedChat(
+  hermitDir: string, chatKey: string, text: string, opts: Omit<SendOptions, 'target'> = {},
+): Promise<OwnedSendResult> {
+  if (!isKey(chatKey)) return { ok: false, error: 'invalid_chat', route: 'chat' };
+  const at = chatKey.indexOf(':');
+  const target = { id: chatKey.slice(0, at), chat_id: chatKey.slice(at + 1) };
+  const config = opts.config ?? readSettledConfig(hermitDir);
+  if (!getEnabledChannels(config).includes(target.id)) return { ok: false, error: 'channel_disabled', route: 'chat' };
+  if (target.id === 'discord') await lookupChat(hermitDir, config, target.chat_id);
+  const options = { ...opts, config, recordHealth: false };
+  const result = await sendToChannel(hermitDir, text, { ...options, target });
+  return fallbackToParent(hermitDir, target, text, result, options);
 }
 
 /**
@@ -306,7 +351,7 @@ export function appendMaintainerFindings(
 /**
  * Deliver a two-audience notice, owning all audience policy so callers never
  * inspect routing: one config snapshot, client + maintainer target resolution,
- * physical-target dedup (same chat ⇒ maintainer text only), missing/failed
+ * physical-target merge (same chat ⇒ both texts together), missing/failed
  * maintainer fallback, sensitive-log handling, and Findings append. Never throws.
  */
 export async function sendOperatorNotice(hermitDir: string, notice: OperatorNotice): Promise<OperatorNoticeResult> {
@@ -316,6 +361,21 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   const clientTarget = resolveOutboundChannel(channels);
   const maintainerTarget = resolveMaintainerTarget(channels);
   const nonTechnical = config.operator_profile === 'non-technical';
+  // A routine's or watch's own chat takes the client leg; the maintainer leg keeps
+  // the home routing, so technical detail never reaches a team chat.
+  const owned = notice.routine
+    ? ownedChat(config.routines, notice.routine)
+    : notice.watch
+      // A config watch's chat is read live from config.json, like a routine's;
+      // an ad-hoc watch's lives on its registry entry.
+      ? ownedChat(
+        Array.isArray(config.monitors) && config.monitors.some((m: Json) => m?.id === notice.watch)
+          ? config.monitors
+          : readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors,
+        notice.watch)
+      : null;
+  const target = owned ?? clientTarget;
+  let mergedResult: SendResult | undefined;
 
   if (notice.maintainer) {
     const m = notice.maintainer;
@@ -330,9 +390,12 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
         : { ok: true, route: 'findings', suppressed: true, delivered: !degraded };
     };
     if (maintainerTarget) {
-      const r = await sendToChannel(hermitDir, m.text, {
+      const merged = !!notice.client && sameChat(maintainerTarget, target);
+      if (merged && owned?.id === 'discord') await lookupChat(hermitDir, config, owned.chat_id);
+      const r = await sendToChannel(hermitDir, merged ? `${notice.client}\n\n${m.text}` : m.text, {
         target: maintainerTarget, sensitive: m.sensitive, recordHealth: false, timeoutMs: notice.timeoutMs, config,
       });
+      if (merged) mergedResult = r;
       // Configured but unreachable → Findings. Configured routing intent wins
       // over the fallback: a bad chat id must never spill technical/spend
       // detail into the client chat.
@@ -342,57 +405,47 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     } else {
       // fallback 'client' on a technical profile, or explicit 'primary' on any
       // profile, with no maintainer channel: send to the primary chat.
-      const r = await sendToChannel(hermitDir, m.text, {
+      const merged = !!notice.client && sameChat(clientTarget, target);
+      if (merged && owned?.id === 'discord') await lookupChat(hermitDir, config, owned.chat_id);
+      const r = await sendToChannel(hermitDir, merged ? `${notice.client}\n\n${m.text}` : m.text, {
         target: clientTarget ?? undefined, timeoutMs: notice.timeoutMs, config,
       });
+      if (merged) mergedResult = r;
       out.maintainer = { ...r, route: 'client', delivered: r.ok };
     }
   }
 
   if (notice.client) {
-    // A routine's or watch's own chat takes the client leg; the maintainer leg above kept
-    // the home routing, so technical detail never reaches a team chat.
-    const owned = notice.routine
-      ? ownedChat(config.routines, notice.routine)
-      : notice.watch
-        // A config watch's chat is read live from config.json, like a routine's;
-        // an ad-hoc watch's lives on its registry entry.
-        ? ownedChat(
-          Array.isArray(config.monitors) && config.monitors.some((m: Json) => m?.id === notice.watch)
-            ? config.monitors
-            : readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors,
-          notice.watch)
-        : null;
-    const target = owned ?? clientTarget;
-    // Drop the client leg when the maintainer text already landed in that same
-    // chat: either via the 'client' fallback to the home chat, or because
-    // maintainer_channel_id resolves to the same physical chat.
-    const landedInClientChat =
-      (out.maintainer?.route === 'client' && (!owned || sameChat(owned, clientTarget))) ||
-      (out.maintainer?.route === 'maintainer_channel' && sameChat(maintainerTarget, target));
-    if (!landedInClientChat) {
-      // A disabled channel sends nothing, owned chat or not. An owned chat's
-      // outcome is not the home route's, so it leaves platform health alone.
-      out.client = owned && !getEnabledChannels(config).includes(owned.id)
-        ? { ok: false, error: 'channel_disabled' }
-        : await sendToChannel(hermitDir, notice.client, {
-          target: target ?? undefined, timeoutMs: notice.timeoutMs, config, recordHealth: !owned,
+    const options = { timeoutMs: notice.timeoutMs, config, recordHealth: false };
+    if (mergedResult) {
+      // A failed merged send may retry only the client text in a safe parent.
+      out.client = owned
+        ? await fallbackToParent(hermitDir, owned, notice.client, mergedResult, options)
+        : { ...mergedResult };
+    } else if (owned) {
+      out.client = await sendToOwnedChat(hermitDir, `${owned.id}:${owned.chat_id}`, notice.client, options);
+    } else {
+      out.client = await sendToChannel(hermitDir, notice.client, {
+        target: target ?? undefined, timeoutMs: notice.timeoutMs, config,
+      });
+    }
+    // A parent success still records that the routine's original chat failed.
+    if (owned && notice.routine && (!out.client.ok || out.client.route === 'parent')) {
+      const failure = `${owned.id}:${owned.chat_id}: ${out.client.error ?? 'original thread unreachable'}`;
+      logRoutineEvent(notice.routine, 'chat-undelivered', hermitDir, 'channel-send', failure);
+    }
+    if (!out.client.ok) {
+      const error = appendMaintainerFindings(hermitDir, notice.client, 'undelivered-client-notice');
+      out.client.undelivered_saved = error === null;
+      if (error !== null) out.client.persistence_error = error;
+      if (owned) {
+        // No safe parent delivered it. Tell the operator the owning chat failed.
+        const failure = `${owned.id}:${owned.chat_id}: ${out.client.error ?? 'send failed'}`;
+        const owner = notice.routine ? `Routine ${notice.routine}` : `Watch ${notice.watch}`;
+        await sendOperatorNotice(hermitDir, {
+          maintainer: { text: `${owner} could not post to its chat ${failure}`, fallback: 'client' },
+          timeoutMs: notice.timeoutMs,
         });
-      if (!out.client.ok) {
-        const error = appendMaintainerFindings(hermitDir, notice.client, 'undelivered-client-notice');
-        out.client.undelivered_saved = error === null;
-        if (error !== null) out.client.persistence_error = error;
-        if (owned) {
-          // Never reroute the content: it was meant for that chat's audience.
-          // Tell the operator the chat is unreachable, and record it for routine health.
-          const failure = `${owned.id}:${owned.chat_id}: ${out.client.error ?? 'send failed'}`;
-          if (notice.routine) logRoutineEvent(notice.routine, 'chat-undelivered', hermitDir, 'channel-send', failure);
-          const owner = notice.routine ? `Routine ${notice.routine}` : `Watch ${notice.watch}`;
-          await sendOperatorNotice(hermitDir, {
-            maintainer: { text: `${owner} could not post to its chat ${failure}`, fallback: 'client' },
-            timeoutMs: notice.timeoutMs,
-          });
-        }
       }
     }
   }

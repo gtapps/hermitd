@@ -6,23 +6,14 @@ import { sanitizeLanguage } from './lib/operator-language';
 
 type Json = any;
 
-// The pinned home wins; the auto-learned DM is the fallback for installs that
-// predate the pin (and for any channel whose migration hasn't run yet), so an
-// un-evolved hermit keeps resolving exactly as it did before the field existed.
-// dm_channel_id still moves with the operator's last inbound chat — only this
-// resolution decides where unattended proactive sends land.
+// Unattended sends use only the pinned home.
 function proactiveChatId(ch: Json): string {
-  // `||`, not `??`: an empty-string pin (a mistyped terminal edit — validate-config
-  // only type-checks) must not mask a working dm_channel_id and silently drop the
-  // channel out of proactive resolution entirely.
-  return ch?.default_chat_id || ch?.dm_channel_id;
+  return ch?.default_chat_id;
 }
 
 // Primary-first, then config-order resolution shared by resolve() and
 // resolveMaintainerTarget() — only the eligibility test and the target extractor
-// differ between the two audiences. The extractor is a function, not a field
-// name, because the proactive target is a fallback chain while the maintainer
-// target is a single field. No hardcoded slug list: a freshly installed channel
+// differ between the two audiences. No hardcoded slug list: a freshly installed channel
 // plugin becomes eligible the moment its config block lands in config.json.
 function resolveTarget(
   channels: Json,

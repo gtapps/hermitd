@@ -3,196 +3,37 @@ import { Database } from 'bun:sqlite';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, test, expect, afterEach } from 'bun:test';
-import { persistDmChannelId, isEligibleInboundReply } from '../scripts/channel-hook';
+import { seedDefaultChatId, isEligibleInboundReply } from '../scripts/channel-hook';
 import { validate } from '../scripts/validate-config';
 import { withDir } from './helpers/workdir';
 import { runScript } from './helpers/run';
 
-// The sender allow-list gate (channel-reply-reminder.ts isAllowedSender) and
-// validate-config both require channel IDs to be strings. If a channel plugin
-// delivers chat_id as a JSON number, persistDmChannelId must coerce it so a
-// number never lands in config.json.
-//
-// All of these pass isInboundReply: true — they're exercising the coercion
-// and maintainer-exclusion logic, which only runs once the new turn-eligibility
-// gate (see the 'inbound-turn eligibility' describe block below) has already
-// passed.
-describe('persistDmChannelId — dm_channel_id string coercion', () => {
-  test('coerces a numeric chat_id to its string form', () => {
-    const config: any = { channels: { discord: { dm_channel_id: null } } };
-    const changed = persistDmChannelId(config, 'discord', 555, true);
-    expect(changed).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('555');
-    expect(typeof config.channels.discord.dm_channel_id).toBe('string');
-  });
-
-  test('a numeric chat_id equal to the stored string id is a no-op', () => {
-    const config: any = { channels: { discord: { dm_channel_id: '555' } } };
-    expect(persistDmChannelId(config, 'discord', 555, true)).toBe(false);
-    expect(persistDmChannelId(config, 'discord', '555', true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('555');
-  });
-
-  test('a falsy chatId returns false and leaves the existing id untouched', () => {
-    const config: any = { channels: { discord: { dm_channel_id: 'D1' } } };
-    expect(persistDmChannelId(config, 'discord', null, true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-  });
-});
-
-// The maintainer chat must never be re-learned as dm_channel_id — dm_channel_id
-// binds operator *control* authority in lib/channel-auth.ts isTrustedController,
-// and maintainer_channel_id is outbound routing for technical alerts. The two
-// chats stay separate on purpose.
-describe('persistDmChannelId — maintainer chat exclusion', () => {
-  test('a chatId equal to maintainer_channel_id is refused, dm_channel_id untouched', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: 'D1', maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 'M1', true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-  });
-
-  test('a chatId equal to maintainer_channel_id is refused even when dm_channel_id is null', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: null, maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 'M1', true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe(null);
-  });
-
-  test('a numeric chatId matching a string maintainer_channel_id is still refused', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: 'D1', maintainer_channel_id: '555' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 555, true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-  });
-
-  test('a chatId different from maintainer_channel_id is still learned normally', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: 'D1', maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 'D2', true)).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('D2');
-  });
-
-  // The maintainer exemption must still hold even when the reply DID open on
-  // a matching inbound turn — it's defense in depth below the new eligibility
-  // gate, not replaced by it.
-  test('maintainer exclusion holds even when isInboundReply is true', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: 'D1', maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 'M1', true)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-  });
-
-  // An already-clobbered install (or one configured to the same chat) can't be
-  // repaired by the hook — it must be reported so doctor/the operator sees it.
-  test('validate-config warns when dm_channel_id already equals maintainer_channel_id', () => {
-    const { warnings } = validate({
-      channels: { discord: { enabled: true, dm_channel_id: 'M1', maintainer_channel_id: 'M1' } },
+describe('seedDefaultChatId', () => {
+  for (const home of [undefined, null, '']) {
+    test(`seeds an empty home (${home}) and coerces numeric IDs`, () => {
+      const config: any = { channels: { discord: { default_chat_id: home } } };
+      expect(seedDefaultChatId(config, 'discord', 555, true)).toBe(true);
+      expect(config.channels.discord.default_chat_id).toBe('555');
     });
-    expect(warnings.some(w => w.includes('discord.dm_channel_id equals maintainer_channel_id'))).toBe(true);
-  });
+  }
 
-  test('validate-config stays quiet when default_chat_id differs from dm_channel_id', () => {
-    const { warnings } = validate({
-      operator_profile: 'technical',
-      channels: { discord: { enabled: true, default_chat_id: 'H1', dm_channel_id: 'D1' } },
-    });
-    expect(warnings.some(w => w.includes('looks like a shared chat'))).toBe(false);
-  });
-
-  test('validate-config warns when default_chat_id equals maintainer_channel_id', () => {
-    const { warnings } = validate({
-      channels: { discord: { enabled: true, default_chat_id: 'M1', maintainer_channel_id: 'M1' } },
-    });
-    expect(warnings.some(w => w.includes('default_chat_id equals maintainer_channel_id'))).toBe(true);
-  });
-
-  test('validate-config stays quiet when the two ids differ', () => {
-    const { warnings } = validate({
-      channels: { discord: { enabled: true, dm_channel_id: 'D1', maintainer_channel_id: 'M1' } },
-    });
-    expect(warnings.some(w => w.includes('equals maintainer_channel_id'))).toBe(false);
-  });
-});
-
-// PROP-012: a proactive/scheduled reply (routine wake, heartbeat, a brief
-// firing on a timer) must not be mistaken for the operator having relocated
-// their primary DM. persistDmChannelId's isInboundReply gate handles the
-// "did we even check" half; isEligibleInboundReply below handles "was this
-// reply actually opened by a matching inbound message."
-describe('persistDmChannelId — inbound-turn eligibility gate', () => {
-  test('(regression) isInboundReply: true still learns dm_channel_id as before', () => {
-    const config: any = { channels: { discord: { dm_channel_id: 'D1' } } };
-    expect(persistDmChannelId(config, 'discord', 'D2', true)).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('D2');
-  });
-
-  test('isInboundReply: false refuses the write and leaves dm_channel_id untouched', () => {
-    const config: any = { channels: { discord: { dm_channel_id: 'D1' } } };
-    expect(persistDmChannelId(config, 'discord', 'D2', false)).toBe(false);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-  });
-});
-
-// default_chat_id is the pinned destination for unattended proactive sends and
-// the no-allowlist trust anchor. dm_channel_id still follows the operator's last
-// inbound chat; the pin is seeded once and then only moves from the terminal, so
-// a message from a second chat can neither relocate briefings nor hand that chat
-// operator authority.
-describe('persistDmChannelId — default_chat_id pin', () => {
-  test('first pairing seeds the pin from the chat that paired', () => {
-    const config: any = { channels: { discord: { dm_channel_id: null, default_chat_id: null } } };
-    expect(persistDmChannelId(config, 'discord', 'D1', true)).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('D1');
-    expect(config.channels.discord.default_chat_id).toBe('D1');
-  });
-
-  test('a later chat moves dm_channel_id but never the pin', () => {
-    const config: any = { channels: { discord: { dm_channel_id: 'D1', default_chat_id: 'D1' } } };
-    expect(persistDmChannelId(config, 'discord', 'D2', true)).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('D2');
-    expect(config.channels.discord.default_chat_id).toBe('D1');
-  });
-
-  // Pre-pin installs upgrade through here when the migration hasn't run: the
-  // incumbent chat is the home, never the message that diverted the DM.
-  test('unpinned install: the incumbent dm_channel_id becomes the pin, not the new chat', () => {
-    const config: any = { channels: { discord: { dm_channel_id: 'HOME' } } };
-    expect(persistDmChannelId(config, 'discord', 'OTHER', true)).toBe(true);
-    expect(config.channels.discord.dm_channel_id).toBe('OTHER');
+  test('never moves a seeded home', () => {
+    const config: any = { channels: { discord: { default_chat_id: 'HOME' } } };
+    expect(seedDefaultChatId(config, 'discord', 'OTHER', true)).toBe(false);
     expect(config.channels.discord.default_chat_id).toBe('HOME');
   });
 
-  test('a dm_channel_id already clobbered to the maintainer chat is not pinned', () => {
-    const config: any = {
-      channels: { discord: { dm_channel_id: 'M1', maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(config, 'discord', 'D2', true)).toBe(true);
-    expect(config.channels.discord.default_chat_id).toBe('D2');
-  });
+  for (const [chat, inbound] of [['M1', true], [555, true], ['OTHER', false], [null, true]] as const) {
+    test(`refuses ${chat} with inbound=${inbound}`, () => {
+      const config: any = { channels: { discord: { default_chat_id: '', maintainer_channel_id: chat === 555 ? '555' : 'M1' } } };
+      expect(seedDefaultChatId(config, 'discord', chat, inbound)).toBe(false);
+      expect(config.channels.discord.default_chat_id).toBe('');
+    });
+  }
 
-  test('numeric coercion applies to the pin too', () => {
-    const config: any = { channels: { discord: { dm_channel_id: null } } };
-    expect(persistDmChannelId(config, 'discord', 555, true)).toBe(true);
-    expect(config.channels.discord.default_chat_id).toBe('555');
-    expect(typeof config.channels.discord.default_chat_id).toBe('string');
-  });
-
-  test('a refused write seeds nothing (proactive send, maintainer chat)', () => {
-    const proactive: any = { channels: { discord: { dm_channel_id: 'D1' } } };
-    expect(persistDmChannelId(proactive, 'discord', 'D2', false)).toBe(false);
-    expect(proactive.channels.discord.default_chat_id).toBeUndefined();
-
-    const maintainer: any = {
-      channels: { discord: { dm_channel_id: 'D1', maintainer_channel_id: 'M1' } },
-    };
-    expect(persistDmChannelId(maintainer, 'discord', 'M1', true)).toBe(false);
-    expect(maintainer.channels.discord.default_chat_id).toBeUndefined();
+  test('validator warns when home equals maintainer', () => {
+    const { warnings } = validate({ channels: { discord: { default_chat_id: 'M1', maintainer_channel_id: 'M1' } } });
+    expect(warnings.some(w => w.includes('default_chat_id equals maintainer_channel_id'))).toBe(true);
   });
 });
 
@@ -330,9 +171,33 @@ test('configured mapped reply learns the inbound chat and logs outbound text', w
     tool_name: 'mcp__plugin_custom_custom__reply', tool_input: { channel_id: 'C1', text: 'hello back' }, transcript_path: transcript,
   }) });
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(fs.readFileSync(hermit(dir, 'config.json'), 'utf8')).channels.custom.dm_channel_id).toBe('C1');
+  expect(JSON.parse(fs.readFileSync(hermit(dir, 'config.json'), 'utf8')).channels.custom.default_chat_id).toBe('C1');
   const db = new Database(hermit(dir, 'state', 'channel-log.sqlite'), { readonly: true });
   try {
     expect(db.query("SELECT direction FROM messages WHERE source = 'custom' AND chat_id = 'C1'").all()).toEqual([{ direction: 'out' }]);
   } finally { db.close(); }
+}));
+
+for (const home of ['', 'HOME']) test(`hook home=${home} eligibility and audit`, withDir(async (dir) => {
+  const configPath = hermit(dir, 'config.json');
+  const config = JSON.stringify({ channels: { discord: { default_chat_id: home } } });
+  fs.writeFileSync(configPath, config);
+  const transcript = path.join(dir, 'transcript.jsonl');
+  // A seeded pin must skip this unreadable transcript entirely. Reading a
+  // directory produces the eligibility warning, making the skip observable.
+  if (!home) fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: '<channel source="discord" chat_id="NEW">hi</channel>' } }) + '\n');
+  const result = await runScript('channel-hook.ts', {
+    cwd: dir, env: { AGENT_DIR: hermit(dir) }, stdin: JSON.stringify({
+      tool_name: 'mcp__discord__reply', tool_input: { chat_id: 'NEW' }, transcript_path: home ? dir : transcript,
+    }),
+  });
+  expect(result.exitCode).toBe(0);
+  if (home) {
+    expect(result.stderr).toBe('');
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(config);
+    expect(fs.existsSync(hermit(dir, 'state/settings-audit.jsonl'))).toBe(false);
+  } else {
+    expect(JSON.parse(fs.readFileSync(configPath, 'utf8')).channels.discord.default_chat_id).toBe('NEW');
+    expect(fs.readFileSync(hermit(dir, 'state/settings-audit.jsonl'), 'utf8')).toContain('channel-hook');
+  }
 }));

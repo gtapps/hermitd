@@ -53,6 +53,17 @@ export const HERMITD_IDS: Record<string, string> = {
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
 const migrations: Record<string, (config: Json) => void> = {
+  'channel-home': (config) => {
+    for (const [name, channel] of Object.entries(config.channels ?? {}) as [string, Json][]) {
+      if (name === 'primary' || !channel || typeof channel !== 'object') continue;
+      if ((channel.default_chat_id == null || channel.default_chat_id === '')
+        && typeof channel.dm_channel_id === 'string' && channel.dm_channel_id !== ''
+        && channel.dm_channel_id !== channel.maintainer_channel_id) {
+        channel.default_chat_id = channel.dm_channel_id;
+      }
+      delete channel.dm_channel_id;
+    }
+  },
   hermitd: (config) => {
     const skill = (value: unknown): unknown => typeof value === 'string'
       ? value.replace(/^(\/?)([^:]+):/, (prefix, slash, id) => HERMITD_IDS[id] ? `${slash}${HERMITD_IDS[id]}:` : prefix)

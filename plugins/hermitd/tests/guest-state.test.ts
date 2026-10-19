@@ -30,7 +30,7 @@ describe('guest prompt ownership', () => {
   test('guest cannot pause the resident through a channel prompt', withDir(async (dir) => {
     markGuest(state(dir, ''), id);
     fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({
-      channels: { telegram: { enabled: true, dm_channel_id: '1', allowed_users: ['u1'] } },
+      channels: { telegram: { enabled: true, default_chat_id: '1', allowed_users: ['u1'] } },
     }));
     const input = JSON.stringify({
       session_id: id, prompt: '<channel source="telegram" chat_id="1" user="u1">!pause</channel>',

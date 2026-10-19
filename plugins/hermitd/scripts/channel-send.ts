@@ -151,7 +151,7 @@ async function runNotice(hermitDir: string, routine?: string, watch?: string): P
   });
 
   const legs = [out.client, out.maintainer].filter((r): r is SendResult => !!r);
-  // Every leg that survived dedup must have landed. `some` would report success
+  // Every leg, including both legs of a merged send, must have landed. `some` would report success
   // for a half-delivered notice — e.g. a typo'd maintainer_channel_id degrading
   // the maintainer leg to Findings while the client leg goes out — and the
   // caller's documented "delivered ⇒ done" branch would drop that content silently.

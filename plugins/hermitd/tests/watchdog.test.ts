@@ -598,7 +598,7 @@ function configureChannel(h: Hermit): void {
   const p = path.join(h.dir, '.hermit', 'config.json');
   const cfg = readJson(p);
   cfg.timezone = 'UTC';
-  cfg.channels = { telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' } };
+  cfg.channels = { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } };
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
   const stateDir = path.join(h.dir, '.claude.local', 'channels', 'telegram');
   fs.mkdirSync(stateDir, { recursive: true });

@@ -139,7 +139,7 @@ describe('read-path gate', () => {
     'evolve-finalize.ts', // writer: upgrade path
     'migrate-from-claude-code-hermit.ts', // migration writer: strict config read after settings-edit validates the migration
     'evolve-plan.ts', // upgrade tooling: differentiated error taxonomy (no_config vs invalid vs unreadable)
-    'channel-hook.ts', // writer: dm_channel_id persist path keeps its strict read
+    'channel-hook.ts', // writer: default_chat_id persist path keeps its strict read
     'resolve-outbound-channel.ts', // CLI: config_read_failed error output carries the parse message
     'lib/cc-compat.ts', // hermitDir(): existence walk, never parses
     'docker-preflight.ts', // existence check, never parses

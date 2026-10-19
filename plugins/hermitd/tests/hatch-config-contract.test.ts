@@ -88,7 +88,7 @@ describe('hatch-config.ts', () => {
         { id: 'evening', schedule: '30 22 * * *', skill: 'hermitd:brief --evening', enabled: true },
       ],
       channels: {
-        discord: { enabled: true, dm_channel_id: null, default_chat_id: null, state_dir: '.claude.local/channels/discord', allowed_users: ['12345'], morning_brief: { enabled: true, time: '07:00' } },
+        discord: { enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/discord', allowed_users: ['12345'], morning_brief: { enabled: true, time: '07:00' } },
       },
     };
 
@@ -133,8 +133,8 @@ describe('hatch-config.ts', () => {
       ],
       channels: {
         primary: 'discord',
-        discord: { enabled: true, dm_channel_id: 'D999', state_dir: '.claude.local/channels/discord' },
-        mycustom: { enabled: true, marketplace: 'someorg', dm_channel_id: 'X1', state_dir: '.claude.local/channels/mycustom' },
+        discord: { enabled: true, default_chat_id: 'D999', state_dir: '.claude.local/channels/discord' },
+        mycustom: { enabled: true, marketplace: 'someorg', default_chat_id: 'X1', state_dir: '.claude.local/channels/mycustom' },
       },
     };
     seedConfig(dir, seed);
@@ -157,9 +157,9 @@ describe('hatch-config.ts', () => {
     expect(out._hermit_versions['hermitd']).toBe('1.0.0');
     expect(out._hermit_versions['hermitd-dev']).toBeUndefined();
 
-    // channels: discord field-merged (dm_channel_id preserved, allowed_users updated),
+    // channels: discord field-merged (default_chat_id preserved, allowed_users updated),
     // mycustom + primary fully preserved
-    expect(out.channels.discord.dm_channel_id).toBe('D999');
+    expect(out.channels.discord.default_chat_id).toBe('D999');
     expect(out.channels.discord.state_dir).toBe('.claude.local/channels/discord');
     expect(out.channels.discord.allowed_users).toEqual(['999']);
     expect(out.channels.mycustom).toEqual(seed.channels.mycustom);
@@ -299,7 +299,7 @@ describe('hatch-config.ts', () => {
   for (const key of ['isolate_chats', 'shared_chats', 'operators', 'log_chats']) {
     test(`re-init: ${key} can be added, replaced, cleared, and omitted`, async () => {
       const dir = freshDir();
-      const channel = { enabled: true, dm_channel_id: 'D1', default_chat_id: 'D1', state_dir: '.claude.local/channels/discord', custom_key: 'keep' };
+      const channel = { enabled: true, default_chat_id: 'D1', state_dir: '.claude.local/channels/discord', custom_key: 'keep' };
       const seed = { ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')), _hermit_versions: { 'hermitd': CORE_VERSION }, channels: { discord: channel } };
       seedConfig(dir, seed);
       const values = key === 'operators' || key === 'shared_chats' ? [['1'], ['2'], []] : [true, false];
@@ -321,7 +321,7 @@ describe('hatch-config.ts', () => {
   test('re-init: passive_chats can be added, replaced, cleared, and omitted without losing channel state', async () => {
     const dir = freshDir();
     const channel = {
-      enabled: true, dm_channel_id: 'D1', default_chat_id: 'D1',
+      enabled: true, default_chat_id: 'D1',
       state_dir: '.claude.local/channels/discord', allowed_users: ['999'], custom_key: 'keep',
     };
     const seed = {
@@ -357,7 +357,7 @@ describe('hatch-config.ts', () => {
       expect(r.exitCode).toBe(0);
       const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
       expect(out.channels.discord).toEqual({
-        enabled: true, dm_channel_id: null, default_chat_id: null,
+        enabled: true, default_chat_id: null,
         state_dir: '.claude.local/channels/discord', passive_chats: ['123'],
       });
       expect(r.stdout.trim()).toBe('OK');
@@ -409,14 +409,14 @@ describe('hatch-config.ts', () => {
     const dir = freshDir();
     const seed = {
       ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')),
-      channels: { discord: { enabled: true, dm_channel_id: 'D1', state_dir: '.claude.local/channels/discord', morning_brief: { enabled: true, time: '07:00' } } },
+      channels: { discord: { enabled: true, default_chat_id: 'D1', state_dir: '.claude.local/channels/discord', morning_brief: { enabled: true, time: '07:00' } } },
     };
     seedConfig(dir, seed);
     const r = await runHatchConfig(dir, { channels: { discord: { morning_brief_time: null } } }, true);
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
     expect(out.channels.discord.morning_brief).toEqual({ enabled: false });
-    expect(out.channels.discord.dm_channel_id).toBe('D1');
+    expect(out.channels.discord.default_chat_id).toBe('D1');
   });
 
   // /channel-setup writes a channels-only payload through --reinit to add a channel
@@ -438,7 +438,6 @@ describe('hatch-config.ts', () => {
 
     expect(out.channels.telegram).toEqual({
       enabled: true,
-      dm_channel_id: null,
       default_chat_id: null,
       state_dir: '.claude.local/channels/telegram',
     });
@@ -456,7 +455,6 @@ describe('hatch-config.ts', () => {
       channels: {
         telegram: {
           enabled: false,
-          dm_channel_id: 'T42',
           default_chat_id: 'T42',
           state_dir: '.claude.local/channels/telegram',
           allowed_users: ['777'],
@@ -471,7 +469,6 @@ describe('hatch-config.ts', () => {
     const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
 
     expect(out.channels.telegram.enabled).toBe(true);
-    expect(out.channels.telegram.dm_channel_id).toBe('T42');
     expect(out.channels.telegram.default_chat_id).toBe('T42');
     expect(out.channels.telegram.allowed_users).toEqual(['777']);
     expect(out.channels.telegram.state_dir).toBe('.claude.local/channels/telegram');
@@ -484,7 +481,7 @@ describe('hatch-config.ts', () => {
     seedConfig(dir, {
       ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')),
       channels: {
-        telegram: { enabled: false, dm_channel_id: 'T42', default_chat_id: 'T42', state_dir: '.claude.local/channels/telegram' },
+        telegram: { enabled: false, default_chat_id: 'T42', state_dir: '.claude.local/channels/telegram' },
       },
     });
 

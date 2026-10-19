@@ -34,7 +34,7 @@ function setupChannelWorkdir(): Workdir {
   fs.writeFileSync(path.join(stateDir, '.env'), 'TELEGRAM_BOT_TOKEN=test-token\n');
   fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({
     timezone: 'UTC',
-    channels: { telegram: { enabled: true, dm_channel_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
+    channels: { telegram: { enabled: true, default_chat_id: '12345', allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
   }));
   return wd;
 }

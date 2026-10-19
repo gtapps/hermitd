@@ -11,7 +11,7 @@ import { runScript, runPinnedScript, type RunOptions } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
-import { sendOperatorNotice, splitMessage, sendToChannel } from '../scripts/lib/channel-send';
+import { sendOperatorNotice, splitMessage, sendToChannel, sendToOwnedChat } from '../scripts/lib/channel-send';
 import { channelHealthPath } from '../scripts/lib/channel-health';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -40,7 +40,7 @@ function setupChannelWorkdir(telegramExtra: object = {}, topExtra: object = {}):
   fs.writeFileSync(path.join(stateDir, '.env'), 'TELEGRAM_BOT_TOKEN=test-token\n');
   write(hermit(wd.dir, 'config.json'), JSON.stringify({
     ...topExtra,
-    channels: { telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram', ...telegramExtra } },
+    channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram', ...telegramExtra } },
   }));
   return wd;
 }
@@ -159,7 +159,7 @@ describe('channel-send CLI', () => {
     const wd = setupWorkdir();
     try {
       write(hermit(wd.dir, 'config.json'), JSON.stringify({
-        channels: { telegram: { enabled: true, dm_channel_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+        channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
       }));
       const r = await runChannelSend({ args: [hermit(wd.dir), 'hello'] });
       expect(r.exitCode).not.toBe(0);
@@ -305,12 +305,14 @@ describe('channel-send CLI', () => {
 // routing and SendResult shape aren't reachable through the pass-through CLI).
 // sendTelegram reads HERMIT_TELEGRAM_API_URL at call time, so pointing it at the
 // stub for the duration of each call is enough; no real network is touched.
+const withApi = async <T>(url: string, fn: () => Promise<T>): Promise<T> => {
+  process.env.HERMIT_TELEGRAM_API_URL = url;
+  try { return await fn(); } finally { delete process.env.HERMIT_TELEGRAM_API_URL; }
+};
+const findings = (wd: Workdir) => (fs.existsSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl')) ? fs.readFileSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl'), 'utf8') : '');
+
 describe('sendOperatorNotice tiering', () => {
-  const withApi = async <T>(url: string, fn: () => Promise<T>): Promise<T> => {
-    process.env.HERMIT_TELEGRAM_API_URL = url;
-    try { return await fn(); } finally { delete process.env.HERMIT_TELEGRAM_API_URL; }
-  };
-  const findings = (wd: Workdir) => (fs.existsSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl')) ? fs.readFileSync(hermit(wd.dir, 'state', 'watchdog-events.jsonl'), 'utf8') : '');
+
 
   test('fallback:primary + maintainer target hit: same token, route maintainer_channel', async () => {
     const stub = startHttpStub();
@@ -400,17 +402,17 @@ describe('sendOperatorNotice tiering', () => {
   // Load-bearing for maintainer-tier notices: on an install with no maintainer
   // chat, a `--notice` maintainer payload falls back to the pinned home. This
   // routing is what puts the notice in that same chat.
-  test('technical + no maintainer channel + fallback:client -> primary, route client, client leg deduped', async () => {
+  test('technical + no maintainer channel + fallback:client -> primary, route client, both legs merged', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
       const res = await withApi(stub.url, () =>
         sendOperatorNotice(hermit(wd.dir), { client: 'PLAIN', maintainer: { text: 'MAINT', fallback: 'client' } }));
       expect(res.maintainer).toMatchObject({ ok: true, route: 'client', delivered: true });
-      expect(res.client).toBeUndefined(); // same physical chat -> dropped
+      expect(res.client).toMatchObject({ ok: true }); // both legs share one send
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.chat_id).toBe('12345');
-      expect(stub.requests[0].body.text).toBe('MAINT');
+      expect(stub.requests[0].body.text).toBe('PLAIN\n\nMAINT');
     } finally {
       stub.stop();
       wd.cleanup();
@@ -834,7 +836,7 @@ describe('channel-send CLI --notice', () => {
     }
   });
 
-  test('both legs, same chat -> one message (maintainer text wins via dedup), exit 0', async () => {
+  test('both legs, same chat -> one message containing both texts, exit 0', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir({ maintainer_channel_id: '12345' });
     try {
@@ -843,7 +845,7 @@ describe('channel-send CLI --notice', () => {
       const out = JSON.parse(r.stdout);
       expect(out.status).toBe('delivered');
       expect(stub.requests.length).toBe(1);
-      expect(stub.requests[0].body.text).toBe('FULL DETAIL');
+      expect(stub.requests[0].body.text).toBe('PLAIN\n\nFULL DETAIL');
     } finally {
       stub.stop();
       wd.cleanup();
@@ -904,7 +906,7 @@ describe('channel-send CLI --notice', () => {
     const wd = setupWorkdir();
     write(hermit(wd.dir, 'config.json'), JSON.stringify({
       operator_profile: 'non-technical',
-      channels: { telegram: { enabled: true } }, // enabled but unpaired: no dm_channel_id
+      channels: { telegram: { enabled: true } }, // enabled but unpaired: no default_chat_id
     }));
     try {
       const r = await runChannelSend({
@@ -1066,7 +1068,7 @@ describe('channel-send rate limits', () => {
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, '.env'), `${platform.toUpperCase()}_BOT_TOKEN=test-token\n`);
     write(hermit(wd.dir, 'config.json'), JSON.stringify({
-      channels: { [platform]: { enabled: true, dm_channel_id: '12345', state_dir: stateDir } },
+      channels: { [platform]: { enabled: true, default_chat_id: '12345', state_dir: stateDir } },
     }));
     const requests: { at: number; body: any }[] = [];
     const responseTimes: number[] = [];
@@ -1256,7 +1258,7 @@ describe('channel-send rate limits', () => {
   test('discord: stops at the first failed part and logs nothing', async () => {
     const text = ['a', 'b', 'c'].map((c) => c.repeat(1500)).join('\n\n');
     const r = await exercise('discord', [{}, { status: 500, body: { message: 'boom' } }], {}, text);
-    expect(r.result).toEqual({ ok: false, status: 500, error: 'boom' });
+    expect(r.result).toEqual({ ok: false, status: 500, error: 'boom', partial: true });
     expect(r.requests).toHaveLength(2);
     expect(r.rows).toHaveLength(0);
     expect(r.health.consecutive_failures).toBe(1);
@@ -1290,9 +1292,167 @@ test('unsendable configured primary stays on its route', async () => {
   const stub = startHttpStub();
   const wd = setupWorkdir();
   try {
-    const config = { channels: { primary: 'custom', custom: { dm_channel_id: 'C1' }, discord: { dm_channel_id: 'D1' } } };
+    const config = { channels: { primary: 'custom', custom: { default_chat_id: 'C1' }, discord: { default_chat_id: 'D1' } } };
     expect(await sendToChannel(hermit(wd.dir), 'private', { config })).toEqual({ ok: false, error: 'no_send_path' });
     expect(stub.requests).toHaveLength(0);
     expect(await sendToChannel(hermit(wd.dir), 'private', { config, target: { id: 'unknown', chat_id: 'X' } })).toEqual({ ok: false, error: 'unsupported_platform' });
   } finally { stub.stop(); wd.cleanup(); }
+});
+
+describe('merged notice results and logging', () => {
+  for (const configured of [false, true]) {
+    test(`merged sensitive notice, maintainer configured=${configured}`, async () => {
+      const wd = setupChannelWorkdir(configured ? { maintainer_channel_id: '12345' } : {});
+      const stub = startHttpStub();
+      try {
+        const out = await withApi(stub.url, () => sendOperatorNotice(hermit(wd.dir), {
+          client: 'CLIENT', maintainer: { text: 'TECHNICAL', fallback: 'client', sensitive: true },
+        }));
+        expect(out.client).toMatchObject({ ok: true });
+        expect(out.maintainer).toMatchObject({ ok: true, delivered: true, route: configured ? 'maintainer_channel' : 'client' });
+        expect(stub.requests.map(r => r.body.text)).toEqual(['CLIENT\n\nTECHNICAL']);
+        if (configured) {
+          expect(dbExists(hermit(wd.dir))).toBe(false);
+          expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(false);
+        } else {
+          expect(unconsolidated(hermit(wd.dir)).rows.map(r => r.text)).toEqual(['CLIENT\n\nTECHNICAL']);
+          expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(true);
+        }
+      } finally { stub.stop(); wd.cleanup(); }
+    });
+
+    test(`merged failure preserves both legs, maintainer configured=${configured}`, async () => {
+      const wd = setupChannelWorkdir(configured ? { maintainer_channel_id: '12345' } : {});
+      const stub = startHttpStub();
+      stub.setStatus(500);
+      try {
+        const out = await withApi(stub.url, () => sendOperatorNotice(hermit(wd.dir), {
+          client: 'CLIENT', maintainer: { text: 'TECHNICAL', fallback: 'client' },
+        }));
+        expect(stub.requests.map(r => r.body.text)).toEqual(['CLIENT\n\nTECHNICAL']);
+        expect(out.client).toMatchObject({ ok: false, undelivered_saved: true });
+        expect(out.maintainer).toMatchObject(configured
+          ? { ok: true, delivered: false, route: 'findings' }
+          : { ok: false, delivered: false, route: 'client' });
+        expect(findings(wd)).toContain('CLIENT');
+        if (configured) expect(findings(wd)).toContain('TECHNICAL');
+      } finally { stub.stop(); wd.cleanup(); }
+    });
+  }
+});
+
+describe('owned Discord thread delivery', () => {
+  const cases = [
+    { name: 'unknown channel', code: 10003, parent: true },
+    { name: 'archived thread', code: 50083, parent: true },
+    { name: 'locked thread', code: 160005, parent: true },
+    { name: 'announcement thread', code: 160005, type: 10, parentType: 5, parent: true },
+    { name: 'rate limit', code: 0, status: 429 },
+    { name: 'server failure', code: 0, status: 503 },
+    { name: 'timeout', timeout: true },
+    { name: 'other rejection', code: 50001, status: 400 },
+    { name: 'partial send', code: 10003, partial: true },
+    { name: 'private thread', code: 10003, type: 12 },
+    { name: 'forum parent', code: 10003, parentType: 15 },
+    { name: 'missing metadata', code: 10003, missing: true },
+    { name: 'disabled channel', code: 10003, disabled: true },
+    { name: 'parent rejects too', code: 10003, parentFails: true },
+    { name: 'plain send has no fallback', code: 10003, plain: true },
+  ];
+  for (const item of cases) test.serial(item.name, async () => {
+    const c = item as typeof item & {
+      code?: number; status?: number; type?: number; parentType?: number;
+      timeout?: boolean; partial?: boolean; missing?: boolean; disabled?: boolean;
+      parentFails?: boolean; plain?: boolean; parent?: boolean;
+    };
+    const wd = setupWorkdir();
+    const dir = hermit(wd.dir);
+    const state = path.join(wd.dir, 'discord');
+    fs.mkdirSync(state);
+    fs.writeFileSync(path.join(state, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+    const config = { channels: { discord: { enabled: !c.disabled, state_dir: state } } };
+    write(path.join(dir, 'config.json'), JSON.stringify(config));
+    const posts: { route: string; content: string }[] = [];
+    const server = Bun.serve({ port: 0, async fetch(req) {
+      const route = new URL(req.url).pathname;
+      if (req.method === 'GET') {
+        if (c.missing) return Response.json({ code: 10003 }, { status: 404 });
+        return Response.json(route === '/channels/THREAD'
+          ? { type: c.type ?? 11, parent_id: 'PARENT' }
+          : { type: c.parentType ?? 0 });
+      }
+      posts.push({ route, content: (await req.json() as any).content });
+      if (route === '/channels/PARENT/messages') return Response.json({ code: c.parentFails ? 50001 : 0 }, { status: c.parentFails ? 403 : 200 });
+      if (c.timeout) return new Promise<Response>(() => {});
+      if (c.partial && posts.length === 1) return Response.json({ id: 'accepted' });
+      return Response.json({ code: c.code, message: 'rejected' }, { status: c.status ?? 404 });
+    } });
+    const previous = process.env.HERMIT_DISCORD_API_URL;
+    process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
+    const text = c.partial ? 'a'.repeat(2100) : 'CLIENT';
+    try {
+      const result = c.plain
+        ? await sendToChannel(dir, text, { target: { id: 'discord', chat_id: 'THREAD' }, timeoutMs: 50 })
+        : await sendToOwnedChat(dir, 'discord:THREAD', text, { timeoutMs: 50 });
+      expect(result.ok).toBe(!!c.parent);
+      if (!c.plain) expect(result.route).toBe(c.parent || c.parentFails ? 'parent' : 'chat');
+      const parentPosts = posts.filter(p => p.route === '/channels/PARENT/messages');
+      expect(parentPosts).toHaveLength(c.parent || c.parentFails ? 1 : 0);
+      if (parentPosts.length) expect(parentPosts[0].content).toBe('(the original thread is no longer reachable)\nCLIENT');
+      if (c.partial) expect(result.partial).toBe(true);
+      if (!c.parent && !c.parentFails && !c.disabled && !c.timeout) expect(result.platform_code).toBe(c.code);
+      expect(fs.existsSync(channelHealthPath(dir))).toBe(!!c.plain);
+    } finally {
+      if (previous === undefined) delete process.env.HERMIT_DISCORD_API_URL;
+      else process.env.HERMIT_DISCORD_API_URL = previous;
+      server.stop(true); wd.cleanup();
+    }
+  });
+
+  for (const owner of ['routine', 'watch'] as const) {
+    for (const merged of [false, true]) test.serial(`${owner}, merged=${merged}: parent gets client text only`, async () => {
+      const wd = setupWorkdir();
+      const dir = hermit(wd.dir);
+      const state = path.join(wd.dir, 'discord');
+      fs.mkdirSync(state);
+      fs.writeFileSync(path.join(state, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+      write(path.join(dir, 'config.json'), JSON.stringify({
+        channels: { discord: { state_dir: state, default_chat_id: 'HOME', maintainer_channel_id: merged ? 'THREAD' : 'HOME' } },
+        routines: [{ id: 'weekly', chat: 'discord:THREAD' }],
+        monitors: [{ id: 'weekly', chat: 'discord:THREAD' }],
+      }));
+      const posts: { route: string; text: string }[] = [];
+      const server = Bun.serve({ port: 0, async fetch(req) {
+        const route = new URL(req.url).pathname;
+        if (req.method === 'GET') return Response.json(route === '/channels/THREAD' ? { type: 11, parent_id: 'PARENT' } : { type: 0 });
+        posts.push({ route, text: (await req.json() as any).content });
+        return route === '/channels/THREAD/messages'
+          ? Response.json({ code: 10003, message: 'gone' }, { status: 404 }) : Response.json({ id: 'sent' });
+      } });
+      const previous = process.env.HERMIT_DISCORD_API_URL;
+      process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
+      try {
+        const out = await sendOperatorNotice(dir, {
+          [owner]: 'weekly', client: 'CLIENT', maintainer: { text: 'TECHNICAL', fallback: 'client', sensitive: true },
+        });
+        expect(out.client).toMatchObject({ ok: true, route: 'parent' });
+        expect(posts.filter(p => p.route === '/channels/PARENT/messages').map(p => p.text)).toEqual(['(the original thread is no longer reachable)\nCLIENT']);
+        expect(posts).toHaveLength(merged ? 2 : 3);
+        expect(findings(wd)).not.toContain('undelivered-client-notice');
+        expect(findings(wd)).not.toContain('could not post');
+        if (merged) {
+          expect(out.maintainer).toMatchObject({ delivered: false, route: 'findings' });
+          expect(posts[0].text).toBe('CLIENT\n\nTECHNICAL');
+        }
+        if (owner === 'routine') expect(fs.readFileSync(path.join(dir, 'state/routine-metrics.jsonl'), 'utf8')).toContain('chat-undelivered');
+        const rows = unconsolidated(dir).rows;
+        expect(rows.some(r => r.chat_id === 'PARENT' && r.text.includes('CLIENT'))).toBe(true);
+        expect(rows.some(r => r.text.includes('TECHNICAL'))).toBe(false);
+      } finally {
+        if (previous === undefined) delete process.env.HERMIT_DISCORD_API_URL;
+        else process.env.HERMIT_DISCORD_API_URL = previous;
+        server.stop(true); wd.cleanup();
+      }
+    });
+  }
 });

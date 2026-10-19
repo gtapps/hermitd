@@ -13,6 +13,9 @@ import { nextFire } from './lib/cron';
 import { acquireLockWithWait, releaseLock } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { resolveHermitNowMs } from './lib/time';
+import { DIRECT_SEND_CHANNELS } from './lib/channel-config';
+import { lookupChat } from './lib/channel-chats';
+import { sendToOwnedChat } from './lib/channel-send';
 
 import { readRows, type Row, type State } from './lib/later-ledger';
 
@@ -103,6 +106,7 @@ async function main() {
     const error = withLedgerLock(file, () => appendJsonlLine(file, JSON.stringify(row)));
     if (error) throw new Error(`ledger_append_failed:${error}`);
     const config = readConfigRaw(dir);
+    if (chat?.startsWith('discord:')) await lookupChat(dir, config, chat.slice('discord:'.length));
     const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
     const exact = (row.kind === 'reminder' || row.origin === 'operator')
       && new Date(row.due) > date
@@ -118,13 +122,36 @@ async function main() {
     printJson({ rows: listed.map(({ cmd, output, ...summary }) => summary) });
     return;
   }
-  if (!['cancel', 'check', 'verdict'].includes(verb)) exitError('unknown_verb');
+  if (!['cancel', 'check', 'verdict', 'deliver'].includes(verb)) exitError('unknown_verb');
   const chat = chatFlag(args);
   const row = rows.find(row => row.id === args[0] && (chat === undefined || row.chat === chat));
   if (!row) { printJson({ status: 'none', reason: 'unknown_id' }); return; }
   // The row can close between the read above and the locked update (a concurrent cancel or verdict).
   const noop = () => printJson({ status: 'noop', reason: 'not_pending', state: readRows(file).find(r => r.id === row.id)?.state ?? row.state });
   if (row.state !== 'pending') { noop(); return; }
+  if (verb === 'deliver') {
+    if (!row.chat) { printJson({ status: 'unsupported', reason: 'no_chat' }); return; }
+    const channel = row.chat.slice(0, row.chat.indexOf(':'));
+    const config = readConfigRaw(dir);
+    if (!DIRECT_SEND_CHANNELS.includes(channel) && !config?.channels?.[channel]?.send_script) {
+      printJson({ status: 'unsupported', reason: 'no_send_path' });
+      return;
+    }
+    const text = (await readStdinIfFlagged(args, '--text-stdin')).trim();
+    if (!text) throw new Error('text_required');
+    const result = await sendToOwnedChat(dir, row.chat, text, { config });
+    if (!result.ok) {
+      const reason = result.platform_code !== undefined ? `discord_${result.platform_code}`
+        : /^[a-z_]+$/.test(result.error ?? '') ? result.error : 'send_failed';
+      printJson({ status: 'undelivered', reason });
+    } else if (row.kind === 'reminder') {
+      if (!updatePending(file, row.id, { state: 'sent', reason: 'delivered', checked_at: date.toISOString(), late: isLate(dir, row, date) })) { noop(); return; }
+      printJson({ id: row.id, state: 'sent', route: result.route });
+    } else {
+      printJson({ status: 'delivered', route: result.route });
+    }
+    return;
+  }
   if (verb === 'cancel') {
     if (!updatePending(file, row.id, { state: 'cancelled' })) { noop(); return; }
     printJson({ id: row.id, state: 'cancelled' });
