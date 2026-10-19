@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.6] - 2026-10-19
 
 ### Changed
 - Hatch no longer writes an instruction block into `CLAUDE.md`; the plugin's skills, agents and hooks carry its guidance. Requires hermitd 1.4.17.
