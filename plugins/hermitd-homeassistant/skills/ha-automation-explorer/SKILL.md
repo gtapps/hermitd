@@ -14,7 +14,7 @@ Read-only. No writes, no proposals, no actuation.
 
 ## Shared preamble (all modes)
 
-1. Read operator language from OPERATOR.md (`## HA hermit` section). Use this locale for all output.
+1. Use the session language for all output.
 2. Read `.hermit/raw/snapshot-ha-normalized-latest.json`. Check the file's `mtime` with `stat`. If missing or older than 24 hours, append this warning to all output:
    > "Context snapshot is stale — run `/hermitd-homeassistant:ha-refresh-context` for accurate entity data."
 3. Extract `entity_index` and `silence_summary` from the snapshot. Build the automation list: all entries in `entity_index` whose key starts with `automation.`.
@@ -53,7 +53,7 @@ Invoked as `/hermitd-homeassistant:ha-automation-explorer <keyword>`.
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha get-automation-config <id>
    ```
-6. Explain the fetched YAML in plain language in the operator's locale:
+6. Explain the fetched YAML in plain language in the session language:
    - **Triggers**: what starts this automation (time, state change, event, etc.)
    - **Conditions**: any guards that must be true for it to run
    - **Actions**: what it does, step by step

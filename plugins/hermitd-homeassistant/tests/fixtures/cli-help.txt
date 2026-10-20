@@ -23,7 +23,7 @@ options:
   -h, --help  show this help message and exit
 
 $ ha_agent_lab boot store -h
-usage: ha_agent_lab boot store [-h] [--language LANGUAGE] [--url URL]
+usage: ha_agent_lab boot store [-h] [--url URL]
                                [--local-url LOCAL_URL]
                                [--remote-url REMOTE_URL] [--token TOKEN]
 

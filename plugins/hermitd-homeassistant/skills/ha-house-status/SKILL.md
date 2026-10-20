@@ -16,10 +16,10 @@ allowed-tools:
 
 1. Call `GetDateTime` for current time and date.
 2. Call `GetLiveContext` for the live house snapshot.
-3. Use the stored language from OPERATOR.md (`## HA hermit` section) for all output.
+3. Use the session language for all output.
 4. Check `.hermit/raw/snapshot-ha-normalized-latest.json` modification time. If older than 24 hours or missing, append a warning to the status output:
    > "Context snapshot is stale — run `/hermitd-homeassistant:ha-refresh-context` for accurate entity data."
-5. Present a human-readable summary in the stored locale, organized by:
+5. Present a human-readable summary in the session language, organized by:
    - **Presence**: who is home / away
    - **Lights**: which are on
    - **Covers/Blinds**: positions

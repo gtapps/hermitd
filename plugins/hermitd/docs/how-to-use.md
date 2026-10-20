@@ -63,26 +63,27 @@ Hermit reads this at startup, `/clear` and after compaction. Be specific — the
 Good:
 
 ```markdown
-# Operator Context
+# Your Standing Instructions
 
-Solo developer building a Go REST API for inventory management.
-Goal: feature parity with legacy PHP system by Q2.
-
-Never modify migrations/ without asking. Monthly Claude budget: $150 — alert at $120.
-The /internal/auth package is under security review — don't touch without approval.
+You serve me as an assistant for my inventory business.
+Focus your unattended time on finding ways to reduce manual order handling.
+Never spend money or make purchases on your own.
+Ask me before contacting suppliers or customers.
 ```
 
 Not useful:
 
 ```markdown
-# Operator Context
+# Your Standing Instructions
 
 A web app. Be careful.
 ```
 
+Code rules such as "Never modify migrations/" belong in CLAUDE.md.
+
 The first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction. The same section also reaches the hermit's own subagents when they compact. Keep essential instructions within this limit. Edit OPERATOR.md yourself; the hermit can propose a change for you to apply.
 
-Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermit → `OPERATOR.md`. Both files can hold context and instructions. See [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
+Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and subagents included; `OPERATOR.md` holds standing instructions only the resident agent needs. See [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
 
 ### Replacing the resident prompt
 

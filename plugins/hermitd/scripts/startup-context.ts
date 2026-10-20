@@ -356,7 +356,7 @@ function emitCompactCapsule(): void {
     // fail-open — a broken capsule must never block startup
   } finally {
     const operator = readOperatorContext();
-    if (operator) process.stdout.write(`---Operator Context (OPERATOR.md)---\n${operator}\n`);
+    if (operator) process.stdout.write(`---Operator Instructions (OPERATOR.md)---\n${operator}\n`);
   }
 }
 
@@ -386,7 +386,7 @@ function emitFullContext(source: string | null) {
   // 1. Operator context (priority 1, budget 2000)
   // -------------------------------------------------------
   const operator = readOperatorContext();
-  if (operator) emit('Operator Context (OPERATOR.md)', operator);
+  if (operator) emit('Operator Instructions (OPERATOR.md)', operator);
 
   try {
     const policy = fs.readFileSync(path.resolve(AGENT_DIR, 'TASKS.md'), 'utf8');

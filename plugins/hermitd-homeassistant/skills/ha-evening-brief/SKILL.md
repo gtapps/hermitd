@@ -21,7 +21,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `evening-brief
 
 ## Steps
 
-1. **Time & context** — Call `GetDateTime` for current time. Read `.hermit/OPERATOR.md` for language preferences.
+1. **Time & context**: Call `GetDateTime` for current time. Use the session language.
 
 2. **Live house snapshot** — Call `GetLiveContext`. Extract and organize:
    - Security: alarm state, lock states, open covers/blinds
@@ -37,7 +37,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `evening-brief
 
 4. **Energy snapshot** — From the live context, pull current power draw and day's energy consumption if HA energy entities exist. Omit this section if no energy sensors are available.
 
-5. **Compose brief** — Write a concise evening brief in the operator's language (from OPERATOR.md). Use the format below.
+5. **Compose brief**: Write a concise evening brief in the session language. Use the format below.
 
 6. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-evening-<YYYY-MM-DD>.md` with frontmatter:
    ```yaml
@@ -73,7 +73,7 @@ Energy:
 - [day's consumption, current draw — omit section when unavailable]
 ```
 
-Keep the entire brief under 14 lines (10 when the `Updates:` section is absent — no updates pending or the fetch was skipped). Adapt the greeting and section headers to the operator's configured language.
+Keep the entire brief under 14 lines (10 when the `Updates:` section is absent: no updates pending or the fetch was skipped). Adapt the greeting and section headers to the session language.
 
 ## Delivery
 

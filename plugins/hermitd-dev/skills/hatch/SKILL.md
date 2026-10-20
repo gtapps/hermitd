@@ -34,7 +34,6 @@ Check if `.hermit/config.json` exists in the current project.
 
 - Installed plugins: `claude plugin list 2>/dev/null` or read `.claude/settings.json`.
 - Base-branch detection: `git branch -r --format='%(refname:short)' 2>/dev/null | sed 's|^origin/||'`. Collect `main`, `master`, `develop`, `development`, `dev`, and `trunk` as suggested protected branches for Round 1.
-- Read `OPERATOR.md` if present and check for `## Development Conventions`.
 
 ### 3. Ask about remaining settings
 
@@ -71,7 +70,6 @@ questions: [
 
 Skip the `Docs MCP` question entirely if `context7` is already installed (per the `claude plugin list` detection above).
 
-If `OPERATOR.md` exists and does NOT contain a `## Development Conventions` section, append the answers under that heading.
 
 ### 4. Write config and stamp version
 
@@ -114,7 +112,6 @@ Git safety:
   Protected branches: main, master  [or whatever was set]
 
 Updated:
-  OPERATOR.md — dev conventions [added / already present / skipped]
   .hermit/knowledge-schema.md: domain-brainstorm type [added / already present]
 
 Companion plugin: context7 [installed / already present / skipped]

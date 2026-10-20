@@ -21,7 +21,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `morning-brief
 
 ## Steps
 
-1. **Time & context** — Call `GetDateTime` for current time. Read `.hermit/OPERATOR.md` for priorities and language preferences.
+1. **Time & context**: Call `GetDateTime` for current time. Read `.hermit/OPERATOR.md` for the operator's focus. Use the session language.
 
 2. **Fetch overnight history**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha fetch-history --window-days 1`. When it prints `{"error"}` (exit 1), pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`history fetch failed: <error>`) and skip the `Overnight:` section entirely: no fallback wording in the brief. On success, read `.hermit/raw/snapshot-ha-history-1d-latest.json`.
 
@@ -64,7 +64,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `morning-brief
    - `dropped` entries were resolved elsewhere: never surface them, never count them.
    - If `new` and `renudged` are both empty: skip this step entirely.
 
-10. **Compose brief** — Write a concise morning brief in the operator's language (from OPERATOR.md preferences). Use the format below.
+10. **Compose brief**: Write a concise morning brief in the session language. Use the format below.
 
 11. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-morning-<YYYY-MM-DD>.md` with frontmatter:
    ```yaml
@@ -112,10 +112,10 @@ Cost:
 - [Omit section entirely when no spike is flagged.]
 
 Today's priorities:
-- [from OPERATOR.md Current Priority, filtered to actionable items]
+- [from OPERATOR.md focus, filtered to actionable items]
 ```
 
-Adapt the greeting and section headers to the operator's configured language. Keep the entire brief under 25 lines — strip lower-priority lines if the Overnight section pushes over the cap. **`Awaiting decision:` lines are final and non-droppable, and so is `Cost:`** (it only renders on a flagged spike, so its presence is itself the alert) — strip from `Energy`, `Today's priorities`, and `Updates` (in that order) before touching MP lines.
+Adapt the greeting and section headers to the session language. Keep the entire brief under 25 lines: strip lower-priority lines if the Overnight section pushes over the cap. **`Awaiting decision:` lines are final and non-droppable, and so is `Cost:`** (it only renders on a flagged spike, so its presence is itself the alert): strip from `Energy`, `Today's priorities`, and `Updates` (in that order) before touching MP lines.
 
 ## Delivery
 

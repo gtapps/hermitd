@@ -32,8 +32,8 @@ Build YAML automations and scripts that are safe, well-structured, and follow pr
 ## Conventions
 
 - **IDs**: `snake_case`, language-neutral, descriptive (e.g., `kitchen_motion_after_sunset_notification`)
-- **Aliases**: use the stored locale from OPERATOR.md (`## HA hermit` section)
-- **Descriptions**: stored locale, explain the purpose
+- **Aliases**: use the operator's language unless a CLAUDE file instruction names another
+- **Descriptions**: explain the purpose in the operator's language unless a CLAUDE file instruction names another
 - **Mode**: always set explicitly (`single`, `restart`, `queued`, `parallel`)
 - **Triggers**: use `platform:` explicitly, prefer specific entity triggers
 - **Actions**: use full service names (e.g., `light.turn_on`), use `target:` with `entity_id:`
@@ -41,7 +41,7 @@ Build YAML automations and scripts that are safe, well-structured, and follow pr
 
 ## Workflow
 
-1. Read OPERATOR.md for the stored locale (`## HA hermit` section)
+1. Check CLAUDE file instructions for an automation-naming language; otherwise use the operator's language for `alias` and `description`.
 2. Read `.hermit/raw/snapshot-ha-normalized-latest.json` for available entities and services
 3. Optionally call `GetLiveContext` for current device states
 4. Draft the YAML in `.hermit/raw/automation-<id>.yaml`

@@ -27,7 +27,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha list-scripts
 These are live REST calls. On error or timeout: do not retry — note "automation inventory unavailable" and continue with cached artifacts only. With no inventory, `[coverage-asymmetry]` and `[unbuilt-intent]` are unsupportable; a degraded run will usually emit-zero.
 
 **Operator intent**
-Read `.hermit/OPERATOR.md` (`## HA hermit` section) and the auto-memory `MEMORY.md` index. Note any stated wants or preferences ("close garage at night", "welcome light when arriving") that no automation name clearly implements.
+Read the whole `.hermit/OPERATOR.md` and the auto-memory `MEMORY.md` index. Note any stated wants or preferences ("close garage at night", "welcome light when arriving") that no automation name clearly implements.
 
 **Suppression filters** (read to *exclude* ideas — never to source them)
 - `.hermit/state/integration-health-degraded-domains.json` — skip any idea whose target entity sits in a degraded domain.
@@ -72,7 +72,7 @@ Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 
 ### Gate 3 — Emit batch message
 
-Send one message per the Operator Notification protocol. Use the stored locale from OPERATOR.md (`## HA hermit`) for all user-facing text.
+Send one message per the Operator Notification protocol. Use the session language for all user-facing text.
 
 Zero-emit:
 ```
