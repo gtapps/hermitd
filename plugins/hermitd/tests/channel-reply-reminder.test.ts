@@ -487,11 +487,13 @@ describe('chat history after context reset', () => {
     write(hermit(dir, 'state', 'runtime.json'), JSON.stringify({ last_context_reset_at: new Date(now - 2000).toISOString() }));
     logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'out', text: 'Prior question', ts: new Date(now - 3000).toISOString() });
     logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'in', sender_id: 'U1', text: 'Prior answer', ts: new Date(now - 1000).toISOString() });
+    logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'in', sender_id: 'STRANGER', text: 'Stranger chatter', ts: new Date(now - 900).toISOString() });
     const r = await run('<channel source="discord" chat_id="1" user="U1"><@123> continue</channel>', dir);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain('context was reset');
     expect(r.stdout).toContain('Prior question');
     expect(r.stdout).toContain('Prior answer');
+    expect(r.stdout).not.toContain('Stranger chatter');
     expect(r.stdout).not.toContain('Earlier messages in this chat since your last recorded reply');
   }, '{"channels":{"discord":{"allowed_users":["U1"],"passive_chats":["1"],"bot_user_id":"123"}}}'));
 });

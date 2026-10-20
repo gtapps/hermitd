@@ -126,9 +126,11 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   let resetHistory = false;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
     && isLoggingEnabled(ctx.config(), envelope.source)) {
+    // The replayed reply is at most six hours old and predates the reset, so an
+    // older reset can never qualify and skips the log query.
     const resetAt = Date.parse(ctx.runtime()?.last_context_reset_at ?? '');
-    if (Number.isFinite(resetAt)) {
-      const rows = conversationHistory(ctx.dir, sourceKey, chatIdRaw, { limit: 8 })
+    if (Number.isFinite(resetAt) && resetAt >= Date.now() - UNADDRESSED_MAX_AGE_MS) {
+      const rows = conversationHistory(ctx.dir, sourceKey, chatIdRaw, { limit: 8, senderIds: allowedUserIds(ctx.config(), envelope.source) })
         .filter(row => Date.parse(row.ts) >= Date.now() - UNADDRESSED_MAX_AGE_MS);
       const lastReply = rows.findLast(row => row.direction === 'out');
       if (lastReply && Date.parse(lastReply.ts) < resetAt) {

@@ -95,6 +95,7 @@ it('mute-only notes on a closed record change only muted', async () => {
       expect(lib.decodeTask(f.text(id))).toEqual({ ...before, muted });
     }
     for (const [args, input] of [
+      [[], ''],
       [[], 'More work'],
       [['--due', '2026-12-01T00:00:00Z'], ''],
       [['--muted', 'true', '--owner', 'resident'], ''],

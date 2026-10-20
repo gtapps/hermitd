@@ -619,13 +619,14 @@ describe('task thread admission', () => {
     { name: 'stranger in closed thread is blocked', task: true, closed: true, user: 'stranger', owner: 'resident', muted: false, body: 'continue', blocked: true },
     { name: 'mute in closed thread passes', task: true, closed: true, owner: 'resident', muted: false, body: '!mute', blocked: false },
     { name: 'unmute in closed thread passes', task: true, closed: true, owner: 'resident', muted: true, body: '!unmute', blocked: false },
+    { name: 'closed muted DM is not muted afterwards', task: true, closed: true, chatType: 1, owner: 'resident', muted: true, body: 'continue', blocked: false },
     { name: 'chat without a record stays blocked', task: false, owner: 'resident', muted: false, body: 'continue', blocked: true },
   ]) {
     test(scenario.name, async () => {
       const wd = trackedWorkdir();
       const dir = hermit(wd.dir);
       fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['parent'], bot_user_id: '777' } } }));
-      fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', guild_id: 'guild', fetched_at: new Date().toISOString() } } } }));
+      fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: scenario.chatType ?? 11, parent_id: scenario.chatType ? null : 'parent', guild_id: 'guild', fetched_at: new Date().toISOString() } } } }));
       if (scenario.task) {
         const opened = await openThreadTask(wd, 'discord:thread', scenario.owner, scenario.muted);
         expect(opened.exitCode).toBe(0);

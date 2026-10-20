@@ -8,7 +8,7 @@
 
 ### Changed
 - Closed task threads stay addressed, with `!mute` and `!unmute` available after completion.
-- Recent chat history accompanies the first message after a context reset when the latest logged hermit reply predates it.
+- Recent chat history from allowed senders and the hermit accompanies messages after a context reset until the hermit's next logged reply in that chat.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.

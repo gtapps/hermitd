@@ -228,7 +228,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       record = found;
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
-      const muteOnly = verb === 'note' && !input.trim() && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
+      const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
       if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
