@@ -10,20 +10,28 @@
 - Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
 - `/hermitd:watch stop` on a config watch sets `enabled: false`.
 - Config watch commands no longer see shell-profile functions; PATH and exported variables are unchanged.
+- Closed task threads stay addressed, with `!mute` and `!unmute` available after completion.
+- Recent chat history from allowed senders and the hermit accompanies messages after a context reset until the hermit's next logged reply in that chat.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
+- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`; task and daily later replies name the resolve or its error.
+- `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 
 ### Upgrade Instructions
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` and `Edit(*.hermit/helper-prompt.md)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
 2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
 3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave `## HA hermit` and `## Development Conventions` sections as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise invoke `Skill(init)` (for local, args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
-
 4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
 5. Restart the resident with `hermitd-docker update` or the operator's usual restart procedure.
 
 ### Fixed
+- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+- The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
+- The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.
+- The evening brief counts tasks closed today in the configured timezone.
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
+- Turn cost rows include the API calls made before a mid-turn skill load, and after a session's first billed turn also those before a mid-turn channel or cross-session message or in a turn whose Stop hook never ran; these calls were previously never billed.
 
 ## [1.4.17] - 2026-10-19
 

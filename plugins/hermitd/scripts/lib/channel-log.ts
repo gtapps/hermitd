@@ -408,22 +408,26 @@ function prune(hermitDir: string, retentionDays: number): { ok: boolean; deleted
   }
 }
 
-/** Last per-chat rows in both directions, returned oldest first. */
+/**
+ * Last per-chat rows in both directions, returned oldest first. `senderIds`
+ * keeps only inbound rows from those senders, filtered in SQL before LIMIT.
+ */
 function conversationHistory(
   hermitDir: string,
   source: string,
   chatId: string,
-  { limit }: { limit: number },
+  { limit, senderIds }: { limit: number; senderIds?: string[] | null },
 ): Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[] {
   try {
-    if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir))) return [];
+    if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir), source)) return [];
     const db = openDb(hermitDir, { readonly: true });
     try {
+      const senderFilter = senderIds ? `AND (direction = 'out' OR sender_id IN (${senderIds.map(() => '?').join(',')}))` : '';
       const rows = db.query(
         `SELECT ts, direction, sender, text FROM messages
-         WHERE source = ? AND chat_id = ?
+         WHERE source = ? AND chat_id = ? ${senderFilter}
          ORDER BY ts DESC, id DESC LIMIT ?`
-      ).all(source, chatId, limit) as Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[];
+      ).all(source, chatId, ...(senderIds ?? []), limit) as Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[];
       return rows.reverse();
     } finally { db.close(); }
   } catch { return []; }

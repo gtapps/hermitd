@@ -1570,16 +1570,23 @@ function checkCredentialExpiry(p: DoctorPaths = PATHS) {
     // resolves from the volume, which is the same answer the probe itself used.
     const config = readConfigRaw(p.hermitDir) ?? {};
     const stray = strayTokenNote(config);
-    const chrome = chromeAuthNote(config);
     const parts = [...sib.badNotes];
     if (stray) parts.push(stray);
-    if (chrome) parts.push(chrome);
     const status = parts.length > 0 ? 'warn' : 'ok';
     if (sib.okCount > 0) parts.push(`${sib.okCount} plugin credential(s) ok`);
     if (parts.length === 0) parts.push('no plugin declares a credential to probe');
     return { id: 'credential-expiry', status, detail: parts.join('; ') };
   } catch (e: any) {
     return { id: 'credential-expiry', status: 'fail', detail: `check failed: ${e.message}` };
+  }
+}
+
+function checkChromeAuth(p: DoctorPaths = PATHS) {
+  try {
+    const note = chromeAuthNote(readConfigRaw(p.hermitDir) ?? {});
+    return { id: 'chrome-auth', status: note ? 'warn' : 'ok', detail: note ?? 'no Chrome and auth mode conflict' };
+  } catch (e: any) {
+    return { id: 'chrome-auth', status: 'warn', detail: `check failed: ${e.message}` };
   }
 }
 
@@ -2354,6 +2361,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkRoutinePrecheck(p),
     checkRawSize(p),
     checkCredentialExpiry(p),
+    checkChromeAuth(p),
     checkModelPricingKnown(p),
     checkMemorySize(p),
     checkPassiveChats(p),
@@ -2571,7 +2579,7 @@ export {
   checkDockerSecurity, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
-  checkCredentialExpiry, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
+  checkCredentialExpiry, checkChromeAuth, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
   satisfiesRange, cidrOverlap,
   // Tests build their own paths for a scratch dir; the CLI runs on the argv-derived default.
   resolvePaths,

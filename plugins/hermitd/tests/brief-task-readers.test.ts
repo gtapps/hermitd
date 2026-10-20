@@ -27,6 +27,9 @@ describe('task-based reader instructions', () => {
 
   test('brief uses final results to judge lessons and distinguishes session wakes from prechecks', () => {
     const ref = read('skills/brief/reference.md');
+    expect(ref).toContain('closed_today');
+    expect(ref).toContain('opened_today');
+    expect(ref).toContain('--limit 20 --today');
     expect(ref).toContain('contradict');
     expect(ref).toContain('last_woke');
   });

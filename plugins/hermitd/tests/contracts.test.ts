@@ -2170,7 +2170,7 @@ describe('reflect routine gating contract (token efficiency)', () => {
 const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age',
-  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'model-pricing-known',
+  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'model-pricing-known',
   'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
   'backup',
 ];
@@ -2571,12 +2571,16 @@ describe('doctor credential-expiry check', () => {
         args: ['.hermit'], cwd: dir,
         env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: path.join(dir, 'creds'), ANTHROPIC_API_KEY: '' },
       });
-      const c = credCheck(JSON.parse(r.stdout));
-      expect(c.status).toBe(chrome ? 'warn' : 'ok');
+      const report = JSON.parse(r.stdout);
+      const c = credCheck(report);
+      expect(c.status).toBe('ok');
+      expect(c.detail).not.toContain('Chrome');
+      const chromeCheck = report.checks.find((check: any) => check.id === 'chrome-auth');
+      expect(chromeCheck.status).toBe(chrome ? 'warn' : 'ok');
       if (chrome) {
-        expect(c.detail).toContain('Chrome stays off with a setup-token');
-        expect(c.detail).toContain('/hermitd:relogin');
-      } else expect(c.detail).not.toContain('Chrome');
+        expect(chromeCheck.detail).toContain('Chrome stays off with a setup-token');
+        expect(chromeCheck.detail).toContain('/hermitd:relogin');
+      }
     }), 20000);
   }
 
