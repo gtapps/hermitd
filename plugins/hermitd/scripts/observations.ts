@@ -5,7 +5,7 @@
 //    or: bun observations.ts graduate <hermit-state-dir> [--cursor <iso>]
 //        prints `{"candidates":[...]}`, the patterns reflect promotes to candidates this run.
 //    or: bun observations.ts patterns <hermit-state-dir>
-//        prints the 50 most recently seen distinct labels, read-only.
+//        prints the 50 most recently seen distinct quick-deferral and reflect-noticed labels, read-only.
 //
 // Replaces append-metrics.ts, which took an arbitrary path and arbitrary JSON and
 // so granted every holder of its unattended permission strictly more authority

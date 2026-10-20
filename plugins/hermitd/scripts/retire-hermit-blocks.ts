@@ -13,7 +13,7 @@ type Result = ({ changed: string[]; backup: string; deleted?: string[] }
 
 function removeBlocks(text: string): { after: string; removed: string; unpaired: number[] } {
   const spans: Array<{ start: number; end: number }> = [];
-  const unpaired: number[] = [];
+  const unpairedAt: number[] = [];
   const markers = /^[ \t]*<!-- (\/?)([^:\s]+): ([^\r\n]*?) -->[ \t]*\r?$/gm;
   const matches = [...text.matchAll(markers)].filter(match => match[2].includes('hermit'));
   // A leading frontmatter's closing fence belongs to the operator, not the block.
@@ -35,11 +35,16 @@ function removeBlocks(text: string): { after: string; removed: string; unpaired:
       spans.push({ start, end });
       i++;
     } else {
-      unpaired.push(text.slice(0, match.index).split('\n').length);
+      unpairedAt.push(match.index);
     }
   }
   const removed = spans.map(span => text.slice(span.start, span.end)).join('\n');
   for (const span of spans.reverse()) text = text.slice(0, span.start) + text.slice(span.end);
+  // Line numbers name the rewritten file the operator will edit, after earlier spans are gone.
+  const unpaired = unpairedAt.map(index => {
+    const shift = spans.filter(span => span.end <= index).reduce((n, span) => n + span.end - span.start, 0);
+    return text.slice(0, index - shift).split('\n').length;
+  });
   return { after: text, removed, unpaired };
 }
 

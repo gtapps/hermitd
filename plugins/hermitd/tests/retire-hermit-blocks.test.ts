@@ -37,7 +37,8 @@ for (const { body, after, lines } of [
   { body: CLOSE + '\n', after: CLOSE + '\n', lines: [1] },
   { body: '<!-- /custom-hermit: Instructions -->\n', after: '<!-- /custom-hermit: Instructions -->\n', lines: [1] },
   { body: `${CLOSE}\n${OPEN}\n`, after: `${CLOSE}\n${OPEN}\n`, lines: [1, 2] },
-  { body: `${OPEN}\n${sibling}${CLOSE}\n`, after: `${OPEN}\n${CLOSE}\n`, lines: [1, 5] },
+  { body: `${OPEN}\n${sibling}${CLOSE}\n`, after: `${OPEN}\n${CLOSE}\n`, lines: [1, 2] },
+  { body: `${block}${OPEN}\nUnclosed`, after: `${OPEN}\nUnclosed`, lines: [1] },
   { body: `${OPEN}\n<!-- custom-hermit: Instructions -->\n${CLOSE}\n<!-- /custom-hermit: Instructions -->\n`, after: `${OPEN}\n<!-- custom-hermit: Instructions -->\n${CLOSE}\n<!-- /custom-hermit: Instructions -->\n`, lines: [1, 2, 3, 4] },
   { body: `${OPEN}\nUnpaired guidance.\n${block}`, after: `${OPEN}\nUnpaired guidance.\n`, lines: [1] },
 ]) {

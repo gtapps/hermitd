@@ -423,14 +423,13 @@ const [, , targetFile, op, ...rest] = process.argv;
 
 if (!targetFile || !op) exitError();
 
-if (['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)) {
-  const resolvedTarget = path.resolve(targetFile);
-  const projectRoot = path.dirname(path.dirname(resolvedTarget));
-  const { target } = readTargetState(path.join(projectRoot, '.hermit'), { core_scope: null, target: 'local' });
-  if (target && path.basename(resolvedTarget) === settingsFile(target === 'local' ? 'committed' : 'local')) {
-    printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(target)}` });
-    process.exit(0);
-  }
+const resolvedTarget = path.resolve(targetFile);
+const hatchTarget = ['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)
+  ? readTargetState(path.resolve(path.dirname(resolvedTarget), '..', '.hermit'), { core_scope: null, target: 'local' }).target
+  : null;
+if (hatchTarget && path.basename(resolvedTarget) === settingsFile(hatchTarget === 'local' ? 'committed' : 'local')) {
+  printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(hatchTarget)}` });
+  process.exit(0);
 }
 
 const settings = readTargetJson(targetFile);
@@ -462,22 +461,20 @@ switch (op) {
       removePermissions(settings, 'allow', plan.obsolete);
       removePermissions(settings, 'deny', plan.obsolete_deny);
     }
-    const resolvedTarget = path.resolve(targetFile);
-    const stateDir = path.resolve(path.dirname(resolvedTarget), '..', '.hermit');
-    const { target } = readTargetState(stateDir, { core_scope: null, target: 'local' });
     let otherFile;
-    if (target && path.basename(resolvedTarget) === settingsFile(target)) {
-      const otherName = settingsFile(target === 'local' ? 'committed' : 'local');
+    if (hatchTarget && path.basename(resolvedTarget) === settingsFile(hatchTarget)) {
+      const otherName = settingsFile(hatchTarget === 'local' ? 'committed' : 'local');
       const otherPath = path.join(path.dirname(resolvedTarget), otherName);
-      const other = readTargetJson(otherPath);
+      // Lenient: a malformed other file holds nothing to retire and must not block the target's sync.
+      const other = readJson(otherPath);
       const { obsolete, obsolete_deny } = planPermissions(other);
       if (obsolete.length || obsolete_deny.length) {
         const before = structuredClone(other);
         removePermissions(other, 'allow', obsolete);
         removePermissions(other, 'deny', obsolete_deny);
         writeJson(otherPath, other);
-        const settings_file = target === 'local' ? '.claude/settings.json' : '.claude/settings.local.json';
-        auditConfigChange(stateDir, before, other, 'apply-settings', settings_file);
+        const settings_file = hatchTarget === 'local' ? '.claude/settings.json' : '.claude/settings.local.json';
+        auditConfigChange(path.resolve(path.dirname(resolvedTarget), '..', '.hermit'), before, other, 'apply-settings', settings_file);
         otherFile = { settings_file, obsolete, obsolete_deny };
       }
     }

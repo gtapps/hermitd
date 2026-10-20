@@ -6,7 +6,7 @@
 - Upgrades also list operator scripts and routine checks that still read the old `forge.php` output.
 
 ### Upgrade Instructions
-1. Apply core's `docs/creating-your-own-hermit.md` § Upgrade steps that change or remove what operators call to `forge.php` invocations that branch on the pre-0.0.20 output shapes listed in 0.0.20 Upgrade Instructions item 1. Skip lines already listed by that item in the same run. Skip silently when none remain. Otherwise list real hits with file and line and defer per core's hermit-evolve Step 10 with `options: ["Fix them", "Leave them"]` and no `on_resolve`:
+1. Find `forge.php` invocations that branch on the pre-0.0.20 output shapes listed in 0.0.20 Upgrade Instructions item 1. Look in the project's `.claude/skills/`, `.claude/commands/` and `.claude/agents/` (including bundled scripts of any language), `routines[].precheck` and `monitors[].command` in `.hermit/config.json`, hook commands in `.claude/settings.json` and `.claude/settings.local.json`, and `.hermit/dashboard-render.ts`. Skip gitignored files, `.claude/worktrees/`, nested repositories, backups, plugin directories, and lines already listed by 0.0.20 item 1 in the same run. A line that only checks a real failure's exit code is not a hit. Never edit files here. Skip silently when none remain. Otherwise list the hits with file and line and defer per core's hermit-evolve Step 10 with `options: ["Fix them", "Leave them"]` and no `on_resolve`:
    - *Fix them*: update each line to the shape the Forge skill running the same command describes. Report each file changed.
    - *Leave them*: change nothing and say those lines misread `forge.php` output until updated.
 

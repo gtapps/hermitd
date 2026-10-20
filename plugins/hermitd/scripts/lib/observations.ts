@@ -63,12 +63,15 @@ interface ObservationPattern {
   last_seen: string;
 }
 
-// Labels group across sources; source describes the most recent row.
+// Only the labels reflect writes itself, so computed per-date labels never fill the
+// cap or get reused for a model-written row. Source describes the most recent row.
+const PATTERN_SOURCES = new Set<string>(['quick-deferral', 'reflect-noticed']);
+
 function observationPatterns(stateDir: string): ObservationPattern[] {
   const groups = new Map<string, ObservationPattern>();
   for (const row of readLedgerRows(observationsPath(stateDir))) {
     const { pattern, source, ts } = row;
-    if (typeof pattern !== 'string' || !pattern || typeof source !== 'string'
+    if (typeof pattern !== 'string' || !pattern || typeof source !== 'string' || !PATTERN_SOURCES.has(source)
       || typeof ts !== 'string' || !Number.isFinite(Date.parse(ts))) continue;
     const group = groups.get(pattern);
     if (!group) groups.set(pattern, { pattern, source, rows: 1, last_seen: ts });

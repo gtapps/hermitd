@@ -479,6 +479,7 @@ sealed entries the target lacks, and any entries from retired plugin versions it
 3. Otherwise show the operator the entries — what will be added, and what retired entries will be removed from `permissions.allow` (`obsolete`) and `permissions.deny` (`obsolete_deny`) — and ask with `AskUserQuestion` (header: "Hook perms") — options: **Yes — add** (merge so hooks run without prompting, default) / **No — skip** (you'll be prompted during sessions).
 4. If the operator confirms: run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
    (Adds every missing sealed entry and removes only entries from retired plugin versions. Operator-authored rules are never touched.)
+   When its output has `other_file`, tell the operator which retired entries were also removed from that `settings_file`, naming each `obsolete_deny` entry verbatim.
    (No auto-mode step here: the classifier reads `autoMode` only from user scope, managed settings, or `--settings`, so there is nothing useful to seed into a project settings file. `hermitd-start` renders the hermit's classifier policy into a per-session overlay at every boot and launches with `--settings`.)
 5. If the operator declines: skip, and note: "You may be prompted to approve hook commands during sessions. Run `/hermitd:hermit-settings permissions` to add them later."
 

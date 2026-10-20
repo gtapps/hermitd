@@ -8,7 +8,7 @@
 
 ### Changed
 - Reflect reuses an existing observation label for a recurring problem, so repeats under new wording still count toward a proposal.
-- Upgrade notices end with one plain question, and replying in chat applies the chosen option.
+- Upgrade questions are queued as micro-proposals at the end of the notice, so a chat reply applies the chosen option even after a restart.
 - `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.
 - Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
 - `/hermitd:watch stop` on a config watch sets `enabled: false`.

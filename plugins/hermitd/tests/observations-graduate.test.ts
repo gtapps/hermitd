@@ -116,8 +116,10 @@ describe('observations.ts patterns', () => {
     return JSON.parse(result.stdout);
   }
 
-  test('groups distinct labels across sources, newest first, without writing', async () => {
+  test('groups reflect-written labels, newest first, without writing', async () => {
     const ledger = [
+      row({ ts: FRESH, pattern: 'cost-spike:2026-06-01', source: 'cost-spike' }),
+      row({ ts: FRESH, pattern: 'skill-preference:commit', source: 'skill-preference-applied' }),
       row({ ts: FRESH, pattern: 'deploy failure', source: 'quick-deferral' }),
       row({ ts: STALE, pattern: 'older failure' }),
       row({ ts: STALE, pattern: 'deploy failure' }),

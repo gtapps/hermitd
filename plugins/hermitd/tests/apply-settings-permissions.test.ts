@@ -593,6 +593,16 @@ describe('permissions-sync other settings file', () => {
     expect(fs.statSync(other).mtimeMs).toBe(before);
   }));
 
+  test('a malformed other file does not block the target sync', withTarget(async target => {
+    stamp(target);
+    const other = path.join(path.dirname(target), 'settings.local.json');
+    fs.writeFileSync(other, '{ not json');
+    const result = await run(target, 'permissions-sync');
+    expect(result.other_file).toBeUndefined();
+    expect(readAllow(target)).toEqual(HERMIT_ALLOW);
+    expect(fs.readFileSync(other, 'utf8')).toBe('{ not json');
+  }));
+
   test('leaves the other file untouched without a stamp', withTarget(async target => {
     const other = path.join(path.dirname(target), 'settings.local.json');
     seed(other, { permissions: { allow: [HERMIT_OBSOLETE[0]], deny: [HERMIT_OBSOLETE_DENY[0]] } });
