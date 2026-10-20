@@ -9,7 +9,7 @@
 // own try/catch, and a logging failure never affects the reminder.
 
 import { safeForLLM } from '../sanitize';
-import { logMessage, isLoggingEnabled, unaddressedSince } from '../channel-log';
+import { logMessage, isLoggingEnabled, unaddressedSince, conversationHistory } from '../channel-log';
 import path from 'node:path';
 import { readJson } from '../cli';
 import { isPaused } from '../pause';
@@ -120,7 +120,31 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
     && await isSelfMentioned(ctx.dir, ctx.config(), sourceKey, chatIdRaw, envelope.body, envelope);
 
-  if (addressed && isLoggingEnabled(ctx.config(), envelope.source)) {
+  const admittedConversation = !!(ctx.conversation || ctx.closedThread)
+    && isAllowedSender(ctx.config(), envelope.source, envelope.userId);
+  const willBlock = passive && !addressed && !admittedConversation;
+  let resetHistory = false;
+  if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
+    && isLoggingEnabled(ctx.config(), envelope.source)) {
+    // The replayed reply is at most six hours old and predates the reset, so an
+    // older reset can never qualify and skips the log query.
+    const resetAt = Date.parse(ctx.runtime()?.last_context_reset_at ?? '');
+    if (Number.isFinite(resetAt) && resetAt >= Date.now() - UNADDRESSED_MAX_AGE_MS) {
+      const rows = conversationHistory(ctx.dir, sourceKey, chatIdRaw, { limit: 8, senderIds: allowedUserIds(ctx.config(), envelope.source) })
+        .filter(row => Date.parse(row.ts) >= Date.now() - UNADDRESSED_MAX_AGE_MS);
+      const lastReply = rows.findLast(row => row.direction === 'out');
+      if (lastReply && Date.parse(lastReply.ts) < resetAt) {
+        resetHistory = true;
+        reminder += 'Recent messages in this chat (context was reset):\n';
+        for (const row of rows) {
+          const sender = row.direction === 'out' ? 'you (hermit)' : row.sender ?? '';
+          reminder += `${safeForLLM(sender)} ${safeForLLM(row.ts)} ${safeForLLM(row.text).slice(0, UNADDRESSED_TEXT_CAP)}\n`;
+        }
+      }
+    }
+  }
+
+  if (!resetHistory && addressed && isLoggingEnabled(ctx.config(), envelope.source)) {
     // inbound ts is the platform's timestamp while outbound ts is the host clock,
     // so a skewed host clock shifts the window by the skew.
     const notBeforeIso = new Date(Date.now() - UNADDRESSED_MAX_AGE_MS).toISOString();
@@ -142,9 +166,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     process.stderr.write(`[channel-log] inbound capture failed: ${e?.message || e}\n`);
   }
 
-  const admittedConversation = !!ctx.conversation
-    && isAllowedSender(ctx.config(), envelope.source, envelope.userId);
-  if (passive && !addressed && !admittedConversation) {
+  if (willBlock) {
     return { block: 'passive chat: recorded, not addressed' };
   }
 

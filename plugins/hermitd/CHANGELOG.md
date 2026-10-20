@@ -7,6 +7,8 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- Closed task threads stay addressed, with `!mute` and `!unmute` available after completion.
+- Recent chat history from allowed senders and the hermit accompanies messages after a context reset until the hermit's next logged reply in that chat.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
