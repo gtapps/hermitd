@@ -79,3 +79,12 @@ test('optional channel plugin, send script and attribute mappings validate', () 
     expect(errors({ attributes }).some(e => e.includes('.attributes.user_id'))).toBe(true);
   }
 });
+
+test('config watches ignore retired persistent and timeout_ms fields', () => {
+  const result = validate({ monitors: [{
+    id: 'sample', description: 'Sample watch', command: 'tail -f events.log',
+    enabled: true, persistent: 'retired', timeout_ms: -1,
+  }] });
+  expect(result.errors.filter(e => e.includes('monitors'))).toEqual([]);
+  expect(result.warnings.filter(e => e.includes('monitors'))).toEqual([]);
+});

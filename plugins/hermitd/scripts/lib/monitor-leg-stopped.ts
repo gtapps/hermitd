@@ -12,6 +12,7 @@ function readJson(file: string): any {
 
 /** Whether a supervised leg must not poll: heartbeat stopped, or routines in fallback for this boot. */
 export function legStopped(hermitDir: string, leg: string): boolean {
+  if (leg === 'watches') return false;
   if (leg === 'heartbeat') {
     return effectiveHeartbeatMode(hermitDir) === 'stopped';
   }

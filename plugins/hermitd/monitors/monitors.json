@@ -10,5 +10,11 @@
     "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/monitor-supervisor.sh routines \"${CLAUDE_PROJECT_DIR}\"/.hermit",
     "description": "Scheduled routine notifications",
     "when": "on-skill-invoke:hermitd:monitor-activate"
+  },
+  {
+    "name": "watch-monitor",
+    "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/monitor-supervisor.sh watches \"${CLAUDE_PROJECT_DIR}\"/.hermit",
+    "description": "Config watch events",
+    "when": "on-skill-invoke:hermitd:watch-activate"
   }
 ]

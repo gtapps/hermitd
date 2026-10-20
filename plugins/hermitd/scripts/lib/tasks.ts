@@ -508,17 +508,25 @@ export function deriveDuties(dir: string): { name: string; last_run: string | nu
   const valid = value && value.alerts && typeof value.alerts === 'object' && !Array.isArray(value.alerts) && typeof value.total_ticks === 'number';
   const active = valid ? Object.values(value.alerts).filter((entry: any) => !entry.suppressed && !entry.resolved_at).length : 0;
   rows.push({ name: 'heartbeat', last_run: valid ? value.last_clean_eval_at ?? null : null, last_verdict: !valid || value.last_clean_eval_at === null ? 'frozen' : active ? `findings:${active}` : 'ok' });
+  const watchDuties = readJson(path.join(dir, 'state/watch-duties.json'));
+  for (const watch of config?.monitors ?? []) {
+    if (watch.enabled !== true) continue;
+    const duty = watchDuties?.watches?.[watch.id];
+    rows.push({ name: `watch:${watch.id}`, last_run: duty?.last_event_at ?? null, last_verdict: duty?.last_verdict ?? null, scope: 'since session start' });
+  }
   const registry = readJson(path.join(dir, 'state/monitors.runtime.json'));
   for (const watch of registry?.monitors ?? []) rows.push({ name: `watch:${watch.id}`, last_run: watch.last_event_at ?? null, last_verdict: watch.last_verdict ?? null, scope: 'since session start' });
   return rows;
 }
 export function recordWatchDuty(dir: string, id: string, verdict: string): void {
-  const file = path.join(dir, 'state/monitors.runtime.json');
+  const configured = (readConfigRaw(dir)?.monitors ?? []).some((watch: any) => watch.id === id);
+  const file = path.join(dir, configured ? 'state/watch-duties.json' : 'state/monitors.runtime.json');
   const lock = file + '.lock';
   if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
   try {
-    const registry = readJson(file);
-    const watch = registry?.monitors?.find((entry: any) => entry.id === id);
+    const registry = readJson(file) ?? (configured ? { watches: {} } : null);
+    if (configured) registry.watches[id] ??= {};
+    const watch = configured ? registry.watches[id] : registry?.monitors?.find((entry: any) => entry.id === id);
     if (!watch) throw new Error('watch_not_found');
     watch.last_event_at = new Date().toISOString();
     watch.last_verdict = clean(verdict);

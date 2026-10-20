@@ -1,14 +1,13 @@
 ---
 name: watch
-description: Background watching via the CC Monitor tool. Starts subprocesses that stream events as conversation notifications — zero token cost when quiet. Supports declared config watches (auto-registered on session start) and ad-hoc operator-invoked watches.
+description: Background event watching with a dedicated config watch monitor and ad-hoc Monitor tool watches. Quiet watches cost zero tokens.
 ---
 
 Record notes only inside an open record's turn, using `task-note` (Commands) with arguments `<id>` with the note on stdin. Otherwise skip record notes. Never edit a task file directly.
 
 # Watch
 
-Run background event watchers using the CC Monitor tool. Each stdout line from
-the subprocess becomes a conversation notification. Silence costs zero tokens.
+Run config watches under the background watch monitor and ad-hoc watches with the CC Monitor tool. Each stdout line becomes a conversation notification. Silence costs zero tokens.
 
 Two classes:
 - **Stream:** Source pushes events (`tail -f`, WebSocket, fswatch). Truly event-driven.
@@ -27,16 +26,15 @@ Two classes:
 /hermitd:watch <stream-command>           — start ad-hoc stream
 /hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] — watch local session(s) until their next idle notice
 /hermitd:watch notice <text>              — [internal] handle a watched-session notice
-/hermitd:watch start                      — register all enabled config watches
-/hermitd:watch stop [id]                  — stop by id (or auto if 1 active)
-/hermitd:watch stop --all                 — stop all watches
-/hermitd:watch status                     — list active watches from registry
+/hermitd:watch start                      — activate the config watch monitor
+/hermitd:watch stop [id]                  — stop by id (or auto if 1 ad-hoc watch)
+/hermitd:watch stop --all                 — stop all ad-hoc watches
+/hermitd:watch status                     — list config and registry watches
 ```
 
 ## Runtime Registry
 
-All active watches are tracked in `.hermit/state/monitors.runtime.json`.
-This is the **sole source of truth**.
+For ad-hoc and session watches, `.hermit/state/monitors.runtime.json` is the sole source of truth. Config watches are declared in `.hermit/config.json`; the watch poller writes their observed state to `.hermit/state/watch-monitor.runtime.json`.
 
 ```json
 {
@@ -48,7 +46,7 @@ This is the **sole source of truth**.
       "timeout_ms": 1800000,
       "description": "errors in deploy.log (notify with --watch deploy-errors)",
       "started_at": "2026-04-12T15:00:00Z",
-      "source": "config",
+      "source": "adhoc",
       "class": "stream"
     },
     {
@@ -115,61 +113,28 @@ For `/watch session`, read [session-watch.md](session-watch.md) § Starting a se
 
 ### Starting config watches (`/watch start`)
 
-Called automatically by resident-start on a genuine boot. Can also be called manually.
+Runs at boot or manually.
 
-1. Read `config.json` → `monitors[]`, filter `enabled: true`
-2. Read `state/monitors.runtime.json`
-3. For each enabled config watch whose `id` is NOT already in the registry:
-   a. **Resolve command:** Replace the literal string `${CLAUDE_PLUGIN_ROOT}` with
-      the actual value at registration time (see Notes). If the var is unset,
-      log a warning and skip that watch.
-   b. Invoke Monitor tool:
-      - `description`: from config entry, plus ` (notify with --watch <id>)`
-      - `command`: the resolved command string
-      - `timeout_ms`: `min(config.timeout_ms ?? 1800000, 1800000)`
-   c. Append to registry with `source: "config"`, the returned `task_id`, and the exact `command`, `description` and `timeout_ms` used for registration.
-4. Write registry back
-5. If any watches were registered during an open task record turn, note them with its id:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> <<'HERMIT_LINE'
-   [HH:MM] Watches registered: <id1>, <id2> (<N> total)
-   HERMIT_LINE
-   ```
-6. If all config watches were already in the registry (idempotent): no log, no output
+1. Invoke `/hermitd:watch-activate`, including when no config watches are enabled. Repeated invocation keeps the existing monitor.
+2. Read `config.json` → `monitors[]` and `state/watch-monitor.runtime.json`. Report each enabled config watch's observed state: running with pid and start time, waiting to restart after an exit, or pending reconciliation when absent. The poller owns this runtime file.
+3. Config watches use the background watch monitor. Do not invoke the Monitor tool or write registry entries for them.
 
 ### Stopping a watch
 
-1. Parse id from operator message (or `--all` flag)
-2. **`stop <id>`:** Look up the entry in the registry. When it has a `task_id`,
-   call `TaskStop`; for a `peer-idle` entry, call `TaskStop` on its `poll_task_id` when present. Remove the entry from the registry.
-3. **`stop` (no id):**
-   - Count ad-hoc watches in registry (`source: "adhoc"`), including `peer-idle`
-   - 0 active: "No active watches to stop."
-   - 1 active: stop it without asking
-   - 2+ active: list them, ask which one (or use `--all`)
-4. **`stop --all`:** For each entry, call `TaskStop` on its `task_id` and/or
-   `poll_task_id` when present. Clear all entries from the registry and log to
-   the open task record.
-5. After any stop: write registry back
-
-Note: If `TaskStop` returns an error for either task id (the watch already
-died), remove the entry from the registry anyway. A dead watch's entry is stale.
+1. Parse the id or `--all` flag.
+2. For `stop <config-id>`, find the entry's zero-based index in `config.json` → `monitors[]` and run:
+   ```bash
+   bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set monitors.<n>.enabled false
+   ```
+   This raises Claude Code's native permission prompt. A No is final: leave the watch enabled and do not try another write path. On approval, the poller stops the child when it reloads config; the disabled state persists across boots.
+3. For an id in the ad-hoc/session registry, call `TaskStop` on its `task_id` and/or `poll_task_id` when present, then remove its entry. If the task already exited, remove the stale entry anyway.
+4. `stop` without an id considers only ad-hoc registry entries (`source: "adhoc"`), including `peer-idle`. With none, report no active ad-hoc watches; with one, stop it; with several, ask which one or offer `--all`.
+5. `stop --all` stops and removes only ad-hoc registry entries. Config watches remain enabled.
+6. Write the registry after registry changes. Inside an open task record's turn, note the stopped watches.
 
 ### Status
 
-1. Read `state/monitors.runtime.json`
-2. If no watches: "No active watches."
-3. Display a table:
-
-```
-Active watches:
-  ID             SOURCE   CLASS      STARTED    DESCRIPTION
-  deploy-errors  config   stream     15:00      errors in deploy.log
-  adhoc-...      adhoc    poll       16:30      check error rate in app metrics
-  session-...    adhoc    peer-idle  17:00      database migration
-```
-
-Show `peer-idle` as-is in the CLASS column.
+Read `config.json` → `monitors[]`, `state/watch-monitor.runtime.json`, and `state/monitors.runtime.json`. Merge config watches with ad-hoc and session registry entries. Show each id, source, class, description, and observed state, including disabled config entries and enabled entries pending reconciliation. For a running config watch include its pid and start time; for an exited watch include its exit code and restart count. Show `peer-idle` as the class for session watches. If all sources are empty, report no watches.
 
 ### Handling notices
 
@@ -180,6 +145,8 @@ or subscription-expiry notice, read [notices.md](notices.md) § Handling idle no
 Read the matching section before acting.
 
 ### Handling Monitor expiry notices (`/watch notice <text>`)
+
+Expiry handling applies only to Monitor entries in the ad-hoc/session registry. Config watches have no expiry and need no re-arm.
 
 Before reading a notice procedure, inspect the harness `task-notification`. When its
 `event` body starts with `Monitor expired after` (inside the host's surrounding
@@ -196,25 +163,18 @@ or watch id.
 
 ## Notes
 
-- **All 3 Monitor tool params are required:** `description`, `command` and `timeout_ms`. Every watch has a bounded deadline.
-- **`$CLAUDE_PLUGIN_ROOT` is NOT available in Monitor subprocess.** Resolve it at
-  registration time. `$PWD` is the project root in the subprocess.
-- **`grep --line-buffered` is required in pipes.** Without it, pipe buffering can
-  delay events by minutes.
-- **Add `|| true` after API calls in poll loops.** One failed request shouldn't kill the watch.
-- **Be selective with stdout.** Noisy watches are auto-stopped by CC — emit only on genuine change/event.
-- **Filesystem events in Docker:** Use `inotifywait` (from `inotify-tools`, included in the hermit base image) instead of `fswatch` (macOS-only). Example stream command: `inotifywait -m -r --format '%w%f %e' -e modify,create,delete src/`.
-- **Config hot-reload:** Config watches do NOT hot-reload during a session.
-  Changes to `config.json` monitors only apply at the next session start
-  or after a manual `/watch stop <id>` + `/watch start`. A watch's `chat` is
-  the exception: it is read at send time.
-- On session start: the registry is cleared unconditionally before registering
-  config watches. Monitors are session-scoped.
+- Config edits apply live when the poller sees `config.json` change. Enabled watches restart after any command exit, with backoff; `WATCH_MONITOR_ERROR` reports repeated exits. Do not re-register them through the Monitor tool.
+- Config watch commands run from the project root under `bash -c`, with literal `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PROJECT_DIR}` substituted. They inherit PATH and exported environment variables. Functions from the shell profile are unavailable.
+- For ad-hoc watches, All 3 Monitor tool params are required: `description`, `command` and `timeout_ms` (cap 1800000 ms). Resolve plugin-root placeholders before registration; the plugin-root variable is not exported to Monitor subprocesses.
+- Use `grep --line-buffered` in pipelines so events arrive promptly, and emit stdout only on a genuine change or event.
+- Add `|| true` after API calls in poll loops when a failed request should leave the loop running.
+- For filesystem events in Docker use `inotifywait` from `inotify-tools`, included in the base image, instead of macOS-only `fswatch`.
+- At a genuine boot the ad-hoc/session registry and config-watch duty records are cleared. Context refresh leaves surviving watches alone.
 
 ## Watch duty records
 
 Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, before removing its entry. Session watches keep their record-thread routing.
 
-When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This updates only its `last_event_at` and `last_verdict`; listings are labeled since session start.
+When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This writes `last_event_at` and `last_verdict` to `state/watch-duties.json` for a config id, or to its registry entry for an ad-hoc id; listings are labeled since session start. Config watch events leave the watch running.
 
 Read `TASKS.md`. If a finding requires a human and `config.tasks.duties_open_records` is true, use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --requester duty:watch --title ... --done ... --due <ISO> --dedupe-key duty:watch:<watch-id>:<event-key>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on <human> --status-line ... --next ...`. Post the stall notice only on `created:true`; repeated open digests refer to the same record. Otherwise post plain messages. A verified resolution closes only its matching record with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts close .hermit <id> --by check --actor duty:watch`; ambiguous reads never close records.

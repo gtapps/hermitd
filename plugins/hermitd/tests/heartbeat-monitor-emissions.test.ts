@@ -45,6 +45,8 @@ describe('record-operator-action: monitor emission strings stay in sync', () => 
     ...extractEchoLiterals('heartbeat-monitor.sh'),
     ...extractEchoLiterals('routine-monitor.sh'),
     extractWedgeWakeToken(),
+    'WATCH_EVENT [hermit-watch:sample] (Sample watch) line',
+    'WATCH_MONITOR_ERROR: sample exit code 1',
   ];
 
   // The wake is only useful if the model's routing rule recognizes it, and that
@@ -64,6 +66,12 @@ describe('record-operator-action: monitor emission strings stay in sync', () => 
     const src = fs.readFileSync(path.join(SCRIPTS_DIR, 'lib', 'routines', 'due.ts'), 'utf-8');
     expect(src).toContain('ROUTINE_DUE ');
     expect(src).toContain('[hermit-routine:');
+  });
+
+  test('watch poller keeps both emission grammar anchors', () => {
+    const src = fs.readFileSync(path.join(SCRIPTS_DIR, 'watch-monitor.ts'), 'utf-8');
+    expect(src).toContain('WATCH_EVENT [hermit-watch:');
+    expect(src).toContain('WATCH_MONITOR_ERROR: ');
   });
 
   for (const literal of [...new Set([...literals, 'ROUTINE_DUE [hermit-routine:x]'])]) {
@@ -115,6 +123,13 @@ describe('record-operator-action: monitor emission strings stay in sync', () => 
     expect(r.exitCode).toBe(0);
     expect(fs.existsSync(hermit(dir, 'state', 'last-operator-action.json'))).toBe(true);
   }));
+
+  for (const token of ['WATCH_EVENT [hermit-watch:sample]', 'WATCH_MONITOR_ERROR: sample']) {
+    test(`operator prose quoting ${token} counts as activity`, withTmp(async dir => {
+      await runScript('record-operator-action.ts', { stdin: JSON.stringify({ prompt: `why did ${token} appear?` }), cwd: dir });
+      expect(fs.existsSync(hermit(dir, 'state', 'last-operator-action.json'))).toBe(true);
+    }));
+  }
 
   test('operator prose mentioning task-notification still counts as operator activity', withTmp(async (dir) => {
     const prompt = 'the task-notification envelope is what broke the filter — can you explain it?';

@@ -9,6 +9,8 @@ An error means the poll already exited; remove the entry anyway.
 
 ### Handling self-exit notifications
 
+This handler applies only to ad-hoc/session entries in `state/monitors.runtime.json`. Config watch commands are restarted by the poller; `WATCH_MONITOR_ERROR` is not a registry self-exit.
+
 For a script crash or clean exit, after excluding expiry notices in SKILL.md,
 CC sends a completion notification into the conversation. On seeing this:
 

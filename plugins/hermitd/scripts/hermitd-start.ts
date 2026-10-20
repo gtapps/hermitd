@@ -510,15 +510,21 @@ function writeBootId(): void {
  * subscription of the previous process, which died with it, and `/watch start` skips
  * any id already in the registry, so a leftover entry would keep that watch from
  * re-registering. A context refresh never runs hermitd-start, so its surviving
- * monitors keep their entries. A missing registry stays missing.
+ * monitors keep their entries. Config-watch duties are reset for the new session
+ * as well. Missing files stay missing.
  */
 function clearWatchRegistry(): void {
-  const file = path.join(STATE_DIR, 'monitors.runtime.json');
-  if (!fs.existsSync(file)) return;
-  try {
-    writeFileAtomic(file, JSON.stringify({ monitors: [], last_cleared: new Date().toISOString() }) + '\n');
-  } catch (error: any) {
-    console.log(`[hermit] WARNING: watch registry not cleared (${error?.message ?? error}): config watches may not re-register.`);
+  for (const [name, empty] of [
+    ['monitors.runtime.json', { monitors: [], last_cleared: new Date().toISOString() }],
+    ['watch-duties.json', { watches: {} }],
+  ] as const) {
+    const file = path.join(STATE_DIR, name);
+    if (!fs.existsSync(file)) continue;
+    try {
+      writeFileAtomic(file, JSON.stringify(empty) + '\n');
+    } catch (error: any) {
+      console.log(`[hermit] WARNING: ${name} not cleared (${error?.message ?? error}).`);
+    }
   }
 }
 

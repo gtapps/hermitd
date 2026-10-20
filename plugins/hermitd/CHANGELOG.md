@@ -7,6 +7,9 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
+- `/hermitd:watch stop` on a config watch sets `enabled: false`.
+- Config watch commands no longer see shell-profile functions; PATH and exported variables are unchanged.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
@@ -15,6 +18,9 @@
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` and `Edit(*.hermit/helper-prompt.md)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
 2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
 3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave `## HA hermit` and `## Development Conventions` sections as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise invoke `Skill(init)` (for local, args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
+
+4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
+5. Restart the resident with `hermitd-docker update` or the operator's usual restart procedure.
 
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.

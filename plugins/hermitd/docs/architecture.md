@@ -164,7 +164,9 @@ your-project/
 │   │   ├── usage-metrics.jsonl       # Append-only compiled-read usage log (usage-track.ts)
 │   │   ├── micro-proposals.json      # Pending micro-approvals list (reflect + channel-bridged asks + channel-responder)
 │   │   ├── state-summary.md          # Auto-generated health snapshot (generate-summary.ts)
-│   │   ├── monitors.runtime.json     # Active watch registry, emptied by hermitd-start at each launch
+│   │   ├── monitors.runtime.json     # Ad-hoc/session watch registry, emptied by hermitd-start at each launch
+│   │   ├── watch-monitor.runtime.json # Config watch processes (watch poller-owned)
+│   │   ├── watch-duties.json         # Config watch duty records (duties.ts; emptied by hermitd-start at launch)
 │   │   ├── operator-pause.json       # Operator/watchdog pause (pause stage/watchdog-owned)
 │   │   ├── auto-pause.json           # Budget-breach auto-pause (cost-tracker-owned)
 │   │   ├── budget-alerts.json        # Budget alert dedup (cost-tracker-owned)
@@ -205,6 +207,8 @@ One writer per state file. No shared mutation bus. (Exception: `state/micro-prop
 | `state/micro-proposals.json`   | reflect + channel-bridged skills (queue, schema owned by reflect § Queuing procedure) + channel-responder/brief (resolve) | brief, generate-summary.ts |
 | `state/state-summary.md`       | generate-summary.ts only                            | humans                                                        |
 | `state/monitors.runtime.json`  | watch skill; hermitd-start empties it at each launch | resident-start and watch lifecycle      |
+| `state/watch-monitor.runtime.json` | watch poller (`watch-monitor.ts`) | watch status and start |
+| `state/watch-duties.json` | `duties.ts`; `hermitd-start` empties it at launch | duty listings |
 | `state/heartbeat-monitor.runtime.json` | `lib/heartbeat/start.ts` only — reached by `heartbeat start` and by `hermit-routines load` (`arm commit --heartbeat`) | heartbeat-start (write), heartbeat-stop (clear), heartbeat-restart (rewrite) |
 | `state/heartbeat-liveness.json` | heartbeat-monitor.sh (every poll iteration)         | doctor-check.ts (heartbeat liveness check), heartbeat status  |
 | `state/cc-stop-snapshot.json`  | stop-pipeline.ts only                               | doctor-check.ts (scheduler/background-task health check)      |
