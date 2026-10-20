@@ -84,6 +84,23 @@ The first 50 lines, up to 2,000 characters, load at startup, `/clear` and after 
 
 Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermit → `OPERATOR.md`. Both files can hold context and instructions. See [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
 
+### Replacing the resident prompt
+
+The hermit's built-in behavior rules come from the plugin's resident prompt. OPERATOR.md and memory already take precedence over those rules; to replace the rules themselves, create `.hermit/resident-prompt.md`. At every start the hermit then uses that file as its whole resident prompt instead of the shipped one. Claude Code's own system prompt stays underneath, and spawned helper sessions keep the shipped rules. Empty or delete the file to go back to the shipped prompt. Changes take effect at the next restart, and a write by the hermit to this file asks for your approval first.
+
+Start from a copy of the prompt the hermit runs today:
+
+```bash
+cp .hermit/state/resident-system-prompt.md .hermit/resident-prompt.md
+```
+
+Before you cut anything:
+
+- **Keep `## Watches`.** It maps the heartbeat, routine and background-task signals to the skills that handle them. Without it the heartbeat, routines and task completion stop, with no error.
+- Keep `## Operator Notification`: skills point at it by name for how to reach you.
+- What you remove is yours. The shipped rules on secrets, peer messages and proposals no longer apply; hooks such as the pause gate and the settings gate still enforce on their own.
+- Upgrades never touch this file, so later changes to the shipped prompt don't reach you. After an upgrade, compare your file with `prompts/resident.md` and `prompts/rules.md` in the installed hermitd plugin.
+
 ---
 
 ## Your First Task
@@ -220,7 +237,7 @@ The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unatt
 └── config.json                <- settings
 ```
 
-> Files in `state/` are managed by the plugin at runtime — do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`. Task files are script-owned; ask the hermit to update them.
+> Files in `state/` are managed by the plugin at runtime; do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`, and the optional `resident-prompt.md`. Task files are script-owned; ask the hermit to update them.
 
 ---
 

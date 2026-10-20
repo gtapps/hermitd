@@ -334,7 +334,7 @@ describe('settings-gate silent paths', () => {
 
 test('resident instructions and operator overlay are protected for every write tool', async () => {
   const dir = fixture();
-  for (const name of ['claude-settings.json', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md']) {
+  for (const name of ['claude-settings.json', 'resident-prompt.md', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md']) {
     const file = `.hermit/${name}`;
     for (const tool of ['Edit', 'Write'] as const) {
       const result = await runGate(payload({ dir, tool, input: { file_path: file, content: '{}' } }), dir);
