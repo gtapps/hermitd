@@ -250,6 +250,15 @@ Scripts your skills run follow the same output convention as core, which matches
 
 Your skill then names only the fields it branches on.
 
+### Upgrade steps that change or remove what operators call
+
+An Upgrade Instructions step that changes a helper's output or removes a file, verb or config key follows this consumer-scan convention:
+
+- Scan the project's `.claude/skills/`, `.claude/commands/` and `.claude/agents/`, including bundled scripts of any language; the paths and commands in `.hermit/config.json` (`routines[].precheck` and `monitors[].command`); hook commands in `.claude/settings.json` and `.claude/settings.local.json`; and `.hermit/dashboard-render.ts`.
+- Skip gitignored files, `.claude/worktrees/`, nested repositories, backups and plugin directories.
+- Count a hit only when a line invokes the changed helper (`hermitd-run <verb>`, the script name or the plugin's own command) and depends on the changed contract. A line that only checks a real failure's exit code is not a hit.
+- Never edit files during the upgrade. Skip silently when there are no real hits. Otherwise list the hits with file and line in one deferred step, with plain options such as "Fix them" / "Leave them" and no `on_resolve`. Describe what each option does: `hermit-evolve` queues it as a micro-proposal, and the operator's chat reply applies the chosen option.
+
 ### Docker dependencies
 
 If your hermit needs system packages in Docker (e.g. `python3-yaml`, `postgresql-client`), declare them with a `## Docker apt dependencies` section in your `hatch` SKILL.md or in a `DOCKER.md` file at the plugin root:

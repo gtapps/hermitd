@@ -7,6 +7,8 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- Reflect reuses an existing observation label for a recurring problem, so repeats under new wording still count toward a proposal.
+- Upgrade questions are queued as micro-proposals at the end of the notice, so a chat reply applies the chosen option even after a restart.
 - `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.
 - Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
 - `/hermitd:watch stop` on a config watch sets `enabled: false`.
@@ -25,11 +27,12 @@
 2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
 3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave `## HA hermit` and `## Development Conventions` sections as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise invoke `Skill(init)` (for local, args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
 4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
-5. Restart the resident with `hermitd-docker update` or the operator's usual restart procedure.
-
-4. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
+5. Report `restart_required` in Operator notes because config watches run under the new monitor only after a restart. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
+6. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
 
 ### Fixed
+- Permission rules a release retires are also removed from the hermit's other settings file.
+- Block retirement retires paired blocks and names unpaired markers instead of failing.
 - Planned watchdog restarts avoid crash recovery wording and report the actual resume decision; a changed resident prompt starts fresh.
 - Docker keeps the container alive for up to 60 seconds while a watchdog restart replaces tmux.
 - Doctor reports monitors awaiting a resident restart as failures.
@@ -61,7 +64,7 @@
 - `/hermitd:hatch` stamps the settings target before its first settings or `CLAUDE.md` write, and `/hermitd:hermit-doctor`'s `permission-rules` fix names the stamped target's settings file.
 
 ### Upgrade Instructions
-1. Run `.hermit/bin/hermitd-run retire-hermit-blocks .hermit`. On `{"error":...}`, record a deferred-migration block naming this command and the returned error, including any `backup`, `changed`, `deleted` and `failed` fields; never remove a block by hand. `{"status":"noop"}` needs no backup. A `changed` result names the files and the `backup` path containing the exact removed bytes. `deleted` lists `.hermit/RESIDENT.md`, whose full original text is in the backup.
+1. Run `.hermit/bin/hermitd-run retire-hermit-blocks .hermit`. On `{"error":...}`, record a deferred-migration block naming this command and the returned error, including any `backup`, `changed`, `deleted` and `failed` fields; never remove a block by hand. `{"status":"noop"}` needs no backup. A `changed` result names the files and the `backup` path containing the exact removed bytes. `deleted` lists `.hermit/RESIDENT.md`, whose full original text is in the backup. When the result has `unpaired`, add one Operator notes line naming each file and line and saying those marker lines and any hermit guidance next to them were left for the operator to remove.
 2. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/state/resident-system-prompt.md)` ask entry. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/state/resident-system-prompt.md*)' 'Bash(*>.hermit/state/resident-system-prompt.md*)'`, adding `'Edit(*.hermit/state/resident-system-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/helper-system-prompt.md)` or `Edit(*.hermit/RESIDENT.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip.
 3. Report the `backup` path from step 1 when present, and say: move your own lines into OPERATOR.md (hermit-only) or your CLAUDE.md (every session). Do not move or rewrite operator text automatically.
 4. Report `restart_required` in Operator notes. The resident must restart to load its generated system prompt, even if routine reconciliation reports healthy. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.

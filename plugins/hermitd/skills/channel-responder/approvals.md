@@ -16,6 +16,7 @@
     - **No `on_resolve`, "yes" on tier 1** → execute the change at next idle, record the outcome with `task.ts note` when a record is open, then:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action approved`.
     - **No `on_resolve`, "yes" on tier 2** → create PROP-NNN via `/hermitd:proposal-create`, queue for next idle, then run the same `resolve <id> --action approved` call.
+    - **No `on_resolve`, an option label** (a deferred upgrade step) → run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`, then apply that option as the question describes, in this turn, behind normal permission prompts. Apply `config.json` changes through settings-edit verbs, and never write `.claude/settings*.json` from a channel session.
     - **No `on_resolve`, "no"** → run:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action rejected`.
   - If no pending micro-proposals: classify as normal message (fall through to categories below).

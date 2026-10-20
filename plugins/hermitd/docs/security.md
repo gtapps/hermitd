@@ -90,7 +90,7 @@ Three variables are covered, and they are the ones live in a hermit's own proces
 
 These, like the `env`/`printenv`/`cat .env*` entries, are transcript hygiene against casual credential dumps, not a boundary. Several things still walk straight past them: indirection and length (`V=ANTHROPIC_API_KEY; echo ${!V}`, `echo ${#ANTHROPIC_API_KEY}`), `env | grep -i anthropic`, an `export VAR=sk-…` that puts the value in the transcript in the other direction, and reading the credential file by an unlisted path. The boundary is the container and the permission mode, not this list.
 
-Upgrading does not leave the old globs behind: `permissions-sync`, which `hermit-evolve` runs on every upgrade, retires the three exact strings from `permissions.deny` in the settings file the hermit itself wrote them to. Removal is filtered by a sealed registry (`HERMIT_OBSOLETE_DENY`), never by shape, so an operator's own deny rules are structurally untouchable. Each removal is named in the evolve report; re-add it by hand if it was a deliberate choice.
+Upgrading does not leave the old globs behind: `permissions-sync`, which `hermit-evolve` runs on every upgrade, retires the three exact strings from `permissions.deny` in the settings file the hermit itself wrote them to, and on stamped installs from the other settings file too. Removal is filtered by a sealed registry (`HERMIT_OBSOLETE_DENY`), never by shape, so an operator's own deny rules are structurally untouchable. Each removal is named in the evolve report; re-add it by hand if it was a deliberate choice.
 
 ### Recoverable (`permissions.ask`)
 

@@ -31,16 +31,36 @@ for (const newline of ['\n', '\r\n']) {
   }));
 }
 
-for (const body of [block + block, OPEN + '\nUnclosed', CLOSE + '\n', '<!-- /custom-hermit: Instructions -->\n', `${CLOSE}\n${OPEN}\n`, `${OPEN}\n${sibling}${CLOSE}\n`, `${OPEN}\n<!-- custom-hermit: Instructions -->\n${CLOSE}\n<!-- /custom-hermit: Instructions -->\n`]) {
-  test(`invalid markers refuse all writes (${JSON.stringify(body)})`, withDir(dir => {
+for (const { body, after, lines } of [
+  { body: block + block, after: '', lines: [] },
+  { body: OPEN + '\nUnclosed', after: OPEN + '\nUnclosed', lines: [1] },
+  { body: CLOSE + '\n', after: CLOSE + '\n', lines: [1] },
+  { body: '<!-- /custom-hermit: Instructions -->\n', after: '<!-- /custom-hermit: Instructions -->\n', lines: [1] },
+  { body: `${CLOSE}\n${OPEN}\n`, after: `${CLOSE}\n${OPEN}\n`, lines: [1, 2] },
+  { body: `${OPEN}\n${sibling}${CLOSE}\n`, after: `${OPEN}\n${CLOSE}\n`, lines: [1, 2] },
+  { body: `${block}${OPEN}\nUnclosed`, after: `${OPEN}\nUnclosed`, lines: [1] },
+  { body: `${OPEN}\n<!-- custom-hermit: Instructions -->\n${CLOSE}\n<!-- /custom-hermit: Instructions -->\n`, after: `${OPEN}\n<!-- custom-hermit: Instructions -->\n${CLOSE}\n<!-- /custom-hermit: Instructions -->\n`, lines: [1, 2, 3, 4] },
+  { body: `${OPEN}\nUnpaired guidance.\n${block}`, after: `${OPEN}\nUnpaired guidance.\n`, lines: [1] },
+]) {
+  test(`paired blocks retire while unpaired markers stay (${JSON.stringify(body)})`, withDir(dir => {
     const good = path.join(dir, 'CLAUDE.md');
     const bad = path.join(dir, 'CLAUDE.local.md');
     fs.writeFileSync(good, block);
     fs.writeFileSync(bad, body);
-    expect(retireHermitBlocks(path.join(dir, '.hermit'))).toEqual({ error: 'invalid_markers' });
-    expect(fs.readFileSync(good, 'utf8')).toBe(block);
-    expect(fs.readFileSync(bad, 'utf8')).toBe(body);
-    expect(fs.readdirSync(path.join(dir, '.hermit/state'))).toEqual([]);
+    const result = retireHermitBlocks(path.join(dir, '.hermit'));
+    expect(result).toMatchObject({ changed: after === body ? ['CLAUDE.md'] : ['CLAUDE.md', 'CLAUDE.local.md'] });
+    expect(result.unpaired).toEqual(lines.length ? lines.map(line => ({ file: 'CLAUDE.local.md', line })) : undefined);
+    expect(fs.readFileSync(good, 'utf8')).toBe('');
+    expect(fs.readFileSync(bad, 'utf8')).toBe(after);
+    const retry = retireHermitBlocks(path.join(dir, '.hermit'));
+    if (body === `${OPEN}\n${sibling}${CLOSE}\n`) {
+      expect(retry).toMatchObject({ changed: ['CLAUDE.local.md'] });
+      expect(fs.readFileSync(bad, 'utf8')).toBe('');
+      expect(retry.unpaired).toBeUndefined();
+    } else {
+      expect(retry).toMatchObject({ status: 'noop' });
+      expect(retry.unpaired?.length ?? 0).toBe(lines.length);
+    }
   }));
 }
 

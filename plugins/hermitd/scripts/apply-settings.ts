@@ -13,7 +13,9 @@
  *                            this diff.
  *   permissions-sync         Apply that plan: add every missing HERMIT_ALLOW entry, remove
  *                            only entries listed in HERMIT_OBSOLETE (allow) and
- *                            HERMIT_OBSOLETE_DENY (deny). Prints the applied plan.
+ *                            HERMIT_OBSOLETE_DENY (deny). On stamped installs, also removes
+ *                            those retired entries from the other settings file, adding nothing.
+ *                            Prints the applied plan with other_file only when that file changed.
  *                            Operator-authored entries are structurally untouchable — removal
  *                            is filtered by the sealed registries, never by shape or heuristic.
  *   artifact-allow           Merge just ["Artifact"] into permissions.allow and print OK — kept
@@ -50,7 +52,7 @@
  *   any *_BOT_TOKEN from the env block (tokens must live only in .env, never settings),
  *   permissions-sync, which removes only entries named in the sealed HERMIT_OBSOLETE /
  *   HERMIT_OBSOLETE_DENY registries below (rules this plugin itself seeded and has
- *   since retired),
+ *   since retired), including the other settings file on stamped installs,
  *   voice-render, which replaces outputStyle by design — config.json owns that key.
  * - Permission sets are read from state-templates — callers cannot inject arbitrary JSON.
  * - Safe to call under AGENT_HOOK_PROFILE=strict: writes via fs, not the Edit/Write tools.
@@ -96,6 +98,7 @@ const HERMIT_ALLOW = [
   // hermitd-run grants below are not the remedy for that, they exist for a different
   // reason (routes with no pre-resolved path; reflect's call site resolves its own).
   'Bash(bun */scripts/observations.ts graduate*)',
+  'Bash(bun */scripts/observations.ts patterns*)',
   'Bash(bun */scripts/proposal.ts*)',
   'Bash(bun */scripts/generate-summary.ts*)',
   'Bash(bun */scripts/update-reflection-state.ts*)',
@@ -420,14 +423,13 @@ const [, , targetFile, op, ...rest] = process.argv;
 
 if (!targetFile || !op) exitError();
 
-if (['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)) {
-  const resolvedTarget = path.resolve(targetFile);
-  const projectRoot = path.dirname(path.dirname(resolvedTarget));
-  const { target } = readTargetState(path.join(projectRoot, '.hermit'), { core_scope: null, target: 'local' });
-  if (target && path.basename(resolvedTarget) === settingsFile(target === 'local' ? 'committed' : 'local')) {
-    printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(target)}` });
-    process.exit(0);
-  }
+const resolvedTarget = path.resolve(targetFile);
+const hatchTarget = ['permissions-plan', 'permissions-sync', 'deny', 'deny-add'].includes(op)
+  ? readTargetState(path.resolve(path.dirname(resolvedTarget), '..', '.hermit'), { core_scope: null, target: 'local' }).target
+  : null;
+if (hatchTarget && path.basename(resolvedTarget) === settingsFile(hatchTarget === 'local' ? 'committed' : 'local')) {
+  printJson({ status: 'refused', reason: 'not_hatch_target', settings_file: `.claude/${settingsFile(hatchTarget)}` });
+  process.exit(0);
 }
 
 const settings = readTargetJson(targetFile);
@@ -459,7 +461,24 @@ switch (op) {
       removePermissions(settings, 'allow', plan.obsolete);
       removePermissions(settings, 'deny', plan.obsolete_deny);
     }
-    console.log(JSON.stringify(plan));
+    let otherFile;
+    if (hatchTarget && path.basename(resolvedTarget) === settingsFile(hatchTarget)) {
+      const otherName = settingsFile(hatchTarget === 'local' ? 'committed' : 'local');
+      const otherPath = path.join(path.dirname(resolvedTarget), otherName);
+      // Lenient: a malformed other file holds nothing to retire and must not block the target's sync.
+      const other = readJson(otherPath);
+      const { obsolete, obsolete_deny } = planPermissions(other);
+      if (obsolete.length || obsolete_deny.length) {
+        const before = structuredClone(other);
+        removePermissions(other, 'allow', obsolete);
+        removePermissions(other, 'deny', obsolete_deny);
+        writeJson(otherPath, other);
+        const settings_file = hatchTarget === 'local' ? '.claude/settings.json' : '.claude/settings.local.json';
+        auditConfigChange(path.resolve(path.dirname(resolvedTarget), '..', '.hermit'), before, other, 'apply-settings', settings_file);
+        otherFile = { settings_file, obsolete, obsolete_deny };
+      }
+    }
+    console.log(JSON.stringify({ ...plan, ...(otherFile ? { other_file: otherFile } : {}) }));
     break;
   }
 
