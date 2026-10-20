@@ -30,10 +30,12 @@
     "Bash(*> *.hermit/OPERATOR.md*)",
     "Bash(*> *.hermit/state/helper-system-prompt.md*)",
     "Bash(*> *.hermit/state/resident-system-prompt.md*)",
+    "Bash(*> *.hermit/resident-prompt.md*)",
     "Bash(*> *.hermit/claude-settings.json*)",
     "Bash(*>.hermit/OPERATOR.md*)",
     "Bash(*>.hermit/state/helper-system-prompt.md*)",
     "Bash(*>.hermit/state/resident-system-prompt.md*)",
+    "Bash(*>.hermit/resident-prompt.md*)",
     "Bash(*>.hermit/claude-settings.json*)",
     "Edit(//**/.claude/plugins/**)"
   ],
@@ -53,6 +55,7 @@
     "Edit(*.hermit/OPERATOR.md)",
     "Edit(*.hermit/state/helper-system-prompt.md)",
     "Edit(*.hermit/state/resident-system-prompt.md)",
+    "Edit(*.hermit/resident-prompt.md)",
     "Edit(*.hermit/claude-settings.json)",
     "Edit(*.claude/output-styles/hermit-voice.md)"
   ]

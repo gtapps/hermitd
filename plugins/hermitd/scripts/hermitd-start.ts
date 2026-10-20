@@ -624,17 +624,28 @@ function readShippedPrompt(name: string): string {
   }
 }
 
+/** The operator-owned `.hermit/resident-prompt.md`, or null when absent or blank. */
+function readResidentOverride(): string | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(hermitFile('resident-prompt.md'), 'utf8');
+  } catch {
+    return null;
+  }
+  return text.trim() ? text : null;
+}
+
 function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
   const helper = readShippedPrompt('helper.md');
-  const resident = readShippedPrompt('resident.md');
   const rules = readShippedPrompt('rules.md');
+  const resident = readResidentOverride() ?? `${readShippedPrompt('resident.md')}\n${rules}`;
   const rendered = renderTemplate(helper, {
     PROJECT_ROOT: hermitFile('..'),
     RESIDENT_NAME: residentName,
   });
   writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), `${rendered}\n${rules}`);
-  writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), `${resident}\n${rules}`);
+  writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), resident);
 }
 
 /** Build the claude launch command from config. */
