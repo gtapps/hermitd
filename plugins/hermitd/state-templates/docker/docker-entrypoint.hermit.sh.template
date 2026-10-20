@@ -612,13 +612,25 @@ trap cleanup SIGTERM SIGINT
 
 echo "[docker-entrypoint] Watching tmux session: ${SESSION_NAME}"
 _wd_cycle=0
-while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
+while true; do
+  if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    # A watchdog restart briefly removes tmux; keep the container alive for it.
+    _session_returned=false
+    for _grace in $(seq 1 12); do
+      sleep 5 &
+      wait $! || true
+      if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        _session_returned=true
+        break
+      fi
+    done
+    [ "$_session_returned" = true ] || break
+  fi
   sleep 30 &
   wait $! || true
   _wd_cycle=$(( _wd_cycle + 1 ))
   # Run watchdog every ~5 min (10 × 30s). No-op when watchdog.enabled is false.
-  # In Docker, dead-session recovery happens via the container restart policy (this
-  # while-loop exits when tmux dies); the watchdog here mainly adds wedge detection + re-arm.
+  # The grace period above allows watchdog restarts to keep this container alive.
   if [ $(( _wd_cycle % 10 )) -eq 0 ] && [ -x ".hermit/bin/hermitd-watchdog" ]; then
     .hermit/bin/hermitd-watchdog run 2>>".hermit/state/watchdog.log" || true
   fi

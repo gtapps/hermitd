@@ -7,6 +7,7 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
@@ -16,10 +17,14 @@
 2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
 3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave `## HA hermit` and `## Development Conventions` sections as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise invoke `Skill(init)` (for local, args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
 
-### Fixed
-- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+4. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
 
 ### Fixed
+- Planned watchdog restarts avoid crash recovery wording and report the actual resume decision; a changed resident prompt starts fresh.
+- Docker keeps the container alive for up to 60 seconds while a watchdog restart replaces tmux.
+- Doctor reports monitors awaiting a resident restart as failures.
+- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
 
 ## [1.4.17] - 2026-10-19

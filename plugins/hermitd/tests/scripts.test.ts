@@ -268,8 +268,8 @@ describe('static file checks', () => {
     expect(upGuardIdx).toBeGreaterThan(upIdx);
     // `update` warns only in --plugins-only mode (rebuild modes fix it inline).
     expect(src).toContain('[ "$PLUGINS_ONLY" = true ] && _warn_if_entrypoint_stale');
-    // ...and flags a needed second rebuild when the async evolve chain ran.
-    expect(src).toContain('run \'hermitd update\' once more');
+    // Evolve completes before the image build.
+    expect(src).not.toContain('once more');
   });
 
   test('hermitd-docker setup-token gates on the container core version', () => {
@@ -518,7 +518,8 @@ const listDuplicateScopes = (proj: string) => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  test('updates every row despite exec consuming stdin and records each scope', async () => {
+  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'old-watchdog']) {
+  test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
     try {
@@ -528,7 +529,7 @@ describe('hermitd-docker update plugin loop', () => {
         fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', name), dest);
         fs.chmodSync(dest, 0o755);
       }
-      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test' }));
+      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
       write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
       const stub = path.join(proj, '.stub');
       fs.mkdirSync(stub);
@@ -536,10 +537,22 @@ describe('hermitd-docker update plugin loop', () => {
       write(path.join(stub, 'list.json'), listDuplicateScopes(proj));
       write(path.join(stub, 'docker'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
+if [[ " $* " == *" up -d "* ]]; then echo "HERMIT_RESUME=$HERMIT_RESUME" >> "$DOCKER_STUB_CALLS"; fi
 if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
 fi
 case "$*" in
+  *"await-upgrade"*)
+    count=0
+    [ ! -f "$DOCKER_STUB_CALLS.await" ] || read -r count < "$DOCKER_STUB_CALLS.await"
+    count=$((count + 1)); echo "$count" > "$DOCKER_STUB_CALLS.await"
+    if [ "$UPDATE_SCENARIO" = old-watchdog ]; then echo 'unknown subcommand'; exit 1; fi
+    if { [ "$UPDATE_SCENARIO" = timeout-first ] && [ "$count" = 1 ]; } || { [[ "$UPDATE_SCENARIO" = *timeout* ]] && [ "$count" = 2 ]; }; then
+      echo '{"status":"timeout","reason":"worker_running"}'
+    else
+      echo '{"status":"ready"}'
+    fi ;;
+  *"npm view"*) echo '2.1.302' ;;
   *"ps --status running"*) echo hermit ;;
   *"claude plugin list --json"*) cat "$DOCKER_STUB_LIST" ;;
   *"claude --version"*) echo '2.1.301 (Claude Code)' ;;
@@ -549,32 +562,68 @@ exit 0
 `);
       fs.chmodSync(path.join(stub, 'docker'), 0o755);
       const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
-        args: ['update', '--plugins-only', '--yes'], cwd: proj,
+        args: ['update', ...(scenario === 'plugins-only' ? ['--plugins-only'] : scenario === 'cc-only' ? ['--cc-only'] : []), '--yes'], cwd: proj,
         env: {
           PATH: `${stub}:${process.env.PATH}`, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT,
           HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'),
           CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'),
-          DOCKER_STUB_CALLS: callsFile, DOCKER_STUB_LIST: path.join(stub, 'list.json'),
+          UPDATE_SCENARIO: scenario, DOCKER_STUB_CALLS: callsFile, DOCKER_STUB_LIST: path.join(stub, 'list.json'),
         },
       });
       expect(r.exitCode).toBe(0);
       const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
+      const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
+      expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
+      const idx = (text: string) => calls.findIndex(l => l.includes(text));
+      const timeout = scenario.includes('timeout');
+      expect(entry.restarted).toBe(!timeout);
+      expect(entry.await.status).toBe(timeout ? 'timeout' : 'ready');
+      expect(entry.image_built).toBe(!['plugins-only', 'timeout-first', 'evolve-timeout'].includes(scenario));
+      expect(idx(' down') >= 0).toBe(!timeout);
+      expect(idx(' up -d') >= 0).toBe(!timeout);
+      if (timeout) {
+        expect(r.stderr).toContain('worker_running');
+        expect(r.stderr).toContain('rerun `hermitd update`');
+        expect(entry.cc_after).toBe('2.1.301');
+      } else {
+        expect(calls).toContain('HERMIT_RESUME=1');
+        expect(idx('await-upgrade')).toBeLessThan(idx(' down'));
+      }
+      if (scenario === 'timeout-first' || scenario === 'cc-only') {
+        expect(idx('claude plugin update ')).toBe(-1);
+      } else {
       expect(calls.filter(l => l.includes('claude plugin update ')).map(l => l.slice(l.indexOf('claude plugin update ')))).toEqual([
         'claude plugin update hermitd@hermitd --scope local',
         'claude plugin update hermitd@hermitd --scope project',
         'claude plugin update hermitd-scribe@hermitd --scope project',
       ]);
       expect(calls.filter(l => l.includes('claude plugin marketplace update '))).toHaveLength(1);
-      const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
       expect(entry.plugins).toEqual([
         { id: 'hermitd@hermitd', scope: 'local', before: '1.2.0', after: '1.2.0', status: 'unchanged' },
         { id: 'hermitd@hermitd', scope: 'project', before: '1.2.14', after: '1.2.14', status: 'unchanged' },
         { id: 'hermitd-scribe@hermitd', scope: 'project', before: '0.0.5', after: '0.0.5', status: 'unchanged' },
       ]);
-      expect(r.stdout).toContain('hermitd@hermitd (scope local): v1.2.0');
-      expect(r.stdout).toContain('hermitd@hermitd (scope project): v1.2.14');
+      }
+      if (scenario === 'full' || scenario === 'evolve-ready') {
+        expect(idx('await-upgrade')).toBeLessThan(idx('claude plugin marketplace update'));
+        expect(idx('claude plugin marketplace update')).toBeLessThan(idx(' build '));
+        expect(idx(' build ')).toBeLessThan(idx(' down'));
+        expect(idx(' down')).toBeLessThan(idx(' up -d'));
+      }
+      if (scenario.startsWith('evolve-')) {
+        const wait = calls.find(l => l.includes('await-upgrade --expect')) ?? '';
+        expect(wait).toContain('--expect hermitd=1.2.0');
+        expect(wait).not.toContain('hermitd=1.2.14');
+        expect(wait).toContain('--expect hermitd-scribe=0.0.5');
+        expect(idx('/hermitd:hermit-evolve')).toBeLessThan(idx('await-upgrade --expect'));
+      }
+      if (scenario === 'old-watchdog') {
+        expect(r.stderr.split('await-upgrade unavailable')).toHaveLength(2);
+      }
+
     } finally { wd.cleanup(); }
   });
+  }
 });
 
 describe('hermitd-update host path', () => {
@@ -612,6 +661,62 @@ describe('hermitd-update host path', () => {
     fs.chmodSync(path.join(stub, 'tmux'), 0o755);
 
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
+  }
+
+  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog']) {
+    test(`live host update: ${scenario}`, async () => {
+      const f = fixture({ listJson: listDuplicateScopes });
+      try {
+        const log = path.join(f.proj, 'live-calls');
+        const bin = hermit(f.proj, 'bin');
+        write(path.join(f.proj, '.stub/tmux'), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$LIVE_CALLS"
+if [ "$1" = capture-pane ]; then printf '❯ ────────\\n'; fi
+exit 0
+`);
+        write(path.join(bin, 'hermitd-watchdog'), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$LIVE_CALLS"
+[ "$LIVE_SCENARIO" != old-watchdog ] || { echo unsupported; exit 1; }
+count=0
+[ ! -f "$LIVE_CALLS.count" ] || read -r count < "$LIVE_CALLS.count"
+count=$((count + 1)); echo "$count" > "$LIVE_CALLS.count"
+if { [ "$LIVE_SCENARIO" = timeout-first ] && [ "$count" = 1 ]; } || { [ "$LIVE_SCENARIO" = timeout-evolve ] && [ "$count" = 2 ]; }; then
+  echo '{"status":"timeout","reason":"evolve_pending"}'
+else
+  echo '{"status":"ready"}'
+fi
+`);
+        for (const name of ['stop', 'start']) {
+          write(path.join(bin, `hermitd-${name}`), `#!/usr/bin/env bash\n echo "${name} $*" >> "$LIVE_CALLS"\n[ "${name}:$LIVE_SCENARIO" != stop:stop-fails ]\n`);
+          fs.chmodSync(path.join(bin, `hermitd-${name}`), 0o755);
+        }
+        fs.chmodSync(path.join(bin, 'hermitd-watchdog'), 0o755);
+        // A local override wins over the project pin; both still get updated.
+        write(hermit(f.proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: { hermitd: '0.0.1' } }));
+        const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
+          args: ['--yes'], cwd: f.proj, env: { ...f.env, LIVE_CALLS: log, LIVE_SCENARIO: scenario },
+        });
+        expect(r.exitCode).toBe(0);
+        const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
+        const stopped = calls.findIndex(line => line.trim() === 'stop');
+        const started = calls.indexOf('start --resume');
+        if (scenario.startsWith('timeout-')) {
+          expect(stopped).toBe(-1);
+          expect(started).toBe(-1);
+          expect(r.stderr).toContain('rerun `hermitd update`');
+        } else {
+          expect(stopped).toBeGreaterThan(-1);
+          if (scenario === 'stop-fails') expect(started).toBe(-1);
+          else expect(started).toBeGreaterThan(stopped);
+        }
+        expect(calls[0]).toContain('has-session');
+        expect(calls[1]).toBe('await-upgrade');
+        if (scenario !== 'timeout-first') {
+          expect(calls.some(l => l === 'await-upgrade --expect hermitd=1.2.0')).toBe(true);
+        }
+        expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
+      } finally { f.wd.cleanup(); }
+    });
   }
 
   test('duplicate ids keep per-scope versions and failure status in history and summary', async () => {

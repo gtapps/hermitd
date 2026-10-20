@@ -637,3 +637,15 @@ describe('Entrypoint: .mcp.json native approval', () => {
     expect(r.stderr).toContain('failed to parse .mcp.json');
   });
 });
+
+
+test('entrypoint rechecks tmux for 60 seconds before exiting', () => {
+  const grace = entrypoint.indexOf('for _grace in $(seq 1 12)');
+  const exit = entrypoint.indexOf('tmux session ended — container exiting');
+  expect(grace).toBeGreaterThan(-1);
+  expect(grace).toBeLessThan(exit);
+  const block = entrypoint.slice(grace, exit);
+  expect(block).toContain('sleep 5 &\n      wait $! || true');
+  expect(block).toContain('if tmux has-session -t "$SESSION_NAME"');
+  expect(block).toContain('[ "$_session_returned" = true ] || break');
+});

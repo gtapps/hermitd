@@ -20,7 +20,7 @@ Follow the printed start command for each agent, then run `/hermitd:hermit-evolv
 
 ### One command (recommended)
 
-From the project root, run the wrapper for your deployment: it moves the durable plugin pin, reloads the running session, and auto-runs `hermit-evolve` when the version bumped. Host installs then need the stop/start below.
+From the project root, run the wrapper for your deployment: it waits for quiet, moves the durable plugin pins, reloads the running session, and runs `hermit-evolve` for version gaps. It waits for migrations, builds the Docker image from the merged files when applicable, waits for quiet again, then restarts once with resume requested. A changed resident prompt starts a fresh conversation.
 
 ```bash
 # Docker hermits:
@@ -31,7 +31,7 @@ hermitd update
 
 Always-on hermits do this on their own: the resident-start upgrade banner triggers `hermit-evolve unattended` automatically.
 
-After a host `hermitd update`, stop the running resident with `hermitd stop`, then start it with `hermitd start --resume` so the launch overlay is rewritten. Both update commands send `/reload-plugins`, which drops `pause-gate`, `ask-gate`, `component-privacy`, and `permission-denied-notify` from the running session while the previous overlay has none. Docker hermits need nothing else.
+Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; a wait timeout restarts nothing and asks you to rerun `hermitd update`. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
 
 ### Manual
 

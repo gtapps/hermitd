@@ -26,6 +26,7 @@
 import { cmdInstall, cmdUninstall } from './hermitd-watchdog-install';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { resolveResumeTarget } from './lib/resident-prompt';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
@@ -39,7 +40,7 @@ import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './li
 import { postToSession } from './lib/peer-post';
 import { findResident, type SessionEntry } from './lib/session-registry';
 import { costLogPath, transcriptDirFor } from './lib/cc-compat';
-import { readSettledConfig } from './lib/config-read';
+import { readConfigRaw, readSettledConfig } from './lib/config-read';
 import { evaluateBackupDue } from './lib/backup';
 import { isPaused, pauseReasonLabel } from './lib/pause';
 import { WATCHDOG, resolveLocale, type Locale } from './lib/messages';
@@ -832,7 +833,11 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
 
   try {
     // Mark runtime before killing so resident-start recovery sees the reason
-    runtime.last_error = 'unclean_shutdown';
+    if (reason === 'upgrade' || !resumable) {
+      runtime.planned_restart_at = new Date().toISOString();
+    } else {
+      runtime.last_error = 'unclean_shutdown';
+    }
     runtime.watchdog_restart_reason = reason;
     writeRuntimeJson(runtime);
 
@@ -868,14 +873,16 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     const id = runtime.cc_session_id;
     const ws = readWatchdogState();
     const sinceLast = typeof ws.last_restart_at === 'string' ? ageSecs(ws.last_restart_at) : null;
-    const skip = !resumable ? 'requested'
+    const initialSkip = !resumable ? 'requested'
       : typeof id !== 'string' || !id.trim() ? 'no-session-id'
       : sinceLast !== null && sinceLast < RESUME_LOOP_GUARD_SECS ? 'recent-restart'
       : null;
     ws.last_restart_at = worldStamp(REAL_WORLD);
     writeWatchdogState(ws);
-    const resumeArgs = skip ? [] : ['--resume', id];
-    const resumeDetail = skip ? `fresh: ${skip}` : `resume ${id}`;
+    const target = initialSkip ? { skip: initialSkip } : resolveResumeTarget(runtime, process.cwd(), runtime.config_dir);
+    const resumed = 'id' in target;
+    const resumeArgs = resumed ? ['--resume', target.id] : [];
+    const resumeDetail = resumed ? `resume ${target.id}` : `fresh: ${target.skip}`;
     const startBin = '.hermit/bin/hermitd-start';
     const child = spawn(startBin, resumeArgs, {
       detached: true,
@@ -895,7 +902,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     // 'error' handler above, after this synchronous path already returned, so
     // guard the push on the binary existing rather than on spawn's async result.
     // The lock is already released above, so a slow send never holds it.
-    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(resumable ? reason : 'requested', skip === null, timezone));
+    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(resumable ? reason : 'requested', resumed, timezone));
   } catch (e) {
     process.stderr.write(`[watchdog] restart failed: ${e}\n`);
   } finally {
@@ -1341,6 +1348,12 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     if (health.reason === 'restart-required') upgradeLegs.push(record);
   }
   if (upgradeLegs.length > 0) {
+    const update = world.files.readJson(path.join(world.paths.stateDir, 'update-in-progress.json'));
+    const updateAge = world.clock.nowMs() - Date.parse(update?.at);
+    if (updateAge >= 0 && updateAge < 60 * 60 * 1000) {
+      appendEvent('upgrade-restart-deferred', 'update-in-progress', world);
+      return;
+    }
     const pluginVersion = world.files.readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))?.version;
     if (!pluginVersion || applied !== pluginVersion) {
       appendEvent('upgrade-restart-deferred', 'evolve-pending', world);
@@ -2351,6 +2364,38 @@ async function cmdRestart(reason: string): Promise<void> {
   await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', false);
 }
 
+export type UpgradeReadiness = { status: 'ready' } | { status: 'timeout'; reason: string };
+
+/** Wait for migrations first, then a quiet execution boundary. */
+export async function awaitUpgrade(hermitRoot: string, expected: Record<string, string> = {}, options: {
+  evolveCapMs?: number;
+  quietCapMs?: number;
+  pollMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  boundary?: typeof passesExecutionBoundary;
+} = {}): Promise<UpgradeReadiness> {
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms) => Bun.sleep(ms));
+  const poll = options.pollMs ?? 15000;
+  const evolveStart = now();
+  while (Object.keys(expected).length > 0) {
+    const versions = readConfigRaw(hermitRoot)?._hermit_versions ?? {};
+    if (Object.entries(expected).every(([name, version]) => versions[name] === version)) break;
+    const remaining = (options.evolveCapMs ?? 30 * 60 * 1000) - (now() - evolveStart);
+    if (remaining <= 0) return { status: 'timeout', reason: 'evolve_pending' };
+    await sleep(Math.min(poll, remaining));
+  }
+  const quietStart = now();
+  for (;;) {
+    const boundary = (options.boundary ?? passesExecutionBoundary)(hermitRoot);
+    if (boundary.ok) return { status: 'ready' };
+    const remaining = (options.quietCapMs ?? 15 * 60 * 1000) - (now() - quietStart);
+    if (remaining <= 0) return { status: 'timeout', reason: boundary.reason.replaceAll('-', '_') };
+    await sleep(Math.min(poll, remaining));
+  }
+}
+
 if (import.meta.main) {
   const subcommand = process.argv[2] ?? 'run';
   if (subcommand === 'run' || subcommand === '') {
@@ -2365,6 +2410,16 @@ if (import.meta.main) {
     cmdInstall();
   } else if (subcommand === 'uninstall') {
     cmdUninstall();
+  } else if (subcommand === 'await-upgrade') {
+    const expected: Record<string, string> = {};
+    for (let i = 3; i < process.argv.length; i++) {
+      if (process.argv[i] !== '--expect') throw new Error('Expected --expect name=version');
+      const pair = process.argv[++i] ?? '';
+      const equals = pair.indexOf('=');
+      if (equals < 1 || equals === pair.length - 1) throw new Error('Expected --expect name=version');
+      expected[pair.slice(0, equals)] = pair.slice(equals + 1);
+    }
+    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected)));
   } else if (subcommand === 'restart') {
     await cmdRestart(process.argv[3] ?? 'manual');
   } else {

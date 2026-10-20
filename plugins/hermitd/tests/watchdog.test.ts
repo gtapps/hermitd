@@ -19,7 +19,7 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeSessionWedgedMessage, composePauseMessage, hasPendingQuestion, hasLapsedLogin, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeSessionWedgedMessage, composePauseMessage, hasPendingQuestion, hasLapsedLogin, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
   maybeContextCompact, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
@@ -575,6 +575,8 @@ describe('restart subcommand', () => {
       expect(r.exitCode).toBe(0);
       const events = fs.readFileSync(eventsFile(h), 'utf-8');
       expect(events).toContain('restart');
+      expect(readJson(state(h, 'runtime.json')).planned_restart_at).toBeString();
+      expect(readJson(state(h, 'runtime.json')).last_error).not.toBe('unclean_shutdown');
       expect(events).toContain('fresh: requested'); // doctor checkWatchdog keys planned restarts on this
       expect(await waitForStartMarker(h)).toBe(true);
       // The operator notice names a requested restart, whatever reason was passed.
@@ -2737,7 +2739,7 @@ const registeredCommand = (h: Hermit, leg: string, version: string): string => {
 };
 
 for (const leg of ['heartbeat', 'routine'] as const) {
-  for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused', 'current-copy'] as const) {
+  for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused', 'current-copy', 'update-fresh', 'update-stale'] as const) {
     test(`upgrade monitor ${leg} with ${scenario}`, withHermit(async (h) => {
       writeConfig(h);
       const configPath = path.join(h.dir, '.hermit', 'config.json');
@@ -2766,19 +2768,24 @@ for (const leg of ['heartbeat', 'routine'] as const) {
       if (scenario === 'paused') {
         writeState(h, 'operator-pause.json', { paused: true, paused_until: null, reason: 'operator' });
       }
+      if (scenario.startsWith('update-')) {
+        writeState(h, 'update-in-progress.json', { at: new Date(Date.now() - (scenario === 'update-fresh' ? 1000 : 61 * 60000)).toISOString() });
+      }
       const result = await watchdog(h, 'run');
       expect(result.exitCode).toBe(0);
-      if (scenario === 'idle') {
+      if (scenario === 'idle' || scenario === 'update-stale') {
         expect(events(h)).toContain('upgrade-restart');
         expect(events(h)).toContain(`${leg}-monitor.runtime.json`);
         expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('upgrade');
+        expect(readJson(state(h, 'runtime.json')).planned_restart_at).toBeString();
+        expect(readJson(state(h, 'runtime.json')).last_error).not.toBe('unclean_shutdown');
         expect(tmuxCalls(h)).toContain('kill-session');
       } else if (scenario === 'current-copy') {
         expect(events(h)).not.toContain('upgrade-restart');
         expect(tmuxCalls(h)).not.toContain('kill-session');
       } else {
         expect(events(h)).toContain('upgrade-restart-deferred');
-        expect(events(h)).toContain(scenario === 'in_flight' ? 'execution-not-idle' : scenario);
+        expect(events(h)).toContain(scenario === 'in_flight' ? 'execution-not-idle' : scenario === 'update-fresh' ? 'update-in-progress' : scenario);
         expect(tmuxCalls(h)).not.toContain('kill-session');
       }
       expect(tmuxCalls(h)).not.toContain('/hermitd:heartbeat start');
@@ -5225,6 +5232,8 @@ describe('restart resume', () => {
   const scenarios: Record<string, { expected: string; via: 'run' | 'restart' }> = {
     'default': { expected: 'resume', via: 'run' },
     'no-session-id': { expected: 'fresh: no-session-id', via: 'run' },
+    'no-user-turn': { expected: 'fresh: no-user-turn', via: 'run' },
+    'prompt-changed': { expected: 'fresh: prompt-changed', via: 'run' },
     'recent-restart': { expected: 'fresh: recent-restart', via: 'run' },
     'compact-off-large-context': { expected: 'resume', via: 'run' },
     'requested': { expected: 'fresh: requested', via: 'restart' },
@@ -5239,6 +5248,9 @@ describe('restart resume', () => {
         fs.writeFileSync(configPath, JSON.stringify(config));
         writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 400000, cache_write_tokens: 0, cache_read_tokens: 0 }]);
       }
+      const transcriptEnv = seedTranscript(h, CC_SESSION_ID, scenario === 'no-user-turn' ? [] : ['{"type":"user"}']);
+      const { buildResidentPrompt } = await import('../scripts/lib/resident-prompt');
+      fs.writeFileSync(state(h, 'resident-system-prompt.md'), scenario === 'prompt-changed' ? 'old prompt' : buildResidentPrompt(h.dir));
       patchRuntime(h, { cc_session_id: scenario === 'no-session-id' ? null : CC_SESSION_ID });
       const priorRestart = isoAgo(5 / 60);
       fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
@@ -5247,7 +5259,7 @@ describe('restart resume', () => {
       }) + '\n');
       writeFakeTmux(h, via === 'run' ? 1 : 0);
       writeFakePgrep(h, 1);
-      expect((await watchdog(h, via)).exitCode).toBe(0);
+      expect((await watchdog(h, via, { env: transcriptEnv })).exitCode).toBe(0);
       expect(await waitForStartMarker(h)).toBe(true);
       const resumes = expected === 'resume';
       expect(fs.readFileSync(path.join(h.dir, 'hermit-start-args'), 'utf8').trim())
@@ -5272,3 +5284,39 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
   expect(fs.readFileSync(eventsFile(h), 'utf8')).toContain('tree-verified');
   expect(fs.readFileSync(eventsFile(h), 'utf8')).not.toContain('operator notified; restart skipped');
 }));
+
+
+describe('await-upgrade', () => {
+  test('ready at an idle boundary, with no expected versions', withHermit(async (h) => {
+    expect(await awaitUpgrade(path.join(h.dir, '.hermit'))).toEqual({ status: 'ready' });
+  }));
+  test('evolve timeout never checks the boundary', withHermit(async (h) => {
+    let clock = 0;
+    expect(await awaitUpgrade(path.join(h.dir, '.hermit'), { hermitd: 'new' }, {
+      now: () => clock, sleep: async (ms) => { clock += ms; }, evolveCapMs: 30, pollMs: 15,
+      boundary: () => { throw new Error('boundary checked before evolve'); },
+    })).toEqual({ status: 'timeout', reason: 'evolve_pending' });
+    expect(clock).toBe(30);
+  }));
+  test('boundary timeout uses snake_case', withHermit(async (h) => {
+    let clock = 0;
+    expect(await awaitUpgrade(path.join(h.dir, '.hermit'), {}, {
+      now: () => clock, sleep: async (ms) => { clock += ms; }, quietCapMs: 30, pollMs: 15,
+      boundary: () => ({ ok: false, reason: 'worker-running' }),
+    })).toEqual({ status: 'timeout', reason: 'worker_running' });
+  }));
+  test('version phase completes before the boundary phase, each with its own cap', withHermit(async (h) => {
+    let clock = 0;
+    const root = path.join(h.dir, '.hermit');
+    const checked: number[] = [];
+    expect(await awaitUpgrade(root, { hermitd: 'new' }, {
+      now: () => clock, pollMs: 15, evolveCapMs: 30, quietCapMs: 30,
+      sleep: async (ms) => {
+        clock += ms;
+        fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ _hermit_versions: { hermitd: 'new' } }));
+      },
+      boundary: () => { checked.push(clock); return clock >= 30 ? { ok: true } : { ok: false, reason: 'worker-running' }; },
+    })).toEqual({ status: 'ready' });
+    expect(checked).toEqual([15, 30]);
+  }));
+});

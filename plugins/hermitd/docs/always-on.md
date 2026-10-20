@@ -50,7 +50,7 @@ Run after `/hermitd:hatch`:
 
 **Already running this hermit in tmux on this box?** Stop it first with `hermitd stop`. Both instances share the same `.hermit/` state dir, so the container's entrypoint refuses to boot beside a live host instance and goes inert instead. The wizard checks for this before it builds anything and will tell you to stop the host hermit.
 
-The resident launch overlay carries `pause-gate`, `ask-gate`, `component-privacy`, and `permission-denied-notify` instead of the plugin manifest. It is read at launch only, so restart the resident after an upgrade to load the rewritten overlay.
+The resident launch overlay carries `pause-gate`, `ask-gate`, `component-privacy`, and `permission-denied-notify` instead of the plugin manifest. It is read at launch only; `hermitd update` restarts the resident after migrations to load the rewritten overlay. Resume keeps the conversation only when the resident prompt is unchanged.
 
 The wizard scans your project for dependencies, asks about auth, and generates four hermit-namespaced files (so they don't clash with your own Docker setup):
 

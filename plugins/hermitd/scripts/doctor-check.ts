@@ -1312,7 +1312,7 @@ function checkHeartbeat(p: DoctorPaths = PATHS) {
       return { id: 'heartbeat', status: 'fail', detail: 'heartbeat monitor registered by a previous boot — re-arm with /hermitd:heartbeat start' };
     }
     if (health.reason === 'restart-required') {
-      return { id: 'heartbeat', status: 'warn', detail: DRIFT_RESTART_DETAIL('heartbeat monitor') };
+      return { id: 'heartbeat', status: 'fail', detail: DRIFT_RESTART_DETAIL('heartbeat monitor') };
     }
     if (['runtime-missing', 'interval-drift', 'command-drift'].includes(health.reason)) {
       return { id: 'heartbeat', status: 'fail', detail: `heartbeat monitor ${health.reason} — re-arm with /hermitd:heartbeat start` };
@@ -1421,7 +1421,7 @@ function checkRoutineMonitor(p: DoctorPaths = PATHS) {
         return { id: 'routine-monitor', status: 'fail', detail: `routine-monitor not ticking — Monitor subprocess spawn likely blocked (seccomp / nested-userns in container). Last tick: ${tickStr}.` };
       }
       if (health.reason === 'restart-required') {
-        return { id: 'routine-monitor', status: 'warn', detail: DRIFT_RESTART_DETAIL('routine-monitor') };
+        return { id: 'routine-monitor', status: 'fail', detail: DRIFT_RESTART_DETAIL('routine-monitor') };
       }
       const rearm = ['runtime-missing', 'command-drift', 'launch-drift', 'anchor-drift', 'anchor-old'].includes(health.reason)
         ? ' — re-arm with /hermitd:hermit-routines load' : '';
