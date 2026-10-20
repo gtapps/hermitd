@@ -18,8 +18,6 @@
 
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
-
-### Fixed
 - The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
 - The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.
 - The evening brief counts tasks closed today in the configured timezone.
