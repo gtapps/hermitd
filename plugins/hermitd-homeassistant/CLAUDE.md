@@ -16,7 +16,7 @@ A Home Assistant domain layer for `hermitd`: skills, subagents, a safety hook, a
 
 - Never commit real HA URLs, tokens, or device inventories. Check credential state with `bin/ha-agent-lab boot status`, never `cat .env` or `echo $HOMEASSISTANT_TOKEN` (core's seeded rules deny `cat .env*`, and expanding a credential var puts the value in the transcript).
 - Actuation of sensitive domains (`lock`, `alarm_control_panel`, security-related `cover`/`button`/`switch`) is gated by `ha_safety_mode` in `.hermit/config.json` (absent in valid config = `ask`). Under `strict`, never actuate autonomously; blocked work becomes a proposal. Under `ask`, the operator is prompted before any sensitive actuation, YAML apply or direct MCP call alike. Uncertain entities and new domains default to sensitive. Full model: `SAFETY.md`.
-- Use the session language for replies. Write automation `alias` and `description` in the operator's language unless a CLAUDE file instruction names another. Auto-memory holds Claude-derived house knowledge.
+- Use the hermit's `language` for replies. Write automation `alias` and `description` in that language unless a CLAUDE file instruction names another. Auto-memory holds Claude-derived house knowledge.
 - Prefer the CLI over ad-hoc reasoning when a helper exists.
 
 ## MCP vs CLI
