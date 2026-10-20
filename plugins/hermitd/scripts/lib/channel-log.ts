@@ -419,7 +419,7 @@ function conversationHistory(
   { limit, senderIds }: { limit: number; senderIds?: string[] | null },
 ): Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[] {
   try {
-    if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir))) return [];
+    if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir), source)) return [];
     const db = openDb(hermitDir, { readonly: true });
     try {
       const senderFilter = senderIds ? `AND (direction = 'out' OR sender_id IN (${senderIds.map(() => '?').join(',')}))` : '';

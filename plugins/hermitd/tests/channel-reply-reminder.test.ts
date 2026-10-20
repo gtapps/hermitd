@@ -447,7 +447,7 @@ describe('passive capture', () => {
 });
 
 describe('chat history after context reset', () => {
-  for (const scenario of ['reset', 'replied', 'logging off', 'no reset', 'no outbound', 'stale', 'stranger', 'passive'] as const) {
+  for (const scenario of ['reset', 'replied', 'logging off', 'no reset', 'no outbound', 'stale', 'stranger', 'passive', 'channel opt-in'] as const) {
     test(scenario, withDir(async dir => {
       const now = Date.now();
       const ts = (offset: number) => new Date(now + offset).toISOString();
@@ -463,7 +463,7 @@ describe('chat history after context reset', () => {
       }
       const r = await run(`<channel source="discord" chat_id="1" user="${scenario === 'stranger' ? 'STRANGER' : 'U1'}">CURRENT_MESSAGE_UNIQUE</channel>`, dir);
       expect(r.exitCode).toBe(0);
-      if (scenario === 'reset') {
+      if (scenario === 'reset' || scenario === 'channel opt-in') {
         expect(r.stdout).toContain('context was reset');
         expect(r.stdout).toContain('you (hermit)');
         expect(r.stdout).toContain('Which draft should I drop?');
@@ -477,8 +477,8 @@ describe('chat history after context reset', () => {
         expect(r.stdout).not.toContain('Which draft should I drop?');
       }
     }, JSON.stringify({
-      channels: { discord: { allowed_users: ['U1'], passive_chats: scenario === 'passive' ? ['1'] : [] } },
-      knowledge: { channel_log_enabled: scenario !== 'logging off' },
+      channels: { discord: { allowed_users: ['U1'], passive_chats: scenario === 'passive' ? ['1'] : [], ...(scenario === 'channel opt-in' ? { log_chats: true } : {}) } },
+      knowledge: { channel_log_enabled: scenario !== 'logging off' && scenario !== 'channel opt-in' },
     })));
   }
 
