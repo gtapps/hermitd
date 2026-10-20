@@ -22,12 +22,17 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i');
 }
 
-export function run(stateDir: string, rawInput: string | undefined): never {
-  if (rawInput === undefined) emitJson({ status: 'none', reason: 'not_a_prop_id' });
+type ResolveVerdict =
+  | { status: 'match'; file: string }
+  | { status: 'ambiguous'; matches: { file: string; title: string | null }[] }
+  | { status: 'none'; reason: 'not_a_prop_id' | 'no_match' };
+
+export function resolveProposalId(stateDir: string, rawInput: string | undefined): ResolveVerdict {
+  if (rawInput === undefined) return { status: 'none', reason: 'not_a_prop_id' };
 
   const input = rawInput.trim().toUpperCase();
   const m = input.match(/^PROP-(\d+)(?:-(.+))?$/);
-  if (!m) emitJson({ status: 'none', reason: 'not_a_prop_id' });
+  if (!m) return { status: 'none', reason: 'not_a_prop_id' };
 
   const num = m[1].padStart(3, '0');
   const suffix = m[2];
@@ -37,7 +42,7 @@ export function run(stateDir: string, rawInput: string | undefined): never {
   try {
     files = fs.readdirSync(proposalsDir).filter(f => f.endsWith('.md')).sort();
   } catch {
-    emitJson({ status: 'none', reason: 'no_match' });
+    return { status: 'none', reason: 'no_match' };
   }
 
   let matches: string[];
@@ -50,12 +55,16 @@ export function run(stateDir: string, rawInput: string | undefined): never {
     matches = files.filter(f => pattern.test(f));
   }
 
-  if (matches.length === 0) emitJson({ status: 'none', reason: 'no_match' });
-  if (matches.length === 1) emitJson({ status: 'match', file: matches[0] });
+  if (matches.length === 0) return { status: 'none', reason: 'no_match' };
+  if (matches.length === 1) return { status: 'match', file: matches[0] };
 
   const payload = matches.map(f => ({
     file: f,
     title: readFrontmatter(path.join(proposalsDir, f))?.title ?? null,
   }));
-  emitJson({ status: 'ambiguous', matches: payload });
+  return { status: 'ambiguous', matches: payload };
+}
+
+export function run(stateDir: string, rawInput: string | undefined): never {
+  emitJson(resolveProposalId(stateDir, rawInput));
 }

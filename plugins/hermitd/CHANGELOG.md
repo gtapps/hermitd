@@ -7,9 +7,13 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- Closed task threads stay addressed, with `!mute` and `!unmute` available after completion.
+- Recent chat history from allowed senders and the hermit accompanies messages after a context reset until the hermit's next logged reply in that chat.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
+- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`; task and daily later replies name the resolve or its error.
+- `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 
 ### Upgrade Instructions
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` and `Edit(*.hermit/helper-prompt.md)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
@@ -22,6 +26,7 @@
 - The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.
 - The evening brief counts tasks closed today in the configured timezone.
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
+- Turn cost rows include the API calls made before a mid-turn skill load, and after a session's first billed turn also those before a mid-turn channel or cross-session message or in a turn whose Stop hook never ran; these calls were previously never billed.
 
 ## [1.4.17] - 2026-10-19
 

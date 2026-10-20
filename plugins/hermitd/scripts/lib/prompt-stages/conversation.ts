@@ -1,5 +1,5 @@
 import { conversationKey } from '../conversation-key';
-import { threadRecords } from '../tasks';
+import { conversationRecords, threadRecords } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
 import { cachedChat, isGuildChannelType } from '../channel-chats';
@@ -36,6 +36,25 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const records = inThread || !conversationCommand ? threadRecords(ctx.dir) : [];
   const record = inThread ? records.find(task => task.conversation === key) : undefined;
   if (!record) {
+    // Only a task's own thread stays addressed after it closes; a DM or group chat
+    // that carried a record returns to its ordinary rules.
+    const ownThread = env.sourceKey === 'discord'
+      ? [10, 11, 12].includes(cachedChat(ctx.dir, env.chatId)?.type ?? -1)
+      : env.thread != null;
+    const closed = ownThread
+      ? conversationRecords(ctx.dir).filter(task => task.status === 'closed' && task.conversation === key)
+        .sort((a, b) => a.closed_at!.localeCompare(b.closed_at!) || a.id.localeCompare(b.id)).at(-1)
+      : undefined;
+    if (closed) {
+      ctx.closedThread = true;
+      if (conversationCommand && (name === 'mute' || name === 'unmute')) {
+        return { context: `[closed task thread ${safeForLLM(key)}: task=${closed.id}, muted=${closed.muted}]\n[conversation command: ${name}]` };
+      }
+      if (closed.muted && !addressed && !await isSelfMentioned(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.body, env)) {
+        capture(ctx, env, true);
+        return { block: 'muted conversation: recorded' };
+      }
+    }
     // `!help` is answerable anywhere, so it gets its annotation rather than the
     // "needs a thread" refusal — without one the model has nothing to act on.
     if (conversationCommand) {
