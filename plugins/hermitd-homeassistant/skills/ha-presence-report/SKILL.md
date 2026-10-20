@@ -12,7 +12,7 @@ allowed-tools:
 
 ## Steps
 
-1. Call `GetDateTime` for the current time reference. Read the stored locale from `.hermit/OPERATOR.md` under `## HA hermit` (fall back to English if absent).
+1. Call `GetDateTime` for the current time reference. Use the session language for all output.
 
 2. Read `.hermit/raw/snapshot-ha-normalized-latest.json`.
    - If the file is missing or older than 24 hours, prepend a staleness warning to the output:
@@ -36,7 +36,7 @@ allowed-tools:
    - **Home/away split**: derive from `state_durations` — what percentage of the window was "home" vs "away".
    - **Typical activity windows**: bucket the `transitions` list by UTC hour, keyed on direction: transitions *to* `home` are arrivals, transitions *to* `away` are departures. Report the top 1–2 arrival hours and departure hours separately (e.g. "typically arrives around 18:00 UTC, leaves around 08:00 UTC"). With ≥7d of data and ≥5 total transitions, state the windows; below that threshold, say "insufficient data for pattern detection." (`hour_histogram` counts all events regardless of direction, so use it only as a fallback for entities whose states aren't home/away.)
 
-5. Compose and print the inline report in the operator's locale:
+5. Compose and print the inline report in the session language:
    ```
    ## Presence Report — <date>
 

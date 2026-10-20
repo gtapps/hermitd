@@ -1,5 +1,4 @@
-// WP7 tier 3: tests for src/boot.ts — 1:1 port of tests/test_boot.py
-// (17 cases).
+// Tests for boot preferences, setup status and endpoint selection.
 //
 // pytest fixture mapping:
 //   - tmp_path -> tmpPath (helpers.ts)
@@ -16,16 +15,13 @@
 // keys — global state per-test dirs cannot isolate under --concurrent.
 import { afterEach, beforeEach, expect, test as bunTest } from 'bun:test';
 const test = bunTest.serial;
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 
 import {
   bootStatus,
   commandPrefix,
-  operatorMdPath,
-  readLanguage,
   saveBootPreferences,
-  writeLanguage,
 } from '../src/boot';
 import { loadConfig } from '../src/config';
 import { HomeAssistantClient, HomeAssistantError, selectHomeAssistantUrl } from '../src/ha-api';
@@ -56,84 +52,9 @@ afterEach(() => {
 
 const okFetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
 
-test('language roundtrip', () => {
-  const tmp = tmpPath();
-  writeLanguage(tmp, 'pt-PT');
-  expect(readLanguage(tmp)).toBe('pt-PT');
-  expect(operatorMdPath(tmp)).toBe(join(tmp, '.hermit', 'OPERATOR.md'));
-});
-
-test('write_language creates OPERATOR.md with HA section', () => {
-  const tmp = tmpPath();
-  writeLanguage(tmp, 'en');
-  const text = readFileSync(operatorMdPath(tmp), 'utf8');
-  expect(text).toContain('# Operator Context');
-  expect(text).toContain('## HA hermit');
-  expect(text).toContain('- Language: en');
-});
-
-test('write_language appends section when OPERATOR.md exists without HA section', () => {
-  const tmp = tmpPath();
-  const operatorMd = operatorMdPath(tmp);
-  mkdirSync(dirname(operatorMd), { recursive: true });
-  writeFileSync(operatorMd, '# Operator Context\n\n## Other plugin\n\n- Foo: bar\n', 'utf8');
-
-  writeLanguage(tmp, 'en');
-
-  const text = readFileSync(operatorMd, 'utf8');
-  expect(text).toContain('## Other plugin');
-  expect(text).toContain('- Foo: bar');
-  expect(text).toContain('## HA hermit');
-  expect(text).toContain('- Language: en');
-});
-
-test('write_language appends line under existing HA section', () => {
-  const tmp = tmpPath();
-  const operatorMd = operatorMdPath(tmp);
-  mkdirSync(dirname(operatorMd), { recursive: true });
-  writeFileSync(operatorMd, '# Operator Context\n\n## HA hermit\n\n- Some other preference: x\n', 'utf8');
-
-  writeLanguage(tmp, 'pt-PT');
-
-  const text = readFileSync(operatorMd, 'utf8');
-  expect(text).toContain('- Language: pt-PT');
-  expect(text).toContain('- Some other preference: x');
-});
-
-test('write_language replaces existing language line', () => {
-  const tmp = tmpPath();
-  writeLanguage(tmp, 'en');
-  writeLanguage(tmp, 'pt-PT');
-  const text = readFileSync(operatorMdPath(tmp), 'utf8');
-  expect(text.split('- Language:').length - 1).toBe(1);
-  expect(text.split('## HA hermit').length - 1).toBe(1);
-  expect(text).toContain('- Language: pt-PT');
-  expect(text).not.toContain('- Language: en');
-});
-
-test('write_language ignores language line in other section', () => {
-  const tmp = tmpPath();
-  const operatorMd = operatorMdPath(tmp);
-  mkdirSync(dirname(operatorMd), { recursive: true });
-  writeFileSync(
-    operatorMd,
-    '# Operator Context\n\n## Other plugin\n\n- Language: not-a-locale\n\n## HA hermit\n\n- Language: en\n',
-    'utf8',
-  );
-
-  writeLanguage(tmp, 'pt-PT');
-
-  const text = readFileSync(operatorMd, 'utf8');
-  expect(text).toContain('- Language: not-a-locale');
-  expect(text).toContain('- Language: pt-PT');
-  expect(text).not.toContain('- Language: en');
-  expect(readLanguage(tmp)).toBe('pt-PT');
-});
-
 test('boot preferences store operator context', () => {
   const tmp = tmpPath();
   saveBootPreferences(tmp, {
-    language: 'en',
     localUrl: 'http://ha.local:8123',
     remoteUrl: 'https://ha.example.com',
     token: 'secret-token',
@@ -142,15 +63,13 @@ test('boot preferences store operator context', () => {
   expect(config.haLocalUrl).toBe('http://ha.local:8123');
   expect(config.haRemoteUrl).toBe('https://ha.example.com');
   expect(config.haToken).toBe('secret-token');
-  expect(readLanguage(tmp)).toBe('en');
 });
 
 test('boot status detects missing context', async () => {
   const tmp = tmpPath();
-  writeLanguage(tmp, 'en');
   const config = loadConfig(tmp);
   const status = await bootStatus(config, { probe: false });
-  expect(status.language).toBe('en');
+  expect(Object.keys(status).filter((key) => key.includes('language'))).toEqual([]);
   expect(status.needs_context_refresh).toBe(true);
   expect(status.context_exists).toBe(false);
 });
@@ -159,7 +78,7 @@ test('boot status reports missing required setup', async () => {
   const tmp = tmpPath();
   const status = await bootStatus(loadConfig(tmp), { probe: false });
   const fields = new Set(status.setup_hints.map((item) => item.field));
-  expect(fields).toContain('Language');
+  expect(fields).not.toContain('Language');
   expect(fields).toContain('HOMEASSISTANT_URL');
   expect(fields).toContain('HOMEASSISTANT_TOKEN');
   expect(status.command_prefix.endsWith('/bin/ha-agent-lab')).toBe(true);
@@ -177,8 +96,7 @@ test('boot status exposes single-pass setup checklist', async () => {
   const tmp = tmpPath();
   const status = await bootStatus(loadConfig(tmp), { probe: false });
   const checklist = Object.fromEntries(status.setup_checklist.map((item) => [item.field, item]));
-  expect(checklist['Language']!.status).toBe('missing');
-  expect(checklist['Language']!.location).toBe('.hermit/OPERATOR.md');
+  expect(checklist).not.toHaveProperty('Language');
   expect(checklist['Home Assistant endpoint']!.status).toBe('missing');
   expect(checklist['HOMEASSISTANT_TOKEN']!.status).toBe('missing');
   expect(checklist['Context snapshot']!.status).toBe('missing');

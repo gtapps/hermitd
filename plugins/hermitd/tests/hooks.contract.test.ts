@@ -549,7 +549,7 @@ describe('startup-context', () => {
     write(hermit(dir, 'OPERATOR.md'), '# Operator\nProject focus body.\n');
     const r = await runScript('startup-context.ts', { cwd: dir, env: ENV });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain('---Operator Context (OPERATOR.md)---');
+    expect(r.stdout).toContain('---Operator Instructions (OPERATOR.md)---');
     expect(r.stdout).toContain('Project focus body.');
   }));
 
@@ -985,7 +985,7 @@ Rota body.
     expect(r.stdout).toContain(`latest task: tasks/${record.id}.md`);
     expect(r.stdout).not.toContain('latest report:');
     expect(r.stdout).not.toContain('Task body text');
-    expect(r.stdout).toContain('---Operator Context (OPERATOR.md)---');
+    expect(r.stdout).toContain('---Operator Instructions (OPERATOR.md)---');
     expect(r.stdout).not.toContain('operator context: OPERATOR.md');
     expect(r.stdout).toContain('proposals dir: proposals/');
     expect(r.stdout).not.toMatch(/^last progress: /m);
@@ -1046,14 +1046,14 @@ Rota body.
       cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
     });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout.split('---Operator Context')[0].length).toBeLessThanOrEqual(1200);
-    expect(r.stdout).toContain('---Operator Context (OPERATOR.md)---\ncontext\n');
+    expect(r.stdout.split('---Operator Instructions')[0].length).toBeLessThanOrEqual(1200);
+    expect(r.stdout).toContain('---Operator Instructions (OPERATOR.md)---\ncontext\n');
     // The trailing line is cut mid-sentence, proving the capsule hit the cap here.
     expect(r.stdout).not.toContain('to reconstruct context.');
     expect(r.stdout).toContain('operator language: pt (reply in this language)');
     // Line-boundary truncation: every emitted pointer line is intact, not a
     // partial fragment of the field that follows it.
-    for (const line of r.stdout.split('---Operator Context')[0].trimEnd().split('\n').slice(1)) {
+    for (const line of r.stdout.split('---Operator Instructions')[0].trimEnd().split('\n').slice(1)) {
       expect(line).toMatch(/^(operator language|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir): /);
     }
   }));

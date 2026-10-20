@@ -1,14 +1,14 @@
-# Operator Context and Instructions
+# Your Standing Instructions
 
-<!-- Only the hermit reads this file. -->
-
-<!-- This file is operator-curated context the model can't infer from config.json.
-     It answers three questions:
-     - Focus: what work matters now
-     - Constraints: hard rules, areas to avoid
-     - Approval: what requires explicit operator OK
-     Tone and comms style live in config.json's `voice` block (change it with
-     `/hermitd:hermit-settings voice`), not here.
-     Do NOT restate config.json fields (routines, channels, permission_mode,
-     agent_name, escalation) — they're loaded structurally.
-     Tell the hermit what changed; it will draft and confirm before writing. -->
+<!-- The agent reads this at every start; its helpers and your own Claude sessions
+     don't. The agent can't change it without your approval. Rules its helpers must
+     also follow go in CLAUDE.md (or CLAUDE.local.md).
+     Write it to the agent ("You serve...", "Never..."):
+     - Mission: what it is for and who it serves
+     - Focus: where its unattended time goes
+     - Red lines: what it never does on its own
+     - Ask first: what needs the operator's OK before it acts
+     Project facts and rules every session must follow go in CLAUDE.md.
+     Tone has its own setting: `voice` in config.json.
+     Don't restate config.json settings; they're already loaded.
+     To change this file, tell the agent; it drafts the edit for the operator to apply. -->

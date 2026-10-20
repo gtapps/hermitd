@@ -52,11 +52,6 @@ Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status` and inspect the JSON ou
      - **abort** → stop.
   Do not write or modify `.env` — it is the user's responsibility.
 
-Also check locale:
-
-- Read `.hermit/OPERATOR.md`. If a `## HA hermit` section has a `- Language:` entry, use it silently — do not re-ask.
-- If absent, ask: **Language / locale**: What language should the agent use for HA-facing output? (e.g. `en`, `pt`, `es`) Save it via `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot store --language <locale>` (writes to OPERATOR.md under `## HA hermit`).
-
 Do not collect or store the token — it stays in `.env` only.
 
 ### 3. CLI check

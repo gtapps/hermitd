@@ -1,5 +1,4 @@
-// WP7 tier 3 port of src/ha_agent_lab/boot.py — boot status/store: language
-// persistence in OPERATOR.md, setup checklist/hints, endpoint probing.
+// Boot status/store: setup checklist/hints and endpoint probing.
 //
 // BootStatus keeps its snake_case keys (CLI output contract — `boot status`
 // prints it as JSON, same as policy.ts checkEntity).
@@ -7,26 +6,22 @@
 // Async note: bootStatus is async because probe=true runs live URL selection
 // (selectHomeAssistantUrl) through fetch.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import {
   AppConfig,
-  HERMIT_OPERATOR_MD,
   normalizedContextPath,
   saveEnvFile,
   saveOperatorContext,
 } from './config';
 import { probeHomeAssistantUrl, selectHomeAssistantUrl, type FetchLike } from './ha-api';
 
-const LANGUAGE_PATTERN = /^- Language:\s*(.+?)\s*$/m;
-const HA_SECTION_HEADING = '## HA hermit';
 // src/boot.ts -> plugin root (Python: Path(__file__).resolve().parents[2]
 // from src/ha_agent_lab/boot.py).
 const PLUGIN_ROOT = resolve(import.meta.dir, '..');
 
 export interface BootStatus {
-  language: string | null;
   token_configured: boolean;
   url: string | null;
   local_url: string | null;
@@ -36,7 +31,6 @@ export interface BootStatus {
   context_exists: boolean;
   context_age_hours: number | null;
   context_fresh: boolean;
-  needs_language: boolean;
   needs_token: boolean;
   needs_endpoint: boolean;
   needs_context_refresh: boolean;
@@ -44,50 +38,6 @@ export interface BootStatus {
   command_prefix: string;
   setup_checklist: Array<Record<string, unknown>>;
   setup_hints: Array<Record<string, string>>;
-}
-
-export function operatorMdPath(root: string): string {
-  return join(root, HERMIT_OPERATOR_MD);
-}
-
-function haSectionBody(text: string): string {
-  const start = text.indexOf(HA_SECTION_HEADING);
-  if (start === -1) return '';
-  const after = start + HA_SECTION_HEADING.length;
-  const nextSection = text.indexOf('\n## ', after);
-  return nextSection !== -1 ? text.slice(after, nextSection) : text.slice(after);
-}
-
-export function readLanguage(root: string): string | null {
-  const path = operatorMdPath(root);
-  if (!existsSync(path)) return null;
-  const match = LANGUAGE_PATTERN.exec(haSectionBody(readFileSync(path, 'utf8')));
-  return match ? match[1]!.trim() : null;
-}
-
-export function writeLanguage(root: string, language: string): string {
-  const path = operatorMdPath(root);
-  mkdirSync(dirname(path), { recursive: true });
-  const line = `- Language: ${language}`;
-  let text: string;
-  if (existsSync(path)) {
-    text = readFileSync(path, 'utf8');
-    const sectionBody = haSectionBody(text);
-    if (LANGUAGE_PATTERN.test(sectionBody)) {
-      const newBody = sectionBody.replace(LANGUAGE_PATTERN, line); // count=1: non-global regex
-      const sectionStart = text.indexOf(HA_SECTION_HEADING) + HA_SECTION_HEADING.length;
-      text = text.slice(0, sectionStart) + newBody + text.slice(sectionStart + sectionBody.length);
-    } else if (text.includes(HA_SECTION_HEADING)) {
-      text = text.replace(HA_SECTION_HEADING, `${HA_SECTION_HEADING}\n\n${line}`);
-    } else {
-      const suffix = text.endsWith('\n') ? '\n' : '\n\n';
-      text = `${text}${suffix}${HA_SECTION_HEADING}\n\n${line}\n`;
-    }
-  } else {
-    text = `# Operator Context\n\n${HA_SECTION_HEADING}\n\n${line}\n`;
-  }
-  writeFileSync(path, text, 'utf8');
-  return path;
 }
 
 export function commandPrefix(): string {
@@ -102,7 +52,6 @@ export async function bootStatus(
 ): Promise<BootStatus> {
   const { probe = false, stalenessHours = 24, fetchImpl = globalThis.fetch } = options;
   const root = config.root;
-  const language = readLanguage(root);
   const prefix = commandPrefix();
   const contextPath = normalizedContextPath(root);
   const contextExists = existsSync(contextPath);
@@ -127,7 +76,6 @@ export async function bootStatus(
   }
 
   return {
-    language,
     token_configured: Boolean(config.haToken),
     url: config.haUrl,
     local_url: config.haLocalUrl,
@@ -137,21 +85,19 @@ export async function bootStatus(
     context_exists: contextExists,
     context_age_hours: contextAgeHours,
     context_fresh: contextFresh,
-    needs_language: language === null,
     needs_token: !config.haToken,
     needs_endpoint: !config.hasHaEndpoint,
     needs_context_refresh: !contextFresh,
     can_refresh_context: Boolean(config.haToken && config.hasHaEndpoint),
     command_prefix: prefix,
-    setup_checklist: setupChecklist(config, language, contextExists, contextFresh, prefix),
-    setup_hints: setupHints(config, language),
+    setup_checklist: setupChecklist(config, contextExists, contextFresh, prefix),
+    setup_hints: setupHints(config),
   };
 }
 
 export function saveBootPreferences(
   root: string,
   options: {
-    language?: string | null;
     url?: string | null;
     localUrl?: string | null;
     remoteUrl?: string | null;
@@ -160,12 +106,8 @@ export function saveBootPreferences(
 ): Record<string, string> {
   // Python `is not None` distinguishes "flag absent" from "empty value" —
   // null/undefined both mean absent here (argparse defaults to None).
-  const { language = null, url = null, localUrl = null, remoteUrl = null, token = null } = options;
+  const { url = null, localUrl = null, remoteUrl = null, token = null } = options;
   const changes: Record<string, string> = {};
-  if (language) {
-    writeLanguage(root, language);
-    changes.language = language;
-  }
   const envUpdates: Record<string, string | null> = {};
   if (token !== null) {
     envUpdates.HOMEASSISTANT_TOKEN = token;
@@ -248,7 +190,6 @@ export async function probeEndpoint(
 
 function setupChecklist(
   config: AppConfig,
-  language: string | null,
   contextExists: boolean,
   contextFresh: boolean,
   prefix: string,
@@ -256,14 +197,6 @@ function setupChecklist(
   const endpointValue = config.primaryUrl();
   const contextStatus = contextFresh ? 'fresh' : contextExists ? 'stale' : 'missing';
   return [
-    {
-      field: 'Language',
-      required: true,
-      configured: language !== null,
-      status: language !== null ? 'ok' : 'missing',
-      location: '.hermit/OPERATOR.md',
-      next_step: `${prefix} boot store --language <locale>`,
-    },
     {
       field: 'Home Assistant endpoint',
       required: true,
@@ -300,15 +233,8 @@ function setupChecklist(
   ];
 }
 
-function setupHints(config: AppConfig, language: string | null): Array<Record<string, string>> {
+function setupHints(config: AppConfig): Array<Record<string, string>> {
   const hints: Array<Record<string, string>> = [];
-  if (language === null) {
-    hints.push({
-      field: 'Language',
-      how_to_get:
-        'Choose the locale you want the agent to use for conversation plus aliases and descriptions, for example `en` or `pt-PT`.',
-    });
-  }
   if (!config.hasHaEndpoint) {
     hints.push({
       field: 'HOMEASSISTANT_URL',

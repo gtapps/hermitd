@@ -33,7 +33,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha list-devices
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha set-device-area <device_id> --area <area_id>
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha rename-device <device_id> --name <name>
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status [--probe]
-${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot store --language <locale> --url <url> [--token <token>]
+${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot store --url <url> [--token <token>]
 ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot mcp-config   # hatch: write the homeassistant entry into .mcp.json from .env
 ```
 

@@ -116,10 +116,10 @@ By design, no. OPERATOR.md is human-curated — the hermit reads it but never wr
 
 ## OPERATOR.md vs CLAUDE.md — where does it go?
 
-- **OPERATOR.md** holds operator-curated context and instructions for the hermit. Its first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction, including when the hermit's own subagents compact. Never auto-edited.
+- **OPERATOR.md** holds the operator's standing instructions to the hermit: mission, focus, red lines and what to ask first. Its first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction, including when the hermit's own subagents compact. Never auto-edited.
 - **CLAUDE.md** (or **CLAUDE.local.md**) holds project-wide context and instructions using Claude Code's native memory loading.
 
-Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermit → `OPERATOR.md`.
+Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and subagents included; `OPERATOR.md` holds standing instructions only the resident agent needs. Project facts and code rules go in `CLAUDE.md`.
 
 ---
 

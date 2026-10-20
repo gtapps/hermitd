@@ -353,12 +353,11 @@ export const COMMANDS: Record<string, CommandRecord> = {
     spec: {
       prog: 'ha_agent_lab boot store',
       usage:
-        'usage: ha_agent_lab boot store [-h] [--language LANGUAGE] [--url URL]\n' +
+        'usage: ha_agent_lab boot store [-h] [--url URL]\n' +
         '                               [--local-url LOCAL_URL]\n' +
         '                               [--remote-url REMOTE_URL] [--token TOKEN]',
       positionals: [],
       flags: {
-        '--language': { kind: 'value' },
         '--url': { kind: 'value' },
         '--local-url': { kind: 'value' },
         '--remote-url': { kind: 'value' },
@@ -368,7 +367,6 @@ export const COMMANDS: Record<string, CommandRecord> = {
     help: '',
     run: async (args, { config, root, deps }) => {
       const changes = saveBootPreferences(root, {
-        language: (args.flags['--language'] as string | undefined) ?? null,
         url: (args.flags['--url'] as string | undefined) ?? null,
         localUrl: (args.flags['--local-url'] as string | undefined) ?? null,
         remoteUrl: (args.flags['--remote-url'] as string | undefined) ?? null,

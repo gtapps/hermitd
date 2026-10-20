@@ -328,37 +328,35 @@ Collect findings silently. Do NOT print scan results to the operator.
 
 #### Phase 2 — Draft OPERATOR.md
 
-Using the scan results, write a concise context document. Follow these rules:
+Using the scan results, draft concise standing instructions addressed to the agent. Follow these rules:
 
-1. **Never duplicate CLAUDE.md content.** If CLAUDE.md already covers a topic (testing, conventions, build commands), don't repeat it.
-2. **Never duplicate `config.json` fields.** `routines`, `channels` (including Discord/Telegram user IDs and `morning_brief`), `permission_mode`, `agent_name`, `escalation`, `boot_skill`, `shutdown_skill`, and `_hermit_versions` are already loaded structurally — do not restate them as prose. OPERATOR.md is for context the model can't infer from config (project focus, constraints, approval gates, project rationale). Tone and comms style have their own home — `config.json`'s `voice` block, written in Phase 4b.
-3. **Only include high-confidence inferences.** If the scan clearly reveals something (e.g., package.json shows Node.js, README describes the project), include it. If uncertain, leave it for Phase 3 questions.
-4. **Keep it under 50 lines.** OPERATOR.md is loaded every SessionStart — bloat costs tokens. Write concise prose, not documentation.
-5. **No rigid sections required.** Use headers if they help organize, but don't create empty sections. The goal is a useful context document, not a filled-in form.
+1. **Only standing instructions written to the agent.** State what you are for and who you serve, where your unattended time goes, what you never do on your own, and what needs the operator's OK first. Stack, layout, build and test commands, CI details, and anything else Claude Code can read from the project or every session needs belong in the project's CLAUDE file, outside OPERATOR.md.
+2. **Never duplicate `config.json` fields.** `routines`, `channels` (including Discord/Telegram user IDs and `morning_brief`), `permission_mode`, `agent_name`, `escalation`, `boot_skill`, `shutdown_skill`, and `_hermit_versions` are already loaded structurally; do not restate them as prose. OPERATOR.md is for instructions the model can't infer from config (mission, focus, red lines, what to ask first). Tone and comms style have their own home: `config.json`'s `voice` block, written in Phase 4b.
+3. **Keep it under 50 lines.** OPERATOR.md is loaded every SessionStart, so bloat costs tokens. Write concise prose, not documentation.
+4. **No rigid sections required.** Use headers if they help organize, but don't create empty sections. The goal is a useful context document, not a filled-in form.
 
 Write the draft to `.hermit/OPERATOR.md`.
 
 #### Phase 3 — Targeted questions (AskUserQuestion batch)
 
-Questions are split into two `AskUserQuestion` calls (max 4 per call). Q1–Q4 are never skipped and always form the first call. Call 2 carries exactly one follow-up, picked by the Phase 1 scan.
+Questions are split into two `AskUserQuestion` calls (max 4 per call). Q1–Q4 are never skipped and always form the first call. Call 2 always carries the Mission question.
 
 **Call 1 — always sent (4 questions):**
 
 | #   | Header      | Question                                                                | Options (+ Other for free text)                  |
 | --- | ----------- | ----------------------------------------------------------------------- | ------------------------------------------------ |
-| 1   | Focus       | "What should I focus on in this project?"                               | Active development / Stabilization / Exploration |
-| 2   | Constraints | "Are there hard rules or areas I should avoid touching without asking?" | None / Config files                              |
-| 3   | Approval    | "What actions require your explicit approval before I proceed?"         | Deploys only / Breaking changes / Nothing extra  |
-| 4   | Comms style | "How do you prefer I communicate?"                                      | Default / Concise                                |
+| 1   | Focus       | "What should I focus on when you're not around?" | Active development / Stabilization / Exploration |
+| 2   | Red lines   | "Is there anything I should never do on my own?" | Nothing extra / Spending or purchases |
+| 3   | Ask first   | "What should I check with you before doing on my own?" | Outbound messages / Deploys and releases / Nothing extra |
+| 4   | Comms style | "How do you prefer I communicate?" | Default / Concise |
 
 Accept any answer including free-text via Other. Expand Q1–Q3 into OPERATOR.md prose in Phase 4 — don't take options too literally.
 
-**Call 2 — one question, chosen by the scan:**
+**Call 2: always send the Mission question:**
 
-| #   | Header  | Question                                                                                 | Options                        | Ask when...                          |
-| --- | ------- | ---------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------ |
-| 5   | CI/CD   | "Any CI/CD quirks I should know about? (flaky tests, required checks, deploy process)"   | Standard / Has quirks          | Phase 1 found a CI config             |
-| 6   | Team    | "Who's working on this? (solo / small team / large team — and any ownership boundaries)" | Solo / Small team / Large team | Phase 1 found no CI config (Q5 skipped) |
+| # | Header | Question | Options |
+| --- | --- | --- | --- |
+| 5 | Mission | "Who do I serve, and what am I here for?" | Just me / My team / My clients |
 
 Tell the operator before Call 1: "I've scanned your project and drafted OPERATOR.md. A few questions to fill in what I couldn't infer:"
 
@@ -366,16 +364,16 @@ All questions use the `AskUserQuestion` structures defined above. Accept short a
 
 **Hermit extension:** If a hermit was activated in step 3 and provides a file at `<activated_hermit.installPath>/state-templates/OPERATOR-QUESTIONS.md`, read it and append those questions to Call 2 (or start a Call 3 if Call 2 is already at 4).
 
-#### Phase 4 — Write final OPERATOR.md
+#### Phase 4: Write final OPERATOR.md
 
 Incorporate the operator's answers into the draft:
 
 - Weave answers into the document as concise prose
-- Use headers only where they add clarity — don't force a section for every answer
+- Use headers only where they add clarity: don't force a section for every answer
 - Strip the HTML comment from the template (replace with actual content)
 - For hermit-specific context, append after the core content
 
-**Draft from Q1–Q3 and the Phase 1 scan only.** Q4 (comms style) has its own home — `config.json`'s `voice` block, written in Phase 4b — so it must not reach this file.
+**Draft from Q1-Q3 and the Mission answer, written to the agent.** Q4 (comms style) belongs in `config.json`'s `voice` block, written in Phase 4b, and must not reach this file. Keep an answer about the codebase itself (a directory, file type or workflow every session must respect) out of OPERATOR.md; carry it forward as a set-aside line for the project's CLAUDE file after the report. Suggest a permission rule instead for a limit that a command pattern can match.
 
 **Before writing, re-check the draft against Phase 2 rule 2** (no `config.json` mirroring). If removing a sentence leaves a paragraph hollow, drop the paragraph.
 
@@ -406,7 +404,9 @@ No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone li
 
 #### Phase 5 — Confirm
 
-Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Edit it anytime; tell me what changed and I'll propose the edit." Then report the style from what Phase 4b step 3 printed:
+Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Edit it anytime; tell me what changed and I'll propose the edit." Add: "OPERATOR.md: what only the agent needs. CLAUDE.md: what every session here needs, helpers and subagents included."
+
+Then report the style from what Phase 4b step 3 printed:
 
 - **A built-in** (`default` / `Concise`): "Communication style is set to `<style>`. Change it any time with `/hermitd:hermit-settings voice` — from a chat too, once a channel is set up."
 - **A custom voice** (`hermit-voice`): "How I talk to you is your own wording, at `.claude/output-styles/hermit-voice.md`. Change it with `/hermitd:hermit-settings voice`; it takes effect next session."
@@ -635,7 +635,7 @@ Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one o
 
 ### Quick Turn 4 — OPERATOR.md questionnaire (run "5a. OPERATOR.md onboarding" verbatim)
 
-Run the existing "5a. OPERATOR.md onboarding" step verbatim — same scan, same draft, same Phase 3 questions (Call 1 always + Call 2 conditional per the existing skip-condition rules), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
+Run the existing "5a. OPERATOR.md onboarding" step verbatim: same scan, same draft, same Phase 3 questions (Call 1 and the Call 2 Mission question), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
 
 ### Quick Turn 5 — Confirm bundle
 
@@ -648,6 +648,8 @@ HERMIT_ANSWERS
 ```
 
 **Compose the preview as message text before calling `AskUserQuestion`.** The operator cannot see Bash output (the transcript collapses it), so your message is the only preview; asking first means they approve a configuration they never saw. Show every `will_apply` fact as a short table in plain words (`channel: "none"` is the Claude app for now; a chat channel pairs after setup), mark each key in `defaults` as a default, and close with: nothing is written yet, and every default is tunable later with `/hermit-settings`.
+
+Before asking, when the conditions in "Create the project's CLAUDE file" hold, state which CLAUDE file will be created after the report: `CLAUDE.md` for `committed`, `CLAUDE.local.md` for `local`. This is information, not another question; include the AGENTS.md import case only when set-aside lines exist.
 
 Then ask:
 
@@ -709,6 +711,17 @@ Compose the report from its JSON as message text (the operator cannot see Bash o
 ---
 
 After the report, add: `.hermit/claude-settings.json` is the optional hermit-only settings file.
+
+### Create the project's CLAUDE file
+
+After the report, without another question, check the project-root instruction files. Never write or edit `AGENTS.md`. Resolve the destination from `hatch_target`: `committed` uses `CLAUDE.md`; `local` uses `CLAUDE.local.md`.
+
+- If `CLAUDE.md` or `CLAUDE.local.md` already exists, show any set-aside codebase lines from Phase 4 as suggested additions. Write nothing.
+- If only `AGENTS.md` exists, do not run `/init`. Create the target's CLAUDE file only when set-aside lines exist, starting with `@AGENTS.md` on its first line, then a short `## Project rules` heading and those lines.
+- If none of those three files exists and the 5a Phase 1 scan found a project (a manifest, README or source tree), invoke `Skill(init)` yourself. For a committed target, let it write `CLAUDE.md`. For a local target, invoke `Skill(init)` with args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.` Append any set-aside lines under a short `## Project rules` heading.
+- In an empty folder, skip silently.
+
+Report the file actually created and who sees it: "Created `CLAUDE.local.md` with Claude Code's /init: project notes every session here reads, kept out of git." Or: "Created `CLAUDE.md` with Claude Code's /init: project notes every session here reads, tracked by git so your team sees it." For an AGENTS.md import, report the import and the added project rules instead of claiming `/init` ran. Follow the report with any appended lines.
 
 ### Hand off pending domain hatches
 

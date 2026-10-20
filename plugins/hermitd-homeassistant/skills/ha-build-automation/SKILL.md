@@ -20,12 +20,12 @@ allowed-tools:
 
 1. **Gather context**:
    - Read `.hermit/raw/snapshot-ha-normalized-latest.json` for available entities and services.
-   - Use the stored language from OPERATOR.md (`## HA hermit` section) for `alias` and `description` fields.
+   - Write `alias` and `description` in the operator's language unless a CLAUDE file instruction names another.
    - Optionally call `GetLiveContext` via MCP for current state.
 
 2. **Draft the YAML**:
    - **Always include `id:` as the first field**, using a stable, language-neutral snake_case value (e.g., `kitchen_motion_after_sunset_notification`). The `validate-apply` command uses this as the REST config ID — omitting it causes a derived, fragile ID that breaks on alias rename.
-   - Use the stored locale for `alias` and `description`.
+   - Use the operator's language for `alias` and `description` unless a CLAUDE file instruction names another.
    - Set `mode` explicitly where concurrency matters.
    - Write to `.hermit/raw/automation-<automation_id>.yaml`.
 
@@ -59,8 +59,8 @@ allowed-tools:
 ## YAML Conventions
 
 - IDs: `snake_case`, language-neutral, descriptive
-- Aliases: stored locale, human-readable
-- Descriptions: stored locale, explain the purpose
+- Aliases: human-readable, in the operator's language unless a CLAUDE file instruction names another
+- Descriptions: explain the purpose in the operator's language unless a CLAUDE file instruction names another
 - Triggers: use `platform:` explicitly
 - Actions: use `service:` with full domain (e.g., `light.turn_on`)
 - Targets: prefer `entity_id` over area/device when specific
