@@ -105,16 +105,20 @@ async function stop(w: Watch): Promise<void> {
   const tree = collectTree([child.pid], Number.MAX_SAFE_INTEGER);
   const descendants = tree.pids.slice(1).reverse();
   for (const pid of descendants) signal(pid, 'SIGTERM');
+  // Queue the root shell's SIGTERM while it is still frozen, so a loop cannot
+  // relaunch its pipeline between SIGCONT and the shell's own termination.
+  child.kill('SIGTERM');
   signal(child.pid, 'SIGCONT');
-  // Let shells reap pipeline members before ending the root shell. Escalation
-  // applies only to this watch's captured descendants, never to the monitor group.
+  // Escalation applies only to this watch's captured descendants, never to the
+  // monitor group.
   await Bun.sleep(100);
   for (const pid of descendants) signal(pid, 'SIGKILL');
-  child.kill('SIGTERM');
+  // Wait for exit, not close: a process outside the captured tree can hold the
+  // stdout pipe open indefinitely.
   await new Promise<void>(resolve => {
     if (child.exitCode !== null || child.signalCode !== null) return resolve();
     const timer = setTimeout(() => child.kill('SIGKILL'), 1000);
-    child.once('close', () => { clearTimeout(timer); resolve(); });
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
   });
 }
 
@@ -127,7 +131,11 @@ async function reconcile(): Promise<void> {
   if (mtime !== null && config === null) return;
   configMtime = mtime;
   const entries: WatchConfig[] = Array.isArray(config?.monitors) ? config.monitors : [];
-  const enabled = new Map(entries.filter(w => w.enabled === true).map(w => [w.id, w]));
+  // A live edit bypasses validate-config; a malformed entry must not crash the
+  // monitor and orphan the other watches' children.
+  const enabled = new Map(entries
+    .filter(w => w?.enabled === true && typeof w.id === 'string' && typeof w.command === 'string')
+    .map(w => [w.id, w]));
   for (const [id, w] of watches) {
     const next = enabled.get(id);
     if (!next || next.command !== w.config.command) {

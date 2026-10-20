@@ -12,10 +12,10 @@ function readJson(file: string): any {
 
 /** Whether a supervised leg must not poll: heartbeat stopped, or routines in fallback for this boot. */
 export function legStopped(hermitDir: string, leg: string): boolean {
-  if (leg === 'watches') return false;
   if (leg === 'heartbeat') {
     return effectiveHeartbeatMode(hermitDir) === 'stopped';
   }
+  if (leg !== 'routines') return false;
   const record = readJson(path.join(hermitDir, 'state', 'routine-monitor.runtime.json'));
   let boot: string | null = null;
   try {

@@ -22,14 +22,14 @@ Two classes:
 ## Usage
 
 ```
-/hermitd:watch <instruction>              — start ad-hoc (poll, default 5m interval)
-/hermitd:watch <stream-command>           — start ad-hoc stream
-/hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] — watch local session(s) until their next idle notice
-/hermitd:watch notice <text>              — [internal] handle a watched-session notice
-/hermitd:watch start                      — activate the config watch monitor
-/hermitd:watch stop [id]                  — stop by id (or auto if 1 ad-hoc watch)
-/hermitd:watch stop --all                 — stop all ad-hoc watches
-/hermitd:watch status                     — list config and registry watches
+/hermitd:watch <instruction>              # start ad-hoc (poll, default 5m interval)
+/hermitd:watch <stream-command>           # start ad-hoc stream
+/hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
+/hermitd:watch notice <text>              # [internal] handle a watched-session notice
+/hermitd:watch start                      # activate the config watch monitor
+/hermitd:watch stop [id]                  # stop by id (or auto if 1 ad-hoc watch)
+/hermitd:watch stop --all                 # stop all ad-hoc watches
+/hermitd:watch status                     # list config and registry watches
 ```
 
 ## Runtime Registry

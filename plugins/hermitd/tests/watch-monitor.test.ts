@@ -117,6 +117,32 @@ for (const action of ['disable', 'SIGTERM', 'SIGHUP'] as const) {
   }));
 }
 
+test('disabling a looping watch does not let the shell relaunch its pipeline', () => fixture(async f => {
+  const command = 'while true; do tail -f /dev/null | cat; done';
+  f.configure(command);
+  const root = await until(() => {
+    const pid = f.runtime()?.watches[0]?.pid;
+    return pid && collectTree([pid]).pids.length >= 3 ? pid : undefined;
+  });
+  f.configure(command, false);
+  await until(() => f.runtime()?.watches.length === 0 ? true : undefined);
+  const pgrep = Bun.spawnSync(['pgrep', '-f', `^tail -f /dev/null$`]).stdout.toString().trim().split('\n').filter(Boolean).map(Number);
+  const leaked = pgrep.filter(pid => {
+    try { return fs.readlinkSync(`/proc/${pid}/cwd`) === fs.realpathSync(f.project); } catch { return false; }
+  });
+  expect(alive(root)).toBe(false);
+  expect(leaked).toEqual([]);
+}));
+
+test('malformed config entries are skipped without stopping valid watches', () => fixture(async f => {
+  fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify({ monitors: [
+    { id: 'broken', description: 'Broken', enabled: true },
+    { id: 'sample', description: 'Sample watch', command: 'echo ok; exec tail -f /dev/null', enabled: true },
+  ] }));
+  await until(() => f.lines.includes('WATCH_EVENT [hermit-watch:sample] (Sample watch) ok') ? true : undefined);
+  expect(f.runtime().watches.map((w: any) => w.id)).toEqual(['sample']);
+}));
+
 test('changing a command replaces its child and removing it stops the replacement', () => fixture(async f => {
   f.configure('echo original; exec tail -f /dev/null');
   const oldPid = await until(() => f.lines.length && f.runtime()?.watches[0]?.pid || undefined);
