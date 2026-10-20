@@ -131,6 +131,7 @@ if [ -n "$SKIP_ROWS" ]; then
     echo "    - $pid  ->  claude plugin update $pid --scope user"
   done
 fi
+echo "  A live tmux resident restarts once at a quiet boundary after reload and evolve."
 echo "  Note: Claude Code itself is updated separately on the host: claude update"
 
 if [ "$DRY_RUN" = true ]; then
@@ -208,8 +209,16 @@ _wait_for_claude_prompt_host() {
   return 1
 }
 
+_stamp_update_marker() {
+  bun -e 'console.log(JSON.stringify({at: new Date().toISOString()}))' > "$UPDATE_MARKER"
+}
+
 _await_upgrade() {
   local output parsed
+  # The resident's own turn never reaches a quiet boundary, so a self-run update keeps the immediate path.
+  [ "$SELF_RUN" = false ] || return 0
+  # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
+  _stamp_update_marker
   if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
     parsed=$(bun -e '
       try {
@@ -221,6 +230,7 @@ _await_upgrade() {
   else
     parsed=""
   fi
+  _stamp_update_marker
   if [ -z "$parsed" ]; then
     if [ "$AWAIT_NOTED" = false ]; then
       echo "[hermit] Note: await-upgrade unavailable or invalid output; proceeding without its guard." >&2
@@ -239,8 +249,10 @@ _await_upgrade() {
 
 if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
   UPDATE_MARKER="$PROJECT_DIR/.hermit/state/update-in-progress.json"
+  SELF_RUN=false
+  [ -n "${TMUX:-}" ] && [ "$(tmux display-message -p '#S' 2>/dev/null)" = "$TMUX_SESSION" ] && SELF_RUN=true
   mkdir -p "$(dirname "$UPDATE_MARKER")"
-  bun -e 'console.log(JSON.stringify({at: new Date().toISOString()}))' > "$UPDATE_MARKER"
+  [ "$SELF_RUN" = true ] || _stamp_update_marker
   trap 'rm -f "$UPDATE_MARKER"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -306,7 +318,9 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   else
     _await_upgrade || return 0
   fi
-  if .hermit/bin/hermitd-stop; then
+  if [ "$SELF_RUN" = true ]; then
+    echo "[hermit] Run from the resident's own session: commands queued for after this turn; no restart."
+  elif .hermit/bin/hermitd-stop; then
     .hermit/bin/hermitd-start --resume
   else
     echo "[hermit] Stop failed; resident was not restarted." >&2

@@ -535,6 +535,8 @@ case "$CMD" in
     echo "[hermit] Update plan:"
     [ "$PLUGINS_ONLY" = false ] && \
       echo "  Claude Code:  ${CC_BEFORE} → ${CC_LATEST} (image rebuild, container bounces)" || true
+    [ "$PLUGINS_ONLY" = true ] && \
+      echo "  Container:    bounces once after the plugin update (no image rebuild)" || true
     if [ "$CC_ONLY" = false ]; then
       echo "  Plugins to update (durable pin move):"
       if [ -z "$PLUGIN_ROWS" ]; then
@@ -570,13 +572,19 @@ case "$CMD" in
     AWAIT_NOTED=false
     UPDATE_MARKER="$PROJECT_DIR/.hermit/state/update-in-progress.json"
     mkdir -p "$(dirname "$UPDATE_MARKER")"
-    bun -e 'console.log(JSON.stringify({at: new Date().toISOString()}))' > "$UPDATE_MARKER"
+    # `build` tells an update-launched evolve whether this run rebuilds the image.
+    _stamp_update_marker() {
+      bun -e 'console.log(JSON.stringify({at: new Date().toISOString(), build: process.argv[1] === "false"}))' "$PLUGINS_ONLY" > "$UPDATE_MARKER"
+    }
+    _stamp_update_marker
     trap 'rm -f "$UPDATE_MARKER"' EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
     _await_upgrade() {
       local output parsed
+      # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
+      _stamp_update_marker
       if output=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
         parsed=$(bun -e '
           try {
@@ -588,6 +596,7 @@ case "$CMD" in
       else
         parsed=""
       fi
+      _stamp_update_marker
       if [ -z "$parsed" ]; then
         if [ "$AWAIT_NOTED" = false ]; then
           echo "[hermit] Note: await-upgrade unavailable or invalid output; proceeding without its guard." >&2
@@ -604,7 +613,8 @@ case "$CMD" in
       return 0
     }
     _apply_update() {
-    _await_upgrade || return 0
+    # A CC-only run changes nothing before the build, so only the pre-bounce wait applies.
+    if [ "$CC_ONLY" = false ]; then _await_upgrade || return 0; fi
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       # Refresh each backing marketplace's catalog first. `claude plugin update` moves the
       # pin against whatever is already in the local cache — it does not git-pull. A
@@ -729,23 +739,23 @@ case "$CMD" in
     fi
     _await_upgrade || return 0
     _validate_compose
-      echo "[hermit] Bouncing container..."
-      cd "$PROJECT_DIR" && "${DC[@]}" down
-      export HERMIT_RESUME=1
-      cd "$PROJECT_DIR" && "${DC[@]}" up -d
-      RESTARTED=true
+    echo "[hermit] Bouncing container..."
+    cd "$PROJECT_DIR" && "${DC[@]}" down
+    export HERMIT_RESUME=1
+    cd "$PROJECT_DIR" && "${DC[@]}" up -d
+    RESTARTED=true
 
-      RUNNING=""
-      for _i in $(seq 1 5); do
-        RUNNING=$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
-        [ -n "$RUNNING" ] && break
-        sleep 2
-      done
-      if [ -z "$RUNNING" ]; then
-        echo "[hermit] Container failed to come back up." >&2
-        cd "$PROJECT_DIR" && "${DC[@]}" logs --tail=30 "$SERVICE" >&2
-        exit 1
-      fi
+    RUNNING=""
+    for _i in $(seq 1 5); do
+      RUNNING=$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
+      [ -n "$RUNNING" ] && break
+      sleep 2
+    done
+    if [ -z "$RUNNING" ]; then
+      echo "[hermit] Container failed to come back up." >&2
+      cd "$PROJECT_DIR" && "${DC[@]}" logs --tail=30 "$SERVICE" >&2
+      exit 1
+    fi
 
     [ "$PLUGINS_ONLY" = true ] && _warn_if_entrypoint_stale
     return 0

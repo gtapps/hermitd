@@ -663,7 +663,7 @@ describe('hermitd-update host path', () => {
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
 
-  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog']) {
+  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run']) {
     test(`live host update: ${scenario}`, async () => {
       const f = fixture({ listJson: listDuplicateScopes });
       try {
@@ -672,6 +672,7 @@ describe('hermitd-update host path', () => {
         write(path.join(f.proj, '.stub/tmux'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LIVE_CALLS"
 if [ "$1" = capture-pane ]; then printf '❯ ────────\\n'; fi
+if [ "$1" = display-message ]; then printf 'hermit-test\\n'; fi
 exit 0
 `);
         write(path.join(bin, 'hermitd-watchdog'), `#!/usr/bin/env bash
@@ -694,10 +695,20 @@ fi
         // A local override wins over the project pin; both still get updated.
         write(hermit(f.proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: { hermitd: '0.0.1' } }));
         const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
-          args: ['--yes'], cwd: f.proj, env: { ...f.env, LIVE_CALLS: log, LIVE_SCENARIO: scenario },
+          args: ['--yes'], cwd: f.proj,
+          env: { ...f.env, LIVE_CALLS: log, LIVE_SCENARIO: scenario, TMUX: scenario === 'self-run' ? '/tmp/tmux-test,1,0' : '' },
         });
         expect(r.exitCode).toBe(0);
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
+        if (scenario === 'self-run') {
+          // The resident's own turn keeps the immediate path: reload and evolve queue, nothing waits or restarts.
+          expect(calls.some(l => l.includes('await-upgrade'))).toBe(false);
+          expect(calls.some(l => l.includes('/reload-plugins'))).toBe(true);
+          expect(calls.some(l => l.includes('/hermitd:hermit-evolve unattended'))).toBe(true);
+          expect(calls.some(l => l.startsWith('stop') || l.startsWith('start'))).toBe(false);
+          expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
+          return;
+        }
         const stopped = calls.findIndex(line => line.trim() === 'stop');
         const started = calls.indexOf('start --resume');
         if (scenario.startsWith('timeout-')) {

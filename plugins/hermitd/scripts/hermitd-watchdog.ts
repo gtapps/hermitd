@@ -851,6 +851,9 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     if (orphaned) {
       // The old process survived the kill. Spawning a replacement now would
       // recreate the duplicate-instance incident, so abort and alert instead.
+      // The old process lives on, so a later death is not this planned restart.
+      delete runtime.planned_restart_at;
+      writeRuntimeJson(runtime);
       releaseLock(LIFECYCLE_LOCK);
       appendEvent('restart-aborted', `survivors: ${reportedPids.join(' ')}`);
       process.stderr.write(`[watchdog] restart aborted — process survived kill: ${reportedPids.join(' ')}\n`);
@@ -2412,11 +2415,13 @@ if (import.meta.main) {
     cmdUninstall();
   } else if (subcommand === 'await-upgrade') {
     const expected: Record<string, string> = {};
-    for (let i = 3; i < process.argv.length; i++) {
-      if (process.argv[i] !== '--expect') throw new Error('Expected --expect name=version');
-      const pair = process.argv[++i] ?? '';
+    for (let i = 3; i < process.argv.length; i += 2) {
+      const pair = process.argv[i + 1] ?? '';
       const equals = pair.indexOf('=');
-      if (equals < 1 || equals === pair.length - 1) throw new Error('Expected --expect name=version');
+      if (process.argv[i] !== '--expect' || equals < 1 || equals === pair.length - 1) {
+        console.log(JSON.stringify({ error: 'invalid_expect' }));
+        process.exit(1);
+      }
       expected[pair.slice(0, equals)] = pair.slice(equals + 1);
     }
     console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected)));

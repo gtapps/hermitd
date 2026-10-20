@@ -35,7 +35,7 @@ import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
 import { renderTemplate } from './lib/render-template';
 import { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
-export { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
+export { resolveResumeTarget } from './lib/resident-prompt';
 
 type Json = any;
 
@@ -671,8 +671,8 @@ function readPromptOverride(name: string): string | null {
 function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
   const rules = readShippedPrompt('rules.md');
-  // Preserve the boot warning for an unreadable operator override.
-  readPromptOverride('resident-prompt.md');
+  // Warn on an unreadable override, and refuse cleanly when the shipped prompt it would fall back to is missing.
+  if (readPromptOverride('resident-prompt.md') === null) readShippedPrompt('resident.md');
   const resident = buildResidentPrompt(hermitFile('..'));
   const vars = { PROJECT_ROOT: hermitFile('..'), RESIDENT_NAME: residentName };
   const helperOverride = readPromptOverride('helper-prompt.md');
