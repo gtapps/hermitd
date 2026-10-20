@@ -82,3 +82,27 @@ it('check close keeps a posted result and leaves an empty output out of the reas
     expect(f.text(long)).toContain('x'.repeat(300));
   } finally { f.cleanup(); }
 });
+
+it('mute-only notes on a closed record change only muted', async () => {
+  const f = taskFixture();
+  try {
+    const { id } = await f.open();
+    await f.ok('cancel', [id, '--actor', 'discord:u1', '--reason-stdin'], 'Stop');
+    const lib = await taskLib();
+    const before = lib.decodeTask(f.text(id));
+    for (const muted of [true, false]) {
+      await f.ok('note', [id, '--muted', String(muted), '--actor', 'discord:u1']);
+      expect(lib.decodeTask(f.text(id))).toEqual({ ...before, muted });
+    }
+    for (const [args, input] of [
+      [[], 'More work'],
+      [['--due', '2026-12-01T00:00:00Z'], ''],
+      [['--muted', 'true', '--owner', 'resident'], ''],
+      [['--done', 'Changed'], ''],
+      [['--clear-waiting'], ''],
+    ] as [string[], string][]) {
+      expect(await f.ok('note', [id, ...args], input)).toEqual({ status: 'refused', reason: 'not_open' });
+      expect(lib.decodeTask(f.text(id))).toEqual(before);
+    }
+  } finally { f.cleanup(); }
+});

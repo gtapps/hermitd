@@ -445,3 +445,53 @@ describe('passive capture', () => {
     expect(r.stdout).not.toContain('last recorded reply');
   }, config('discord', {}, false)));
 });
+
+describe('chat history after context reset', () => {
+  for (const scenario of ['reset', 'replied', 'logging off', 'no reset', 'no outbound', 'stale', 'stranger', 'passive'] as const) {
+    test(scenario, withDir(async dir => {
+      const now = Date.now();
+      const ts = (offset: number) => new Date(now + offset).toISOString();
+      if (scenario !== 'no reset') {
+        write(hermit(dir, 'state', 'runtime.json'), JSON.stringify({ last_context_reset_at: ts(-2000) }));
+      }
+      if (scenario !== 'no outbound') {
+        logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'out', text: 'Which draft should I drop?', ts: ts(scenario === 'stale' ? -7 * 60 * 60 * 1000 : -3000) });
+      }
+      logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'in', sender: 'Operator', sender_id: 'U1', text: 'The older draft', ts: ts(-1000) });
+      if (scenario === 'replied') {
+        logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'out', text: 'Already handled', ts: ts(-500) });
+      }
+      const r = await run(`<channel source="discord" chat_id="1" user="${scenario === 'stranger' ? 'STRANGER' : 'U1'}">CURRENT_MESSAGE_UNIQUE</channel>`, dir);
+      expect(r.exitCode).toBe(0);
+      if (scenario === 'reset') {
+        expect(r.stdout).toContain('context was reset');
+        expect(r.stdout).toContain('you (hermit)');
+        expect(r.stdout).toContain('Which draft should I drop?');
+        expect(r.stdout).toContain('Operator');
+        expect(r.stdout).toContain('The older draft');
+        expect(r.stdout.indexOf('Which draft')).toBeLessThan(r.stdout.indexOf('The older draft'));
+        expect(r.stdout).not.toContain('CURRENT_MESSAGE_UNIQUE');
+        expect(r.stdout).not.toContain('Earlier messages in this chat since your last recorded reply');
+      } else {
+        expect(r.stdout).not.toContain('context was reset');
+        expect(r.stdout).not.toContain('Which draft should I drop?');
+      }
+    }, JSON.stringify({
+      channels: { discord: { allowed_users: ['U1'], passive_chats: scenario === 'passive' ? ['1'] : [] } },
+      knowledge: { channel_log_enabled: scenario !== 'logging off' },
+    })));
+  }
+
+  test('reset history replaces the passive backlog on a mention', withDir(async dir => {
+    const now = Date.now();
+    write(hermit(dir, 'state', 'runtime.json'), JSON.stringify({ last_context_reset_at: new Date(now - 2000).toISOString() }));
+    logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'out', text: 'Prior question', ts: new Date(now - 3000).toISOString() });
+    logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'in', sender_id: 'U1', text: 'Prior answer', ts: new Date(now - 1000).toISOString() });
+    const r = await run('<channel source="discord" chat_id="1" user="U1"><@123> continue</channel>', dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain('context was reset');
+    expect(r.stdout).toContain('Prior question');
+    expect(r.stdout).toContain('Prior answer');
+    expect(r.stdout).not.toContain('Earlier messages in this chat since your last recorded reply');
+  }, '{"channels":{"discord":{"allowed_users":["U1"],"passive_chats":["1"],"bot_user_id":"123"}}}'));
+});

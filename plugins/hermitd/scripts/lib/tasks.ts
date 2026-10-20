@@ -40,6 +40,9 @@ const validOwner = (value: string) => value === 'resident' || WORKER_OWNER.test(
 // thread from a chat id all read it from here.
 export const threadRecords = (dir: string): Task[] =>
   readTasks(dir).filter(record => record.status === 'open' && record.conversation !== null && validOwner(record.owner));
+// Conversation bindings remain addressable after the task finishes.
+export const conversationRecords = (dir: string): Task[] =>
+  readTasks(dir).filter(record => record.conversation !== null);
 const clean = (value: string) => value.replace(/[\r\n]+/g, ' ');
 const iso = (value: string) => /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value));
 
@@ -225,7 +228,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       record = found;
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
-      if (record.status !== 'open') throw new Error('not_open');
+      const muteOnly = verb === 'note' && !input.trim() && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
+      if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {

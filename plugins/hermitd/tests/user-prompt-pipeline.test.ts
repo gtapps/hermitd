@@ -613,6 +613,12 @@ describe('task thread admission', () => {
     { name: 'resident thread inside passive parent passes', task: true, owner: 'resident', muted: false, body: 'continue', blocked: false },
     { name: 'muted thread is blocked', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: true, body: 'continue', blocked: true },
     { name: 'muted thread with mention passes', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: true, body: '<@777> continue', blocked: false },
+    { name: 'closed unmuted thread passes', task: true, closed: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: false, body: 'continue', blocked: false },
+    { name: 'closed muted thread is blocked', task: true, closed: true, owner: 'resident', muted: true, body: 'continue', blocked: true },
+    { name: 'closed muted thread with mention passes', task: true, closed: true, owner: 'resident', muted: true, body: '<@777> continue', blocked: false },
+    { name: 'stranger in closed thread is blocked', task: true, closed: true, user: 'stranger', owner: 'resident', muted: false, body: 'continue', blocked: true },
+    { name: 'mute in closed thread passes', task: true, closed: true, owner: 'resident', muted: false, body: '!mute', blocked: false },
+    { name: 'unmute in closed thread passes', task: true, closed: true, owner: 'resident', muted: true, body: '!unmute', blocked: false },
     { name: 'chat without a record stays blocked', task: false, owner: 'resident', muted: false, body: 'continue', blocked: true },
   ]) {
     test(scenario.name, async () => {
@@ -620,16 +626,32 @@ describe('task thread admission', () => {
       const dir = hermit(wd.dir);
       fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['parent'], bot_user_id: '777' } } }));
       fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', guild_id: 'guild', fetched_at: new Date().toISOString() } } } }));
-      if (scenario.task) expect((await openThreadTask(wd, 'discord:thread', scenario.owner, scenario.muted)).exitCode).toBe(0);
+      if (scenario.task) {
+        const opened = await openThreadTask(wd, 'discord:thread', scenario.owner, scenario.muted);
+        expect(opened.exitCode).toBe(0);
+        if (scenario.closed) {
+          const cancelled = await runScript('task.ts', { args: ['cancel', dir, JSON.parse(opened.stdout).id, '--actor', 'discord:u1', '--reason-stdin'], stdin: 'Finished', cwd: wd.dir });
+          expect(cancelled.exitCode).toBe(0);
+        }
+      }
       const result = await runScript('user-prompt-pipeline.ts', {
-        stdin: JSON.stringify({ prompt: `<channel source="discord" chat_id="thread" user="u1">${scenario.body}</channel>` }), cwd: wd.dir,
+        stdin: JSON.stringify({ prompt: `<channel source="discord" chat_id="thread" user="${scenario.user ?? 'u1'}">${scenario.body}</channel>` }), cwd: wd.dir,
       });
       expect(result.exitCode).toBe(0);
       if (scenario.blocked) {
         expect(JSON.parse(result.stdout).decision).toBe('block');
         expect(result.stdout).not.toContain('[task thread');
       } else {
-        expect(result.stdout).toContain(`[task thread discord:thread: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=${scenario.muted}, waiting=false]`);
+        if (scenario.closed) {
+          expect(result.stdout).not.toContain('[task thread');
+          expect(result.stdout).not.toContain('SendMessage');
+          if (scenario.body === '!mute' || scenario.body === '!unmute') {
+            expect(result.stdout).toContain('[closed task thread discord:thread: task=');
+            expect(result.stdout).toContain(`[conversation command: ${scenario.body.slice(1)}]`);
+          }
+        } else {
+          expect(result.stdout).toContain(`[task thread discord:thread: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=${scenario.muted}, waiting=false]`);
+        }
         expect(result.stdout).toContain('[channel reply reminder]');
         expect(result.stdout).not.toContain('[waiting task');
       }
