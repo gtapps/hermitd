@@ -8,7 +8,7 @@ import path from 'node:path';
 
 import { calculateCost, resolvePricing, type CostByType } from './lib/pricing';
 import { kStr } from './lib/format';
-import { sessionId as ccSessionId, transcriptPath as ccTranscriptPath, readTailLines, entryText, isToolResult, extractUsage, foldUsageByRequest, isCompactBoundary, turnPromptText, toolUseNames, costLogPath, hermitDir } from './lib/cc-compat';
+import { sessionId as ccSessionId, transcriptPath as ccTranscriptPath, readTailLines, entryText, isToolResult, isTurnBoundary, extractUsage, foldUsageByRequest, isCompactBoundary, turnPromptText, toolUseNames, costLogPath, hermitDir } from './lib/cc-compat';
 import { costIndexPath, updateCostIndex, buildMainCostRow, buildSubagentCostRow, appendCostRows } from './lib/cost-log';
 import { todayYMD, thisWeekKey, thisMonthYYYYMM, friendlyBoundary } from './lib/time';
 import { mutateOwnedAlerts, budgetAlertsPath } from './lib/alert-state';
@@ -204,7 +204,7 @@ function collectSubagentUsage(lines: string[], billedIndex: number): Array<{
 // start, not the real boundary — token counts still over-count in this case (deliberately:
 // discarding real token data would be worse than a bounded over-count). Source attribution no
 // longer shares this bleed — see the boundaryFound guard in scanTurnInTail().
-function sumTurnUsage(lines: string[], billedIndex: number): {
+function sumTurnUsage(lines: string[], billedIndex: number, billedSince?: string): {
   inputTokens: number; cacheWriteTokens: number; cacheWrite1hTokens: number;
   cacheReadTokens: number; outputTokens: number; model: string;
   apiCalls: number; maxPromptTokens: number; fast: boolean;
@@ -213,11 +213,12 @@ function sumTurnUsage(lines: string[], billedIndex: number): {
   for (let j = billedIndex; j >= 0; j--) {
     try {
       const entry = JSON.parse(lines[j]);
+      if (billedSince !== undefined && entry.timestamp <= billedSince) break;
       const usage = extractUsage(entry);
       if (usage) collected.push(usage);
-      // Turn boundary: the first non-tool_result user entry. Intentionally looser than
-      // resolveTurnSource's — see the note in collectSubagentUsage above.
-      if (entry.type === 'user' && !isToolResult(entry)) break;
+      // With a previous billed row, sum every newer call across user entries. Otherwise
+      // stop at the real opening prompt: mid-turn skill injections used to drop calls.
+      if (billedSince === undefined && isTurnBoundary(entry)) break;
     } catch {}
   }
 
@@ -273,7 +274,7 @@ function peakPromptTokensSinceCompaction(lines: string[], billedIndex: number, s
 // belongs to. `boundaryMissed` reports the one condition worth reading again — the window
 // was truncated AND the turn's own prompt fell outside it — which forces the source to
 // 'other' and starts the token sum mid-turn. Any fs error means "no usable data": null.
-function scanTurnInTail(transcriptPath: string, tailBytes: number): Json {
+function scanTurnInTail(transcriptPath: string, tailBytes: number, billedSince?: string): Json {
   try {
     const { lines, readFrom } = readTailLines(transcriptPath, tailBytes);
 
@@ -298,7 +299,7 @@ function scanTurnInTail(transcriptPath: string, tailBytes: number): Json {
         if (!usage) continue;
 
         // Found the last billed entry — sum the whole turn.
-        const summed = sumTurnUsage(lines, i);
+        const summed = sumTurnUsage(lines, i, billedSince);
         // Context size at the END of the turn, for the hygiene thresholds — not the
         // turn-wide max, which would still report the pre-compaction peak for a turn that
         // compacted mid-flight. Paired with the source-side timestamp so consumers can
@@ -327,7 +328,7 @@ function scanTurnInTail(transcriptPath: string, tailBytes: number): Json {
   return null;
 }
 
-function readLastTurnUsage(transcriptPath: string): Json {
+function readLastTurnUsage(transcriptPath: string, billedSince?: string): Json {
   const TAIL_BYTES = 524288; // 512KB — covers most multi-step agentic turns
   // A long routine run (evolve, weekly-scan, weekly-review) can write more transcript
   // than that in one turn. Its prompt then sits outside the window, so the turn bills to
@@ -338,9 +339,9 @@ function readLastTurnUsage(transcriptPath: string): Json {
   // a second boundary further back to walk to. A single wider read reaches as far as the
   // cap ever will, and a turn still unbounded at 8MB keeps the 'other' downgrade.
   const RETRY_TAIL_BYTES = 8 * 1024 * 1024; // 8MB
-  const turn = scanTurnInTail(transcriptPath, TAIL_BYTES);
+  const turn = scanTurnInTail(transcriptPath, TAIL_BYTES, billedSince);
   if (turn && turn.boundaryMissed) {
-    const wide = scanTurnInTail(transcriptPath, RETRY_TAIL_BYTES);
+    const wide = scanTurnInTail(transcriptPath, RETRY_TAIL_BYTES, billedSince);
     // Usage and source come from the wider read; `tailLines` stays narrow. Its one
     // consumer, maybeDeriveSurface, takes the NEWEST compact_boundary in the lines it is
     // handed, so widening can only reach boundaries OLDER than 512KB would ever see —
@@ -653,7 +654,10 @@ async function run(data: Json): Promise<string | null> {
       return null;
     }
 
-    const turn = readLastTurnUsage(transcriptPath);
+    const lastRow = lastLoggedMainRow(sessionId);
+    const turn = readLastTurnUsage(
+      transcriptPath, typeof lastRow?.observed_at === 'string' ? lastRow.observed_at : undefined,
+    );
     if (!turn) {
       return null;
     }
@@ -681,7 +685,6 @@ async function run(data: Json): Promise<string | null> {
     // session legitimately starts from older transcript entries — and legacy rows without
     // observed_at never block, so the first post-upgrade turn always bills.
     //
-    const lastRow = lastLoggedMainRow(sessionId);
     if (observedAt && lastRow
         && typeof lastRow.observed_at === 'string' && observedAt <= lastRow.observed_at) {
       return null;
