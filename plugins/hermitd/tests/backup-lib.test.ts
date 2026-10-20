@@ -16,6 +16,7 @@ import {
   formatStatus,
   statusDigest,
   hasWorkspaceMarker,
+  identityArgs,
   mirrorDir,
   normalizeRemote,
   readBackupSchedule,
@@ -347,5 +348,17 @@ describe('validate-config: backup block', () => {
 
   test('rejects a non-object block', () => {
     expect(errorsFor(['nope'])[0]).toContain('backup: must be an object');
+  });
+});
+
+describe('identityArgs', () => {
+  test('keeps an accented agent name in the commit identity', () => {
+    const args = identityArgs('Inês Silva');
+    expect(args).toContain('user.name=Inês Silva');
+    expect(args).toContain('user.email=Inês-Silva@hermit.local');
+  });
+
+  test('falls back to hermit when only an emoji and its variation selector remain', () => {
+    expect(identityArgs('❤️')).toContain('user.name=hermit');
   });
 });

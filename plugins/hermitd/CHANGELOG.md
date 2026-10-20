@@ -13,6 +13,9 @@
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
 
+### Fixed
+- Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
+
 ## [1.4.17] - 2026-10-19
 
 ### Added
