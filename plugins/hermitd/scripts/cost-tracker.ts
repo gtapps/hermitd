@@ -189,7 +189,7 @@ function collectSubagentUsage(lines: string[], billedIndex: number): Array<{
           agentType: r.agentType,
         });
       }
-      // Same turn boundary as sumTurnUsage: the first non-tool_result user entry.
+      // Turn boundary: the first non-tool_result user entry (sumTurnUsage's former one).
       // Deliberately looser than resolveTurnSource's boundary, which additionally skips
       // structured injections (isSkillInjection). This one decides which tokens are
       // summed, so tightening it would move billed amounts, not just labels — don't
@@ -213,8 +213,10 @@ function sumTurnUsage(lines: string[], billedIndex: number, billedSince?: string
   for (let j = billedIndex; j >= 0; j--) {
     try {
       const entry = JSON.parse(lines[j]);
-      if (billedSince !== undefined && entry.timestamp <= billedSince) break;
       const usage = extractUsage(entry);
+      // Only a call can be the billed edge: a non-call entry written late with an older
+      // timestamp (a queued prompt) must not end the walk early.
+      if (usage && billedSince !== undefined && entry.timestamp <= billedSince) break;
       if (usage) collected.push(usage);
       // With a previous billed row, sum every newer call across user entries. Otherwise
       // stop at the real opening prompt: mid-turn skill injections used to drop calls.
@@ -253,15 +255,15 @@ function sumTurnUsage(lines: string[], billedIndex: number, billedSince?: string
 // trailing entry with a degenerate/partial `usage` (cache fields absent → extractUsage
 // zeroes them) would otherwise report a near-empty context and blind both hygiene tiers.
 // Prompts grow monotonically within a segment, so this equals the newest call in the
-// normal case. Boundary checks mirror sumTurnUsage's, for a different purpose: context
-// size at a point in time, not the turn's total bill.
+// normal case. Context size at a point in time, not the turn's total bill, so it keeps
+// the looser user-entry boundary instead of sumTurnUsage's billed-row edge.
 function peakPromptTokensSinceCompaction(lines: string[], billedIndex: number, seed: number): number {
   let peak = seed;
   for (let j = billedIndex - 1; j >= 0; j--) {
     let prev: Json;
     try { prev = JSON.parse(lines[j]); } catch { continue; }
     if (isCompactBoundary(prev)) break;                      // older calls describe a dead context
-    if (prev.type === 'user' && !isToolResult(prev)) break;  // turn boundary (same as sumTurnUsage)
+    if (prev.type === 'user' && !isToolResult(prev)) break;  // turn boundary
     const usage = extractUsage(prev);
     if (!usage) continue;
     const prompt = usage.inputTokens + usage.cacheWriteTokens + usage.cacheReadTokens;
