@@ -837,6 +837,12 @@ describe('peer name — --name / --remote-control', () => {
   test('peerName keeps accented and non-Latin letters', () => {
     expect(peerName({ agent_name: 'Inês' })).toBe('Inês');
     expect(peerName({ agent_name: 'ロボ' })).toBe('ロボ');
+    expect(peerName({ agent_name: 'Ine\u0302s' })).toBe('Inês');
+  });
+
+  test('peerName drops an emoji variation selector with its emoji', () => {
+    expect(peerName({ agent_name: 'Atlas ☀️' })).toBe('Atlas');
+    expect(peerName({ agent_name: '❤️' })).toBe(`hermit-${path.basename(tmpdir)}`);
   });
 
   test('peerName falls back to hermit-<project> when agent_name is unset', () => {

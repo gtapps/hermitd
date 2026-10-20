@@ -357,4 +357,8 @@ describe('identityArgs', () => {
     expect(args).toContain('user.name=Inês Silva');
     expect(args).toContain('user.email=Inês-Silva@hermit.local');
   });
+
+  test('falls back to hermit when only an emoji and its variation selector remain', () => {
+    expect(identityArgs('❤️')).toContain('user.name=hermit');
+  });
 });

@@ -191,7 +191,7 @@ export function git(repoDir: string, args: string[], opts: { env?: NodeJS.Proces
 }
 
 export function identityArgs(agentName: string): string[] {
-  const name = (agentName || 'hermit').replace(/[^\p{L}\p{M}\p{N}_ .-]/gu, '') || 'hermit';
+  const name = (agentName || 'hermit').replace(/[^\p{L}\p{M}\p{N}_ .-]\p{M}*/gu, '') || 'hermit';
   return ['-c', `user.name=${name}`, '-c', `user.email=${name.replace(/\s+/g, '-')}@hermit.local`, '-c', 'commit.gpgsign=false'];
 }
 
