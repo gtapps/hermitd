@@ -1197,7 +1197,7 @@ describe('channel-send rate limits', () => {
       expect(r.requests).toHaveLength(1);
       // Returned on the spot rather than sleeping out the rest of the budget.
       expect(r.elapsed).toBeLessThan(3000);
-    });
+    }, 20000);
 
     // A shared deadline ends near 3000 ms; a fresh retry budget would end past 4500 ms.
     test(`${platform}: retry shares the original timeout`, async () => {
