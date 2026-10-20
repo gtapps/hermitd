@@ -525,9 +525,9 @@ function isSkillInjection(entry: Json): boolean {
  * turn segmentation share — `turnPromptText` (which prompt classifies the turn) and
  * transcript-digest's turn counter — so they cannot drift apart on what a turn is.
  *
- * NOTE for cost-tracker: its usage walks (`sumTurnUsage`, the agent-usage scan) use a
- * deliberately looser boundary (`user && !isToolResult`). Tightening those would move
- * billed amounts, not just labels — don't "align" them without re-measuring totals.
+ * NOTE for cost-tracker: main usage is bounded by the previous billed row, falling
+ * back to this boundary when no timestamp is available. Mid-turn isMeta injections
+ * otherwise cut the walk and drop calls. The agent-usage scan keeps its own boundary.
  * @param {object} entry
  * @returns {boolean}
  */
