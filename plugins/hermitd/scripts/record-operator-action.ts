@@ -158,6 +158,8 @@ function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
   if (t.startsWith('HEARTBEAT_ERROR: ')) return true;
   if (t.startsWith('ROUTINE_DUE [hermit-routine:')) return true;
   if (t.startsWith('ROUTINE_MONITOR_ERROR: ')) return true;
+  if (t.startsWith('WATCH_EVENT [hermit-watch:')) return true;
+  if (t.startsWith('WATCH_MONITOR_ERROR: ')) return true;
   // Watchdog hygiene injections (hermitd-watchdog.ts:650,850,988). Native
   // commands may never reach this hook at all; dropping them is safe either
   // way — typing /clear or /compact ends a context, it doesn't signal presence.

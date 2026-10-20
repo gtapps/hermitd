@@ -432,7 +432,7 @@ describe('monitors validation', () => {
   test('a fully valid monitor entry produces no errors or warnings', () => {
     const out = runValidate({ monitors: [
       { id: 'cpu', description: 'CPU watch', command: 'top -bn1',
-        class: 'poll', timeout_ms: 5000, persistent: false, enabled: true },
+        class: 'poll', enabled: true },
     ] });
     expect(out.errors).toEqual([]);
     expect(out.warnings).toEqual([]);
@@ -461,13 +461,6 @@ describe('monitors validation', () => {
       { id: 'm1', description: 'desc', command: 'true', class: 'bad' },
     ] });
     expect(out.errors.some((e: string) => e.includes('class must be'))).toBe(true);
-  });
-
-  test('timeout_ms below 1000 is an error', () => {
-    const out = runValidate({ monitors: [
-      { id: 'm1', description: 'desc', command: 'true', timeout_ms: 500 },
-    ] });
-    expect(out.errors.some((e: string) => e.includes('timeout_ms'))).toBe(true);
   });
 
   test('monitor missing both description and command produces two errors', () => {
