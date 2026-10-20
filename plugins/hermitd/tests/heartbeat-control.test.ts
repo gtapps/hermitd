@@ -35,6 +35,15 @@ describe('effective heartbeat mode', () => {
     expect(effectiveHeartbeatMode(dir)).toBe('forced');
   }));
 
+  test('routine fallback does not stop watches', () => fixture(dir => {
+    fs.writeFileSync(path.join(dir, 'state/.boot-id'), 'current');
+    fs.writeFileSync(path.join(dir, 'state/routine-monitor.runtime.json'), JSON.stringify({
+      mode: 'croncreate-fallback', boot_id: 'current',
+    }));
+    expect(legStopped(dir, 'routines')).toBe(true);
+    expect(legStopped(dir, 'watches')).toBe(false);
+  }));
+
   test('stopped stays stopped across boots and gates its supervisor', () => fixture(dir => {
     control(dir, { mode: 'stopped', boot_id: 'old' });
     fs.writeFileSync(path.join(dir, 'state/.boot-id'), 'current');

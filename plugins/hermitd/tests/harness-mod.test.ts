@@ -213,3 +213,41 @@ test('threaded harness requests preserve their reply target through finalize and
   expect(refused.decision).toBe('refuse');
   expect(refused.reply_to).toEqual(request.reply_to);
 });
+
+for (const marker of [null, '{', JSON.stringify({ session_id: 'old' })]) {
+  test(`resident claim refreshes missing, unreadable or stale marker: ${marker}`, async () => {
+    const { wd, dir } = fixture();
+    const file = path.join(dir, 'state/harness-mod-loaded.json');
+    if (marker !== null) fs.writeFileSync(file, marker);
+    expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ session_id: 'resident' });
+  });
+}
+
+test('resident claim preserves the current marker mtime', async () => {
+  const { wd, dir } = fixture();
+  const file = path.join(dir, 'state/harness-mod-loaded.json');
+  fs.writeFileSync(file, JSON.stringify({ session_id: 'resident' }));
+  fs.utimesSync(file, new Date(0), new Date(0));
+  const before = fs.statSync(file).mtimeMs;
+  await call(wd, 'claim');
+  expect(fs.statSync(file).mtimeMs).toBe(before);
+});
+
+test('nonresident claim leaves a stale marker untouched', async () => {
+  const { wd, dir } = fixture();
+  const file = path.join(dir, 'state/harness-mod-loaded.json');
+  const marker = JSON.stringify({ session_id: 'old' });
+  fs.writeFileSync(file, marker);
+  expect(await call(wd, 'claim', '', 'other')).toEqual({ decision: 'pass' });
+  expect(fs.readFileSync(file, 'utf8')).toBe(marker);
+});
+
+for (const state of [{ transition: 'restart' }, { shutdown_requested_at: 'now' }, { shutdown_completed_at: 'now' }]) {
+  test(`claim refreshes marker before lifecycle guard: ${JSON.stringify(state)}`, async () => {
+    const { wd, dir } = fixture();
+    fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ cc_session_id: 'resident', ...state }));
+    expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident' });
+  });
+}

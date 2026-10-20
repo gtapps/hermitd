@@ -514,19 +514,25 @@ function writeBootId(): void {
 /**
  * Empties the watch registry (state/monitors.runtime.json) at each launch. Called
  * beside writeBootId, after the duplicate-session exit, so an "already running" start
- * leaves the live session's registry alone. Every entry names a Monitor task or idle
- * subscription of the previous process, which died with it, and `/watch start` skips
- * any id already in the registry, so a leftover entry would keep that watch from
- * re-registering. A context refresh never runs hermitd-start, so its surviving
- * monitors keep their entries. A missing registry stays missing.
+ * leaves the live session's registry alone. Every entry names an ad-hoc Monitor task
+ * or idle subscription of the previous process, which died with it, so a leftover
+ * entry is stale. A context refresh never runs hermitd-start, so its surviving
+ * monitors keep their entries. Config-watch duties and the watch poller's process
+ * list are reset for the new session as well. Missing files stay missing.
  */
 function clearWatchRegistry(): void {
-  const file = path.join(STATE_DIR, 'monitors.runtime.json');
-  if (!fs.existsSync(file)) return;
-  try {
-    writeFileAtomic(file, JSON.stringify({ monitors: [], last_cleared: new Date().toISOString() }) + '\n');
-  } catch (error: any) {
-    console.log(`[hermit] WARNING: watch registry not cleared (${error?.message ?? error}): config watches may not re-register.`);
+  for (const [name, empty] of [
+    ['monitors.runtime.json', { monitors: [], last_cleared: new Date().toISOString() }],
+    ['watch-duties.json', { watches: {} }],
+    ['watch-monitor.runtime.json', { watches: [], updated_at: new Date().toISOString() }],
+  ] as const) {
+    const file = path.join(STATE_DIR, name);
+    if (!fs.existsSync(file)) continue;
+    try {
+      writeFileAtomic(file, JSON.stringify(empty) + '\n');
+    } catch (error: any) {
+      console.log(`[hermit] WARNING: ${name} not cleared (${error?.message ?? error}).`);
+    }
   }
 }
 

@@ -41,3 +41,27 @@ it('summary prints requested and observed state as rows; a missing watch is a re
     expect(JSON.parse(missing.stdout)).toEqual({ status: 'refused', reason: 'watch_not_found' });
   } finally { f.cleanup(); }
 });
+
+it('config-watch duties have a separate writer file and list only enabled config watches', async () => {
+  const f = taskFixture();
+  try {
+    f.put('config.json', { monitors: [{ id: 'configured', enabled: true }, { id: 'disabled', enabled: false }, { id: 'new', enabled: true }] });
+    f.put('state/monitors.runtime.json', { monitors: [{ id: 'adhoc' }] });
+    f.put('state/watch-monitor.runtime.json', { watches: [{ id: 'configured', pid: 123 }] });
+    const pollerBefore = fs.readFileSync(path.join(f.dir, 'state/watch-monitor.runtime.json'), 'utf8');
+    const registryBefore = fs.readFileSync(path.join(f.dir, 'state/monitors.runtime.json'), 'utf8');
+    const result = await runScript('duties.ts', { args: ['record', f.dir, 'watch', 'configured', '--verdict', 'handled'], env: { AGENT_DIR: f.dir } });
+    expect(result.exitCode).toBe(0);
+    const recorded = JSON.parse(fs.readFileSync(path.join(f.dir, 'state/watch-duties.json'), 'utf8')).watches.configured;
+    expect(recorded.last_verdict).toBe('handled');
+    expect(Date.parse(recorded.last_event_at)).toBeGreaterThan(0);
+    expect(fs.readFileSync(path.join(f.dir, 'state/watch-monitor.runtime.json'), 'utf8')).toBe(pollerBefore);
+    expect(fs.readFileSync(path.join(f.dir, 'state/monitors.runtime.json'), 'utf8')).toBe(registryBefore);
+    const listed = await runScript('duties.ts', { args: ['list', f.dir, '--json'], env: { AGENT_DIR: f.dir } });
+    const rows = JSON.parse(listed.stdout).rows;
+    expect(rows).toContainEqual({ name: 'watch:configured', last_run: recorded.last_event_at, last_verdict: 'handled', scope: 'since session start' });
+    expect(rows).toContainEqual({ name: 'watch:new', last_run: null, last_verdict: null, scope: 'since session start' });
+    expect(rows).toContainEqual({ name: 'watch:adhoc', last_run: null, last_verdict: null, scope: 'since session start' });
+    expect(rows.some((row: any) => row.name === 'watch:disabled')).toBe(false);
+  } finally { f.cleanup(); }
+});

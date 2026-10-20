@@ -15,6 +15,7 @@ export function legStopped(hermitDir: string, leg: string): boolean {
   if (leg === 'heartbeat') {
     return effectiveHeartbeatMode(hermitDir) === 'stopped';
   }
+  if (leg !== 'routines') return false;
   const record = readJson(path.join(hermitDir, 'state', 'routine-monitor.runtime.json'));
   let boot: string | null = null;
   try {

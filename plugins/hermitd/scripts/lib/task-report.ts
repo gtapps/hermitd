@@ -72,3 +72,15 @@ export function readTaskReports(dir: string): TaskReport[] {
   const totals = readTaskCostTotals(dir, records);
   return records.map(record => taskReport(dir, record, totals[record.id]?.cost));
 }
+
+export function selectTodayReports(records: TaskReport[], timezone: string, reference: Date) {
+  const today = todayYMD(timezone, reference);
+  const onToday = (stamp: string | null) => stamp !== null && todayYMD(timezone, new Date(stamp)) === today;
+  return {
+    today,
+    closed_today: records.filter(record => onToday(record.closed_at))
+      .sort((a, b) => b.closed_at!.localeCompare(a.closed_at!)),
+    opened_today: records.filter(record => onToday(record.opened_at))
+      .sort((a, b) => b.opened_at.localeCompare(a.opened_at)),
+  };
+}

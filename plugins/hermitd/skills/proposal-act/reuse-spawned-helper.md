@@ -79,7 +79,7 @@ declines, note on the record that `<n>` is implementing unwatched and tell the
 operator.
 
 **After the report.** The relay files it on the record and notes the pull
-request on the proposal, which stays `accepted`. Run
-`/proposal-act resolve PROP-NNN` once the pull request merges, as the Dispatch
-path does on `Status: implemented`. A report saying the change cannot land
+request on the proposal, which stays `accepted` until the linked record's check
+passes on merge, which resolves it. If the record has no merge check, run
+`/proposal-act resolve PROP-NNN` after merging. A report saying the change cannot land
 through a pull request takes the fallback: falsification gate, then Dispatch.

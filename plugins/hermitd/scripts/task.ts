@@ -1,6 +1,7 @@
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { exitError } from './lib/cli';
 import { listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
+import { resolveProposalOnCheckClose } from './lib/proposals/linked';
 
 async function main(): Promise<void> {
   const [verb, dirArg, ...args] = process.argv.slice(2);
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
   } else {
     const input = verb === 'note' || verb === 'lesson' || flags['note-stdin'] || flags['result-stdin'] || flags['reason-stdin'] ? await Bun.stdin.text() : '';
     result = mutateTask(dir, verb, id, flags, input);
+    if (verb === 'close') resolveProposalOnCheckClose(dir, id!, result as Record<string, unknown>);
   }
   console.log(JSON.stringify(result));
 }

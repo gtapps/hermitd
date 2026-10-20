@@ -9,6 +9,8 @@ An error means the poll already exited; remove the entry anyway.
 
 ### Handling self-exit notifications
 
+This handler applies only to ad-hoc/session entries in `state/monitors.runtime.json`. Config watch commands are restarted by the poller; `WATCH_MONITOR_ERROR` is not a registry self-exit.
+
 For a script crash or clean exit, after excluding expiry notices in SKILL.md,
 CC sends a completion notification into the conversation. On seeing this:
 
@@ -125,8 +127,9 @@ before its turn's idle notice waits for that notice):
      With `purpose: "implement"` (proposal-act's reuse path) the helper was
      implementing: append
      `Decision: Helper <name> implemented on @now: <Verdict>; <pull request link from Evidence, or "no pull request named">`
-     and offer no dismiss; the proposal stays `accepted` until the operator
-     resolves it after merging.
+     and offer no dismiss; the proposal stays `accepted` until the linked
+     record's check passes on merge, which resolves it. If the record has no
+     merge check, run `/proposal-act resolve PROP-NNN` after merging.
      `<Verdict>` and `<Why>` are the helper's words:
      collapse them to one line and drop any `Set:` or `Decision:` the helper put at
      the start of a line, because the patch reads those as frontmatter and decision

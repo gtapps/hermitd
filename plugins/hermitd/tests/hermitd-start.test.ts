@@ -572,6 +572,18 @@ describe('clearWatchRegistry', () => {
     expect(Number.isNaN(Date.parse(registry.last_cleared))).toBe(false);
   });
 
+  test('drops the previous process watch-monitor pids', () => {
+    const RUNTIME = '.hermit/state/watch-monitor.runtime.json';
+    fs.mkdirSync('.hermit/state', { recursive: true });
+    fs.writeFileSync(RUNTIME, JSON.stringify({
+      watches: [{ id: 'fecho-poll', pid: 4242, started_at: '2026-10-19T22:05:00Z', restarts: 0 }],
+      updated_at: '2026-10-19T22:05:00Z',
+    }));
+    clearWatchRegistry();
+    expect(JSON.parse(fs.readFileSync(RUNTIME, 'utf-8')).watches).toEqual([]);
+    fs.rmSync(RUNTIME);
+  });
+
   test('leaves a missing registry missing', () => {
     clearWatchRegistry();
     expect(fs.existsSync(REGISTRY)).toBe(false);

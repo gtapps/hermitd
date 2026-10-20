@@ -758,10 +758,8 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       }
       if (!m.description || typeof m.description !== 'string') errors.push(`monitors[${i}]: missing description`);
       if (!m.command || typeof m.command !== 'string') errors.push(`monitors[${i}]: missing command`);
-      if (m.persistent !== undefined && typeof m.persistent !== 'boolean') warnings.push(`monitors[${i}]: "persistent" should be boolean`);
       if (m.enabled !== undefined && typeof m.enabled !== 'boolean') warnings.push(`monitors[${i}]: "enabled" should be boolean`);
       if (m.class !== undefined && !['stream', 'poll'].includes(m.class)) errors.push(`monitors[${i}]: class must be "stream" or "poll"`);
-      if (m.timeout_ms !== undefined && (typeof m.timeout_ms !== 'number' || m.timeout_ms < 1000)) errors.push(`monitors[${i}]: timeout_ms must be a number >= 1000`);
     });
   }
 

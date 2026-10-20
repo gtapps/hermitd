@@ -432,7 +432,7 @@ describe('monitors validation', () => {
   test('a fully valid monitor entry produces no errors or warnings', () => {
     const out = runValidate({ monitors: [
       { id: 'cpu', description: 'CPU watch', command: 'top -bn1',
-        class: 'poll', timeout_ms: 5000, persistent: false, enabled: true },
+        class: 'poll', enabled: true },
     ] });
     expect(out.errors).toEqual([]);
     expect(out.warnings).toEqual([]);
@@ -461,13 +461,6 @@ describe('monitors validation', () => {
       { id: 'm1', description: 'desc', command: 'true', class: 'bad' },
     ] });
     expect(out.errors.some((e: string) => e.includes('class must be'))).toBe(true);
-  });
-
-  test('timeout_ms below 1000 is an error', () => {
-    const out = runValidate({ monitors: [
-      { id: 'm1', description: 'desc', command: 'true', timeout_ms: 500 },
-    ] });
-    expect(out.errors.some((e: string) => e.includes('timeout_ms'))).toBe(true);
   });
 
   test('monitor missing both description and command produces two errors', () => {
@@ -2177,7 +2170,7 @@ describe('reflect routine gating contract (token efficiency)', () => {
 const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age',
-  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'model-pricing-known',
+  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'model-pricing-known',
   'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
   'backup',
 ];
@@ -2578,12 +2571,16 @@ describe('doctor credential-expiry check', () => {
         args: ['.hermit'], cwd: dir,
         env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: path.join(dir, 'creds'), ANTHROPIC_API_KEY: '' },
       });
-      const c = credCheck(JSON.parse(r.stdout));
-      expect(c.status).toBe(chrome ? 'warn' : 'ok');
+      const report = JSON.parse(r.stdout);
+      const c = credCheck(report);
+      expect(c.status).toBe('ok');
+      expect(c.detail).not.toContain('Chrome');
+      const chromeCheck = report.checks.find((check: any) => check.id === 'chrome-auth');
+      expect(chromeCheck.status).toBe(chrome ? 'warn' : 'ok');
       if (chrome) {
-        expect(c.detail).toContain('Chrome stays off with a setup-token');
-        expect(c.detail).toContain('/hermitd:relogin');
-      } else expect(c.detail).not.toContain('Chrome');
+        expect(chromeCheck.detail).toContain('Chrome stays off with a setup-token');
+        expect(chromeCheck.detail).toContain('/hermitd:relogin');
+      }
     }), 20000);
   }
 
