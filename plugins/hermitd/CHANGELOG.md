@@ -10,7 +10,7 @@
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
-- A passing check on a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`.
+- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`; task and daily later replies name the resolve or its error.
 - `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 
 ### Upgrade Instructions

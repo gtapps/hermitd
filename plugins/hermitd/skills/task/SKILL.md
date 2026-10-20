@@ -69,7 +69,7 @@ All conversation script arguments are shell-quoted values. `history` and `thread
 ## Progress and results
 Pipe one progress line into `note <id>`, pairing it with milestone card edits. Metadata flags include `--due`, `--card`, `--clear-waiting`, `--decision`, and `--approval "<actor>: <what>"`. When the operator or the work changes direction on an open record (scope dropped, date moved, approach swapped), pipe `<what changed>, <why>` into `note <id> --decision`. Ordinary progress stays a plain note. A changed definition uses `note <id> --done ... --actor <human identity>`: it increments result_rev and clears the old result and check.
 
-Record every outcome, not only one awaiting acceptance, with § Complete a task turn step 3's command and digest check; terminal-origin work posts in the terminal. After that, a record with a check runs `task-check.ts <id>` in the same turn; a pass closes it and the reply names the close with the proof; a fail, refused run or permission prompt leaves it unconfirmed, not retried that turn, for the daily run.
+Record every outcome, not only one awaiting acceptance, with § Complete a task turn step 3's command and digest check; terminal-origin work posts in the terminal. After that, a record with a check runs `task-check.ts <id>` in the same turn; a pass closes it and the reply names the close with the proof, plus `proposal_resolved` as that proposal resolved or `proposal_resolve_error` with a pointer to `/hermitd:proposal-act resolve PROP-NNN`; a fail, refused run or permission prompt leaves it unconfirmed, not retried that turn, for the daily run.
 
 A stall in unfinished work requires `--waiting-on`, `--status-line` and `--next`; post the digest's one status/next-step message to its requester in its conversation.
 

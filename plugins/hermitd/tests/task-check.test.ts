@@ -128,6 +128,22 @@ test('a proposal patch failure is reported without failing the task close', asyn
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ closed_by: 'check', proposal_resolve_error: 'no_operator_decision_section' });
     expect(fs.readFileSync(proposal, 'utf8')).toBe(original);
+    expect(fs.existsSync(path.join(f.dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
     expect(decodeTask(f.text(id)).closed_by).toBe('check');
+  } finally { f.cleanup(); }
+});
+
+test('a held later claim closing a proposal record by check resolves the proposal', async () => {
+  const f = taskFixture();
+  try {
+    const proposal = path.join(f.dir, 'proposals', 'PROP-014-test.md');
+    fs.mkdirSync(path.dirname(proposal), { recursive: true });
+    fs.writeFileSync(proposal, '---\ntitle: Test proposal\nstatus: accepted\n---\n\n## Operator Decision\n');
+    fs.writeFileSync(path.join(f.dir, 'state', 'hypotheses.jsonl'), JSON.stringify({ id: 'pr-merged', state: 'held' }) + '\n');
+    const { id } = await f.open(['--dedupe-key', 'proposal:PROP-014', '--claim', 'pr-merged']);
+    expect(await f.ok('close', [id, '--by', 'check', '--actor', 'hermit', '--claim', 'pr-merged']))
+      .toMatchObject({ closed_by: 'check', proposal_resolved: 'PROP-014' });
+    expect(readFrontmatter(proposal)!.status).toBe('resolved');
+    expect(fs.readFileSync(proposal, 'utf8')).toContain(`record ${id} closed by its check: later:pr-merged:held.`);
   } finally { f.cleanup(); }
 });
