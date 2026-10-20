@@ -5,6 +5,9 @@
 ### Added
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
 
+### Fixed
+- Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
+
 ## [1.4.17] - 2026-10-19
 
 ### Added

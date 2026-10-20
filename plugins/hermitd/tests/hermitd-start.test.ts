@@ -830,15 +830,20 @@ describe('buildClaudeCommand channel resolution', () => {
 // ============================================================
 
 describe('peer name — --name / --remote-control', () => {
-  test('peerName sanitizes agent_name to [A-Za-z0-9_-]', () => {
+  test('peerName replaces spaces and punctuation with dashes', () => {
     expect(peerName({ agent_name: 'Ana Paula' })).toBe('Ana-Paula');
+  });
+
+  test('peerName keeps accented and non-Latin letters', () => {
+    expect(peerName({ agent_name: 'Inês' })).toBe('Inês');
+    expect(peerName({ agent_name: 'ロボ' })).toBe('ロボ');
   });
 
   test('peerName falls back to hermit-<project> when agent_name is unset', () => {
     expect(peerName({})).toBe(`hermit-${path.basename(tmpdir)}`);
   });
 
-  test('peerName falls back when agent_name has no ASCII alphanumerics', () => {
+  test('peerName falls back when agent_name has no letters or digits', () => {
     expect(peerName({ agent_name: '🤖' })).toBe(`hermit-${path.basename(tmpdir)}`);
   });
 
@@ -853,14 +858,14 @@ describe('peer name — --name / --remote-control', () => {
   });
 
   test('--name and --remote-control both carry the same sanitized name', async () => {
-    const config = { agent_name: 'Ana Paula', remote: true };
+    const config = { agent_name: 'Ana Inês', remote: true };
     const { cmd } = await runBuildClaudeCommand(config, CLAUDE_FETCH_FAILS);
     const nameIdx = cmd.indexOf('--name');
     const rcIdx = cmd.indexOf('--remote-control');
     expect(nameIdx).toBeGreaterThan(-1);
     expect(rcIdx).toBeGreaterThan(-1);
-    expect(cmd[nameIdx + 1]).toBe('Ana-Paula');
-    expect(cmd[rcIdx + 1]).toBe('Ana-Paula');
+    expect(cmd[nameIdx + 1]).toBe('Ana-Inês');
+    expect(cmd[rcIdx + 1]).toBe('Ana-Inês');
   }, 15000);
 });
 

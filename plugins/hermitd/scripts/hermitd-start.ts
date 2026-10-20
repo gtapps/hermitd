@@ -593,14 +593,15 @@ function inputLine(promptText: string): string {
  * session exists — a collision with a live session of the same name gets
  * silently renamed by Claude Code, which this can't observe or correct.
  *
- * An `agent_name` with no ASCII alphanumerics at all ("ロボ", "🤖") sanitizes to
+ * Letters, marks and digits of any script are kept, so "Inês" stays "Inês".
+ * An `agent_name` with no letters or digits at all ("🤖") sanitizes to
  * the empty string, so the tmux-session fallback is keyed on the sanitized
  * result, not on `agent_name` being unset — otherwise `--remote-control` would
  * be launched with an empty name. `hermit` is the last resort for the same
  * reason, since `tmux_session_name` is operator-editable and can sanitize away too.
  */
 function sanitizePeerName(raw: string): string {
-  return raw.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return raw.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '');
 }
 
 function peerName(config: Json): string {
