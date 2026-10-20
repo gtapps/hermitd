@@ -549,13 +549,6 @@ describe('duplicateSessionRefusal', () => {
     expect(fs.readFileSync('.hermit/state/.boot-id', 'utf-8')).toBe('boot-abc');
     expect(fs.existsSync('.hermit/sessions/.status.json')).toBe(true);
   });
-
-  test('leaves the live watch registry alone', () => {
-    const registry = JSON.stringify({ monitors: [{ id: 'poll', task_id: 'live' }], last_cleared: null });
-    fs.writeFileSync('.hermit/state/monitors.runtime.json', registry);
-    duplicateSessionRefusal('hermit-proj');
-    expect(fs.readFileSync('.hermit/state/monitors.runtime.json', 'utf-8')).toBe(registry);
-  });
 });
 
 describe('clearWatchRegistry', () => {

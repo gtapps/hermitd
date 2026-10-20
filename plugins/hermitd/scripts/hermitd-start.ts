@@ -504,18 +504,22 @@ function writeBootId(): void {
 }
 
 /**
- * Empties the watch registry (state/monitors.runtime.json) before Claude launches.
- * Every entry names a Monitor task of the previous process, which died with it, and
- * `/watch start` skips any id already in the registry, so a leftover entry would keep
- * that watch from re-registering. A context refresh never runs hermitd-start, so its
- * surviving monitors keep their entries. A missing registry stays missing.
+ * Empties the watch registry (state/monitors.runtime.json) at each launch. Called
+ * beside writeBootId, after the duplicate-session exit, so an "already running" start
+ * leaves the live session's registry alone. Every entry names a Monitor task or idle
+ * subscription of the previous process, which died with it, and `/watch start` skips
+ * any id already in the registry, so a leftover entry would keep that watch from
+ * re-registering. A context refresh never runs hermitd-start, so its surviving
+ * monitors keep their entries. A missing registry stays missing.
  */
 function clearWatchRegistry(): void {
   const file = path.join(STATE_DIR, 'monitors.runtime.json');
   if (!fs.existsSync(file)) return;
   try {
     writeFileAtomic(file, JSON.stringify({ monitors: [], last_cleared: new Date().toISOString() }) + '\n');
-  } catch {}
+  } catch (error: any) {
+    console.log(`[hermit] WARNING: watch registry not cleared (${error?.message ?? error}): config watches may not re-register.`);
+  }
 }
 
 /** Acquire exclusive lifecycle lock. Exits on contention. */
@@ -1599,7 +1603,6 @@ async function main(): Promise<void> {
   seedWorkspaceTrust();
   seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
-  clearWatchRegistry();
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
     if (!noTmuxFlag && !pyTruthy(tools.tmux)) {
@@ -1608,6 +1611,7 @@ async function main(): Promise<void> {
     }
     // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
     writeBootId();
+    clearWatchRegistry();
     // Create or update runtime.json for interactive mode
     const existing = readRuntimeJson();
     if (existing === null) {
@@ -1712,6 +1716,7 @@ async function main(): Promise<void> {
 
   // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
   writeBootId();
+  clearWatchRegistry();
 
   // Create or update runtime.json as the single source of lifecycle truth
   const existing = readRuntimeJson();

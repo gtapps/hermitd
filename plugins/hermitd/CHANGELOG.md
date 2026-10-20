@@ -6,7 +6,7 @@
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
 
 ### Fixed
-- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` before launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
 
 ## [1.4.17] - 2026-10-19
 
