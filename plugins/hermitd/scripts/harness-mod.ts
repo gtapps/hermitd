@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
+import { readJson } from './lib/cli';
 import { readRuntimeJson } from './lib/runtime';
 import { applyContextReset } from './lib/context-reset';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
@@ -25,6 +26,8 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId });
       return { decision: 'ok' };
     case 'claim': {
+      const loadedSession = readJson(path.join(dir, 'state', MOD_LOADED_FILE))?.session_id;
+      if (loadedSession !== sessionId) writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId });
       if (runtime.transition || runtime.shutdown_requested_at || runtime.shutdown_completed_at) return { decision: 'pass' };
       const request = readDeferredSwitch(dir);
       return request ? { ...request, decision: 'run' } : { decision: 'pass' };
