@@ -40,6 +40,7 @@ import {
   clearChannelFailureCache,
   applyAlwaysOnDoctorSchedule,
   clearShutdownStampsOnBoot,
+  clearWatchRegistry,
   hydrateSetupTokenEnv,
   shouldRefuseBoot,
   shouldInstallWatchdogScheduler,
@@ -547,6 +548,34 @@ describe('duplicateSessionRefusal', () => {
     duplicateSessionRefusal('hermit-proj');
     expect(fs.readFileSync('.hermit/state/.boot-id', 'utf-8')).toBe('boot-abc');
     expect(fs.existsSync('.hermit/sessions/.status.json')).toBe(true);
+  });
+
+  test('leaves the live watch registry alone', () => {
+    const registry = JSON.stringify({ monitors: [{ id: 'poll', task_id: 'live' }], last_cleared: null });
+    fs.writeFileSync('.hermit/state/monitors.runtime.json', registry);
+    duplicateSessionRefusal('hermit-proj');
+    expect(fs.readFileSync('.hermit/state/monitors.runtime.json', 'utf-8')).toBe(registry);
+  });
+});
+
+describe('clearWatchRegistry', () => {
+  const REGISTRY = '.hermit/state/monitors.runtime.json';
+
+  test('drops entries left by the previous process and stamps last_cleared', () => {
+    fs.mkdirSync('.hermit/state', { recursive: true });
+    fs.writeFileSync(REGISTRY, JSON.stringify({
+      monitors: [{ id: 'fecho-poll', source: 'config', task_id: 'b9kignhsz', started_at: '2026-10-19T22:05:00Z' }],
+      last_cleared: null,
+    }));
+    clearWatchRegistry();
+    const registry = JSON.parse(fs.readFileSync(REGISTRY, 'utf-8'));
+    expect(registry.monitors).toEqual([]);
+    expect(Number.isNaN(Date.parse(registry.last_cleared))).toBe(false);
+  });
+
+  test('leaves a missing registry missing', () => {
+    clearWatchRegistry();
+    expect(fs.existsSync(REGISTRY)).toBe(false);
   });
 });
 

@@ -204,7 +204,7 @@ One writer per state file. No shared mutation bus. (Exception: `state/micro-prop
 | `state/usage-metrics.jsonl`    | usage-track.ts (Read PostToolUse, append only; compacted >180d by weekly-review) | weekly-review (untouched-knowledge suggestions) |
 | `state/micro-proposals.json`   | reflect + channel-bridged skills (queue, schema owned by reflect § Queuing procedure) + channel-responder/brief (resolve) | brief, generate-summary.ts |
 | `state/state-summary.md`       | generate-summary.ts only                            | humans                                                        |
-| `state/monitors.runtime.json`  | watch skill only                                    | resident-start and watch lifecycle      |
+| `state/monitors.runtime.json`  | watch skill; hermitd-start empties it before each launch | resident-start and watch lifecycle      |
 | `state/heartbeat-monitor.runtime.json` | `lib/heartbeat/start.ts` only — reached by `heartbeat start` and by `hermit-routines load` (`arm commit --heartbeat`) | heartbeat-start (write), heartbeat-stop (clear), heartbeat-restart (rewrite) |
 | `state/heartbeat-liveness.json` | heartbeat-monitor.sh (every poll iteration)         | doctor-check.ts (heartbeat liveness check), heartbeat status  |
 | `state/cc-stop-snapshot.json`  | stop-pipeline.ts only                               | doctor-check.ts (scheduler/background-task health check)      |

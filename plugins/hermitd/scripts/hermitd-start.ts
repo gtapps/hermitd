@@ -503,6 +503,21 @@ function writeBootId(): void {
   } catch {}
 }
 
+/**
+ * Empties the watch registry (state/monitors.runtime.json) before Claude launches.
+ * Every entry names a Monitor task of the previous process, which died with it, and
+ * `/watch start` skips any id already in the registry, so a leftover entry would keep
+ * that watch from re-registering. A context refresh never runs hermitd-start, so its
+ * surviving monitors keep their entries. A missing registry stays missing.
+ */
+function clearWatchRegistry(): void {
+  const file = path.join(STATE_DIR, 'monitors.runtime.json');
+  if (!fs.existsSync(file)) return;
+  try {
+    writeFileAtomic(file, JSON.stringify({ monitors: [], last_cleared: new Date().toISOString() }) + '\n');
+  } catch {}
+}
+
 /** Acquire exclusive lifecycle lock. Exits on contention. */
 function acquireLifecycleLock(): void {
   if (process.platform === 'win32') {
@@ -1584,6 +1599,7 @@ async function main(): Promise<void> {
   seedWorkspaceTrust();
   seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
+  clearWatchRegistry();
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
     if (!noTmuxFlag && !pyTruthy(tools.tmux)) {
@@ -1812,6 +1828,7 @@ export {
   checkStaleRuntime,
   clearShutdownStampsOnBoot,
   writeBootId,
+  clearWatchRegistry,
   acquireLifecycleLock,
   fetchRegisteredMarketplaces,
   iterChannelConfigs,
