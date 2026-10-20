@@ -56,6 +56,35 @@ function readLedgerRows(ledgerPath: string): Record<string, unknown>[] {
   }
 }
 
+interface ObservationPattern {
+  pattern: string;
+  source: string;
+  rows: number;
+  last_seen: string;
+}
+
+// Labels group across sources; source describes the most recent row.
+function observationPatterns(stateDir: string): ObservationPattern[] {
+  const groups = new Map<string, ObservationPattern>();
+  for (const row of readLedgerRows(observationsPath(stateDir))) {
+    const { pattern, source, ts } = row;
+    if (typeof pattern !== 'string' || !pattern || typeof source !== 'string'
+      || typeof ts !== 'string' || !Number.isFinite(Date.parse(ts))) continue;
+    const group = groups.get(pattern);
+    if (!group) groups.set(pattern, { pattern, source, rows: 1, last_seen: ts });
+    else {
+      group.rows++;
+      if (Date.parse(ts) > Date.parse(group.last_seen)) {
+        group.last_seen = ts;
+        group.source = source;
+      }
+    }
+  }
+  return [...groups.values()]
+    .sort((a, b) => Date.parse(b.last_seen) - Date.parse(a.last_seen) || a.pattern.localeCompare(b.pattern))
+    .slice(0, 50);
+}
+
 function resolveSessionId(stateDir: string): string {
   return todayYMD(readSettledConfig(stateDir).timezone ?? 'UTC');
 }
@@ -182,5 +211,6 @@ export {
   observationLine,
   appendObservation,
   graduateObservations,
+  observationPatterns,
 };
-export type { Origin, Source, CliSource, RowInput, GraduationCandidate };
+export type { Origin, Source, CliSource, RowInput, GraduationCandidate, ObservationPattern };

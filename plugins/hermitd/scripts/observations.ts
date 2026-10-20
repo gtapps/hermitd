@@ -4,6 +4,8 @@
 //        <free-text label on stdin, via a quoted heredoc>
 //    or: bun observations.ts graduate <hermit-state-dir> [--cursor <iso>]
 //        prints `{"candidates":[...]}`, the patterns reflect promotes to candidates this run.
+//    or: bun observations.ts patterns <hermit-state-dir>
+//        prints the 50 most recently seen distinct labels, read-only.
 //
 // Replaces append-metrics.ts, which took an arbitrary path and arbitrary JSON and
 // so granted every holder of its unattended permission strictly more authority
@@ -21,14 +23,14 @@
 
 import { emit, emitJson, exitError, failJson, flagEq as flag, flagValue, readStdin } from './lib/cli';
 import { pinStateDirOrExit } from './lib/cc-compat';
-import { CLI_SOURCES, appendObservation, graduateObservations, resolveSessionId, type CliSource, type Origin } from './lib/observations';
+import { CLI_SOURCES, appendObservation, graduateObservations, observationPatterns, resolveSessionId, type CliSource, type Origin } from './lib/observations';
 
 async function main(): Promise<void> {
   const [verb, stateDirArg, ...args] = process.argv.slice(2);
 
   // A mis-invocation is not a resolved verdict — exit 1 so a broken call site is
   // loud in tests and CI rather than silently recording nothing.
-  if ((verb !== 'observe' && verb !== 'graduate') || !stateDirArg) exitError();
+  if ((verb !== 'observe' && verb !== 'graduate' && verb !== 'patterns') || !stateDirArg) exitError();
 
   // The state dir is not caller-chosen. Reachable through a pre-approved
   // `Bash(bun */scripts/observations.ts observe*)` grant that covers every
@@ -38,6 +40,7 @@ async function main(): Promise<void> {
   const stateDir = pinStateDirOrExit(stateDirArg);
 
   // The graduation set is a pure read over the ledger; one JSON object, never prose.
+  if (verb === 'patterns') emitJson({ patterns: observationPatterns(stateDir) });
   if (verb === 'graduate') emitJson({ candidates: graduateObservations(stateDir, flagValue(args, '--cursor')) });
 
   const [source, ...rest] = args;

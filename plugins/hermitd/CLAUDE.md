@@ -37,7 +37,7 @@ A hatched folder can hold more than one session, so every state file has exactly
 
 ## Migrations and feature defaults
 
-Changes that must reach existing hermits (not just the template for new ones) go in `CHANGELOG.md` under that version's `### Upgrade Instructions`. `hermit-evolve` executes those steps, so write them as imperative steps. They write only to `.hermit/`, never into the plugin tree (the seeded `Edit(//**/.claude/plugins/**)` deny enforces it); plugin-side changes ship in the release.
+Changes that must reach existing hermits (not just the template for new ones) go in `CHANGELOG.md` under that version's `### Upgrade Instructions`. `hermit-evolve` executes those steps, so write them as imperative steps. They write only to `.hermit/`, never into the plugin tree (the seeded `Edit(//**/.claude/plugins/**)` deny enforces it); plugin-side changes ship in the release. For consumer scans, follow [Upgrade steps that change or remove what operators call](docs/creating-your-own-hermit.md#upgrade-steps-that-change-or-remove-what-operators-call).
 
 New features ship enabled: set the default in `state-templates/config.json.template` so `hatch` gives it to new hermits, and write the Upgrade Instructions so `hermit-evolve` turns it on for existing ones, noting how to disable it. When you choose opt-in instead (credential, per-invocation spend, destructive), say why in the CHANGELOG.
 

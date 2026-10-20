@@ -549,3 +549,56 @@ describe('apply-settings hatch target guard', () => {
     }
   }
 });
+
+
+describe('permissions-sync other settings file', () => {
+  function stamp(target: string) {
+    const state = path.resolve(path.dirname(target), '..', '.hermit', 'state');
+    fs.mkdirSync(state, { recursive: true });
+    fs.writeFileSync(path.join(state, 'hatch-options.json'), JSON.stringify({ target: 'committed' }));
+    return state;
+  }
+
+  test('removes only retired allow and deny rules and audits the other file', withTarget(async target => {
+    const state = stamp(target);
+    seed(target, { permissions: { allow: HERMIT_ALLOW } });
+    const other = path.join(path.dirname(target), 'settings.local.json');
+    seed(other, { permissions: {
+      allow: [HERMIT_OBSOLETE[0], HERMIT_ALLOW[0], 'operator-rule'],
+      deny: [HERMIT_OBSOLETE_DENY[0], 'operator-deny'],
+    } });
+    const result = await run(target, 'permissions-sync');
+    expect(result.other_file).toEqual({
+      settings_file: '.claude/settings.local.json',
+      obsolete: [HERMIT_OBSOLETE[0]],
+      obsolete_deny: [HERMIT_OBSOLETE_DENY[0]],
+    });
+    expect(readAllow(other)).toEqual([HERMIT_ALLOW[0], 'operator-rule']);
+    expect(readDeny(other)).toEqual(['operator-deny']);
+    const audit = fs.readFileSync(path.join(state, 'settings-audit.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit.every(row => row.target === '.claude/settings.local.json')).toBe(true);
+  }));
+
+  test('preserves other file bytes and mtime when no retired entries exist', withTarget(async target => {
+    stamp(target);
+    const other = path.join(path.dirname(target), 'settings.local.json');
+    const original = JSON.stringify({ permissions: { allow: [HERMIT_ALLOW[0], 'operator-rule'] } }, null, 4);
+    fs.writeFileSync(other, original);
+    fs.utimesSync(other, 1000, 1000);
+    const before = fs.statSync(other).mtimeMs;
+    const result = await run(target, 'permissions-sync');
+    expect(result.other_file).toBeUndefined();
+    expect(fs.readFileSync(other, 'utf8')).toBe(original);
+    expect(fs.statSync(other).mtimeMs).toBe(before);
+  }));
+
+  test('leaves the other file untouched without a stamp', withTarget(async target => {
+    const other = path.join(path.dirname(target), 'settings.local.json');
+    seed(other, { permissions: { allow: [HERMIT_OBSOLETE[0]], deny: [HERMIT_OBSOLETE_DENY[0]] } });
+    const before = fs.readFileSync(other, 'utf8');
+    const result = await run(target, 'permissions-sync');
+    expect(result.other_file).toBeUndefined();
+    expect(fs.readFileSync(other, 'utf8')).toBe(before);
+  }));
+});

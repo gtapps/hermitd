@@ -4,31 +4,28 @@ import path from 'node:path';
 import { writeFileAtomic } from './lib/md-write';
 import { emitJson, exitError } from './lib/cli';
 
-type Result = { changed: string[]; backup: string; deleted?: string[] }
+type Unpaired = { file: string; line: number };
+
+type Result = ({ changed: string[]; backup: string; deleted?: string[] }
   | { status: 'noop' }
   | { error: string }
-  | { error: string; backup: string; changed: string[]; deleted: string[]; failed: string };
+  | { error: string; backup: string; changed: string[]; deleted: string[]; failed: string }) & { unpaired?: Unpaired[] };
 
-function removeBlocks(text: string): { after: string; removed: string } | null {
+function removeBlocks(text: string): { after: string; removed: string; unpaired: number[] } {
   const spans: Array<{ start: number; end: number }> = [];
-  const seen = new Set<string>();
-  let opening: { key: string; start: number } | undefined;
+  const unpaired: number[] = [];
   const markers = /^[ \t]*<!-- (\/?)([^:\s]+): ([^\r\n]*?) -->[ \t]*\r?$/gm;
   const matches = [...text.matchAll(markers)].filter(match => match[2].includes('hermit'));
   // A leading frontmatter's closing fence belongs to the operator, not the block.
   // Only text above the first marker can be frontmatter; a later `---` is a block separator.
   const frontmatter = /^---[ \t]*\r?\n[\s\S]*?^---[ \t]*\r?$/m.exec(text.slice(0, matches[0]?.index ?? 0));
   const fenceAt = frontmatter?.index === 0 ? frontmatter[0].lastIndexOf('\n') + 1 : -1;
-  for (const match of matches) {
-    const key = `${match[2]}: ${match[3]}`;
-    if (!match[1]) {
-      if (opening || seen.has(key)) return null;
-      seen.add(key);
-      opening = { key, start: match.index };
-    } else {
-      if (!opening || opening.key !== key) return null;
-      let start = opening.start;
-      let end = match.index + match[0].length;
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const closing = matches[i + 1];
+    if (!match[1] && closing?.[1] && match[2] === closing[2] && match[3] === closing[3]) {
+      let start = match.index;
+      let end = closing.index + closing[0].length;
       if (text[end] === '\n') end++;
       // Retire an immediately preceding separator and its blank lines, preserving
       // the operator's preceding line terminator. Otherwise leave spacing alone.
@@ -36,13 +33,14 @@ function removeBlocks(text: string): { after: string; removed: string } | null {
       const separatorAt = separator ? separator.index + (separator[0].startsWith('\n') ? 1 : 0) : -1;
       if (separator && separatorAt !== fenceAt) start = separatorAt;
       spans.push({ start, end });
-      opening = undefined;
+      i++;
+    } else {
+      unpaired.push(text.slice(0, match.index).split('\n').length);
     }
   }
-  if (opening) return null;
   const removed = spans.map(span => text.slice(span.start, span.end)).join('\n');
   for (const span of spans.reverse()) text = text.slice(0, span.start) + text.slice(span.end);
-  return { after: text, removed };
+  return { after: text, removed, unpaired };
 }
 
 export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, unlink = fs.unlinkSync): Result {
@@ -50,7 +48,9 @@ export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, u
   const resident = path.resolve(hermitDir, 'RESIDENT.md');
   const files = [path.join(root, 'CLAUDE.md'), path.join(root, 'CLAUDE.local.md'), resident];
   const changes: Array<{ file: string; before: string; after: string; removed: string }> = [];
-  // Validate every snapshot before creating a backup or changing any source.
+  const unpaired: Unpaired[] = [];
+  const details = () => unpaired.length ? { unpaired } : {};
+  // Read every snapshot before creating a backup or changing any source.
   for (const file of files) {
     let before: string;
     try { before = fs.readFileSync(file, 'utf8'); } catch (error: any) {
@@ -63,10 +63,10 @@ export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, u
       continue;
     }
     const parsed = removeBlocks(before);
-    if (parsed === null) return { error: 'invalid_markers' };
+    unpaired.push(...parsed.unpaired.map(line => ({ file: path.relative(root, file), line })));
     if (parsed.after !== before) changes.push({ file, before, after: parsed.after, removed: parsed.removed });
   }
-  if (!changes.length) return { status: 'noop' };
+  if (!changes.length) return { status: 'noop', ...details() };
 
   const backup = path.resolve(hermitDir, 'state', `removed-hermit-blocks.${new Date().toISOString().replace(/:/g, '-')}.${crypto.randomUUID()}.md`);
   try {
@@ -77,7 +77,7 @@ export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, u
   const deleted: string[] = [];
   for (const change of changes) {
     const file = path.relative(root, change.file);
-    const failure = (error: string): Result => ({ error, backup, changed, deleted, failed: file });
+    const failure = (error: string): Result => ({ error, backup, changed, deleted, failed: file, ...details() });
     try {
       if (fs.readFileSync(change.file, 'utf8') !== change.before) return failure('target_changed');
     } catch { return failure('target_changed'); }
@@ -91,7 +91,7 @@ export function retireHermitBlocks(hermitDir: string, write = writeFileAtomic, u
       changed.push(file);
     } catch { return failure(change.file === resident ? 'delete_failed' : 'replace_failed'); }
   }
-  return { changed, backup, ...(deleted.length ? { deleted } : {}) };
+  return { changed, backup, ...(deleted.length ? { deleted } : {}), ...details() };
 }
 
 if (import.meta.main) {

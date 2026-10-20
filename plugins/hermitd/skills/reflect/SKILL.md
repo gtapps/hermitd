@@ -17,12 +17,15 @@ Rare-branch procedures live in `${CLAUDE_PLUGIN_ROOT}/skills/reflect/branches.md
 - `proposal-success-signal`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts success-signal .hermit`
 - `routines-health`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts health .hermit`
 - `task-report`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 3`
+- `observations-patterns`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/observations.ts patterns .hermit`
 - `observations-observe`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/observations.ts observe .hermit`
 - `proposal-anchor`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts anchor .hermit`
 - `proposal-gate`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts gate .hermit`
 - `proposal-metrics`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts metrics .hermit`
 - `proposal-queue-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
+
+Before writing a `quick-deferral` or `reflect-noticed` row, run `observations-patterns` (Commands) once per run. Reuse an existing label that names the same component and failure; create a short stable label only when none matches. Use that exact label on stdin for each observation.
 
 ## Quick mode
 
@@ -33,7 +36,7 @@ If `$ARGUMENTS` contains `--quick`:
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/reflect-precheck.ts .hermit ${CLAUDE_PLUGIN_ROOT} --quick --force
   ```
 - **Skip** the cadence precheck (the hash-gate is separate and narrower), cost_spike read, proposal scan, Resolution Check, and Component Health. Bind `$PHASE = adult`. Only the fresh task-record digest + judge + outcomes path runs.
-- Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 3`; use titles, lessons and waiting reasons for actionable patterns. **Only Tier-1 + `Evidence Source: current-session` candidates are eligible.** Candidates needing archived-session evidence or Tier 2/3 defer to the next scheduled reflect — append one ledger row each so the signal survives archival and can graduate:
+- Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 3`; use titles, lessons and waiting reasons for actionable patterns. **Only Tier-1 + `Evidence Source: current-session` candidates are eligible.** Candidates needing archived-session evidence or Tier 2/3 defer to the next scheduled reflect; choose each label using `observations-patterns` as above and append one ledger row each so the signal survives archival and can graduate:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/observations.ts observe .hermit quick-deferral <<'HERMIT_OBSERVATION'
   <candidate-title-slug>
@@ -135,7 +138,7 @@ Collect **all** candidates first — think-hard observations, step-3b graduation
 
 - **Three-Condition Rule** (repeated pattern + meaningful consequence + operator-actionable change): recurrence is tier-aware — Tier-1 `current-session` needs 1 session; Tier-1 archived and Tier 2/3 need 2+ distinct archived sessions; artifact-cited efficiency/cost candidates cite a **machine-written state file** (`Artifact:` line, `Sessions: none`); procedure capture has an ephemerality exception. Failing candidates go sub-threshold to the ledger.
 - **Gates and routing**: never write a candidate's pattern into the open task record before the judge reads it (no self-certification). One `hermitd:reflection-judge` batch (dedup by title-slug first), then one batched `hermitd:proposal-triage` call before any queue/create; unrecognized gate output fails closed (`gate-failed` metric + Progress Log note; re-surfaces next cycle). **Track whether anything hit the gate_failed path**; it gates the graduation-cursor write in § State Update. Tier 1/2 → micro-approval queue (`state/micro-proposals.json`); Tier 3 → `/hermitd:proposal-create`; **`Evidence Origin: external-content` is always Tier 3** (quarantine). Runner `routine_candidates` are Tier 1 (pre-rendered diagnostic `shell_findings_line` entries are recorded through `task.ts note` when a record is open, no gates); `procedure_candidates` route through branches.md § Procedure capture (dedup guard, brief, `## Skill Draft`, kill criteria), minus any whose `slug` a `procedure-noticed:<slug>` graduation already carried through that section in step 3b; **except** entries carrying `evidence_source: "settled-memory"` (the runner's ownership signal), which route through branches.md § `skill-preference:*` routing instead: they relocate settled content into a skill that usually already exists, so Procedure capture's dedup guard would suppress them, and they take no procedure brief, no forced Tier 3, and no place in the procedure-capture kill-criteria sample.
-- **Sub-threshold observations** → ledger append with a short stable `pattern` label, `"source":"reflect-noticed"`, `"origin":"own-work"` — or `"origin":"external-content"` when the finding carries an `[origin: external]` marker (copy, never infer). Reuse exact labels; grouping is string equality. Phase surfacing: `newborn` logs `Noticed:` lines, `juvenile` emits a weekly digest (sets `last_digest_at`), `adult` is silent.
+- **Sub-threshold observations** → ledger append with a short stable `pattern` label, `"source":"reflect-noticed"`, `"origin":"own-work"`; or `"origin":"external-content"` when the finding carries an `[origin: external]` marker (copy, never infer). Choose the label using `observations-patterns` as above; grouping is string equality. Phase surfacing: `newborn` logs `Noticed:` lines, `juvenile` emits a weekly digest (sets `last_digest_at`), `adult` is silent.
 
 ## State Update
 

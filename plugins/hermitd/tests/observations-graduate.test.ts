@@ -107,3 +107,56 @@ describe('observation local-date identity', () => {
     expect(resolveSessionId(stateDir)).toBe(expected);
   });
 });
+
+
+describe('observations.ts patterns', () => {
+  async function patterns(stateDir: string) {
+    const result = await runPinnedScript('observations.ts', stateDir, ['patterns', stateDir]);
+    expect(result.exitCode).toBe(0);
+    return JSON.parse(result.stdout);
+  }
+
+  test('groups distinct labels across sources, newest first, without writing', async () => {
+    const ledger = [
+      row({ ts: FRESH, pattern: 'deploy failure', source: 'quick-deferral' }),
+      row({ ts: STALE, pattern: 'older failure' }),
+      row({ ts: STALE, pattern: 'deploy failure' }),
+      'invalid json',
+    ].join('\n') + '\n';
+    const stateDir = fixture({ ledger });
+    const ledgerPath = path.join(stateDir, 'state', 'observations.jsonl');
+    fs.utimesSync(ledgerPath, 1000, 1000);
+    const before = fs.statSync(ledgerPath).mtimeMs;
+    expect(await patterns(stateDir)).toEqual({ patterns: [
+      { pattern: 'deploy failure', source: 'quick-deferral', rows: 2, last_seen: FRESH },
+      { pattern: 'older failure', source: 'reflect-noticed', rows: 1, last_seen: STALE },
+    ] });
+    expect(fs.readFileSync(ledgerPath, 'utf8')).toBe(ledger);
+    expect(fs.statSync(ledgerPath).mtimeMs).toBe(before);
+  });
+
+  test('caps the result at the 50 most recently seen labels', async () => {
+    const ledger = Array.from({ length: 55 }, (_, i) => row({
+      ts: new Date(Date.UTC(2026, 0, i + 1)).toISOString(), pattern: `pattern-${i}`,
+    })).join('\n') + '\n';
+    const result = await patterns(fixture({ ledger }));
+    expect(result.patterns).toHaveLength(50);
+    expect(result.patterns.map((entry: any) => entry.pattern))
+      .toEqual(Array.from({ length: 50 }, (_, i) => `pattern-${54 - i}`));
+  });
+
+  test('missing and empty ledgers return an empty list', async () => {
+    const missing = fixture();
+    expect(await patterns(missing)).toEqual({ patterns: [] });
+    expect(fs.existsSync(path.join(missing, 'state', 'observations.jsonl'))).toBe(false);
+    expect(await patterns(fixture({ ledger: '' }))).toEqual({ patterns: [] });
+  });
+
+  test('refuses a foreign state directory', async () => {
+    const stateDir = fixture();
+    const foreign = fixture();
+    const result = await runPinnedScript('observations.ts', stateDir, ['patterns', foreign]);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).error).toStartWith('foreign_state_dir:');
+  });
+});
