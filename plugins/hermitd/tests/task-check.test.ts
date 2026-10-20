@@ -1,4 +1,7 @@
 import { test, expect } from 'bun:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { readFrontmatter } from '../scripts/lib/frontmatter';
 import { taskFixture } from './helpers/tasks';
 import { runScript } from './helpers/run';
 import { decodeTask, mutateTask } from '../scripts/lib/tasks';
@@ -57,6 +60,74 @@ test('a finishing record closes by check once its outcome is observed', async ()
     expect((await f.ok('list', ['--id', id])).rows[0].listing).toEqual(['finishing']);
     const result = await runScript('task-check.ts', { cwd: f.dir + '/..', env: { AGENT_DIR: f.dir }, args: [id] });
     expect(result.exitCode).toBe(0);
+    expect(decodeTask(f.text(id)).closed_by).toBe('check');
+  } finally { f.cleanup(); }
+});
+
+for (const scenario of [
+  { status: 'accepted', key: 'proposal:PROP-014', check: 'true', resolves: true },
+  { status: 'proposed', key: 'proposal:PROP-014', check: 'true', resolves: true },
+  { status: 'accepted', key: 'proposal:PROP-014', check: 'false', resolves: false },
+  { status: 'accepted', key: 'helper:PROP-014', check: 'true', resolves: false },
+  { status: 'accepted', key: null, check: 'true', resolves: false },
+  { status: 'resolved', key: 'proposal:PROP-014', check: 'true', resolves: false },
+  { status: 'deferred', key: 'proposal:PROP-014', check: 'true', resolves: false },
+  { status: 'accepted', key: 'proposal:PROP-999', check: 'true', resolves: false },
+]) {
+  test(`proposal resolution: ${scenario.status}, ${scenario.key}, check ${scenario.check}`, async () => {
+    const f = taskFixture();
+    try {
+      const proposal = path.join(f.dir, 'proposals', 'PROP-014-test.md');
+      fs.mkdirSync(path.dirname(proposal), { recursive: true });
+      const original = `---\ntitle: Test proposal\nstatus: ${scenario.status}\n---\n\n## Operator Decision\n`;
+      fs.writeFileSync(proposal, original);
+      const { id } = await f.open(['--check', scenario.check,
+        ...(scenario.key ? ['--dedupe-key', scenario.key] : [])]);
+      const result = await runScript('task-check.ts', { cwd: f.dir + '/..', env: { AGENT_DIR: f.dir }, args: [id] });
+      expect(result.exitCode).toBe(0);
+      const digest = JSON.parse(result.stdout);
+      expect(digest.proposal_resolve_error).toBeUndefined();
+      expect(decodeTask(f.text(id)).closed_by).toBe(scenario.check === 'true' ? 'check' : null);
+      const metrics = path.join(f.dir, 'state', 'proposal-metrics.jsonl');
+      if (scenario.resolves) {
+        expect(digest.proposal_resolved).toBe('PROP-014');
+        const fm = readFrontmatter(proposal)!;
+        expect(fm.status).toBe('resolved');
+        expect(fm.resolved_date).toBeTruthy();
+        const record = decodeTask(f.text(id));
+        expect(fs.readFileSync(proposal, 'utf8')).toContain(`record ${id} closed by its check: ${record.closed_reason}.`);
+        const rows = fs.readFileSync(metrics, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        expect(rows.at(-1)).toMatchObject({ type: 'resolved', proposal_id: 'PROP-014' });
+        expect(fs.existsSync(path.join(f.dir, 'state', 'compact-requested.json'))).toBe(true);
+        if (scenario.status === 'proposed') {
+          expect(fm.accepted_date).toBeTruthy();
+          expect(fm.responded).toBe('true');
+          expect(rows).toHaveLength(2);
+          expect(rows[0]).toMatchObject({ type: 'responded', proposal_id: 'PROP-014', action: 'accept' });
+        } else {
+          expect(rows).toHaveLength(1);
+        }
+      } else {
+        expect(digest.proposal_resolved).toBeUndefined();
+        expect(fs.readFileSync(proposal, 'utf8')).toBe(original);
+        expect(fs.existsSync(metrics)).toBe(false);
+      }
+    } finally { f.cleanup(); }
+  });
+}
+
+test('a proposal patch failure is reported without failing the task close', async () => {
+  const f = taskFixture();
+  try {
+    const proposal = path.join(f.dir, 'proposals', 'PROP-014.md');
+    fs.mkdirSync(path.dirname(proposal), { recursive: true });
+    const original = '---\nstatus: accepted\n---\nNo decision section.\n';
+    fs.writeFileSync(proposal, original);
+    const { id } = await f.open(['--check', 'true', '--dedupe-key', 'proposal:PROP-014']);
+    const result = await runScript('task-check.ts', { cwd: f.dir + '/..', env: { AGENT_DIR: f.dir }, args: [id] });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ closed_by: 'check', proposal_resolve_error: 'no_operator_decision_section' });
+    expect(fs.readFileSync(proposal, 'utf8')).toBe(original);
     expect(decodeTask(f.text(id)).closed_by).toBe('check');
   } finally { f.cleanup(); }
 });
