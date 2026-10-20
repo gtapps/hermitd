@@ -32,9 +32,7 @@
 - Planned watchdog restarts avoid crash recovery wording and report the actual resume decision; a changed resident prompt starts fresh.
 - Docker keeps the container alive for up to 60 seconds while a watchdog restart replaces tmux.
 - Doctor reports monitors awaiting a resident restart as failures.
-- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
-
-### Fixed
+- `hermitd update` on a macOS host records the running Claude Code version instead of `unknown`.
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
 - The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
 - The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.

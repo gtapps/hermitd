@@ -96,7 +96,7 @@ if (rt.runtime_mode && rt.runtime_mode !== 'docker' && typeof rt.tmux_session ==
 
 _running_cc_version() {
   cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude --version 2>/dev/null \
-    | grep -oP '[\d.]+' | head -1 || echo "unknown"
+    | grep -oE '[0-9.]+' | head -1 || echo "unknown"
 }
 
 _validate_compose() {
