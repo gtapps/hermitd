@@ -259,6 +259,100 @@ describe('cost-tracker: duplicate-turn guard', () => {
   }));
 });
 
+describe('cost-tracker: billing boundaries', () => {
+  const previousTimestamp = '2026-08-02T19:00:00.000Z';
+  const callX = assistantEntry(previousTimestamp, 9_000);
+  const callA = assistantEntry('2026-08-02T19:10:00.000Z', 100, 10, 5);
+  const callB = assistantEntry('2026-08-02T19:20:00.000Z', 200, 20, 7);
+  const previousRow = { cc_session_id: 'test-session', observed_at: previousTimestamp };
+  const summedUsage = {
+    input_tokens: 4,
+    cache_write_tokens: 30,
+    cache_read_tokens: 300,
+    output_tokens: 12,
+    total_tokens: 346,
+    api_calls: 2,
+  };
+
+  test('a first turn bills calls before and after a skill body', withCase(async c => {
+    c.writeTranscript([
+      triggerPrompt('load a skill'),
+      callA,
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_skill', content: 'ok' }] } }),
+      JSON.stringify({
+        type: 'user', isMeta: true, turnCompanion: true,
+        message: { content: [{ type: 'text', text: 'Base directory for this skill: /plugins/hermitd/skills/hermit-routines' }] },
+      }),
+      callB,
+    ]);
+
+    await c.run();
+
+    const rows = c.mainRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject(summedUsage);
+  }));
+
+  for (const [name, content] of [
+    ['channel envelope', '<channel source="discord">incoming message</channel>'],
+    ['cross-session message', 'Another Claude session sent a message: incoming message'],
+  ]) {
+    test(`a mid-turn ${name} does not cut off unbilled calls`, withCase(async c => {
+      c.seedCostLog([previousRow]);
+      c.writeTranscript([
+        triggerPrompt('previous turn'),
+        callX,
+        triggerPrompt('current turn'),
+        callA,
+        JSON.stringify({ type: 'user', isMeta: true, message: { content } }),
+        callB,
+      ]);
+
+      await c.run();
+
+      const rows = c.mainRows();
+      expect(rows).toHaveLength(2);
+      expect(rows[1]).toMatchObject(summedUsage);
+    }));
+  }
+
+  test('a skipped Stop is recovered once by the next Stop', withCase(async c => {
+    c.seedCostLog([previousRow]);
+    c.writeTranscript([
+      triggerPrompt('previous turn'),
+      callX,
+      triggerPrompt('turn with a skipped Stop'),
+      callA,
+      triggerPrompt('next turn'),
+      callB,
+    ]);
+
+    await c.run();
+
+    const rows = c.mainRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject(summedUsage);
+
+    await c.run();
+
+    expect(c.mainRows()).toHaveLength(2);
+  }));
+
+  test('a first turn opened by an isMeta routine wake retains its source', withCase(async c => {
+    c.writeTranscript([
+      JSON.stringify({ type: 'user', isMeta: true, message: { content: '[hermit-routine:demo] Run: bun scripts/routines.ts run demo' } }),
+      callA,
+      callB,
+    ]);
+
+    await c.run();
+
+    const rows = c.mainRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ ...summedUsage, source: 'routine:demo' });
+  }));
+});
+
 describe('cost-tracker: context signal', () => {
   test('the row carries observed_at and the newest call prompt size', withCase(async c => {
     c.writeTranscript([
