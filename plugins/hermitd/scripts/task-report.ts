@@ -1,7 +1,7 @@
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { exitError, failJson } from './lib/cli';
 import { readTaskReports, selectTodayReports } from './lib/task-report';
-import { readConfigRaw } from './lib/config-read';
+import { readSettledConfig } from './lib/config-read';
 
 try {
   const [dirArg, ...args] = process.argv.slice(2);
@@ -23,6 +23,6 @@ try {
     .filter(record => !recent || record.outcome !== 'open')
     .sort((a, b) => (b.closed_at ?? b.opened_at).localeCompare(a.closed_at ?? a.opened_at));
   console.log(JSON.stringify({ rows: records.slice(0, limit), total: records.length, omitted: Math.max(0, records.length - limit),
-    ...(today ? selectTodayReports(allRecords, readConfigRaw(dir)?.timezone ?? 'UTC', new Date()) : {}),
+    ...(today ? selectTodayReports(allRecords, readSettledConfig(dir).timezone ?? 'UTC', new Date()) : {}),
   }));
 } catch (error) { failJson(error); }

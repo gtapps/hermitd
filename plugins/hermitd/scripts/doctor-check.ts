@@ -1584,7 +1584,7 @@ function checkCredentialExpiry(p: DoctorPaths = PATHS) {
 function checkChromeAuth(p: DoctorPaths = PATHS) {
   try {
     const note = chromeAuthNote(readConfigRaw(p.hermitDir) ?? {});
-    return { id: 'chrome-auth', status: note ? 'warn' : 'ok', detail: note ?? 'Chrome auth mode ok' };
+    return { id: 'chrome-auth', status: note ? 'warn' : 'ok', detail: note ?? 'no Chrome and auth mode conflict' };
   } catch (e: any) {
     return { id: 'chrome-auth', status: 'warn', detail: `check failed: ${e.message}` };
   }

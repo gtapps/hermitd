@@ -81,8 +81,11 @@ test('CLI adds uncapped today selections only with --today, defaulting to UTC', 
     expect(today.rows).toEqual(report.rows);
     expect(today.total).toBe(2);
     expect(today.omitted).toBe(1);
-    expect(today.today).toBe(new Date().toISOString().slice(0, 10));
-    expect(today.closed_today).toHaveLength(2);
-    expect(today.opened_today).toHaveLength(2);
+    // Derive the expected day from the records so a run across UTC midnight stays green.
+    const onDay = (stamp: string | null) => stamp?.slice(0, 10) === today.today;
+    const all = readTaskReports(f.dir);
+    expect(today.closed_today).toHaveLength(all.filter(row => onDay(row.closed_at)).length);
+    expect(today.opened_today).toHaveLength(all.filter(row => onDay(row.opened_at)).length);
+    expect([new Date(Date.now() - 60000), new Date()].map(d => d.toISOString().slice(0, 10))).toContain(today.today);
   } finally { f.cleanup(); }
 });
