@@ -237,7 +237,7 @@ The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unatt
 └── config.json                <- settings
 ```
 
-> Files in `state/` are managed by the plugin at runtime — do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`, and the optional `resident-prompt.md`. Task files are script-owned; ask the hermit to update them.
+> Files in `state/` are managed by the plugin at runtime; do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`, and the optional `resident-prompt.md`. Task files are script-owned; ask the hermit to update them.
 
 ---
 

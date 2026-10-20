@@ -626,13 +626,15 @@ function readShippedPrompt(name: string): string {
 
 /** The operator-owned `.hermit/resident-prompt.md`, or null when absent or blank. */
 function readResidentOverride(): string | null {
-  let text: string;
   try {
-    text = fs.readFileSync(hermitFile('resident-prompt.md'), 'utf8');
-  } catch {
+    const text = fs.readFileSync(hermitFile('resident-prompt.md'), 'utf8');
+    return text.trim() ? text : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.log('[hermit] WARNING: .hermit/resident-prompt.md is unreadable; using the shipped resident prompt.');
+    }
     return null;
   }
-  return text.trim() ? text : null;
 }
 
 function writeSystemPrompts(residentName: string): void {
