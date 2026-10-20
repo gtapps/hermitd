@@ -64,6 +64,9 @@ function classifySource(triggerText: string): string {
   const t = triggerText.trim();
   const line = sentinelLine(t);
   if (line === 'HEARTBEAT_EVALUATE') return 'heartbeat';
+  const watchMatch = line.match(/^WATCH_EVENT \[hermit-watch:([A-Za-z0-9._-]+)\]/)
+    ?? line.match(/^WATCH_MONITOR_ERROR: ([A-Za-z0-9._-]+)(?:\s|$)/);
+  if (watchMatch) return `watch:${watchMatch[1].slice(0, 64)}`;
   // Monitor co-fire: a ROUTINE_DUE line naming ≥2 distinct routine ids means one wake turn
   // ran multiple routines. Attribute the shared turn to a synthetic `routine:multi` bucket
   // rather than mis-charging the whole turn to the first id (which would inflate that

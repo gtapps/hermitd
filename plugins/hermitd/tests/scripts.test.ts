@@ -4263,6 +4263,17 @@ describe('cost-tracker classifySource / resolveTurnSource', () => {
     expect(classifySource('/hermitd:heartbeat run')).toBe('other');
   });
 
+  for (const id of ['sample', 'a.B_9-z', 'x'.repeat(100), '<id>', '*']) {
+    for (const event of [`WATCH_EVENT [hermit-watch:${id}] (Watch) line`, `WATCH_MONITOR_ERROR: ${id} exit code 1`]) {
+      test(`cost-tracker: classifySource watch sentinel ${event}`, () => {
+        const expected = ['<id>', '*'].includes(id) ? 'other' : `watch:${id.slice(0, 64)}`;
+        expect(classifySource(event)).toBe(expected);
+        expect(classifySource(envelope(event))).toBe(expected);
+        expect(classifySource(`why did ${event}`)).toBe('other');
+      });
+    }
+  }
+
   // classifySource: routine marker — CronCreate delivers it as the prompt's first line
   test('cost-tracker: classifySource([hermit-routine:daily]) = routine:daily', () => {
     expect(classifySource('[hermit-routine:daily]')).toBe('routine:daily');
