@@ -58,7 +58,9 @@ function start(w: Watch): void {
     .replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginRoot)
     .replaceAll('${CLAUDE_PROJECT_DIR}', projectRoot);
   w.started = Date.now();
-  w.stderr = null;
+  // Kept per run and committed on exit, so last_exit_code and last_stderr_line
+  // always describe the same run.
+  let stderrLine: string | null = null;
   const child = spawn('bash', ['-c', command], {
     cwd: projectRoot, env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -68,11 +70,12 @@ function start(w: Watch): void {
   stdout.on('line', line => {
     if (!w.stopping && !stopping) console.log(`WATCH_EVENT [hermit-watch:${w.config.id}] (${w.config.description}) ${line}`);
   });
-  stderr.on('line', line => { if (line.trim()) w.stderr = line; });
-  child.on('error', error => { w.stderr = error.message; });
+  stderr.on('line', line => { if (line.trim()) stderrLine = line; });
+  child.on('error', error => { stderrLine = error.message; });
   child.on('close', (code, signal) => {
     w.child = null;
     w.lastExit = code;
+    w.stderr = stderrLine;
     if (!w.stopping && !stopping) {
       const now = Date.now();
       if (now - w.started >= healthyMs) {

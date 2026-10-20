@@ -75,7 +75,8 @@ async function fixture(run: (f: {
 test('watch stdout is tagged, substitutes roots, and runs from the project root', () => fixture(async f => {
   f.configure('printf "%s\\n" "$PWD ${CLAUDE_PROJECT_DIR} ${CLAUDE_PLUGIN_ROOT}"; exec tail -f /dev/null');
   const line = await until(() => f.lines.find(l => l.startsWith('WATCH_EVENT ')));
-  expect(line).toBe(`WATCH_EVENT [hermit-watch:sample] (Sample watch) ${f.project} ${f.project} ${path.dirname(SCRIPTS_DIR)}`);
+  // $PWD is the resolved cwd (macOS tmpdir is a /private symlink); substitution keeps the path as given.
+  expect(line).toBe(`WATCH_EVENT [hermit-watch:sample] (Sample watch) ${fs.realpathSync(f.project)} ${f.project} ${path.dirname(SCRIPTS_DIR)}`);
   expect(f.lines).toHaveLength(1);
 }));
 
@@ -87,6 +88,8 @@ test('exiting watches restart and errors are throttled with the last stderr line
   });
   expect(row.restarts).toBeGreaterThanOrEqual(1);
   expect(row.last_stderr_line).toBe('last');
+  // stdout reaches the test through an async pipe, so it can trail the runtime file.
+  await until(() => f.lines.length ? true : undefined);
   expect(f.lines).toEqual(['WATCH_MONITOR_ERROR: sample exit code 7: last']);
 }));
 
@@ -107,8 +110,7 @@ for (const action of ['disable', 'SIGTERM', 'SIGHUP'] as const) {
       await f.stop();
     } else {
       // The fixture's process is the direct parent of the pipeline's root shell.
-      const root = fs.readFileSync(`/proc/${pids[0]}/stat`, 'utf8');
-      const parent = Number(root.slice(root.lastIndexOf(')') + 2).split(' ')[1]);
+      const parent = Number(Bun.spawnSync(['ps', '-o', 'ppid=', '-p', String(pids[0])]).stdout.toString().trim());
       process.kill(parent, 'SIGHUP');
       await until(() => !alive(parent) ? true : undefined);
     }
@@ -118,18 +120,20 @@ for (const action of ['disable', 'SIGTERM', 'SIGHUP'] as const) {
 }
 
 test('disabling a looping watch does not let the shell relaunch its pipeline', () => fixture(async f => {
-  const command = 'while true; do tail -f /dev/null | cat; done';
+  // A fixture-unique file lets pgrep find a leaked pipeline without /proc (absent on macOS).
+  const marker = path.join(f.project, 'loop-marker');
+  fs.writeFileSync(marker, '');
+  const command = `while true; do tail -f ${marker} | cat; done`;
   f.configure(command);
   const root = await until(() => {
     const pid = f.runtime()?.watches[0]?.pid;
     return pid && collectTree([pid]).pids.length >= 3 ? pid : undefined;
   });
+  const tails = () => Bun.spawnSync(['pgrep', '-f', `tail -f ${marker}`]).stdout.toString().trim().split('\n').filter(Boolean).map(Number);
+  expect(tails().length).toBeGreaterThan(0);
   f.configure(command, false);
   await until(() => f.runtime()?.watches.length === 0 ? true : undefined);
-  const pgrep = Bun.spawnSync(['pgrep', '-f', `^tail -f /dev/null$`]).stdout.toString().trim().split('\n').filter(Boolean).map(Number);
-  const leaked = pgrep.filter(pid => {
-    try { return fs.readlinkSync(`/proc/${pid}/cwd`) === fs.realpathSync(f.project); } catch { return false; }
-  });
+  const leaked = tails();
   expect(alive(root)).toBe(false);
   expect(leaked).toEqual([]);
 }));
