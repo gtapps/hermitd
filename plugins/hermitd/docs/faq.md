@@ -135,7 +135,7 @@ Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and 
 
 **Heartbeat** is the built-in periodic health check — polls every 30m by default, evaluates the `HEARTBEAT.md` checklist, and alerts you only when something needs attention. It's always-on infrastructure.
 
-**Watch** (`/watch`) is a session-scoped background watcher you set up for specific concerns (e.g., "watch for CI failures every 5 minutes"). Watches are task-specific and stop when the session closes.
+**Watch** (`/watch`) covers two cases. Config watches in `monitors` keep running across restarts: the background monitor starts at boot, restarts a command that exits, and applies config edits live. `/hermitd:watch stop` on one sets `enabled: false`. An ad-hoc `/watch` is for one current concern, such as "watch for CI failures every 5 minutes", and ends with the session.
 
 ---
 
