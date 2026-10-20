@@ -219,7 +219,6 @@ export function saveOperatorContext(
 }
 
 export const HERMIT_RAW = join('.hermit', 'raw');
-export const HERMIT_OPERATOR_MD = join('.hermit', 'OPERATOR.md');
 
 export function normalizedContextPath(root: string): string {
   return join(root, HERMIT_RAW, 'snapshot-ha-normalized-latest.json');
