@@ -86,7 +86,7 @@ Rule of thumb: every session in the project → your `CLAUDE.md`; only the hermi
 
 ### Replacing the resident prompt
 
-The hermit's built-in behavior rules come from the plugin's resident prompt. OPERATOR.md and memory already take precedence over those rules; to replace the rules themselves, create `.hermit/resident-prompt.md`. At every start the hermit then uses that file as its whole resident prompt instead of the shipped one. Claude Code's own system prompt stays underneath, and spawned helper sessions keep the shipped rules. Empty or delete the file to go back to the shipped prompt. Changes take effect at the next restart, and a write by the hermit to this file asks for your approval first.
+The hermit's built-in behavior rules come from the plugin's resident prompt. OPERATOR.md and memory already take precedence over those rules; to replace the rules themselves, create `.hermit/resident-prompt.md`. At every start the hermit then uses that file as its whole resident prompt instead of the shipped one. Claude Code's own system prompt stays underneath, and spawned helper sessions keep their own prompt (see [Replacing the helper prompt](#replacing-the-helper-prompt)). Empty or delete the file to go back to the shipped prompt. Changes take effect at the next restart, and a write by the hermit to this file asks for your approval first.
 
 Start from a copy of the prompt the hermit runs today:
 
@@ -100,6 +100,23 @@ Before you cut anything:
 - Keep `## Operator Notification`: skills point at it by name for how to reach you.
 - What you remove is yours. The shipped rules on secrets, peer messages and proposals no longer apply; hooks such as the pause gate and the settings gate still enforce on their own.
 - Upgrades never touch this file, so later changes to the shipped prompt don't reach you. After an upgrade, compare your file with `prompts/resident.md` and `prompts/rules.md` in the installed hermitd plugin.
+
+### Replacing the helper prompt
+
+Helper sessions the hermit spawns get their own prompt, built from the plugin's `prompts/helper.md` and the same shared rules. To replace it, create `.hermit/helper-prompt.md`. At every start the hermit copies that file as written into every helper's prompt; Claude Code's own system prompt stays underneath. Empty or delete the file to go back to the shipped prompt. Changes reach helpers spawned after the next restart, and a write by the hermit to this file asks for your approval first.
+
+Start from a copy of the prompt helpers get today, which already holds this project's path and the hermit's name:
+
+```bash
+cp .hermit/state/helper-system-prompt.md .hermit/helper-prompt.md
+```
+
+Before you cut anything:
+
+- **Keep the `GUEST_REPORT` block and the instruction to send it to the hermit by name.** That message is how a helper hands its result back. Without it the hermit never records the outcome, with no error.
+- Keep the project path lines: they point helpers working in a worktree at the hermit's real state folder.
+- The file is used as written, so update the path or name yourself if you move the project or rename the hermit.
+- Upgrades never touch this file. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin.
 
 ---
 
@@ -237,7 +254,7 @@ The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unatt
 └── config.json                <- settings
 ```
 
-> Files in `state/` are managed by the plugin at runtime; do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`, and the optional `resident-prompt.md`. Task files are script-owned; ask the hermit to update them.
+> Files in `state/` are managed by the plugin at runtime; do not edit them manually. Files you own and can edit: `config.json`, `OPERATOR.md`, `TASKS.md`, `HEARTBEAT.md`, and the optional `resident-prompt.md` and `helper-prompt.md`. Task files are script-owned; ask the hermit to update them.
 
 ---
 

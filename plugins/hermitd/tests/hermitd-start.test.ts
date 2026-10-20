@@ -2354,6 +2354,22 @@ describe('resident prompt launch requirement', () => {
     const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
     expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
   });
+  test('operator helper-prompt.md replaces the shipped helper prompt and leaves the resident prompt alone', async () => {
+    fs.writeFileSync('.hermit/helper-prompt.md', '# My helpers\n\nReport back briefly.\n');
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
+    const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toBe('# My helpers\n\nReport back briefly.\n');
+    expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
+  });
+  test('blank helper-prompt.md falls back to the shipped helper prompt', async () => {
+    fs.writeFileSync('.hermit/helper-prompt.md', ' \n\n');
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
+    const file = fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8');
+    expect(file).toStartWith('# Helper session');
+    expect(file).toEndWith(rules);
+  });
   test('missing shipped prompt refuses launch clearly', async () => {
     const child = Bun.spawn([process.execPath, '-e', `import { readShippedPrompt } from ${JSON.stringify(HERMIT_START_TS)}; readShippedPrompt('missing.md');`], { cwd: tmpdir, stdout: 'pipe', stderr: 'pipe' });
     const out = await new Response(child.stdout).text();

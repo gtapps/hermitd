@@ -256,7 +256,7 @@ function resolveTarget(verb: string, target: string): string {
 }
 
 /** The hermit-dir files a shell write must raise the native prompt for. */
-export const PROTECTED_FILES = ['config.json', 'claude-settings.json', 'resident-prompt.md', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md'];
+export const PROTECTED_FILES = ['config.json', 'claude-settings.json', 'resident-prompt.md', 'helper-prompt.md', 'state/helper-system-prompt.md', 'state/resident-system-prompt.md'];
 // A nested file's directory is optional so `$STATE/<basename>` matches the way
 // `$DIR/config.json` does: the hook cannot tell which directory a variable names.
 const PROTECTED_FILE_ALT = PROTECTED_FILES

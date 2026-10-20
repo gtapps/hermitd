@@ -4,11 +4,11 @@
 
 ### Added
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
-- An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start; empty or absent keeps the shipped prompt.
+- An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Upgrade Instructions
-1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` ask entry. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md`: it is operator-owned.
-2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` alongside the other `.hermit/` entries when absent.
+1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` and `Edit(*.hermit/helper-prompt.md)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
+2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
 
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
