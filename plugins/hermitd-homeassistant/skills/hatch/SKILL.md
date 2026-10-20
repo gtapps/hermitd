@@ -52,7 +52,6 @@ Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status` and inspect the JSON ou
      - **abort** → stop.
   Do not write or modify `.env` — it is the user's responsibility.
 
-
 Do not collect or store the token — it stays in `.env` only.
 
 ### 3. CLI check

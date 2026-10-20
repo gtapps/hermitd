@@ -70,7 +70,6 @@ questions: [
 
 Skip the `Docs MCP` question entirely if `context7` is already installed (per the `claude plugin list` detection above).
 
-
 ### 4. Write config and stamp version
 
 Single atomic config.json write:

@@ -331,9 +331,9 @@ Collect findings silently. Do NOT print scan results to the operator.
 Using the scan results, draft concise standing instructions addressed to the agent. Follow these rules:
 
 1. **Only standing instructions written to the agent.** State what you are for and who you serve, where your unattended time goes, what you never do on your own, and what needs the operator's OK first. Stack, layout, build and test commands, CI details, and anything else Claude Code can read from the project or every session needs belong in the project's CLAUDE file, outside OPERATOR.md.
-2. **Never duplicate `config.json` fields.** `routines`, `channels` (including Discord/Telegram user IDs and `morning_brief`), `permission_mode`, `agent_name`, `escalation`, `boot_skill`, `shutdown_skill`, and `_hermit_versions` are already loaded structurally — do not restate them as prose. OPERATOR.md is for context the model can't infer from config (project focus, constraints, approval gates, project rationale). Tone and comms style have their own home — `config.json`'s `voice` block, written in Phase 4b.
-4. **Keep it under 50 lines.** OPERATOR.md is loaded every SessionStart — bloat costs tokens. Write concise prose, not documentation.
-5. **No rigid sections required.** Use headers if they help organize, but don't create empty sections. The goal is a useful context document, not a filled-in form.
+2. **Never duplicate `config.json` fields.** `routines`, `channels` (including Discord/Telegram user IDs and `morning_brief`), `permission_mode`, `agent_name`, `escalation`, `boot_skill`, `shutdown_skill`, and `_hermit_versions` are already loaded structurally; do not restate them as prose. OPERATOR.md is for instructions the model can't infer from config (mission, focus, red lines, what to ask first). Tone and comms style have their own home: `config.json`'s `voice` block, written in Phase 4b.
+3. **Keep it under 50 lines.** OPERATOR.md is loaded every SessionStart, so bloat costs tokens. Write concise prose, not documentation.
+4. **No rigid sections required.** Use headers if they help organize, but don't create empty sections. The goal is a useful context document, not a filled-in form.
 
 Write the draft to `.hermit/OPERATOR.md`.
 
@@ -635,7 +635,7 @@ Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one o
 
 ### Quick Turn 4 — OPERATOR.md questionnaire (run "5a. OPERATOR.md onboarding" verbatim)
 
-Run the existing "5a. OPERATOR.md onboarding" step verbatim — same scan, same draft, same Phase 3 questions (Call 1 always + Call 2 conditional per the existing skip-condition rules), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
+Run the existing "5a. OPERATOR.md onboarding" step verbatim: same scan, same draft, same Phase 3 questions (Call 1 and the Call 2 Mission question), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
 
 ### Quick Turn 5 — Confirm bundle
 
@@ -718,7 +718,7 @@ After the report, without another question, check the project-root instruction f
 
 - If `CLAUDE.md` or `CLAUDE.local.md` already exists, show any set-aside codebase lines from Phase 4 as suggested additions. Write nothing.
 - If only `AGENTS.md` exists, do not run `/init`. Create the target's CLAUDE file only when set-aside lines exist, starting with `@AGENTS.md` on its first line, then a short `## Project rules` heading and those lines.
-- If none of those three files exists and Phase 1 found a project (a manifest, README or source tree), invoke `Skill(init)` yourself. For a committed target, let it write `CLAUDE.md`. For a local target, invoke `Skill(init)` with args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.` Append any set-aside lines under a short `## Project rules` heading.
+- If none of those three files exists and the 5a Phase 1 scan found a project (a manifest, README or source tree), invoke `Skill(init)` yourself. For a committed target, let it write `CLAUDE.md`. For a local target, invoke `Skill(init)` with args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.` Append any set-aside lines under a short `## Project rules` heading.
 - In an empty folder, skip silently.
 
 Report the file actually created and who sees it: "Created `CLAUDE.local.md` with Claude Code's /init: project notes every session here reads, kept out of git." Or: "Created `CLAUDE.md` with Claude Code's /init: project notes every session here reads, tracked by git so your team sees it." For an AGENTS.md import, report the import and the added project rules instead of claiming `/init` ran. Follow the report with any appended lines.

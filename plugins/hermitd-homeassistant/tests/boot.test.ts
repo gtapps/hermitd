@@ -69,8 +69,7 @@ test('boot status detects missing context', async () => {
   const tmp = tmpPath();
   const config = loadConfig(tmp);
   const status = await bootStatus(config, { probe: false });
-  expect(status).not.toHaveProperty('language');
-  expect(status).not.toHaveProperty('needs_' + 'language');
+  expect(Object.keys(status).filter((key) => key.includes('language'))).toEqual([]);
   expect(status.needs_context_refresh).toBe(true);
   expect(status.context_exists).toBe(false);
 });
