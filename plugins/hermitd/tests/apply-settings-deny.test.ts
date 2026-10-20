@@ -85,6 +85,18 @@ describe('apply-settings.ts deny', () => {
     expect(JSON.stringify(settings)).not.toContain('Write(');
   });
 
+  // The ask-only and hardened tests above carry every ASK entry; this pins the spellings.
+  test('every hermitd update spelling is a seeded ask rule', () => {
+    for (const pattern of [
+      'Bash(hermitd update*)',
+      'Bash(*/hermitd update*)',
+      'Bash(*.hermit/bin/hermitd-update*)',
+      'Bash(*.hermit/bin/hermitd-run hermitd-update*)',
+      'Bash(hermitd run *hermitd-update*)',
+      'Bash(*/hermitd run *hermitd-update*)',
+    ]) expect(ASK).toContain(pattern);
+  });
+
   test('deny ask-only skips and writes nothing on a virgin file', async () => {
     const dir = freshDir();
     const file = seedSettings(dir, { permissions: { deny: ['Bash(operator-own*)'] } });

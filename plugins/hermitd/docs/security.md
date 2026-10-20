@@ -108,6 +108,12 @@ Standard seeds these as approval prompts. Hardened writes them into `permissions
       "Bash(git push --force*)",
       "Bash(git reset --hard*)",
       "Bash(*--no-verify*)",
+      "Bash(hermitd update*)",
+      "Bash(*/hermitd update*)",
+      "Bash(*.hermit/bin/hermitd-update*)",
+      "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
+      "Bash(hermitd run *hermitd-update*)",
+      "Bash(*/hermitd run *hermitd-update*)",
       "Edit(*.claude/settings.json)",
       "Edit(*.claude/settings.local.json)",
       "Edit(*.hermit/config.json)",
@@ -385,7 +391,7 @@ Plugins run with the same permissions as Hermit. The default `auto` mode applies
 
 **Policy:** The entrypoint installs every enabled entry in `docker.recommended_plugins` on first boot, regardless of marketplace. The trust gate is at **configuration time**: entries only land in `config.json` when the operator explicitly confirmed the mirrored plugin list during `/docker-setup` or `/hermit-settings docker`. Preselection during setup is restricted to `claude-plugins-official` and `gtapps/*` — third-party entries must be manually opted in. See [Recommended Plugins — Trust model](recommended-plugins.md#trust-model).
 
-**No auto-updates:** The entrypoint installs plugins on first boot but never auto-updates them. Plugin updates are operator-initiated via `/hermitd:hermit-evolve` or image rebuild.
+**No auto-updates:** The entrypoint installs plugins on first boot but never auto-updates them. Plugin updates are operator-initiated with `hermitd update` from a host terminal. When a chat asks a host resident to run it, the seeded ask rules raise Claude Code's native permission prompt, even under auto mode, and only DM-paired users can answer it; a Hardened install denies it outright. A Docker resident cannot run it, because the update runs on the host. The rules match the seeded spellings only: a raw `claude plugin update` stays with the classifier.
 
 **Hermit does not vet, audit, or take responsibility for any plugin.** Even official plugins should be understood before enabling. You are responsible for evaluating what you install.
 
