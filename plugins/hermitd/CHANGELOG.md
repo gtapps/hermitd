@@ -22,6 +22,9 @@
 
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+- The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
+- The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.
+- The evening brief counts tasks closed today in the configured timezone.
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
 - Turn cost rows include the API calls made before a mid-turn skill load, and after a session's first billed turn also those before a mid-turn channel or cross-session message or in a turn whose Stop hook never ran; these calls were previously never billed.
 
