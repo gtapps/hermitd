@@ -40,6 +40,7 @@ import {
   clearChannelFailureCache,
   applyAlwaysOnDoctorSchedule,
   clearShutdownStampsOnBoot,
+  clearWatchRegistry,
   hydrateSetupTokenEnv,
   shouldRefuseBoot,
   shouldInstallWatchdogScheduler,
@@ -547,6 +548,27 @@ describe('duplicateSessionRefusal', () => {
     duplicateSessionRefusal('hermit-proj');
     expect(fs.readFileSync('.hermit/state/.boot-id', 'utf-8')).toBe('boot-abc');
     expect(fs.existsSync('.hermit/sessions/.status.json')).toBe(true);
+  });
+});
+
+describe('clearWatchRegistry', () => {
+  const REGISTRY = '.hermit/state/monitors.runtime.json';
+
+  test('drops entries left by the previous process and stamps last_cleared', () => {
+    fs.mkdirSync('.hermit/state', { recursive: true });
+    fs.writeFileSync(REGISTRY, JSON.stringify({
+      monitors: [{ id: 'fecho-poll', source: 'config', task_id: 'b9kignhsz', started_at: '2026-10-19T22:05:00Z' }],
+      last_cleared: null,
+    }));
+    clearWatchRegistry();
+    const registry = JSON.parse(fs.readFileSync(REGISTRY, 'utf-8'));
+    expect(registry.monitors).toEqual([]);
+    expect(Number.isNaN(Date.parse(registry.last_cleared))).toBe(false);
+  });
+
+  test('leaves a missing registry missing', () => {
+    clearWatchRegistry();
+    expect(fs.existsSync(REGISTRY)).toBe(false);
   });
 });
 
@@ -2317,6 +2339,20 @@ describe('resident prompt launch requirement', () => {
     expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
     expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toEndWith(rules);
     expect(cmd.filter(arg => arg === '--append-system-prompt-file')).toHaveLength(1);
+  });
+  test('operator resident-prompt.md replaces the shipped resident prompt and rules', async () => {
+    fs.writeFileSync('.hermit/resident-prompt.md', '# Mine\n\nOnly these rules.\n');
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
+    expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe('# Mine\n\nOnly these rules.\n');
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toEndWith(rules);
+  });
+  test('blank resident-prompt.md falls back to the shipped prompt', async () => {
+    fs.writeFileSync('.hermit/resident-prompt.md', ' \n\n');
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
+    const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
+    expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
   });
   test('missing shipped prompt refuses launch clearly', async () => {
     const child = Bun.spawn([process.execPath, '-e', `import { readShippedPrompt } from ${JSON.stringify(HERMIT_START_TS)}; readShippedPrompt('missing.md');`], { cwd: tmpdir, stdout: 'pipe', stderr: 'pipe' });
