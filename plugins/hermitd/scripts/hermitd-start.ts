@@ -647,14 +647,14 @@ function readShippedPrompt(name: string): string {
   }
 }
 
-/** The operator-owned `.hermit/resident-prompt.md`, or null when absent or blank. */
-function readResidentOverride(): string | null {
+/** An operator-owned `.hermit/<name>` prompt, or null when absent or blank. */
+function readPromptOverride(name: string): string | null {
   try {
-    const text = fs.readFileSync(hermitFile('resident-prompt.md'), 'utf8');
+    const text = fs.readFileSync(hermitFile(name), 'utf8');
     return text.trim() ? text : null;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.log('[hermit] WARNING: .hermit/resident-prompt.md is unreadable; using the shipped resident prompt.');
+      console.log(`[hermit] WARNING: .hermit/${name} is unreadable; using the shipped prompt.`);
     }
     return null;
   }
@@ -662,14 +662,16 @@ function readResidentOverride(): string | null {
 
 function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
-  const helper = readShippedPrompt('helper.md');
   const rules = readShippedPrompt('rules.md');
-  const resident = readResidentOverride() ?? `${readShippedPrompt('resident.md')}\n${rules}`;
-  const rendered = renderTemplate(helper, {
-    PROJECT_ROOT: hermitFile('..'),
-    RESIDENT_NAME: residentName,
-  });
-  writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), `${rendered}\n${rules}`);
+  const resident = readPromptOverride('resident-prompt.md') ?? `${readShippedPrompt('resident.md')}\n${rules}`;
+  const vars = { PROJECT_ROOT: hermitFile('..'), RESIDENT_NAME: residentName };
+  const helperOverride = readPromptOverride('helper-prompt.md');
+  // The operator's file gets the known values without renderTemplate's
+  // leftover check: a stray `{{...}}` there must not stop boot.
+  const helper = helperOverride !== null
+    ? Object.entries(vars).reduce((text, [key, value]) => text.replaceAll(`{{${key}}}`, value), helperOverride)
+    : `${renderTemplate(readShippedPrompt('helper.md'), vars)}\n${rules}`;
+  writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), helper);
   writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), resident);
 }
 

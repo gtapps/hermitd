@@ -18,6 +18,7 @@
 .hermit/OPERATOR.md
 .hermit/OPERATOR.md.bak
 .hermit/resident-prompt.md
+.hermit/helper-prompt.md
 .hermit/HEARTBEAT.md
 .hermit/knowledge-schema.md
 .hermit/cost-summary.md

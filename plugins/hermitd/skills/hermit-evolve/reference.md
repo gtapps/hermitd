@@ -133,7 +133,7 @@ If `templates_changed` is empty, skip.
 
 After all template resolutions (see manifest-write note at end of Step 5b).
 
-**Never refresh from templates:** sessions, proposals, OPERATOR.md, HEARTBEAT.md, resident-prompt.md (operator-editable), or config.json (handled separately).
+**Never refresh from templates:** sessions, proposals, OPERATOR.md, HEARTBEAT.md, resident-prompt.md and helper-prompt.md (operator-editable), or config.json (handled separately).
 
 Only update files in `templates/`:
 
