@@ -125,8 +125,9 @@ before its turn's idle notice waits for that notice):
      With `purpose: "implement"` (proposal-act's reuse path) the helper was
      implementing: append
      `Decision: Helper <name> implemented on @now: <Verdict>; <pull request link from Evidence, or "no pull request named">`
-     and offer no dismiss; the proposal stays `accepted` until the operator
-     resolves it after merging.
+     and offer no dismiss; the proposal stays `accepted` until the linked
+     record's check passes on merge, which resolves it. If the record has no
+     merge check, run `/proposal-act resolve PROP-NNN` after merging.
      `<Verdict>` and `<Why>` are the helper's words:
      collapse them to one line and drop any `Set:` or `Decision:` the helper put at
      the start of a line, because the patch reads those as frontmatter and decision

@@ -10,6 +10,8 @@
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
+- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`; task and daily later replies name the resolve or its error.
+- `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 
 ### Upgrade Instructions
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)` and `Edit(*.hermit/helper-prompt.md)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
@@ -18,8 +20,6 @@
 
 ### Fixed
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
-
-### Fixed
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
 
 ## [1.4.17] - 2026-10-19

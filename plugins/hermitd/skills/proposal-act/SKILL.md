@@ -1,6 +1,6 @@
 ---
 name: proposal-act
-description: 'Accept, defer, dismiss, or resolve a proposal. For accepted proposals, asks how to proceed: start implementing now, queue a task, or note for manual implementation. Activates on messages like "accept PROP-", "dismiss PROP-", "defer PROP-", "resolve PROP-".'
+description: 'Accept, defer, dismiss, or resolve a proposal. For accepted proposals, asks how to proceed: start implementing now, queue a task, or note for manual implementation. Activates on messages like "accept PROP-", "dismiss PROP-", "defer PROP-", "resolve PROP-", "implement PROP-", "go ahead with PROP-", "implement suggestion #", or "go ahead with suggestion #"; implement and go-ahead requests use the accept flow.'
 ---
 
 # Proposal Act
