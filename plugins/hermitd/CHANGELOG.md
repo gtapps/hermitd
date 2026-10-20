@@ -7,6 +7,7 @@
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.
 - Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
 - `/hermitd:watch stop` on a config watch sets `enabled: false`.
 - Config watch commands no longer see shell-profile functions; PATH and exported variables are unchanged.
@@ -25,7 +26,13 @@
 4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
 5. Restart the resident with `hermitd-docker update` or the operator's usual restart procedure.
 
+4. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
+
 ### Fixed
+- Planned watchdog restarts avoid crash recovery wording and report the actual resume decision; a changed resident prompt starts fresh.
+- Docker keeps the container alive for up to 60 seconds while a watchdog restart replaces tmux.
+- Doctor reports monitors awaiting a resident restart as failures.
+- `hermitd update` on a macOS host records the running Claude Code version instead of `unknown`.
 - Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
 - The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
 - The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.

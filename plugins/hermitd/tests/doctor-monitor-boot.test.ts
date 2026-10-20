@@ -176,11 +176,11 @@ describe('doctor monitor command drift', () => {
     expect(checkRoutineMonitor(p).detail).toContain('command-drift');
   });
 
-  test('drift with a live supervisor warns to restart the resident', () => {
+  test('drift with a live supervisor fails until the resident restarts', () => {
     const p = fixture({ commandDrift: true });
     registerFrom(p, (cmd) => cmd, process.pid);
     for (const r of [checkHeartbeat(p), checkRoutineMonitor(p)]) {
-      expect(r.status).toBe('warn');
+      expect(r.status).toBe('fail');
       expect(r.detail).toContain('restart the resident');
     }
   });

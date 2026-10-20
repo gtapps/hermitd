@@ -131,6 +131,7 @@ if [ -n "$SKIP_ROWS" ]; then
     echo "    - $pid  ->  claude plugin update $pid --scope user"
   done
 fi
+echo "  A live tmux resident restarts once at a quiet boundary after reload and evolve."
 echo "  Note: Claude Code itself is updated separately on the host: claude update"
 
 if [ "$DRY_RUN" = true ]; then
@@ -208,7 +209,56 @@ _wait_for_claude_prompt_host() {
   return 1
 }
 
+_stamp_update_marker() {
+  bun -e 'console.log(JSON.stringify({at: new Date().toISOString()}))' > "$UPDATE_MARKER"
+}
+
+_await_upgrade() {
+  local output parsed
+  # The resident's own turn never reaches a quiet boundary, so a self-run update keeps the immediate path.
+  [ "$SELF_RUN" = false ] || return 0
+  # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
+  _stamp_update_marker
+  if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
+    parsed=$(bun -e '
+      try {
+        const r = JSON.parse(process.argv[1]);
+        if (r.status === "ready") console.log("ready");
+        else if (r.status === "timeout" && typeof r.reason === "string") console.log("timeout\t" + r.reason);
+      } catch {}
+    ' "$output")
+  else
+    parsed=""
+  fi
+  _stamp_update_marker
+  if [ -z "$parsed" ]; then
+    if [ "$AWAIT_NOTED" = false ]; then
+      echo "[hermit] Note: await-upgrade unavailable or invalid output; proceeding without its guard." >&2
+      AWAIT_NOTED=true
+    fi
+    AWAIT_STATUS=ready; AWAIT_REASON=""
+    return 0
+  fi
+  IFS=$'\t' read -r AWAIT_STATUS AWAIT_REASON <<< "$parsed"
+  if [ "$AWAIT_STATUS" = timeout ]; then
+    echo "[hermit] Update wait timed out: $AWAIT_REASON; rerun \`hermitd update\`." >&2
+    return 1
+  fi
+  return 0
+}
+
 if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
+  UPDATE_MARKER="$PROJECT_DIR/.hermit/state/update-in-progress.json"
+  SELF_RUN=false
+  [ -n "${TMUX:-}" ] && [ "$(tmux display-message -p '#S' 2>/dev/null)" = "$TMUX_SESSION" ] && SELF_RUN=true
+  mkdir -p "$(dirname "$UPDATE_MARKER")"
+  [ "$SELF_RUN" = true ] || _stamp_update_marker
+  trap 'rm -f "$UPDATE_MARKER"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  AWAIT_NOTED=false
+  _apply_live_update() {
+  _await_upgrade || return 0
   echo "[hermit] Waiting for Claude Code prompt in tmux session '$TMUX_SESSION' (up to 60s)..."
   if _wait_for_claude_prompt_host; then
     echo "[hermit] Sending /reload-plugins..."
@@ -222,23 +272,27 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
     # We compare each installed hermit version against config._hermit_versions.
     # This detects sibling-only bumps as well as core bumps (Finding 5 fix).
-    HERMIT_GAP=$(bun -e '
-      const rows = process.argv[1];
-      const configPath = process.argv[2];
+    EXPECT_ROWS=$(bun -e '
+      const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t").slice(1));
+      const rank = {local: 0, project: 1, user: 2};
+      rows.sort((a, b) => (rank[a[1]] ?? 3) - (rank[b[1]] ?? 3));
       try {
-        const c = JSON.parse(require("fs").readFileSync(configPath, "utf8"));
-        const vers = c._hermit_versions ?? {};
-        for (const line of rows.split("\n").filter(Boolean)) {
-          const cols = line.split("\t");
-          const id = cols[1] ?? ""; const newVer = cols[3] ?? "";
+        const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
+        const seen = new Set();
+        for (const [id, scope, version] of rows) {
+          if (seen.has(id)) continue;
+          seen.add(id);
           const name = id.split("@")[0];
-          if (!name.includes("hermit") || !newVer) continue;
-          const configVer = vers[name];
-          if (configVer && configVer !== newVer) { process.stdout.write("1\n"); process.exit(0); }
+          if (name.includes("hermit") && version && versions[name] && versions[name] !== version) console.log(name + "=" + version);
         }
-        process.stdout.write("0\n");
-      } catch { process.stdout.write("0\n"); }
-    ' "$UPDATE_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json" 2>/dev/null || echo "0")
+      } catch {}
+    ' "$UPDATE_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json")
+    EXPECT_ARGS=()
+    while IFS= read -r pair; do
+      [ -z "$pair" ] || EXPECT_ARGS+=(--expect "$pair")
+    done <<< "$EXPECT_ROWS"
+    HERMIT_GAP=0
+    [ ${#EXPECT_ARGS[@]} -gt 0 ] && HERMIT_GAP=1
     CORE_FAILED=false
     for _fid in "${PLUGINS_FAIL_IDS[@]:-}"; do
       case "$_fid" in hermitd@*) CORE_FAILED=true ;; esac
@@ -259,6 +313,20 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     echo "[hermit] Warning: claude prompt not detected — /reload-plugins not sent." >&2
     echo "[hermit]          Pins are already updated (durable); next session start picks them up." >&2
   fi
+  if [ "$EVOLVE_SENT" = true ]; then
+    _await_upgrade "${EXPECT_ARGS[@]}" || return 0
+  else
+    _await_upgrade || return 0
+  fi
+  if [ "$SELF_RUN" = true ]; then
+    echo "[hermit] Run from the resident's own session: commands queued for after this turn; no restart."
+  elif .hermit/bin/hermitd-stop; then
+    .hermit/bin/hermitd-start --resume
+  else
+    echo "[hermit] Stop failed; resident was not restarted." >&2
+  fi
+  }
+  _apply_live_update
 else
   echo "[hermit] No live tmux session '$TMUX_SESSION' — pins are moved (durable);"
   echo "[hermit] the next session start picks them up. If the hermit version bumped, run"

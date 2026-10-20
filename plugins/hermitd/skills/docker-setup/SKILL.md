@@ -555,7 +555,7 @@ You're all set! Your hermit is live and running autonomously.
   hermitd docker setup-token  — (optional) mint/renew the long-lived login token
   hermitd docker logs -f      — follow logs
   hermitd restart             — restart container
-  hermitd update              — update host core, rebuild image, update plugins and auto-evolve
+  hermitd update              — update host core, wait for quiet, update plugins and evolve, build, then restart once
   hermitd status              — quick check
 ```
 

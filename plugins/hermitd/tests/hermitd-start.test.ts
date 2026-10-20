@@ -211,7 +211,13 @@ describe('resolveResumeTarget', () => {
     fs.writeFileSync(path.join(dir, 'abc.jsonl'), '{"type":"ai-title"}\n{"type":"agent-name"}\n');
     expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ skip: 'no-user-turn' });
     fs.appendFileSync(path.join(dir, 'abc.jsonl'), '{"type":"user","message":{"content":"hello"}}\n');
+    expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ skip: 'prompt-changed' });
+    fs.mkdirSync(path.join(tmpdir, '.hermit/state'), { recursive: true });
+    const { buildResidentPrompt } = require('../scripts/lib/resident-prompt');
+    fs.writeFileSync(path.join(tmpdir, '.hermit/state/resident-system-prompt.md'), buildResidentPrompt(tmpdir));
     expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ id: 'abc' });
+    fs.writeFileSync(path.join(tmpdir, '.hermit/resident-prompt.md'), 'changed prompt');
+    expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ skip: 'prompt-changed' });
   });
 });
 
@@ -2435,5 +2441,42 @@ describe('chrome command', () => {
         else expect(out).not.toContain('Chrome stays off');
       }, 15000);
     }
+  }
+});
+
+
+describe('checkStaleRuntime planned restart', () => {
+  for (const scenario of ['fresh', 'stale', 'absent']) {
+    test(scenario, async () => {
+      const bin = path.join(tmpdir, 'stub-bin');
+      fs.mkdirSync(bin);
+      for (const name of ['tmux', 'pgrep']) {
+        fs.writeFileSync(path.join(bin, name), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+      }
+      fs.writeFileSync('.hermit/state/runtime.json', JSON.stringify({
+        runtime_mode: 'tmux', tmux_session: 'gone', watchdog_restart_reason: 'upgrade',
+        ...(scenario === 'absent' ? {} : {
+          planned_restart_at: new Date(Date.now() - (scenario === 'fresh' ? 1000 : 360000)).toISOString(),
+        }),
+      }));
+      const child = Bun.spawn([process.execPath, '-e', `
+        const m = await import(${JSON.stringify(HERMIT_START_TS)});
+        m.checkStaleRuntime({}, 'gone');
+      `], { cwd: tmpdir, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, stdout: 'pipe', stderr: 'pipe' });
+      const output = await new Response(child.stdout).text();
+      expect(await child.exited).toBe(0);
+      const runtime = JSON.parse(fs.readFileSync('.hermit/state/runtime.json', 'utf8'));
+      expect(runtime.planned_restart_at).toBeUndefined();
+      if (scenario === 'fresh') {
+        expect(output).toContain('Restarted by the watchdog: upgrade');
+        expect(output).not.toContain('Previous session crashed');
+        expect(runtime.last_error).toBeUndefined();
+        expect(runtime.watchdog_restart_reason).toBeUndefined();
+      } else {
+        expect(output).toContain('Previous session crashed');
+        expect(runtime.last_error).toBe('unclean_shutdown');
+        expect(runtime.watchdog_restart_reason).toBe('upgrade');
+      }
+    });
   }
 });

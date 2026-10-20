@@ -96,7 +96,7 @@ if (rt.runtime_mode && rt.runtime_mode !== 'docker' && typeof rt.tmux_session ==
 
 _running_cc_version() {
   cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude --version 2>/dev/null \
-    | grep -oP '[\d.]+' | head -1 || echo "unknown"
+    | grep -oE '[0-9.]+' | head -1 || echo "unknown"
 }
 
 _validate_compose() {
@@ -521,11 +521,7 @@ case "$CMD" in
       { echo "[hermit] --cc-only and --plugins-only are mutually exclusive" >&2; exit 2; }
 
     _require_running
-    [ "$PLUGINS_ONLY" = false ] && _refuse_if_host_tmux_owner
-
-    # --plugins-only never rebuilds, so a stale baked entrypoint stays stale — warn.
-    # In rebuild modes the build below refreshes it, so no warning is needed there.
-    [ "$PLUGINS_ONLY" = true ] && _warn_if_entrypoint_stale
+    _refuse_if_host_tmux_owner
 
     CC_BEFORE=$(_running_cc_version)
     CC_LATEST="(skipped)"
@@ -539,6 +535,8 @@ case "$CMD" in
     echo "[hermit] Update plan:"
     [ "$PLUGINS_ONLY" = false ] && \
       echo "  Claude Code:  ${CC_BEFORE} → ${CC_LATEST} (image rebuild, container bounces)" || true
+    [ "$PLUGINS_ONLY" = true ] && \
+      echo "  Container:    bounces once after the plugin update (no image rebuild)" || true
     if [ "$CC_ONLY" = false ]; then
       echo "  Plugins to update (durable pin move):"
       if [ -z "$PLUGIN_ROWS" ]; then
@@ -562,48 +560,61 @@ case "$CMD" in
       case "$ANS" in [yY]|[yY][eE][sS]) ;; *) echo "[hermit] Aborted."; exit 0 ;; esac
     fi
 
-    # Graceful session close is handled by the entrypoint's SIGTERM trap (cleanup()
-    # in docker-entrypoint.hermit.sh) — stop_grace_period: 60s in the compose template
-    # gives it enough headroom. No need to duplicate that logic here.
-    if [ "$PLUGINS_ONLY" = false ]; then
-      CC_BUILD_VERSION="${CC_LATEST}"
-      if [ -z "$CC_BUILD_VERSION" ] || [ "$CC_BUILD_VERSION" = "unknown" ] || [ "$CC_BUILD_VERSION" = "(skipped)" ]; then
-        CC_BUILD_VERSION="latest"
-      fi
-      _validate_compose
-      echo "[hermit] Rebuilding image with latest Claude Code (${CC_BUILD_VERSION})..."
-      if ! (cd "$PROJECT_DIR" && "${DC[@]}" build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
-        echo "[hermit] Image build failed — old container still running, no changes applied." >&2
-        exit 1
-      fi
-      echo "[hermit] Bouncing container..."
-      cd "$PROJECT_DIR" && "${DC[@]}" down
-      cd "$PROJECT_DIR" && "${DC[@]}" up -d
-
-      RUNNING=""
-      for _i in $(seq 1 5); do
-        RUNNING=$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
-        [ -n "$RUNNING" ] && break
-        sleep 2
-      done
-      if [ -z "$RUNNING" ]; then
-        echo "[hermit] Container failed to come back up." >&2
-        cd "$PROJECT_DIR" && "${DC[@]}" logs --tail=30 "$SERVICE" >&2
-        exit 1
-      fi
-
-      echo "[hermit] Waiting for tmux session to appear (up to 30s)..."
-      for _i in $(seq 1 6); do
-        (cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-          tmux has-session -t "$TMUX_SESSION" 2>/dev/null) && break
-        sleep 5
-      done
-    fi
-
     PLUGINS_OK_IDS=()
     PLUGINS_FAIL_IDS=()
     PLUGIN_ROWS_AFTER=""
     PLUGIN_ERRORS_AFTER=""
+    EVOLVE_SENT=false
+    RESTARTED=false
+    IMAGE_BUILT=false
+    AWAIT_STATUS=ready
+    AWAIT_REASON=""
+    AWAIT_NOTED=false
+    UPDATE_MARKER="$PROJECT_DIR/.hermit/state/update-in-progress.json"
+    mkdir -p "$(dirname "$UPDATE_MARKER")"
+    # `build` tells an update-launched evolve whether this run rebuilds the image.
+    _stamp_update_marker() {
+      bun -e 'console.log(JSON.stringify({at: new Date().toISOString(), build: process.argv[1] === "false"}))' "$PLUGINS_ONLY" > "$UPDATE_MARKER"
+    }
+    _stamp_update_marker
+    trap 'rm -f "$UPDATE_MARKER"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    _await_upgrade() {
+      local output parsed
+      # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
+      _stamp_update_marker
+      if output=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
+        parsed=$(bun -e '
+          try {
+            const r = JSON.parse(process.argv[1]);
+            if (r.status === "ready") console.log("ready");
+            else if (r.status === "timeout" && typeof r.reason === "string") console.log("timeout\t" + r.reason);
+          } catch {}
+        ' "$output")
+      else
+        parsed=""
+      fi
+      _stamp_update_marker
+      if [ -z "$parsed" ]; then
+        if [ "$AWAIT_NOTED" = false ]; then
+          echo "[hermit] Note: await-upgrade unavailable or invalid output; proceeding without its guard." >&2
+          AWAIT_NOTED=true
+        fi
+        AWAIT_STATUS=ready; AWAIT_REASON=""
+        return 0
+      fi
+      IFS=$'\t' read -r AWAIT_STATUS AWAIT_REASON <<< "$parsed"
+      if [ "$AWAIT_STATUS" = timeout ]; then
+        echo "[hermit] Update wait timed out: $AWAIT_REASON; rerun \`hermitd update\`." >&2
+        return 1
+      fi
+      return 0
+    }
+    _apply_update() {
+    # A CC-only run changes nothing before the build, so only the pre-bounce wait applies.
+    if [ "$CC_ONLY" = false ]; then _await_upgrade || return 0; fi
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       # Refresh each backing marketplace's catalog first. `claude plugin update` moves the
       # pin against whatever is already in the local cache — it does not git-pull. A
@@ -667,26 +678,29 @@ case "$CMD" in
     # Auto-chain hermit-evolve when any registered hermit (core or sibling) has a version gap.
     # PLUGIN_ROWS_AFTER is a TSV where $1=name@marketplace and $3=version (different from
     # hermitd-update's $2/$4 layout). Detects sibling-only bumps as well as core bumps.
-    EVOLVE_SENT=false
     if [ "$CC_ONLY" = false ] && [ "$RELOAD_PLUGINS_SENT" = true ]; then
       # Check whether any registered hermit has a version gap (core or sibling).
-      HERMIT_GAP=$(bun -e '
-        const rows = process.argv[1];
-        const configPath = process.argv[2];
+      EXPECT_ROWS=$(bun -e '
+        const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t"));
+        const rank = {local: 0, project: 1, user: 2};
+        rows.sort((a, b) => (rank[a[1]] ?? 3) - (rank[b[1]] ?? 3));
         try {
-          const c = JSON.parse(require("fs").readFileSync(configPath, "utf8"));
-          const vers = c._hermit_versions ?? {};
-          for (const line of rows.split("\n").filter(Boolean)) {
-            const cols = line.split("\t");
-            const id = cols[0] ?? ""; const newVer = cols[2] ?? "";
+          const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
+          const seen = new Set();
+          for (const [id, scope, version] of rows) {
+            if (seen.has(id)) continue;
+            seen.add(id);
             const name = id.split("@")[0];
-            if (!name.includes("hermit") || !newVer) continue;
-            const configVer = vers[name];
-            if (configVer && configVer !== newVer) { process.stdout.write("1\n"); process.exit(0); }
+            if (name.includes("hermit") && version && versions[name] && versions[name] !== version) console.log(name + "=" + version);
           }
-          process.stdout.write("0\n");
-        } catch { process.stdout.write("0\n"); }
-      ' "$PLUGIN_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json" 2>/dev/null || echo "0")
+        } catch {}
+      ' "$PLUGIN_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json")
+      EXPECT_ARGS=()
+      while IFS= read -r pair; do
+        [ -z "$pair" ] || EXPECT_ARGS+=(--expect "$pair")
+      done <<< "$EXPECT_ROWS"
+      HERMIT_GAP=0
+      [ ${#EXPECT_ARGS[@]} -gt 0 ] && HERMIT_GAP=1
       CORE_FAILED=false
       for _fid in "${PLUGINS_FAIL_IDS[@]:-}"; do
         case "$_fid" in hermitd@*) CORE_FAILED=true ;; esac
@@ -705,16 +719,50 @@ case "$CMD" in
           echo "[hermit]          The pin is already durable; run /hermitd:hermit-evolve when you attach." >&2
         fi
       fi
-      # The image was already rebuilt above, before evolve ran. If evolve now refreshes
-      # any managed docker file, the just-built image is stale against it. The async
-      # result is not visible here, so tell the operator where the definitive report is.
-      if [ "$EVOLVE_SENT" = true ]; then
-        echo "[hermit] Note: if hermit-evolve reports a merged compose/Dockerfile or refreshed entrypoint," >&2
-        echo "[hermit]       run 'hermitd update' once more so the image uses that file." >&2
-      fi
     fi
 
-    if [ -n "$CC_BUILD_VERSION" ] && [ "$CC_BUILD_VERSION" != "latest" ]; then
+    if [ "$EVOLVE_SENT" = true ]; then
+      _await_upgrade "${EXPECT_ARGS[@]}" || return 0
+    fi
+    if [ "$PLUGINS_ONLY" = false ]; then
+      CC_BUILD_VERSION="${CC_LATEST}"
+      if [ -z "$CC_BUILD_VERSION" ] || [ "$CC_BUILD_VERSION" = "unknown" ] || [ "$CC_BUILD_VERSION" = "(skipped)" ]; then
+        CC_BUILD_VERSION="latest"
+      fi
+      _validate_compose
+      echo "[hermit] Rebuilding image with latest Claude Code (${CC_BUILD_VERSION})..."
+      if ! (cd "$PROJECT_DIR" && "${DC[@]}" build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
+        echo "[hermit] Image build failed — old container still running, no changes applied." >&2
+        exit 1
+      fi
+      IMAGE_BUILT=true
+    fi
+    _await_upgrade || return 0
+    _validate_compose
+    echo "[hermit] Bouncing container..."
+    cd "$PROJECT_DIR" && "${DC[@]}" down
+    export HERMIT_RESUME=1
+    cd "$PROJECT_DIR" && "${DC[@]}" up -d
+    RESTARTED=true
+
+    RUNNING=""
+    for _i in $(seq 1 5); do
+      RUNNING=$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
+      [ -n "$RUNNING" ] && break
+      sleep 2
+    done
+    if [ -z "$RUNNING" ]; then
+      echo "[hermit] Container failed to come back up." >&2
+      cd "$PROJECT_DIR" && "${DC[@]}" logs --tail=30 "$SERVICE" >&2
+      exit 1
+    fi
+
+    [ "$PLUGINS_ONLY" = true ] && _warn_if_entrypoint_stale
+    return 0
+    }
+    _apply_update
+
+    if [ "$RESTARTED" = true ] && [ -n "$CC_BUILD_VERSION" ] && [ "$CC_BUILD_VERSION" != "latest" ]; then
       CC_AFTER="$CC_BUILD_VERSION"
     else
       CC_AFTER=$(_running_cc_version)
@@ -733,9 +781,10 @@ case "$CMD" in
     bun - "$UPDATE_MODE" "$CC_BEFORE" "$CC_AFTER" \
           "$PLUGIN_ROWS" "$PLUGIN_ROWS_AFTER" "$FAIL_IDS_JSON" \
           "$PLUGINS_COUNT_BEFORE" "$PLUGINS_COUNT_AFTER" "$LOG_FILE" \
-          "$RELOAD_PLUGINS_SENT" "$EVOLVE_SENT" "$PLUGIN_ERRORS_AFTER" <<'JSEOF' || \
+          "$RELOAD_PLUGINS_SENT" "$EVOLVE_SENT" "$PLUGIN_ERRORS_AFTER" \
+          "$RESTARTED" "$IMAGE_BUILT" "$AWAIT_STATUS" "$AWAIT_REASON" <<'JSEOF' || \
       echo "[hermit] Warning: could not write update log" >&2
-const [mode, ccBefore, ccAfter, beforeTsv, afterTsv, failJson, pbCount, paCount, logFile, reloadSent, evolveSent, errorsTsv] = process.argv.slice(2);
+const [mode, ccBefore, ccAfter, beforeTsv, afterTsv, failJson, pbCount, paCount, logFile, reloadSent, evolveSent, errorsTsv, restarted, imageBuilt, awaitStatus, awaitReason] = process.argv.slice(2);
 const parseRows = (tsv) => {
   const m = new Map();
   for (const line of (tsv || '').split('\n')) {
@@ -775,6 +824,9 @@ for (const [key, { id, scope, version }] of before) {
 const entry = {
   ts: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   trigger: 'hermitd-docker update',
+  restarted: restarted === 'true',
+  image_built: imageBuilt === 'true',
+  await: { status: awaitStatus, reason: awaitReason || null },
   mode,
   cc_before: ccBefore, cc_after: ccAfter,
   plugins,
@@ -787,7 +839,11 @@ require('fs').appendFileSync(logFile, JSON.stringify(entry) + '\n');
 JSEOF
 
     echo ""
-    echo "[hermit] Update complete."
+    if [ "$AWAIT_STATUS" = timeout ]; then
+      echo "[hermit] Update paused; no restart performed."
+    else
+      echo "[hermit] Update complete."
+    fi
     [ "$PLUGINS_ONLY" = false ] && echo "  Claude Code: ${CC_BEFORE} → ${CC_AFTER}" || true
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       echo "  Plugins:"
@@ -813,7 +869,7 @@ JSEOF
         echo "  /reload-plugins not sent — attach and run it manually: hermitd attach"
       fi
       if [ "$EVOLVE_SENT" = true ]; then
-        echo "  hermit-evolve auto-started (unattended) — hermit config is upgrading."
+        echo "  hermit-evolve started (unattended)."
       fi
     fi
     echo ""

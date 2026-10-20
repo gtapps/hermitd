@@ -34,7 +34,8 @@ import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
 import { renderTemplate } from './lib/render-template';
-import { transcriptDirFor } from './lib/cc-compat';
+import { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
+export { resolveResumeTarget } from './lib/resident-prompt';
 
 type Json = any;
 
@@ -447,11 +448,18 @@ function checkStaleRuntime(config: Json, sessionName: string): void {
       const prevTmux = 'tmux_session' in runtime ? runtime.tmux_session : '';
       const verdict = residentLiveness(runtime, prevTmux, REAL_LIVENESS_DEPS());
       if (verdict.state === 'dead' || verdict.state === 'orphan') {
-        console.log(
-          `[hermit] Warning: Previous session crashed (tmux session "${prevTmux}" is gone).`,
-        );
-        console.log('[hermit] /resident-start will offer recovery.');
-        runtime.last_error = 'unclean_shutdown';
+        const plannedAge = Date.now() - Date.parse(runtime.planned_restart_at);
+        if (plannedAge >= 0 && plannedAge < 5 * 60 * 1000) {
+          console.log(`[hermit] Restarted by the watchdog: ${runtime.watchdog_restart_reason}`);
+          delete runtime.watchdog_restart_reason;
+        } else {
+          console.log(
+            `[hermit] Warning: Previous session crashed (tmux session "${prevTmux}" is gone).`,
+          );
+          console.log('[hermit] /resident-start will offer recovery.');
+          runtime.last_error = 'unclean_shutdown';
+        }
+        delete runtime.planned_restart_at;
         writeRuntimeJson(runtime);
       }
     } else if (mode === 'interactive' && readJson(path.join(STATE_DIR, 'execution.json'))?.state === 'in_flight') {
@@ -669,7 +677,9 @@ function readPromptOverride(name: string): string | null {
 function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
   const rules = readShippedPrompt('rules.md');
-  const resident = readPromptOverride('resident-prompt.md') ?? `${readShippedPrompt('resident.md')}\n${rules}`;
+  // Warn on an unreadable override, and refuse cleanly when the shipped prompt it would fall back to is missing.
+  if (readPromptOverride('resident-prompt.md') === null) readShippedPrompt('resident.md');
+  const resident = buildResidentPrompt(hermitFile('..'));
   const vars = { PROJECT_ROOT: hermitFile('..'), RESIDENT_NAME: residentName };
   const helperOverride = readPromptOverride('helper-prompt.md');
   // The operator's file gets the known values without renderTemplate's
@@ -1483,28 +1493,6 @@ export function duplicateSessionRefusal(sessionName: string): string[] | null {
   ];
 }
 
-export function resolveResumeTarget(
-  runtime: Json,
-  projectRoot: string,
-  configDir?: string,
-): { id: string } | { skip: 'no-session-id' | 'no-transcript' | 'no-user-turn' } {
-  const id = runtime?.cc_session_id;
-  if (typeof id !== 'string' || !id.trim()) return { skip: 'no-session-id' };
-  const dir = transcriptDirFor(projectRoot, configDir);
-  const transcript = path.join(dir, `${id}.jsonl`);
-  if (path.dirname(transcript) !== dir) return { skip: 'no-transcript' };
-  let text: string;
-  try {
-    text = fs.readFileSync(transcript, 'utf8');
-  } catch {
-    return { skip: 'no-transcript' };
-  }
-  const hasUserTurn = text.split('\n').some((line) => {
-    try { return JSON.parse(line).type === 'user'; } catch { return false; }
-  });
-  return hasUserTurn ? { id } : { skip: 'no-user-turn' };
-}
-
 export function registerHostProjectOnBoot(project = process.cwd(), root = PLUGIN_ROOT): void {
   try { registerProject(project, root); } catch { /* Registry failure must never prevent startup. */ }
 }
@@ -1528,6 +1516,7 @@ async function main(): Promise<void> {
   refuseIfAnotherInstanceAlive(bootMode);
 
   let resumeId: string | undefined;
+  let promptChanged = false;
   if (resumeIndex !== -1) {
     if (bootMode === 'interactive') {
       console.log('[hermit] --resume applies to always-on boots only');
@@ -1540,7 +1529,10 @@ async function main(): Promise<void> {
         runtime.config_dir,
       );
       if ('id' in target) resumeId = target.id;
-      else console.log(`[hermit] resume skipped: ${target.skip}`);
+      else {
+        promptChanged = target.skip === 'prompt-changed';
+        console.log(`[hermit] resume skipped: ${target.skip}`);
+      }
     }
   }
 
@@ -1594,7 +1586,7 @@ async function main(): Promise<void> {
 
   checkStaleRuntime(config, sessionName);
 
-  console.log(`[hermit] Resume: ${resume ?? 'fresh'}`);
+  console.log(`[hermit] Resume: ${resume ?? (promptChanged ? 'fresh (resident prompt changed)' : 'fresh')}`);
 
   // Print launch info
   const agentName = config.agent_name;
