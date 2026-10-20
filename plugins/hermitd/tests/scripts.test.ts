@@ -626,27 +626,46 @@ exit 0
   }
 });
 
-// Inside the container the image ships no docker CLI, so PATH is an empty dir here.
-test('hermitd-update without a docker CLI points at the Docker host', async () => {
-  const wd = setupWorkdir();
-  const proj = wd.dir;
-  try {
-    fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
-    write(hermit(proj, 'config.json'), '{}');
-    write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
-    const empty = path.join(proj, '.empty-path');
-    fs.mkdirSync(empty);
-    const proc = Bun.spawn({
-      cmd: [Bun.which('bash')!, path.join(SCRIPTS_DIR, 'hermitd-update.sh'), '--yes'],
-      cwd: proj,
-      env: { HOME: proj, PATH: empty },
-      stdin: Buffer.from(''), stdout: 'pipe', stderr: 'pipe',
-    });
-    const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain('host terminal where Docker runs');
-    expect(stderr).not.toContain('container is stopped');
-  } finally { wd.cleanup(); }
+describe('hermitd-update with Docker scaffolding and no running stack', () => {
+  // PATH holds only an optional `docker` stub, so `command -v docker` sees exactly that.
+  async function run(dockerStub: string | null) {
+    const wd = setupWorkdir();
+    const proj = wd.dir;
+    try {
+      fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
+      write(hermit(proj, 'config.json'), '{}');
+      write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
+      const bin = path.join(proj, '.path');
+      fs.mkdirSync(bin);
+      if (dockerStub) {
+        write(path.join(bin, 'docker'), dockerStub);
+        fs.chmodSync(path.join(bin, 'docker'), 0o755);
+      }
+      const proc = Bun.spawn({
+        cmd: [Bun.which('bash')!, path.join(SCRIPTS_DIR, 'hermitd-update.sh'), '--yes'],
+        cwd: proj,
+        env: { HOME: proj, PATH: bin },
+        stdin: Buffer.from(''), stdout: 'pipe', stderr: 'pipe',
+      });
+      const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+      return { stderr, exitCode };
+    } finally { wd.cleanup(); }
+  }
+
+  // Inside the container the image ships no docker CLI.
+  test('without a docker CLI it points at the Docker host', async () => {
+    const r = await run(null);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('host terminal where Docker runs');
+    expect(r.stderr).not.toContain('container is stopped');
+  });
+
+  test('with docker but no running stack it says the container is stopped', async () => {
+    const r = await run('#!/bin/sh\nexit 0\n');
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain('container is stopped');
+    expect(r.stderr).not.toContain('host terminal where Docker runs');
+  });
 });
 
 describe('hermitd-update host path', () => {

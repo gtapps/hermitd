@@ -35,13 +35,15 @@ done
 # so host pins are irrelevant to it. Three cases. ---
 if [ -f "$COMPOSE" ]; then
   STACK_RUNNING=false
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  HAS_DOCKER=false
+  command -v docker >/dev/null 2>&1 && HAS_DOCKER=true
+  if [ "$HAS_DOCKER" = true ] && docker info >/dev/null 2>&1; then
     RUNNING=$(cd "$PROJECT_DIR" && docker compose -f "$COMPOSE" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "hermit" || true)
     [ -n "$RUNNING" ] && STACK_RUNNING=true
   fi
   if [ "$STACK_RUNNING" = true ]; then
     exec "$SCRIPT_DIR/hermitd-docker" update ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
-  elif ! command -v docker >/dev/null 2>&1; then
+  elif [ "$HAS_DOCKER" = false ]; then
     # Docker was never asked, e.g. a resident inside the container (the image has no docker CLI).
     echo "[hermit] No docker CLI here, so the container cannot be updated from this shell." >&2
     echo "[hermit] Run it from a host terminal where Docker runs, in the project folder:" >&2

@@ -92,6 +92,11 @@ describe('apply-settings.ts deny', () => {
       'Bash(*/hermitd update*)',
       'Bash(*.hermit/bin/hermitd-update*)',
       'Bash(*.hermit/bin/hermitd-run hermitd-update*)',
+      'Bash(hermitd run *hermitd-update*)',
+      'Bash(*/hermitd run *hermitd-update*)',
+      'Bash(hermitd docker update*)',
+      'Bash(*/hermitd docker update*)',
+      'Bash(*.hermit/bin/hermitd-docker update*)',
     ]) expect(ASK).toContain(pattern);
   });
 
