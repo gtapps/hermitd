@@ -1192,28 +1192,30 @@ describe('channel-send rate limits', () => {
     // close to the client deadline — those are two clocks, and under a loaded
     // `--parallel` run the sleep overshoots and aborts the attempt first.
     test(`${platform}: a Retry-After past the latency-reduced budget returns the 429 instead of waiting`, async () => {
-      const r = await exercise(platform, [{ ...limited(platform, 5), delayMs: 50 }], { timeoutMs: 1500 });
+      const r = await exercise(platform, [{ ...limited(platform, 5), delayMs: 50 }], { timeoutMs: 4000 });
       expect(r.result.status).toBe(429);
       expect(r.requests).toHaveLength(1);
       // Returned on the spot rather than sleeping out the rest of the budget.
-      expect(r.elapsed).toBeLessThan(1400);
-    });
+      expect(r.elapsed).toBeLessThan(3000);
+    }, 20000);
 
+    // A shared deadline ends near 3000 ms; a fresh retry budget would end past 4500 ms.
     test(`${platform}: retry shares the original timeout`, async () => {
-      const r = await exercise(platform, [{ ...limited(platform, 0.05), delayMs: 50 }, { delayMs: 1800 }], { timeoutMs: 1200 });
+      const r = await exercise(platform, [{ ...limited(platform, 1), delayMs: 500 }, { delayMs: 10_000 }], { timeoutMs: 3000 });
       expect(r.result).toEqual({ ok: false, error: 'request timeout' });
       expect(r.requests).toHaveLength(2);
       // The second attempt inherits the first attempt's deadline instead of a fresh one.
-      expect(r.elapsed).toBeLessThan(2000);
+      expect(r.elapsed).toBeLessThan(4000);
       expect(r.rows).toHaveLength(0);
-    });
+    }, 20000);
 
     test(`${platform}: stalled error body respects the timeout without retrying`, async () => {
-      const r = await exercise(platform, [{ ...limited(platform), bodyDelayMs: 1000 }], { timeoutMs: 400 });
+      const r = await exercise(platform, [{ ...limited(platform), bodyDelayMs: 6000 }], { timeoutMs: 2000 });
       expect(r.result).toEqual({ ok: false, error: 'request timeout' });
       expect(r.requests).toHaveLength(1);
-      expect(r.elapsed).toBeLessThan(750);
-    });
+      // Aborted by the timeout, not released by the body finishing.
+      expect(r.elapsed).toBeLessThan(5000);
+    }, 20000);
 
     test(`${platform}: retried maintainer failure does not write platform health`, async () => {
       const r = await exercise(platform, [limited(platform), limited(platform)], { recordHealth: false });
@@ -1390,10 +1392,12 @@ describe('owned Discord thread delivery', () => {
     const previous = process.env.HERMIT_DISCORD_API_URL;
     process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
     const text = c.partial ? 'a'.repeat(2100) : 'CLIENT';
+    // Only the hanging server needs a short budget; the others must answer within theirs.
+    const timeoutMs = c.timeout ? 50 : 5000;
     try {
       const result = c.plain
-        ? await sendToChannel(dir, text, { target: { id: 'discord', chat_id: 'THREAD' }, timeoutMs: 50 })
-        : await sendToOwnedChat(dir, 'discord:THREAD', text, { timeoutMs: 50 });
+        ? await sendToChannel(dir, text, { target: { id: 'discord', chat_id: 'THREAD' }, timeoutMs })
+        : await sendToOwnedChat(dir, 'discord:THREAD', text, { timeoutMs });
       expect(result.ok).toBe(!!c.parent);
       if (!c.plain) expect(result.route).toBe(c.parent || c.parentFails ? 'parent' : 'chat');
       const parentPosts = posts.filter(p => p.route === '/channels/PARENT/messages');
