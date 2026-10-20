@@ -103,7 +103,7 @@ Before you cut anything:
 
 ### Replacing the helper prompt
 
-Helper sessions the hermit spawns get their own prompt, built from the plugin's `prompts/helper.md` and the same shared rules. To replace it, create `.hermit/helper-prompt.md`. At every start the hermit copies that file as written into every helper's prompt; Claude Code's own system prompt stays underneath. Empty or delete the file to go back to the shipped prompt. Changes reach helpers spawned after the next restart, and a write by the hermit to this file asks for your approval first.
+Helper sessions the hermit spawns get their own prompt, built from the plugin's `prompts/helper.md` and the same shared rules. To replace it, create `.hermit/helper-prompt.md`. At every start the hermit uses that file as every helper's prompt, filling in `{{PROJECT_ROOT}}` with this project's path and `{{RESIDENT_NAME}}` with the hermit's name; Claude Code's own system prompt stays underneath. Empty or delete the file to go back to the shipped prompt. Changes reach helpers spawned after the next restart, and a write by the hermit to this file asks for your approval first.
 
 Start from a copy of the prompt helpers get today, which already holds this project's path and the hermit's name:
 
@@ -115,8 +115,9 @@ Before you cut anything:
 
 - **Keep the `GUEST_REPORT` block and the instruction to send it to the hermit by name.** That message is how a helper hands its result back. Without it the hermit never records the outcome, with no error.
 - Keep the project path lines: they point helpers working in a worktree at the hermit's real state folder.
-- The file is used as written, so update the path or name yourself if you move the project or rename the hermit.
-- Upgrades never touch this file. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin.
+- What you remove is yours: the shipped rules you cut no longer reach helpers.
+- The copy holds today's path and name. Put `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` back in their place if you want the file to follow a moved project or a renamed hermit.
+- Upgrades never touch this file. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin; lines you paste from `prompts/helper.md` keep working, placeholders included.
 
 ---
 

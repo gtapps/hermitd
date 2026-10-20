@@ -664,11 +664,13 @@ function writeSystemPrompts(residentName: string): void {
   // Read every source before writing either generated prompt.
   const rules = readShippedPrompt('rules.md');
   const resident = readPromptOverride('resident-prompt.md') ?? `${readShippedPrompt('resident.md')}\n${rules}`;
-  const shippedHelper = renderTemplate(readShippedPrompt('helper.md'), {
-    PROJECT_ROOT: hermitFile('..'),
-    RESIDENT_NAME: residentName,
-  });
-  const helper = readPromptOverride('helper-prompt.md') ?? `${shippedHelper}\n${rules}`;
+  const vars = { PROJECT_ROOT: hermitFile('..'), RESIDENT_NAME: residentName };
+  const helperOverride = readPromptOverride('helper-prompt.md');
+  // The operator's file gets the known values without renderTemplate's
+  // leftover check: a stray `{{...}}` there must not stop boot.
+  const helper = helperOverride !== null
+    ? Object.entries(vars).reduce((text, [key, value]) => text.replaceAll(`{{${key}}}`, value), helperOverride)
+    : `${renderTemplate(readShippedPrompt('helper.md'), vars)}\n${rules}`;
   writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), helper);
   writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), resident);
 }

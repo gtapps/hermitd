@@ -174,5 +174,5 @@ When adding a new hook script, import `hermitDir` from `./lib/cc-compat` and com
 | `resident-prompt.md` | Optional operator-owned replacement for the shipped resident prompt and rules; never written by the plugin; gated. |
 | `claude-settings.json` | Optional operator-owned native settings for the resident; never written by the plugin. Hooks merge per event after generated launch overlay entries. |
 | `state/claude-settings.overlay.json` | Generated at each start from config and the operator override; passed only to the resident and read at launch only. This launch overlay carries `pause-gate`, `ask-gate`, `component-privacy`, and `permission-denied-notify` with absolute paths instead of plugin-manifest entries. |
-| `state/helper-system-prompt.md` | Generated at each start from `prompts/helper.md` and `prompts/rules.md`, or copied from a non-empty `helper-prompt.md`; passed to spawn-session helpers as their appended system prompt; gated. |
+| `state/helper-system-prompt.md` | Generated at each start from `prompts/helper.md` and `prompts/rules.md`, or from a non-empty `helper-prompt.md` with `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` filled in; passed to spawn-session helpers as their appended system prompt; gated. |
 | `helper-prompt.md` | Optional operator-owned replacement for the shipped helper prompt and rules; never written by the plugin; gated. |

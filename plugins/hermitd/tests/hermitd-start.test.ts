@@ -2354,21 +2354,35 @@ describe('resident prompt launch requirement', () => {
     const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
     expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
   });
-  test('operator helper-prompt.md replaces the shipped helper prompt and leaves the resident prompt alone', async () => {
-    fs.writeFileSync('.hermit/helper-prompt.md', '# My helpers\n\nReport back briefly.\n');
+  test('operator helper-prompt.md replaces the shipped helper prompt, fills known placeholders and leaves the resident prompt alone', async () => {
+    fs.writeFileSync('.hermit/helper-prompt.md', '# My helpers\n\nReport to {{RESIDENT_NAME}} at {{PROJECT_ROOT}}; keep {{OTHER}}.\n');
     await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
     const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
     const resident = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/resident.md'), 'utf8');
-    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toBe('# My helpers\n\nReport back briefly.\n');
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8'))
+      .toBe(`# My helpers\n\nReport to ${peerName({})} at ${path.resolve('.')}; keep {{OTHER}}.\n`);
     expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(`${resident}\n${rules}`);
   });
   test('blank helper-prompt.md falls back to the shipped helper prompt', async () => {
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const shipped = fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8');
     fs.writeFileSync('.hermit/helper-prompt.md', ' \n\n');
     await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
-    const rules = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/rules.md'), 'utf8');
-    const file = fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8');
-    expect(file).toStartWith('# Helper session');
-    expect(file).toEndWith(rules);
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toBe(shipped);
+  });
+  test('an unreadable prompt override warns and falls back to the shipped prompt', async () => {
+    await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    const shipped = {
+      'resident-prompt.md': fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8'),
+      'helper-prompt.md': fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8'),
+    };
+    // A directory in the file's place fails the read with EISDIR, not ENOENT.
+    for (const name of Object.keys(shipped)) fs.mkdirSync(`.hermit/${name}`);
+    const { out } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
+    expect(out).toContain('[hermit] WARNING: .hermit/resident-prompt.md is unreadable; using the shipped prompt.');
+    expect(out).toContain('[hermit] WARNING: .hermit/helper-prompt.md is unreadable; using the shipped prompt.');
+    expect(fs.readFileSync('.hermit/state/resident-system-prompt.md', 'utf8')).toBe(shipped['resident-prompt.md']);
+    expect(fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8')).toBe(shipped['helper-prompt.md']);
   });
   test('missing shipped prompt refuses launch clearly', async () => {
     const child = Bun.spawn([process.execPath, '-e', `import { readShippedPrompt } from ${JSON.stringify(HERMIT_START_TS)}; readShippedPrompt('missing.md');`], { cwd: tmpdir, stdout: 'pipe', stderr: 'pipe' });

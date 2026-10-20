@@ -391,7 +391,7 @@ Plugins run with the same permissions as Hermit. The default `auto` mode applies
 
 See [Recommended Plugins](recommended-plugins.md) for the full list and installation instructions.
 
-The launcher composes `state/resident-system-prompt.md` from `prompts/resident.md` plus `prompts/rules.md`, and `state/helper-system-prompt.md` from `prompts/helper.md` plus the same rules, at every boot. When the operator-owned `resident-prompt.md` is non-empty, the resident prompt is that file verbatim instead, and the shipped rules no longer reach the resident. A non-empty operator-owned `helper-prompt.md` likewise becomes the helper prompt verbatim. Writes to those files and the operator-owned `claude-settings.json` use the same settings gate as config.json, with redirect denies and Edit ask rules.
+The launcher composes `state/resident-system-prompt.md` from `prompts/resident.md` plus `prompts/rules.md`, and `state/helper-system-prompt.md` from `prompts/helper.md` plus the same rules, at every boot. When the operator-owned `resident-prompt.md` is non-empty, the resident prompt is that file verbatim instead, and the shipped rules no longer reach the resident. A non-empty operator-owned `helper-prompt.md` likewise becomes the helper prompt, with only `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` filled in. Writes to those files and the operator-owned `claude-settings.json` use the same settings gate as config.json, with redirect denies and Edit ask rules.
 
 ### Task record script boundary
 
