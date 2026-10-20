@@ -626,6 +626,29 @@ exit 0
   }
 });
 
+// Inside the container the image ships no docker CLI, so PATH is an empty dir here.
+test('hermitd-update without a docker CLI points at the Docker host', async () => {
+  const wd = setupWorkdir();
+  const proj = wd.dir;
+  try {
+    fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
+    write(hermit(proj, 'config.json'), '{}');
+    write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
+    const empty = path.join(proj, '.empty-path');
+    fs.mkdirSync(empty);
+    const proc = Bun.spawn({
+      cmd: [Bun.which('bash')!, path.join(SCRIPTS_DIR, 'hermitd-update.sh'), '--yes'],
+      cwd: proj,
+      env: { HOME: proj, PATH: empty },
+      stdin: Buffer.from(''), stdout: 'pipe', stderr: 'pipe',
+    });
+    const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('host terminal where Docker runs');
+    expect(stderr).not.toContain('container is stopped');
+  } finally { wd.cleanup(); }
+});
+
 describe('hermitd-update host path', () => {
   // Build a workdir with the wrapper installed at .hermit/bin, a config
   // (no docker compose → host path), and stub `claude`/`tmux` on a prepended PATH.

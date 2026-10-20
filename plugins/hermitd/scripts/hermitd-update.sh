@@ -41,6 +41,12 @@ if [ -f "$COMPOSE" ]; then
   fi
   if [ "$STACK_RUNNING" = true ]; then
     exec "$SCRIPT_DIR/hermitd-docker" update ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+  elif ! command -v docker >/dev/null 2>&1; then
+    # Docker was never asked, e.g. a resident inside the container (the image has no docker CLI).
+    echo "[hermit] No docker CLI here, so the container cannot be updated from this shell." >&2
+    echo "[hermit] Run it from a host terminal where Docker runs, in the project folder:" >&2
+    echo "[hermit]   hermitd update" >&2
+    exit 1
   else
     echo "[hermit] Docker scaffolding present but the container is stopped." >&2
     echo "[hermit] The container's plugins live in its own 'claude-config' volume — updating" >&2
