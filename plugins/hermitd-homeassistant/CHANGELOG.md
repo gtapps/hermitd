@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.26] - 2026-10-22
 
 ### Changed
 - The HA language setting is removed; replies follow the hermit's `language`, a different automation-naming language goes in a CLAUDE file, and `boot store` drops `--language`.
