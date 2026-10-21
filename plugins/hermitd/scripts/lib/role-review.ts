@@ -228,9 +228,16 @@ export async function commit(dir: string, routineId: string, upper: number, inpu
   return { status: 'committed', chat: owning.chat, saved, rejected, cursor_row_id: upper };
 }
 
-export async function get(dir: string, chat: string): Promise<Json> {
-  const pending = readState(dir).proposals.filter(p => p.chat === chat && p.state === 'pending'
+function pendingFor(state: ReviewState, chat: string): Proposal[] {
+  return state.proposals.filter(p => p.chat === chat && p.state === 'pending'
     && Date.parse(p.created_at) >= Date.now() - 30 * DAY);
+}
+/** Unexpired pending proposals for one chat, for the per-turn hint; 0 on any read failure. */
+export function pendingCount(dir: string, chat: string): number {
+  try { return pendingFor(readState(dir), chat).length; } catch { return 0; }
+}
+export async function get(dir: string, chat: string): Promise<Json> {
+  const pending = pendingFor(readState(dir), chat);
   if (!pending.length) return { status: 'ok', proposals: [] };
   const targets = (await targetsFor(dir, readSettledConfig(dir), chat))?.targets ?? [];
   return { status: 'ok', proposals: pending.map(p => {

@@ -513,6 +513,23 @@ describe('protected chat instructions', () => {
     expect((await run(prompt('other'), dir)).stdout).not.toContain('[chat instructions]');
   }, config()));
 
+  test('only a chat with unexpired pending role proposals gets the count line', withDir(async dir => {
+    const created_at = new Date().toISOString();
+    const old = new Date(Date.now() - 31 * 86_400_000).toISOString();
+    const proposal = (chat: string, state: string, at = created_at) => ({ id: `${chat}-${state}-${at}`, chat, state, created_at: at });
+    write(hermit(dir, 'state', 'role-review.json'), JSON.stringify({ routines: {}, proposals: [
+      proposal('discord:review', 'pending'), proposal('discord:review', 'pending'),
+      proposal('discord:review', 'applied'), proposal('discord:review', 'pending', old), proposal('discord:other', 'declined'),
+    ] }));
+    expect((await run(prompt(), dir)).stdout).toContain('[pending role proposals] 2');
+    expect((await run(prompt('other'), dir)).stdout).not.toContain('[pending role proposals]');
+    expect((await run(prompt('review', 'STRANGER'), dir)).stdout).not.toContain('[pending role proposals]');
+    write(hermit(dir, 'state', 'role-review.json'), '{not json');
+    const broken = await run(prompt(), dir);
+    expect(broken.exitCode).toBe(0);
+    expect(broken.stdout).not.toContain('[pending role proposals]');
+  }, config()));
+
   test('non-allowed senders receive no instructions', withDir(async dir => {
     expect((await run(prompt('review', 'STRANGER'), dir)).stdout).not.toContain('[chat instructions]');
   }, config()));

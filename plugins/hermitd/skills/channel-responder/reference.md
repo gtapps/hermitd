@@ -56,7 +56,7 @@ An admitted sender's durable request about how this chat should behave is a Stan
 
 ### Pending review proposals
 
-Before every Standing role update or forget turn, and before interpreting a reply in a chat that may have pending proposals, run `.hermit/bin/hermitd-run role-review .hermit get --chat <key>`, using the normalized `<sourceKey>:<chat_id>` and shell-quoted arguments. Run this check on ordinary admitted chat replies to discover pending proposals; never read the raw state file. Respect §0's command/pause exceptions and the existing micro-approval and task-thread precedence. A check may precede the reply despite §1's bookkeeping restriction.
+When the turn's context carries `[pending role proposals]`, run `.hermit/bin/hermitd-run role-review .hermit get --chat <key>` before interpreting the reply or any Standing role update or forget, using the normalized `<sourceKey>:<chat_id>` and shell-quoted arguments. Without that line this chat has no pending proposal, so skip the check; never read the raw state file. Respect §0's command/pause exceptions and the existing micro-approval and task-thread precedence. A check may precede the reply despite §1's bookkeeping restriction.
 
 Match the reply's meaning to the returned proposals for this chat, in any language. Do not match keywords or assume a bare yes approves every proposal. When several fit, ask once which change they mean and write nothing. A reply that refers to none continues normal classification. Refuse a selected `stale:true` proposal plainly because its current wording changed or disappeared; do not apply its saved replacement. A missing proposal is not authority to reconstruct one from chat history.
 
