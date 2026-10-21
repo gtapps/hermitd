@@ -12,7 +12,7 @@
 - Durable chat-behavior corrections save directly as pinned memory roles.
 - Any configured channel can own a routine; script notices still need a direct sender or `send_script`.
 - Routines added from a chat bind the asking chat, home included.
-- Routine writes from non-primary channel senders or unknown origins raise the native permission prompt.
+- Routine writes from non-primary channel senders or unknown origins raise the native permission prompt, and accepted routine proposals follow the same routine rules.
 - Conversation history includes only allowed inbound senders and all outbound rows.
 - Weekly consolidation leaves role files and `[role` index lines alone.
 - Reflect reuses an existing observation label for a recurring problem, so repeats under new wording still count toward a proposal.

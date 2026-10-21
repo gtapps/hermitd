@@ -156,12 +156,14 @@ const HERMIT_ALLOW = [
   // the resident, so they are sealed beside note and list: the annotation
   // reaches the model with no resolvable plugin root, and its `bun
   // */scripts/task.ts*` twin is suspended under auto mode.
-  'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
-  'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
   'Bash(.hermit/bin/hermitd-run task note *)',
   'Bash(.hermit/bin/hermitd-run task list *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
+  // Role-proposal replies arrive on ordinary chat turns, sealed for the same
+  // reason; snapshot and commit stay with the routine's own script path.
+  'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
+  'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
   'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(.hermit/bin/hermitd-run proposal metrics *)',
   // The shared domain-hatch protocol, pinned per verb for the same reason:

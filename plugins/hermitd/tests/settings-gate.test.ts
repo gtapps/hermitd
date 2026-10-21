@@ -510,17 +510,17 @@ describe('routine chat binding', () => {
   ];
 
   /** A gate run whose turn opened on a discord message from `chatId`, or a terminal turn when null. */
-  async function runFrom(chatId: string | null, rest: string) {
-    const dir = fixture({ channels: { discord: { enabled: true, default_chat_id: '100', allowed_users: ['u1'] } }, routines: ROUTINES });
+  async function runFrom(chatId: string | null, rest: string, command = cmd(rest), userId = 'u1') {
+    const dir = fixture({ channels: { discord: { enabled: true, default_chat_id: '100', allowed_users: ['u1', 'u2'] } }, routines: ROUTINES });
     let transcript: string | undefined;
     if (chatId !== null) {
       transcript = path.join(dir, 'transcript.jsonl');
       fs.writeFileSync(transcript, JSON.stringify({
         type: 'user',
-        message: { content: `<channel source="plugin:discord:discord" chat_id="${chatId}" user_id="u1">every monday post the digest here</channel>` },
+        message: { content: `<channel source="plugin:discord:discord" chat_id="${chatId}" user_id="${userId}">every monday post the digest here</channel>` },
       }) + '\n');
     }
-    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }));
+    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
     return runGate(JSON.stringify({ ...base, transcript_path: transcript ?? base.transcript_path }), dir);
   }
 
@@ -569,6 +569,21 @@ describe('routine chat binding', () => {
     expect(asked(await runFrom('100', 'set routines.0.enabled false'))).toBe(false);
     expect(asked(await runFrom(null, 'set routines.0.enabled false'))).toBe(false);
     expect(asked(await runFrom(null, 'unset routines.1'))).toBe(false);
+  });
+
+  const proposal = (entry: unknown) =>
+    `bun /p/scripts/proposal.ts routine .hermit <<'HERMIT_ROUTINE'\n${JSON.stringify(entry)}\nHERMIT_ROUTINE`;
+  const weekly = { id: 'weekly', schedule: '0 9 * * 1', skill: 'hermitd:brief', enabled: true };
+
+  test('an accepted routine proposal follows the routine write rules', async () => {
+    expect(asked(await runFrom(null, '', proposal(weekly)))).toBe(false);
+    expect(asked(await runFrom('100', '', proposal(weekly)))).toBe(false);
+    expect(asked(await runFrom('555', '', proposal({ ...weekly, chat: 'discord:555' })))).toBe(false);
+    expect(asked(await runFrom('100', '', proposal(weekly), 'u2'))).toBe(true);
+    expect(asked(await runFrom(null, '', proposal({ ...weekly, precheck: 'scripts/gate.sh' })))).toBe(true);
+    expect(asked(await runFrom('555', '', proposal({ ...weekly, chat: 'discord:999' })))).toBe(true);
+    expect(asked(await runFrom('555', '', proposal({ ...ROUTINES[1], enabled: false })))).toBe(true);
+    expect(asked(await runFrom(null, '', 'bun /p/scripts/proposal.ts routine .hermit < entry.json'))).toBe(true);
   });
 });
 

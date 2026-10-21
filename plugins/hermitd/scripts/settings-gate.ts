@@ -233,6 +233,26 @@ function routinesWriteAsks(value: string, turn: () => string | null): boolean {
     || chatBindingChanged(parseRoutineWrite(value) ?? [], current, turn);
 }
 
+/** `proposal.ts routine`, which upserts one routine by id from a heredoc entry. */
+const PROPOSAL_ROUTINE = /proposal(?:\.ts)?["']?\s+routine\b/g;
+const HEREDOC_BODY = /^[^\n]*<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n[ \t]*\2[ \t]*(?:\n|$)/;
+
+/**
+ * An accepted routine proposal is a routine write like any other, so it gets the
+ * same origin, precheck, binding and scope rules at the index it lands on. An
+ * entry the hook cannot read asks, as an opaque write does.
+ */
+function proposalRoutineAsks(rest: string, turn: () => string | null, originAsks: () => boolean): string | null {
+  const body = HEREDOC_BODY.exec(rest)?.[3];
+  const entry = body === undefined ? null : parseRoutineWrite(body);
+  if (!entry || entry.length !== 1) return 'routines';
+  const current = currentRoutines();
+  const index = current.findIndex(r => r && r.id === entry[0].id);
+  const dotted = `routines.${index >= 0 ? index : current.length}`;
+  return originAsks() || precheckSetChanged(body!, current)
+    || chatBindingChanged(entry, current, turn) || routineScopeAsks(dotted, turn) ? dotted : null;
+}
+
 /** `set routines.<n>.chat <value>`, judged against that routine as it stands on disk. */
 function chatLeafChanged(dotted: string, value: string, turn: () => string | null): boolean {
   if (value === 'none' || value === 'clear') return false;
@@ -402,7 +422,7 @@ function channelAccessAsks(command: string): string[] {
  * Matches both invocation forms, the script path
  * (`bun .../scripts/settings-edit.ts <file> set permission_mode auto`) and the
  * resolver (`.hermit/bin/hermitd-run settings-edit <file> set ...`),
- * plus direct shell writes onto config.json. Returns null when the command
+ * plus direct shell writes onto config.json and `proposal.ts routine` upserts. Returns null when the command
  * isn't a settings mutation at all, or when every write is off the ask list.
  *
  * EVERY settings-edit invocation in the command is judged, not just the first:
@@ -438,12 +458,17 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
   // for the prompt label: precheckSetChanged() would then parse a fragment, fail,
   // and raise a prompt for every routine add. A single-quoted value may splice
   // apostrophes as `'\''`, so the label keeps the text after one.
+  const shown: string[] = [...listen];
+  for (const m of command.matchAll(PROPOSAL_ROUTINE)) {
+    const asked = proposalRoutineAsks(command.slice(m.index + m[0].length), turn, originAsks);
+    if (asked && !shown.includes(asked)) shown.push(asked);
+  }
+
   const matches = [...command.matchAll(
     /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?/g
   )];
-  if (matches.length === 0) return listen.length ? listen : null;
+  if (matches.length === 0) return shown.length ? shown : null;
 
-  const shown: string[] = [...listen];
   for (const m of matches) {
     const verb = m[2];
     if (!WRITE_VERBS.has(verb)) continue;

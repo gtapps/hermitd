@@ -404,7 +404,7 @@ describe('passive chats validation', () => {
 });
 
 describe('monitors validation', () => {
-  test('routine chat may use any configured channel, with a warning for script notices', () => {
+  test('chat must be a conversation key on a configured direct-send channel', () => {
     const channels = { discord: { enabled: true }, telegram: { enabled: true }, imessage: { enabled: true } };
     const monitor = { id: 'cpu', description: 'CPU watch', command: 'true' };
     for (const chat of [undefined, null, 'discord:1287345098123456789', 'telegram:-100123']) {
