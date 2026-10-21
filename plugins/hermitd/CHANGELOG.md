@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.18] - 2026-10-22
 
 ### Added
 - `role-review` skill and script for scheduled chat-rule proposals backed by agreeing corrections, with reply approvals and stale checks. Opt-in: it runs only as a routine the operator schedules, and each run spends one subagent.
