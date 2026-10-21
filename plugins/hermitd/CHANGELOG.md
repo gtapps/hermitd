@@ -36,7 +36,7 @@
 - Chat history and the `history` verb honor a channel's own `log_chats: true` when global logging is off.
 - Chat-rule guidance loads only for messages about a chat rule or while a rule proposal is pending.
 - Role-review's analysis worker reads the chat snapshot itself, so the chat text stays out of the resident's context.
-- A pending approval question can be answered only in the chat where it was asked; terminal replies still answer any.
+- A pending approval question can be answered only in the chat where it was asked; terminal replies still answer any. Briefs and heartbeat alerts in the home chat list only the home chat's questions.
 - A bare YES, LATER or NO on a suggestion acts only in a channel's home chat; elsewhere the hermit asks which suggestion by number.
 - "Implement" or "go ahead with" a named suggestion starts the work in the same turn; a plain accept still asks how to proceed.
 - Capability proposals from a non-primary sender's routine request are marked as external content for triage.
@@ -65,7 +65,7 @@
 4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
 5. Report `restart_required` in Operator notes because config watches run under the new monitor only after a restart. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
 6. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
-7. Run `bun <plugin_root>/scripts/proposal.ts micro .hermit stamp-chat` to give every pending micro-proposal without a `chat` the home chat, so a later answer must come from that chat. It is idempotent; report the `stamped` count. On `{"error":...}`, record a deferred-migration block naming this command and the error; never edit `state/micro-proposals.json` by hand.
+7. Run `bun <plugin_root>/scripts/proposal.ts micro .hermit stamp-chat` to give every pending micro-proposal without a `chat` the home chat, so a later answer must come from that chat. It is idempotent; report the `stamped` count. On `{"status":"skipped","reason":"no_home_chat"}`, report that pending questions stay answerable only from the terminal until a channel has a home chat and this command runs again. On `{"error":...}`, record a deferred-migration block naming this command and the error; never edit `state/micro-proposals.json` by hand.
 
 ## [1.4.17] - 2026-10-19
 

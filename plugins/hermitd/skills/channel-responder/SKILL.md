@@ -164,7 +164,7 @@ For proactive notifications, read `outbound.md` before composing or sending.
 Apply to every skill's decision point on a channel-tagged turn (`<channel source="...">`), including `proposal-act` and `hermit-settings`.
 
 - **(a) Conversational side**: send the question through the channel reply tool.
-- **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, and `on_resolve` to the skill invocation with an `{answer}` placeholder. Free-form asks use only the reply tool, with no queued entry.
+- **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, `on_resolve` to the skill invocation with an `{answer}` placeholder, and `chat` to this chat's `<sourceKey>:<chat_id>`. Free-form asks use only the reply tool, with no queued entry.
 - **Whichever surface answers first resolves it.** For an answer within the asking skill's live turn, act on it and resolve the MP entry with § Micro-approval response's script call (never hand-edit `state/micro-proposals.json`):
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit resolve <id> --action answered --answer "<selected label>"

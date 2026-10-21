@@ -27,6 +27,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, listProposalFiles } from './frontmatter';
 import { readMicroProposals } from './micro-proposals-io';
+import { askedOutsideHome, homeChatKey } from './proposals/micro';
+import { readSettledConfig } from './config-read';
 
 type Json = any;
 
@@ -357,9 +359,12 @@ export function deriveMicroPendingKeys(stateDir: string): { ok: boolean; items: 
   if (read.status === 'corrupt') return { ok: false, items: [], error: read.error };
   if (read.status === 'missing') return { ok: true, items: [] };
   const pending = read.data.pending;
+  // Heartbeat alerts reach the home chat, which cannot answer another chat's entry.
+  const home = homeChatKey(readSettledConfig(stateDir).channels);
   const items: FiringItem[] = [];
   for (const entry of pending) {
     if (!entry || entry.status !== 'pending' || entry.tier !== 1 || typeof entry.id !== 'string') continue;
+    if (askedOutsideHome(entry, home)) continue;
     const question = typeof entry.question === 'string' ? entry.question : '';
     let text = `micro-proposal '${entry.id}' awaiting operator input — ${question}`;
     // channelText omits the raw MP- id (channel-voice rule); keeps question + options.

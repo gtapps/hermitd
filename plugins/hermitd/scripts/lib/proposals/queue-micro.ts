@@ -56,7 +56,8 @@ export async function run(stateDir: string): Promise<void> {
   // The chat the question was asked in; only a reply there can answer it.
   // Callers asking outside a channel turn omit it and get the home chat.
   if (payload.chat !== undefined && !isKey(payload.chat)) emitJson({ error: 'invalid_input' });
-  const chat: string | null = payload.chat ?? homeChatKey(stateDir);
+  const config = readSettledConfig(stateDir);
+  const chat: string | null = payload.chat ?? homeChatKey(config.channels);
 
   const stateSubdir = path.join(stateDir, 'state');
   const microPath = path.join(stateSubdir, 'micro-proposals.json');
@@ -81,10 +82,15 @@ export async function run(stateDir: string): Promise<void> {
   const existing = micro.pending.find((e: Json) => e && e.status === 'pending'
     && ((wanted !== null && linkedProposalId(e) === wanted) || e.question === question));
   if (existing) {
+    // A repeat ask from another chat moves the answer there, where the
+    // operator now sees the question.
+    if (chat && existing.chat !== chat) {
+      existing.chat = chat;
+      writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
+    }
     emitJson({ status: 'duplicate', id: existing.id });
   }
 
-  const config = readSettledConfig(stateDir);
   const timezone = config.timezone || 'UTC';
   const today = todayYMD(timezone).replace(/-/g, '');
 

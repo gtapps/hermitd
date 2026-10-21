@@ -2435,7 +2435,10 @@ describe('proposal queue-micro', () => {
     await queue(dir, { tier: 1, question: 'Asked in a group', chat: 'discord:42' });
     await queue(dir, { tier: 1, question: 'Asked unattended' });
     expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:42', 'telegram:77']);
-    const bad = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', chat: 'nokey' }) });
+    const again = await queue(dir, { tier: 1, question: 'Asked in a group', chat: 'discord:43' });
+    expect(again.status).toBe('duplicate');
+    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:43', 'telegram:77']);
+    const bad =await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', chat: 'nokey' }) });
     expect(bad.exitCode).toBe(1);
     expect(JSON.parse(bad.stdout)).toEqual({ error: 'invalid_input' });
   }));
@@ -2657,6 +2660,29 @@ describe('proposal micro', () => {
     const events = ledger(dir);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'micro-resolved', micro_id: 'MP-c2', action: 'expired', question: 'q2' });
+  }));
+
+  test('brief-cycle lists only home-chat entries but ages every entry', withDir(async (dir) => {
+    const home = { id: 'MP-home', tier: 1, status: 'pending', follow_up_count: 0, question: 'qh', chat: 'discord:5' };
+    const group = { id: 'MP-group', tier: 1, status: 'pending', follow_up_count: 1, question: 'qg', chat: 'discord:9' };
+    seed(dir, [home, group]);
+    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: { discord: { enabled: true, default_chat_id: '5' } } }));
+    const verdict = JSON.parse((await runProposal(hermit(dir), ['micro', 'brief-cycle'])).stdout.trim());
+    expect(verdict.new.map((e: any) => e.id)).toEqual(['MP-home']);
+    expect(verdict.renudged).toEqual([]);
+    expect(microFile(dir).pending.find((e: any) => e.id === 'MP-group').follow_up_count).toBe(2);
+  }));
+
+  test('heartbeat pending-decision keys skip entries asked outside the home chat', withDir(async (dir) => {
+    const { deriveMicroPendingKeys } = await import('../scripts/lib/alert-state');
+    seed(dir, [
+      { id: 'MP-home', tier: 1, status: 'pending', question: 'qh', chat: 'discord:5' },
+      { id: 'MP-group', tier: 1, status: 'pending', question: 'qg', chat: 'discord:9' },
+      { id: 'MP-old', tier: 1, status: 'pending', question: 'qo' },
+    ]);
+    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: { discord: { enabled: true, default_chat_id: '5' } } }));
+    const out = deriveMicroPendingKeys(hermit(dir));
+    expect(out.items.map(i => i.key)).toEqual(['micro-proposal-pending:MP-home', 'micro-proposal-pending:MP-old']);
   }));
 
   test('brief-cycle on an all-count-0 queue bumps every entry to 1, no ledger', withDir(async (dir) => {

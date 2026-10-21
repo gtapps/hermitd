@@ -14,7 +14,7 @@
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
 //          {"status":"none","reason":"no_pending"|"no_match"}
 //   resolve: {"status":"resolved","id","action"} / {"status":"none","reason":"no_match"}
-//   stamp-chat: {"status":"stamped","stamped":<n>} — gives each pending entry
+//   stamp-chat: {"status":"stamped","stamped":<n>}, giving each pending entry
 //          without a `chat` the home chat; {"status":"skipped","reason":"no_home_chat"}
 //          when no channel can be the home.
 //   brief-cycle: {"new":[{id,tier,question,options}],
@@ -56,9 +56,14 @@ import { conversationKey, isKey } from '../conversation-key';
 type Json = any;
 
 /** The `<sourceKey>:<chat_id>` key of the home chat unattended notices go to, or null. */
-export function homeChatKey(stateDir: string): string | null {
-  const target = resolveHomeTarget(readSettledConfig(stateDir).channels);
+export function homeChatKey(channels: Json): string | null {
+  const target = resolveHomeTarget(channels);
   return target ? conversationKey(target.id, target.chat_id) : null;
+}
+
+/** True when the entry belongs to a chat other than the home chat, so a home-chat reply cannot answer it. */
+export function askedOutsideHome(entry: Json, home: string | null): boolean {
+  return typeof entry?.chat === 'string' && entry.chat !== home;
 }
 
 const ACTIONS = ['approved', 'rejected', 'answered', 'expired'];
@@ -95,6 +100,9 @@ function briefCycle(dir: string): never {
   const expired: Json[] = [];
   const dropped: Json[] = [];
   const kept: Json[] = [];
+  // The brief posts in the home chat, where only home-chat entries can be
+  // answered; entries asked elsewhere still age and expire but are not listed.
+  const home = homeChatKey(readSettledConfig(dir).channels);
 
   for (const e of pending) {
     // Whitelist, not blacklist — the wild holds accepted/dismissed/rejected/
@@ -115,12 +123,12 @@ function briefCycle(dir: string): never {
     // are told not to re-read the queue file, so the verdict is their only source.
     if (c === 1) {
       e.follow_up_count = 2;
-      renudged.push({ id: e.id, tier: e.tier, question: e.question, options: e.options, follow_up_count: 2 });
+      if (!askedOutsideHome(e, home)) renudged.push({ id: e.id, tier: e.tier, question: e.question, options: e.options, follow_up_count: 2 });
     } else {
       // Bump 0 -> 1 on first display so the documented lifecycle actually ages
       // the entry (issue 676: nothing else ever bumped it).
       e.follow_up_count = 1;
-      fresh.push({ id: e.id, tier: e.tier, question: e.question, options: e.options });
+      if (!askedOutsideHome(e, home)) fresh.push({ id: e.id, tier: e.tier, question: e.question, options: e.options });
     }
     kept.push(e);
   }
@@ -326,7 +334,7 @@ function stampChat(stateDir: string, args: string[]): never {
   const micro: Json = read.status === 'missing' ? { pending: [] } : read.data;
   const unstamped = micro.pending.filter((e: Json) => e?.status === 'pending' && typeof e.chat !== 'string');
   if (!unstamped.length) emitJson({ status: 'stamped', stamped: 0 });
-  const home = homeChatKey(stateDir);
+  const home = homeChatKey(readSettledConfig(stateDir).channels);
   if (!home) emitJson({ status: 'skipped', reason: 'no_home_chat' });
   for (const entry of unstamped) entry.chat = home;
   writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
