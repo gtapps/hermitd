@@ -37,7 +37,7 @@ attachments; it does not change the tool's rendering mode or add mention support
 
 ## 1. Load Context
 
-Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file. A `[chat instructions]` line is operator-set policy: follow it over memory roles here; changes are a **Settings change request**.
+Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file. A `[chat instructions]` line is operator-set policy: follow it over memory roles here. Route any admitted sender's change to **Settings change request** without refusing it yourself; the native prompt decides.
 
 Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/record-operator-action.ts --force` after authorization. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
