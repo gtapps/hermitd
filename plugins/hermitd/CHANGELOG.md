@@ -3,10 +3,10 @@
 ## [Unreleased]
 
 ### Added
-- `role-review` skill and script for scheduled chat-rule proposals backed by agreeing corrections, with reply approvals and stale checks.
+- `role-review` skill and script for scheduled chat-rule proposals backed by agreeing corrections, with reply approvals and stale checks. Opt-in: it runs only as a routine the operator schedules, and each run spends one subagent.
 - Per-chat instructions (`channels.<key>.instructions`) that only a permission-prompt approval can change, applied on that chat's turns ahead of standing roles; absent by default since they are operator-written content.
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
-- An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
+- An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt. A copy misses signals a later release adds to `## Watches` or the helper report block until those lines are copied again.
 
 ### Changed
 - Durable chat-behavior corrections save directly as pinned memory roles.
@@ -17,32 +17,32 @@
 - Weekly consolidation leaves role files and `[role` index lines alone.
 - Reflect reuses an existing observation label for a recurring problem, so repeats under new wording still count toward a proposal.
 - Upgrade questions are queued as micro-proposals at the end of the notice, so a chat reply applies the chosen option even after a restart.
-- `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.
+- `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied and resumes the conversation unless the resident prompt changed. A wait timeout restarts nothing at once and asks for a rerun; once evolve has applied, the watchdog may finish the restart at a quiet moment, and only the rerun rebuilds the image.
+- `hermitd update --plugins-only` bounces the container once after the plugin update and is refused while a host tmux session owns the project.
 - Config watches run under a background monitor with no expiry wakes, restart on exit, and apply config edits live.
 - `/hermitd:watch stop` on a config watch sets `enabled: false`.
 - Config watch commands no longer see shell-profile functions; PATH and exported variables are unchanged.
+- `monitors[]` entries drop `timeout_ms` and `persistent`; config watches run until stopped or disabled.
 - Closed task threads stay addressed, with `!mute` and `!unmute` available after completion.
 - Recent chat history from allowed senders and the hermit accompanies messages after a context reset until the hermit's next logged reply in that chat.
 - Hatch writes OPERATOR.md as standing instructions to the agent and leaves project facts to the CLAUDE files.
 - Hatch creates the project's CLAUDE file with `/init` when no project instruction file exists.
 - OPERATOR.md is titled `# Your Standing Instructions` and loads as `Operator Instructions`.
-- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal, so merged proposal work closes it without a manual `/proposal-act resolve`; task and daily later replies name the resolve or its error.
+- A passing check or held later claim that closes a task record linked to a proposal (key `proposal:PROP-NNN`) resolves that proposal; task and daily later replies name the resolve or its error. A linked record without a check still needs `/proposal-act resolve`.
 - `hermitd update` run by the resident asks for approval, including in auto mode; Hardened installs deny it.
 - `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 - Standing-work answers read config watches from the watch monitor and describe `/hermitd:watch stop` as disabling that watch.
+- A chat request to schedule a routine whose skill is not installed is declined and filed as a capability proposal.
+- Chat history and the `history` verb honor a channel's own `log_chats: true` when global logging is off.
+- Role-review's analysis worker reads the chat snapshot itself, so the chat text stays out of the resident's context.
+- A pending approval question can be answered only in the chat where it was asked; terminal replies still answer any. Briefs and heartbeat alerts in the home chat list only the home chat's questions.
+- A bare YES, LATER or NO on a suggestion acts only in a channel's home chat; elsewhere the hermit asks which suggestion by number.
+- "Implement" or "go ahead with" a named suggestion starts the work in the same turn; a plain accept still asks how to proceed.
+- Capability proposals from a non-primary sender's routine request are marked as external content for triage.
+- Standing-work answers flag a config watch that keeps exiting with an error.
 
 ### Fixed
 - Settings approval prompts show a single-quoted value in full when it contains an escaped apostrophe (`'\''`), instead of cutting it off at the first one.
-
-### Upgrade Instructions
-1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)`, `Edit(*.hermit/helper-prompt.md)`, `Bash(hermitd update*)`, `Bash(*/hermitd update*)`, `Bash(*.hermit/bin/hermitd-update*)`, `Bash(*.hermit/bin/hermitd-run hermitd-update*)`, `Bash(hermitd run *hermitd-update*)` and `Bash(*/hermitd run *hermitd-update*)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)' 'Bash(hermitd update*)' 'Bash(*/hermitd update*)' 'Bash(*.hermit/bin/hermitd-update*)' 'Bash(*.hermit/bin/hermitd-run hermitd-update*)' 'Bash(hermitd run *hermitd-update*)' 'Bash(*/hermitd run *hermitd-update*)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
-2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
-3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave `## HA hermit` and `## Development Conventions` sections as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise invoke `Skill(init)` (for local, args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
-4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
-5. Report `restart_required` in Operator notes because config watches run under the new monitor only after a restart. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
-6. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
-
-### Fixed
 - Permission rules a release retires are also removed from the hermit's other settings file.
 - Block retirement retires paired blocks and names unpaired markers instead of failing.
 - Planned watchdog restarts avoid crash recovery wording and report the actual resume decision; a changed resident prompt starts fresh.
@@ -50,12 +50,21 @@
 - Doctor reports monitors awaiting a resident restart as failures.
 - `.hermit/bin/hermitd-update` inside a Docker container points to the Docker host instead of reporting the container as stopped.
 - `hermitd update` on a macOS host records the running Claude Code version instead of `unknown`.
-- Config watches start again after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch, so entries left by the previous process no longer block `/hermitd:watch start`.
+- Dead ad-hoc watches no longer show as active after a restart: `hermitd-start` empties `state/monitors.runtime.json` at launch.
 - The `harness-mod` doctor row clears after the next answered resident turn when the session-start record was missed.
 - The Chrome-on-setup-token warning has its own `chrome-auth` doctor row, so `credential-expiry` and the heartbeat no longer read it as a login renewal.
 - The evening brief counts tasks closed today in the configured timezone.
 - Agent names with accented or non-Latin letters ("Inês", "Amélia") keep them in the Remote Control title, peer name and backup commit author instead of losing them.
-- Turn cost rows include the API calls made before a mid-turn skill load, and after a session's first billed turn also those before a mid-turn channel or cross-session message or in a turn whose Stop hook never ran; these calls were previously never billed.
+- Turn cost rows include API calls made before a mid-turn skill load and, after a session's first billed turn, calls before a mid-turn channel or cross-session message or in a turn whose Stop hook never ran. These calls were previously never billed.
+
+### Upgrade Instructions
+1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)`, `Edit(*.hermit/helper-prompt.md)`, `Bash(hermitd update*)`, `Bash(*/hermitd update*)`, `Bash(*.hermit/bin/hermitd-update*)`, `Bash(*.hermit/bin/hermitd-run hermitd-update*)`, `Bash(hermitd run *hermitd-update*)` and `Bash(*/hermitd run *hermitd-update*)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)' 'Bash(hermitd update*)' 'Bash(*/hermitd update*)' 'Bash(*.hermit/bin/hermitd-update*)' 'Bash(*.hermit/bin/hermitd-run hermitd-update*)' 'Bash(hermitd run *hermitd-update*)' 'Bash(*/hermitd run *hermitd-update*)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
+2. If the project's `.gitignore` contains the line `# .hermit state is tracked here (backup: workspace mode)`, skip this step. Otherwise add `.hermit/resident-prompt.md` and `.hermit/helper-prompt.md` alongside the other `.hermit/` entries when absent.
+3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave sections that another plugin's upgrade manages as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise create that target's CLAUDE file with a one-line heading (`# CLAUDE.md` or `# CLAUDE.local.md`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Send the OPERATOR.md edit through the normal approval prompt, proposing the diff for the operator to apply.
+4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
+5. Report `restart_required` in Operator notes because config watches run under the new monitor only after a restart. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
+6. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
+7. Run `bun <plugin_root>/scripts/proposal.ts micro .hermit stamp-chat` to give every pending micro-proposal without a `chat` the home chat, so a later answer must come from that chat. It is idempotent; report the `stamped` count. On `{"status":"skipped","reason":"no_home_chat"}`, report that pending questions stay answerable only from the terminal until a channel has a home chat and this command runs again. On `{"error":...}`, record a deferred-migration block naming this command and the error; never edit `state/micro-proposals.json` by hand.
 
 ## [1.4.17] - 2026-10-19
 

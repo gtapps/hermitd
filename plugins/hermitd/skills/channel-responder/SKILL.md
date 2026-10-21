@@ -114,13 +114,13 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): only while a pending entry exists, read `approvals.md` § Micro-approval response. With no pending entry, fall through to general classification.
 
-- **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", proposal numbers, `#N`, or `YES`/`LATER`/`NO` to a Suggestion card): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. Bare `YES`/`LATER`/`NO`: with exactly one open suggestion, apply it through `/hermitd:proposal-act`; with several, act on none and ask which by number ("#14 or #15?"), which is not an internal ID.
+- **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", proposal numbers, `#N`, or `YES`/`LATER`/`NO` to a Suggestion card): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. Bare `YES`/`LATER`/`NO`: with exactly one open suggestion and in a home chat, apply it through `/hermitd:proposal-act`; otherwise act on none and ask which by number ("#14 or #15?").
 
 - **Settings change request** ("change the model", "add a routine", "turn off the heartbeat" — anything that alters `.hermit/config.json`)
   - Route every config write through `/hermitd:hermit-settings` and `.hermit/bin/hermitd-run settings-edit …`. Never Edit or Write `config.json`, from any turn origin. `settings-gate` raises native permission prompts for asked paths.
   - Respect a No: never retry or route around it.
 
-- **Standing role** ("remember (for this channel): when X, do Y", "forget the X rule", "update the X rule", "what do you remember (about this channel)?")
+- **Standing role** ("remember (for this channel): when X, do Y", "forget/update the X rule", "what do you remember?")
   - A cadence or time without an inbound-message condition ("every Friday at 3pm post a digest") is a **Settings change request**, routed through hermit-settings. A rule conditioned on a message ("when someone...", "when a message...") is a role even if it contains "every" or a weekday.
   - Read `reference.md` § Standing role; hermit-wide only for a primary operator (§1c).
 
@@ -164,7 +164,7 @@ For proactive notifications, read `outbound.md` before composing or sending.
 Apply to every skill's decision point on a channel-tagged turn (`<channel source="...">`), including `proposal-act` and `hermit-settings`.
 
 - **(a) Conversational side**: send the question through the channel reply tool.
-- **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, and `on_resolve` to the skill invocation with an `{answer}` placeholder. Free-form asks use only the reply tool, with no queued entry.
+- **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, `on_resolve` to the skill invocation with an `{answer}` placeholder, and `chat` to this chat's `<sourceKey>:<chat_id>`. Free-form asks use only the reply tool, with no queued entry.
 - **Whichever surface answers first resolves it.** For an answer within the asking skill's live turn, act on it and resolve the MP entry with § Micro-approval response's script call (never hand-edit `state/micro-proposals.json`):
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit resolve <id> --action answered --answer "<selected label>"

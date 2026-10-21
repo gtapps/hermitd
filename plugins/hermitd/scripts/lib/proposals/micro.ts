@@ -5,12 +5,18 @@
 // Usage:
 //   proposal.ts micro <hermit-state-dir> resolve <MP-id> --action approved|rejected|answered|expired [--answer "<label>"]
 //   proposal.ts micro <hermit-state-dir> brief-cycle
-//   proposal.ts micro <hermit-state-dir> match [<MP-id>] --reply <token>
+//   proposal.ts micro <hermit-state-dir> match [<MP-id>] [--chat <sourceKey>:<chat_id>] --reply <token>
+//   proposal.ts micro <hermit-state-dir> stamp-chat
 // Output (stdout, one JSON line):
 //   match: {"status":"match","id","answer","tier","on_resolve":<string|null>}
+//          With --chat, only entries asked in that chat are visible; without it
+//          (a terminal turn), every pending entry is.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
 //          {"status":"none","reason":"no_pending"|"no_match"}
 //   resolve: {"status":"resolved","id","action"} / {"status":"none","reason":"no_match"}
+//   stamp-chat: {"status":"stamped","stamped":<n>}, giving each pending entry
+//          without a `chat` the home chat; {"status":"skipped","reason":"no_home_chat"}
+//          when no channel can be the home.
 //   brief-cycle: {"new":[{id,tier,question,options}],
 //                      "renudged":[{id,tier,question,options,follow_up_count}],
 //                      "expired":[{id,question}],
@@ -43,8 +49,22 @@ import { writeFileAtomic } from '../md-write';
 import { emitJson, flagValue } from '../cli';
 import { readMicroProposals } from '../micro-proposals-io';
 import { listProposalFiles, readFrontmatter } from '../frontmatter';
+import { readSettledConfig } from '../config-read';
+import { resolve as resolveHomeTarget } from '../../resolve-outbound-channel';
+import { conversationKey, isKey } from '../conversation-key';
 
 type Json = any;
+
+/** The `<sourceKey>:<chat_id>` key of the home chat unattended notices go to, or null. */
+export function homeChatKey(channels: Json): string | null {
+  const target = resolveHomeTarget(channels);
+  return target ? conversationKey(target.id, target.chat_id) : null;
+}
+
+/** True when the entry belongs to a chat other than the home chat, so a home-chat reply cannot answer it. */
+export function askedOutsideHome(entry: Json, home: string | null): boolean {
+  return typeof entry?.chat === 'string' && entry.chat !== home;
+}
 
 const ACTIONS = ['approved', 'rejected', 'answered', 'expired'];
 
@@ -80,6 +100,9 @@ function briefCycle(dir: string): never {
   const expired: Json[] = [];
   const dropped: Json[] = [];
   const kept: Json[] = [];
+  // The brief posts in the home chat, where only home-chat entries can be
+  // answered; entries asked elsewhere still age and expire but are not listed.
+  const home = homeChatKey(readSettledConfig(dir).channels);
 
   for (const e of pending) {
     // Whitelist, not blacklist — the wild holds accepted/dismissed/rejected/
@@ -100,12 +123,12 @@ function briefCycle(dir: string): never {
     // are told not to re-read the queue file, so the verdict is their only source.
     if (c === 1) {
       e.follow_up_count = 2;
-      renudged.push({ id: e.id, tier: e.tier, question: e.question, options: e.options, follow_up_count: 2 });
+      if (!askedOutsideHome(e, home)) renudged.push({ id: e.id, tier: e.tier, question: e.question, options: e.options, follow_up_count: 2 });
     } else {
       // Bump 0 -> 1 on first display so the documented lifecycle actually ages
       // the entry (issue 676: nothing else ever bumped it).
       e.follow_up_count = 1;
-      fresh.push({ id: e.id, tier: e.tier, question: e.question, options: e.options });
+      if (!askedOutsideHome(e, home)) fresh.push({ id: e.id, tier: e.tier, question: e.question, options: e.options });
     }
     kept.push(e);
   }
@@ -244,15 +267,29 @@ export function sweepMoot(stateDir: string, proposalId: string): SweepResult {
 
 // Read-only matching leaves resolution and its write ordering with resolve.
 function matchReply(stateDir: string, args: string[]): never {
-  const hasId = args.length === 4;
-  if ((!hasId && args.length !== 3) || args[hasId ? 2 : 1] !== '--reply'
-    || (hasId && args[1].startsWith('-'))) fail('usage');
-  const id = hasId ? args[1] : undefined;
-  const reply = args[hasId ? 3 : 2].trim().toLowerCase();
+  let id: string | undefined;
+  let chat: string | undefined;
+  let rawReply: string | undefined;
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--reply' || arg === '--chat') {
+      const value = args[++i];
+      if (value === undefined || (arg === '--reply' ? rawReply : chat) !== undefined) fail('usage');
+      if (arg === '--reply') rawReply = value;
+      else chat = value;
+    } else if (i === 1 && !arg.startsWith('-')) {
+      id = arg;
+    } else {
+      fail('usage');
+    }
+  }
+  if (rawReply === undefined || (chat !== undefined && !isKey(chat))) fail('usage');
+  const reply = rawReply.trim().toLowerCase();
   const read = readMicroProposals(path.join(stateDir, 'state', 'micro-proposals.json'));
   if (read.status === 'corrupt') fail('queue_corrupt');
   const pending: Json[] = read.status === 'missing' ? []
-    : read.data.pending.filter((entry: Json) => entry?.status === 'pending');
+    : read.data.pending.filter((entry: Json) => entry?.status === 'pending'
+      && (chat === undefined || entry.chat === chat));
   if (!pending.length) none('no_pending');
   const entry = id ? pending.find(entry => entry.id === id) : pending[0];
   if (!entry) none('no_match');
@@ -288,6 +325,22 @@ function matchReply(stateDir: string, args: string[]): never {
   emitJson({ status: 'match', id: entry.id, answer, tier: entry.tier, on_resolve: entry.on_resolve ?? null });
 }
 
+// One-time upgrade step: entries queued before `chat` existed were asked in the home chat.
+function stampChat(stateDir: string, args: string[]): never {
+  if (args.length !== 1) fail('usage');
+  const microPath = path.join(stateDir, 'state', 'micro-proposals.json');
+  const read = readMicroProposals(microPath);
+  if (read.status === 'corrupt') fail('queue_corrupt');
+  const micro: Json = read.status === 'missing' ? { pending: [] } : read.data;
+  const unstamped = micro.pending.filter((e: Json) => e?.status === 'pending' && typeof e.chat !== 'string');
+  if (!unstamped.length) emitJson({ status: 'stamped', stamped: 0 });
+  const home = homeChatKey(readSettledConfig(stateDir).channels);
+  if (!home) emitJson({ status: 'skipped', reason: 'no_home_chat' });
+  for (const entry of unstamped) entry.chat = home;
+  writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
+  emitJson({ status: 'stamped', stamped: unstamped.length });
+}
+
 export function run(stateDir: string, args: string[]): never {
   const verb = args[0];
   const id = args[1];
@@ -297,6 +350,7 @@ export function run(stateDir: string, args: string[]): never {
   // brief-cycle and match take no required <MP-id>, so dispatch before the id requirement.
   if (verb === 'brief-cycle') briefCycle(stateDir);
   if (verb === 'match') matchReply(stateDir, args);
+  if (verb === 'stamp-chat') stampChat(stateDir, args);
 
   if (!id) fail('usage');
 

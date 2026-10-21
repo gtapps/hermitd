@@ -100,7 +100,7 @@ Before you cut anything:
 - **Keep `## Watches`.** It maps the heartbeat, routine and background-task signals to the skills that handle them. Without it the heartbeat, routines and task completion stop, with no error.
 - Keep `## Operator Notification`: skills point at it by name for how to reach you.
 - What you remove is yours. The shipped rules on secrets, peer messages and proposals no longer apply; hooks such as the pause gate and the settings gate still enforce on their own.
-- Upgrades never touch this file, so later changes to the shipped prompt don't reach you. After an upgrade, compare your file with `prompts/resident.md` and `prompts/rules.md` in the installed hermitd plugin.
+- Upgrades never touch this file, so later changes to the shipped prompt don't reach you. An upgrade can add new signals to `## Watches`; your copy does not handle them until you copy that section again. After an upgrade, compare your file with `prompts/resident.md` and `prompts/rules.md` in the installed hermitd plugin.
 
 ### Replacing the helper prompt
 
@@ -118,7 +118,7 @@ Before you cut anything:
 - Keep the project path lines: they point helpers working in a worktree at the hermit's real state folder.
 - What you remove is yours: the shipped rules you cut no longer reach helpers.
 - The copy holds today's path and name. Put `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` back in their place if you want the file to follow a moved project or a renamed hermit.
-- Upgrades never touch this file. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin; lines you paste from `prompts/helper.md` keep working, placeholders included.
+- Upgrades never touch this file, and an upgrade can change the `GUEST_REPORT` block; your copy keeps the old one until you copy it again. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin; lines you paste from `prompts/helper.md` keep working, placeholders included.
 
 ---
 

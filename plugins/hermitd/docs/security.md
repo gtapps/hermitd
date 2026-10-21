@@ -229,7 +229,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
 
   This remains one hook, not seeded `permissions.ask` argument rules or an extra conversational approval flow. Container comparisons need values, and a chained command gets one reason naming every asked target. Hook-output tests establish the emitted request, not live prompt delivery or enforcement.
 
-Every routine write from an unknown origin or a non-primary channel sender raises the native prompt. Only a readable transcript with a turn boundary and no channel envelope proves a terminal origin. Primary senders retain the owning-chat and precheck checks above. An accepted routine proposal (`proposal.ts routine`) is judged by the same rules at the index its entry lands on; an entry the hook cannot read asks.
+Every routine write from an unknown origin or a non-primary channel sender raises the native prompt. A readable transcript with a turn boundary and no channel envelope classifies as terminal. That covers terminal turns and also routine, heartbeat, monitor-event and peer-message turns, so routine writes from those turns stay silent. Primary senders retain the owning-chat and precheck checks above. An accepted routine proposal (`proposal.ts routine`) is judged by the same rules at the index its entry lands on; an entry the hook cannot read asks.
 
 Routine `precheck` scripts are operator-authored content executed inside the routine poller, which now runs as a native plugin monitor, unsandboxed at plugin trust. The settings gate's native permission prompt on `routines[].precheck` writes keeps this execution operator-authorized. This is the one place operator content reaches the native monitor path.
 

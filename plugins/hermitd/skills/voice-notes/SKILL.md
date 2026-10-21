@@ -25,7 +25,7 @@ Otherwise walk them through the doc from chat:
    **Channel-tagged turn:** send the question via the reply tool, queue the bridge entry below, and stop. The answer comes back as a `--answer self-hosted` / `--answer hosted` re-entry, which skips the ask and resumes here.
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit <<'HERMIT_MP'
-   {"tier":1,"question":"Voice notes: should the audio stay on this machine, or is sending it to a transcription provider acceptable?","options":["self-hosted","hosted"],"on_resolve":"/hermitd:voice-notes setup --answer {answer}"}
+   {"tier":1,"question":"Voice notes: should the audio stay on this machine, or is sending it to a transcription provider acceptable?","options":["self-hosted","hosted"],"on_resolve":"/hermitd:voice-notes setup --answer {answer}","chat":"<sourceKey>:<chat_id>"}
    HERMIT_MP
    ```
 2. Install: read `runtime_mode` from `.hermit/state/runtime.json`. On `docker`, delegate to `/hermitd:docker-customize` with the tool the doc names; otherwise name the host install for the operator rather than running it yourself. A hosted provider needs its key in `.env`, never in the role text or `config.json`.

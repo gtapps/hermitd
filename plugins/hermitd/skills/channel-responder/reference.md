@@ -22,7 +22,7 @@ Never `tail` `state/routine-metrics.jsonl`, the cost log, or the channel log. A 
 
 Order: problems first, then current activity, then domain standing work.
 
-- A problem is a routine with `failure_total > 0` or a `last_precheck_error`, a `fail` or `warn` entry in the saved doctor report, or a watch whose registry entry says it exited.
+- A problem is a routine with `failure_total > 0` or a `last_precheck_error`, a `fail` or `warn` entry in the saved doctor report, an ad-hoc watch whose registry entry says it exited, or a config watch whose `watch-monitor.runtime.json` row has no `pid` and a nonzero or null `last_exit_code`.
 - Lead with work aimed at the operator's domain (briefs, domain analyses, watches, rules). Routines that exist to keep the hermit itself running (monitor re-arms, self-reflection, self-checks, session closing) are housekeeping: mention them only when one carries a problem or the operator asks for the internal housekeeping.
 - Per item: plain name, purpose (from the skill name or description), cadence or condition in words, destination when config names one, last known outcome (`last_fire` plus `failure_total`), and persistence: routines and roles persist across restarts. An enabled config watch returns at the next start. A stopped config watch stays disabled. An ad-hoc watch ends with the session.
 

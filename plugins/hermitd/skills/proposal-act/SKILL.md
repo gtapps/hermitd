@@ -110,10 +110,12 @@ When the operator accepts a proposal:
 
 4. Ask: **"How should this be implemented?"**
 
+   **Already answered:** when the request named this proposal and asked to implement it or go ahead with it, in any language, take **"Start implementing now"** below without asking or queueing an entry. A plain accept or approve still asks.
+
    **Channel-tagged turn:** do not wait interactively for a reply in this turn. Send the question via the channel reply tool in plain voice with the three options numbered — "Suggestion #N — start now, queue it as a task, or leave it to you?" (derive `#N` per `proposal-list` §4a). AND queue a pending micro-proposal entry:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit <<'HERMIT_MP'
-   {"tier":1,"question":"Suggestion #N accepted — how should it be implemented?","options":["implement now","queued task","manual"],"on_resolve":"/hermitd:proposal-act accept PROP-NNN --answer {answer}","proposal_id":"PROP-NNN"}
+   {"tier":1,"question":"Suggestion #N accepted — how should it be implemented?","options":["implement now","queued task","manual"],"on_resolve":"/hermitd:proposal-act accept PROP-NNN --answer {answer}","proposal_id":"PROP-NNN","chat":"<sourceKey>:<chat_id>"}
    HERMIT_MP
    ```
    When this accept carries `--no-artifacts`, append the flag to `on_resolve` (`... --answer {answer} --no-artifacts`) so the re-entry skips the refreshes too.
