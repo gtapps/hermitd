@@ -34,7 +34,6 @@
 - Standing-work answers read config watches from the watch monitor and describe `/hermitd:watch stop` as disabling that watch.
 - A chat request to schedule a routine whose skill is not installed is declined and filed as a capability proposal.
 - Chat history and the `history` verb honor a channel's own `log_chats: true` when global logging is off.
-- Chat-rule guidance loads only for messages about a chat rule or while a rule proposal is pending.
 - Role-review's analysis worker reads the chat snapshot itself, so the chat text stays out of the resident's context.
 - A pending approval question can be answered only in the chat where it was asked; terminal replies still answer any. Briefs and heartbeat alerts in the home chat list only the home chat's questions.
 - A bare YES, LATER or NO on a suggestion acts only in a channel's home chat; elsewhere the hermit asks which suggestion by number.
