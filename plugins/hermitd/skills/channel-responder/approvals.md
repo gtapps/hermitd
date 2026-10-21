@@ -3,7 +3,7 @@
 ## Micro-approval response
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
-  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --reply "<token>"`; pass the explicit id when supplied, otherwise omit it. Follow its `status`:
+  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --reply "<token>"`, using this chat's normalized key; pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match. Follow its `status`:
     - `match`: use the returned `id`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
     - `none`, reason `no_pending`: fall through to general classification. Reason `no_match`: ask for clarification once; do not resolve.
@@ -34,6 +34,6 @@
 
 - **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified `YES`/`LATER`/`NO` reply to a Suggestion card — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)
   - **Map the reply to an action** (case-insensitive): `YES` / "go ahead" / "accept" → `accept`; `LATER` / "hold" / "defer" → `defer`; `NO` / "drop" / "dismiss" → `dismiss`. `accept PROP-`/`approve PROP-` phrasing maps to `accept` directly; the operator can also spell the action out instead of YES/LATER/NO.
-  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." For bare `YES`/`LATER`/`NO`, filter to `status: "proposed"`: apply when exactly one exists; otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'").
+  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." For bare `YES`/`LATER`/`NO`, filter to `status: "proposed"`: apply when exactly one exists and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
   - Never surface internal proposal fields back to the channel (the exact list and `#N` derivation are canonical in `proposal-list` §4a) — confirm using the Suggestion number (see `proposal-act`'s channel-tagged notify).
 

@@ -2428,6 +2428,41 @@ describe('proposal queue-micro', () => {
     expect(micro.pending[0]).toMatchObject({ tier: 1, status: 'pending', follow_up_count: 0 });
   }));
 
+  test('queue-micro records the asking chat, else the home chat', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC',
+      channels: { telegram: { enabled: true, default_chat_id: '77' } } }));
+    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[]}');
+    await queue(dir, { tier: 1, question: 'Asked in a group', chat: 'discord:42' });
+    await queue(dir, { tier: 1, question: 'Asked unattended' });
+    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:42', 'telegram:77']);
+    const bad = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', chat: 'nokey' }) });
+    expect(bad.exitCode).toBe(1);
+    expect(JSON.parse(bad.stdout)).toEqual({ error: 'invalid_input' });
+  }));
+
+  test('micro stamp-chat gives unstamped pending entries the home chat once', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC',
+      channels: { discord: { enabled: true, default_chat_id: '5' } } }));
+    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      { id: 'MP-a', status: 'pending', tier: 1, question: 'A' },
+      { id: 'MP-b', status: 'pending', tier: 1, question: 'B', chat: 'telegram:9' },
+      { id: 'MP-c', status: 'answered', tier: 1, question: 'C' },
+    ] }));
+    const first = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
+    expect(JSON.parse(first.stdout)).toEqual({ status: 'stamped', stamped: 1 });
+    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:5', 'telegram:9', undefined]);
+    const again = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
+    expect(JSON.parse(again.stdout)).toEqual({ status: 'stamped', stamped: 0 });
+  }));
+
+  test('micro stamp-chat skips when no channel can be home', withDir(async (dir) => {
+    seed(dir);
+    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-a', status: 'pending', tier: 1, question: 'A' }] }));
+    const r = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'no_home_chat' });
+  }));
+
   test('queue-micro (N increments within the same day)', withDir(async (dir) => {
     seed(dir);
     const out1 = await queue(dir, { tier: 1, question: 'Question A' });
@@ -5798,6 +5833,12 @@ describe('proposal micro match is read-only', () => {
     { name: 'none pending', pending: [], args: ['--reply', 'yes'], output: none('no_pending') },
     { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: none('no_pending') },
+    { name: 'asking chat matches', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'other chat sees nothing', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'telegram:9', '--reply', 'yes'], output: none('no_pending') },
+    { name: 'unstamped entry hidden from a chat', pending: [plain], args: ['--chat', 'discord:1', '--reply', 'yes'], output: none('no_pending') },
+    { name: 'explicit id from another chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['MP-plain', '--chat', 'discord:2', '--reply', 'yes'], output: none('no_pending') },
+    { name: 'ambiguity only within the chat', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:2' }], args: ['--chat', 'discord:2', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
+    { name: 'terminal sees every chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
   ];
   for (const item of cases) test(item.name, withDir(async (dir) => {
     const file = hermit(dir, 'state', 'micro-proposals.json');
@@ -5834,7 +5875,7 @@ describe('proposal micro match is read-only', () => {
     expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
   }));
 
-  for (const args of [[], ['MP-plain'], ['--reply'], ['--bogus', 'yes'], ['MP-plain', '--reply', 'yes', 'extra']]) {
+  for (const args of [[], ['MP-plain'], ['--reply'], ['--bogus', 'yes'], ['MP-plain', '--reply', 'yes', 'extra'], ['--chat', 'discord:1'], ['--chat', 'nochat', '--reply', 'yes'], ['--chat', 'a:1', '--chat', 'b:2', '--reply', 'yes']]) {
     test(`rejects malformed match args ${JSON.stringify(args)}`, withDir(async (dir) => {
       const result = await runProposal(hermit(dir), ['micro', 'match', ...args]);
       expect(result.exitCode).toBe(1);

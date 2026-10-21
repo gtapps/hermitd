@@ -1,7 +1,7 @@
 // `proposal.ts queue-micro <stateDir>` — generates an MP-id, dedups, appends a
 // pending entry to state/micro-proposals.json, and logs the micro-queued event.
 // Usage: proposal.ts queue-micro <hermit-state-dir> <<'HERMIT_MP'
-//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"..."}
+//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>"}
 //        HERMIT_MP
 //   — stdin only (question is free text and may contain apostrophes/quotes; no argv mode).
 // Output (stdout, one JSON line):
@@ -25,7 +25,8 @@ import { emitJson, readStdin } from '../cli';
 import { readSettledConfig } from '../config-read';
 import { writeFileAtomic } from '../md-write';
 import { readMicroProposals } from '../micro-proposals-io';
-import { linkedProposalId, normalizeProposalId } from './micro';
+import { homeChatKey, linkedProposalId, normalizeProposalId } from './micro';
+import { isKey } from '../conversation-key';
 
 type Json = any;
 
@@ -51,6 +52,11 @@ export async function run(stateDir: string): Promise<void> {
     typeof payload.proposal_id === 'string' && normalizeProposalId(payload.proposal_id)
       ? payload.proposal_id
       : undefined;
+
+  // The chat the question was asked in; only a reply there can answer it.
+  // Callers asking outside a channel turn omit it and get the home chat.
+  if (payload.chat !== undefined && !isKey(payload.chat)) emitJson({ error: 'invalid_input' });
+  const chat: string | null = payload.chat ?? homeChatKey(stateDir);
 
   const stateSubdir = path.join(stateDir, 'state');
   const microPath = path.join(stateSubdir, 'micro-proposals.json');
@@ -104,6 +110,7 @@ export async function run(stateDir: string): Promise<void> {
   if (options) entry.options = options;
   if (onResolve) entry.on_resolve = onResolve;
   if (proposalId) entry.proposal_id = proposalId;
+  if (chat) entry.chat = chat;
   micro.pending.push(entry);
 
   fs.mkdirSync(stateSubdir, { recursive: true });
