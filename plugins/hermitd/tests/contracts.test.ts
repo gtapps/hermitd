@@ -3665,3 +3665,19 @@ describe('shared resident liveness (anti-drift)', () => {
     }
   });
 });
+
+describe('chat instructions validation', () => {
+  for (const instructions of ['bad', [null], [[]], [{}], [{ text: 'Review' }], [{ chat_id: '', text: 'Review' }],
+    [{ chat_id: 'C1' }], [{ chat_id: 'C1', text: '' }], [{ chat_id: 'C1', text: '   ' }],
+    [{ chat_id: 1, text: 'Review' }], [{ chat_id: 'C1', text: 1 }],
+    [{ chat_id: 'C1', text: 'x'.repeat(2001) }], [{ chat_id: 'C1', text: 'A' }, { chat_id: 'C1', text: 'B' }]]) {
+    test(`rejects ${JSON.stringify(instructions).slice(0, 120)}`, () => {
+      expect(runValidate({ channels: { discord: { instructions } } }).errors.some((error: string) => error.includes('channels.discord.instructions'))).toBe(true);
+    });
+  }
+  test('accepts empty list and bounded multiline entries', () => {
+    for (const instructions of [[], [{ chat_id: 'C1', text: 'x'.repeat(2000) }, { chat_id: 'C2', text: 'A\nB' }]]) {
+      expect(runValidate({ channels: { discord: { instructions } } }).errors).toEqual([]);
+    }
+  });
+});

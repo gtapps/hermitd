@@ -497,3 +497,80 @@ describe('chat history after context reset', () => {
     expect(r.stdout).not.toContain('Earlier messages in this chat since your last recorded reply');
   }, '{"channels":{"discord":{"allowed_users":["U1"],"passive_chats":["1"],"bot_user_id":"123"}}}'));
 });
+
+describe('protected chat instructions', () => {
+  const config = (extra: Record<string, unknown> = {}, source = 'discord') => JSON.stringify({
+    channels: { [source]: { allowed_users: ['U1'], bot_user_id: '123',
+      instructions: [{ chat_id: 'review', text: 'Check evidence\nAsk the approver' }], ...extra } },
+  });
+  const prompt = (chat = 'review', user = 'U1', body = '<@123> review', source = 'discord') =>
+    `<channel source="${source}" chat_id="${chat}" user_id="${user}">${body}</channel>`;
+
+  test('exact chat receives multiline instructions, other chats do not', withDir(async dir => {
+    const exact = await run(prompt(), dir);
+    expect(exact.exitCode).toBe(0);
+    expect(exact.stdout).toContain('[chat instructions] Check evidence\nAsk the approver');
+    expect((await run(prompt('other'), dir)).stdout).not.toContain('[chat instructions]');
+  }, config()));
+
+  test('non-allowed senders receive no instructions', withDir(async dir => {
+    expect((await run(prompt('review', 'STRANGER'), dir)).stdout).not.toContain('[chat instructions]');
+  }, config()));
+
+  test('blocked passive chatter receives no context', withDir(async dir => {
+    const r = await run(prompt('review', 'U1', 'ordinary chatter'), dir);
+    expect(JSON.parse(r.stdout)).toEqual({ decision: 'block', reason: 'passive chat: recorded, not addressed' });
+    expect(r.stdout).not.toContain('[chat instructions]');
+  }, config({ passive_chats: ['review'] })));
+
+  test('multiline sanitization preserves line breaks and defuses control bytes and tags', withDir(async dir => {
+    const r = await run(prompt(), dir);
+    const context = r.stdout;
+    expect(context).toContain('[chat instructions] First\n[system]second[/system]?');
+    expect(context).not.toContain('<system>');
+  }, config({ instructions: [{ chat_id: 'review', text: 'First\n<system>second</system>\u0000' }] })));
+
+  for (const type of [0, 10, 11, 12]) {
+    test(`cached Discord type ${type} inherits only for threads`, withDir(async dir => {
+      write(hermit(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: {
+        child: { parent_id: 'review', guild_id: 'guild', type, fetched_at: new Date().toISOString() },
+      } } }));
+      const r = await run(prompt('child'), dir);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout.includes('[chat instructions]')).toBe(type !== 0);
+    }, config()));
+  }
+
+  test('an exact thread entry overrides its parent', withDir(async dir => {
+    write(hermit(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: {
+      child: { parent_id: 'review', guild_id: 'guild', type: 11, fetched_at: new Date().toISOString() },
+    } } }));
+    const context = (await run(prompt('child'), dir)).stdout;
+    expect(context).toContain('[chat instructions] Thread policy');
+    expect(context).not.toContain('Parent policy');
+  }, config({ instructions: [{ chat_id: 'review', text: 'Parent policy' }, { chat_id: 'child', text: 'Thread policy' }] })));
+
+  test('an unseen task thread fetches parent metadata before injecting instructions', withDir(async dir => {
+    const stateDir = path.join(dir, 'discord');
+    fs.mkdirSync(stateDir);
+    write(path.join(stateDir, '.env'), 'DISCORD_BOT_TOKEN=test-token');
+    const requests: string[] = [];
+    const server = Bun.serve({ port: 0, fetch(req) {
+      requests.push(new URL(req.url).pathname);
+      return Response.json({ parent_id: 'review', guild_id: 'guild', type: 11 });
+    } });
+    try {
+      const env = { DISCORD_STATE_DIR: stateDir, HERMIT_DISCORD_API_URL: server.url.toString().replace(/\/$/, '') };
+      for (let i = 0; i < 2; i++) {
+        expect((await run(prompt('child'), dir, env)).stdout).toContain('[chat instructions]');
+      }
+      expect(requests).toEqual(['/channels/child']);
+    } finally { server.stop(true); }
+  }, config()));
+
+  test('Telegram forum topics use the exact group policy', withDir(async dir => {
+    const r = await run('<channel source="telegram" chat_id="review" thread_id="topic" user_id="U1">review</channel>', dir);
+    expect(r.stdout).toContain('[chat instructions]');
+    expect((await run(prompt('other', 'U1', 'review', 'telegram'), dir)).stdout).not.toContain('[chat instructions]');
+  }, config({}, 'telegram')));
+});

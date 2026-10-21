@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Per-chat instructions (`channels.<key>.instructions`) that only a permission-prompt approval can change, applied on that chat's turns ahead of standing roles; absent by default since they are operator-written content.
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 

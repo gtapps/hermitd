@@ -889,3 +889,24 @@ describe('migrate channel-home', () => {
     expect([...result.errors, ...result.warnings].some(line => line.includes('dm_channel_id'))).toBe(false);
   });
 });
+
+test('chat instructions append, replace and remove preserve siblings and reject invalid writes', async () => {
+  const dir = freshDir();
+  const original = { chat_id: 'C1', text: 'Review' };
+  const sibling = { chat_id: 'C2', text: 'Check' };
+  const file = seedConfig(dir, validConfig({ channels: { discord: { instructions: [original], allowed_users: ['U1'] }, telegram: { enabled: true } } }));
+  const edit = (verb: string, key: string, value?: unknown) => runScript('settings-edit.ts', {
+    args: [file, verb, `channels.discord.instructions.${key}`, ...(value === undefined ? [] : [JSON.stringify(value)])],
+  });
+  expect((await edit('set', '1', sibling)).exitCode).toBe(0);
+  expect((await edit('set', '0', { ...original, text: 'Changed' })).exitCode).toBe(0);
+  for (const value of [sibling, { ...original, text: 'x'.repeat(2001) }]) {
+    const before = readConfig(file);
+    const r = await edit('set', '0', value);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).error).toBe('invalid_config');
+    expect(readConfig(file)).toEqual(before);
+  }
+  expect((await edit('unset', '0')).exitCode).toBe(0);
+  expect(readConfig(file).channels).toEqual({ discord: { instructions: [sibling], allowed_users: ['U1'] }, telegram: { enabled: true } });
+});
