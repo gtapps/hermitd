@@ -1,6 +1,6 @@
 # Changelog — laravel-forge-hermit
 
-## [Unreleased]
+## [0.0.22] - 2026-10-22
 
 ### Fixed
 - Upgrades also list operator scripts and routine checks that still read the old `forge.php` output.
