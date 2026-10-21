@@ -451,7 +451,7 @@ export function roleReviewHistory(
   try {
     const db = openDb(hermitDir, { readonly: true });
     try {
-      const upper_id = opts.upper ?? (db.query('SELECT COALESCE(MAX(id), 0) AS id FROM messages').get() as { id: number }).id;
+      let upper_id = opts.upper ?? (db.query('SELECT COALESCE(MAX(id), 0) AS id FROM messages').get() as { id: number }).id;
       const params: (string | number)[] = [source, opts.cursor, upper_id];
       let where = 'source = ? AND id > ? AND id <= ?';
       if (opts.since) { where += ' AND ts >= ?'; params.push(opts.since); }
@@ -460,7 +460,9 @@ export function roleReviewHistory(
         params.push(...opts.senderIds);
       }
       if (!opts.chatIds) {
-        const chats = db.query(`SELECT chat_id FROM messages WHERE ${where} GROUP BY chat_id ORDER BY MIN(id) LIMIT 32`).all(...params) as { chat_id: string }[];
+        const chats = db.query(`SELECT chat_id, MIN(id) AS first FROM messages WHERE ${where} GROUP BY chat_id ORDER BY first LIMIT 33`).all(...params) as { chat_id: string; first: number }[];
+        // Past 32 chats, stop the range before the 33rd chat's first row so the next run reaches it.
+        if (chats.length > 32) upper_id = chats.pop()!.first - 1;
         return { status: 'ok', upper_id, chat_ids: chats.map(row => row.chat_id), rows: [] };
       }
       if (!opts.chatIds.length) return { status: 'ok', upper_id, chat_ids: [], rows: [] };

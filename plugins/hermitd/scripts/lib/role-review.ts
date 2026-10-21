@@ -2,13 +2,13 @@
 // resident resolves proposals after a chat reply. Only this module writes it.
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { sha256 as hash } from './hash';
 import { allowedUserIds, chatInstructions } from './channel-auth';
 import { lookupChat } from './channel-chats';
 import { roleReviewHistory, type ReviewRow } from './channel-log';
 import { memoryDirFor } from './cc-compat';
+import { defaultConfigDir } from './setup-token';
 import { readSettledConfig } from './config-read';
 import { writeFileAtomic } from './md-write';
 
@@ -79,7 +79,7 @@ function resolvedMemoryDir(dir: string): string | null {
     if (parent === ancestor) break;
     ancestor = parent;
   }
-  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const configDir = defaultConfigDir();
   for (const file of [path.join(configDir, 'settings.json'), path.join(root, '.claude', 'settings.json'),
     path.join(root, '.claude', 'settings.local.json'), path.join(dir, 'claude-settings.json')]) {
     try {
@@ -139,7 +139,12 @@ export async function snapshot(dir: string, routineId: string): Promise<Json> {
   }
   const result = roleReviewHistory(dir, owning.source, { ...options, upper: bounds.upper_id, chatIds });
   if (result.status !== 'ok') throw new Error('channel_log_read_failed');
-  if (!result.rows.length) return { status: 'empty', reason: 'no_rows' };
+  if (!result.rows.length) {
+    // Nothing for this chat up to the bound: advance so a capped discovery window moves on.
+    state.routines[routineId] = { cursor_row_id: bounds.upper_id };
+    save(dir, state);
+    return { status: 'empty', reason: 'no_rows' };
+  }
   const rows: ReviewRow[] = [];
   const seen = new Set<string>();
   let budget = 0;
@@ -198,6 +203,7 @@ export async function commit(dir: string, routineId: string, upper: number, inpu
     if (!target) reason = 'invalid_target';
     else if (typeof proposal.proposed_text !== 'string' || !proposal.proposed_text.trim()) reason = 'invalid_text';
     else if (proposal.kind === 'instructions' && (proposal.proposed_text.length > 2000 || instructionsSaved)) reason = 'instructions_limit';
+    else if (saved.some(s => s.kind === target.kind && s.target === target.target)) reason = 'duplicate_target';
     else if (!Array.isArray(proposal.evidence_ids) || proposal.evidence_ids.some((id: unknown) => !Number.isSafeInteger(id) || !evidence.has(id as number))) reason = 'invalid_evidence';
     else {
       const distinct = new Set(proposal.evidence_ids.map((id: number) => {
@@ -223,9 +229,11 @@ export async function commit(dir: string, routineId: string, upper: number, inpu
 }
 
 export async function get(dir: string, chat: string): Promise<Json> {
-  const state = readState(dir);
+  const pending = readState(dir).proposals.filter(p => p.chat === chat && p.state === 'pending'
+    && Date.parse(p.created_at) >= Date.now() - 30 * DAY);
+  if (!pending.length) return { status: 'ok', proposals: [] };
   const targets = (await targetsFor(dir, readSettledConfig(dir), chat))?.targets ?? [];
-  return { status: 'ok', proposals: state.proposals.filter(p => p.chat === chat && p.state === 'pending').map(p => {
+  return { status: 'ok', proposals: pending.map(p => {
     const target = targets.find(t => t.kind === p.kind && t.target === p.target);
     return { ...p, stale: !target || hash(target.text) !== p.base_hash };
   }) };

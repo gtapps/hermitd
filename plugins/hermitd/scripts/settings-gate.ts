@@ -174,7 +174,7 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 const TURN_TAIL_BYTES = 512 * 1024;
 
 type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
-  | { kind: 'channel'; key: string; source: string; userId: string | null; chatId: string };
+  | { kind: 'channel'; key: string; primary: boolean };
 
 /** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
 function turnConversation(payload: Json): RoutineOrigin {
@@ -189,7 +189,7 @@ function turnConversation(payload: Json): RoutineOrigin {
     if (!env) return { kind: 'terminal' };
     if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
-      source: env.source, userId: env.userId, chatId: env.chatId };
+      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId) };
   } catch {
     return { kind: 'unknown' };
   }
@@ -414,8 +414,7 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
   const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
   const originAsks = () => {
     const value = origin();
-    return value.kind === 'unknown' || (value.kind === 'channel'
-      && !isPrimaryOperator(readConfigRaw(hermitDir()), value.source, value.userId, value.chatId));
+    return value.kind === 'unknown' || (value.kind === 'channel' && !value.primary);
   };
   const listen = channelAccessAsks(command);
 

@@ -199,6 +199,23 @@ test('foreign state dirs and unresolved memory derivations are refused', async (
   expect((await f.snap()).status).toBe('memory_dir_unresolved');
 });
 
+test('discovery past 32 chats stops before the next chat, and an empty run still advances', async () => {
+  const f = fixture();
+  for (let i = 0; i < 33; i++) f.add('other', { chat_id: `c${i}` });
+  f.add('late');
+  const bounds = roleReviewHistory(f.dir, 'fakechat', { cursor: 0 });
+  expect(bounds.status === 'ok' && [bounds.chat_ids.length, bounds.upper_id]).toEqual([32, 32]);
+  expect(await f.snap()).toEqual({ status: 'empty', reason: 'no_rows' });
+  expect((await f.snap()).rows.map((r: any) => r.text)).toEqual(['late']);
+});
+
+test('a second proposal for the same memory target in one commit is rejected', async () => {
+  const f = fixture(); f.add(); f.add(); const s = await f.snap();
+  const result = await f.commit(s.upper_id, [f.proposal([1, 2]), f.proposal([1, 2], { proposed_text: 'Other' })]);
+  expect(result.saved.length).toBe(1);
+  expect(result.rejected).toEqual([{ index: 1, reason: 'duplicate_target' }]);
+});
+
 test('range query orders ids, bounds the upper id and distinguishes broken DB', () => {
   const f = fixture();
   f.add('later timestamp', { ts: '2026-01-02T00:00:00Z' }); f.add('earlier timestamp', { ts: '2026-01-01T00:00:00Z' });
