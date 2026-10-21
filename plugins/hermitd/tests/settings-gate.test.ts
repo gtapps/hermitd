@@ -23,7 +23,10 @@ function payload(opts: {
   input: any;
   permission_mode?: string;
 }): string {
+  const transcript = path.join(opts.dir, 'terminal.jsonl');
+  fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: 'configure routines' } }) + '\n');
   return JSON.stringify({
+    transcript_path: transcript,
     hook_event_name: 'PreToolUse',
     tool_name: opts.tool,
     tool_input: opts.input,
@@ -507,18 +510,18 @@ describe('routine chat binding', () => {
   ];
 
   /** A gate run whose turn opened on a discord message from `chatId`, or a terminal turn when null. */
-  async function runFrom(chatId: string | null, rest: string) {
-    const dir = fixture({ channels: { discord: { enabled: true, default_chat_id: '100' } }, routines: ROUTINES });
+  async function runFrom(chatId: string | null, rest: string, command = cmd(rest), userId = 'u1') {
+    const dir = fixture({ channels: { discord: { enabled: true, default_chat_id: '100', allowed_users: ['u1', 'u2'] } }, routines: ROUTINES });
     let transcript: string | undefined;
     if (chatId !== null) {
       transcript = path.join(dir, 'transcript.jsonl');
       fs.writeFileSync(transcript, JSON.stringify({
         type: 'user',
-        message: { content: `<channel source="plugin:discord:discord" chat_id="${chatId}" user_id="u1">every monday post the digest here</channel>` },
+        message: { content: `<channel source="plugin:discord:discord" chat_id="${chatId}" user_id="${userId}">every monday post the digest here</channel>` },
       }) + '\n');
     }
-    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }));
-    return runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
+    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
+    return runGate(JSON.stringify({ ...base, transcript_path: transcript ?? base.transcript_path }), dir);
   }
 
   const asked = (r: { stdout: string }) =>
@@ -567,6 +570,21 @@ describe('routine chat binding', () => {
     expect(asked(await runFrom(null, 'set routines.0.enabled false'))).toBe(false);
     expect(asked(await runFrom(null, 'unset routines.1'))).toBe(false);
   });
+
+  const proposal = (entry: unknown) =>
+    `bun /p/scripts/proposal.ts routine .hermit <<'HERMIT_ROUTINE'\n${JSON.stringify(entry)}\nHERMIT_ROUTINE`;
+  const weekly = { id: 'weekly', schedule: '0 9 * * 1', skill: 'hermitd:brief', enabled: true };
+
+  test('an accepted routine proposal follows the routine write rules', async () => {
+    expect(asked(await runFrom(null, '', proposal(weekly)))).toBe(false);
+    expect(asked(await runFrom('100', '', proposal(weekly)))).toBe(false);
+    expect(asked(await runFrom('555', '', proposal({ ...weekly, chat: 'discord:555' })))).toBe(false);
+    expect(asked(await runFrom('100', '', proposal(weekly), 'u2'))).toBe(true);
+    expect(asked(await runFrom(null, '', proposal({ ...weekly, precheck: 'scripts/gate.sh' })))).toBe(true);
+    expect(asked(await runFrom('555', '', proposal({ ...weekly, chat: 'discord:999' })))).toBe(true);
+    expect(asked(await runFrom('555', '', proposal({ ...ROUTINES[1], enabled: false })))).toBe(true);
+    expect(asked(await runFrom(null, '', 'bun /p/scripts/proposal.ts routine .hermit < entry.json'))).toBe(true);
+  });
 });
 
 test('instruction-only parent replacements protect changes and removals', async () => {
@@ -588,4 +606,25 @@ test('an apostrophe spliced into a single-quoted value stays in the ask label', 
   const text = `Don'\\''t skip evidence`;
   const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.instructions.0 '{"chat_id":"C1","text":"${text}"}'`) } }), dir);
   expectAsk(r.stdout, `Hermit setting: channels.discord.instructions.0={"chat_id":"C1","text":"${text}"}`);
+});
+
+
+test('routine writes ask for non-primary, empty operators and unreadable origins', async () => {
+  for (const operators of [undefined, []]) {
+    const dir = fixture({ channels: { discord: { allowed_users: ['primary', 'member'], operators } },
+      routines: [{ id: 'review', chat: 'discord:100', enabled: true }] });
+    const transcript = path.join(dir, 'member.jsonl');
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: {
+      content: '<channel source="discord" chat_id="100" user_id="member">request</channel>',
+    } }) + '\n');
+    for (const rest of ["set routines.1 '{\"id\":\"new\",\"chat\":\"discord:100\"}'",
+      'set routines.0.skill hermitd:brief', 'set routines.0.enabled true', 'unset routines.0']) {
+      const input = JSON.parse(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }));
+      const r = await runGate(JSON.stringify({ ...input, transcript_path: transcript }), dir);
+      expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+    }
+    const input = JSON.parse(payload({ dir, tool: 'Bash', input: { command: cmd('unset routines.0') } }));
+    const r = await runGate(JSON.stringify({ ...input, transcript_path: path.join(dir, 'missing') }), dir);
+    expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+  }
 });

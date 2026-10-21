@@ -127,6 +127,7 @@ const HERMIT_ALLOW = [
   // a prompt; the script validates its own key and verbs and pins its state dir
   // because thread-open reads the bot token.
   'Bash(bun */scripts/conversation.ts*)',
+  'Bash(bun */scripts/role-review.ts*)',
   'Bash(bun */scripts/task.ts*)',
   'Bash(bun */scripts/duties.ts*)',
   'Bash(bun */scripts/channel-access.ts*)',
@@ -159,6 +160,10 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run task list *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
+  // Role-proposal replies arrive on ordinary chat turns, sealed for the same
+  // reason; snapshot and commit stay with the routine's own script path.
+  'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
+  'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
   'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(.hermit/bin/hermitd-run proposal metrics *)',
   // The shared domain-hatch protocol, pinned per verb for the same reason:

@@ -28,6 +28,7 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'brief -> heartbeat/decision-refresh.md': 'prose-only',
     'hermit-dashboard-design -> docs/artifacts.md': 'commands',
     'hermit-routines -> channel-responder/SKILL.md': 'prose-only',
+    'role-review -> channel-responder/SKILL.md': 'prose-only',
     'task -> channel-responder/SKILL.md': 'prose-only',
     'docker-security -> hatch/SKILL.md': 'prose-only',
     'docker-setup -> hatch/SKILL.md': 'prose-only',

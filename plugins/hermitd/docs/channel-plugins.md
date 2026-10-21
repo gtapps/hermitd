@@ -69,7 +69,7 @@ exec teamchat-send --state-dir "$CHANNEL_STATE_DIR" \
   --chat "$HERMIT_CHAT_ID" --stdin
 ```
 
-Text arrives on stdin. The environment contains only `PATH`, `HERMIT_DIR`, `HERMIT_CHAT_ID`, `CHANNEL_STATE_DIR`, and `HERMIT_THREAD_ID` when the target carries a thread. The script runs from the project root within the send timeout; exit 0 means delivery succeeded. Successful sends enter the outbound chat log unless marked sensitive or logging is disabled. Routine `chat` ownership is supported when the channel has a send script.
+Text arrives on stdin. The environment contains only `PATH`, `HERMIT_DIR`, `HERMIT_CHAT_ID`, `CHANNEL_STATE_DIR`, and `HERMIT_THREAD_ID` when the target carries a thread. The script runs from the project root within the send timeout; exit 0 means delivery succeeded. Successful sends enter the outbound chat log unless marked sensitive or logging is disabled. Any configured channel supports routine `chat` ownership. Reply-tool skills can reach that chat; script notices require a direct sender or send script.
 
 A configured channel without a send script returns `no_send_path`. Routing stays on that channel; core never sends its message to another app or person. Proactive notices fail when a third-party channel without a send script resolves first: it is `channels.primary`, or, when `channels.primary` names no enabled Discord or Telegram channel with a chat, it comes before every such channel in config order once it has a chat. Set `channels.primary` to `discord` or `telegram` so proactive notices have a send path. No doctor or boot warning detects unapproved channels or missing send scripts.
 

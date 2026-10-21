@@ -3,11 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- `role-review` skill and script for scheduled chat-rule proposals backed by agreeing corrections, with reply approvals and stale checks.
 - Per-chat instructions (`channels.<key>.instructions`) that only a permission-prompt approval can change, applied on that chat's turns ahead of standing roles; absent by default since they are operator-written content.
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
 ### Changed
+- Durable chat-behavior corrections save directly as pinned memory roles.
+- Any configured channel can own a routine; script notices still need a direct sender or `send_script`.
+- Routines added from a chat bind the asking chat, home included.
+- Routine writes from non-primary channel senders or unknown origins raise the native permission prompt, and accepted routine proposals follow the same routine rules.
+- Conversation history includes only allowed inbound senders and all outbound rows.
+- Weekly consolidation leaves role files and `[role` index lines alone.
 - Reflect reuses an existing observation label for a recurring problem, so repeats under new wording still count toward a proposal.
 - Upgrade questions are queued as micro-proposals at the end of the notice, so a chat reply applies the chosen option even after a restart.
 - `hermitd update` waits for quiet, updates plugins and runs evolve before building, then restarts once with migrations applied. Timeouts leave the resident running and ask for a rerun.

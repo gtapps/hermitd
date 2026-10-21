@@ -50,6 +50,24 @@ From config: channels with `enabled !== false` and whether each has an allowlist
 
 ## Standing role
 
+### Direct saves and scope
+
+An admitted sender's durable request about how this chat should behave is a Standing role save, even without the word “remember”. Judge meaning in any language. Save it now as this chat's pinned memory role using the save and one-line confirmation below. A task-output preference owned by an editable skill follows the resident's Knowledge Discipline rule: fold it into that skill. An ambiguous scope gets one short clarifying question before any write. Inside an annotated task thread, the message remains steering; do not directly save it as a role. The scheduled review can consider repeated corrections there later. A direct save never changes chat instructions.
+
+### Pending review proposals
+
+When the turn's context carries `[pending role proposals]`, run `.hermit/bin/hermitd-run role-review .hermit get --chat <key>` before interpreting the reply or any Standing role update or forget, using the normalized `<sourceKey>:<chat_id>` and shell-quoted arguments. Without that line this chat has no pending proposal, so skip the check; never read the raw state file. Respect §0's command/pause exceptions and the existing micro-approval and task-thread precedence. A check may precede the reply despite §1's bookkeeping restriction.
+
+Match the reply's meaning to the returned proposals for this chat, in any language. Do not match keywords or assume a bare yes approves every proposal. When several fit, ask once which change they mean and write nothing. A reply that refers to none continues normal classification. Refuse a selected `stale:true` proposal plainly because its current wording changed or disappeared; do not apply its saved replacement. A missing proposal is not authority to reconstruct one from chat history.
+
+- Memory acceptance: use its saved `proposed_text` to rewrite the authorized role topic file and matching `[role <key>:<chat_id>]` index line, preserving provenance and file structure. Then run `.hermit/bin/hermitd-run role-review .hermit resolve <proposal-id> applied` and confirm in channel voice.
+- Instructions acceptance: route to **Settings change request** with the saved replacement text and exact current chat entry. The native prompt decides; a chat reply does not replace that approval. Resolve `applied` only after the settings write succeeds. Respect a No without retrying or resolving it as applied.
+- A clear decline runs `.hermit/bin/hermitd-run role-review .hermit resolve <proposal-id> declined`, then acknowledges it.
+
+Without an acceptance, leave the proposal pending and the target unchanged. Direct updates and forgets still use the fresh pending-proposal check first; this does not turn an unrelated update into acceptance of a proposal.
+
+### Save, list, update and forget
+
 - **Standing role** ("remember (for this channel): when X, do Y", "forget the X rule", "update the X rule", "what do you remember (about this channel)?")
   - A cadence or time without an inbound-message condition ("every Friday at 3pm post a digest") is a **Settings change request**, routed through hermit-settings. A rule conditioned on a message ("when someone...", "when a message...") is a role even if it contains "every" or a weekday.
   - Any sender admitted by §1c may save a current-chat pinned role without confirmation. Save a hermit-wide `[role]` only for a primary operator (§1c); otherwise pin it here and reply "Saved for this channel only: …". Write one `type: feedback` auto-memory topic file and one `MEMORY.md` index line in the loaded `MEMORY.md`'s directory (`<CLAUDE_CONFIG_DIR, else ~/.claude>/projects/<path-key>/memory/`). Use `feedback_role_<key>_<chat_id>_<slug>.md` for pinned roles, otherwise `feedback_role_<slug>.md`, with the normalized bare key. Before choosing `<slug>`, match only `[role` index lines in the target tier (hermit-wide or this chat). Rewrite an existing rule's file for restatements; do not duplicate it.
@@ -72,6 +90,8 @@ From config: channels with `enabled !== false` and whether each has an allowlist
   - Near-misses (argument-free `!model`, bare `clear`, or prose mentions) are not intercepted; classify below. Never invoke bare `!advisor`: its picker blocks the session. Ask for `!advisor <model>` or `!advisor off`.
 
 ## Capture Interactive Patterns
+
+A durable chat-behavior rule follows **Standing role**, not `task.ts lesson`, Findings or observations. One-off corrections remain lessons under the rules below. Task-thread steering and preferences owned by an editable skill keep their existing routes.
 
 **Do not write a finding** for: one-off questions, research turns with no preference signal, task assignments, status checks, or micro-approval responses. When in doubt, write nothing — the next scheduled reflect catches genuine recurrence via task-record evidence.
 

@@ -12,7 +12,7 @@ import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
 import { normalizeChannelSource, parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import {
-  isAllowedSender, isTrustedController, recallScope, audienceVisible,
+  isAllowedSender, isTrustedController, isPrimaryOperator, recallScope, audienceVisible,
 } from '../scripts/lib/channel-auth';
 
 const scopeWorkdir = setupWorkdir();
@@ -293,4 +293,26 @@ for (const type of [10, 11, 12]) test(`thread type ${type} inherits parent recal
     expect(recallScope(config, 'discord', 'UNCACHED', dir)).toMatchObject({ shared: [] });
     expect(recallScope({ channels: { telegram: {} } }, 'telegram', 'THREAD', dir)).toMatchObject({ shared: [] });
   } finally { wd.cleanup(); }
+});
+
+
+describe('isPrimaryOperator', () => {
+  const primary = (entry: any, user = 'u1', chat = 'home', profile = 'technical') =>
+    isPrimaryOperator({ channels: { discord: entry }, operator_profile: profile }, 'plugin:discord:discord', user, chat);
+  test('operators override the allowlist, including empty operators', () => {
+    expect(primary({ operators: ['u2'], allowed_users: ['u1'] })).toBe(false);
+    expect(primary({ operators: ['u1'] })).toBe(true);
+    expect(primary({ operators: [], default_chat_id: 'home' })).toBe(false);
+  });
+  test('only the first allowed user is primary; empty allows nobody', () => {
+    expect(primary({ allowed_users: ['u1', 'u2'] })).toBe(true);
+    expect(primary({ allowed_users: ['u2', 'u1'] })).toBe(false);
+    expect(primary({ allowed_users: [], default_chat_id: 'home' })).toBe(false);
+  });
+  test('fallback uses maintainer or technical home', () => {
+    expect(primary({ maintainer_channel_id: 'home' }, 'u1', 'home', 'non-technical')).toBe(true);
+    expect(primary({ default_chat_id: 'home' })).toBe(true);
+    expect(primary({ default_chat_id: 'home' }, 'u1', 'home', 'non-technical')).toBe(false);
+    expect(primary({})).toBe(false);
+  });
 });

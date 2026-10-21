@@ -23,7 +23,7 @@ import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
-import { isAllowedSender } from './lib/channel-auth';
+import { isAllowedSender, isPrimaryOperator } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
@@ -173,24 +173,25 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 
 const TURN_TAIL_BYTES = 512 * 1024;
 
-/**
- * The conversation key (`<sourceKey>:<chat_id>`) of the allowed channel message
- * that opened the current turn, or null for a terminal, Claude app, routine or
- * heartbeat turn. Fail-closed: anything unreadable is null, and null asks.
- */
-function turnConversation(payload: Json): string | null {
+type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
+  | { kind: 'channel'; key: string; primary: boolean };
+
+/** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
+function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
-    if (!tPath) return null;
+    if (!tPath) return { kind: 'unknown' };
     const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
     const prompt = turnPromptText(lines, lines.length);
-    if (!prompt.boundaryFound) return null;
+    if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
-    if (!env || !isAllowedSender(config, env.source, env.userId)) return null;
-    return conversationKey(env.sourceKey, env.chatId, env.thread);
+    if (!env) return { kind: 'terminal' };
+    if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
+    return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
+      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId) };
   } catch {
-    return null;
+    return { kind: 'unknown' };
   }
 }
 
@@ -211,8 +212,7 @@ function operatorChat(key: string): boolean {
  * own? A chat changes only the routines bound to it. Routines with no `chat` are
  * the operator's and change silently only from the home or maintainer chat; so
  * does a whole-array write, which can touch any routine. Appending at the first
- * free index reaches no existing routine. A turn with no channel message is the
- * operator's own write and adds no ask.
+ * free index reaches no existing routine. Only a proven terminal adds no origin ask; unknown and non-primary senders ask.
  */
 function routineScopeAsks(dotted: string, turn: () => string | null): boolean {
   const m = ROUTINE_PATH.exec(dotted);
@@ -231,6 +231,26 @@ function routinesWriteAsks(value: string, turn: () => string | null): boolean {
   const current = currentRoutines();
   return precheckSetChanged(value, current)
     || chatBindingChanged(parseRoutineWrite(value) ?? [], current, turn);
+}
+
+/** `proposal.ts routine`, which upserts one routine by id from a heredoc entry. */
+const PROPOSAL_ROUTINE = /proposal(?:\.ts)?["']?\s+routine\b/g;
+const HEREDOC_BODY = /^[^\n]*<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n[ \t]*\2[ \t]*(?:\n|$)/;
+
+/**
+ * An accepted routine proposal is a routine write like any other, so it gets the
+ * same origin, precheck, binding and scope rules at the index it lands on. An
+ * entry the hook cannot read asks, as an opaque write does.
+ */
+function proposalRoutineAsks(rest: string, turn: () => string | null, originAsks: () => boolean): string | null {
+  const body = HEREDOC_BODY.exec(rest)?.[3];
+  const entry = body === undefined ? null : parseRoutineWrite(body);
+  if (!entry || entry.length !== 1) return 'routines';
+  const current = currentRoutines();
+  const index = current.findIndex(r => r && r.id === entry[0].id);
+  const dotted = `routines.${index >= 0 ? index : current.length}`;
+  return originAsks() || precheckSetChanged(body!, current)
+    || chatBindingChanged(entry, current, turn) || routineScopeAsks(dotted, turn) ? dotted : null;
 }
 
 /** `set routines.<n>.chat <value>`, judged against that routine as it stands on disk. */
@@ -402,7 +422,7 @@ function channelAccessAsks(command: string): string[] {
  * Matches both invocation forms, the script path
  * (`bun .../scripts/settings-edit.ts <file> set permission_mode auto`) and the
  * resolver (`.hermit/bin/hermitd-run settings-edit <file> set ...`),
- * plus direct shell writes onto config.json. Returns null when the command
+ * plus direct shell writes onto config.json and `proposal.ts routine` upserts. Returns null when the command
  * isn't a settings mutation at all, or when every write is off the ask list.
  *
  * EVERY settings-edit invocation in the command is judged, not just the first:
@@ -410,7 +430,12 @@ function channelAccessAsks(command: string): string[] {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-function protectedMutation(command: string, cwd: string, turn: () => string | null = () => null): string[] | null {
+function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin): string[] | null {
+  const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
+  const originAsks = () => {
+    const value = origin();
+    return value.kind === 'unknown' || (value.kind === 'channel' && !value.primary);
+  };
   const listen = channelAccessAsks(command);
 
   // An opaque write of the whole file can replace any asked path, so it
@@ -433,12 +458,17 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
   // for the prompt label: precheckSetChanged() would then parse a fragment, fail,
   // and raise a prompt for every routine add. A single-quoted value may splice
   // apostrophes as `'\''`, so the label keeps the text after one.
+  const shown: string[] = [...listen];
+  for (const m of command.matchAll(PROPOSAL_ROUTINE)) {
+    const asked = proposalRoutineAsks(command.slice(m.index + m[0].length), turn, originAsks);
+    if (asked && !shown.includes(asked)) shown.push(asked);
+  }
+
   const matches = [...command.matchAll(
     /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?/g
   )];
-  if (matches.length === 0) return listen.length ? listen : null;
+  if (matches.length === 0) return shown.length ? shown : null;
 
-  const shown: string[] = [...listen];
   for (const m of matches) {
     const verb = m[2];
     if (!WRITE_VERBS.has(verb)) continue;
@@ -461,7 +491,8 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
       for (const field of changed) if (!shown.includes(field)) shown.push(field);
       continue;
     }
-    const needsAsk = ASK_PATH.test(dotted)
+    const needsAsk = (ROUTINE_PATH.test(dotted) && originAsks())
+      || ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
         && routinesWriteAsks(value, turn))
       || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn))
@@ -490,7 +521,7 @@ function main(payload: any): void {
       return;
     }
     // Read lazily: only a routines write needs the transcript.
-    let turn: string | null | undefined;
+    let turn: RoutineOrigin | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
       typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
       () => (turn === undefined ? (turn = turnConversation(payload)) : turn));

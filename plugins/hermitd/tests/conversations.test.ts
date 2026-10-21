@@ -22,8 +22,9 @@ test('the channel library wrappers answer history and is-trusted', async () => {
     channels: { discord: { state_dir: tokenDir, allowed_users: ['u1'] } },
   }));
   for (const [i, text] of ['first', 'second', 'third'].entries()) {
-    logMessage(dir, { source: 'discord', chat_id: '123', direction: i % 2 ? 'out' : 'in', sender: 'u1', text, ts: `2026-01-01T00:00:0${i}Z` });
+    logMessage(dir, { source: 'discord', chat_id: '123', direction: i % 2 ? 'out' : 'in', sender: 'u1', sender_id: 'u1', text, ts: `2026-01-01T00:00:0${i}Z` });
   }
+  logMessage(dir, { source: 'discord', chat_id: '123', direction: 'in', sender_id: 'outsider', text: 'excluded', ts: '2026-01-01T00:00:04Z' });
   const server = Bun.serve({ port: 0, fetch(req) {
     const route = new URL(req.url).pathname;
     if (route === '/channels/123') return Response.json({ parent_id: null, guild_id: '2', type: 0 });

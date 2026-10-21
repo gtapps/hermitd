@@ -15,6 +15,7 @@ import { readJson } from '../cli';
 import { isPaused } from '../pause';
 import { isAllowedSender, allowedUserIds, channelBotIdentity, chatInstructions, isPassiveChat, isSelfMentioned } from '../channel-auth';
 import { escapeRegExp } from '../md-write';
+import { pendingCount } from '../role-review';
 import type { ChannelEnvelope, StageContext, StageResult } from './types';
 
 // Known channel sources → exact MCP reply tool name.
@@ -125,7 +126,9 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const willBlock = passive && !addressed && !admittedConversation;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)) {
     const instructions = await chatInstructions(ctx.dir, ctx.config(), sourceKey, chatIdRaw);
-    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions).slice(0, 2000)}\n`;
+    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions.text).slice(0, 2000)}\n`;
+    const pending = pendingCount(ctx.dir, `${sourceKey}:${chatIdRaw}`);
+    if (pending) reminder += `[pending role proposals] ${pending}\n`;
   }
   let resetHistory = false;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)

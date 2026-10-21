@@ -100,6 +100,16 @@ export function isTrustedController(
   return !!home && !!chatId && String(home) === String(chatId);
 }
 
+/** Primary-operator precedence mirrors channel-responder §1c; empty lists name nobody. */
+export function isPrimaryOperator(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
+  const ch = channelEntry(config, source);
+  if (ch?.operators !== undefined) return Array.isArray(ch.operators) && userId !== null && ch.operators.includes(userId);
+  const allowed = allowedUserIds(config, source);
+  if (allowed !== null) return userId !== null && allowed[0] === userId;
+  return !!chatId && (chatId === ch?.maintainer_channel_id
+    || (chatId === ch?.default_chat_id && config?.operator_profile !== 'non-technical'));
+}
+
 // Home/maintainer rule has its prose twin in channel-responder §1c.
 export function recallScope(config: Json, key: string, chatId: string, hermitDir: string): Json | null {
   const ch = channelEntry(config, key);
@@ -153,16 +163,16 @@ function passiveChats(config: Json, sourceKey: string): string[] {
 }
 
 /** Exact chat policy wins; only Discord threads inherit their parent's policy. */
-export async function chatInstructions(hermitDir: string, config: Json, sourceKey: string, chatId: string): Promise<string | null> {
+export async function chatInstructions(hermitDir: string, config: Json, sourceKey: string, chatId: string): Promise<{ text: string; chat_id: string } | null> {
   const entries = channelEntry(config, sourceKey)?.instructions;
   if (!Array.isArray(entries) || !entries.length) return null;
   const exact = entries.find(entry => entry?.chat_id === chatId);
-  if (typeof exact?.text === 'string') return exact.text;
+  if (typeof exact?.text === 'string') return { text: exact.text, chat_id: exact.chat_id };
   if (normalizeChannelSource(sourceKey) !== 'discord') return null;
   const chat = await lookupChat(hermitDir, config, chatId);
   if (!chat || ![10, 11, 12].includes(chat.type) || !chat.parent_id) return null;
   const parent = entries.find(entry => entry?.chat_id === chat.parent_id);
-  return typeof parent?.text === 'string' ? parent.text : null;
+  return typeof parent?.text === 'string' ? { text: parent.text, chat_id: parent.chat_id } : null;
 }
 
 /** Cache-only activity classification; an unseen thread is warmed by the reply stage. */
