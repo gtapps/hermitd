@@ -582,3 +582,10 @@ test('instruction-only parent replacements protect changes and removals', async 
     else expectSilent(r);
   }
 });
+
+test('an apostrophe spliced into a single-quoted value stays in the ask label', async () => {
+  const dir = fixture();
+  const text = `Don'\\''t skip evidence`;
+  const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.instructions.0 '{"chat_id":"C1","text":"${text}"}'`) } }), dir);
+  expectAsk(r.stdout, `Hermit setting: channels.discord.instructions.0={"chat_id":"C1","text":"${text}"}`);
+});

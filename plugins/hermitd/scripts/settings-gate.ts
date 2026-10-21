@@ -431,9 +431,10 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
   // write carries a JSON array, which has spaces in it, and a bare `\S+` would
   // capture only up to the first one. That truncation is not merely cosmetic
   // for the prompt label: precheckSetChanged() would then parse a fragment, fail,
-  // and raise a prompt for every routine add.
+  // and raise a prompt for every routine add. A single-quoted value may splice
+  // apostrophes as `'\''`, so the label keeps the text after one.
   const matches = [...command.matchAll(
-    /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('[^']*'|"[^"]*"|\S+))?/g
+    /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?/g
   )];
   if (matches.length === 0) return listen.length ? listen : null;
 
