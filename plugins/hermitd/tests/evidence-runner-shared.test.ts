@@ -4,9 +4,13 @@ import { runEvidence } from '../scripts/lib/evidence-runner';
 import { withDir } from './helpers/workdir';
 import { runScript } from './helpers/run';
 
-for (const cmd of ["printf evidence; test -d .hermit", "printf failure >&2; exit 7", "printf '%03000d' 0", "printf '%02047d' 0; printf '€'", 'while :; do :; done']) {
+const LOOP = 'while :; do :; done';
+
+for (const cmd of ["printf evidence; test -d .hermit", "printf failure >&2; exit 7", "printf '%03000d' 0", "printf '%02047d' 0; printf '€'", LOOP]) {
   test(`shared runner matches later check: ${cmd}`, withDir(async dir => {
-    const env = { LATER_CHECK_TIMEOUT_MS: '100' };
+    // Only the loop needs a short deadline; a short one on a terminating
+    // command races process startup under parallel CI load.
+    const env = { LATER_CHECK_TIMEOUT_MS: cmd === LOOP ? '100' : '30000' };
     const added = await runScript('later.ts', { cwd: dir, args: ['add', path.join(dir, '.hermit'), '--claim', 'fixture check', '--cmd', cmd, '--due', '2026-09-16T00:00:00Z', '--origin', 'operator'] });
     expect(added.exitCode).toBe(0);
     const id = JSON.parse(added.stdout).id;
