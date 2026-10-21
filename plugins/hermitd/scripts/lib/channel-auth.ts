@@ -163,16 +163,16 @@ function passiveChats(config: Json, sourceKey: string): string[] {
 }
 
 /** Exact chat policy wins; only Discord threads inherit their parent's policy. */
-export async function chatInstructions(hermitDir: string, config: Json, sourceKey: string, chatId: string): Promise<string | null> {
+export async function chatInstructions(hermitDir: string, config: Json, sourceKey: string, chatId: string): Promise<{ text: string; chat_id: string } | null> {
   const entries = channelEntry(config, sourceKey)?.instructions;
   if (!Array.isArray(entries) || !entries.length) return null;
   const exact = entries.find(entry => entry?.chat_id === chatId);
-  if (typeof exact?.text === 'string') return exact.text;
+  if (typeof exact?.text === 'string') return { text: exact.text, chat_id: exact.chat_id };
   if (normalizeChannelSource(sourceKey) !== 'discord') return null;
   const chat = await lookupChat(hermitDir, config, chatId);
   if (!chat || ![10, 11, 12].includes(chat.type) || !chat.parent_id) return null;
   const parent = entries.find(entry => entry?.chat_id === chat.parent_id);
-  return typeof parent?.text === 'string' ? parent.text : null;
+  return typeof parent?.text === 'string' ? { text: parent.text, chat_id: parent.chat_id } : null;
 }
 
 /** Cache-only activity classification; an unseen thread is warmed by the reply stage. */

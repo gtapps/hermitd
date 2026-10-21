@@ -41,4 +41,4 @@ Chat instructions change through settings, and every addition, edit or removal r
 
 ## Differences from Claude Tag
 
-Hermit uses one resident across chats rather than a session per channel and thread. Tools and accounts are shared rather than scoped per channel. There is no volume or inactivity stop, and no automatic routine that turns review feedback into updated instructions.
+Hermit uses one resident across chats rather than a session per channel and thread. Tools and accounts are shared rather than scoped per channel. There is no volume or inactivity stop. Schedule [role-review](../skills/role-review/SKILL.md) by asking “every Friday, review this chat's rules”; it proposes changes for a reply to approve.

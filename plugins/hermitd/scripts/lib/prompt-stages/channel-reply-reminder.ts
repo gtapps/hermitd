@@ -125,7 +125,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const willBlock = passive && !addressed && !admittedConversation;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)) {
     const instructions = await chatInstructions(ctx.dir, ctx.config(), sourceKey, chatIdRaw);
-    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions).slice(0, 2000)}\n`;
+    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions.text).slice(0, 2000)}\n`;
   }
   let resetHistory = false;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)

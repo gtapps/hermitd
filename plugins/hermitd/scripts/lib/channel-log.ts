@@ -435,3 +435,39 @@ function conversationHistory(
 
 export { logMessage, searchLog, unconsolidated, inboundSince, unaddressedSince, conversationHistory, markConsolidated, prune, dbExists, dbPath, isLoggingEnabled };
 export type { LogInput, ChannelRow };
+
+
+export type ReviewRow = Pick<ChannelRow, 'id' | 'ts' | 'chat_id' | 'direction' | 'sender_id' | 'message_id' | 'text'>;
+type ReviewHistory = { status: 'ok'; upper_id: number; chat_ids: string[]; rows: ReviewRow[] }
+  | { status: 'no_db' | 'logging_off' } | { status: 'error'; error: string };
+
+/** Row-id range reads for role review. Discovery and text reads are separately bounded. */
+export function roleReviewHistory(
+  hermitDir: string, source: string,
+  opts: { cursor: number; upper?: number; since?: string; chatIds?: string[]; senderIds?: string[] | null },
+): ReviewHistory {
+  if (!isLoggingEnabled(readSettledConfig(hermitDir), source)) return { status: 'logging_off' };
+  if (!dbExists(hermitDir)) return { status: 'no_db' };
+  try {
+    const db = openDb(hermitDir, { readonly: true });
+    try {
+      const upper_id = opts.upper ?? (db.query('SELECT COALESCE(MAX(id), 0) AS id FROM messages').get() as { id: number }).id;
+      const params: (string | number)[] = [source, opts.cursor, upper_id];
+      let where = 'source = ? AND id > ? AND id <= ?';
+      if (opts.since) { where += ' AND ts >= ?'; params.push(opts.since); }
+      if (opts.senderIds) {
+        where += ` AND (direction = 'out' OR sender_id IN (${opts.senderIds.map(() => '?').join(',')}))`;
+        params.push(...opts.senderIds);
+      }
+      if (!opts.chatIds) {
+        const chats = db.query(`SELECT chat_id FROM messages WHERE ${where} GROUP BY chat_id ORDER BY MIN(id) LIMIT 32`).all(...params) as { chat_id: string }[];
+        return { status: 'ok', upper_id, chat_ids: chats.map(row => row.chat_id), rows: [] };
+      }
+      if (!opts.chatIds.length) return { status: 'ok', upper_id, chat_ids: [], rows: [] };
+      where += ` AND chat_id IN (${opts.chatIds.map(() => '?').join(',')})`;
+      params.push(...opts.chatIds);
+      const rows = db.query(`SELECT id, ts, chat_id, direction, sender_id, message_id, text FROM messages WHERE ${where} ORDER BY id LIMIT 1001`).all(...params) as ReviewRow[];
+      return { status: 'ok', upper_id, chat_ids: opts.chatIds, rows };
+    } finally { db.close(); }
+  } catch { return { status: 'error', error: 'channel_log_read_failed' }; }
+}

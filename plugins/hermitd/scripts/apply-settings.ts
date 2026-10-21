@@ -127,6 +127,7 @@ const HERMIT_ALLOW = [
   // a prompt; the script validates its own key and verbs and pins its state dir
   // because thread-open reads the bot token.
   'Bash(bun */scripts/conversation.ts*)',
+  'Bash(bun */scripts/role-review.ts*)',
   'Bash(bun */scripts/task.ts*)',
   'Bash(bun */scripts/duties.ts*)',
   'Bash(bun */scripts/channel-access.ts*)',
@@ -155,6 +156,8 @@ const HERMIT_ALLOW = [
   // the resident, so they are sealed beside note and list: the annotation
   // reaches the model with no resolvable plugin root, and its `bun
   // */scripts/task.ts*` twin is suspended under auto mode.
+  'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
+  'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
   'Bash(.hermit/bin/hermitd-run task note *)',
   'Bash(.hermit/bin/hermitd-run task list *)',
   'Bash(.hermit/bin/hermitd-run task block *)',

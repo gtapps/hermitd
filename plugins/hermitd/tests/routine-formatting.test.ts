@@ -30,3 +30,11 @@ test('inline and delegated routine templates use the bounded Read', () => {
   expect(dispatch).toContain('use <formatting-read>');
   expect(inline).toContain('use <formatting-read>');
 });
+
+
+test('inline and delegated chat routine invocations supply the routine id', () => {
+  const dispatch = routines.slice(routines.indexOf('**Model-override substitution.**'), routines.indexOf('Base execution,'));
+  const inline = routines.slice(routines.indexOf('Base execution,'), routines.indexOf('**Optional `precheck`'));
+  expect(dispatch).toContain('This is routine <id>.');
+  expect(inline).toContain('tell the skill before invocation: `This is routine <id>.`');
+});

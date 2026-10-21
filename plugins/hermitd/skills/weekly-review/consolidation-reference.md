@@ -52,6 +52,8 @@ your dispatch, so an operator reading it later can tell it was distilled from un
 rather than stated in session. This is the same provenance the proposal path already writes for
 `external-content` evidence.
 
+Never update `feedback_role_*` files or `[role` index lines during weekly consolidation. Exclude role targets when matching existing memory; do not restate a role into another file. Chat-rule changes use direct Standing role saves or the chat's scheduled role-review proposals and replies.
+
 File each candidate through the same governance the rest of this plugin uses:
 
 - `kind: "memory"` → write one memory file into the auto-memory directory named in your dispatch.

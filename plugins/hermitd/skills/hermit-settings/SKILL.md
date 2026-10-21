@@ -293,6 +293,8 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
     - 1st and 15th of month at 10:00 → `0 10 1,15 * *`
     - Custom → operator types raw cron
   - Skill to run (full slash-command name, e.g. `hermitd:brief` for plugin skills, `ha-refresh-context` for local project skills)
+    - Use only an installed skill; never add a free-text routine prompt. For a weekly chat-rules review, use `hermitd:role-review`.
+    - If a channel-turn routine request has no installed skill, explain plainly that it cannot be scheduled yet. File a capability proposal via `/hermitd:proposal-create`, using its **For a new skill** path with `Evidence Source: operator-request` for triage and `Source: operator-request` for creation. Do not create the skill or routine in this wizard.
   - Enabled (yes/no, default yes)
   - On every channel turn, including the home chat and any configured channel, add
     `"chat": "<sourceKey>:<chat_id>"` for the asking chat. Reply-tool skills can reach it; script notices need

@@ -366,6 +366,8 @@ describe('sealed registries', () => {
 // because the classifier judges the Bash call regardless of what reached it.
 describe('literal-path hermitd-run grants', () => {
   const LITERAL_PATH = [
+    'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
+    'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
     'Bash(.hermit/bin/hermitd-run channel-send *)',
     'Bash(.hermit/bin/hermitd-run observations observe *)',
     'Bash(.hermit/bin/hermitd-run task note *)',
@@ -611,4 +613,14 @@ describe('permissions-sync other settings file', () => {
     expect(result.other_file).toBeUndefined();
     expect(fs.readFileSync(other, 'utf8')).toBe(before);
   }));
+});
+
+
+test('role-review grants pin resolver verbs and include the state-pinned script', () => {
+  expect(HERMIT_ALLOW).toContain('Bash(bun */scripts/role-review.ts*)');
+  expect(HERMIT_ALLOW.filter((entry: string) => entry.includes('hermitd-run role-review '))).toEqual([
+    'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
+    'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
+  ]);
+  expect(HERMIT_ALLOW).not.toContain('Bash(.hermit/bin/hermitd-run role-review *)');
 });
