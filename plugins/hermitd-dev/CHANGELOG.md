@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.24] - 2026-10-22
 
 ### Changed
 - Hatch no longer appends `## Development Conventions` to OPERATOR.md; protected branches and the hook profile stay in `config.json`.
