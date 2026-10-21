@@ -9,7 +9,8 @@ Domain skills use the Home Assistant MCP server for live operations and `bin/ha-
 - `Hass*` intent tools have a deliberate opt-in: `ha_assist_control_enabled` delegates opaque target resolution to HA's expose-to-Assist boundary. Preserve the exact carve-out in `hooks/mcp-safety-gate.ts` rather than treating every unresolved call as equivalent.
 - `gateServiceCall` is per entity/service; `gateStructuralMutation` governs structural writes. Do not replace either with the other. Non-sensitive maintenance calls remain usable.
 - `update.*` has its own gate: `ha_update_auto_apply` plus per-call native approval, without bypassing sensitive-entity checks. The higher-level Core/OS/Supervisor approval rule lives in `skills/ha-apply-update/SKILL.md`.
-- Use `bin/ha-agent-lab boot status` to check credential state. Never dump HA tokens, URLs, or a real device inventory into repository fixtures or diagnostics. User-facing output uses the session language.
+- Use `bin/ha-agent-lab boot status` to check credential state. Never dump HA tokens, URLs, or a real device inventory into repository fixtures or diagnostics.
+- Use the hermit's `language` for replies. Write automation `alias` and `description` in that language unless an AGENTS file instruction names another. Auto-memory holds Claude-derived house knowledge.
 
 Read [SAFETY.md](SAFETY.md) before changing these gates. `src/cli.ts` and `bin/ha-agent-lab --help` own the command surface; [the CLI reference](docs/cli-reference.md) gives usage examples. Preserve raw-text response handling through `postText()`/`getText()` in `src/ha-api.ts` and the push/read-back/reload distinction in `src/apply.ts`.
 

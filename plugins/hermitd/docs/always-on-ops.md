@@ -156,15 +156,15 @@ Inspect live state with `/hermitd:hermit-routines status` (monitor liveness + an
 |                | Routines                         | Heartbeat                      | Monitors                          |
 | -------------- | -------------------------------- | ------------------------------ | --------------------------------- |
 | Timing         | Exact cron schedule              | Every N minutes                | Event-driven or interval          |
-| Engine         | Monitor subprocess (60s poll, gates in-script); CronCreate anchor + fallback | CC Monitor (subprocess poll)   | Monitor tool (OS subprocess)      |
+| Engine         | Monitor subprocess (60s poll, gates in-script); CronCreate anchor + fallback | CC Monitor (subprocess poll)   | Background watch monitor for config watches; CC Monitor tool for ad-hoc |
 | Cost           | Zero tokens for a skipped fire (monitor mode) | Zero tokens when quiet         | Zero tokens when quiet            |
-| Survives exit  | No (re-registered on launch; anchor re-arms daily) | No (re-armed daily by heartbeat-restart) | No (session-scoped)    |
+| Survives exit  | No (re-registered on launch; anchor re-arms daily) | No (re-armed daily by heartbeat-restart) | Config watches return at the next launch while enabled; ad-hoc watches end with the session |
 | Mid-task fire  | Deferred while an operator turn is open (Stop-cleared marker, 60-min TTL) — coarser than CronCreate's turn-level idle gate, can interject | Yes (interrupts)               | Yes (interrupts)                  |
 | Use for        | Scheduled tasks (briefs, audits) | Continuous monitoring          | Reactive watching / quiet polling |
 
 **Hybrid model:** Monitors handle reactive event streams (interrupt-OK). Routines handle scheduled work, gated outside the session for near-zero cost. Heartbeat handles continuous health checks. Neither replaces the others.
 
-Config-defined watches auto-register at session start. Runtime truth: `.hermit/state/monitors.runtime.json`. See `/hermitd:watch` for ad-hoc watching.
+Config watches run under the background watch monitor: it starts at boot, applies config edits live, and restarts commands on exit. `/hermitd:watch stop <id>` sets `enabled: false`. Observed state is `.hermit/state/watch-monitor.runtime.json`. Ad-hoc watches stay in `.hermit/state/monitors.runtime.json`.
 
 ---
 

@@ -170,10 +170,10 @@ You're always in control. Hermit suggests. You decide.
 
 If daily routines are enabled (default: yes), Hermit follows a schedule tied to your active hours:
 
-- **Morning** — first heartbeat tick of the day: reviews what happened overnight, checks pending proposals, surfaces priorities. Sends a brief via channel if configured.
-- **Evening** — last heartbeat tick of the day: archives the day's work as a report (if anything happened), reflects on patterns, flags tomorrow's priorities.
+- **Morning** — `brief --morning` at the configured time (default: active hours start + 30m): reviews what happened overnight, checks pending proposals, surfaces priorities. Sends a brief via channel if configured.
+- **Evening** — `brief --evening` at the configured time (default: active hours end - 30m): summarizes the day's task outcomes and flags tomorrow's priorities.
 
-Both fire once per day. Configure with `/hermitd:hermit-settings routines`.
+Both fire once per day from the routine monitor. Configure with `/hermitd:hermit-settings routines`.
 
 ---
 

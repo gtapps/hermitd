@@ -10,7 +10,8 @@ Standing work is what the hermit does without being asked in the moment: routine
 
 - Routines: `settings-get-routines` (Commands) for id, schedule, skill, enabled, precheck.
 - Routine outcomes: `routines-health` (Commands) (JSON; add `--days N` for a longer window). Use `last_fire`, `failure_total`, `last_precheck_error`, `open_attempt`.
-- Watches: `Read state/monitors.runtime.json` for id, description, source, class, started_at.
+- Config watches: read `.hermit/config.json` → `monitors[]` for id, description, enabled; match by id to `.hermit/state/watch-monitor.runtime.json` → `watches[]` for pid, started_at, restarts, last_exit_code. An enabled watch absent from runtime is pending reconciliation.
+- Ad-hoc and session watches: read `.hermit/state/monitors.runtime.json` for id, description, source, class, started_at.
 - Roles: the `[role` lines already in this turn's context. Hermit-wide ones always apply; a pinned `[role <key>:<chat_id>]` line applies only to that chat (`SKILL.md` § 1).
 - Current activity: the open-record digest and its execution observation.
 - Health evidence: `Read state/doctor-report.json` only for the "anything to deal with" and "what can you access" shapes. Do not run `doctor-check.ts` from this intent; a live check is the `!doctor` command, which the operator sends.
@@ -23,7 +24,7 @@ Order: problems first, then current activity, then domain standing work.
 
 - A problem is a routine with `failure_total > 0` or a `last_precheck_error`, a `fail` or `warn` entry in the saved doctor report, or a watch whose registry entry says it exited.
 - Lead with work aimed at the operator's domain (briefs, domain analyses, watches, rules). Routines that exist to keep the hermit itself running (monitor re-arms, self-reflection, self-checks, session closing) are housekeeping: mention them only when one carries a problem or the operator asks for the internal housekeeping.
-- Per item: plain name, purpose (from the skill name or description), cadence or condition in words, destination when config names one, last known outcome (`last_fire` plus `failure_total`), and persistence: routines and roles persist across restarts, watches die with the session (config watches return at the next start).
+- Per item: plain name, purpose (from the skill name or description), cadence or condition in words, destination when config names one, last known outcome (`last_fire` plus `failure_total`), and persistence: routines and roles persist across restarts. An enabled config watch returns at the next start. A stopped config watch stays disabled. An ad-hoc watch ends with the session.
 
 ### Matching a named item
 
@@ -35,7 +36,7 @@ Match the operator's phrase, case-insensitive, against routine `id` and skill na
 |---|---|---|
 | Disable, enable, or retime a routine | **Settings change request** path: `hermit-settings routines` (index from a fresh `get routines`, then `hermit-routines load`) | Persists across restarts. A native permission prompt, if one appears, is the operator's answer. |
 | Stop a routine "for now" | `/hermitd:hermit-routines stop <id>`: single routines share one monitor, so relay its explanation and offer the durable disable | Nothing changed unless they choose the disable. |
-| Stop a watch | `/hermitd:watch stop <id>` | Gone for this session; a config watch returns at the next start. |
+| Stop a watch | `/hermitd:watch stop <id>` | An ad-hoc watch is gone for this session. A config watch is set to `enabled: false` and stays off. |
 | Forget or change a rule | **Standing role** branch | Persists. |
 | Anything an owner does not support | Explain the limit; do not emulate it | Nothing changed. |
 
