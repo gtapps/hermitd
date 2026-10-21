@@ -10,7 +10,8 @@ Standing work is what the hermit does without being asked in the moment: routine
 
 - Routines: `settings-get-routines` (Commands) for id, schedule, skill, enabled, precheck.
 - Routine outcomes: `routines-health` (Commands) (JSON; add `--days N` for a longer window). Use `last_fire`, `failure_total`, `last_precheck_error`, `open_attempt`.
-- Watches: read `config.json` `monitors` and `state/watch-monitor.runtime.json` for config watches, and `state/monitors.runtime.json` for ad-hoc and session watches. Use id, description, source, class, and started_at.
+- Config watches: read `.hermit/config.json` → `monitors[]` for id, description, enabled; match by id to `.hermit/state/watch-monitor.runtime.json` → `watches[]` for pid, started_at, restarts, last_exit_code. An enabled watch absent from runtime is pending reconciliation.
+- Ad-hoc and session watches: read `.hermit/state/monitors.runtime.json` for id, description, source, class, started_at.
 - Roles: the `[role` lines already in this turn's context. Hermit-wide ones always apply; a pinned `[role <key>:<chat_id>]` line applies only to that chat (`SKILL.md` § 1).
 - Current activity: the open-record digest and its execution observation.
 - Health evidence: `Read state/doctor-report.json` only for the "anything to deal with" and "what can you access" shapes. Do not run `doctor-check.ts` from this intent; a live check is the `!doctor` command, which the operator sends.
