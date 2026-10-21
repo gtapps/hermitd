@@ -137,7 +137,7 @@ describe('settings-gate ask list', () => {
     expectSilent(r);
   });
 
-  for (const [key, value] of [['isolate_chats', 'false'], ['shared_chats', "'[]'"], ['operators', "'[]'"]]) {
+  for (const [key, value] of [['isolate_chats', 'false'], ['shared_chats', "'[]'"], ['operators', "'[]'"], ['instructions', "'[]'"]]) {
     test(`channel ${key} asks`, async () => {
       const dir = fixture();
       const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.${key} ${value}`) } }), dir);
@@ -353,7 +353,7 @@ describe('static settings policy', () => {
   test('new protected paths ask for both directions and unset', async () => {
     const dir = fixture();
     for (const field of ['operator_profile', 'channels.primary', 'channels.discord.state_dir',
-      'channels.discord.marketplace', 'channels.discord.enabled', 'channels.discord.passive_chats',
+      'channels.discord.marketplace', 'channels.discord.enabled', 'channels.discord.passive_chats', 'channels.discord.instructions', 'channels.discord.instructions.0', 'channels.discord.instructions.0.text',
       'telemetry_export.enabled',
       'telemetry_export.destination.url', 'telemetry_export.destination.bearer_env',
       'telemetry_export.redact_operator_text', 'artifacts.publish_authorized', 'artifacts.backend',
@@ -567,4 +567,25 @@ describe('routine chat binding', () => {
     expect(asked(await runFrom(null, 'set routines.0.enabled false'))).toBe(false);
     expect(asked(await runFrom(null, 'unset routines.1'))).toBe(false);
   });
+});
+
+test('instruction-only parent replacements protect changes and removals', async () => {
+  const instructions = [{ chat_id: 'C1', text: 'Review carefully' }];
+  const dir = fixture({ channels: { discord: { instructions } } });
+  for (const [field, value, asks] of [
+    ['channels.discord', { instructions, log_chats: false }, false],
+    ['channels.discord', { instructions: [{ chat_id: 'C1', text: 'Changed' }] }, true],
+    ['channels', { discord: {} }, true],
+  ] as const) {
+    const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set ${field} '${JSON.stringify(value)}'`) } }), dir);
+    if (asks) expectAsk(r.stdout, 'Hermit setting: channels.discord.instructions');
+    else expectSilent(r);
+  }
+});
+
+test('an apostrophe spliced into a single-quoted value stays in the ask label', async () => {
+  const dir = fixture();
+  const text = `Don'\\''t skip evidence`;
+  const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.instructions.0 '{"chat_id":"C1","text":"${text}"}'`) } }), dir);
+  expectAsk(r.stdout, `Hermit setting: channels.discord.instructions.0={"chat_id":"C1","text":"${text}"}`);
 });

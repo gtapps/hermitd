@@ -19,6 +19,7 @@ type Json = any;
  */
 
 const MAX_STDIN = 64 * 1024;
+const MAX_CHAT_INSTRUCTION_LENGTH = 2000;
 
 const REQUIRED_KEYS: Record<string, string[]> = {
   'agent_name': ['string', 'null'],
@@ -450,6 +451,29 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           if (!Array.isArray(ch[key])) errors.push(`channels.${name}.${key}: must be an array`);
           else if (!ch[key].every((id: unknown) => typeof id === 'string')) {
             errors.push(`channels.${name}.${key}: every entry must be a string`);
+          }
+        }
+      }
+      if (ch.instructions !== undefined) {
+        if (!Array.isArray(ch.instructions)) {
+          errors.push(`channels.${name}.instructions: must be an array`);
+        } else {
+          const seen = new Set<string>();
+          for (const [index, entry] of ch.instructions.entries()) {
+            const prefix = `channels.${name}.instructions.${index}`;
+            if (!isDict(entry)) {
+              errors.push(`${prefix}: must be an object`);
+              continue;
+            }
+            if (typeof entry.chat_id !== 'string' || !entry.chat_id.trim()) {
+              errors.push(`${prefix}.chat_id: must be a nonempty string`);
+            } else {
+              if (seen.has(entry.chat_id)) errors.push(`${prefix}.chat_id: must be unique`);
+              seen.add(entry.chat_id);
+            }
+            if (typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > MAX_CHAT_INSTRUCTION_LENGTH) {
+              errors.push(`${prefix}.text: must be a nonempty string of at most ${MAX_CHAT_INSTRUCTION_LENGTH} characters`);
+            }
           }
         }
       }

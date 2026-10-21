@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Per-chat instructions (`channels.<key>.instructions`) that only a permission-prompt approval can change, applied on that chat's turns ahead of standing roles; absent by default since they are operator-written content.
 - Plugin icon at `assets/icon.png`, declared as `icon` in `plugin.json` for plugin directory listings.
 - An operator-owned `.hermit/resident-prompt.md` replaces the shipped resident prompt and rules at every start, and `.hermit/helper-prompt.md` does the same for spawned helpers; empty or absent keeps the shipped prompt.
 
@@ -22,6 +23,9 @@
 - `hermitd update` run by the resident asks for approval, including in auto mode; Hardened installs deny it.
 - `proposal-act` also activates on requests to implement or go ahead with a proposal or "suggestion #N", opening the linked record through the accept flow.
 - Standing-work answers read config watches from the watch monitor and describe `/hermitd:watch stop` as disabling that watch.
+
+### Fixed
+- Settings approval prompts show a single-quoted value in full when it contains an escaped apostrophe (`'\''`), instead of cutting it off at the first one.
 
 ### Upgrade Instructions
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the new `Edit(*.hermit/resident-prompt.md)`, `Edit(*.hermit/helper-prompt.md)`, `Bash(hermitd update*)`, `Bash(*/hermitd update*)`, `Bash(*.hermit/bin/hermitd-update*)`, `Bash(*.hermit/bin/hermitd-run hermitd-update*)`, `Bash(hermitd run *hermitd-update*)` and `Bash(*/hermitd run *hermitd-update*)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)' 'Bash(hermitd update*)' 'Bash(*/hermitd update*)' 'Bash(*.hermit/bin/hermitd-update*)' 'Bash(*.hermit/bin/hermitd-run hermitd-update*)' 'Bash(hermitd run *hermitd-update*)' 'Bash(*/hermitd run *hermitd-update*)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries or the unseeded skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.

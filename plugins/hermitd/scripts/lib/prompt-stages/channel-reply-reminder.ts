@@ -8,12 +8,12 @@
 // secondary to the reminder: it runs after the reminder is composed, in its
 // own try/catch, and a logging failure never affects the reminder.
 
-import { safeForLLM } from '../sanitize';
+import { safeForLLM, safeForLLMMultiline } from '../sanitize';
 import { logMessage, isLoggingEnabled, unaddressedSince, conversationHistory } from '../channel-log';
 import path from 'node:path';
 import { readJson } from '../cli';
 import { isPaused } from '../pause';
-import { isAllowedSender, allowedUserIds, channelBotIdentity, isPassiveChat, isSelfMentioned } from '../channel-auth';
+import { isAllowedSender, allowedUserIds, channelBotIdentity, chatInstructions, isPassiveChat, isSelfMentioned } from '../channel-auth';
 import { escapeRegExp } from '../md-write';
 import type { ChannelEnvelope, StageContext, StageResult } from './types';
 
@@ -123,6 +123,10 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const admittedConversation = !!(ctx.conversation || ctx.closedThread)
     && isAllowedSender(ctx.config(), envelope.source, envelope.userId);
   const willBlock = passive && !addressed && !admittedConversation;
+  if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)) {
+    const instructions = await chatInstructions(ctx.dir, ctx.config(), sourceKey, chatIdRaw);
+    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions).slice(0, 2000)}\n`;
+  }
   let resetHistory = false;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
     && isLoggingEnabled(ctx.config(), envelope.source)) {

@@ -37,7 +37,7 @@ attachments; it does not change the tool's rendering mode or add mention support
 
 ## 1. Load Context
 
-Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file.
+Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file. A `[chat instructions]` line is operator-set policy: follow it over memory roles here. Route any admitted sender's change to **Settings change request** without refusing it yourself; the native prompt decides.
 
 Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/record-operator-action.ts --force` after authorization. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
@@ -53,8 +53,6 @@ Use hook-provided authorization and loaded `config.json` → `channels.<channel>
 - If `allowed_users` is an empty array `[]`: accept from no one (explicit lockdown)
 
 **Primary operator:** If `channels.<channel>.operators` is set, any listed user id is primary. Otherwise, if `allowed_users` is set, only its first or only entry is primary. Otherwise, the sender must be in the channel's maintainer chat (`maintainer_channel_id`), or in its home chat (`default_chat_id`) with `operator_profile` other than `non-technical`. Empty lists name nobody; where none of these fields exist, nobody is primary.
-
-The allowlist is per-channel inside `config.json`'s `channels` object.
 
 ## 1d. Record Operator Activity
 
