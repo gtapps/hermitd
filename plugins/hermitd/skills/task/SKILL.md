@@ -51,7 +51,7 @@ Inspect each command's result. If delivery or recording fails, report what remai
   - For `helper-switch`, `help`, `mute`, `unmute` or `restart`, Read [branches.md](branches.md) § Conversation command and follow it.
   - Return after the command; do not mutate another record or continue into another classification.
 
-All conversation script arguments are shell-quoted values. `history` and `thread-open` take no key, only `--source`, `--chat-id`, `--message-id`, `--thread-id`, `--name`, and `--limit` options. Parse each command's result before moving on; pass message text as quoted arguments, never interpolate it into executable code.
+All conversation script arguments are shell-quoted values. `history` includes admitted inbound senders and all outbound rows. `history` and `thread-open` take no key, only `--source`, `--chat-id`, `--message-id`, `--thread-id`, `--name`, and `--limit` options. Parse each command's result before moving on; pass message text as quoted arguments, never interpolate it into executable code.
 
 - **New instruction** ("work on X", "switch to Y", "prioritize Z")
   - A message in an open **Task thread** is steering for that record; it never reaches the rules below.

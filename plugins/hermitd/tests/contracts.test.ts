@@ -404,7 +404,7 @@ describe('passive chats validation', () => {
 });
 
 describe('monitors validation', () => {
-  test('chat must be a conversation key on a configured direct-send channel', () => {
+  test('routine chat may use any configured channel, with a warning for script notices', () => {
     const channels = { discord: { enabled: true }, telegram: { enabled: true }, imessage: { enabled: true } };
     const monitor = { id: 'cpu', description: 'CPU watch', command: 'true' };
     for (const chat of [undefined, null, 'discord:1287345098123456789', 'telegram:-100123']) {
@@ -756,7 +756,7 @@ describe('routine model validation', () => {
     expect(out.warnings.some((w: string) => w.includes('effort has no effect without'))).toBe(false);
   });
 
-  test('chat must be a conversation key on a configured direct-send channel', () => {
+  test('routine chat may use any configured channel, with a warning for script notices', () => {
     const channels = { discord: { enabled: true }, imessage: { enabled: true } };
     const ok = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'discord:1287345098123456789' }] });
     expect(ok.errors).toEqual([]);
@@ -766,7 +766,9 @@ describe('routine model validation', () => {
     const unknown = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'telegram:-100123' }] });
     expect(unknown.warnings.some((w: string) => w.includes('not configured'))).toBe(true);
     const unreachable = runValidate({ channels, routines: [{ ...BASE_ROUTINE, chat: 'imessage:abc' }] });
-    expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached'))).toBe(true);
+    expect(unreachable.errors).toEqual([]);
+    expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached'))).toBe(false);
+    expect(unreachable.warnings.some((w: string) => w.includes('script notices') && w.includes('reply-tool skills'))).toBe(true);
     const anchor = runValidate({ channels, routines: [{ ...HB_ROUTINE, chat: 'discord:1' }] });
     expect(anchor.warnings.some((w: string) => w.includes('chat on "heartbeat-restart" is ignored'))).toBe(true);
   });

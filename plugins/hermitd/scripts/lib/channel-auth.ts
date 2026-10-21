@@ -100,6 +100,16 @@ export function isTrustedController(
   return !!home && !!chatId && String(home) === String(chatId);
 }
 
+/** Primary-operator precedence mirrors channel-responder §1c; empty lists name nobody. */
+export function isPrimaryOperator(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
+  const ch = channelEntry(config, source);
+  if (ch?.operators !== undefined) return Array.isArray(ch.operators) && userId !== null && ch.operators.includes(userId);
+  const allowed = allowedUserIds(config, source);
+  if (allowed !== null) return userId !== null && allowed[0] === userId;
+  return !!chatId && (chatId === ch?.maintainer_channel_id
+    || (chatId === ch?.default_chat_id && config?.operator_profile !== 'non-technical'));
+}
+
 // Home/maintainer rule has its prose twin in channel-responder §1c.
 export function recallScope(config: Json, key: string, chatId: string, hermitDir: string): Json | null {
   const ch = channelEntry(config, key);

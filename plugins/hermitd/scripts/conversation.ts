@@ -1,7 +1,7 @@
 // `is-trusted` prints `OK` for a trusted sender and `{"status":"untrusted"}` otherwise, both at
 // exit 0: a caller must read stdout, never the exit code alone, to decide trust.
 import { conversationKey, checkKey } from './lib/conversation-key';
-import { isTrustedController } from './lib/channel-auth';
+import { isTrustedController, allowedUserIds } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { createThread, isGuildChannelType, lookupChat } from './lib/channel-chats';
 import { conversationHistory } from './lib/channel-log';
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       require(['source', 'chat_id'], ['limit']);
       const limit = opts.limit === undefined ? 100 : Number(opts.limit);
       if (!Number.isInteger(limit) || limit <= 0) throw new Error('invalid_limit');
-      printJson({ rows: conversationHistory(dir, opts.source, opts.chat_id, { limit }) });
+      printJson({ rows: conversationHistory(dir, opts.source, opts.chat_id, { limit, senderIds: allowedUserIds(config, opts.source) }) });
       return;
     }
     case 'thread-open': {

@@ -179,7 +179,11 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (!isDict(config.channels?.[channel])) {
         warnings.push(`${location}: chat names channel "${channel}", which is not configured; its notices will go undelivered`);
       } else if (!DIRECT_SEND_CHANNELS.includes(channel) && !config.channels[channel].send_script) {
-        warnings.push(`${location}: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats, or a channel with send_script, can own a ${owner}`);
+        if (owner === 'routine') {
+          warnings.push(`${location}: script notices to "${channel}" cannot be delivered without send_script; reply-tool skills can reach this chat`);
+        } else {
+          warnings.push(`${location}: chat on "${channel}" cannot be reached; only ${DIRECT_SEND_CHANNELS.join(' and ')} chats, or a channel with send_script, can own a ${owner}`);
+        }
       }
     }
   }

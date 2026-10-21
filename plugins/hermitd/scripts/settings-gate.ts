@@ -23,7 +23,7 @@ import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
-import { isAllowedSender } from './lib/channel-auth';
+import { isAllowedSender, isPrimaryOperator } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
@@ -173,24 +173,25 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 
 const TURN_TAIL_BYTES = 512 * 1024;
 
-/**
- * The conversation key (`<sourceKey>:<chat_id>`) of the allowed channel message
- * that opened the current turn, or null for a terminal, Claude app, routine or
- * heartbeat turn. Fail-closed: anything unreadable is null, and null asks.
- */
-function turnConversation(payload: Json): string | null {
+type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
+  | { kind: 'channel'; key: string; source: string; userId: string | null; chatId: string };
+
+/** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
+function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
-    if (!tPath) return null;
+    if (!tPath) return { kind: 'unknown' };
     const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
     const prompt = turnPromptText(lines, lines.length);
-    if (!prompt.boundaryFound) return null;
+    if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
-    if (!env || !isAllowedSender(config, env.source, env.userId)) return null;
-    return conversationKey(env.sourceKey, env.chatId, env.thread);
+    if (!env) return { kind: 'terminal' };
+    if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
+    return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
+      source: env.source, userId: env.userId, chatId: env.chatId };
   } catch {
-    return null;
+    return { kind: 'unknown' };
   }
 }
 
@@ -211,8 +212,7 @@ function operatorChat(key: string): boolean {
  * own? A chat changes only the routines bound to it. Routines with no `chat` are
  * the operator's and change silently only from the home or maintainer chat; so
  * does a whole-array write, which can touch any routine. Appending at the first
- * free index reaches no existing routine. A turn with no channel message is the
- * operator's own write and adds no ask.
+ * free index reaches no existing routine. Only a proven terminal adds no origin ask; unknown and non-primary senders ask.
  */
 function routineScopeAsks(dotted: string, turn: () => string | null): boolean {
   const m = ROUTINE_PATH.exec(dotted);
@@ -410,7 +410,13 @@ function channelAccessAsks(command: string): string[] {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-function protectedMutation(command: string, cwd: string, turn: () => string | null = () => null): string[] | null {
+function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin): string[] | null {
+  const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
+  const originAsks = () => {
+    const value = origin();
+    return value.kind === 'unknown' || (value.kind === 'channel'
+      && !isPrimaryOperator(readConfigRaw(hermitDir()), value.source, value.userId, value.chatId));
+  };
   const listen = channelAccessAsks(command);
 
   // An opaque write of the whole file can replace any asked path, so it
@@ -461,7 +467,8 @@ function protectedMutation(command: string, cwd: string, turn: () => string | nu
       for (const field of changed) if (!shown.includes(field)) shown.push(field);
       continue;
     }
-    const needsAsk = ASK_PATH.test(dotted)
+    const needsAsk = (ROUTINE_PATH.test(dotted) && originAsks())
+      || ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
         && routinesWriteAsks(value, turn))
       || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn))
@@ -490,7 +497,7 @@ function main(payload: any): void {
       return;
     }
     // Read lazily: only a routines write needs the transcript.
-    let turn: string | null | undefined;
+    let turn: RoutineOrigin | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
       typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
       () => (turn === undefined ? (turn = turnConversation(payload)) : turn));
