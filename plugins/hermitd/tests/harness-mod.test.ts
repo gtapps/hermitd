@@ -9,7 +9,7 @@ import { inboundSince } from '../scripts/lib/channel-log';
 import { startHttpStub } from './helpers/http-stub';
 import {
   claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, readOutcome, recover, recordLegs, validCommand,
-  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, type QueueEntry, type Unanswered,
+  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, QUEUE_PROTOCOL, type QueueEntry, type Unanswered,
 } from '../scripts/lib/harness-mod';
 
 const VERSION = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8')).version;
@@ -24,7 +24,7 @@ function fixture(runtime: object = {}) {
     telegram: { enabled: true, allowed_users: ['u1'], default_chat_id: '12345', bot_username: 'bot', bot_user_id: '777' },
   } }));
   setRuntime(dir, runtime);
-  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident' }));
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident', queue: QUEUE_PROTOCOL }));
   return { wd, dir };
 }
 function setRuntime(dir: string, extra: object = {}) {
@@ -146,7 +146,14 @@ test('purpose dedupes within one session, not across sessions', () => {
 
 test('enqueue skips when the mod has not loaded for the resident session', () => {
   const { dir } = fixture();
-  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'old' }));
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'old', queue: QUEUE_PROTOCOL }));
+  expect(enqueue(dir, chat())).toEqual({ status: 'skipped', reason: 'mod_not_loaded' });
+  expect(listing(dir, QUEUE_DIR)).toEqual([]);
+});
+
+test('enqueue skips when the loaded mod predates the command queue', () => {
+  const { dir } = fixture();
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident' }));
   expect(enqueue(dir, chat())).toEqual({ status: 'skipped', reason: 'mod_not_loaded' });
   expect(listing(dir, QUEUE_DIR)).toEqual([]);
 });
@@ -279,15 +286,15 @@ test('loaded stamps the marker and names the state directory', async () => {
   const { wd, dir } = fixture();
   fs.rmSync(path.join(dir, 'state/harness-mod-loaded.json'));
   expect(await call(wd, 'loaded')).toEqual({ decision: 'ok', state: path.join(dir, 'state'), session_id: 'resident' });
-  expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident' });
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident', queue: QUEUE_PROTOCOL });
 });
 
 test('claim leaves the loaded marker alone', async () => {
   const { wd, dir } = fixture();
   const file = path.join(dir, 'state/harness-mod-loaded.json');
-  fs.writeFileSync(file, JSON.stringify({ session_id: 'old' }));
+  fs.writeFileSync(file, JSON.stringify({ session_id: 'old', queue: QUEUE_PROTOCOL }));
   expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
-  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ session_id: 'old' });
+  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ session_id: 'old', queue: QUEUE_PROTOCOL });
 });
 
 test('bridge claim returns the entry with the caller version', async () => {

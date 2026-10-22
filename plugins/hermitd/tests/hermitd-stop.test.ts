@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { SCRIPTS_DIR } from './helpers/run';
-import { claim, finalize } from '../scripts/lib/harness-mod';
+import { claim, finalize, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 
 // Black-box contract tests for the hermitd-stop lifecycle script. Written
 // against the Python implementation first, then flipped to the TS port in the
@@ -72,7 +72,7 @@ esac
 /** The resident session with the core mod loaded, so the shutdown skill can be queued. */
 function residentWithMod(dir: string) {
   writeRuntime(dir, { runtime_mode: 'tmux', cc_session_id: 'resident' });
-  fs.writeFileSync(path.join(dir, '.hermit', 'state', 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident' }));
+  fs.writeFileSync(path.join(dir, '.hermit', 'state', 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident', queue: QUEUE_PROTOCOL }));
 }
 
 /** Stand in for the core mod and the session: once the skill is queued, run it and settle its turn. */

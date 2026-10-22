@@ -2087,7 +2087,7 @@ function checkHarnessMod(p: DoctorPaths = PATHS) {
   if (modLoadedForResident(p.hermitDir)) {
     return { id, status: 'ok', detail: 'Core mod loaded for the current resident session: it runs chat harness commands, watchdog compaction and clear, shutdown and update.' };
   }
-  return { id, status: 'warn', detail: 'chat harness commands unavailable: the core mod has not loaded for the current resident session, so chat harness commands, watchdog compaction and clear, the shutdown skill and live update are skipped.' };
+  return { id, status: 'warn', detail: 'chat harness commands unavailable: no queue-capable core mod has loaded for the current resident session, so chat harness commands, watchdog compaction and clear, the shutdown skill and live update are skipped.' };
 }
 
 /** Check launch configuration, without claiming that the running session executed it. */

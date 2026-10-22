@@ -7,7 +7,7 @@ import { readRuntimeJson } from './lib/runtime';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
-  claim, enqueue, finalize, MOD_LOADED_FILE, readInflight, recordLegs, recover, writeModState,
+  claim, enqueue, finalize, MOD_LOADED_FILE, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
   type Leg, type QueueEntry, type ReplyTarget, type Unanswered,
 } from './lib/harness-mod';
 
@@ -62,7 +62,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
         : { decision: 'refuse', reason: REFUSALS[queued.reason] ?? queued.reason, reply_to: decision.reply_to };
     }
     case 'loaded':
-      writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId });
+      writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
       return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId };
     case 'claim': {
       const unanswered: Unanswered[] = [];

@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Minimum Claude Code version is now 2.1.302, matching hermitd.
+- Requires Claude Code 2.1.302 or newer.
 - Hatch no longer offers to install context7; `docs/RECOMMENDED-PLUGINS.md` covers installing it yourself.
 
 ## [0.4.24] - 2026-10-22

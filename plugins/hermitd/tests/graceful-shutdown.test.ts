@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
-import { claim, finalize, QUEUE_DIR, OUTCOMES_DIR } from '../scripts/lib/harness-mod';
+import { claim, finalize, QUEUE_DIR, OUTCOMES_DIR, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 import { gracefulShutdown, shutdownReady } from '../scripts/lib/shutdown';
 
 const workdirs: Workdir[] = [];
@@ -14,7 +14,7 @@ function fixture(config: object = { shutdown_skill: '/custom:shutdown' }, loaded
   const dir = path.join(wd.dir, '.hermit');
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
   fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ cc_session_id: 'resident', runtime_mode: 'headless' }));
-  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded }));
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded, queue: QUEUE_PROTOCOL }));
   return { wd, dir };
 }
 function execution(dir: string, state: string, at: number) {

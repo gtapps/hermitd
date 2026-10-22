@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { QUEUE_DIR } from '../scripts/lib/harness-mod';
+import { QUEUE_DIR, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 import { runScript } from './helpers/run';
 import { withDir } from './helpers/workdir';
 
@@ -9,7 +9,7 @@ const runtime = { runtime_mode: 'headless', tmux_session: 'hermit-test', cc_sess
 function seed(dir: string, value: object = runtime, loaded = 'resident'): string {
   const root = path.join(dir, '.hermit');
   fs.writeFileSync(path.join(root, 'state/runtime.json'), JSON.stringify(value));
-  fs.writeFileSync(path.join(root, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded }));
+  fs.writeFileSync(path.join(root, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded, queue: QUEUE_PROTOCOL }));
   return root;
 }
 function queued(root: string) {

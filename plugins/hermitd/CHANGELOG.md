@@ -2,28 +2,33 @@
 
 ## [Unreleased]
 
-### Fixed
-- Pairing a Discord or Telegram bot in `/hermitd:channel-setup` or `/hermitd:docker-setup` sets an empty home chat to the paired DM, so the first boot's readiness notice is delivered without a prior message.
-- An unreachable channel with no home chat is reported with "send the bot a message" instead of `/<channel>:access`.
-- `hermit-doctor` gives the same overlay-hooks, heartbeat and routine-monitor verdicts whether it runs from the marketplace clone or the installed plugin cache.
-
 ### Changed
 - Nothing unattended types into the resident's tmux pane: watchdog compaction, clear, monitor re-arm, the wedge nudge fallback, pause, the shutdown skill (`hermitd-stop`, `hermitd-docker down`, container SIGTERM), live update and `/when-done-switch-to` go through one durable queue that the core mod runs once the session is idle, never answering an open permission prompt or question.
 - Compaction and clear are recorded only when Claude Code reports them done; a failed or uncertain one stays due, and a manual `/clear` now records the reset too.
 - `hermitd update` and `hermitd-docker update` queue `/reload-plugins` and `hermit-evolve` as one batch; evolve runs only after the reload completes.
 - New `harness-request` and `graceful-shutdown` verbs.
-- Lapsed logins are detected from the failed turn's `authentication_failed` error for the resident session, which also catches an invalid API key; pending dialogs come from the session's registry status, and the stall notice names what it waits for.
-- Watchdog compaction, clear and the other queued commands are skipped and logged as `mod-not-loaded` when the core mod has not loaded for the resident session.
+- Lapsed logins are detected from the failed turn's `authentication_failed` error for the resident session, which also catches an invalid API key; pending dialogs come from the session's registry status, and the stall notice names the kind of dialog it waits on (for example `permission prompt`) instead of quoting the terminal.
+- Watchdog compaction, clear and the other queued commands are skipped and logged as `mod-not-loaded` when the core mod has not loaded for the resident session, or the loaded one predates the command queue.
+- Chat `!effort` sets a resident-only effort override that applies to each request and persists across restarts when `config.effort` is unset; it outranks `env.CLAUDE_CODE_EFFORT_LEVEL`, the status line keeps the launch level, and `!effort auto` clears it.
+- Chat requests that expire or are dropped at shutdown get a reply saying they did not run.
+- A `/clear` or `/compact` typed at the terminal counts as operator activity.
 - Requires Claude Code 2.1.308 or newer.
 
 ### Fixed
+- Pairing a Discord or Telegram bot in `/hermitd:channel-setup` or `/hermitd:docker-setup` sets an empty home chat to the paired DM, so the first boot's readiness notice is delivered without a prior message.
+- An unreachable channel with no home chat is reported with "send the bot a message" instead of `/<channel>:access`.
+- `hermit-doctor` gives the same overlay-hooks, heartbeat and routine-monitor verdicts whether it runs from the marketplace clone or the installed plugin cache at the same version.
+- The watchdog re-arms a stalled heartbeat or routine monitor whose process is still alive instead of reading it as needing a restart.
 - A pause no longer leaves chat harness commands refused until someone types at the terminal.
 - A watchdog compact or update no longer approves a permission prompt or question that is open in the resident session.
 - Chat `!effort` and `/when-done-switch-to` effort switches no longer hang on Claude Code's "Change effort level?" confirmation or rewrite the user-level effort default.
-- `/hermitd:hatch` Advanced no longer gives Docker and tmux operators the interactive next steps and sandbox note.
+- `/hermitd:hatch` Advanced no longer gives Docker and tmux operators the interactive next steps, or Docker operators the sandbox note.
 - `/hermitd:hatch` Advanced's permission question fits the four-option limit; `dontAsk` is typed via Other.
-- Re-running `/hermitd:hatch` on a Docker hermit points at `hermitd restart` instead of `/hermitd:docker-setup`.
+- Re-running `/hermitd:hatch` on a Docker hermit points at `hermitd restart` instead of `/hermitd:docker-setup`, then `/hermitd:channel-setup` when a channel is configured.
 - A Docker hermit honors `env.AGENT_HOOK_PROFILE` in `config.json`; `docker-compose.hermit.yml` no longer sets the hook profile, and with nothing configured the container still launches at `strict`.
+- An update no longer waits out a `hermit-evolve` that cannot run on a Claude Code below hermitd's minimum: `hermitd-docker update` rebuilds the image first and evolve runs at boot (`--plugins-only` reports the update as blocked), and a host update stops before queuing and points at `claude update`.
+- The core mod marks itself loaded for a new session even when its `SessionStart` handler is skipped.
+- A queued `/reload-plugins` is confirmed from the command's own result, so a live update runs `hermit-evolve` even when the mod misses the transcript row.
 
 ### Upgrade Instructions
 1. Delete `.hermit/state/pending-harness-switch.json` if it exists.
@@ -31,8 +36,8 @@
 3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so SIGTERM runs `hermitd-run graceful-shutdown`. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
 4. **Hand the hook profile to `config.json`** (Docker hermits only). Hermit-evolve step 5d merges the compose template change, which removes the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml`; until now that line forced `strict` and outranked `config.json`. Then read `env.AGENT_HOOK_PROFILE` in `.hermit/config.json`:
    - **Absent or `"strict"`**: nothing to do. The hermit keeps launching at `strict`.
-   - **Any other value**: compose overrode it, so it applies for the first time after this upgrade and turns off the dev plugin's push guard. **Defer per SKILL.md Step 10** with `options: ["Keep <value> (applies from the next restart)", "Return to strict (unset env.AGENT_HOOK_PROFILE)"]`, no `on_resolve`, and `skipped: skipped pending operator`. *Return to strict* runs `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset env.AGENT_HOOK_PROFILE`; *Keep* leaves the key in place.
-   - **Compose not merged**: if step 5d leaves `docker-compose.hermit.yml` unmerged (kept, conflict or report-only) and it still has an `AGENT_HOOK_PROFILE=` line, that line keeps outranking `config.json`. Add to Operator notes: "Delete the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml` so `config.json` owns the hook profile, then run `hermitd-docker update`."
+   - **Any other value**: compose overrode it, so it applies from the restart that finishes this update. Add to Operator notes: "Docker now applies `env.AGENT_HOOK_PROFILE` = `<value>` from `config.json`, which turns off the dev plugin's push guard. To return to strict, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset env.AGENT_HOOK_PROFILE`, then `hermitd restart`."
+   - **After step 5d**: if `docker-compose.hermit.yml` still has an `AGENT_HOOK_PROFILE=` line, that line keeps outranking `config.json`. Add to Operator notes: "Delete the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml` so `config.json` owns the hook profile, then run `hermitd-docker update`."
 
 ## [1.4.19] - 2026-10-22
 

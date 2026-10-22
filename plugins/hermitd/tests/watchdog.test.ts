@@ -25,7 +25,7 @@ import {
 } from '../scripts/hermitd-watchdog';
 import { startHttpStub, type Stub } from './helpers/http-stub';
 import { localIdentity } from './helpers/registry-fixture';
-import { finalize } from '../scripts/lib/harness-mod';
+import { finalize, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 
 // The one line to flip when hermitd-watchdog is ported to TypeScript.
 // (Absolute bun path via process.execPath: Bun.spawn resolves the executable
@@ -71,7 +71,7 @@ function setupHermit(): Hermit {
   initialRuntime.cc_session_id = 'resident-boundary';
   fs.writeFileSync(state({ dir } as Hermit, 'runtime.json'), JSON.stringify(initialRuntime));
   // The core mod has loaded for this session, so watchdog commands go to its queue.
-  fs.writeFileSync(state({ dir } as Hermit, 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident-boundary' }));
+  fs.writeFileSync(state({ dir } as Hermit, 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident-boundary', queue: QUEUE_PROTOCOL }));
 
   // Stub hermitd-start: writes a marker so we can detect invocation
   const start = path.join(dir, '.hermit', 'bin', 'hermitd-start');
@@ -104,7 +104,7 @@ function patchRuntime(h: Hermit, patch: Record<string, unknown>): void {
   fs.writeFileSync(p, JSON.stringify({ ...readJson(p), ...patch }) + '\n');
   // A new resident session loads the core mod with it.
   if (typeof patch.cc_session_id === 'string') {
-    fs.writeFileSync(state(h, 'harness-mod-loaded.json'), JSON.stringify({ session_id: patch.cc_session_id }));
+    fs.writeFileSync(state(h, 'harness-mod-loaded.json'), JSON.stringify({ session_id: patch.cc_session_id, queue: QUEUE_PROTOCOL }));
   }
 }
 

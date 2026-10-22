@@ -24,6 +24,9 @@ export type HarnessDecision =
   | { decision: 'refuse'; reason: string; reply_to?: ReplyTarget; silent?: boolean }
   | ({ decision: 'run' } & HarnessRequest);
 export const MOD_LOADED_FILE = 'harness-mod-loaded.json';
+// Stamped by a mod copy that drains the queue. Bump only when the queue format changes
+// incompatibly, so a request never waits on a copy that cannot run it.
+export const QUEUE_PROTOCOL = 1;
 export const QUEUE_DIR = 'harness-queue';
 export const INFLIGHT_DIR = 'harness-inflight';
 export const OUTCOMES_DIR = 'harness-outcomes';
@@ -60,11 +63,12 @@ export function writeModState(dir: string, file: string, value: unknown): void {
   writeAtomic(path.join(dir, 'state', file), value);
 }
 
-/** True when the core mod recorded itself loaded for the resident's current session. */
+/** True when a queue-draining core mod recorded itself loaded for the resident's current session. */
 export function modLoadedForResident(dir: string): boolean {
   const runtime = readRuntimeJson(path.join(dir, 'state'));
   const loaded = readJson(path.join(dir, 'state', MOD_LOADED_FILE));
-  return typeof runtime?.cc_session_id === 'string' && !!runtime.cc_session_id && loaded?.session_id === runtime.cc_session_id;
+  return typeof runtime?.cc_session_id === 'string' && !!runtime.cc_session_id && loaded?.session_id === runtime.cc_session_id
+    && loaded?.queue === QUEUE_PROTOCOL;
 }
 
 /** The leg that stopped a request, or undefined when every leg was ok. */

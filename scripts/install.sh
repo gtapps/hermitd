@@ -84,10 +84,11 @@ detect_platform() {
 
 # ------------------------------------------------------------------ floors ----
 
-# Read the version floors from the plugin's own manifest so this script cannot
-# drift from what doctor-check.ts enforces. A failed fetch is not fatal: absent
-# tools are installed at latest, which clears any floor. An already-present but
-# stale tool then goes uncaught here and is caught later by /hermit-doctor.
+# Read the version floors from the plugin's own manifest, the file doctor-check.ts
+# and hermit-evolve also read. A failed fetch is not fatal: absent tools are
+# installed at latest, which clears any floor. An already-present but stale tool
+# then goes uncaught here: /hermit-doctor reports a stale Bun, and hermit-evolve
+# stops on a stale Claude Code.
 load_floors() {
   local meta
   CLAUDE_FLOOR=""

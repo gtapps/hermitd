@@ -99,6 +99,24 @@ _enumerate_host() {
     ' "$PROJECT_DIR" 2>/dev/null || true
 }
 
+# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
+_core_cc_floor_host() {
+  claude plugin list --json 2>/dev/null \
+    | bun -e '
+      const fs = require("fs");
+      const d = JSON.parse(fs.readFileSync(0, "utf8"));
+      const rank = {local: 0, project: 1, user: 2};
+      const core = (Array.isArray(d) ? d : [])
+        .filter(p => p.enabled === true && String(p.id).startsWith("hermitd@") && p.installPath
+          && (p.scope === "user" || p.projectPath === process.argv[1]))
+        .sort((a, b) => (rank[a.scope] ?? 3) - (rank[b.scope] ?? 3))[0];
+      try {
+        const m = JSON.parse(fs.readFileSync(core.installPath + "/.claude-plugin/hermit-meta.json", "utf8")).min_claude_code_version;
+        if (typeof m === "string") console.log(m.replace(/^>=\s*/, ""));
+      } catch {}
+    ' "$PROJECT_DIR" 2>/dev/null || true
+}
+
 # Emits id<TAB>scope<TAB>errors for enumerated plugins currently reporting CLI errors (e.g.
 # dependency-version-unsatisfied, no-matching-tag). Read-only annotation — never drives
 # update logic, only explains an "unchanged" result in the summary/history.
@@ -199,6 +217,7 @@ PLUGIN_ERRORS_AFTER=$(_enumerate_host_errors)
 # --- Apply in the running tmux session if one exists (host tmux, no docker exec). ---
 RELOAD_PLUGINS_SENT=false
 EVOLVE_SENT=false
+CC_BLOCKED=false
 
 # Live commands go to the core mod's queue (`harness-request`), which runs them natively
 # once the resident is idle and never answers an open dialog. The flags below mean
@@ -296,6 +315,17 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   # The new core version the reloaded mod copy reports, so a reload that replaces the
   # mod is recognised by that copy and the evolve leg still runs once.
   CORE_VERSION=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }' | sed -E 's/-[0-9a-f]{12}$//')
+  # hermit-evolve stops on a Claude Code below the new core's minimum, so a queued evolve
+  # would never stamp the versions and the wait below would time out. The pins stay moved;
+  # the next start on a newer Claude Code loads them and runs the pending evolve.
+  CC_FLOOR=$(_core_cc_floor_host)
+  CC_HOST=$(claude --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true)
+  if [ -n "$CC_FLOOR" ] && [ -n "$CC_HOST" ] \
+      && [ "$(printf '%s\n%s\n' "$CC_FLOOR" "$CC_HOST" | sort -V | head -1)" != "$CC_FLOOR" ]; then
+    echo "[hermit] Claude Code ${CC_HOST} is below hermitd's minimum ${CC_FLOOR}: run \`claude update\`, then \`hermitd restart\`; hermit-evolve runs at boot." >&2
+    CC_BLOCKED=true
+    return 0
+  fi
   REQUEST_ARGS=(/reload-plugins)
   BATCH=false
   if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
@@ -399,7 +429,11 @@ require('fs').appendFileSync(logFile, JSON.stringify(entry) + '\n');
 JSEOF
 
 echo ""
-echo "[hermit] Update complete."
+if [ "$CC_BLOCKED" = true ]; then
+  echo "[hermit] Update blocked: Claude Code is below hermitd's minimum; run \`claude update\`, then \`hermitd restart\`."
+else
+  echo "[hermit] Update complete."
+fi
 if [ -n "$UPDATE_ROWS" ]; then
   echo "  Plugins:"
   bun -e '
