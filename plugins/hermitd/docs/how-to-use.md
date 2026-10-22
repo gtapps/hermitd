@@ -266,7 +266,7 @@ The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unatt
 
 **`config.model`** controls which Claude model your hermit runs on. Default: `"sonnet"`. Set to `"opus"` for premium reasoning or `"haiku"` for cheap idle loops. See the [Claude Code model configuration docs](https://code.claude.com/docs/en/model-config) for aliases, version pinning, and tier behavior.
 
-**`config.effort`** sets the session's reasoning effort, passed as `--effort` at every start. The default `null` passes no flag. When it is set, a chat `!effort` change lasts until the next restart.
+**`config.effort`** sets the session's reasoning effort, passed as `--effort` at every start. The default `null` passes no flag. When it is set, a chat `!effort` change lasts until the next restart; without it, the change persists. `!effort` is applied by the core mod to each of the resident's own requests, so the status line keeps showing the launch level and workers keep their own.
 
 Work the hermit hands off can run at its own effort. A task assignment can name the effort its worker runs at (`low` to `max`). A [routine](config-reference.md#routines) with `model` set can also set `effort` for its subagent. [`heartbeat.model` and `heartbeat.effort`](config-reference.md#heartbeat) choose the heartbeat evaluator, Haiku at `high` by default. In a helper's task thread, `!model` and `!effort` switch that helper and keep its conversation; a busy helper switches when its current turn ends.
 

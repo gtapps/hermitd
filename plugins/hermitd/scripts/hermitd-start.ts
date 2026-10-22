@@ -829,14 +829,13 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
     cmd.push('--model', config.model);
   }
 
-  // Re-asserted on every boot for the same reason as --model: a runtime /effort writes
-  // through to the user-scope settings default ("saved as your default for new
-  // sessions"), and the boot flag outranks it — so a channel-requested effort change
+  // Re-asserted on every boot: a chat !effort is a per-request override the core mod keeps
+  // in state/effort-override.json, so a configured effort drops it here and the change
   // reverts on restart instead of silently becoming permanent. NOT the same lever as
-  // config.env.CLAUDE_CODE_EFFORT_LEVEL, which pins the session and would make a
-  // runtime /effort a no-op (see the how-to-use guide).
+  // config.env.CLAUDE_CODE_EFFORT_LEVEL, which pins the session (see the how-to-use guide).
   if (pyTruthy(config.effort)) {
     cmd.push('--effort', config.effort);
+    fs.rmSync(path.resolve(STATE_DIR, 'effort-override.json'), { force: true });
   }
 
   const mode = 'permission_mode' in config ? config.permission_mode : 'auto';

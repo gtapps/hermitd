@@ -21,6 +21,7 @@ const TICK_MS = 2000;
 // The deadline only records an uncertain outcome; the run keeps its slot until it settles.
 const deadlineFor = (command: Command) => command.command === '/compact' ? 300_000 : 120_000;
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/i;
+const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 // Only a cheap shape filter here. The bridge owns envelope parsing, addressing,
 // authorization and residency; ordinary prompts never start a process.
@@ -31,7 +32,6 @@ export function isCommandPrompt(text: string): boolean {
 
 export function classifyStdout(command: string, text: string): 'ok' | 'failed' {
   const success = command === '/model' ? /^Set model to\b/i.test(text)
-    : command === '/effort' ? /^Set effort level to\b/i.test(text)
     : command === '/advisor' ? /^(?:Advisor set to\b|Advisor (?:disabled|turned off)\b)/i.test(text)
     : command === '/reload-plugins' ? /^Reloaded:/.test(text)
     : command === '/clear' && text === '';
@@ -67,6 +67,8 @@ let active: {
   timer: { cancel(): void };
 } | undefined;
 let approval: string | null = null;
+// The resident's chat-set effort, applied per main-thread request; the session's own level stays.
+let effort: string | undefined;
 
 const busy = () => !!(request || running || active);
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -128,6 +130,7 @@ async function dispatch($: EngineInterface) {
   if (!request || active || running) return;
   const command = request.commands[legs.length];
   if (command.command === '/doctor') return runDoctor($, request);
+  if (command.command === '/effort') return setEffort($, command.arg ?? '');
   const current = {
     command, resolved: false, stdoutStarted: false, expectedModel: null as string | null,
     evidence: undefined as Leg | undefined,
@@ -171,6 +174,34 @@ async function runDoctor($: EngineInterface, doctor: Entry) {
   await settle($, leg).catch(() => undefined);
 }
 
+// /effort with a warm cache opens a confirmation no mod can answer and rewrites the user's
+// default, so the level is applied to each request instead and kept in state for a reload.
+async function setEffort($: EngineInterface, level: string) {
+  running = true;
+  let leg: Leg;
+  try {
+    if (!EFFORT_LEVELS.has(level)) throw new Error(`Unknown effort level: ${level}`);
+    if (!stateDir) throw new Error('No resident state directory');
+    await $.fs.write(`${stateDir}/effort-override.json`, JSON.stringify({ level, set_at: new Date().toISOString() }) + '\n');
+    effort = level;
+    leg = { command: '/effort', status: 'ok', text: `Effort set to ${level}; the status line still shows the launch level` };
+  } catch (error) {
+    leg = { command: '/effort', status: 'failed', text: errorText(error) };
+  } finally {
+    running = false;
+  }
+  await settle($, leg).catch(() => undefined);
+}
+
+async function readEffort($: EngineInterface, dir: string) {
+  try {
+    const level = JSON.parse(String(await $.fs.read(`${dir}/effort-override.json`))).level;
+    effort = EFFORT_LEVELS.has(level) ? level : undefined;
+  } catch {
+    effort = undefined;
+  }
+}
+
 // A pause ends the running turn natively: a dialog it holds closes unanswered, and
 // later commands keep working, which an Escape keystroke would not allow.
 async function runPause($: EngineInterface, entry: Decision) {
@@ -209,6 +240,7 @@ async function loadedFor($: EngineInterface, id: string) {
     return;
   }
   stateDir = result.state;
+  await readEffort($, result.state);
   if (recovered) return;
   recovered = true;
   const resumed = await bridge($, 'recover');
@@ -343,6 +375,11 @@ export const register: Register = on => {
     }
     $.clock.after(0, async () => loadedFor($, await $.session.id()).catch(() => undefined));
     return result;
+  });
+
+  // Subagents keep their own level, and a model with no effort setting is sent none.
+  on('turn.step', async function* ($, e, next) {
+    return yield* next(effort && e.agentId === undefined && e.effort !== undefined ? { ...e, effort } : e);
   });
 
   on('turn.start', async ($, e, next) => {

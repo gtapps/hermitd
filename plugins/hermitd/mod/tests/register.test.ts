@@ -12,6 +12,7 @@ function rig(on: any, options: { id?: () => string; handlers?: Record<string, (p
   const payloads: Record<string, any[]> = {};
   const queue: any[] = [];
   const commands: string[] = [];
+  const files: Record<string, string> = {};
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: options.id?.() ?? 'resident' }));
   on('session.start', () => ({ cwd: '/work' }));
@@ -34,8 +35,8 @@ function rig(on: any, options: { id?: () => string; handlers?: Record<string, (p
     return { value: { exitCode: 0, stdout: JSON.stringify(out), stderr: '' } };
   });
   on('fs.list', () => ({ value: queue.map(q => ({ name: `${q.id}.json`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }));
-  on('fs.read', ($: unknown, e: any) => ({ value: JSON.stringify(queue.find(q => e.path.endsWith(`/${q.id}.json`)) ?? {}) }));
-  return { calls, payloads, queue, commands };
+  on('fs.read', ($: unknown, e: any) => ({ value: files[e.path] ?? JSON.stringify(queue.find(q => e.path.endsWith(`/${q.id}.json`)) ?? {}) }));
+  return { calls, payloads, queue, commands, files };
 }
 const boot = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
 const finalized = (r: { payloads: Record<string, any[]> }) => r.payloads.finalize ?? [];
@@ -132,17 +133,17 @@ test('the deadline records unknown but keeps the slot until the run settles', as
   const r = rig(on);
   let release: () => void = () => undefined;
   on('command.run', ($, e) => { r.commands.push(e.command); return new Promise(resolve => { release = () => resolve({}); }); });
-  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]), entry('b', [{ command: '/effort', arg: 'high' }]));
+  r.queue.push(entry('a', [{ command: '/advisor', arg: 'opus' }]), entry('b', [{ command: '/advisor', arg: 'sonnet' }]));
   await boot($);
   await clock.advance(2000);
   await clock.advance(120000);
   expect(finalized(r).map(f => f.id)).toEqual(['a']);
   await clock.advance(10000);
-  expect(r.commands).toEqual(['effort']);
+  expect(r.commands).toEqual(['advisor']);
   expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
   release();
   await clock.advance(2000);
-  expect(r.commands).toEqual(['effort', 'effort']);
+  expect(r.commands).toEqual(['advisor', 'advisor']);
 });
 
 test('a rejected model reports failed from its engine-origin rows, without the deadline', async ($, on) => {
@@ -188,7 +189,7 @@ test('a main turn gates the queue; a subagent turn does not', async ($, on) => {
   const r = rig(on);
   on('turn.complete', () => ({ text: '' }));
   on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
-  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  r.queue.push(entry('a', [{ command: '/advisor', arg: 'opus' }]));
   await boot($);
   await $.turn.start({ text: '', turnId: 'main' });
   await clock.advance(4000);
@@ -199,7 +200,7 @@ test('a main turn gates the queue; a subagent turn does not', async ($, on) => {
   expect(r.calls).not.toContain('claim');
   await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: null });
   await clock.advance(2000);
-  expect(r.commands).toEqual(['effort']);
+  expect(r.commands).toEqual(['advisor']);
 });
 
 test('a request queued mid-turn is claimed on the main turn.complete, not on a subagent one', async ($, on) => {
@@ -209,13 +210,13 @@ test('a request queued mid-turn is claimed on the main turn.complete, not on a s
   on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
   await boot($);
   await $.turn.start({ text: '', turnId: 'main' });
-  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  r.queue.push(entry('a', [{ command: '/advisor', arg: 'opus' }]));
   await $.turn.complete({ agentId: 'worker', reason: 'answer', answer: '', turnId: 'sub', durationMs: 0, isAborted: false, usage: null });
   await clock.settle();
   expect(r.calls).not.toContain('claim');
   await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: null });
   await clock.settle();
-  expect(r.commands).toEqual(['effort']);
+  expect(r.commands).toEqual(['advisor']);
 });
 
 test('a pause aborts the running main turn at once, ahead of queued work', async ($, on) => {
@@ -224,7 +225,7 @@ test('a pause aborts the running main turn at once, ahead of queued work', async
   const aborted: string[] = [];
   on('turn.abort', ($, e) => { aborted.push(e.turnId); return { value: undefined }; });
   on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
-  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  r.queue.push(entry('a', [{ command: '/advisor', arg: 'opus' }]));
   await boot($);
   await $.turn.start({ text: '', turnId: 'main' });
   await clock.advance(2000);
@@ -331,8 +332,6 @@ test('stdout classification recognizes observed success and failures', () => {
   for (const [command, text, expected] of [
     ['/model', 'Set model to Sonnet', 'ok'],
     ['/model', 'Model switch blocked by a PreModelSwitch hook', 'failed'],
-    ['/effort', 'Set effort level to low', 'ok'],
-    ['/effort', 'Invalid effort level: bogus', 'failed'],
     ['/advisor', 'Advisor set to Opus', 'ok'],
     ['/advisor', 'Advisor disabled', 'ok'],
     ['/advisor', "Invalid advisor model: Model 'bogusmodel' not found", 'failed'],
@@ -425,4 +424,36 @@ test('doctor writes the relay before running and reports a started or failed run
   await clock.advance(2000);
   expect(r.calls.slice(-3)).toEqual(['claim', 'relay', 'finalize']);
   expect(finalized(r)[2].legs[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+});
+
+test('/effort sets a per-request override for main-thread steps without running the command', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  const written: Record<string, string> = {};
+  on('fs.write', ($, e: any) => { written[e.path] = e.text; return { value: undefined }; });
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  const sent: (string | undefined)[] = [];
+  on('turn.step', async function* ($, e: any) { sent.push(e.effort); return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }; });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'high' }]), entry('b', [{ command: '/effort', arg: 'turbo' }]));
+  await boot($);
+  await clock.advance(2000);
+  await clock.advance(2000);
+  expect(r.commands).toEqual([]);
+  expect(JSON.parse(written['/state/effort-override.json']).level).toBe('high');
+  expect(finalized(r).map(f => f.legs[0].status)).toEqual(['ok', 'failed']);
+  for (const step of [{ effort: 'medium' }, { effort: 'medium', agentId: 'worker' }, {}]) {
+    for await (const _ of ($ as any).turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, ...step })) { /* drain */ }
+  }
+  expect(sent).toEqual(['high', 'medium', undefined]);
+});
+
+test('a fresh copy re-reads the effort override from state', async ($, on) => {
+  const clock = mock.clock(on);
+  rig(on).files['/state/effort-override.json'] = JSON.stringify({ level: 'low' });
+  const sent: (string | undefined)[] = [];
+  on('turn.step', async function* ($, e: any) { sent.push(e.effort); return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }; });
+  await boot($);
+  await clock.settle();
+  for await (const _ of ($ as any).turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, effort: 'max' })) { /* drain */ }
+  expect(sent).toEqual(['low']);
 });
