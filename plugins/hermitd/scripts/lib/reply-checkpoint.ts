@@ -7,7 +7,7 @@ import { parseChannelEnvelope } from './channel-envelope';
 import { readConfigRaw } from './config-read';
 import { threadRecords } from './tasks';
 import { readTailLines, toolUseNames, transcriptPath, turnPromptText } from './cc-compat';
-import fs from 'node:fs';
+import { readJson } from './cli';
 import path from 'node:path';
 
 type Json = any;
@@ -45,10 +45,8 @@ export function replyBlockReason(dir: string, payload: Json): string | null {
 
     // The transcript read can miss a reply already sent; the reply hook's stamp cannot.
     const openedAt = JSON.parse(lines[prompt.index]).timestamp;
-    let lastReplyAt: unknown = null;
-    try {
-      lastReplyAt = JSON.parse(fs.readFileSync(path.join(dir, 'state', 'channel-activity.json'), 'utf8'))?.[env.sourceKey]?.last_reply_at;
-    } catch {} // no stamp yet: the transcript verdict stands
+    // No stamp yet: the transcript verdict stands.
+    const lastReplyAt: unknown = readJson(path.join(dir, 'state', 'channel-activity.json'))?.[env.sourceKey]?.last_reply_at;
     if (typeof openedAt === 'string' && typeof lastReplyAt === 'string' && lastReplyAt >= openedAt) return null;
 
     return `channel-responder reply is still owed. This turn opened on a ${env.sourceKey} message (chat_id=${env.chatId}) and nothing was sent through the channel reply tool, so the operator has seen nothing. Send the reply now, or end the turn if this message needs none.`;

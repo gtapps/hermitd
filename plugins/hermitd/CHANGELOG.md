@@ -6,9 +6,9 @@
 - The hermit edits `OPERATOR.md` when the operator asks, through the native approval prompt, and proposes a diff only when the edit is denied or no prompt is available.
 
 ### Fixed
-- The watchdog no longer reports a stuck session after a quiet context clear
-- Context compaction waits while the session is busy or showing a prompt, instead of typing into it
-- The end-of-turn reply check accepts a reply already sent on the channel
+- The watchdog no longer reports a stuck session after a quiet context clear.
+- Context compaction waits while the session is busy, showing a prompt or running a worker, instead of typing into it.
+- The end-of-turn reply check accepts a reply already sent on the channel.
 
 ## [1.4.18] - 2026-10-22
 

@@ -30,7 +30,7 @@ import { resolveResumeTarget } from './lib/resident-prompt';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
-import { readExecution, passesExecutionBoundary } from './lib/tasks';
+import { readExecution, passesExecutionBoundary, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
@@ -1567,7 +1567,7 @@ type PoisonReason = 'stale-entry' | 'aberrant-reading';
 
 /** Closed registry of hygiene evaluation outcomes — every setHygieneEval call site
  *  resolves into this union, so hygiene_eval_counts has a fixed key set by
- *  construction (≤20 distinct strings) and a typo'd or
+ *  construction (≤25 distinct strings) and a typo'd or
  *  novel outcome is a compile error, not a silent new counter key. */
 export type HygieneOutcome =
   | 'fired'
@@ -1580,7 +1580,7 @@ export type HygieneOutcome =
   | 'skip:interval-cooldown'
   | 'skip:already-processed'
   | 'skip:quiescence-pending'
-  | `skip:boundary:${string}`
+  | `skip:boundary:${BoundaryReason}`
   | 'skip:lock-held';
 
 /** Records this tick's compact-tier outcome on a held watchdog-state object, under

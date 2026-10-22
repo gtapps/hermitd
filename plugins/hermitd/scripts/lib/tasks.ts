@@ -385,7 +385,8 @@ export function readExecution(dir: string, options: { registryFallback?: true } 
   }
   return result;
 }
-export function passesExecutionBoundary(dir: string, options: { minTokens?: number } = {}): { ok: true } | { ok: false; reason: string } {
+export type BoundaryReason = 'execution-not-idle' | 'stale-identity' | 'idle-too-fresh' | 'worker-running' | 'registry-busy' | 'under-token-floor';
+export function passesExecutionBoundary(dir: string, options: { minTokens?: number } = {}): { ok: true } | { ok: false; reason: BoundaryReason } {
   const execution = readExecution(dir);
   if (execution.state !== 'idle') return { ok: false, reason: 'execution-not-idle' };
   const runtime = readJson(path.join(dir, 'state/runtime.json'));
