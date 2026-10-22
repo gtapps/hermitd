@@ -133,3 +133,24 @@ test('a live session with stale monitor liveness re-arms at the safe boundary', 
     expect(f.keys).toEqual(['/hermitd:heartbeat start']);
   } finally { f.cleanup(); }
 });
+
+test('a skipped pause abort retries on the next tick without a second notice', async () => {
+  const f = watchdogWorld();
+  try {
+    f.put('state/pause.json', { paused: true, paused_until: null, reason: 'operator', by: 'test', ts: '2026-02-02T00:00:00.000Z' });
+    f.put('state/execution.json', { state: 'in_flight', cc_session_id: 'resident', at: new Date(f.now).toISOString() });
+    const queued = f.world.harness.enqueue;
+    let skip = true;
+    f.world.harness.enqueue = request => request.source === 'pause' && skip ? { status: 'skipped', reason: 'mod_not_loaded' } : queued(request);
+    await tick(f.world);
+    expect(f.keys).not.toContain('pause');
+    const notices = f.notices.length;
+    expect(notices).toBeGreaterThan(0);
+    skip = false;
+    await tick(f.world);
+    expect(f.keys.filter(k => k === 'pause')).toHaveLength(1);
+    await tick(f.world);
+    expect(f.keys.filter(k => k === 'pause')).toHaveLength(1);
+    expect(f.notices).toHaveLength(notices);
+  } finally { f.cleanup(); }
+});

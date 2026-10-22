@@ -8,7 +8,7 @@ import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } fr
 import { sendToChannel } from './lib/channel-send';
 import {
   claim, enqueue, finalize, MOD_LOADED_FILE, readInflight, recordLegs, recover, writeModState,
-  type Leg, type ReplyTarget,
+  type Leg, type QueueEntry, type ReplyTarget, type Unanswered,
 } from './lib/harness-mod';
 
 // The version of the plugin copy this bridge runs from: the mod that called it lives
@@ -27,6 +27,23 @@ async function reply(dir: string, text: string, target: ReplyTarget) {
     target: { id: target.source, chat_id: target.chat_id, thread: target.thread }, timeoutMs: 6000,
   });
   return sent.ok ? { decision: 'ok' } : { decision: 'send_failed', text, reply_to: target };
+}
+
+function replyText(entry: QueueEntry, legs: Leg[]): string {
+  return legs.map((leg, i) => {
+    const shown = entry.commands[i] ? renderCommand(entry.commands[i]) : leg.command;
+    return `${shown}: ${leg.status === 'unknown' ? 'outcome unknown' : leg.status}${leg.text ? ` (${leg.text})` : ''}`;
+  }).join('\n');
+}
+
+/** Answers requests the queue finalized without running; sent after the queue lock is released. */
+async function answerUnanswered(dir: string, unanswered: Unanswered[]): Promise<{ relays?: { text: string; reply_to: ReplyTarget }[] }> {
+  const relays: { text: string; reply_to: ReplyTarget }[] = [];
+  for (const { entry, legs } of unanswered) {
+    const sent = await reply(dir, replyText(entry, legs), entry.reply_to!);
+    if (sent.decision === 'send_failed') relays.push({ text: sent.text!, reply_to: entry.reply_to! });
+  }
+  return relays.length ? { relays } : {};
 }
 
 export async function run(verb: string, sessionId: string, payload = ''): Promise<unknown> {
@@ -48,12 +65,14 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId });
       return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId };
     case 'claim': {
-      const entry = claim(dir, sessionId, ownVersion(), { pauseOnly: payload === 'pause' });
-      return entry ? { ...entry, decision: 'run' } : { decision: 'pass' };
+      const unanswered: Unanswered[] = [];
+      const entry = claim(dir, sessionId, ownVersion(), { pauseOnly: payload === 'pause', unanswered });
+      return { ...(entry ? { ...entry, decision: 'run' } : { decision: 'pass' }), ...(await answerUnanswered(dir, unanswered)) };
     }
     case 'recover': {
-      const entry = recover(dir, ownVersion());
-      return entry ? { ...entry, decision: 'run' } : { decision: 'pass' };
+      const unanswered: Unanswered[] = [];
+      const entry = recover(dir, ownVersion(), Date.now(), unanswered);
+      return { ...(entry ? { ...entry, decision: 'run' } : { decision: 'pass' }), ...(await answerUnanswered(dir, unanswered)) };
     }
     case 'leg': {
       const input = JSON.parse(payload) as { id: string; legs: Leg[] };
@@ -85,11 +104,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       });
       // A started /doctor answers the chat from its own turn.
       if (!entry.reply_to || (legs[0]?.command === '/doctor' && legs[0].status === 'ok')) return { decision: 'ok' };
-      const text = legs.map((leg, i) => {
-        const shown = entry.commands[i] ? renderCommand(entry.commands[i]) : leg.command;
-        return `${shown}: ${leg.status === 'unknown' ? 'outcome unknown' : leg.status}${leg.text ? ` (${leg.text})` : ''}`;
-      }).join('\n');
-      return reply(dir, text, entry.reply_to);
+      return reply(dir, replyText(entry, legs), entry.reply_to);
     }
     default:
       return { decision: 'pass' };

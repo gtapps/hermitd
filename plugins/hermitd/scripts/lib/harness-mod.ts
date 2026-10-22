@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { readJson } from './cli';
+import { readSettledConfig } from './config-read';
 import { ARG_COMMANDS, ARG_RE, BARE_COMMANDS, COMMAND_MARKER_TTL_SECS, type ParsedCommand } from './harness-command';
 import { readRuntimeJson } from './runtime';
 import { passesExecutionBoundary } from './tasks';
@@ -52,6 +53,8 @@ export type QueueOutcome = {
   id: string; source: QueueSource; purpose: string | null; commands: ParsedCommand[]; legs: Leg[]; finished_at: string;
 };
 export type EnqueueResult = { status: 'queued'; id: string } | { status: 'skipped'; reason: string };
+/** A request finalized without running whose requester is waiting on a chat reply. */
+export type Unanswered = { entry: QueueEntry; legs: Leg[] };
 
 export function writeModState(dir: string, file: string, value: unknown): void {
   writeAtomic(path.join(dir, 'state', file), value);
@@ -69,6 +72,17 @@ export function failedLeg(outcome: { legs: Leg[] }): Leg | undefined {
   return outcome.legs.find(leg => leg.status !== 'ok');
 }
 
+const LEG_REASONS: Record<string, string> = { 'not run': 'not_run', 'deadline reached': 'deadline' };
+const QUEUE_REASONS = new Set(['expired', 'stale_session', 'shutdown', 'worker_lost']);
+
+/** A snake_case token for why a leg did not end ok; the leg text stays the human detail. */
+export function legReason(leg: Leg): string {
+  if (LEG_REASONS[leg.text]) return LEG_REASONS[leg.text];
+  if (QUEUE_REASONS.has(leg.text)) return leg.text;
+  if (/^[a-z]+(?:-[a-z]+)+$/.test(leg.text)) return leg.text.replaceAll('-', '_'); // an execution boundary reason
+  return leg.status === 'failed' ? 'rejected' : leg.status;
+}
+
 /** The status a whole request reached: its first non-ok leg's, else ok. */
 export function outcomeStatus(outcome: { legs: Leg[] }): LegStatus {
   return failedLeg(outcome)?.status ?? 'ok';
@@ -81,6 +95,21 @@ export function readOutcome(dir: string, id: string): QueueOutcome | null {
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/i;
 const FREE_TEXT_MAX = 512;
 const freeText = (arg: unknown) => typeof arg === 'string' && arg.trim() !== '' && arg.length <= FREE_TEXT_MAX && !/\p{Cc}/u.test(arg);
+
+/** Splits a configured skill string into its command and optional argument. */
+export function parseSkill(skill: string): ParsedCommand {
+  const trimmed = skill.trim();
+  const space = trimmed.search(/\s/);
+  return space === -1 ? { command: trimmed, arg: null } : { command: trimmed.slice(0, space), arg: trimmed.slice(space + 1).trim() };
+}
+
+/** A stop request may carry exactly the operator's configured shutdown skill, whatever its namespace. */
+function isShutdownSkill(dir: string, command: ParsedCommand): boolean {
+  const skill = readSettledConfig(dir).shutdown_skill;
+  if (typeof skill !== 'string' || !skill.trim().startsWith('/') || skill.trim().length > FREE_TEXT_MAX || /\p{Cc}/u.test(skill.trim())) return false;
+  const configured = parseSkill(skill);
+  return command?.command === configured.command && (command.arg ?? null) === configured.arg;
+}
 
 /** Each command keeps its own contract; free text only where the command takes it. */
 export function validCommand(command: ParsedCommand): boolean {
@@ -128,7 +157,8 @@ function listEntries(dir: string, sub: string): Listed[] {
 
 /** Validates and appends one request. Never runs anything itself. */
 export function enqueue(dir: string, request: QueueRequest, now = Date.now()): EnqueueResult {
-  if (!Array.isArray(request.commands) || !request.commands.every(validCommand)
+  if (!Array.isArray(request.commands)
+    || !request.commands.every(command => validCommand(command) || (request.source === 'stop' && isShutdownSkill(dir, command)))
     || (request.source !== 'pause' && request.commands.length === 0)) throw new Error('invalid_command');
   return withQueueLock(dir, () => {
     const runtime = readRuntimeJson(path.join(dir, 'state'));
@@ -209,14 +239,20 @@ export function recordLegs(dir: string, id: string, legs: Leg[]): boolean {
   });
 }
 
+/** Finalizes a request that will not run, noting it when a chat requester awaits the reply. */
+function settle(dir: string, listed: Listed, legs: Leg[], unanswered: Unanswered[], now: number): void {
+  const outcome = writeOutcome(dir, listed.entry, legs, [listed.file], now);
+  if (listed.entry.reply_to) unanswered.push({ entry: listed.entry, legs: outcome.legs });
+}
+
 /** Expires stale requests and returns the ones still queued. */
-function sweep(dir: string, now: number): Listed[] {
+function sweep(dir: string, now: number, unanswered: Unanswered[]): Listed[] {
   const live: Listed[] = [];
-  for (const { file, entry } of listEntries(dir, QUEUE_DIR)) {
-    const at = Date.parse(entry.requested_at);
+  for (const listed of listEntries(dir, QUEUE_DIR)) {
+    const at = Date.parse(listed.entry.requested_at);
     if (!Number.isFinite(at) || now - at > COMMAND_MARKER_TTL_SECS * 1000) {
-      writeOutcome(dir, entry, legsFor(entry, 'skipped', 'expired'), [file], now);
-    } else live.push({ file, entry });
+      settle(dir, listed, legsFor(listed.entry, 'skipped', 'expired'), unanswered, now);
+    } else live.push(listed);
   }
   const outcomes = path.join(dir, 'state', OUTCOMES_DIR);
   let names: string[] = [];
@@ -235,28 +271,35 @@ const SESSION_BOUND = new Set<QueueSource>(['watchdog', 'stop', 'pause']);
 
 /**
  * Admits the next request for the caller's session and moves it in flight. A pause
- * goes first; requests that can no longer run are finalized here instead of run.
+ * goes first; requests that can no longer run are finalized here instead of run, and
+ * the ones awaiting a chat reply are pushed to `options.unanswered` for the caller to
+ * answer once the lock is released.
  */
-export function claim(dir: string, sessionId: string, claimerVersion: string, options: { pauseOnly?: boolean } = {}, now = Date.now()): QueueEntry | null {
+export function claim(
+  dir: string, sessionId: string, claimerVersion: string,
+  options: { pauseOnly?: boolean; unanswered?: Unanswered[] } = {}, now = Date.now(),
+): QueueEntry | null {
+  const unanswered = options.unanswered ?? [];
   return withQueueLock(dir, () => {
-    const entries = sweep(dir, now);
+    const entries = sweep(dir, now, unanswered);
     const runtime = readRuntimeJson(path.join(dir, 'state')) ?? {};
     if (runtime.transition || runtime.shutdown_completed_at) return null;
     const ordered = [...entries.filter(e => e.entry.source === 'pause'), ...entries.filter(e => e.entry.source !== 'pause')];
-    for (const { file, entry } of ordered) {
+    for (const listed of ordered) {
+      const { file, entry } = listed;
       if (SESSION_BOUND.has(entry.source) && entry.session_id !== sessionId) {
-        writeOutcome(dir, entry, legsFor(entry, 'unknown', 'stale_session'), [file], now);
+        settle(dir, listed, legsFor(entry, 'unknown', 'stale_session'), unanswered, now);
         continue;
       }
       if (runtime.shutdown_requested_at && entry.source !== 'stop') {
-        writeOutcome(dir, entry, legsFor(entry, 'unknown', 'shutdown'), [file], now);
+        settle(dir, listed, legsFor(entry, 'unknown', 'shutdown'), unanswered, now);
         continue;
       }
       if (options.pauseOnly && entry.source !== 'pause') continue;
       if (entry.source === 'watchdog') {
         const boundary = passesExecutionBoundary(dir);
         if (!boundary.ok) {
-          writeOutcome(dir, entry, legsFor(entry, 'skipped', boundary.reason), [file], now);
+          settle(dir, listed, legsFor(entry, 'skipped', boundary.reason), unanswered, now);
           continue;
         }
       }
@@ -272,12 +315,14 @@ export function claim(dir: string, sessionId: string, claimerVersion: string, op
 /**
  * Settles what an earlier mod copy left in flight. Only a reload that a newer copy of
  * the expected version proves done continues; anything else is an uncertain attempt
- * and ends `unknown`, its later legs never run.
+ * and ends `unknown`, its later legs never run. Lost requests awaiting a chat reply are
+ * pushed to `unanswered`.
  */
-export function recover(dir: string, claimerVersion: string, now = Date.now()): QueueEntry | null {
+export function recover(dir: string, claimerVersion: string, now = Date.now(), unanswered: Unanswered[] = []): QueueEntry | null {
   return withQueueLock(dir, () => {
     let resumed: QueueEntry | null = null;
-    for (const { file, entry } of listEntries(dir, INFLIGHT_DIR)) {
+    for (const listed of listEntries(dir, INFLIGHT_DIR)) {
+      const { file, entry } = listed;
       const legs = entry.legs ?? [];
       const current = entry.commands[legs.length];
       if (!resumed && current?.command === '/reload-plugins' && entry.expect_version
@@ -291,7 +336,7 @@ export function recover(dir: string, claimerVersion: string, now = Date.now()): 
         writeAtomic(file, resumed);
         continue;
       }
-      writeOutcome(dir, entry, legsFor(entry, 'unknown', 'worker_lost'), [file], now);
+      settle(dir, listed, legsFor(entry, 'unknown', 'worker_lost'), unanswered, now);
     }
     return resumed;
   });

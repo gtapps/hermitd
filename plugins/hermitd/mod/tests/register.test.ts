@@ -385,6 +385,20 @@ test('pass keeps the prompt; refusal drops and a failed send requests one relay'
   expect(relays[1]).toContain('Shutting down');
 });
 
+test('claim and recover relay the replies the bridge could not send', async ($, on) => {
+  const clock = mock.clock(on);
+  const relays: string[] = [];
+  on('prompt.submit', ($, e) => { relays.push(e.text); return { text: e.text }; });
+  const failed = (text: string) => ({ decision: 'pass', relays: [{ text, reply_to: { source: 'telegram', chat_id: '12345' } }] });
+  const r = rig(on, { handlers: { recover: () => failed('/effort low: outcome unknown (worker_lost)'), claim: () => failed('/effort low: skipped (expired)') } });
+  r.queue.push(entry('e', [{ command: '/effort', arg: 'low' }]));
+  await boot($);
+  await clock.advance(2000);
+  expect(relays.length).toBe(2);
+  expect(relays[0]).toContain('worker_lost');
+  expect(relays[1]).toContain('expired');
+});
+
 test('doctor writes the relay before running and reports a started or failed run', async ($, on) => {
   const clock = mock.clock(on);
   let fail = false;

@@ -8,8 +8,8 @@ import { markGuest } from '../scripts/lib/guest-marker';
 import { inboundSince } from '../scripts/lib/channel-log';
 import { startHttpStub } from './helpers/http-stub';
 import {
-  claim, enqueue, finalize, outcomeStatus, readOutcome, recover, recordLegs, validCommand,
-  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, type QueueEntry,
+  claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, readOutcome, recover, recordLegs, validCommand,
+  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, type QueueEntry, type Unanswered,
 } from '../scripts/lib/harness-mod';
 
 const VERSION = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8')).version;
@@ -394,4 +394,101 @@ test('threaded harness requests preserve their reply target through finalize and
   const refused = await call(wd, 'intake', prompt);
   expect(refused.decision).toBe('refuse');
   expect(refused.reply_to).toEqual(request.reply_to);
+});
+
+// --- Configured shutdown skill ---
+
+function withShutdownSkill(dir: string, skill: string) {
+  const configPath = path.join(dir, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ ...JSON.parse(fs.readFileSync(configPath, 'utf8')), shutdown_skill: skill }));
+}
+
+test('a stop request may carry an unnamespaced configured shutdown skill', () => {
+  const { dir } = fixture();
+  withShutdownSkill(dir, '/session-close now');
+  expect(enqueue(dir, { source: 'stop', purpose: 'stop', commands: [parseSkill('/session-close now')] }).status).toBe('queued');
+});
+
+test('/exit stays rejected for terminal and update', () => {
+  const { dir } = fixture();
+  withShutdownSkill(dir, '/exit');
+  for (const source of ['terminal', 'update'] as const) {
+    expect(() => enqueue(dir, { source, commands: [{ command: '/exit', arg: null }] })).toThrow('invalid_command');
+  }
+});
+
+test('a stop request differing from the configured shutdown skill is rejected', () => {
+  const { dir } = fixture();
+  withShutdownSkill(dir, '/session-close now');
+  for (const command of [{ command: '/session-close', arg: null }, { command: '/exit', arg: null }, { command: '/session-close', arg: 'later' }]) {
+    expect(() => enqueue(dir, { source: 'stop', purpose: 'stop', commands: [command] })).toThrow('invalid_command');
+  }
+  withShutdownSkill(dir, '/session-close \u0007');
+  expect(() => enqueue(dir, { source: 'stop', purpose: 'stop', commands: [parseSkill('/session-close \u0007')] })).toThrow('invalid_command');
+});
+
+// --- Requests the queue settles without running ---
+
+const replyTo = { source: 'telegram', chat_id: '12345' };
+
+test('claim and recover return the settled requests that await a chat reply', () => {
+  const { dir } = fixture();
+  const expired = enqueue(dir, chat(), Date.now() - 2 * 3600_000) as { id: string };
+  const stale = enqueue(dir, { source: 'watchdog', commands: [{ command: '/clear', arg: null }], session_id: 'old', reply_to: replyTo }) as { id: string };
+  enqueue(dir, { source: 'watchdog', commands: [{ command: '/clear', arg: null }], session_id: 'old' });
+  let unanswered: Unanswered[] = [];
+  expect(claim(dir, 'resident', VERSION, { unanswered })).toBeNull();
+  expect(unanswered.map(u => [u.entry.id, u.legs[0].text])).toEqual([[expired.id, 'expired'], [stale.id, 'stale_session']]);
+
+  const stopped = enqueue(dir, chat()) as { id: string };
+  setRuntime(dir, { shutdown_requested_at: new Date().toISOString() });
+  unanswered = [];
+  claim(dir, 'resident', VERSION, { unanswered });
+  expect(unanswered.map(u => [u.entry.id, u.legs[0].text])).toEqual([[stopped.id, 'shutdown']]);
+
+  inflight(dir, { commands: [{ command: '/effort', arg: 'low' }], reply_to: replyTo });
+  unanswered = [];
+  expect(recover(dir, VERSION, Date.now(), unanswered)).toBeNull();
+  expect(unanswered.map(u => [u.entry.id, u.legs[0].text])).toEqual([['r1', 'worker_lost']]);
+});
+
+function customChannel(wd: Workdir, dir: string, script = '#!/bin/sh\ncat >> reply.out\necho >> reply.out\n') {
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { custom: { allowed_users: ['U1'], send_script: 'send.sh' } } }));
+  fs.writeFileSync(path.join(wd.dir, 'send.sh'), script, { mode: 0o755 });
+}
+const customChat = () => ({ ...chat(), reply_to: { source: 'custom', chat_id: 'C1' } });
+
+test('bridge claim answers expired, stale-session and shutdown requests after the lock', async () => {
+  const { wd, dir } = fixture();
+  customChannel(wd, dir);
+  enqueue(dir, customChat(), Date.now() - 2 * 3600_000);
+  enqueue(dir, { source: 'watchdog', commands: [{ command: '/clear', arg: null }], session_id: 'old', reply_to: { source: 'custom', chat_id: 'C1' } });
+  expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
+  enqueue(dir, customChat());
+  setRuntime(dir, { shutdown_requested_at: new Date().toISOString() });
+  expect(await call(wd, 'claim')).toEqual({ decision: 'pass' });
+  const replies = fs.readFileSync(path.join(wd.dir, 'reply.out'), 'utf8');
+  expect(replies).toContain('/effort low: skipped (expired)');
+  expect(replies).toContain('/clear: outcome unknown (stale_session)');
+  expect(replies).toContain('/effort low: outcome unknown (shutdown)');
+  expect(fs.existsSync(path.join(dir, 'state/.harness-queue.lock'))).toBe(false);
+});
+
+test('bridge recover answers a lost request, and a failed send returns a relay', async () => {
+  const { wd, dir } = fixture();
+  customChannel(wd, dir);
+  inflight(dir, { commands: [{ command: '/effort', arg: 'low' }], reply_to: { source: 'custom', chat_id: 'C1' } });
+  expect(await call(wd, 'recover')).toEqual({ decision: 'pass' });
+  expect(fs.readFileSync(path.join(wd.dir, 'reply.out'), 'utf8')).toContain('/effort low: outcome unknown (worker_lost)');
+  customChannel(wd, dir, '#!/bin/sh\nexit 1\n');
+  enqueue(dir, customChat(), Date.now() - 2 * 3600_000);
+  expect(await call(wd, 'claim')).toEqual({ decision: 'pass', relays: [{ text: '/effort low: skipped (expired)', reply_to: { source: 'custom', chat_id: 'C1' } }] });
+});
+
+test('leg reasons are snake_case tokens; the text stays the human detail', () => {
+  expect(legReason({ command: '/x', status: 'skipped', text: 'not run' })).toBe('not_run');
+  expect(legReason({ command: '/x', status: 'unknown', text: 'deadline reached' })).toBe('deadline');
+  expect(legReason({ command: '/x', status: 'failed', text: 'Failed to reload' })).toBe('rejected');
+  expect(legReason({ command: '/x', status: 'skipped', text: 'execution-not-idle' })).toBe('execution_not_idle');
+  for (const token of ['expired', 'stale_session', 'shutdown', 'worker_lost']) expect(legReason({ command: '/x', status: 'unknown', text: token })).toBe(token);
 });

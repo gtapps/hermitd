@@ -208,7 +208,7 @@ _harness_request() {
 }
 
 _request_status() {
-  bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "")); } catch { console.log("unknown\tno_output"); }' "$1"
+  bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$1"
 }
 
 _stamp_update_marker() {

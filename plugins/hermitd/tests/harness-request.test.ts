@@ -80,6 +80,6 @@ for (const status of ['ok', 'failed'] as const) {
       : [{ command: '/reload-plugins', status: 'failed', text: 'Failed to reload' }] });
     const result = await waiting;
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual(status === 'ok' ? { status: 'ok' } : { status: 'failed', reason: 'Failed to reload' });
+    expect(JSON.parse(result.stdout)).toEqual(status === 'ok' ? { status: 'ok' } : { status: 'failed', reason: 'rejected', text: 'Failed to reload' });
   });
 }

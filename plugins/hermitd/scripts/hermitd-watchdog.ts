@@ -1827,10 +1827,15 @@ function maybeAbortPausedTurn(timezone: string, world: World = REAL_WORLD): void
   const episodeKey = status.ts ?? 'no-ts';
   if (watchdogState.last_escaped_pause_ts === episodeKey) return; // already handled this episode
 
+  // The abort counts as handled only once queued; a skipped enqueue retries on later
+  // ticks, while the notice and event stay once per episode.
   const queued = queueHarness(world, watchdogState, 'pause', { source: 'pause', commands: [] });
+  const firstNotice = watchdogState.last_pause_notice_ts !== episodeKey;
+  if (queued.ok) watchdogState.last_escaped_pause_ts = episodeKey;
+  if (firstNotice) watchdogState.last_pause_notice_ts = episodeKey;
+  if (queued.ok || firstNotice) writeWatchdogState(watchdogState, world);
+  if (!firstNotice) return;
   if (!queued.ok) appendEvent('pause-abort-skipped', queued.reason, world);
-  watchdogState.last_escaped_pause_ts = episodeKey;
-  writeWatchdogState(watchdogState, world);
   appendEvent('pause-enforced', status.reason ?? 'operator', world);
   world.notify.operator(composePauseMessage(status.reason ?? 'operator', status.until ?? null, timezone));
 }

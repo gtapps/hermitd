@@ -15,6 +15,7 @@ type Decision = Partial<Entry> & {
   silent?: boolean;
   state?: string;
   reply_to?: { source: string; chat_id: string };
+  relays?: { text: string; reply_to: { source: string; chat_id: string } }[];
 };
 const TICK_MS = 2000;
 // The deadline only records an uncertain outcome; the run keeps its slot until it settles.
@@ -70,11 +71,19 @@ let approval: string | null = null;
 const busy = () => !!(request || running || active);
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
+// A reply the channel could not take is handed to the session to relay once.
+async function relay($: EngineInterface, result: Pick<Decision, 'text' | 'reply_to'>) {
+  await $.prompt.submit({ text: `Relay this harness command result once to ${JSON.stringify(result.reply_to)}: ${JSON.stringify(result.text)}. Do not run the command again.` });
+}
+
+// Requests the queue settled without running answer their chat from the claim or recover call.
+async function relayUnanswered($: EngineInterface, result: Decision) {
+  for (const failed of result.relays ?? []) await relay($, failed);
+}
+
 async function finalize($: EngineInterface, input: unknown) {
   const result = await bridge($, 'finalize', JSON.stringify(input));
-  if (result.decision === 'send_failed') {
-    await $.prompt.submit({ text: `Relay this harness command result once to ${JSON.stringify(result.reply_to)}: ${JSON.stringify(result.text)}. Do not run the command again.` });
-  }
+  if (result.decision === 'send_failed') await relay($, result);
 }
 
 // Stops at the first leg that is not ok: a dependent leg never runs after an uncertain one.
@@ -203,6 +212,7 @@ async function loadedFor($: EngineInterface, id: string) {
   if (recovered) return;
   recovered = true;
   const resumed = await bridge($, 'recover');
+  await relayUnanswered($, resumed);
   if (resumed.decision === 'run' && !busy()) start($, resumed);
 }
 
@@ -230,6 +240,7 @@ async function tick($: EngineInterface) {
     const idle = !mainTurn && !busy();
     if (!idle && !(await hasPause($, dir, names))) return;
     const claimed = await bridge($, 'claim', idle ? '' : 'pause');
+    await relayUnanswered($, claimed);
     if (claimed.decision !== 'run') return;
     if (claimed.source === 'pause') await runPause($, claimed);
     else start($, claimed);

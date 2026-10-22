@@ -665,7 +665,7 @@ case "$CMD" in
       fi
       [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
       REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300)
-      IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
+      IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
       if [ "$REQUEST_STATUS" = ok ]; then
         RELOAD_PLUGINS_SENT=true
         EVOLVE_SENT=$BATCH

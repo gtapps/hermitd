@@ -4,7 +4,7 @@
 // Queues a harness command for the core mod; with --wait, prints its outcome.
 import { hermitDir } from './lib/cc-compat';
 import { exitError, failJson, printJson } from './lib/cli';
-import { enqueue, failedLeg, readOutcome, type QueueSource } from './lib/harness-mod';
+import { enqueue, failedLeg, legReason, readOutcome, type QueueSource } from './lib/harness-mod';
 
 const SOURCES: QueueSource[] = ['terminal', 'update'];
 const commands: { command: string; arg: string | null }[] = [];
@@ -55,7 +55,7 @@ for (;;) {
   const outcome = readOutcome(dir, id);
   if (outcome) {
     const failed = failedLeg(outcome);
-    printJson(!failed ? { status: 'ok' } : failed.text ? { status: failed.status, reason: failed.text } : { status: failed.status });
+    printJson(!failed ? { status: 'ok' } : { status: failed.status, reason: legReason(failed), ...(failed.text ? { text: failed.text } : {}) });
     break;
   }
   if (Date.now() >= deadline) {

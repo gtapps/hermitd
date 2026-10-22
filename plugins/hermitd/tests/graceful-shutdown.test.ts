@@ -101,7 +101,7 @@ test('a skipped or failed skill counts as done', async () => {
     const entry = claim(failed.dir, 'resident', '1.0.0')!;
     finalize(failed.dir, entry.id, { legs: [{ command: '/custom:shutdown', status: 'failed', text: 'stopped' }] });
   }]);
-  expect(await gracefulShutdown(failed.dir, clock)).toEqual({ status: 'settled', skill: 'failed', reason: 'stopped' });
+  expect(await gracefulShutdown(failed.dir, clock)).toEqual({ status: 'settled', skill: 'failed', reason: 'rejected', text: 'stopped' });
 });
 
 test('waits are bounded by the timeout', async () => {

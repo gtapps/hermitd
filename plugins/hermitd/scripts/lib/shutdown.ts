@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { readJson } from './cli';
 import { readSettledConfig } from './config-read';
-import { enqueue, failedLeg, readOutcome, type LegStatus } from './harness-mod';
+import { enqueue, failedLeg, legReason, parseSkill, readOutcome, type LegStatus } from './harness-mod';
 import { writeFileAtomic } from './md-write';
 import { readRuntimeJson, writeRuntimeJson } from './runtime';
 import { readExecution } from './tasks';
@@ -14,6 +14,7 @@ export type ShutdownResult = {
   status: 'settled' | 'timeout';
   skill: LegStatus | 'none';
   reason?: string;
+  text?: string;
 };
 type Options = { timeoutSecs?: number; pollMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> };
 
@@ -23,12 +24,6 @@ const OPERATION_FILE = 'shutdown-operation.json';
 export function shutdownReady(execution: any, after: number | null): boolean {
   return typeof execution?.state === 'string' && execution.state !== 'in_flight'
     && (after === null || Date.parse(execution.at) > after);
-}
-
-function parseSkill(skill: string): { command: string; arg: string | null } {
-  const trimmed = skill.trim();
-  const space = trimmed.search(/\s/);
-  return space === -1 ? { command: trimmed, arg: null } : { command: trimmed.slice(0, space), arg: trimmed.slice(space + 1).trim() };
 }
 
 export async function gracefulShutdown(dir: string, options: Options = {}): Promise<ShutdownResult> {
@@ -75,7 +70,7 @@ export async function gracefulShutdown(dir: string, options: Options = {}): Prom
   if (!(await waitFor(() => readOutcome(dir, requestId) !== null))) return { status: 'timeout', skill: 'unknown', reason: 'skill_not_run' };
   const outcome = readOutcome(dir, requestId)!;
   const failed = failedLeg(outcome);
-  if (failed) return { status: 'settled', skill: failed.status, reason: failed.text };
+  if (failed) return { status: 'settled', skill: failed.status, reason: legReason(failed), ...(failed.text ? { text: failed.text } : {}) };
   // Only the turn the skill started counts: an unrelated turn that settled before it ran does not.
   const submitted = Date.parse(outcome.legs.at(-1)?.submitted_at ?? '');
   const after = Number.isFinite(submitted) ? submitted : null;
