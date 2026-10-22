@@ -389,6 +389,60 @@ const CONFIG_FILE_WRITE = new RegExp(
   'm',
 );
 
+/** Command substitution, which still runs inside double quotes and unquoted-tag heredocs. */
+const COMMAND_SUBSTITUTION = /\$\(|`/;
+/** Text that re-runs quoted or heredoc text as shell code. */
+const RUNS_SHELL_TEXT = /\b(?:ba|z|da|k)?sh\b|\beval\b|\bsource\b|(?:^|[;&|]\s*)\.\s/m;
+
+/**
+ * The command with literal text blanked so CONFIG_FILE_WRITE sees only real
+ * redirects: `>` inside single quotes, `>` inside double quotes with no command
+ * substitution, and heredoc bodies (an unquoted tag keeps a body that substitutes).
+ * One left-to-right pass, so a quoted `<<` opens no heredoc and a heredoc body
+ * pairs no quotes. An unterminated heredoc, or text a shell would run, keeps the
+ * raw command.
+ */
+function literalShellText(command: string): string {
+  let out = '';
+  let i = 0;
+  const pending: { tag: string; tabs: boolean; quoted: boolean }[] = [];
+  while (i < command.length) {
+    const ch = command[i];
+    if (ch === '\\') { out += command.slice(i, i + 2); i += 2; continue; }
+    if (ch === "'" || ch === '"') {
+      let end = i + 1;
+      if (ch === "'") end = command.indexOf("'", end);
+      else {
+        while (end < command.length && command[end] !== '"') end += command[end] === '\\' ? 2 : 1;
+        if (end >= command.length) end = -1;
+      }
+      if (end < 0) return command;
+      const span = command.slice(i, end + 1);
+      out += ch === "'" || !COMMAND_SUBSTITUTION.test(span) ? span.replaceAll('>', ' ') : span;
+      i = end + 1;
+      continue;
+    }
+    const heredoc = ch === '<' && command[i - 1] !== '<' ? /^<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/.exec(command.slice(i)) : null;
+    if (heredoc) {
+      pending.push({ tag: heredoc[3], tabs: heredoc[1] === '-', quoted: heredoc[2] !== '' });
+      out += heredoc[0];
+      i += heredoc[0].length;
+      continue;
+    }
+    out += ch;
+    i++;
+    if (ch !== '\n') continue;
+    for (const { tag, tabs, quoted } of pending.splice(0)) {
+      const close = new RegExp(`^${tabs ? String.raw`\t*` : ''}${tag}$`, 'm').exec(command.slice(i));
+      if (!close) return command;
+      const body = command.slice(i, i + close.index);
+      out += (quoted || !COMMAND_SUBSTITUTION.test(body) ? body.replace(/[^\n]/g, ' ') : body) + close[0];
+      i += close.index + close[0].length;
+    }
+  }
+  return RUNS_SHELL_TEXT.test(out) ? command : out;
+}
+
 /** A token the shell would still expand: the hook cannot know what it names. */
 const SHELL_EXPANDS = /[$`]/;
 
@@ -440,7 +494,8 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
 
   // An opaque write of the whole file can replace any asked path, so it
   // raises the native prompt regardless of what it happens to contain.
-  const fileWrite = CONFIG_FILE_WRITE.exec(command);
+  // Blanking only removes matches, so a command the raw scan clears needs no second pass.
+  const fileWrite = CONFIG_FILE_WRITE.test(command) ? CONFIG_FILE_WRITE.exec(literalShellText(command)) : null;
   if (fileWrite) {
     // The file being WRITTEN is the last path in the match — `cp <src> <dest>`
     // and `tee`/`sed -i <file>` both put it at the end, and the redirect

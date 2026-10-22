@@ -280,6 +280,8 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
     # We compare each installed hermit version against config._hermit_versions.
     # This detects sibling-only bumps as well as core bumps (Finding 5 fix).
+    # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
+    # while evolve stamps the bare version, so the suffix is dropped before comparing.
     EXPECT_ROWS=$(bun -e '
       const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t").slice(1));
       const rank = {local: 0, project: 1, user: 2};
@@ -287,7 +289,8 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
       try {
         const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
         const seen = new Set();
-        for (const [id, scope, version] of rows) {
+        for (const [id, scope, listed] of rows) {
+          const version = (listed ?? "").replace(/-[0-9a-f]{12}$/, "");
           if (seen.has(id)) continue;
           seen.add(id);
           const name = id.split("@")[0];
