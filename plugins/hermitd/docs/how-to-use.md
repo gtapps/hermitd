@@ -81,7 +81,7 @@ A web app. Be careful.
 
 Code rules such as "Never modify migrations/" belong in CLAUDE.md.
 
-The first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction. The same section also reaches the hermit's own subagents when they compact. Keep essential instructions within this limit. Edit OPERATOR.md yourself; the hermit can propose a change for you to apply.
+The first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction. The same section also reaches the hermit's own subagents when they compact. Keep essential instructions within this limit. Edit OPERATOR.md yourself, or ask the hermit: under Standard it makes the edit behind Claude Code's approval prompt, and under Hardened it proposes a diff for you to apply.
 
 Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and subagents included; `OPERATOR.md` holds standing instructions only the resident agent needs. See [the FAQ](faq.md#operatormd-vs-claudemd--where-does-it-go).
 

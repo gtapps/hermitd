@@ -110,13 +110,13 @@ Your proposals, task records, and config will be gone. OPERATOR.md can be regene
 
 ## Can the hermit modify OPERATOR.md?
 
-By design, no. OPERATOR.md is human-curated — the hermit reads it but never writes to it. The seeded permission rules put `Edit` (and `Write`, which Claude Code folds into the same `Edit` glob) of OPERATOR.md behind an approval prompt under Standard, and hard-block it under Hardened. Tell the hermit "update OPERATOR.md with [change]" and it will ask you to make the edit.
+Only when you ask, and only with your approval. OPERATOR.md is human-curated: the hermit never edits it on its own initiative. The seeded permission rules put `Edit` (and `Write`, which Claude Code folds into the same `Edit` glob) of OPERATOR.md behind an approval prompt under Standard, and hard-block it under Hardened. Tell the hermit "update OPERATOR.md with [change]": under Standard it makes the edit and Claude Code asks you to approve it; under Hardened, or when you decline, it proposes the diff for you to apply.
 
 ---
 
 ## OPERATOR.md vs CLAUDE.md — where does it go?
 
-- **OPERATOR.md** holds the operator's standing instructions to the hermit: mission, focus, red lines and what to ask first. Its first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction, including when the hermit's own subagents compact. Never auto-edited.
+- **OPERATOR.md** holds the operator's standing instructions to the hermit: mission, focus, red lines and what to ask first. Its first 50 lines, up to 2,000 characters, load at startup, `/clear` and after compaction, including when the hermit's own subagents compact. The hermit edits it only at your request, behind the approval prompt.
 - **CLAUDE.md** (or **CLAUDE.local.md**) holds project-wide context and instructions using Claude Code's native memory loading.
 
 Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and subagents included; `OPERATOR.md` holds standing instructions only the resident agent needs. Project facts and code rules go in `CLAUDE.md`.

@@ -20,7 +20,7 @@ Installed state lives in the target project's `.hermit/`:
 - `proposals/PROP-NNN-<slug>-HHMMSS.md`
 - `state/` machine state: runtime, alert and reflection state, metrics JSONL, monitor registry
 - `raw/` domain inputs and `compiled/` durable domain outputs (injected at session start). Both flat, no subdirectories; `raw/.archive/` holds expired artifacts. Contract: [plugin-hermit-storage](docs/plugin-hermit-storage.md).
-- `knowledge-schema.md`, `config.json`, and `OPERATOR.md` (operator-curated: the hermit proposes changes and the operator applies them; hard-blocked in always-on mode)
+- `knowledge-schema.md`, `config.json`, and `OPERATOR.md` (operator-curated; the hermit edits OPERATOR.md only on operator request, behind the native approval prompt under Standard, and proposes a diff under Hardened)
 - `bin/` lifecycle scripts, `docker/`, `HEARTBEAT.md`, `TASKS.md`; the full set is `state-templates/`
 
 ### State ownership under residency

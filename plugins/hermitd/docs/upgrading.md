@@ -102,7 +102,7 @@ Each hermit's version is tracked independently in `config.json`:
 
 These aren't upgrades — just how your project evolves:
 
-- **OPERATOR.md** — Edit directly; your hermit can propose a change for you to apply. Keep critical context and instructions in the first 50 lines and 2,000 characters; they reload at start, `/clear` and compaction.
+- **OPERATOR.md** — Edit directly, or ask your hermit: it edits behind the approval prompt under Standard and proposes a diff under Hardened. Keep critical context and instructions in the first 50 lines and 2,000 characters; they reload at start, `/clear` and compaction.
 - **Custom agents** — Add/modify/remove files in `.claude/agents/`. Live immediately.
 - **Custom skills** — Add/modify in `.claude/skills/`. Live immediately.
 - **Config** — `/hermitd:hermit-settings` or edit `config.json` directly.
