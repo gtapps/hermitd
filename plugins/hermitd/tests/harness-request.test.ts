@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
-import { claim, finalize, QUEUE_DIR } from '../scripts/lib/harness-mod';
+import { claim, finalize, QUEUE_DIR, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 
 const workdirs: Workdir[] = [];
 afterAll(() => workdirs.forEach(w => w.cleanup()));
@@ -12,7 +12,7 @@ function fixture(loaded = 'resident') {
   workdirs.push(wd);
   const dir = path.join(wd.dir, '.hermit');
   fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ cc_session_id: 'resident', runtime_mode: 'headless' }));
-  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded }));
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: loaded, queue: QUEUE_PROTOCOL }));
   return { wd, dir };
 }
 const request = (wd: Workdir, args: string[]) => runScript('harness-request.ts', { cwd: wd.dir, env: { AGENT_DIR: path.join(wd.dir, '.hermit') }, args });

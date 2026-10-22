@@ -50,6 +50,9 @@ async function bridge($: EngineInterface, verb: string, payload = ''): Promise<D
 let timer: { cancel(): void } | undefined;
 let stateDir: string | undefined;
 let lastId: string | undefined;
+// Retries left for the current id when the bridge answered `pass` (resident id not stamped yet).
+let loadRetry = 0;
+const LOAD_RETRIES = 5;
 let recovered = false;
 let ticking = false;
 // The main loop's running turn, from turn.start; subagent turns never gate the queue.
@@ -142,11 +145,15 @@ async function dispatch($: EngineInterface) {
   running = true;
   approval = command.command === '/model' ? command.arg : null;
   try {
-    await $.command.run({ command: command.command.slice(1), args: command.arg ?? '' });
+    const out = await $.command.run({ command: command.command.slice(1), args: command.arg ?? '' });
     if (active !== current) return;
     current.resolved = true;
     // A skill is a prompt for the model: resolving at submit is all a run reports.
     if (SKILL_RE.test(command.command)) current.evidence = { command: command.command, status: 'ok', text: 'submitted', submitted_at: new Date().toISOString() };
+    // A reload returns its own output, so it needs no transcript row to be confirmed.
+    else if (command.command === '/reload-plugins' && typeof out?.text === 'string') {
+      current.evidence ??= { command: command.command, status: classifyStdout(command.command, out.text), text: out.text };
+    }
     observe($);
   } catch (error) {
     if (active === current) await finish($, { command: command.command, status: 'failed', text: errorText(error) });
@@ -229,9 +236,11 @@ function start($: EngineInterface, entry: Decision) {
   schedule($);
 }
 
-// Called once per session id, never per tick: a guest session costs one process per id change.
+// Called once per session id, never per tick: a guest session costs one process per id change,
+// plus at most LOAD_RETRIES while the bridge answers `pass`.
 // A bridge failure is not a verdict, so the next tick tries the same id again.
 async function loadedFor($: EngineInterface, id: string) {
+  if (id !== lastId) loadRetry = 0;
   lastId = id;
   const result = await bridge($, 'loaded').catch(error => {
     lastId = undefined;
@@ -240,6 +249,14 @@ async function loadedFor($: EngineInterface, id: string) {
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
     effort = undefined;
+    // session.start can run before the SessionStart hook stamps the resident id, and the
+    // classic.SessionStart retry may never run, so a `pass` is retried a few times with backoff.
+    if (loadRetry < LOAD_RETRIES) {
+      const delay = 2000 * 2 ** loadRetry++;
+      $.clock.after(delay, async () => {
+        if (lastId === id && !stateDir) await loadedFor($, id).catch(() => undefined);
+      });
+    }
     return;
   }
   stateDir = result.state;

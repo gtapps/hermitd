@@ -519,7 +519,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog']) {
+  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
@@ -530,13 +530,15 @@ describe('hermitd-docker update plugin loop', () => {
         fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', name), dest);
         fs.chmodSync(dest, 0o755);
       }
-      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
+      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') || scenario === 'below-floor' ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
       write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
       const stub = path.join(proj, '.stub');
       fs.mkdirSync(stub);
       const callsFile = path.join(stub, 'docker-calls.txt');
       const suffix = scenario === 'evolve-suffix' ? '-467be32f41fc' : '';
-      write(path.join(stub, 'list.json'), listDuplicateScopes(proj, suffix));
+      const list = JSON.parse(listDuplicateScopes(proj, suffix));
+      if (scenario === 'below-floor') for (const p of list) p.installPath = `/cache/${p.id.split('@')[0]}/${p.version}`;
+      write(path.join(stub, 'list.json'), JSON.stringify(list));
       write(path.join(stub, 'docker'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
 if [[ " $* " == *" up -d "* ]]; then echo "HERMIT_RESUME=$HERMIT_RESUME" >> "$DOCKER_STUB_CALLS"; fi
@@ -544,6 +546,7 @@ if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
 fi
 case "$*" in
+  *"hermit-meta.json"*) [ "$UPDATE_SCENARIO" != below-floor ] || echo '{"min_claude_code_version":">=2.1.308"}' ;;
   *"await-upgrade"*)
     count=0
     [ ! -f "$DOCKER_STUB_CALLS.await" ] || read -r count < "$DOCKER_STUB_CALLS.await"
@@ -625,6 +628,13 @@ exit 0
         expect(request).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
       }
       expect(calls.some(l => l.includes('send-keys') || l.includes('capture-pane'))).toBe(false);
+      if (scenario === 'below-floor') {
+        // Evolve would stop on the old Claude Code, so the image is rebuilt first and boot runs it.
+        expect(r.stdout).toContain('below hermitd\'s minimum 2.1.308');
+        expect(idx('harness-request')).toBe(-1);
+        expect(idx('cat /cache/hermitd/1.2.0/.claude-plugin/hermit-meta.json')).toBeGreaterThan(idx('claude plugin update '));
+        expect(idx(' build ')).toBeLessThan(idx(' down'));
+      }
       if (scenario === 'old-watchdog') {
         expect(r.stderr.split('await-upgrade unavailable')).toHaveLength(2);
       }

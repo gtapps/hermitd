@@ -99,6 +99,24 @@ _running_cc_version() {
     | grep -oE '[0-9.]+' | head -1 || echo "unknown"
 }
 
+# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
+_core_cc_floor() {
+  local install
+  install="$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin list --json 2>/dev/null \
+    | bun -e '
+      const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+      const rank = {local: 0, project: 1, user: 2};
+      const core = (Array.isArray(d) ? d : [])
+        .filter(p => p.enabled === true && String(p.id).startsWith("hermitd@") && p.installPath
+          && (p.scope === "user" || p.projectPath === process.argv[1]))
+        .sort((a, b) => (rank[a.scope] ?? 3) - (rank[b.scope] ?? 3))[0];
+      if (core) console.log(core.installPath);
+    ' "$PROJECT_DIR" 2>/dev/null)" || true
+  [ -n "$install" ] || return 0
+  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" cat "$install/.claude-plugin/hermit-meta.json" 2>/dev/null \
+    | bun -e 'try { const m = JSON.parse(require("fs").readFileSync(0, "utf8")).min_claude_code_version; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' 2>/dev/null || true
+}
+
 _validate_compose() {
   local detail backup="" candidate
   if detail="$(cd "$PROJECT_DIR" && "${DC[@]}" config -q 2>&1)"; then
@@ -616,13 +634,30 @@ case "$CMD" in
 
     fi
 
+    # hermit-evolve stops on a Claude Code below the new core's minimum, so a queued evolve
+    # would never stamp the versions and the wait below would time out before the rebuild
+    # that brings the newer Claude Code. Rebuild first; boot then runs the pending evolve.
+    BELOW_FLOOR=false
+    if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
+      CC_FLOOR=$(_core_cc_floor)
+      if [ -n "$CC_FLOOR" ] && [ "$CC_BEFORE" != unknown ] \
+          && [ "$(printf '%s\n%s\n' "$CC_FLOOR" "$CC_BEFORE" | sort -V | head -1)" != "$CC_FLOOR" ]; then
+        BELOW_FLOOR=true
+        if [ "$PLUGINS_ONLY" = true ]; then
+          echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}; rerun \`hermitd update\` without --plugins-only to rebuild the image." >&2
+          return 0
+        fi
+        echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}: rebuilding first; hermit-evolve runs at boot."
+      fi
+    fi
+
     # Apply in the running session through the core mod's queue, which waits for the resident
     # to be idle and never answers an open dialog. With a hermit version gap (core or
     # sibling) one batch runs /reload-plugins then hermit-evolve; a reload that does not
     # complete keeps evolve from running.
     # PLUGIN_ROWS_AFTER is a TSV where $1=name@marketplace and $3=version (different from
     # hermitd-update's $2/$4 layout). Detects sibling-only bumps as well as core bumps.
-    if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
+    if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && [ "$BELOW_FLOOR" = false ]; then
       # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
       # while evolve stamps the bare version, so the suffix is dropped before comparing.
       EXPECT_ROWS=$(bun -e '

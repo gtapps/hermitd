@@ -263,6 +263,35 @@ test('an unchanged reload continues the batch and records leg progress', async (
   expect(finalized(r)[0].legs[1].submitted_at).toBeDefined();
 });
 
+test('a reload is confirmed from its own result when no transcript row arrives', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('command.run', ($, e) => { r.commands.push(e.command); return e.command === 'reload-plugins' ? { text: 'Reloaded: 7 plugins' } : {}; });
+  r.queue.push(entry('u', [{ command: '/reload-plugins', arg: null }, { command: '/hermitd:hermit-evolve', arg: 'unattended' }], { source: 'update' }));
+  await boot($);
+  await clock.advance(2000);
+  await clock.settle();
+  expect(r.payloads.leg).toEqual([{ id: 'u', legs: [{ command: '/reload-plugins', status: 'ok', text: 'Reloaded: 7 plugins' }] }]);
+  expect(r.commands).toEqual(['reload-plugins', 'hermitd:hermit-evolve']);
+  expect(finalized(r)[0].legs.map((l: any) => l.status)).toEqual(['ok', 'ok']);
+});
+
+test('a pass before the resident id is stamped is retried without SessionStart', async ($, on) => {
+  const clock = mock.clock(on);
+  let stamped = false;
+  const r = rig(on, { handlers: { loaded: () => stamped ? { decision: 'ok', state: '/state', session_id: 'resident' } : { decision: 'pass' } } });
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  r.queue.push(entry('a', [{ command: '/hermitd:probe', arg: null }]));
+  await boot($);
+  await clock.advance(1000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(1);
+  stamped = true;
+  await clock.advance(3000);
+  await clock.settle();
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(2);
+  expect(r.commands).toEqual(['hermitd:probe']);
+});
+
 test('a fresh copy resumes the batch that recover hands back', async ($, on) => {
   const clock = mock.clock(on);
   const r = rig(on, { handlers: { recover: () => ({ decision: 'run', ...entry('u', [{ command: '/reload-plugins', arg: null }, { command: '/hermitd:hermit-evolve', arg: 'unattended' }], { source: 'update' }), legs: [{ command: '/reload-plugins', status: 'ok', text: 'Reloaded to 2.0.0' }] }) } });
@@ -290,7 +319,7 @@ test('a fresh copy loaded while a turn is in flight leaves the wait to the engin
   expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
 });
 
-test('loaded runs once per session id, never per tick, and catches up on SessionStart', async ($, on) => {
+test('loaded runs once per session id, retries a pass a bounded number of times, and catches up on SessionStart', async ($, on) => {
   const clock = mock.clock(on);
   let id = 'old';
   let runtime = 'old';
@@ -312,10 +341,12 @@ test('loaded runs once per session id, never per tick, and catches up on Session
   await $.classic.SessionStart({ source: 'clear' });
   await clock.advance(10000);
   expect(stamped).toEqual(['old', 'new']);
-  // A guest id is attempted once, then left alone for every later tick.
+  // A guest id is attempted, retried a bounded number of times, then left alone.
   id = 'guest';
-  await clock.advance(20000);
-  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(3);
+  await clock.advance(70000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(8);
+  await clock.advance(120000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(8);
   expect(r.calls).not.toContain('claim');
   // A forked resume can start before the resident record names it; SessionStart catches up.
   id = 'fork';

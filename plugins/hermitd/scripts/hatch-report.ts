@@ -169,6 +169,8 @@ export function finalData(o: Observed, deployment: string): Json {
       ? { run: '!hermitd restart', purpose: 'restart_container' }
       : { run: '/hermitd:docker-setup', purpose: 'build_and_start_container' });
     runningAfter = steps.length;
+    // docker-setup pairs channels itself; a re-init that adds one pairs it after the restart.
+    if (o.dockerSetUp && chans.length) steps.push(pair);
   } else if (deployment === 'tmux') {
     // The only shell command here; ! makes it runnable in the current session.
     steps.push({ run: '!hermitd start', purpose: 'boot_always_on_session' });
