@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Minimum Claude Code version is now 2.1.302, matching hermitd.
+
 ## [0.4.24] - 2026-10-22
 
 ### Changed
