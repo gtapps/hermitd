@@ -162,7 +162,7 @@ questions: [
 - **Access control:** If "Restrict" and a numeric ID was typed via Other, record in `channels.<channel>.allowed_users` as `["<id>"]`. If "Allow everyone" or no ID provided, omit the key (absent = accept all). Note: "Add more user IDs later with `/hermitd:hermit-settings channels`. An empty array [] blocks all messages."
 - **Morning brief:** If "Yes — 07:00", record as `channels.<channel>.morning_brief: { "enabled": true, "time": "07:00" }`. If "No", omit the key (or set to `null`).
 
-#### Phase 5 — Deployment (AskUserQuestion batch, 3 questions)
+#### Phase 5 — Deployment (AskUserQuestion batch, 4 questions)
 
 The Visibility question uses the scope-derived `hatch_target` to recommend an option. Place the recommended option at index 0 with `(recommended)` in the label so the recommendation is clear:
 
@@ -171,6 +171,15 @@ The Visibility question uses the scope-derived `hatch_target` to recommend an op
 
 ```
 questions: [
+  {
+    header: "Deployment",
+    question: "How will you run the agent?",
+    options: [
+      { label: "tmux always-on", description: "Runs on the host as you, no image build. Boots via hermitd start; the watchdog scheduler installs on first boot (opt out with watchdog.scheduler_enabled: false)" },
+      { label: "Docker always-on", description: "Isolated container that restarts itself; guided end to end by /docker-setup" },
+      { label: "Interactive", description: "Just trying it, right here in your terminal" }
+    ]
+  },
   {
     header: "Permissions",
     question: "Permission mode for Claude Code?",
@@ -211,6 +220,8 @@ questions: [
 Substitute `<scope>` with the actual `core_install_scope` value.
 
 Record the operator's Visibility choice as `hatch_target` (overrides scope-derived default if different).
+
+Record `deployment` (one of `docker` / `tmux` / `interactive`).
 
 Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` mode can be typed via Other if needed.
 
@@ -707,7 +718,7 @@ Compose the report from its JSON as message text (the operator cannot see Bash o
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
 - Otherwise: `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
 
-`--deployment` is the one thing it cannot read: Quick Turn 3 asks for it and nothing persists it. On the Advanced branch, pass the deployment the operator described, or `interactive` if they didn't say.
+`--deployment` is the one thing it cannot read: Quick Turn 3 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
 
 ---
 
