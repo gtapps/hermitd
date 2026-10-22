@@ -6,7 +6,7 @@
 - Hatch no longer appends `## Development Conventions` to OPERATOR.md; protected branches and the hook profile stay in `config.json`.
 
 ### Upgrade Instructions
-1. If `.hermit/OPERATOR.md` contains `## Development Conventions`, offer a choice with no default: **Remove** / **Keep**. Defer to the operator through evolve's step 10. Explain that the section repeats `config.json`. Remove only that section if chosen, preserving other operator content; propose the diff for the operator to apply through the normal OPERATOR.md approval prompt.
+1. If `.hermit/OPERATOR.md` contains `## Development Conventions`, offer a choice with no default: **Remove** / **Keep**. Defer to the operator through evolve's step 10. Explain that the section repeats `config.json`. Remove only that section if chosen, preserving other operator content; apply the OPERATOR.md edit with Edit so the native approval prompt fires, and if it is denied, propose the diff for the operator to apply.
 
 ## [0.4.23] - 2026-10-19
 

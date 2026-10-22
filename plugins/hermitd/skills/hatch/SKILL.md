@@ -404,7 +404,7 @@ No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone li
 
 #### Phase 5 — Confirm
 
-Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Edit it anytime, or tell me the change and I'll make it with your approval." Add: "OPERATOR.md: what only the agent needs. CLAUDE.md: what every session here needs, helpers and subagents included."
+Tell the operator: "OPERATOR.md is ready. You can review it at `.hermit/OPERATOR.md`. Edit it anytime, or tell me the change and I'll make it with your approval, or propose the diff if edits are blocked." Add: "OPERATOR.md: what only the agent needs. CLAUDE.md: what every session here needs, helpers and subagents included."
 
 Then report the style from what Phase 4b step 3 printed:
 

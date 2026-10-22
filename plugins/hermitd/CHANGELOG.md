@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- The hermit edits OPERATOR.md when the operator asks, through the native approval prompt, and proposes a diff only when the edit is denied or no prompt is available.
+- The hermit edits `OPERATOR.md` when the operator asks, through the native approval prompt, and proposes a diff only when the edit is denied or no prompt is available.
 
 ## [1.4.18] - 2026-10-22
 
