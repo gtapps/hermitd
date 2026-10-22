@@ -79,7 +79,6 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     channelPlugins: getEnabledChannels(config).map(key => ['discord', 'telegram', 'imessage'].includes(key)
       ? { marketplace: 'claude-plugins-official', plugin: key }
       : { marketplace: config.channels[key].marketplace ?? 'claude-plugins-official', plugin: config.channels[key].plugin ?? key }),
-    agentHookProfile: 'strict',
     networkMode,
     gitIdentityMount,
     fleetMesh,

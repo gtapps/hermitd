@@ -20,7 +20,6 @@
  *         "envLines":    ["DISCORD_STATE_DIR=${PWD}/.claude.local/channels/discord", ...],
  *         "volumeLines": ["${PWD}/.claude.local/channels/discord:/home/claude/.claude/channels/discord", ...]
  *       },
- *       "agentHookProfile": "strict",
  *       "networkMode": "bridge" | "host",
  *       "gitIdentityMount": true,
  *       "fleetMesh": true            // optional; absent == false
@@ -59,7 +58,6 @@ export interface Inputs {
   auth: 'setup-token' | 'oauth-token' | 'api-key';
   channels?: Channels;
   channelPlugins?: Array<{ marketplace: string; plugin: string }>;
-  agentHookProfile: string;
   networkMode: 'bridge' | 'host';
   gitIdentityMount: boolean;
   fleetMesh?: boolean;
@@ -162,7 +160,6 @@ export function renderSources(
     AUTH_ENV_LINE: authEnvLine,
     CHANNEL_ENV_LINES: indentedLines(envLines),
     CHANNEL_VOLUME_LINES: indentedLines(volumeLines),
-    AGENT_HOOK_PROFILE: inputs.agentHookProfile,
     NETWORK_MODE_LINE: networkModeLine,
     FLEET_MESH_PID_LINE: fleetMeshPidLine,
     FLEET_MESH_VOLUME_DECLARATIONS: fleetMeshVolumeDeclarations,

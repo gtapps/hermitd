@@ -506,7 +506,6 @@ const DOCKER_INPUTS = {
   packages: ['ffmpeg'],
   auth: 'oauth-token' as const,
   channels: { envLines: [] as string[], volumeLines: [] as string[] },
-  agentHookProfile: 'strict',
   networkMode: 'bridge' as const,
   gitIdentityMount: true,
   fleetMesh: false,
