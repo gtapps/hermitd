@@ -14,19 +14,22 @@ type Fixture = {
   corruptOverlay?: boolean;
   booted?: boolean;
   missingScript?: boolean;
+  // The overlay names scripts under this root instead of the root doctor runs from.
+  overlayRoot?: string;
   trust?: 'none' | 'parent' | 'stamped';
   mutate?: (overlay: any) => void;
 };
 
-function scenario({ missingOverlay, corruptOverlay, booted, missingScript, trust, mutate }: Fixture = {}) {
+function scenario({ missingOverlay, corruptOverlay, booted, missingScript, overlayRoot, trust, mutate }: Fixture = {}) {
   const dir = freshDir();
   const stateDir = path.join(dir, '.hermit/state');
   const pluginRoot = path.join(dir, 'plugin');
   const configDir = path.join(dir, 'user');
   fs.mkdirSync(stateDir, { recursive: true });
-  fs.mkdirSync(path.join(pluginRoot, 'scripts'), { recursive: true });
+  const writerRoot = overlayRoot ? path.join(dir, overlayRoot) : pluginRoot;
+  fs.mkdirSync(path.join(writerRoot, 'scripts'), { recursive: true });
   fs.mkdirSync(configDir);
-  const overlay = { hooks: overlayHooks(pluginRoot) };
+  const overlay = { hooks: overlayHooks(writerRoot) };
   for (const entries of Object.values(overlay.hooks)) {
     for (const entry of entries) fs.writeFileSync(entry.hooks[0].args[0], '');
   }
@@ -94,6 +97,7 @@ describe('doctor overlay-hooks check', () => {
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].timeout = 4; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = ['scripts/pause-gate.ts']; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args.push('extra'); },
+      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = [overlay.hooks.PreToolUse[1].hooks[0].args[0]]; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].type = 'prompt'; },
     ];
     for (const mutate of mutations) expect(scenario({ mutate }).status).toBe('warn');
@@ -108,6 +112,14 @@ describe('doctor overlay-hooks check', () => {
   });
   test('ok: trust set in the stamped config_dir file', () => {
     expect(scenario({ trust: 'stamped' }).status).toBe('ok');
+  });
+  test('ok: overlay written from another plugin root names the same scripts', () => {
+    expect(scenario({ overlayRoot: 'marketplace' }).status).toBe('ok');
+  });
+  test('warn: a script missing under the overlay root is reported at that path', () => {
+    const result = scenario({ overlayRoot: 'marketplace', missingScript: true });
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain(path.join('marketplace', 'scripts', 'pause-gate.ts'));
   });
   test('ok: overlay complete and trust set', () => {
     const result = scenario();

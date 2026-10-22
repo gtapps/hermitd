@@ -10,6 +10,7 @@
 import path from 'node:path';
 import { readJson } from '../cli';
 import { pidAlive } from '../lockfile';
+import { installedRootFor } from '../plugin-siblings';
 import { bootMismatch, heartbeatPredatesGraceSecs, monitorFreshness, STARTUP_GRACE_SECS } from '../monitor-health';
 import { readBootId } from '../routines/registry';
 import { parseDuration } from '../time';
@@ -66,13 +67,20 @@ export function heartbeatCommand(hermitDir: string, config: Json): string {
  * Claude Code can cache one release as both `<ver>` and `<ver>-<sha12>`, and a
  * session may run skills from either copy, so the root's hash suffix is ignored
  * when only one side carries it. Two different suffixes are two different builds.
+ * A marketplace clone root compares as its same-version cache dir, so a doctor run
+ * through bin/hermitd-run agrees with the session that registered the monitor.
  */
 const SHA_SUFFIX = /-[0-9a-f]{12}(?="\/scripts\/)/;
+const COMMAND_ROOT = /^bash "([^"]+)"(?=\/scripts\/)/;
+const installedCommand = (cmd: string) =>
+  cmd.replace(COMMAND_ROOT, (_, root: string) => `bash "${installedRootFor(root)}"`);
 export function sameMonitorCommand(registered: unknown, expected: string): boolean {
   if (typeof registered !== 'string') return false;
   if (registered === expected) return true;
-  return SHA_SUFFIX.test(registered) !== SHA_SUFFIX.test(expected)
-    && registered.replace(SHA_SUFFIX, '') === expected.replace(SHA_SUFFIX, '');
+  const r = installedCommand(registered);
+  const e = installedCommand(expected);
+  return r === e || (SHA_SUFFIX.test(r) !== SHA_SUFFIX.test(e)
+    && r.replace(SHA_SUFFIX, '') === e.replace(SHA_SUFFIX, ''));
 }
 
 /**

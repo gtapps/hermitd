@@ -2118,14 +2118,20 @@ function checkOverlayHooks(p: DoctorPaths = PATHS) {
     for (const expected of entries) {
       const hook = expected.hooks[0];
       const script = hook.args[0];
-      const found = Array.isArray(overlay.hooks[event]) && overlay.hooks[event].some((entry: Json) =>
-        entry?.matcher === expected.matcher && Array.isArray(entry.hooks) && entry.hooks.some((candidate: Json) =>
-          candidate?.type === hook.type && candidate.command === hook.command && candidate.timeout === hook.timeout
-          && Array.isArray(candidate.args) && candidate.args.length === 1 && candidate.args[0] === script));
+      // Script identity, not the absolute root: hermitd-start writes the overlay from the
+      // root bin/hermitd-run resolved (the marketplace clone), while doctor may run from
+      // the session's cache copy. The on-disk check below covers a dead root.
+      const suffix = `${path.sep}scripts${path.sep}${path.basename(script)}`;
+      const found: string | undefined = (Array.isArray(overlay.hooks[event]) ? overlay.hooks[event] : [])
+        .filter((entry: Json) => entry?.matcher === expected.matcher && Array.isArray(entry.hooks))
+        .flatMap((entry: Json) => entry.hooks)
+        .find((c: Json) => c?.type === hook.type && c.command === hook.command && c.timeout === hook.timeout
+          && Array.isArray(c.args) && c.args.length === 1 && typeof c.args[0] === 'string'
+          && path.isAbsolute(c.args[0]) && c.args[0].endsWith(suffix))?.args[0];
       if (!found) {
         return result('warn', `${path.basename(script)} missing or wrong event, matcher, command, timeout or argv (expected ${event}, ${expected.matcher}).`);
       }
-      if (!fs.existsSync(script)) return result('warn', `Hook script missing on disk: ${script}.`);
+      if (!fs.existsSync(found)) return result('warn', `Hook script missing on disk: ${found}.`);
     }
   }
   const files = new Set([claudeStateFile()]);

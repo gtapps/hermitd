@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sha256 } from '../hash';
 import { shiftCron } from '../cron-shift';
+import { installedRootFor } from '../plugin-siblings';
 import { parseCronField } from '../../validate-config';
 
 type Json = any;
@@ -102,7 +103,8 @@ function promptHash(r: Json, shiftedSchedule: string, pluginRoot: string): strin
     shifted_schedule: shiftedSchedule,
     // Claude Code can cache one release as both `<ver>` and `<ver>-<sha12>` (see
     // sameMonitorCommand); either copy is the same build, so the suffix is not drift.
-    pluginRoot: pluginRoot.replace(/-[0-9a-f]{12}$/, ''),
+    // A marketplace clone root hashes as its same-version cache dir for the same reason.
+    pluginRoot: installedRootFor(pluginRoot).replace(/-[0-9a-f]{12}$/, ''),
   }));
 }
 
