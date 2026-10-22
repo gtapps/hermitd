@@ -20,7 +20,7 @@ Follow the printed start command for each agent, then run `/hermitd:hermit-evolv
 
 ### One command (recommended)
 
-From the project root, run the wrapper for your deployment: it waits for quiet, moves the durable plugin pins, sends `/reload-plugins` into the running session, and runs `hermit-evolve` for version gaps. It waits for migrations, builds the Docker image from the merged files when applicable, waits for quiet again, then restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
+From the project root, run the wrapper for your deployment: it waits for quiet, moves the durable plugin pins, and queues `/reload-plugins` for the running session's core mod, followed by `hermit-evolve` for version gaps; evolve runs only after the reload completes. It waits for migrations, builds the Docker image from the merged files when applicable, waits for quiet again, then restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
 
 ```bash
 # Docker hermits:

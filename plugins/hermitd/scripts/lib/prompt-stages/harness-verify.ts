@@ -64,7 +64,8 @@ export function run(ctx: StageContext): StageResult | void {
 
   if (pending.command === '/effort') {
     clearSwitchVerify(ctx.dir);
-    return { context: `[harness-command] "${rendered}" was confirmed by the native command at ${pending.delivered_at}.\n` };
+    if (pending.arg === 'auto') return { context: `[harness-command] "${rendered}" cleared the chat effort override at ${pending.delivered_at}: requests use the launch level again.\n` };
+    return { context: `[harness-command] "${rendered}" was applied at ${pending.delivered_at}: the core mod sends that effort with every main-thread request from now on. The status line and your own effort reading still show the launch level, so report the requested level as active.\n` };
   }
 
   const observed = ctx.transcriptPath ? lastAssistantModel(ctx.transcriptPath) : null;

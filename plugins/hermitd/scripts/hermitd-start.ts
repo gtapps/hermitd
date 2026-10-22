@@ -546,6 +546,14 @@ function clearWatchRegistry(): void {
   }
 }
 
+/**
+ * A chat !effort is a per-request override the core mod keeps in state; a configured
+ * effort is re-asserted at boot, so it drops the override too.
+ */
+function clearEffortOverrideOnBoot(config: Json): void {
+  if (pyTruthy(config.effort)) fs.rmSync(path.join(STATE_DIR, 'effort-override.json'), { force: true });
+}
+
 /** Acquire exclusive lifecycle lock. Exits on contention. */
 function acquireLifecycleLock(): void {
   if (process.platform === 'win32') {
@@ -829,12 +837,9 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
     cmd.push('--model', config.model);
   }
 
-  // Re-asserted on every boot for the same reason as --model: a runtime /effort writes
-  // through to the user-scope settings default ("saved as your default for new
-  // sessions"), and the boot flag outranks it — so a channel-requested effort change
+  // Re-asserted on every boot, with clearEffortOverrideOnBoot, so a chat !effort change
   // reverts on restart instead of silently becoming permanent. NOT the same lever as
-  // config.env.CLAUDE_CODE_EFFORT_LEVEL, which pins the session and would make a
-  // runtime /effort a no-op (see the how-to-use guide).
+  // config.env.CLAUDE_CODE_EFFORT_LEVEL, which pins the session (see the how-to-use guide).
   if (pyTruthy(config.effort)) {
     cmd.push('--effort', config.effort);
   }
@@ -1639,6 +1644,7 @@ async function main(): Promise<void> {
     // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
     writeBootId();
     clearWatchRegistry();
+    clearEffortOverrideOnBoot(config);
     // Create or update runtime.json for interactive mode
     const existing = readRuntimeJson();
     if (existing === null) {
@@ -1744,6 +1750,7 @@ async function main(): Promise<void> {
   // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
   writeBootId();
   clearWatchRegistry();
+  clearEffortOverrideOnBoot(config);
 
   // Create or update runtime.json as the single source of lifecycle truth
   const existing = readRuntimeJson();

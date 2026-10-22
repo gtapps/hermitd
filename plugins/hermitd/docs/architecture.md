@@ -114,7 +114,7 @@ The plugin manifest registers 16 shared hooks. The four resident-only hooks (`pa
 | Summary generator | PostToolUse `Edit\|Write` | Regenerates `state-summary.md` when a `state/` file is edited |
 | Usage tracker | PostToolUse `Read` | Appends a usage event to `state/usage-metrics.jsonl` when a `compiled/` artifact is read |
 | Prompt pipeline | UserPromptSubmit | Runs resident, conversation and channel gates before audit; shutdown takes precedence over pause and command handling. Its harness mode returns native mod command decisions through the same stages |
-| Chat harness mod | `prompt.submit`, `turn.complete` | Executes trusted chat commands and deferred switches natively, observes outcomes and replies through the core verb; dispatch-scoped model approval preserves settings-level deny or ask |
+| Core mod | `session.start`, `prompt.submit`, `turn.start`, `turn.complete` | Drains the harness command queue (`state/harness-queue/`) on a 2-second timer and at the end of each main turn: chat commands, `/when-done-switch-to` switches, watchdog compaction, clear, monitor re-arm and nudge, the shutdown skill and live update. Runs each with `$.command.run` once the main turn is idle, one at a time, records outcomes from Claude Code's own evidence, and replies to chat through the core verb; a pause request aborts the running turn with `$.turn.abort`. Dispatch-scoped model approval preserves settings-level deny or ask |
 | Context loader | SessionStart | Classifies residency, seeds resident activity when absent, and loads session context; on a managed session (`HERMIT_MANAGED=1`) also stamps the launch env into `runtime.json` |
 | Stop pipeline | Stop | Runs cost tracking, permission-mode and doctor delivery, and the heartbeat stamp; a channel checkpoint (intake or reply) may block the stop |
 | StopFailure stamp | StopFailure | Records the turn's typed upstream failure to `state/stop-failure.json`; the watchdog classifies from it and notifies |
@@ -351,9 +351,9 @@ New periodic semantic work belongs in hermit-routines. A plugin check uses `refl
 
 ### Context Hygiene
 
-`context_hygiene.clear` sends `/clear` without a model wake after an hour of operator quiet, after a context reaches 24 hours, or after policy changes. Defaults are `enabled: true`, `quiet: "1h"`, `max_age: "24h"`, and `min_tokens: 20000`.
+`context_hygiene.clear` queues `/clear` for the core mod without a model wake after an hour of operator quiet, after a context reaches 24 hours, or after policy changes. Defaults are `enabled: true`, `quiet: "1h"`, `max_age: "24h"`, and `min_tokens: 20000`.
 
-Every trigger waits for the safe execution boundary: matching runtime identity, idle observed for at least 60 seconds, no running task worker, an idle or shell registry entry when present, enough compactible tokens, and an unchanged pane across two ticks. Lifecycle guards and the lifecycle lock also apply. `state/context-clear.json` records the policy hash and trigger so the same reason does not fire twice for the current reset. Machine-learned chat destinations and version stamps do not count as policy edits. Native monitors survive a clear and are not re-armed for it.
+Every trigger waits for the safe execution boundary: matching runtime identity, idle observed for at least 60 seconds, no running task worker, an idle or shell registry entry when present, and enough compactible tokens; the core mod checks it again when it claims the request. Lifecycle guards and the lifecycle lock also apply. `state/context-clear.json` records the trigger, and the resident's SessionStart fills in the reset time and policy hash once the clear has happened, so the same reason does not fire twice for the current reset. Machine-learned chat destinations and version stamps do not count as policy edits. Native monitors survive a clear and are not re-armed for it.
 
 The standalone clear and the routine `context_hygiene.compact` tier are separate. Compaction summarizes the conversation; a clear discards it. Task records survive either action. See [configuration](config-reference.md#context_hygiene).
 

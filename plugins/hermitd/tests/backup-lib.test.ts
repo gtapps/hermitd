@@ -191,6 +191,16 @@ describe('scanRefusedPaths', () => {
     expect(refused.map(r => r.reason)).toEqual(['transient', 'transient', 'transient']);
   });
 
+  test('refuses the harness command queue, in flight entries and outcomes', () => {
+    const dir = freshDir();
+    const rels = ['harness-queue', 'harness-inflight', 'harness-outcomes'].map(sub => `.hermit/state/${sub}/a.json`);
+    for (const rel of rels) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), '{}');
+    }
+    expect(scanRefusedPaths(dir, rels).map(r => r.reason)).toEqual(['transient', 'transient', 'transient']);
+  });
+
   test('refuses a file over the size ceiling and skips content-scanning a large one', () => {
     const dir = freshDir();
     fs.writeFileSync(path.join(dir, 'huge.bin'), Buffer.alloc(1024));

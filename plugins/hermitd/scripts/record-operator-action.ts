@@ -31,8 +31,9 @@ process.stdout.on('error', () => {});
 //   HEARTBEAT_EVALUATE/HEARTBEAT_ERROR/ROUTINE_DUE/ROUTINE_MONITOR_ERROR — Monitor-delivered
 //                          scheduler wake notifications (heartbeat-monitor.sh, routines.ts due,
 //                          routine-monitor.sh) — see isRoutinePrompt below
-//   hermit's own tmux-injected slash commands — see INJECTED_EXACT below. Every
-//   other bare `/…` prompt counts as operator activity (see isRoutinePrompt).
+//   hermit's own slash commands: the core mod's in-flight request (see
+//   isInflightCommand) and the boot skill (INJECTED_EXACT). Every other bare `/…`
+//   prompt counts as operator activity (see isRoutinePrompt).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,6 +43,7 @@ import { isAllowedSender, isPassiveChatSync, isSelfMentionedSync } from './lib/c
 import { parseChannelEnvelope, type ChannelEnvelope } from './lib/channel-envelope';
 import { readConfigRaw } from './lib/config-read';
 import { emit } from './lib/cli';
+import { renderCommand } from './lib/harness-command';
 
 type Json = any;
 
@@ -90,23 +92,38 @@ export function openTurnMarker() {
   writeMarker(TURN_TMP, TURN_PATH);
 }
 
-// Hermit-injected slash prompts — tmux send-keys from hermitd-watchdog.ts and
-// hermitd-stop.ts arrive at this hook as bare text, byte-identical to operator
-// typing. A live probe (2026-07-10, CC v2.1.206) showed operator-typed slash
-// commands ALSO arrive bare (no <command-message> wrapper reaches stdin), so
-// there is no stdin-visible signal to key on: drop exactly our own known
-// injections and count every other prompt as operator activity. Missing the
-// operator is the destructive direction (mid-session /clear, context clearing);
-// counting a stray programmatic prompt only delays cleanup.
-// tests/heartbeat-monitor-emissions.test.ts syncs this list against the actual sendKeys call
-// sites — extend it when adding a new injection.
+// Hermit-issued slash prompts arrive at this hook as bare text, byte-identical to
+// operator typing: a command the core mod runs with `$.command.run` reaches
+// UserPromptSubmit as exactly `/<command> <args>` with no origin field. So the
+// signal is state, not the prompt: a prompt equal to a command of the mod's
+// in-flight request is the hermit's own, and every other prompt counts as operator
+// activity. Missing the operator is the destructive direction (mid-session /clear,
+// context clearing); counting a stray programmatic prompt only delays cleanup.
+// INJECTED_EXACT keeps the commands hermit launches outside the queue.
 const INJECTED_EXACT = new Set([
   '/hermitd:resident-start',
-  '/hermitd:heartbeat run',
-  '/hermitd:heartbeat start',
   '/hermitd:heartbeat stop',
-  '/hermitd:hermit-routines load',
 ]);
+
+// lib/harness-mod.ts INFLIGHT_DIR: read here directly so this per-prompt hook does not
+// load the queue library and everything it imports.
+const INFLIGHT_PATH = path.join(AGENT_DIR, 'state', 'harness-inflight');
+
+/** True when the prompt is a command of the core mod's in-flight request. */
+function isInflightCommand(prompt: string): boolean {
+  let names: string[];
+  try { names = fs.readdirSync(INFLIGHT_PATH); } catch { return false; }
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    try {
+      const entry = JSON.parse(fs.readFileSync(path.join(INFLIGHT_PATH, name), 'utf-8'));
+      for (const command of Array.isArray(entry?.commands) ? entry.commands : []) {
+        if (typeof command?.command === 'string' && prompt === renderCommand(command)) return true;
+      }
+    } catch { /* unreadable entry: count the prompt */ }
+  }
+  return false;
+}
 
 function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
   if (prompt.startsWith('[hermit-routine:')) return true;
@@ -128,6 +145,7 @@ function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
     return !isAllowedSender(config, envelope.source, envelope.userId);
   }
   if (INJECTED_EXACT.has(t)) return true;
+  if (t.startsWith('/') && isInflightCommand(t)) return true;
   // Peer delivery passes only the message body to this hook, not the
   // `Message from @...` frame shown in the session transcript.
   if (t.startsWith('GUEST_REPORT:')) return true;
@@ -160,18 +178,6 @@ function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
   if (t.startsWith('ROUTINE_MONITOR_ERROR: ')) return true;
   if (t.startsWith('WATCH_EVENT [hermit-watch:')) return true;
   if (t.startsWith('WATCH_MONITOR_ERROR: ')) return true;
-  // Watchdog hygiene injections (hermitd-watchdog.ts:650,850,988). Native
-  // commands may never reach this hook at all; dropping them is safe either
-  // way — typing /clear or /compact ends a context, it doesn't signal presence.
-  if (t === '/clear' || t.startsWith('/compact')) return true;
-  // Harness commands the Stop-hook drain injects on an operator's behalf
-  // (lib/harness-drain.ts drainHarnessCommand). Prefix-matched, not listed in
-  // INJECTED_EXACT, because the argument is runtime-computed: the exact string is
-  // `/model <arg>` for whatever arg arrived over the channel. NOTE the drift guard in
-  // tests/heartbeat-monitor-emissions.test.ts only scans *quoted* literals at sendKeys call sites, so a
-  // template-literal injection like this generates no automatic coverage — the
-  // regression test for these three prefixes is hand-written in heartbeat-monitor-emissions.test.ts.
-  if (t.startsWith('/model ') || t.startsWith('/effort ') || t.startsWith('/advisor ')) return true;
   return false;
 }
 

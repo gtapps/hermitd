@@ -28,6 +28,9 @@ import { envAuthPresent } from './lib/setup-token';
 import { seedOperatorActivity } from './record-operator-action';
 import { clearGuest, markGuest, pruneGuestMarkers } from './lib/guest-marker';
 import { recordContextPolicy } from './lib/context-policy';
+import { applyContextReset } from './lib/context-reset';
+import { writeFileAtomic } from './lib/md-write';
+import { readJson } from './lib/cli';
 
 type Json = any;
 
@@ -308,6 +311,7 @@ function main(source: string | null, sessionId: string | null) {
   // the verdict rather than leave it silently muting its own liveness signal.
   clearGuest(stateDir, sessionId);
   observeExecution(AGENT_DIR, 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
+  if (source === 'clear') recordClear(stateDir);
   seedOperatorActivity();
   if (source === 'compact') {
     emitCompactCapsule();
@@ -318,6 +322,26 @@ function main(source: string | null, sessionId: string | null) {
   // Always — a full-path clean scan clears a prior warning; the compact path
   // merges (it only scanned the capsule) so it can't clear a real warning.
   persistScanRecord(source);
+}
+
+/**
+ * A clear is recorded only once Claude Code reports it done: whoever ran it (the watchdog's
+ * queued request, a chat command, the operator typing it), this SessionStart is the proof.
+ * A pending watchdog trigger gets the reset time it was waiting for.
+ */
+function recordClear(stateDir: string): void {
+  const runtime = readRuntimeJson(stateDir);
+  if (!runtime) return;
+  const file = path.join(stateDir, 'context-clear.json');
+  const record = readJson(file);
+  const pending = typeof record?.last_trigger?.reason === 'string' && !record.last_trigger.reset_at ? record.last_trigger : null;
+  applyContextReset(AGENT_DIR, runtime, {
+    kind: 'cleared', trigger: pending ? `clear:${pending.reason}` : 'clear', hhmm: new Date().toISOString().slice(11, 16),
+  });
+  if (!pending) return;
+  try {
+    writeFileAtomic(file, JSON.stringify({ ...record, last_trigger: { ...pending, reset_at: runtime.last_context_reset_at } }) + '\n');
+  } catch { /* fail-open: bookkeeping must not suppress startup context */ }
 }
 
 function readOperatorContext(): string {

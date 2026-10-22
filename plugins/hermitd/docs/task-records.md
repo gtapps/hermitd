@@ -34,7 +34,7 @@ The result mutation is not exposed by the pre-approved task CLI. The command run
 
 The safe boundary requires idle for at least 60 seconds, an identity matching runtime `cc_session_id`, no running task worker, and an idle or shell registry entry when the resident PID has one. A configured token floor must also be met. Unknown never becomes idle through registry fallback. List and standup can display `execution: unknown (registry: <status>[, <waitingFor>], live process)` to explain an unknown observation.
 
-The standalone watchdog clear additionally requires an unchanged pane across two ticks and operator quiet, context age or changed policy. Defaults are one quiet hour, maximum age 24 hours and 20,000 compactible tokens. Policy hashes cover OPERATOR.md, TASKS.md, CLAUDE.local.md, settings and configuration, excluding machine-maintained channel routing and version keys. Clears are locked and deduplicated per reset. Monitor rearming uses the same safe execution boundary.
+The standalone watchdog clear additionally requires operator quiet, context age or changed policy. Defaults are one quiet hour, maximum age 24 hours and 20,000 compactible tokens. Policy hashes cover OPERATOR.md, TASKS.md, CLAUDE.local.md, settings and configuration, excluding machine-maintained channel routing and version keys. Clears are locked and deduplicated per reset. Monitor rearming uses the same safe execution boundary.
 
 ## Cost and readers
 

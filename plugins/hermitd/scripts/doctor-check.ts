@@ -33,7 +33,7 @@ import { promptTokensOf, compactibleTokens, isOwnTurn } from './lib/context-sign
 import { readContextSurface } from './lib/context-surface';
 import { expandSessionName } from './lib/tmux';
 import { readJson } from './lib/cli';
-import { MOD_LOADED_FILE } from './lib/harness-mod';
+import { modLoadedForResident } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
 import { findResident } from './lib/session-registry';
 import { bootMismatch } from './lib/monitor-health';
@@ -2084,12 +2084,10 @@ function checkHarnessMod(p: DoctorPaths = PATHS) {
   const id = 'harness-mod';
   const runtime = readRuntimeJson(p.stateDir);
   if (!runtime) return { id, status: 'ok', detail: 'No resident session yet; chat harness mod loads at the first boot.' };
-  const loaded = readJson(path.join(p.stateDir, MOD_LOADED_FILE));
-  if (typeof runtime.cc_session_id === 'string' && runtime.cc_session_id
-    && loaded?.session_id === runtime.cc_session_id) {
-    return { id, status: 'ok', detail: 'Chat harness mod loaded for the current resident session.' };
+  if (modLoadedForResident(p.hermitDir)) {
+    return { id, status: 'ok', detail: 'Core mod loaded for the current resident session: it runs chat harness commands, watchdog compaction and clear, shutdown and update.' };
   }
-  return { id, status: 'warn', detail: 'chat harness commands unavailable: the core mod has not loaded for the current resident session.' };
+  return { id, status: 'warn', detail: 'chat harness commands unavailable: the core mod has not loaded for the current resident session, so chat harness commands, watchdog compaction and clear, the shutdown skill and live update are skipped.' };
 }
 
 /** Check launch configuration, without claiming that the running session executed it. */

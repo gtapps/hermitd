@@ -200,21 +200,15 @@ PLUGIN_ERRORS_AFTER=$(_enumerate_host_errors)
 RELOAD_PLUGINS_SENT=false
 EVOLVE_SENT=false
 
-# Match the rendered REPL input box: the prompt char ❯ plus any structural marker
-# (── rule, older ╭─/╰─ corners, or the always-present mode/shortcuts hint). See the
-# matching helper in hermitd-docker for the live-verification note (CC 2.1.175).
-_wait_for_claude_prompt_host() {
-  local i pane tail8
-  for i in $(seq 1 30); do
-    pane=$(tmux capture-pane -p -t "$TMUX_SESSION:0.0" 2>/dev/null || true)
-    tail8=$(printf '%s\n' "$pane" | tail -8)
-    if printf '%s\n' "$tail8" | grep -qF '❯' \
-       && printf '%s\n' "$tail8" | grep -qE '────────|╭─|╰─|to cycle|for shortcuts|for agents'; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
+# Live commands go to the core mod's queue (`harness-request`), which runs them natively
+# once the resident is idle and never answers an open dialog. The flags below mean
+# "queued": a self-run update returns after queuing, an external run waits for the outcome.
+_harness_request() {
+  (cd "$PROJECT_DIR" && .hermit/bin/hermitd-run harness-request "$@" </dev/null 2>/dev/null) || true
+}
+
+_request_status() {
+  bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$1"
 }
 
 _stamp_update_marker() {
@@ -267,61 +261,60 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   AWAIT_NOTED=false
   _apply_live_update() {
   _await_upgrade || return 0
-  echo "[hermit] Waiting for Claude Code prompt in tmux session '$TMUX_SESSION' (up to 60s)..."
-  if _wait_for_claude_prompt_host; then
-    echo "[hermit] Sending /reload-plugins..."
-    tmux send-keys -t "$TMUX_SESSION:0.0" "/reload-plugins" 2>/dev/null || \
-      echo "[hermit] Warning: could not reach tmux session — /reload-plugins not sent" >&2
-    sleep 0.5
-    tmux send-keys -t "$TMUX_SESSION:0.0" Enter 2>/dev/null || true
-    RELOAD_PLUGINS_SENT=true
-
-    # Check whether any registered hermit (core or sibling) has a version gap.
-    # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
-    # We compare each installed hermit version against config._hermit_versions.
-    # This detects sibling-only bumps as well as core bumps (Finding 5 fix).
-    # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
-    # while evolve stamps the bare version, so the suffix is dropped before comparing.
-    EXPECT_ROWS=$(bun -e '
-      const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t").slice(1));
-      const rank = {local: 0, project: 1, user: 2};
-      rows.sort((a, b) => (rank[a[1]] ?? 3) - (rank[b[1]] ?? 3));
-      try {
-        const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
-        const seen = new Set();
-        for (const [id, scope, listed] of rows) {
-          const version = (listed ?? "").replace(/-[0-9a-f]{12}$/, "");
-          if (seen.has(id)) continue;
-          seen.add(id);
-          const name = id.split("@")[0];
-          if (name.includes("hermit") && version && versions[name] && versions[name] !== version) console.log(name + "=" + version);
-        }
-      } catch {}
-    ' "$UPDATE_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json")
-    EXPECT_ARGS=()
-    while IFS= read -r pair; do
-      [ -z "$pair" ] || EXPECT_ARGS+=(--expect "$pair")
-    done <<< "$EXPECT_ROWS"
-    HERMIT_GAP=0
-    [ ${#EXPECT_ARGS[@]} -gt 0 ] && HERMIT_GAP=1
-    CORE_FAILED=false
-    for _fid in "${PLUGINS_FAIL_IDS[@]:-}"; do
-      case "$_fid" in hermitd@*) CORE_FAILED=true ;; esac
-    done
-    if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
-      echo "[hermit] Hermit gap detected (core or sibling). Chaining hermit-evolve (unattended)..."
-      if _wait_for_claude_prompt_host; then
-        tmux send-keys -t "$TMUX_SESSION:0.0" "/hermitd:hermit-evolve unattended" 2>/dev/null || true
-        sleep 0.5
-        tmux send-keys -t "$TMUX_SESSION:0.0" Enter 2>/dev/null || true
-        EVOLVE_SENT=true
-      else
-        echo "[hermit] Warning: prompt not detected — hermit-evolve not auto-started." >&2
-        echo "[hermit]          The pin is already durable; run /hermitd:hermit-evolve when you attach." >&2
-      fi
-    fi
+  # Check whether any registered hermit (core or sibling) has a version gap.
+  # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
+  # We compare each installed hermit version against config._hermit_versions.
+  # This detects sibling-only bumps as well as core bumps (Finding 5 fix).
+  # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
+  # while evolve stamps the bare version, so the suffix is dropped before comparing.
+  EXPECT_ROWS=$(bun -e '
+    const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t").slice(1));
+    const rank = {local: 0, project: 1, user: 2};
+    rows.sort((a, b) => (rank[a[1]] ?? 3) - (rank[b[1]] ?? 3));
+    try {
+      const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
+      const seen = new Set();
+      for (const [id, scope, listed] of rows) {
+        const version = (listed ?? "").replace(/-[0-9a-f]{12}$/, "");
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const name = id.split("@")[0];
+        if (name.includes("hermit") && version && versions[name] && versions[name] !== version) console.log(name + "=" + version);
+      }
+    } catch {}
+  ' "$UPDATE_ROWS_AFTER" "$PROJECT_DIR/.hermit/config.json")
+  EXPECT_ARGS=()
+  while IFS= read -r pair; do
+    [ -z "$pair" ] || EXPECT_ARGS+=(--expect "$pair")
+  done <<< "$EXPECT_ROWS"
+  HERMIT_GAP=0
+  [ ${#EXPECT_ARGS[@]} -gt 0 ] && HERMIT_GAP=1
+  CORE_FAILED=false
+  for _fid in "${PLUGINS_FAIL_IDS[@]:-}"; do
+    case "$_fid" in hermitd@*) CORE_FAILED=true ;; esac
+  done
+  # The new core version the reloaded mod copy reports, so a reload that replaces the
+  # mod is recognised by that copy and the evolve leg still runs once.
+  CORE_VERSION=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }' | sed -E 's/-[0-9a-f]{12}$//')
+  REQUEST_ARGS=(/reload-plugins)
+  BATCH=false
+  if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
+    echo "[hermit] Hermit gap detected (core or sibling). Queuing /reload-plugins then hermit-evolve (unattended)..."
+    REQUEST_ARGS+=(--then /hermitd:hermit-evolve unattended)
+    BATCH=true
   else
-    echo "[hermit] Warning: claude prompt not detected — /reload-plugins not sent." >&2
+    echo "[hermit] Queuing /reload-plugins..."
+  fi
+  [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
+  REQUEST_ARGS+=(--source update)
+  [ "$SELF_RUN" = true ] || REQUEST_ARGS+=(--wait 300)
+  IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(_request_status "$(_harness_request "${REQUEST_ARGS[@]}")")"
+  if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ]; then
+    RELOAD_PLUGINS_SENT=true
+    EVOLVE_SENT=$BATCH
+  else
+    echo "[hermit] Warning: /reload-plugins did not complete ($REQUEST_STATUS${REQUEST_REASON:+: $REQUEST_REASON})." >&2
+    [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; run /hermitd:hermit-evolve when you attach." >&2
     echo "[hermit]          Pins are already updated (durable); next session start picks them up." >&2
   fi
   if [ "$EVOLVE_SENT" = true ]; then

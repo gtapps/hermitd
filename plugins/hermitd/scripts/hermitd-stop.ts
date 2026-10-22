@@ -2,8 +2,8 @@
 /**
  * Graceful shutdown for the resident.
  *
- * Runs the configured shutdown skill and waits for execution to settle before
- * stopping the tmux session.
+ * Runs the configured shutdown skill through the core mod (lib/shutdown.ts) and waits
+ * for its turn to settle before stopping the tmux session.
  *
  * Usage:
  *     bun scripts/hermitd-stop.ts              # graceful shutdown
@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { gracefulShutdown } from './lib/shutdown';
 import { acquireLock, releaseLock } from './lib/lockfile';
 import { settleConfig, readConfigRaw } from './lib/config-read';
 import { auditConfigChange } from './lib/config-audit';
@@ -27,8 +28,6 @@ type Json = any;
 const CONFIG_PATH = '.hermit/config.json';
 const DEFAULT_TIMEOUT = 60; // seconds to wait for graceful close
 
-const sleep = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
-
 function loadConfig(): { config: Json; raw: Json } {
   if (!fs.existsSync(CONFIG_PATH)) {
     console.log('[hermit] No config found. Is this a hermit project?');
@@ -41,19 +40,6 @@ function loadConfig(): { config: Json; raw: Json } {
   // from one read, so they always describe the same snapshot.
   const raw = readConfigRaw(path.dirname(CONFIG_PATH));
   return { config: settleConfig(raw ?? undefined), raw };
-}
-
-export function shutdownReady(execution: Json, sentAt: number | null): boolean {
-  return typeof execution?.state === 'string' && execution.state !== 'in_flight'
-    && (sentAt === null || Date.parse(execution.at) > sentAt);
-}
-
-function readExecution(): Json {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'execution.json'), 'utf-8'));
-  } catch {
-    return null;
-  }
 }
 
 // `always_on` is the only field the stop flow mutates, so it is patched onto the
@@ -185,25 +171,12 @@ async function main(): Promise<void> {
 
   releaseLifecycleLock();
 
+  // The shutdown skill runs through the core mod's queue once no turn is running, and
+  // only the turn it started settles this wait.
   console.log(`[hermit] Waiting up to ${DEFAULT_TIMEOUT}s for execution to settle...`);
-  let sentAt: number | null = null;
-  let settled = false;
-  for (let i = 0; i < DEFAULT_TIMEOUT; i++) {
-    if (shutdownReady(readExecution(), sentAt)) {
-      if (!config.shutdown_skill || sentAt !== null) {
-        settled = true;
-        break;
-      }
-      // Typed only once no turn is running: typed mid-turn, that turn's own end
-      // would satisfy this wait before the skill ran.
-      console.log(`[hermit] Sending shutdown skill to ${sessionName}...`);
-      sentAt = Date.now();
-      tmux(['send-keys', '-t', sessionName, config.shutdown_skill]);
-      await sleep(0.5);
-      tmux(['send-keys', '-t', sessionName, 'Enter']);
-    }
-    await sleep(1);
-  }
+  const shutdown = await gracefulShutdown(path.resolve(path.dirname(CONFIG_PATH)), { timeoutSecs: DEFAULT_TIMEOUT });
+  const settled = shutdown.status === 'settled';
+  if (shutdown.skill !== 'none' && shutdown.skill !== 'ok') console.log(`[hermit] Shutdown skill ${shutdown.skill}${shutdown.reason ? ` (${shutdown.reason})` : ''}.`);
   if (!settled) console.log(`[hermit] Timeout after ${DEFAULT_TIMEOUT}s. Killing session.`);
 
   // Re-acquire lock for final state writes and cleanup

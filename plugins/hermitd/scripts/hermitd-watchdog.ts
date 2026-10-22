@@ -6,7 +6,7 @@
  * Can't hang or leak — the OS scheduler drives recurrence.
  *
  * Decision flow (declared ids, in order):
- *   pause-escape → standalone-clear → context-compact → telemetry-export → state-backup
+ *   harness-outcomes → pause-abort → standalone-clear → context-compact → telemetry-export → state-backup
  *   Config/runtime gates and snapshot
  *   dead-session → auth → stall-question → queue-wedge → api-failure
  *   → pending-question-stop → heartbeat-wedge → monitor-rearm
@@ -34,7 +34,8 @@ import { readExecution, passesExecutionBoundary, type BoundaryReason } from './l
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
-import { anchoredPaneTail, nonBlankTail, tmuxSessionAlive, getSessionName as deriveSessionName, sendKeys } from './lib/tmux';
+import { tmuxSessionAlive, getSessionName as deriveSessionName } from './lib/tmux';
+import { enqueue, failedLeg, readOutcome, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
 import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './lib/resident-liveness';
 import { postToSession } from './lib/peer-post';
@@ -50,7 +51,6 @@ import { writeFileAtomic } from './lib/md-write';
 import { promptTokensOf as promptTokens, compactibleTokens, MAX_PLAUSIBLE_PROMPT_TOKENS, isOwnTurn } from './lib/context-signal';
 import { readContextSurface } from './lib/context-surface';
 import { runTelemetryExportIfDue } from './report-export';
-import { applyContextReset } from './lib/context-reset';
 import { ensureLedgerFile } from './lib/append-jsonl';
 import { heartbeatHealth, PLUGIN_ROOT } from './lib/heartbeat/monitor-cmd';
 import { routineHealth } from './lib/routines/arm';
@@ -93,7 +93,7 @@ const REAUTH_SKILL_MARKER_MAX_AGE_MS = 2 * 3600000;
 
 /**
  * The decision cascade's view of everything outside itself: the clock, the tmux
- * pane, the filesystem, and where state lives. Gates take a World instead of
+ * pane, the command queue, the filesystem, and where state lives. Gates take a World instead of
  * reaching for module-level constants and spawnSync directly, so a test can hand
  * them a fake and assert which gate decided what — rather than inferring it from
  * side effects observed through a subprocess with fake executables on PATH.
@@ -108,7 +108,9 @@ export type World = {
   actions: { restart: typeof doRestart; nudge: typeof doNudge; reauth: typeof evaluateReauth };
   proc: { heartbeatMonitorDead(): boolean };
   clock: { nowMs(): number };
-  tmux: { alive(s: string): boolean; capture(s: string): string | null; send(s: string, text: string): void };
+  tmux: { alive(s: string): boolean; capture(s: string): string | null };
+  /** The core mod's command queue: the only way this watchdog runs a command in the session. */
+  harness: { enqueue(request: QueueRequest): EnqueueResult; outcome(id: string): QueueOutcome | null };
   files: { readJson(p: string): Json | null; readText(p: string): string | null; writeJson(p: string, v: Json): void; rm(p: string): void };
   paths: { stateDir: string; hermitRoot: string; costLog: string };
   /** Per-tick memo for the resolved hygiene session id (one process per scheduler
@@ -127,7 +129,10 @@ const REAL_WORLD: World = {
   tmux: {
     alive: (s) => tmuxSessionAlive(s),
     capture: (s) => capturePane(s),
-    send: (s, text) => { sendKeys(s, text); },
+  },
+  harness: {
+    enqueue: (request) => enqueue(HERMIT_ROOT, request),
+    outcome: (id) => readOutcome(HERMIT_ROOT, id),
   },
   files: {
     readJson,
@@ -258,11 +263,12 @@ export function composeWedgeRecoveredMessage(timezone: string, locale: Locale = 
   return WATCHDOG[locale].wedgeRecovered(nowHHMM(timezone));
 }
 
-/** Operator-language message for an un-redirectable stalled question (PROP-024's fail-loud half). */
-export function composeStallQuestionMessage(timezone: string, locale: Locale = OPERATOR_LOCALE, paneTail?: string): string {
+/** Operator-language message for an un-redirectable stalled question (PROP-024's fail-loud half).
+ *  `waitingFor` is the session's own account of what it waits on (the registry's `waitingFor`). */
+export function composeStallQuestionMessage(timezone: string, locale: Locale = OPERATOR_LOCALE, waitingFor?: string): string {
   const sentence = WATCHDOG[locale].stallQuestion(nowHHMM(timezone));
-  if (!paneTail) return sentence;
-  return `${sentence}\n\n${paneTail}`;
+  if (!waitingFor) return sentence;
+  return `${sentence}\n\n${waitingFor}`;
 }
 
 /** Operator-language message for a session that stopped consuming its queued notifications. */
@@ -312,12 +318,12 @@ export function composeEnvAuthFailureMessage(
 }
 
 /**
- * Steering text for the watchdog-fired `/compact`. Never operator-facing (it's typed
- * into the pane for Claude, not shown in a channel), so no locale — unlike the
- * compose*Message functions above.
+ * Focus argument for the watchdog-queued `/compact`. Never operator-facing (it is read
+ * by Claude, not shown in a channel), so no locale — unlike the compose*Message
+ * functions above.
  */
 export function composeCompactSteeringMessage(): string {
-  return '/compact focus on unfinished work, pending operator items, and in-flight decisions';
+  return 'focus on unfinished work, pending operator items, and in-flight decisions';
 }
 
 /** Operator-language message for a forced pause enforcement (any reason). */
@@ -365,85 +371,8 @@ function getPaneHash(sessionName: string, world: World = REAL_WORLD): string | n
   return content === null ? null : crypto.createHash('sha256').update(content).digest('hex');
 }
 
-// A blocking modal (AskUserQuestion widget, a native permission prompt, or a
-// harness-shipped setup wizard) renders a pointer-marked option plus a dialog footer
-// — verified against real captures in compiled/spike-ask-gate-probe-2026-07-05.md and
-// against the CC 2.1.233 "Set up auto mode for your environment?" wizard that wedged a
-// live hermit for ~2.5 days. Neither token appears in ordinary session output (tool
-// calls, prose, status bar), so requiring both is a conservative, low-false-positive
-// signal that the pane is stalled on an unanswerable dialog. Over-detection costs one
-// deduped push; under-detection is a silent stall.
-//
-// The option label is deliberately NOT constrained to a number: the wizard's selector
-// reads "❯ Continue", and requiring `\d+\.` is exactly why the live wedge went
-// undetected. The pointer glyph also starts the composer prompt ("❯ Try ..."). A
-// modal replaces the composer on a clean pane, but a queued channel message keeps
-// the composer rendered below it (probed CC 2.1.260), so the footer anchor misses
-// that case; the registry leg covers it.
-const PENDING_OPTION_RE = /❯\s+\S/;
-// A dialog footer must terminate the visible pane. "Esc to cancel" carries every
-// captured dialog with a footer: AskUserQuestion and permission prompts, the CC 2.1.233
-// setup wizard, and the CC 2.1.282 "Teach auto mode about your environment?" offer
-// (whose footer reads "Enter to confirm · Esc to cancel") all end on it. No shipped
-// capture depends on "Enter to continue"; it stays as the hedge for a dialog with no
-// Esc affordance. The held-peer-message dialog (CC 2.1.257, captured live) ends on its
-// own last option with no footer line at all, so that option's text is the anchor; it
-// is live only when an operator sets `crossSessionInbound: hold` in user settings or
-// managed policy; otherwise the launch overlay's `accept` pre-empts it. A stale anchor
-// degrades to the queue-liveness check (3c), which alerts at best 30 minutes late and
-// not at all if the held message expires before notifications go stale.
-const PENDING_FOOTERS = ['Esc to cancel', 'Enter to continue', 'Deliver this message to Claude'];
-
-// Only the pane TAIL counts: a live blocking modal renders at the bottom of the
-// pane, whereas the same tokens appearing in scrollback or quoted tool output
-// (a rendered menu, or output that echoes "Esc to cancel") sit higher up. Scanning
-// the whole capture would let such incidental text trip a false stall — and because
-// stall detection early-returns before wedge/restart, a false positive silently
-// *disables recovery* for as long as the text stays on screen. The tail window
-// keeps the genuine bottom-of-pane prompt while dropping that class.
-const PENDING_TAIL_LINES = 15;
-
-/** True when the pane TAIL looks stalled on an interactive dialog nobody can answer. */
-export function hasPendingQuestion(paneContent: string): boolean {
-  return PENDING_FOOTERS.some((footer) => {
-    const tail = anchoredPaneTail(paneContent, PENDING_TAIL_LINES, footer);
-    return tail !== null && PENDING_OPTION_RE.test(tail);
-  });
-}
-
-// An auth failure renders as an ordinary assistant response, not a modal, so it has
-// no terminal anchor and anchoredPaneTail() cannot find it — a plain tail scan is the
-// whole mechanism. Captured live (CC 2.1.251, tmux capture-pane, the instrument this
-// file already uses): an expired /login credential answers "Login expired · Please run
-// /login", and a dead setup-token answers "Please run /login · API Error: 401 OAuth
-// access token is invalid." Those two are the only probe-verified spellings, and
-// `Please run /login` alone covers both.
-//
-// The rest are unverified spellings kept as insurance against a wording change, which
-// is only affordable because each one is long and specific enough that ordinary pane
-// text does not contain it by accident. That distinction is load-bearing rather than
-// stylistic: a match SUPPRESSES the nudge and restart tiers, so a false positive
-// disarms the watchdog on its own core job. A bare "Login expired" is exactly the
-// phrase a session discussing its own auth handling echoes, so it is deliberately
-// absent — the captured pane carrying it also carries "Please run /login".
-const LAPSED_LOGIN_PATTERNS = [
-  'Please run /login',
-  'OAuth access token is invalid',
-  '401 Invalid authentication credentials',
-  'OAuth token refresh failed',
-  'OAuth token revoked',
-  'OAuth token has expired',
-  'Claude.ai login expired',
-];
-
-/** True when the pane TAIL shows Claude Code refusing to work until someone signs in. */
-export function hasLapsedLogin(paneContent: string): boolean {
-  const tail = nonBlankTail(paneContent, PENDING_TAIL_LINES);
-  return LAPSED_LOGIN_PATTERNS.some((p) => tail.includes(p));
-}
-
-// A wedged session is shape-independent: whatever holds stdin (a dialog the pane
-// scanner above doesn't recognise, a modal from a future CC release, a hung render),
+// A wedged session is shape-independent: whatever holds stdin (a dialog the registry
+// does not report, a modal from a future CC release, a hung render),
 // the harness keeps ENQUEUEING monitor notifications it never DEQUEUES. On the live
 // 2026-08-17 incident that signal ran for ~2.5 days — 16 straight enqueues, zero
 // dequeues — while every pane-shaped check stayed silent. Reading only the tail of
@@ -491,7 +420,7 @@ export function classifyQueueTail(tailText: string, nowMs: number, staleSecs = W
 // immunity is why this reads the structural flag instead of pane text.
 //
 // Auth failures (`Login expired`, `401 Invalid API key`) are deliberately excluded:
-// `hasLapsedLogin`/`envAuthFailure` above already notify for those, and matching them
+// the auth tier notifies for those from the StopFailure stamp, and matching them
 // here too would double-notify the operator for one event.
 // CC composes the limit line as `You've hit your ${label}…`, where the label is one
 // of a fixed set — `session limit`, `weekly limit`, `Opus limit`, `Sonnet limit`,
@@ -606,8 +535,6 @@ function readTranscriptTail(transcriptId: string | null, world: World = REAL_WOR
   }
 }
 
-// sendKeys lives in lib/tmux.ts, with its bracketed-paste workaround.
-
 // --- Lifecycle lock ---
 
 /** The lifecycle lock file under the world's state dir. Must resolve to the same
@@ -703,6 +630,70 @@ function readStopFailureStamp(world: World = REAL_WORLD): Json | null {
 function writeWatchdogState(state: Json, world: World = REAL_WORLD): void {
   state.last_check_at = worldStamp(world);
   world.files.writeJson(path.join(world.paths.stateDir, 'watchdog-state.json'), state);
+}
+
+// --- Queued harness commands ---
+//
+// Nothing here types into the resident's pane. A command goes to the core mod's queue,
+// which runs it natively once the main turn is idle and never answers an open dialog;
+// its outcome is what Claude Code reported, read back on a later tick.
+
+const HARNESS_RESULT_EVENTS = {
+  compact: 'context-compact-result',
+  clear: 'context-clear-result',
+  rearm: 'monitor-rearm-result',
+  nudge: 'nudge-result',
+  pause: 'pause-abort-result',
+} as const;
+type HarnessKind = keyof typeof HARNESS_RESULT_EVENTS;
+// An outcome is kept a day; a request still unread past that will never resolve.
+const HARNESS_REQUEST_MAX_AGE_MS = 24 * 3600 * 1000;
+
+type Queued = { ok: true; id: string } | { ok: false; reason: GuardReason };
+
+/** Queues one request and records it as this watchdog's pending `kind` on `ws`. */
+function queueHarness(world: World, ws: Json, kind: HarnessKind, request: QueueRequest, extra: Json = {}): Queued {
+  const result = world.harness.enqueue(request);
+  if (result.status !== 'queued') return { ok: false, reason: result.reason === 'mod_not_loaded' ? 'mod-not-loaded' : 'shutdown-stamp' };
+  ws.harness_requests = { ...(harnessRequests(ws)), [kind]: { id: result.id, at: worldStamp(world), ...extra } };
+  return { ok: true, id: result.id };
+}
+
+function harnessRequests(ws: Json): Record<string, Json> {
+  return ws.harness_requests && typeof ws.harness_requests === 'object' && !Array.isArray(ws.harness_requests) ? ws.harness_requests : {};
+}
+
+/** Settles each request this watchdog queued that has an outcome. Never deletes an outcome. */
+export function readHarnessOutcomes(world: World): void {
+  const ws = readWatchdogState(world);
+  const pending = harnessRequests(ws);
+  let changed = false;
+  for (const kind of Object.keys(HARNESS_RESULT_EVENTS) as HarnessKind[]) {
+    const request = pending[kind];
+    if (!request || typeof request.id !== 'string') continue;
+    const outcome = world.harness.outcome(request.id);
+    if (!outcome) {
+      const age = ageSecs(String(request.at ?? ''), world);
+      if (age !== null && age * 1000 < HARNESS_REQUEST_MAX_AGE_MS) continue;
+      appendEvent(HARNESS_RESULT_EVENTS[kind], 'unknown: outcome_missing', world);
+    } else {
+      const failed = failedLeg(outcome);
+      const status = failed?.status ?? 'ok';
+      appendEvent(HARNESS_RESULT_EVENTS[kind], failed?.text ? `${status}: ${failed.text}` : status, world);
+      // A compaction counts only once Claude Code reported it; any other outcome keeps it due.
+      if (kind === 'compact' && status === 'ok') {
+        ws.last_compacted_at = outcome.finished_at;
+        ws.last_compacted_cost_ts = request.cost_ts ?? null;
+        world.files.rm(path.join(world.paths.stateDir, 'compact-requested.json'));
+      }
+    }
+    delete pending[kind];
+    changed = true;
+  }
+  if (changed) {
+    ws.harness_requests = pending;
+    writeWatchdogState(ws, world);
+  }
 }
 
 // --- Actions ---
@@ -1047,11 +1038,12 @@ function envAuthOwnsCredential(sessionEnvAuth: boolean | null): boolean {
 /**
  * 'active' → relay in flight; 'spawned' → just started one; 'idle' → nothing to do.
  *
- * `authLapsed` is the pane's verdict, and it is a second, independent trigger next to
- * the recorded expiry. The record only knows when the token was *minted plus a year*;
- * a token revoked early (account change, rotation, a bad restore) leaves the record
- * reading healthy while every request 401s, and the wedge tiers below would answer
- * that with restart churn. The pane says what the record can't.
+ * `authLapsed` is the failed turn's own verdict (a StopFailure `authentication_failed`
+ * for this session), and it is a second, independent trigger next to the recorded
+ * expiry. The record only knows when the token was *minted plus a year*; a token
+ * revoked early (account change, rotation, a bad restore) leaves the record reading
+ * healthy while every request 401s, and the wedge tiers below would answer that with
+ * restart churn. The failed turn says what the record can't.
  */
 function evaluateReauth(
   config: Json,
@@ -1088,7 +1080,7 @@ function evaluateReauth(
     ? mode === 'login'
       ? 'claude.ai login expired'
       : 'setup-token expired'
-    : 'auth failure on pane';
+    : 'auth failure reported';
 
   try {
     const child = spawn(process.execPath, [REAUTH_MINT_SCRIPT, 'relay'], {
@@ -1148,7 +1140,7 @@ const WEDGE_WAKE_TOKEN = 'HEARTBEAT_EVALUATE';
  *  window. Ticks in between still count (`consecutive_stale`), so the cycle count
  *  reaches `escalate_after` on exactly the tick it would have without the throttle.
  *  The other escalation input does move, deliberately: `last_pane_hash` is captured
- *  before the keystroke, so under the old cadence every tick's nudge re-rendered the
+ *  before the wake, so under the old cadence every tick's nudge re-rendered the
  *  pane (the queued message) and `paneFrozen` could never be true — a wedge masked
  *  itself from the restart it needed. Staying silent between probes lets a genuinely
  *  frozen pane read as frozen, so the pane-frozen restart is now reachable. */
@@ -1186,7 +1178,7 @@ async function doNudge(sessionName: string, watchdogState: Json, consecutive: nu
     return;
   }
 
-  // Socket first, typing second — but only once per episode. A post is queued by
+  // Socket first, the command queue second, but only once per episode. A post is queued by
   // the harness and read at the next tool boundary, so it reaches a session whose
   // pane is mid-tool, which is exactly the state a wedge probe finds. What it
   // cannot do is report its own outcome: `crossSessionInbound: refuse` drops the
@@ -1195,7 +1187,8 @@ async function doNudge(sessionName: string, watchdogState: Json, consecutive: nu
   // dialog, and a model may simply decline to act on the text — all three
   // look identical to a successful write. So the fallback is keyed on the effect
   // instead: if the NEXT due nudge still finds the heartbeat stale, the post did
-  // not work, whatever the wire said, and this one types. One rule covers dead,
+  // not work, whatever the wire said, and this one queues the heartbeat skill for the
+  // core mod, which runs it once the session is idle. One rule covers dead,
   // refused, held and declined, and costs one throttle window when the socket
   // path fails. Delivery, not dispatch, is what the alternation observes — and
   // `socketUndelivered` above is that same observation made a whole window
@@ -1207,8 +1200,11 @@ async function doNudge(sessionName: string, watchdogState: Json, consecutive: nu
   if (transport === 'sent') {
     watchdogState.last_nudge_transport = 'socket';
   } else {
-    watchdogState.last_nudge_transport = 'typed';
-    sendKeys(sessionName, '/hermitd:heartbeat run');
+    const queued = queueHarness(REAL_WORLD, watchdogState, 'nudge', {
+      source: 'watchdog', purpose: 'nudge', commands: [{ command: '/hermitd:heartbeat', arg: 'run' }],
+    });
+    watchdogState.last_nudge_transport = queued.ok ? 'queued' : null;
+    if (!queued.ok) appendEvent('nudge-skipped', queued.reason);
   }
   // The first due nudge of an episode is silent: wake, log, push nothing. The
   // "hasn't responded" string fires at most once, and only after the wake has
@@ -1225,7 +1221,7 @@ async function doNudge(sessionName: string, watchdogState: Json, consecutive: nu
   writeWatchdogState(watchdogState);
   const via = watchdogState.last_nudge_transport === 'socket' ? 'nudge-socket' : 'nudge';
   appendEvent(via, socketUndelivered ? `stale cycle ${consecutive} — socket undelivered` : `stale cycle ${consecutive}`);
-  process.stderr.write(`[watchdog] nudged "${sessionName}" via ${watchdogState.last_nudge_transport} (stale cycle ${consecutive})\n`);
+  process.stderr.write(`[watchdog] nudged "${sessionName}" via ${watchdogState.last_nudge_transport ?? 'nothing'} (stale cycle ${consecutive})\n`);
   if (notify) pushOperatorMessage(composeWedgeMessage(timezone));
 }
 
@@ -1314,9 +1310,9 @@ function registeredPluginVersion(command: unknown, world: World): string | null 
 
 /**
  * Re-arm a heartbeat/routine Monitor that died mid-session, detected via its stale
- * liveness file. Injects only the dead monitor's re-arm command (both are in
- * record-operator-action's INJECTED_EXACT, so neither stamps the operator-activity
- * clock).
+ * liveness file. Queues only the dead monitor's re-arm skill for the core mod (a
+ * command of the mod's in-flight request never stamps the operator-activity clock,
+ * see record-operator-action.ts).
  */
 async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive: boolean, operatorGraceSecs: number, world: World = REAL_WORLD): Promise<void> {
   const bootId = readBootId(world.paths.hermitRoot);
@@ -1392,6 +1388,7 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
   if (!heartbeatStale && !routineStale) return;
 
   const state = readWatchdogState(world);
+  if (harnessRequests(state).rearm) return; // the last re-arm has not reported back yet
   const lastRearm =
     state.last_monitor_rearm && typeof state.last_monitor_rearm === 'object' && !Array.isArray(state.last_monitor_rearm)
       ? state.last_monitor_rearm
@@ -1403,12 +1400,18 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
 
   if (!passesExecutionBoundary(world.paths.hermitRoot).ok) return;
 
-  // `load` arms both monitors, so a both-stale pass is one injection: sending
+  // `load` arms both monitors, so a both-stale pass is one request: queuing
   // `heartbeat start` behind it would load a second skill body only to be told the
   // leg it re-registers is already FRESH. A heartbeat-only staleness still takes the
   // cheaper single-leg skill.
-  if (doRoutines) world.tmux.send(sessionName, '/hermitd:hermit-routines load');
-  else if (doHeartbeat) world.tmux.send(sessionName, '/hermitd:heartbeat start');
+  const queued = queueHarness(world, state, 'rearm', {
+    source: 'watchdog', purpose: 'monitor-rearm',
+    commands: [doRoutines ? { command: '/hermitd:hermit-routines', arg: 'load' } : { command: '/hermitd:heartbeat', arg: 'start' }],
+  });
+  if (!queued.ok) {
+    appendEvent('monitor-rearm-skipped', queued.reason, world);
+    return;
+  }
 
   const stamp = utcStamp(new Date(world.clock.nowMs()));
   if (doHeartbeat) lastRearm.heartbeat = stamp;
@@ -1445,23 +1448,20 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
   if (reason === 'quiet' && typeof previous?.last_trigger?.reset_at === 'string'
     && previous.last_trigger.reset_at === runtime.last_context_reset_at
     && quietAge! * 1000 >= now - Date.parse(runtime.last_context_reset_at)) return 'already-triggered';
-  const state = readWatchdogState(world);
-  const hash = getPaneHash(guard.sessionName, world);
-  const stable = hash !== null && state.last_pane_hash_standalone === hash;
-  state.last_pane_hash_standalone = hash;
-  writeWatchdogState(state, world);
   if (!reason) return null;
-  if (!stable) return 'quiescence-pending';
+  const state = readWatchdogState(world);
+  if (harnessRequests(state).clear) return 'request-pending';
   if (!tryAcquireLifecycleLock(world)) return 'lock-held';
+  let queued: Queued;
   try {
-    applyContextReset(world.paths.hermitRoot, runtime, {
-      kind: 'cleared', trigger: `clear:${reason}`,
-      hhmm: nowHHMM(config.timezone ?? 'UTC', new Date(now)),
+    queued = queueHarness(world, state, 'clear', {
+      source: 'watchdog', purpose: 'watchdog-clear', trigger: `clear:${reason}`, commands: [{ command: '/clear', arg: null }],
     });
-    world.tmux.send(guard.sessionName, '/clear');
   } finally { releaseLock(lifecycleLockPath(world)); }
-  const postReset = readRuntimeJson(world.paths.stateDir);
-  world.files.writeJson(file, { policy_hash: policyHash, last_trigger: { reason, reset_at: postReset?.last_context_reset_at ?? null } });
+  if (!queued.ok) return queued.reason === 'mod-not-loaded' ? 'mod-not-loaded' : `lifecycle:${queued.reason}`;
+  writeWatchdogState(state, world);
+  // The resident's SessionStart fills reset_at once the clear has actually happened.
+  world.files.writeJson(file, { ...(previous ?? {}), last_trigger: { reason } });
   appendEvent('context-clear', `clear:${reason}`, world);
   return `clear:${reason}`;
 }
@@ -1470,7 +1470,7 @@ export function maybeStandaloneClear(config: Json, world: World = REAL_WORLD): s
 
 /** Discriminated result for passesLifecycleGuards — the reason string feeds
  *  last_hygiene_eval so a starved hygiene tier is diagnosable from state alone. */
-export type GuardReason = 'paused' | 'interactive' | 'transition' | 'shutdown-stamp' | 'no-tmux' | 'operator-recent';
+export type GuardReason = 'paused' | 'interactive' | 'transition' | 'shutdown-stamp' | 'no-tmux' | 'operator-recent' | 'mod-not-loaded';
 export type GuardResult = { ok: true; sessionName: string } | { ok: false; reason: GuardReason };
 
 /**
@@ -1579,7 +1579,8 @@ export type HygieneOutcome =
   | 'skip:below-floor'
   | 'skip:interval-cooldown'
   | 'skip:already-processed'
-  | 'skip:quiescence-pending'
+  | 'skip:request-pending'
+  | 'skip:mod-not-loaded'
   | `skip:boundary:${BoundaryReason}`
   | 'skip:lock-held';
 
@@ -1640,8 +1641,7 @@ function stampStandaloneClearEval(world: World, outcome: string): void {
 
 /** stamped() for a branch that already holds a loaded watchdogState. Not stamped()
  *  itself: that re-reads state from disk, which would drop whatever the caller has
- *  already mutated in memory but not yet written — a freshly recorded pane hash,
- *  say — and silently cost a quiescence tick. */
+ *  already mutated in memory but not yet written. */
 function stampedState(world: World, ws: Json, outcome: HygieneOutcome, promptTokensVal?: number, compactibleVal?: number): HygieneOutcome {
   setHygieneEval(world, ws, outcome, promptTokensVal, compactibleVal);
   writeWatchdogState(ws, world);
@@ -1667,12 +1667,11 @@ const COMPACT_MARKER_TTL_SECS = 3600;
  * itself — pointers survive via startup-context.ts's SessionStart source==="compact"
  * section (PROP-011 commit 2), which fires on every compaction including this one.
  *
- * Guards: always-on/transition/shutdown/operator-recency, cost-log token read,
- * two-tick pane quiescence, its own min_interval cooldown (waivable by a fresh
- * boundary marker, never by an absolute floor), a midnight-adjacency suppression
- * (skip right before the post-close /clear would wipe the context anyway), and its
- * own quiescence/idempotence state keys so its tracker never collides with the
- * standalone clear's.
+ * Guards: always-on/transition/shutdown/operator-recency, cost-log token read, its own
+ * min_interval cooldown (waivable by a fresh boundary marker, never by an absolute
+ * floor), the execution boundary, and one outstanding request. The compaction itself
+ * is queued for the core mod; its success stamps land only when a later tick reads an
+ * `ok` outcome (readHarnessOutcomes), so a failed or uncertain one stays due.
  */
 export function maybeContextCompact(config: Json, world: World = REAL_WORLD): HygieneOutcome | null {
   const compactCfg = config.context_hygiene?.compact;
@@ -1688,14 +1687,10 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
 
   const guard = passesLifecycleGuards(runtime, world);
   if (!guard.ok) return stamped(world, `skip:lifecycle:${guard.reason}`);
-  const sessionName = guard.sessionName;
 
   // Boundary marker: a fresh marker keeps its interval-cooldown waiver until the
-  // compact it enables actually fires (deleted in the success block below). The
-  // two-tick quiescence gate lands a full tick after this read, so a fresh marker
-  // consumed here would be gone before the pane is confirmed stable — wasting the
-  // waiver in exactly the interval-cooldown case it exists for. A stale marker is
-  // consumed on read so it can never linger into a later tick/arc.
+  // compact it enables is reported done (readHarnessOutcomes deletes it then). A stale
+  // marker is consumed on read so it can never linger into a later tick/arc.
   let boundaryWaive = false;
   const markerPath = path.join(world.paths.stateDir, 'compact-requested.json');
   const marker = world.files.readJson(markerPath);
@@ -1739,20 +1734,10 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
   if (compactible <= threshold) return stamped(world, 'skip:under-threshold', prompt, compactible);
 
   const watchdogState = readWatchdogState(world);
-
-  // Quiescence tracking: record the pane hash on every qualifying tick, independent
-  // of whether interval/idempotence will end up blocking. If recording were gated
-  // behind those checks, a single interval-blocked tick would erase the "pane
-  // observed stable" progress and cost an extra tick once the interval reopened
-  // (e.g. via a boundary marker) — even though the pane never actually moved.
-  // Own hash key (last_pane_hash_compact) so this tracker never collides with
-  // maybeStandaloneClear's (last_pane_hash_standalone); both can be mid-cycle at once.
-  const currentHash = getPaneHash(sessionName, world);
-  const prevHash = watchdogState.last_pane_hash_compact ?? null;
-  const paneStable = currentHash !== null && currentHash === prevHash;
-  if (currentHash !== prevHash) {
-    watchdogState.last_pane_hash_compact = currentHash;
-    writeWatchdogState(watchdogState, world);
+  // One compaction at a time, and none behind a clear that is about to wipe the context.
+  const pendingRequests = harnessRequests(watchdogState);
+  if (pendingRequests.compact || pendingRequests.clear) {
+    return stampedState(world, watchdogState, 'skip:request-pending', prompt, compactible);
   }
 
   // Interval cooldown — waived only by a fresh boundary marker
@@ -1768,29 +1753,24 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
     return stampedState(world, watchdogState, 'skip:already-processed', prompt, compactible);
   }
 
-  if (!paneStable) {
-    return stampedState(world, watchdogState, 'skip:quiescence-pending', prompt, compactible);
-  }
-
-  // A still pane can be a dialog (a subagent's permission prompt included): the typed
-  // Enter below would answer it. Same boundary the standalone /clear honours.
+  // Same boundary the standalone /clear honours; the mod re-checks it when it claims.
   const boundary = passesExecutionBoundary(world.paths.hermitRoot);
   if (!boundary.ok) {
     return stampedState(world, watchdogState, `skip:boundary:${boundary.reason}`, prompt, compactible);
   }
 
-  // Pane stable across two ticks — safe to compact
   if (!tryAcquireLifecycleLock(world)) {
     return stampedState(world, watchdogState, 'skip:lock-held', prompt, compactible);
   }
   try {
-    world.tmux.send(sessionName, composeCompactSteeringMessage());
-    watchdogState.last_compacted_cost_ts = lastEntry.timestamp;
-    watchdogState.last_compacted_at = worldStamp(world);
-    watchdogState.last_pane_hash_compact = null; // reset so next bloat cycle re-arms
+    const queued = queueHarness(world, watchdogState, 'compact', {
+      source: 'watchdog', purpose: 'watchdog-compact', commands: [{ command: '/compact', arg: composeCompactSteeringMessage() }],
+    }, { cost_ts: lastEntry.timestamp });
+    if (!queued.ok) {
+      return stampedState(world, watchdogState, queued.reason === 'mod-not-loaded' ? 'skip:mod-not-loaded' : `skip:lifecycle:${queued.reason}`, prompt, compactible);
+    }
     setHygieneEval(world, watchdogState, 'fired', prompt, compactible);
     writeWatchdogState(watchdogState, world);
-    world.files.rm(markerPath); // consume the boundary waiver now that it fired
     // Both token counts travel in the event so the next cost-log entry gives a
     // before/after for free — feeds /hermit-evolution and threshold calibration.
     appendEvent('context-compact', `prompt tokens ${prompt} (compactible ~${compactible}) over threshold ${threshold}, cc_session_id ${sessionId}`, world);
@@ -1805,10 +1785,13 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
 // --- Pause enforcement (PROP-015) ---
 
 /**
- * Escape-to-pane while paused. The PreToolUse gate (pause-gate.ts) blocks the
- * model's *next* tool call the instant state/pause.json is set, but the
- * currently in-flight call (if any) runs to completion — tmux Escape kills it
- * immediately (probe-verified: compiled/spike-channel-stop-probe-2026-07-03.md).
+ * Abort the running turn while paused. The PreToolUse gate (pause-gate.ts) blocks the
+ * model's *next* tool call the instant state/pause.json is set, but the currently
+ * in-flight call (if any) runs to completion. A `pause` request makes the core mod end
+ * that turn natively (`$.turn.abort`), ahead of any other queued work and even mid-turn:
+ * an open permission prompt or question closes unanswered, and later commands keep
+ * working, which an Escape keystroke would not allow. A running foreground Bash moves
+ * to the background rather than being killed.
  * Runs independent of watchdog.enabled, like 0a-0c — pause must interrupt
  * whether or not wedge-detection/nudging is turned on.
  *
@@ -1818,37 +1801,43 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
  * "stop" is responding to.
  *
  * One-shot per pause episode: setPause() stamps a fresh `ts` on every call, so
- * comparing against the last-escaped ts (persisted in watchdog-state.json)
- * sends Escape once per pause, not every tick — repeat Escapes would also
+ * comparing against the last-handled ts (persisted in watchdog-state.json)
+ * queues one abort per pause, not one per tick: repeat aborts would also
  * interrupt the reply the paused hermit is still allowed to send.
  */
-function maybeEscapePausedSession(timezone: string): void {
-  const status = isPaused(HERMIT_ROOT);
+function maybeAbortPausedTurn(timezone: string, world: World = REAL_WORLD): void {
+  const status = isPaused(world.paths.hermitRoot);
   if (!status.paused) return;
 
-  const runtime = readRuntimeJson();
+  const runtime = readRuntimeJson(world.paths.stateDir);
   if (!runtime) return;
   if (runtime.runtime_mode === 'interactive') return; // never auto-manage an attended session
   if (runtime.transition) return; // archiving/cleaning recovery mid-flight
   if (runtime.shutdown_requested_at || runtime.shutdown_completed_at) return;
-  if (readExecution(HERMIT_ROOT).state === 'idle') return; // nothing in flight
+  if (readExecution(world.paths.hermitRoot).state === 'idle') return; // nothing in flight
 
   const sessionName: string = runtime.tmux_session ?? '';
-  if (!sessionName || !tmuxSessionAlive(sessionName)) return;
+  if (!sessionName || !world.tmux.alive(sessionName)) return;
 
-  const watchdogState = readWatchdogState();
+  const watchdogState = readWatchdogState(world);
   // Dedup per pause episode by the flag's `ts`. Fall back to a fixed sentinel
   // for a ts-less flag (hand-crafted/partial write) so the guard still fires
   // exactly once — a bare `status.ts` comparison would read undefined === undefined
-  // as "already escaped" on the first tick and skip the interrupt entirely.
+  // as "already handled" on the first tick and skip the abort entirely.
   const episodeKey = status.ts ?? 'no-ts';
-  if (watchdogState.last_escaped_pause_ts === episodeKey) return; // already escaped this episode
+  if (watchdogState.last_escaped_pause_ts === episodeKey) return; // already handled this episode
 
-  spawnSync('tmux', ['send-keys', '-t', sessionName, 'Escape'], { stdio: 'ignore' });
-  watchdogState.last_escaped_pause_ts = episodeKey;
-  writeWatchdogState(watchdogState);
-  appendEvent('pause-enforced', status.reason ?? 'operator');
-  pushOperatorMessage(composePauseMessage(status.reason ?? 'operator', status.until ?? null, timezone));
+  // The abort counts as handled only once queued; a skipped enqueue retries on later
+  // ticks, while the notice and event stay once per episode.
+  const queued = queueHarness(world, watchdogState, 'pause', { source: 'pause', commands: [] });
+  const firstNotice = watchdogState.last_pause_notice_ts !== episodeKey;
+  if (queued.ok) watchdogState.last_escaped_pause_ts = episodeKey;
+  if (firstNotice) watchdogState.last_pause_notice_ts = episodeKey;
+  if (queued.ok || firstNotice) writeWatchdogState(watchdogState, world);
+  if (!firstNotice) return;
+  if (!queued.ok) appendEvent('pause-abort-skipped', queued.reason, world);
+  appendEvent('pause-enforced', status.reason ?? 'operator', world);
+  world.notify.operator(composePauseMessage(status.reason ?? 'operator', status.until ?? null, timezone));
 }
 
 // --- Main decision loop ---
@@ -1863,7 +1852,7 @@ type Snapshot = {
   liveness: LivenessVerdict;
   resident: SessionEntry | null;
   sessionEnvAuth: boolean | null;
-  paneContent: string | null;
+  authFailed: boolean;
   authLapsed: boolean;
   envAuthFailing: boolean;
   registryWaiting: boolean;
@@ -1895,14 +1884,21 @@ function buildSnapshot({ world, config }: TickContext): Snapshot | null {
   const sessionName = runtime.tmux_session ?? '';
   if (!sessionName) return null;
   const liveness = observeLiveness(world, runtime, sessionName);
-  const paneContent = liveness.state === 'alive' ? world.tmux.capture(sessionName) : null;
-  const paneAuthFailure = paneContent !== null && hasLapsedLogin(paneContent);
-  const authLapsed = paneAuthFailure && !envAuthOwnsCredential(sessionEnvAuth);
-  const envAuthFailing = paneAuthFailure && envAuthOwnsCredential(sessionEnvAuth);
+  // A lapsed login is the failed turn's structured error, never pane text: Claude Code
+  // stamps `authentication_failed` for an expired login, a dead setup token and an
+  // invalid API key alike. Only this session's stamp counts; an earlier session's
+  // failure says nothing about the credential running now.
+  const stamp = readStopFailureStamp(world);
+  const authFailed = liveness.state === 'alive' && stamp?.error === 'authentication_failed'
+    && typeof runtime.cc_session_id === 'string' && stamp.session_id === runtime.cc_session_id;
+  const authLapsed = authFailed && !envAuthOwnsCredential(sessionEnvAuth);
+  const envAuthFailing = authFailed && envAuthOwnsCredential(sessionEnvAuth);
+  // A pending dialog is the session's own status. Bounded, so a dialog nobody answers
+  // for a day lets the pane-frozen restart reclaim the session.
   const registryWaiting = resident?.status === 'waiting' && world.clock.nowMs() - resident.statusUpdatedAt < 24 * 3600 * 1000;
-  const pendingQuestion = (paneContent !== null && hasPendingQuestion(paneContent)) || registryWaiting;
+  const pendingQuestion = registryWaiting;
   return {
-    runtime, sessionName, liveness, resident, sessionEnvAuth, paneContent,
+    runtime, sessionName, liveness, resident, sessionEnvAuth, authFailed,
     authLapsed, envAuthFailing, registryWaiting, pendingQuestion, watchdogCfg,
     staleFactor: watchdogCfg.stale_factor ?? 2,
     escalateAfter: watchdogCfg.escalate_after ?? 3,
@@ -1941,8 +1937,12 @@ async function telemetryExport({ world, config }: TickContext): Promise<Decision
 }
 
 const MAINTENANCE: Decision<TickContext>[] = [
-  { id: 'pause-escape', run: ({ timezone }) => {
-    maybeEscapePausedSession(timezone);
+  { id: 'harness-outcomes', run: ({ world }) => {
+    readHarnessOutcomes(world);
+    return 'continue';
+  } },
+  { id: 'pause-abort', run: ({ world, timezone }) => {
+    maybeAbortPausedTurn(timezone, world);
     return 'continue';
   } },
   { id: 'standalone-clear', run: ({ world, config }) => {
@@ -1980,7 +1980,7 @@ async function deadSession({ world, timezone, snap }: RecoveryContext): Promise<
 }
 
 async function auth({ world, config, timezone, snap }: RecoveryContext): Promise<DecisionResult> {
-  const { sessionEnvAuth, paneContent, authLapsed, envAuthFailing } = snap;
+  const { sessionEnvAuth, authFailed, authLapsed, envAuthFailing } = snap;
   // 3a. Re-auth relay — runs after dead-session restart on purpose (see the
   // block comment above evaluateReauth). While a relay is in flight the session
   // can't do useful work, so the nudge/wedge tiers below are suppressed: they'd
@@ -1999,9 +1999,9 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
   // WITH a working channel is now recoverable (evaluateReauth spawns the relay above
   // and returns 'spawned'), so mode is no longer what decides whether help is possible.
   //
-  // Re-arming is keyed on a usable credential returning, never on the pane clearing.
-  // Two reasons, both observed: the error scrolls off as soon as anything else renders,
-  // and a failed refresh rewrites .credentials.json into an empty stub — so mtime moves
+  // Re-arming is keyed on a usable credential returning, never on the stamp clearing.
+  // Two reasons, both observed: a healthy turn deletes the stamp without proving the
+  // credential, and a failed refresh rewrites .credentials.json into an empty stub — so mtime moves
   // and the file still exists while the hermit stays just as dead. `notified_at` also
   // ages out after a day, so a lapse nobody has fixed says so again tomorrow rather
   // than going quiet forever.
@@ -2012,7 +2012,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     const stale = age === null || age > 24 * 3600;
     if (stale) {
       world.notify.operator(composeLapsedLoginMessage(timezone));
-      appendEvent('lapsed-login-detected', notifiedAt ? 'still lapsed after 24h' : 'auth failure on pane, no token to mint', world);
+      appendEvent('lapsed-login-detected', notifiedAt ? 'still lapsed after 24h' : 'auth failure reported, no token to mint', world);
       ws.lapsed_login_notified_at = worldStamp(world);
       writeWatchdogState(ws, world);
     }
@@ -2036,7 +2036,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     const age = notifiedAt ? ageSecs(notifiedAt, world) : null;
     if (age === null || age > 24 * 3600) {
       world.notify.operator(composeEnvAuthFailureMessage(timezone));
-      appendEvent('env-auth-failure-detected', notifiedAt ? 'credential still rejected after 24h' : 'auth failure on pane, credential owned by the session env', world);
+      appendEvent('env-auth-failure-detected', notifiedAt ? 'credential still rejected after 24h' : 'auth failure reported, credential owned by the session env', world);
       ws.env_auth_failure_notified_at = worldStamp(world);
       writeWatchdogState(ws, world);
     }
@@ -2045,19 +2045,19 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
   }
 
   // Both recoveries share one state read. This point is reached on every ordinary healthy
-  // tick, and `!hasLapsedLogin(paneContent)` already forces `authLapsed` false — the one
+  // tick, and no auth stamp for this session already forces `authLapsed` false, the one
   // case where it would not is envAuthFailing, which exited above — so reading the file
   // once per check billed the common path twice for nothing.
   //
-  // A cleared pane is the only recovery signal available for the env-auth stamp: there is
-  // no storedLoginUsable() equivalent for a key held in the operator's shell, which the
-  // watchdog cannot see even when it is working.
+  // No auth stamp for this session is the only recovery signal available for the env-auth
+  // notice: there is no storedLoginUsable() equivalent for a key held in the operator's
+  // shell, which the watchdog cannot see even when it is working.
   if (!authLapsed) {
     const ws = readWatchdogState(world);
     let recovered = false;
-    if (paneContent !== null && !hasLapsedLogin(paneContent) && ws.env_auth_failure_notified_at) {
+    if (!authFailed && ws.env_auth_failure_notified_at) {
       delete ws.env_auth_failure_notified_at;
-      appendEvent('env-auth-failure-recovered', 'pane no longer shows an auth failure', world);
+      appendEvent('env-auth-failure-recovered', 'no auth failure reported for this session', world);
       recovered = true;
     }
     // Login mode only: a token hermit keeps its old stored login on the volume, and
@@ -2090,31 +2090,28 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
 }
 
 function stallQuestion({ world, timezone, snap }: RecoveryContext): DecisionResult {
-  const { paneContent, registryWaiting, pendingQuestion } = snap;
+  const { resident, pendingQuestion } = snap;
   // 3b. Stall-question detection (PROP-024) — catches the un-redirectable remainder
   // the AskUserQuestion PreToolUse gate (ask-gate.ts) can't reach: native permission
   // dialogs and harness-rendered prompts below the tool layer. Notify only, once per
-  // episode (re-arms when the pane clears) — never auto-answer or send Escape, that's
+  // episode (re-arms when the dialog closes) — never auto-answer or abort, that's
   // always the operator's call.
   //
-  // The registry's `waiting` status is the shape-independent second trigger:
-  // the harness sets it for any permission dialog, so a modal whose footer the
-  // pane scanner above doesn't recognise — a future CC release's, or one that
-  // scrolled — is still caught, and caught by the session's own account of
-  // itself rather than by a regex over rendered text.
+  // The signal is the registry's `waiting` status: the harness sets it for any
+  // permission dialog, question, setup wizard or modal, so a future CC release's
+  // dialog is caught by the session's own account of itself rather than by a regex
+  // over rendered text. `waitingFor` says which one, and the notice names it.
   //
-  // Bounded, unlike the pane leg. Both suppress the restart tiers below, but the
-  // pane leg fires on modals the operator is watching, while this one fires on the
-  // ones nothing else recognises — where step 10's pane-frozen restart used to be
-  // the only thing that ever cleared them on an unattended hermit. `statusUpdatedAt`
-  // dates the current state, so it is the dialog's own age: honour it for a day,
-  // then let that tier reclaim the session.
+  // Bounded: it suppresses the restart tiers below, and on an unattended hermit the
+  // pane-frozen restart is the only thing that ever clears a dialog nobody answers.
+  // `statusUpdatedAt` dates the current state, so it is the dialog's own age: honour
+  // it for a day, then let that tier reclaim the session.
   const watchdogState = readWatchdogState(world);
   if (pendingQuestion) {
     if (!watchdogState.stall_question_notified) {
-      const paneTail = paneContent !== null ? nonBlankTail(paneContent, 8) : undefined;
-      world.notify.operator(composeStallQuestionMessage(timezone, OPERATOR_LOCALE, paneTail));
-      appendEvent('stall-question-detected', registryWaiting ? 'pending dialog, session alive — via registry' : 'pending dialog on pane, session alive', world);
+      const waitingFor = typeof resident?.waitingFor === 'string' && resident.waitingFor ? resident.waitingFor : undefined;
+      world.notify.operator(composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
+      appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? `: ${waitingFor}` : ''}`, world);
       watchdogState.stall_question_notified = true;
       writeWatchdogState(watchdogState, world);
     }
@@ -2137,7 +2134,7 @@ function snapshotTranscript(snap: Snapshot, world: World): string | null {
 
 function queueWedge({ world, timezone, snap }: RecoveryContext): DecisionResult {
   // 3c. Queue-liveness wedge detection — the shape-independent net behind 3b. Whatever
-  // holds stdin (a dialog 3b's pane scanner doesn't recognise, a modal from a future CC
+  // holds stdin (a dialog the registry does not report, a modal from a future CC
   // release), the harness keeps enqueueing monitor notifications it never dequeues.
   // Alert-only, deduped like 3b: the operator decides how to clear it, and sending keys
   // into an unknown blocker is exactly the auto-answer 3b refuses to do.
@@ -2146,9 +2143,8 @@ function queueWedge({ world, timezone, snap }: RecoveryContext): DecisionResult 
   // draining". A stopped hermit's last transcript record is often a trailing enqueue that was
   // never drained, which classifies as 'wedged' forever. This tier used to reach that case
   // only because the idle gate above exited first; now that it doesn't, the aliveness
-  // condition this tier always documented has to actually be tested. 3b needs no equivalent —
-  // capturePane returns null on a dead session and the `paneContent !== null` check catches it.
-  // Reuses step 3's has-session verdict.
+  // condition this tier always documented has to actually be tested. Reuses step 3's
+  // has-session verdict.
   if (snap.liveness.state === 'alive') {
     // `cc_session_id` — the CC transcript UUID that names the .jsonl file.
     const tail = snapshotTranscript(snap, world);
@@ -2226,13 +2222,11 @@ function apiFailure({ world, timezone, snap }: RecoveryContext): DecisionResult 
 }
 
 function pendingQuestionStop({ snap }: RecoveryContext): DecisionResult {
-  // A pane stalled on a pending prompt is not a wedge — the operator has just been
-  // notified above (once per episode). Stop here: never fall through to the wedge
-  // nudge (step 4) or the monitor re-arm (step 5), both of which send keystrokes
-  // into the pane. On a focused permission / AskUserQuestion modal those keystrokes
-  // (a command string then Enter) would confirm the highlighted default option, or
-  // the pane-frozen restart path would kill the session outright — either way
-  // auto-answering a decision that is always the operator's to make.
+  // A session waiting on a pending prompt is not a wedge — the operator has just been
+  // notified above (once per episode). Stop here: the wedge nudge (step 4) and the
+  // monitor re-arm (step 5) would only queue work behind the dialog, and the
+  // pane-frozen restart path would kill the session outright — auto-deciding what is
+  // always the operator's to make.
   if (snap.pendingQuestion) return 'stop';
 
   return 'continue';

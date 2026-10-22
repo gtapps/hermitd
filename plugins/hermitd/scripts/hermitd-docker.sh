@@ -175,26 +175,10 @@ _require_core_version_at_least() {
   fi
 }
 
-# Poll tmux pane for the Claude Code REPL input box. The exact rendering varies by
-# CC version / TUI / terminal width, so match the prompt char ❯ plus ANY structural
-# marker of the rendered input box: a horizontal rule (──── or older ╭─/╰─ corners)
-# OR the always-present mode/shortcuts hint line. Verified live against CC 2.1.175,
-# whose box is ──── rules + ❯ + "shift+tab to cycle" (the old ╭─/╰─-only check never
-# matched it). A bash prompt or the trust dialog has none of these markers, so this
-# won't fire prematurely. Returns 0 when ready, 1 after 60s timeout.
-_wait_for_claude_prompt() {
-  local i pane tail8
-  for i in $(seq 1 30); do
-    pane=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-      tmux capture-pane -p -t "$TMUX_SESSION:0.0" 2>/dev/null || true)
-    tail8=$(printf '%s\n' "$pane" | tail -8)
-    if printf '%s\n' "$tail8" | grep -qF '❯' \
-       && printf '%s\n' "$tail8" | grep -qE '────────|╭─|╰─|to cycle|for shortcuts|for agents'; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
+# Queue a harness command for the resident's core mod inside the container
+# (`harness-request`); prints its JSON verdict, or nothing if the container is unreachable.
+_harness_request() {
+  (cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run harness-request "$@" </dev/null 2>/dev/null) || true
 }
 
 _get_plugin_count() {
@@ -307,39 +291,14 @@ case "$CMD" in
     fi
 
     if [ "$FORCE" = false ]; then
-      SHUTDOWN_SKILL=$(jq -r '.shutdown_skill // empty' "$PROJECT_DIR/.hermit/config.json")
-      SENT_AT=""
-
-      echo "[hermit] Waiting for execution to settle (up to 60s)..."
-      CLOSED=false
-      for i in $(seq 1 60); do
-        if bun -e '
-          try {
-            const execution = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            process.exit(typeof execution.state === "string" && execution.state !== "in_flight"
-              && (!process.argv[2] || Date.parse(execution.at) > Number(process.argv[2])) ? 0 : 1);
-          } catch { process.exit(1); }
-        ' "$PROJECT_DIR/.hermit/state/execution.json" "$SENT_AT"; then
-          if [ -z "$SHUTDOWN_SKILL" ] || [ -n "$SENT_AT" ]; then
-            echo "[hermit] Execution settled after ${i}s."
-            CLOSED=true
-            break
-          fi
-          # Typed only once no turn is running: typed mid-turn, that turn's own end
-          # would satisfy this wait before the skill ran.
-          SENT_AT=$(bun -e 'console.log(Date.now())')
-          # Submit text and Enter separately so the TUI does not treat Enter as paste.
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" "$SHUTDOWN_SKILL" 2>/dev/null || true
-          sleep 0.5
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" Enter 2>/dev/null || true
-        fi
-        sleep 1
-      done
-      if [ "$CLOSED" = false ]; then
-        echo "[hermit] Timed out waiting for graceful close; forcing stop." >&2
-      fi
+      # The resident runs its shutdown skill through the core mod and settles that turn.
+      # The entrypoint's SIGTERM cleanup finds this same operation and does not run it again.
+      echo "[hermit] Running the graceful shutdown (up to 60s)..."
+      SHUTDOWN_OUT=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run graceful-shutdown --timeout 60 </dev/null 2>/dev/null || true)
+      case "$SHUTDOWN_OUT" in
+        *'"status":"settled"'*) echo "[hermit] Execution settled." ;;
+        *) echo "[hermit] Timed out waiting for graceful close; forcing stop." >&2 ;;
+      esac
     fi
 
     echo "[hermit] Stopping Docker container..."
@@ -655,31 +614,15 @@ case "$CMD" in
       PLUGIN_ROWS_AFTER=$(_enumerate_plugins)
       PLUGIN_ERRORS_AFTER=$(_enumerate_plugin_errors)
 
-      # Apply in the running session — tmux send-keys on a pane that hasn't reached the
-      # REPL yet goes to bash, not the skill queue, so wait for the prompt box first.
-      if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
-        echo "[hermit] Waiting for Claude Code prompt (up to 60s)..."
-        if _wait_for_claude_prompt; then
-          echo "[hermit] Sending /reload-plugins..."
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" "/reload-plugins" 2>/dev/null || \
-            echo "[hermit] Warning: could not reach tmux session — /reload-plugins not sent" >&2
-          sleep 0.5
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" Enter 2>/dev/null || true
-          RELOAD_PLUGINS_SENT=true
-        else
-          echo "[hermit] Warning: claude prompt not detected after 60s — /reload-plugins was not sent." >&2
-          echo "[hermit]          Pins are already updated (durable); run /reload-plugins after: hermitd attach" >&2
-        fi
-      fi
     fi
 
-    # Auto-chain hermit-evolve when any registered hermit (core or sibling) has a version gap.
+    # Apply in the running session through the core mod's queue, which waits for the resident
+    # to be idle and never answers an open dialog. With a hermit version gap (core or
+    # sibling) one batch runs /reload-plugins then hermit-evolve; a reload that does not
+    # complete keeps evolve from running.
     # PLUGIN_ROWS_AFTER is a TSV where $1=name@marketplace and $3=version (different from
     # hermitd-update's $2/$4 layout). Detects sibling-only bumps as well as core bumps.
-    if [ "$CC_ONLY" = false ] && [ "$RELOAD_PLUGINS_SENT" = true ]; then
-      # Check whether any registered hermit has a version gap (core or sibling).
+    if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
       # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
       # while evolve stamps the bare version, so the suffix is dropped before comparing.
       EXPECT_ROWS=$(bun -e '
@@ -708,19 +651,28 @@ case "$CMD" in
       for _fid in "${PLUGINS_FAIL_IDS[@]:-}"; do
         case "$_fid" in hermitd@*) CORE_FAILED=true ;; esac
       done
+      # The new core version the reloaded mod copy reports, so a reload that replaces the
+      # mod is recognised by that copy and the evolve leg still runs once.
+      CORE_VERSION=$(printf '%s\n' "$PLUGIN_ROWS_AFTER" | awk -F'\t' '$1 ~ /^hermitd@/ { print $3; exit }' | sed -E 's/-[0-9a-f]{12}$//')
+      REQUEST_ARGS=(/reload-plugins)
+      BATCH=false
       if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
-        echo "[hermit] Hermit gap detected (core or sibling). Chaining hermit-evolve (unattended)..."
-        if _wait_for_claude_prompt; then
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" "/hermitd:hermit-evolve unattended" 2>/dev/null || true
-          sleep 0.5
-          cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            tmux send-keys -t "$TMUX_SESSION:0.0" Enter 2>/dev/null || true
-          EVOLVE_SENT=true
-        else
-          echo "[hermit] Warning: prompt not detected — hermit-evolve not auto-started." >&2
-          echo "[hermit]          The pin is already durable; run /hermitd:hermit-evolve when you attach." >&2
-        fi
+        echo "[hermit] Hermit gap detected (core or sibling). Queuing /reload-plugins then hermit-evolve (unattended)..."
+        REQUEST_ARGS+=(--then /hermitd:hermit-evolve unattended)
+        BATCH=true
+      else
+        echo "[hermit] Queuing /reload-plugins..."
+      fi
+      [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
+      REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300)
+      IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
+      if [ "$REQUEST_STATUS" = ok ]; then
+        RELOAD_PLUGINS_SENT=true
+        EVOLVE_SENT=$BATCH
+      else
+        echo "[hermit] Warning: /reload-plugins did not complete ($REQUEST_STATUS${REQUEST_REASON:+: $REQUEST_REASON})." >&2
+        [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; run /hermitd:hermit-evolve after: hermitd attach" >&2
+        echo "[hermit]          Pins are already updated (durable); run /reload-plugins after: hermitd attach" >&2
       fi
     fi
 

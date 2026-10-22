@@ -189,7 +189,7 @@ Used when reflect has surfaced a sparse-cadence proposal as a resolution candida
    ```
    Do NOT set `dismissed_date`. When reflect's auto-resolve flow triggered this (pattern absent from recent sessions), the caller may append "Pattern confirmed absent." to the Decision line.
 
-   `--request-compact` writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton — overwrite unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence + quiescence guards).
+   `--request-compact` writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton — overwrite unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence and execution-boundary guards).
 
    `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
 4. Respond: "PROP-NNN resolved."

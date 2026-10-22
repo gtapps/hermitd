@@ -24,7 +24,7 @@
  * that declines to act on the text is equally unobservable. So callers must
  * never read 'sent' as
  * "delivered"; confirm the effect instead (the watchdog re-checks staleness on
- * the next tick and falls back to typing).
+ * the next tick and falls back to the core mod's command queue).
  */
 
 import net from 'node:net';

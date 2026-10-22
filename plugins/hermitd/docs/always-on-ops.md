@@ -10,7 +10,7 @@ tmux-based setup for running your hermit without Docker, plus the lifecycle refe
 | ------------------------ | ------------ | ------------------------------------------ |
 | **tmux**                 | Boot scripts | `brew install tmux` / `apt install tmux` — see [Installing tmux](https://github.com/tmux/tmux/wiki/Installing) for other platforms |
 | **Bun 1.4+**             | Hooks, scripts | Every hook and helper script runs on Bun |
-| **Claude Code v2.1.302+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.308+** | Channels, sandbox | Minimum supported version |
 
 tmux is required. Channels are optional.
 
@@ -77,7 +77,7 @@ Quiet hours and midnight never complete work. A task with a waiting reason remai
 
 ### Context clears
 
-`context_hygiene.clear` defaults to an hour of operator quiet, a maximum context age of 24 hours, and a floor of 20,000 compactible tokens. A policy change is another trigger. The watchdog sends `/clear` only after the execution boundary is safe and the pane is unchanged across two ticks. No model wake is needed and native monitors keep running. See [context hygiene](config-reference.md#context_hygiene) for fields and guards.
+`context_hygiene.clear` defaults to an hour of operator quiet, a maximum context age of 24 hours, and a floor of 20,000 compactible tokens. A policy change is another trigger. The watchdog queues `/clear` for the core mod only after the execution boundary is safe, and the mod runs it once the session is idle. No model wake is needed and native monitors keep running. See [context hygiene](config-reference.md#context_hygiene) for fields and guards.
 
 ### Background work
 
