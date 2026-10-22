@@ -276,6 +276,22 @@ test('a reload is confirmed from its own result when no transcript row arrives',
   expect(finalized(r)[0].legs.map((l: any) => l.status)).toEqual(['ok', 'ok']);
 });
 
+test('an unrecognized reload result is left to the transcript row', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('command.run', ($, e) => { r.commands.push(e.command); return e.command === 'reload-plugins' ? { text: '' } : {}; });
+  r.queue.push(entry('u', [{ command: '/reload-plugins', arg: null }, { command: '/hermitd:hermit-evolve', arg: 'unattended' }], { source: 'update' }));
+  await boot($);
+  await clock.advance(2000);
+  await clock.settle();
+  expect(r.payloads.leg).toBeUndefined();
+  await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: '<command-name>/reload-plugins</command-name><command-args></command-args>' }] }, door: 'command', origin: { kind: 'engine' }, uuid: 'x' } as any);
+  await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: '<local-command-stdout>Reloaded: 7 plugins</local-command-stdout>' }] }, door: 'command', origin: { kind: 'engine' }, uuid: 'y' } as any);
+  await clock.settle();
+  expect(r.commands).toEqual(['reload-plugins', 'hermitd:hermit-evolve']);
+  expect(finalized(r)[0].legs.map((l: any) => l.status)).toEqual(['ok', 'ok']);
+});
+
 test('a pass before the resident id is stamped is retried without SessionStart', async ($, on) => {
   const clock = mock.clock(on);
   let stamped = false;

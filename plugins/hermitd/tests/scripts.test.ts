@@ -519,7 +519,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor']) {
+  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
@@ -530,14 +530,14 @@ describe('hermitd-docker update plugin loop', () => {
         fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', name), dest);
         fs.chmodSync(dest, 0o755);
       }
-      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') || scenario === 'below-floor' ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
+      write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') || scenario.startsWith('below-floor') ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
       write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
       const stub = path.join(proj, '.stub');
       fs.mkdirSync(stub);
       const callsFile = path.join(stub, 'docker-calls.txt');
       const suffix = scenario === 'evolve-suffix' ? '-467be32f41fc' : '';
       const list = JSON.parse(listDuplicateScopes(proj, suffix));
-      if (scenario === 'below-floor') for (const p of list) p.installPath = `/cache/${p.id.split('@')[0]}/${p.version}`;
+      if (scenario.startsWith('below-floor')) for (const p of list) p.installPath = `/cache/${p.id.split('@')[0]}/${p.version}`;
       write(path.join(stub, 'list.json'), JSON.stringify(list));
       write(path.join(stub, 'docker'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
@@ -546,7 +546,7 @@ if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
 fi
 case "$*" in
-  *"hermit-meta.json"*) [ "$UPDATE_SCENARIO" != below-floor ] || echo '{"min_claude_code_version":">=2.1.308"}' ;;
+  *"hermit-meta.json"*) [[ "$UPDATE_SCENARIO" != below-floor* ]] || echo '{"min_claude_code_version":">=2.1.308"}' ;;
   *"await-upgrade"*)
     count=0
     [ ! -f "$DOCKER_STUB_CALLS.await" ] || read -r count < "$DOCKER_STUB_CALLS.await"
@@ -568,7 +568,7 @@ exit 0
 `);
       fs.chmodSync(path.join(stub, 'docker'), 0o755);
       const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
-        args: ['update', ...(scenario === 'plugins-only' ? ['--plugins-only'] : scenario === 'cc-only' ? ['--cc-only'] : []), '--yes'], cwd: proj,
+        args: ['update', ...(scenario === 'plugins-only' || scenario === 'below-floor-plugins-only' ? ['--plugins-only'] : scenario === 'cc-only' ? ['--cc-only'] : []), '--yes'], cwd: proj,
         env: {
           PATH: `${stub}:${process.env.PATH}`, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT,
           HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'),
@@ -582,15 +582,21 @@ exit 0
       expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
       const idx = (text: string) => calls.findIndex(l => l.includes(text));
       const timeout = scenario.includes('timeout');
-      expect(entry.restarted).toBe(!timeout);
-      expect(entry.await.status).toBe(timeout ? 'timeout' : 'ready');
-      expect(entry.image_built).toBe(!['plugins-only', 'timeout-first', 'evolve-timeout'].includes(scenario));
-      expect(idx(' down') >= 0).toBe(!timeout);
-      expect(idx(' up -d') >= 0).toBe(!timeout);
+      const blocked = scenario === 'below-floor-plugins-only';
+      expect(entry.restarted).toBe(!timeout && !blocked);
+      expect(entry.await.status).toBe(timeout ? 'timeout' : blocked ? 'blocked' : 'ready');
+      expect(entry.image_built).toBe(!['plugins-only', 'timeout-first', 'evolve-timeout', 'below-floor-plugins-only'].includes(scenario));
+      expect(idx(' down') >= 0).toBe(!timeout && !blocked);
+      expect(idx(' up -d') >= 0).toBe(!timeout && !blocked);
       if (timeout) {
         expect(r.stderr).toContain('worker_running');
         expect(r.stderr).toContain('rerun `hermitd update`');
         expect(entry.cc_after).toBe('2.1.301');
+      } else if (blocked) {
+        expect(entry.await.reason).toBe('cc_below_floor');
+        expect(idx('harness-request')).toBe(-1);
+        expect(r.stdout).toContain('Update blocked');
+        expect(r.stdout).not.toContain('/reload-plugins not sent');
       } else {
         expect(calls).toContain('HERMIT_RESUME=1');
         expect(idx('await-upgrade')).toBeLessThan(idx(' down'));
@@ -631,6 +637,7 @@ exit 0
       if (scenario === 'below-floor') {
         // Evolve would stop on the old Claude Code, so the image is rebuilt first and boot runs it.
         expect(r.stdout).toContain('below hermitd\'s minimum 2.1.308');
+        expect(r.stdout).toContain('load at boot on the rebuilt image');
         expect(idx('harness-request')).toBe(-1);
         expect(idx('cat /cache/hermitd/1.2.0/.claude-plugin/hermit-meta.json')).toBeGreaterThan(idx('claude plugin update '));
         expect(idx(' build ')).toBeLessThan(idx(' down'));
@@ -723,9 +730,13 @@ describe('hermitd-update host path', () => {
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
 
-  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current']) {
+  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
     test(`live host update: ${scenario}`, async () => {
-      const f = fixture({ listJson: proj => listDuplicateScopes(proj, scenario.startsWith('suffix-') ? '-467be32f41fc' : '') });
+      const f = fixture({ listJson: proj => {
+        const list = JSON.parse(listDuplicateScopes(proj, scenario.startsWith('suffix-') ? '-467be32f41fc' : ''));
+        if (scenario === 'below-floor') for (const p of list) p.installPath = path.join(proj, 'cache', p.id.split('@')[0]);
+        return JSON.stringify(list);
+      } });
       try {
         const log = path.join(f.proj, 'live-calls');
         const bin = hermit(f.proj, 'bin');
@@ -765,11 +776,26 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         fs.chmodSync(path.join(bin, 'hermitd-run'), 0o755);
         // A local override wins over the project pin; both still get updated.
         write(hermit(f.proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: { hermitd: scenario === 'suffix-current' ? '1.2.0' : '0.0.1' } }));
+        if (scenario === 'below-floor') {
+          fs.mkdirSync(path.join(f.proj, 'cache/hermitd/.claude-plugin'), { recursive: true });
+          write(path.join(f.proj, 'cache/hermitd/.claude-plugin/hermit-meta.json'), JSON.stringify({ min_claude_code_version: '>=2.1.308' }));
+          const claudeStub = path.join(f.proj, '.stub/claude');
+          write(claudeStub, fs.readFileSync(claudeStub, 'utf8').replace('exit 0\n', '') + 'if [ "$1" = "--version" ]; then echo "2.1.301 (Claude Code)"; fi\nexit 0\n');
+        }
         const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
           args: ['--yes'], cwd: f.proj,
           env: { ...f.env, LIVE_CALLS: log, LIVE_SCENARIO: scenario, TMUX: scenario === 'self-run' ? '/tmp/tmux-test,1,0' : '' },
         });
         expect(r.exitCode).toBe(0);
+        if (scenario === 'below-floor') {
+          // Evolve would stop on the old Claude Code: nothing is queued, waited on or restarted.
+          const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
+          expect(r.stderr).toContain("below hermitd's minimum 2.1.308");
+          expect(r.stdout).toContain('Update blocked');
+          expect(calls).not.toContain('harness-request');
+          expect(calls).not.toMatch(/^(stop|start)/m);
+          return;
+        }
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
         if (scenario === 'self-run') {
           // The resident's own turn keeps the immediate path: reload and evolve queue, nothing waits or restarts.

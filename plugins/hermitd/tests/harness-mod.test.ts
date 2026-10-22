@@ -9,8 +9,8 @@ import { inboundSince } from '../scripts/lib/channel-log';
 import { startHttpStub } from './helpers/http-stub';
 import {
   claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, readOutcome, recover, recordLegs, validCommand,
-  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, type QueueEntry, type Unanswered,
-QUEUE_PROTOCOL, } from '../scripts/lib/harness-mod';
+  INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, QUEUE_PROTOCOL, type QueueEntry, type Unanswered,
+} from '../scripts/lib/harness-mod';
 
 const VERSION = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8')).version;
 const workdirs: Workdir[] = [];

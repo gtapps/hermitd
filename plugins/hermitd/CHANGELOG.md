@@ -26,7 +26,7 @@
 - `/hermitd:hatch` Advanced's permission question fits the four-option limit; `dontAsk` is typed via Other.
 - Re-running `/hermitd:hatch` on a Docker hermit points at `hermitd restart` instead of `/hermitd:docker-setup`, then `/hermitd:channel-setup` when a channel is configured.
 - A Docker hermit honors `env.AGENT_HOOK_PROFILE` in `config.json`; `docker-compose.hermit.yml` no longer sets the hook profile, and with nothing configured the container still launches at `strict`.
-- `hermitd-docker update` rebuilds the image first when the container's Claude Code is below hermitd's minimum, and `hermit-evolve` runs at boot, instead of timing out without a rebuild.
+- An update no longer waits out a `hermit-evolve` that cannot run on a Claude Code below hermitd's minimum: `hermitd-docker update` rebuilds the image first and evolve runs at boot (`--plugins-only` reports the update as blocked), and a host update stops before queuing and points at `claude update`.
 - The core mod marks itself loaded for a new session even when its `SessionStart` handler is skipped.
 - A queued `/reload-plugins` is confirmed from the command's own result, so a live update runs `hermit-evolve` even when the mod misses the transcript row.
 

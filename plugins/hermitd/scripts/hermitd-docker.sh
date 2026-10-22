@@ -483,7 +483,7 @@ case "$CMD" in
     ;;
 
   update)
-    DRY_RUN=false; CC_ONLY=false; PLUGINS_ONLY=false; ASSUME_YES=false; CC_BUILD_VERSION=""; RELOAD_PLUGINS_SENT=false
+    DRY_RUN=false; CC_ONLY=false; PLUGINS_ONLY=false; ASSUME_YES=false; CC_BUILD_VERSION=""; RELOAD_PLUGINS_SENT=false; BELOW_FLOOR=false
     while [ $# -gt 0 ]; do
       case "$1" in
         --dry-run) DRY_RUN=true ;;
@@ -645,6 +645,7 @@ case "$CMD" in
         BELOW_FLOOR=true
         if [ "$PLUGINS_ONLY" = true ]; then
           echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}; rerun \`hermitd update\` without --plugins-only to rebuild the image." >&2
+          AWAIT_STATUS=blocked; AWAIT_REASON=cc_below_floor
           return 0
         fi
         echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}: rebuilding first; hermit-evolve runs at boot."
@@ -831,6 +832,8 @@ JSEOF
     echo ""
     if [ "$AWAIT_STATUS" = timeout ]; then
       echo "[hermit] Update paused; no restart performed."
+    elif [ "$AWAIT_STATUS" = blocked ]; then
+      echo "[hermit] Update blocked: Claude Code ${CC_BEFORE} is below hermitd's minimum; rerun \`hermitd update\` without --plugins-only."
     else
       echo "[hermit] Update complete."
     fi
@@ -852,9 +855,11 @@ JSEOF
         }
       ' "$PLUGIN_ROWS" "$PLUGIN_ROWS_AFTER" "$FAIL_IDS_JSON" "$PLUGIN_ERRORS_AFTER" 2>/dev/null || true
     fi
-    if [ "$CC_ONLY" = false ]; then
+    if [ "$CC_ONLY" = false ] && [ "$AWAIT_STATUS" != blocked ]; then
       if [ "$RELOAD_PLUGINS_SENT" = true ]; then
         echo "  /reload-plugins sent — plugin updates active in the running session."
+      elif [ "$BELOW_FLOOR" = true ]; then
+        echo "  Plugin updates load at boot on the rebuilt image, and hermit-evolve runs there."
       else
         echo "  /reload-plugins not sent — attach and run it manually: hermitd attach"
       fi

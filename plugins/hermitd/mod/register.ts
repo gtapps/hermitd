@@ -50,7 +50,7 @@ async function bridge($: EngineInterface, verb: string, payload = ''): Promise<D
 let timer: { cancel(): void } | undefined;
 let stateDir: string | undefined;
 let lastId: string | undefined;
-// Retries left for the current id when the bridge answered `pass` (resident id not stamped yet).
+// Retries used for the current id when the bridge answered `pass` (resident id not stamped yet).
 let loadRetry = 0;
 const LOAD_RETRIES = 5;
 let recovered = false;
@@ -150,9 +150,11 @@ async function dispatch($: EngineInterface) {
     current.resolved = true;
     // A skill is a prompt for the model: resolving at submit is all a run reports.
     if (SKILL_RE.test(command.command)) current.evidence = { command: command.command, status: 'ok', text: 'submitted', submitted_at: new Date().toISOString() };
-    // A reload returns its own output, so it needs no transcript row to be confirmed.
-    else if (command.command === '/reload-plugins' && typeof out?.text === 'string') {
-      current.evidence ??= { command: command.command, status: classifyStdout(command.command, out.text), text: out.text };
+    // A reload returns its own output, so a recognized success needs no transcript row; any
+    // other text is left to the transcript row or the deadline.
+    else if (command.command === '/reload-plugins' && typeof out?.text === 'string'
+      && classifyStdout(command.command, out.text) === 'ok') {
+      current.evidence ??= { command: command.command, status: 'ok', text: out.text };
     }
     observe($);
   } catch (error) {
