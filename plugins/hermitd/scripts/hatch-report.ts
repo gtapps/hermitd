@@ -53,6 +53,7 @@ export interface Observed {
   settingsFile: string | null;
   gitRepo: boolean;
   binScripts: string[];
+  dockerSetUp: boolean;
 }
 
 export function observe(root: string): Observed {
@@ -73,6 +74,7 @@ export function observe(root: string): Observed {
     settingsFile,
     gitRepo: exists(path.join(root, '.git')),
     binScripts,
+    dockerSetUp: exists(path.join(root, 'docker-compose.hermit.yml')),
   };
 }
 
@@ -161,7 +163,11 @@ export function finalData(o: Observed, deployment: string): Json {
   // last step": on tmux with a channel, pairing comes after the boot.
   let runningAfter: number;
   if (deployment === 'docker') {
-    steps.push({ run: '/hermitd:docker-setup', purpose: 'build_and_start_container' });
+    // A re-init of a hermit docker-setup already built only needs the container
+    // to pick up the new config.
+    steps.push(o.dockerSetUp
+      ? { run: '!hermitd restart', purpose: 'restart_container' }
+      : { run: '/hermitd:docker-setup', purpose: 'build_and_start_container' });
     runningAfter = steps.length;
   } else if (deployment === 'tmux') {
     // The only shell command here; ! makes it runnable in the current session.
