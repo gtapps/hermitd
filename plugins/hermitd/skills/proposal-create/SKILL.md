@@ -200,4 +200,4 @@ When the brief carries `proposed_routine` (Lane B), include a `## Config` block 
 
 **For an OPERATOR.md refinement:**
 1. Present the suggested addition to the operator
-2. The operator decides where and how to add it — the agent never modifies OPERATOR.md directly
+2. The operator decides where and how to add it — the agent never modifies OPERATOR.md on its own; when the operator asks it to apply the change, it edits behind the native approval prompt
