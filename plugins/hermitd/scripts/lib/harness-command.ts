@@ -21,14 +21,14 @@ type PermissionMode = (typeof PERMISSION_MODE)[number];
 export const ARG_RE = /^[A-Za-z0-9._[\]-]{1,64}$/;
 
 /** Commands taking no argument. */
-const BARE_COMMANDS = new Set(['/compact', '/clear', '/doctor', '/checkup']);
+export const BARE_COMMANDS = new Set(['/compact', '/clear', '/doctor', '/checkup']);
 // The exactly-two-token rule enforced below is load-bearing for /advisor specifically:
 // a bare `/advisor` opens Claude Code's interactive advisor picker (a real blocking
 // dialog, "Enter to confirm · Esc to cancel" — probe-verified, CC 2.1.240) that no one
 // unattended could ever answer. Keeping it out of ARG_COMMANDS' bare form is what stops
 // that picker from ever being deliverable; do not add a bare `/advisor` acceptance path.
 /** Commands requiring exactly one argument. */
-const ARG_COMMANDS = new Set(['/model', '/effort', '/permission-mode', '/advisor']);
+export const ARG_COMMANDS = new Set(['/model', '/effort', '/permission-mode', '/advisor']);
 
 export type ParsedCommand = { command: string; arg: string | null };
 

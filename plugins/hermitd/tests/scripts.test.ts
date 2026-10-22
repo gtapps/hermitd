@@ -554,6 +554,7 @@ case "$*" in
     else
       echo '{"status":"ready"}'
     fi ;;
+  *"harness-request"*) echo '{"status":"ok"}' ;;
   *"npm view"*) echo '2.1.302' ;;
   *"ps --status running"*) echo hermit ;;
   *"claude plugin list --json"*) cat "$DOCKER_STUB_LIST" ;;
@@ -619,7 +620,11 @@ exit 0
         expect(wait).toContain('--expect hermitd-scribe=0.0.5');
         expect(wait).not.toContain('467be32f41fc');
         expect(idx('/hermitd:hermit-evolve')).toBeLessThan(idx('await-upgrade --expect'));
+        // One queued batch for the core mod: reload, then evolve, waited on from outside.
+        const request = calls.find(l => l.includes('harness-request')) ?? '';
+        expect(request).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
       }
+      expect(calls.some(l => l.includes('send-keys') || l.includes('capture-pane'))).toBe(false);
       if (scenario === 'old-watchdog') {
         expect(r.stderr.split('await-upgrade unavailable')).toHaveLength(2);
       }
@@ -737,6 +742,17 @@ fi
           fs.chmodSync(path.join(bin, `hermitd-${name}`), 0o755);
         }
         fs.chmodSync(path.join(bin, 'hermitd-watchdog'), 0o755);
+        // The core mod's queue: record the request and answer as the verb would.
+        fs.renameSync(path.join(bin, 'hermitd-run'), path.join(bin, 'hermitd-run.real'));
+        write(path.join(bin, 'hermitd-run'), `#!/usr/bin/env bash
+if [ "$1" = harness-request ]; then
+  printf '%s\\n' "$*" >> "$LIVE_CALLS"
+  case " $* " in *" --wait "*) echo '{"status":"ok"}' ;; *) echo '{"status":"queued","id":"q1"}' ;; esac
+  exit 0
+fi
+exec "$(dirname "$0")/hermitd-run.real" "$@"
+`);
+        fs.chmodSync(path.join(bin, 'hermitd-run'), 0o755);
         // A local override wins over the project pin; both still get updated.
         write(hermit(f.proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: { hermitd: scenario === 'suffix-current' ? '1.2.0' : '0.0.1' } }));
         const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
@@ -748,8 +764,8 @@ fi
         if (scenario === 'self-run') {
           // The resident's own turn keeps the immediate path: reload and evolve queue, nothing waits or restarts.
           expect(calls.some(l => l.includes('await-upgrade'))).toBe(false);
-          expect(calls.some(l => l.includes('/reload-plugins'))).toBe(true);
-          expect(calls.some(l => l.includes('/hermitd:hermit-evolve unattended'))).toBe(true);
+          expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update');
+          expect(calls.some(l => l.startsWith('send-keys'))).toBe(false);
           expect(calls.some(l => l.startsWith('stop') || l.startsWith('start'))).toBe(false);
           expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
           return;
@@ -767,6 +783,12 @@ fi
         }
         expect(calls[0]).toContain('has-session');
         expect(calls[1]).toBe('await-upgrade');
+        expect(calls.some(l => l.startsWith('send-keys') || l.startsWith('capture-pane'))).toBe(false);
+        if (!scenario.startsWith('timeout-first')) {
+          expect(calls.find(l => l.startsWith('harness-request'))).toBe(scenario === 'suffix-current'
+            ? 'harness-request /reload-plugins --source update --wait 300'
+            : 'harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
+        }
         if (scenario === 'suffix-current') {
           expect(calls.some(l => l.includes('--expect'))).toBe(false);
         } else if (scenario !== 'timeout-first') {

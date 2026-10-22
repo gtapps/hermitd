@@ -569,32 +569,11 @@ const name = String(config.tmux_session_name ?? 'hermit-{project_name}');
 console.log(name.replaceAll('{project_name}', require('path').basename(process.argv[2])));
 " "${AGENT_DIR}/config.json" "$PROJECT_DIR" 2>/dev/null || echo "hermit-$(basename "$PROJECT_DIR")")
 
-# SIGTERM waits for the configured shutdown skill and current execution to settle.
+# SIGTERM runs the configured shutdown skill through the core mod and waits for that
+# turn to settle. After `hermitd-docker down` it finds the same operation and returns.
 cleanup() {
   echo "[docker-entrypoint] SIGTERM received..."
-  SHUTDOWN_SKILL=$(jq -r '.shutdown_skill // empty' "${AGENT_DIR}/config.json")
-  SENT_AT=""
-  for i in $(seq 1 30); do
-    if bun -e '
-      try {
-        const execution = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-        process.exit(typeof execution.state === "string" && execution.state !== "in_flight"
-          && (!process.argv[2] || Date.parse(execution.at) > Number(process.argv[2])) ? 0 : 1);
-      } catch { process.exit(1); }
-    ' "${AGENT_DIR}/state/execution.json" "$SENT_AT"; then
-      if [ -z "$SHUTDOWN_SKILL" ] || [ -n "$SENT_AT" ]; then
-        break
-      fi
-      # Typed only once no turn is running: typed mid-turn, that turn's own end
-      # would satisfy this wait before the skill ran.
-      SENT_AT=$(bun -e 'console.log(Date.now())')
-      # Submit text and Enter separately so the TUI does not treat Enter as paste.
-      tmux send-keys -t "$SESSION_NAME:0.0" "$SHUTDOWN_SKILL" 2>/dev/null || true
-      sleep 0.5
-      tmux send-keys -t "$SESSION_NAME:0.0" Enter 2>/dev/null || true
-    fi
-    sleep 1
-  done
+  "${AGENT_DIR}/bin/hermitd-run" graceful-shutdown --timeout 30 >/dev/null 2>&1 || true
   # Mark the stop as clean so the next boot does not report a crash.
   bun -e '
     const fs = require("fs");

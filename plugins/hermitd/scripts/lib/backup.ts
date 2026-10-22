@@ -60,6 +60,9 @@ const CHANNEL_LOG_RE = /^channel-log\.sqlite(-wal|-shm)?$/;
 // suffixed, not prefixed (`.foo.lock.steal.<ino>.<mtime>`, `<file>.<pid>.tmp`),
 // so both shapes are matched on the tail rather than the head.
 const TRANSIENT_RE = /(\.lock$|\.lock\.|\.\d+\.tmp$|^backup-status\.json$|^backup-schedule\.json$)/;
+// The harness command queue is moment-scoped and session-bound: a restored entry
+// would name a session that no longer exists.
+const QUEUE_DIR_RE = /^harness-(?:queue|inflight|outcomes)$/;
 
 export interface RefusedPath { path: string; reason: string; }
 
@@ -71,7 +74,7 @@ export function scanRefusedPaths(root: string, relPaths: string[]): RefusedPath[
     const base = segments[segments.length - 1] ?? '';
     if (segments.includes('.claude.local')) { out.push({ path: rel, reason: 'secret-filename' }); continue; }
     if (CHANNEL_LOG_RE.test(base)) { out.push({ path: rel, reason: 'channel-log' }); continue; }
-    if (TRANSIENT_RE.test(base)) { out.push({ path: rel, reason: 'transient' }); continue; }
+    if (TRANSIENT_RE.test(base) || segments.some(s => QUEUE_DIR_RE.test(s))) { out.push({ path: rel, reason: 'transient' }); continue; }
     if (SECRET_NAME_RES.some(re => re.test(base))) { out.push({ path: rel, reason: 'secret-filename' }); continue; }
 
     let size = -1;
@@ -408,7 +411,7 @@ export function syncMirror(root: string, mirror: string, refused: RefusedPath[])
       filter: (from) => {
         if (refusedAbs.has(from)) return false;
         const base = path.basename(from);
-        if (base === '.git' || CHANNEL_LOG_RE.test(base) || TRANSIENT_RE.test(base)) return false;
+        if (base === '.git' || CHANNEL_LOG_RE.test(base) || TRANSIENT_RE.test(base) || QUEUE_DIR_RE.test(base)) return false;
         try { if (fs.statSync(from).isDirectory() && fs.existsSync(path.join(from, '.git'))) return false; } catch { /* ignore */ }
         return true;
       },

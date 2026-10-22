@@ -19,12 +19,13 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeSessionWedgedMessage, composePauseMessage, hasPendingQuestion, hasLapsedLogin, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
-  maybeContextCompact, MONITOR_REARM_DAMPER_SECS, type World,
+  maybeContextCompact, readHarnessOutcomes, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
 import { startHttpStub, type Stub } from './helpers/http-stub';
 import { localIdentity } from './helpers/registry-fixture';
+import { finalize } from '../scripts/lib/harness-mod';
 
 // The one line to flip when hermitd-watchdog is ported to TypeScript.
 // (Absolute bun path via process.execPath: Bun.spawn resolves the executable
@@ -69,6 +70,8 @@ function setupHermit(): Hermit {
   const initialRuntime = JSON.parse(fs.readFileSync(state({ dir } as Hermit, 'runtime.json'), 'utf8'));
   initialRuntime.cc_session_id = 'resident-boundary';
   fs.writeFileSync(state({ dir } as Hermit, 'runtime.json'), JSON.stringify(initialRuntime));
+  // The core mod has loaded for this session, so watchdog commands go to its queue.
+  fs.writeFileSync(state({ dir } as Hermit, 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident-boundary' }));
 
   // Stub hermitd-start: writes a marker so we can detect invocation
   const start = path.join(dir, '.hermit', 'bin', 'hermitd-start');
@@ -99,23 +102,22 @@ function writeConfig(h: Hermit, every = '2h', watchdogExtra: Record<string, unkn
 function patchRuntime(h: Hermit, patch: Record<string, unknown>): void {
   const p = state(h, 'runtime.json');
   fs.writeFileSync(p, JSON.stringify({ ...readJson(p), ...patch }) + '\n');
+  // A new resident session loads the core mod with it.
+  if (typeof patch.cc_session_id === 'string') {
+    fs.writeFileSync(state(h, 'harness-mod-loaded.json'), JSON.stringify({ session_id: patch.cc_session_id }));
+  }
 }
 
-/** Fake tmux: sessionAlive 0 = alive, 1 = dead. send-keys/kill-session log to tmux-calls.log.
- *  runtimeSnapshotPath: if set, the stub copies runtime.json to this path when it sees send-keys .../clear,
- *  proving the context_cleared marker was written before the /clear keystroke. */
-function writeFakeTmux(h: Hermit, sessionAlive: 0 | 1, paneContent = 'tmux pane content', runtimeSnapshotPath?: string): void {
+/** Fake tmux: sessionAlive 0 = alive, 1 = dead. send-keys/kill-session log to tmux-calls.log,
+ *  so any keystroke into the pane would show up in tmuxCalls(). */
+function writeFakeTmux(h: Hermit, sessionAlive: 0 | 1, paneContent = 'tmux pane content'): void {
   const log = path.join(h.dir, 'tmux-calls.log');
   const stub = path.join(h.fakeBin, 'tmux');
-  const runtimePath = state(h, 'runtime.json');
-  const sendKeysExtra = [
-    runtimeSnapshotPath ? `[[ "$*" == *"/clear"* || "$*" == *"/compact"* ]] && cat "${runtimePath}" > "${runtimeSnapshotPath}"` : '',
-  ].filter(Boolean).join(' ; ') || 'true';
   fs.writeFileSync(stub, `#!/usr/bin/env bash
 case "$1" in
   has-session) exit ${sessionAlive} ;;
   capture-pane) echo "${paneContent}" ;;
-  send-keys) echo "send-keys $@" >> "${log}" ; ${sendKeysExtra} ;;
+  send-keys) echo "send-keys $@" >> "${log}" ;;
   kill-session) echo "kill-session $@" >> "${log}" ;;
 esac
 `);
@@ -127,6 +129,17 @@ function writeFakePgrep(h: Hermit, found: 0 | 1): void {
   const stub = path.join(h.fakeBin, 'pgrep');
   fs.writeFileSync(stub, `#!/usr/bin/env bash\nexit ${found}\n`);
   fs.chmodSync(stub, 0o755);
+}
+
+/** What the watchdog queued for the core mod, one rendered request per line ('pause' for
+ *  a turn abort). Nothing is ever typed into the pane. */
+function queueLog(h: Hermit): string {
+  const dir = state(h, 'harness-queue');
+  if (!fs.existsSync(dir)) return '';
+  return fs.readdirSync(dir).sort().map((name) => {
+    const entry = readJson(path.join(dir, name));
+    return entry.source === 'pause' ? 'pause' : entry.commands.map((c: { command: string; arg: string | null }) => c.arg ? `${c.command} ${c.arg}` : c.command).join(' + ');
+  }).join('\n');
 }
 
 /** Backdate a file's mtime by `seconds` (creating it empty if absent). */
@@ -721,102 +734,16 @@ describe('dead session with channel configured', () => {
 // -------------------------------------------------------
 // 5c. Stall-question detection (un-redirectable, PROP-024) — catches the
 //     remainder ask-gate.ts's PreToolUse deny can't reach: native permission
-//     dialogs, harness-rendered prompts. Fixtures from a real capture
-//     (compiled/spike-ask-gate-probe-2026-07-05.md): a pointer-marked
-//     numbered option plus an "Esc to cancel" footer.
+//     dialogs, harness-rendered prompts. The signal is the session's own registry
+//     status `waiting`, with `waitingFor` naming the dialog.
 // -------------------------------------------------------
 
-const PENDING_QUESTION_PANE =
-  ' Which color do you prefer?\n\n❯ 1. Red\n  2. Green\n  3. Blue\n\nEnter to select · Esc to cancel';
+/** The resident's registry entry reports it waiting on `waitingFor`. */
+function waitOnDialog(h: Hermit, waitingFor = 'permission prompt', ageMs = 0): void {
+  const configDir = writeRegistryEntry(h, { status: 'waiting', waitingFor, statusUpdatedAt: Date.now() - ageMs });
+  patchRuntime(h, { config_dir: configDir, session_pid: process.pid });
+}
 
-// CC 2.1.257's held-peer-message dialog, captured verbatim from a live probe: a
-// bypassPermissions guest messaging a prompting session. It carries neither footer
-// spelling — the pane ends on the dialog's own last option.
-const HELD_PEER_MESSAGE_PANE = [
-  ' Held message from another session',
-  '  Another Claude session sent a message: from uds:/run/user/1000/cc-socks/2387465.sock',
-  '  The sending session\'s permission mode class doesn\'t match this session\'s, so it wasn\'t delivered automatically.',
-  '  Message body (this is what will be delivered):',
-  '  «Probe ping X1 from a bypass guest: no action needed, do not reply.»',
-  '  ❯ Deny — drop it and tell the sender it was declined',
-  '    Deliver this message to Claude',
-].join('\n');
-
-// CC 2.1.233's first-run wizard, captured verbatim. The selector is "❯ Continue" — no digit,
-// which is precisely what the old numbered-option regex could not see.
-const AUTO_MODE_WIZARD_PANE = [
-  '   Set up auto mode for your environment?',
-  '',
-  '   Claude Code reads this project, your recent Claude sessions, and optionally your shell history and other repositories.',
-  '',
-  '     How you use Claude here    ◀ Mixed ▶',
-  '     Also scan shell history    [✔]',
-  '     Also scan your other repos [ ]',
-  '',
-  '   ❯ Continue',
-  '',
-  '   ←/→ to change usage · Enter to continue · Esc to cancel',
-].join('\n');
-
-describe('hasPendingQuestion tail-scan (#8 false-positive guard)', () => {
-  test('a genuine modal at the bottom of the pane matches', () => {
-    expect(hasPendingQuestion(PENDING_QUESTION_PANE)).toBe(true);
-  });
-
-  test('the CC 2.1.233 auto-mode setup wizard matches (live wedge regression)', () => {
-    expect(hasPendingQuestion(AUTO_MODE_WIZARD_PANE)).toBe(true);
-  });
-
-  test('the wizard still matches with blank terminal rows below it', () => {
-    expect(hasPendingQuestion(`${AUTO_MODE_WIZARD_PANE}${'\n'.repeat(20)}`)).toBe(true);
-  });
-
-  test('a dialog whose only footer is "Enter to continue" matches', () => {
-    // A wizard step that cannot be cancelled omits the Esc affordance entirely.
-    expect(hasPendingQuestion('   Set up something?\n\n   ❯ Continue\n\n   Enter to continue')).toBe(true);
-  });
-
-  test('an idle composer prompt does NOT match', () => {
-    // The pointer glyph also opens the composer; the status bar, not a dialog footer,
-    // terminates the pane there.
-    const idle = 'Boot summary\n  - Session: idle\n\n❯ Try "how does <filepath> work?"\n\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents';
-    expect(hasPendingQuestion(idle)).toBe(false);
-  });
-
-  test('a held peer message is a pending question', () => {
-    expect(hasPendingQuestion(HELD_PEER_MESSAGE_PANE)).toBe(true);
-  });
-
-  test('a held peer message still matches with blank terminal rows below it', () => {
-    expect(hasPendingQuestion(`${HELD_PEER_MESSAGE_PANE}\n${'\n'.repeat(20)}`)).toBe(true);
-  });
-
-  test('a genuine modal still matches with blank terminal rows below it', () => {
-    // Claude 2.1.220 leaves the unused rows of a 50-line pane blank below a
-    // short native permission dialog. capture-pane includes those rows.
-    expect(hasPendingQuestion(`${PENDING_QUESTION_PANE}\n${'\n'.repeat(20)}`)).toBe(true);
-  });
-
-  test('the same tokens in scrollback, followed by clean output, do NOT match', () => {
-    // A menu / quoted output that scrolled up, then 20 lines of ordinary activity.
-    const scrollback = '❯ 1. Red\nEsc to cancel\n' + Array.from({ length: 20 }, (_, i) => `running step ${i}...`).join('\n');
-    expect(hasPendingQuestion(scrollback)).toBe(false);
-  });
-
-  test('stale modal followed by short progress and blank terminal rows does NOT match', () => {
-    const progress = Array.from({ length: 6 }, (_, i) => `running step ${i}...`).join('\n');
-    expect(hasPendingQuestion(`${PENDING_QUESTION_PANE}\n${progress}${'\n'.repeat(20)}`)).toBe(false);
-  });
-
-  test('ordinary output that merely quotes one token does not match', () => {
-    expect(hasPendingQuestion('the docs say to press Esc to cancel a running task\nall done')).toBe(false);
-  });
-});
-
-// -------------------------------------------------------
-// 3c. Queue-liveness wedge detection — the shape-independent net behind 3b.
-//     Fixture shape is the live 2026-08-17 incident: monitor notifications
-//     enqueued and never dequeued while the session sat behind a dialog.
 // -------------------------------------------------------
 
 const NOW = Date.parse('2026-08-17T14:00:00Z');
@@ -1054,10 +981,9 @@ describe('session-wedged detection (queued notifications not draining)', () => {
   });
 
   test('alert-only: no keystrokes and no kill were sent to the pane', () => {
-    const calls = fs.existsSync(path.join(h.dir, 'tmux-calls.log'))
-      ? fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')
-      : '';
+    const calls = tmuxCalls(h);
     expect(calls).not.toContain('send-keys');
+    expect(calls).not.toContain('heartbeat run');
     expect(calls).not.toContain('kill-session');
   });
 });
@@ -1146,15 +1072,16 @@ describe('stall-question detection', () => {
     h = setupHermit();
     writeConfig(h);
     configureChannel(h);
-    writeFakeTmux(h, 0, PENDING_QUESTION_PANE);
+    writeFakeTmux(h, 0);
     writeFakePgrep(h, 1);
+    waitOnDialog(h, 'permission prompt');
     stub = startHttpStub();
     ({ exitCode } = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } }));
   });
 
   afterAll(() => { stub.stop(); h.cleanup(); });
 
-  test('pending dialog on pane → stall-question-detected event', () => {
+  test('registry waiting → stall-question-detected event', () => {
     expect(exitCode).toBe(0);
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('stall-question-detected');
   });
@@ -1166,14 +1093,16 @@ describe('stall-question detection', () => {
   test('pending dialog → operator push reaches the configured channel', () => {
     expect(stub.requests.length).toBe(1);
     expect(stub.requests[0].body.text).toContain("can't ask over chat");
+    expect(stub.requests[0].body.text).toContain('permission prompt');
   });
 });
 
 test('pending dialog, second tick → deduped, no second push', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, PENDING_QUESTION_PANE);
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
+  waitOnDialog(h);
   fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({ stall_question_notified: true }) + '\n');
   const stub = startHttpStub();
   try {
@@ -1187,7 +1116,7 @@ test('pending dialog, second tick → deduped, no second push', withHermit(async
   }
 }));
 
-test('pane clears after a flagged episode → re-arms (flag cleared, no new event)', withHermit(async (h) => {
+test('dialog closes after a flagged episode → re-arms (flag cleared, no new event)', withHermit(async (h) => {
   writeConfig(h);
   writeFakeTmux(h, 0, 'tmux pane content');
   writeFakePgrep(h, 1);
@@ -1199,7 +1128,7 @@ test('pane clears after a flagged episode → re-arms (flag cleared, no new even
   expect(events).not.toContain('stall-question-detected');
 }));
 
-test('ordinary busy pane content → no false-positive match', withHermit(async (h) => {
+test('no waiting status → no stall notice', withHermit(async (h) => {
   writeConfig(h);
   writeFakeTmux(h, 0, 'tmux pane content');
   writeFakePgrep(h, 1);
@@ -1212,26 +1141,22 @@ test('ordinary busy pane content → no false-positive match', withHermit(async 
 // -------------------------------------------------------
 // 5c. Lapsed-login detection
 //
-// Both fixtures are verbatim captures (CC 2.1.251, `tmux capture-pane -p`, the same
-// call the watchdog makes): an isolated config dir holding an expired, unrefreshable
-// .credentials.json, and one holding a bogus CLAUDE_CODE_OAUTH_TOKEN. Neither session
-// died — the REPL stayed up answering every prompt with the error below, which is why
-// a pane scan is the instrument and dead-session detection never fires here.
+// The signal is the failed turn's structured error: Claude Code fires StopFailure
+// with `error: "authentication_failed"` for an expired /login, a dead setup token
+// and an invalid API key alike, and stop-failure-stamp.ts records it with the
+// session id. Neither session died — the REPL stays up answering every prompt with
+// the error, which is why dead-session detection never fires here.
 // -------------------------------------------------------
 
-const LAPSED_LOGIN_PANE = [
-  ' ▐▛███▛█   Claude Code v2.1.251',
-  '❯ reply with the single word ok',
-  '● Login expired · Please run /login',
-  '✻ Churned for 0s · done 21:09',
-].join('\n');
+const LAPSED_LOGIN_TEXT = 'Login expired · Please run /login';
+const DEAD_TOKEN_TEXT = 'Please run /login · API Error: 401 OAuth access token is invalid.';
 
-const DEAD_TOKEN_PANE = [
-  ' ▐▛███▛█   Claude Code v2.1.251',
-  '❯ reply with the single word ok',
-  '● Please run /login · API Error: 401 OAuth access token is invalid.',
-  '✻ Baked for 2s · done 21:09',
-].join('\n');
+/** The StopFailure stamp an auth failure leaves, for the resident session by default. */
+function writeAuthStamp(h: Hermit, message: string, sessionId = readJson(state(h, 'runtime.json')).cc_session_id): void {
+  fs.writeFileSync(state(h, 'stop-failure.json'), JSON.stringify({
+    error: 'authentication_failed', session_id: sessionId, at: new Date().toISOString(), last_assistant_message: message,
+  }) + '\n');
+}
 
 /** A /login hermit: no token file, no token env var, and a usable stored credential. */
 function writeStoredLogin(h: Hermit, accessToken = 'sk-ant-oat01-storedstoredstored'): string {
@@ -1245,34 +1170,19 @@ function writeStoredLogin(h: Hermit, accessToken = 'sk-ant-oat01-storedstoredsto
   return configDir;
 }
 
-describe('hasLapsedLogin pane scan', () => {
-  test('the captured expired-/login pane matches', () => {
-    expect(hasLapsedLogin(LAPSED_LOGIN_PANE)).toBe(true);
-  });
-
-  test('the captured dead-setup-token pane matches', () => {
-    expect(hasLapsedLogin(DEAD_TOKEN_PANE)).toBe(true);
-  });
-
-  test('ordinary pane content does not match', () => {
-    expect(hasLapsedLogin('tmux pane content\n❯ Try "fix typecheck errors"')).toBe(false);
-  });
-
-  // A match suppresses the nudge and restart tiers, so a phrase short enough for a
-  // session to echo while merely TALKING about auth would disarm the watchdog. The
-  // captured pane carrying "Login expired" also carries "Please run /login", so
-  // dropping the bare phrase costs no detection.
-  test('a bare "Login expired" in ordinary output does not match', () => {
-    expect(hasLapsedLogin('❯ why did it say Login expired yesterday?')).toBe(false);
-  });
-
-  // Same tail discipline as hasPendingQuestion: an error quoted far up in scrollback
-  // is history, not the session's current state.
-  test('the error scrolled out of the tail does not match', () => {
-    const scrolled = ['● Login expired · Please run /login', ...Array(20).fill('busy work')].join('\n');
-    expect(hasLapsedLogin(scrolled)).toBe(false);
-  });
-});
+test('an auth stamp from an earlier session never reads as a lapsed login', withHermit(async (h) => {
+  writeConfig(h);
+  configureChannel(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT, 'earlier-session');
+  const configDir = writeStoredLogin(h);
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
+  expect(events).not.toContain('reauth-relay');
+  expect(events).not.toContain('lapsed-login-detected');
+}));
 
 // A lapsed /login on a hermit that HAS a channel is now recoverable without box
 // access: the relay sends the sign-in link out over that channel. The one-notice
@@ -1280,7 +1190,8 @@ describe('hasLapsedLogin pane scan', () => {
 test('lapsed /login with a channel → relay spawned, nudge and restart suppressed', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   // Stale enough that a nudge would normally fire — proving the tier suppresses it.
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
@@ -1301,7 +1212,8 @@ test('lapsed /login with a channel → relay spawned, nudge and restart suppress
 test('lapsed /login + a fresh unreachable stamp → one notice, no relay', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
   const configDir = writeStoredLogin(h);
@@ -1330,7 +1242,8 @@ test('lapsed /login + a fresh unreachable stamp → one notice, no relay', withH
 test('lapsed /login + a stamp older than 24h → relay retried', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h);
   fs.writeFileSync(state(h, 'relay-unreachable.json'), JSON.stringify({ at: isoAgo(25 * 3600) }));
@@ -1343,7 +1256,7 @@ test('lapsed /login + a stamp older than 24h → relay retried', withHermit(asyn
 
 // A hermit whose login is fine has nothing to renew — the relay must not fire on a
 // healthy credential just because login mode is now a thing.
-test('login mode with a healthy credential and a clean pane → nothing fires', withHermit(async (h) => {
+test('login mode with a healthy credential and no auth failure → nothing fires', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
   writeFakeTmux(h, 0, 'all quiet');
@@ -1373,7 +1286,8 @@ test('login mode with a healthy credential and a clean pane → nothing fires', 
 test('a pending staged credential counts as a relay already in flight', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h);
   fs.writeFileSync(
@@ -1391,7 +1305,8 @@ test('a pending staged credential counts as a relay already in flight', withHerm
 test('lapsed /login, second tick within the day → deduped, no second push', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h);
   // Exercise the notification branch. Without this stamp the watchdog starts
@@ -1415,10 +1330,10 @@ test('lapsed /login, second tick within the day → deduped, no second push', wi
   }
 }));
 
-// The pane clearing proves nothing: a failed refresh rewrites .credentials.json into an
+// A healthy turn proves nothing: a failed refresh rewrites .credentials.json into an
 // empty stub (observed live), so the file exists and its mtime moved while the hermit
 // is exactly as dead. Only a usable token coming back re-arms.
-test('pane clears but the stored login is still an empty stub → record kept', withHermit(async (h) => {
+test('no auth failure but the stored login is still an empty stub → record kept', withHermit(async (h) => {
   writeConfig(h);
   writeFakeTmux(h, 0, 'tmux pane content');
   writeFakePgrep(h, 1);
@@ -1465,9 +1380,10 @@ test('token mode: a usable stored login beside the token → record kept', withH
 }));
 
 // An API-key hermit sees the same 401 for a cause no sign-in fixes.
-test('API-key hermit on a 401 pane → no lapsed-login notice', withHermit(async (h) => {
+test('API-key hermit on a 401 → no lapsed-login notice', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h, '');
   const r = await watchdog(h, 'run', {
@@ -1479,10 +1395,11 @@ test('API-key hermit on a 401 pane → no lapsed-login notice', withHermit(async
 }));
 
 // A token can die before the record says it should (revoked, rotated, restored from a
-// stale backup). The record reads healthy; the pane is the only witness.
+// stale backup). The record reads healthy; the failed turn is the only witness.
 test('token dead before its recorded expiry → relay spawned, no nudge', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
   const configDir = writeSetupToken(h, 200); // record says ~200 days left
@@ -1490,7 +1407,7 @@ test('token dead before its recorded expiry → relay spawned, no nudge', withHe
   expect(r.exitCode).toBe(0);
   const events = fs.readFileSync(eventsFile(h), 'utf-8');
   expect(events).toContain('reauth-relay');
-  expect(events).toContain('auth failure on pane');
+  expect(events).toContain('auth failure reported');
   expect(events).not.toContain('nudge');
 }));
 
@@ -1516,9 +1433,10 @@ const UNIT_ENV = (h: Hermit) => ({
 
 test('token hermit, config dir known only to the session → relay spawned, no notice', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
-  // Record still reads healthy — only the pane witnesses the dead token, and only
+  // Record still reads healthy — only the failed turn witnesses the dead token, and only
   // the stamp says where the token lives. Without it the watchdog reads ~/.claude,
   // fails tokenModeActive(), and tells the operator to go run /login by hand.
   const configDir = writeSetupToken(h, 200);
@@ -1534,7 +1452,8 @@ test('token hermit, config dir known only to the session → relay spawned, no n
 // watchdog process happens to carry.
 test('stamped config dir overrides the watchdog process env', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   // A token dir the watchdog's own env points at, distinct from the /login dir
   // the session actually reads. Built inline because writeSetupToken() and
@@ -1552,17 +1471,18 @@ test('stamped config dir overrides the watchdog process env', withHermit(async (
   // Both dirs would spawn a relay, so the discriminator is the RECORDED REASON.
   // The session dir holds a spent /login (empty accessToken → a spent credential),
   // which reports as expired; the watchdog's own token dir has no expiry record at
-  // all and would have been logged as a bare pane failure instead.
+  // all and would have been logged as a bare reported failure instead.
   expect(events).toContain('claude.ai login expired');
-  expect(events).not.toContain('auth failure on pane');
+  expect(events).not.toContain('auth failure reported');
 }));
 
 // An API-key hermit's 401 is not a login lapse. The key lives in the operator's
 // shell, so the watchdog never sees it — only the boolean the session stamped. It gets
 // its own tier rather than falling through: see the restart-loop test below.
-test('env_auth stamp → 401 pane is not read as a lapsed login', withHermit(async (h) => {
+test('env_auth stamp → a 401 is not read as a lapsed login', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
   const configDir = writeStoredLogin(h, '');
@@ -1579,7 +1499,8 @@ test('env_auth stamp → 401 pane is not read as a lapsed login', withHermit(asy
 test('env_auth 401 → one notice, and no nudge or restart to strip the key', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1); // monitor dead
   touchAgo(state(h, '.heartbeat'), 6 * 3600); // stale heartbeat: the nudge tier is otherwise due
   const configDir = writeStoredLogin(h, '');
@@ -1602,7 +1523,8 @@ test('env_auth 401 → one notice, and no nudge or restart to strip the key', wi
 test('env_auth 401 already notified within 24h → still suppressed, but silent', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
   const configDir = writeStoredLogin(h, '');
@@ -1619,7 +1541,7 @@ test('env_auth 401 already notified within 24h → still suppressed, but silent'
     expect(events).not.toContain('nudge'); // the exit is the suppression, not the notice
     expect(events).not.toContain('restart');
     const calls = fs.existsSync(path.join(h.dir, 'tmux-calls.log'))
-      ? fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')
+      ? tmuxCalls(h)
       : '';
     expect(calls).not.toContain('send-keys');
     expect(calls).not.toContain('kill-session');
@@ -1628,7 +1550,7 @@ test('env_auth 401 already notified within 24h → still suppressed, but silent'
 
 test('env_auth credential works again → stamp cleared', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, 'ordinary pane output\nno auth error here');
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 0);
   const configDir = writeStoredLogin(h, '');
   patchRuntime(h, { config_dir: configDir, env_auth: true });
@@ -1643,7 +1565,8 @@ test('env_auth credential works again → stamp cleared', withHermit(async (h) =
 // The two tiers must stay mutually exclusive: a /login hermit is unaffected by the above.
 test('no env_auth stamp → the /login tier still owns the 401, not the env-auth tier', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, LAPSED_LOGIN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
   const configDir = writeStoredLogin(h);
@@ -1659,7 +1582,8 @@ test('no env_auth stamp → the /login tier still owns the 401, not the env-auth
 // fallback so a pre-upgrade session is provably unchanged, not silently migrated.
 test('no stamp → falls back to the watchdog process env', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h, '');
   const r = await watchdog(h, 'run', { env: { ...UNIT_ENV(h), CLAUDE_CONFIG_DIR: configDir } });
@@ -1674,7 +1598,8 @@ test('no stamp → falls back to the watchdog process env', withHermit(async (h)
 // is the silent outage the stamp exists to end, arriving from the other side.
 test('stamped env_auth=false beats a key in the watchdog process env', withHermit(async (h) => {
   writeConfig(h);
-  writeFakeTmux(h, 0, DEAD_TOKEN_PANE);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, DEAD_TOKEN_TEXT);
   writeFakePgrep(h, 1);
   const configDir = writeStoredLogin(h, '');
   patchRuntime(h, { config_dir: configDir, env_auth: false });
@@ -1687,16 +1612,15 @@ test('stamped env_auth=false beats a key in the watchdog process env', withHermi
   expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('reauth-relay');
 }));
 
-// Regression: a pending pane whose in-session heartbeat has ALSO gone stale must
-// NOT be nudged or restarted. Wedge detection (step 4) and the monitor re-arm
-// (step 5) both send keystrokes into the pane; on a focused prompt that would
-// auto-answer the operator's pending decision. The stall detector notifies and
-// stops — never keystrokes.
-test('pending dialog + stale heartbeat + operator silent → notify only, no send-keys, no restart', withHermit(async (h) => {
+// Regression: a waiting session whose in-session heartbeat has ALSO gone stale must
+// NOT be nudged or restarted: the restart would kill the operator's pending decision,
+// and queued work would only wait behind it. The stall detector notifies and stops.
+test('pending dialog + stale heartbeat + operator silent → notify only, nothing queued, no restart', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, PENDING_QUESTION_PANE);
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);              // monitor down — the escalation/restart signal
+  waitOnDialog(h);
   touchAgo(state(h, '.heartbeat'), 6 * 3600); // stale (threshold 2h*2 = 4h)
   // No last-operator-action.json → operator silent (recency guard would not save it)
   const stub = startHttpStub();
@@ -1707,21 +1631,17 @@ test('pending dialog + stale heartbeat + operator silent → notify only, no sen
     expect(events).toContain('stall-question-detected'); // fail-loud fired
     expect(events).not.toContain('nudge');
     expect(events).not.toContain('restart');
-    const tmuxCalls = fs.existsSync(path.join(h.dir, 'tmux-calls.log'))
-      ? fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')
-      : '';
-    expect(tmuxCalls).not.toContain('send-keys');   // never keystroke the pane
-    expect(tmuxCalls).not.toContain('kill-session'); // never restart into it
+    expect(tmuxCalls(h)).toBe(''); // nothing queued, typed or killed
   } finally {
     stub.stop();
   }
 }));
 
-test('stale dialog scrollback + stale heartbeat → normal nudge recovery continues', withHermit(async (h) => {
+test('a dialog waiting for over a day + stale heartbeat → normal nudge recovery continues', withHermit(async (h) => {
   writeConfig(h);
-  const progress = Array.from({ length: 6 }, (_, i) => `running step ${i}...`).join('\n');
-  writeFakeTmux(h, 0, `${PENDING_QUESTION_PANE}\n${progress}${'\n'.repeat(20)}`);
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
+  waitOnDialog(h, 'permission prompt', 25 * 3600 * 1000);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
 
   const r = await watchdog(h, 'run');
@@ -1730,7 +1650,7 @@ test('stale dialog scrollback + stale heartbeat → normal nudge recovery contin
   const events = fs.readFileSync(eventsFile(h), 'utf-8');
   expect(events).not.toContain('stall-question-detected');
   expect(events).toContain('nudge');
-  expect(fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')).toContain('send-keys');
+  expect(queueLog(h)).toContain('/hermitd:heartbeat run');
 }));
 
 // -------------------------------------------------------
@@ -1816,14 +1736,14 @@ test('wedge_floor "0s": every 30m + 90m-stale heartbeat → nudge (floor disable
 }));
 
 // -------------------------------------------------------
-// 5a. Wedge nudge transport: inbox socket first, typing as the fallback
+// 5a. Wedge nudge transport: inbox socket first, the command queue as the fallback
 //
 // The socket cannot report whether the model actually read the message
 // (`crossSessionInbound: refuse` drops it silently, a bypassPermissions receiver
 // holds it behind an expiring dialog, a model may decline), so the fallback is
 // keyed on the effect: a second due nudge with the heartbeat still stale means
-// the post did not work, and that one types. Fixtures below assert the wire, the
-// alternation, and that the typed path is untouched when there is no socket.
+// the post did not work, and that one is queued. Fixtures below assert the wire, the
+// alternation, and that the queued path is untouched when there is no socket.
 // -------------------------------------------------------
 
 /** A Unix socket server standing in for the resident's inbox, recording frames.
@@ -1847,7 +1767,7 @@ async function fakeInbox(h: Hermit): Promise<{ path: string; lines: string[]; cl
   return { path: socketPath, lines, close: () => server.close() };
 }
 
-test('inbox socket present → wedge nudge posts the bare token, types nothing', withHermit(async (h) => {
+test('inbox socket present → wedge nudge posts the bare token, queues nothing', withHermit(async (h) => {
   const inbox = await fakeInbox(h);
   try {
     writeConfig(h, '30m');
@@ -1876,7 +1796,7 @@ test('inbox socket present → wedge nudge posts the bare token, types nothing',
   }
 }));
 
-test('previous nudge went over the socket and the heartbeat is still stale → this one types', withHermit(async (h) => {
+test('previous nudge went over the socket and the heartbeat is still stale → this one is queued', withHermit(async (h) => {
   const inbox = await fakeInbox(h);
   try {
     writeConfig(h, '30m');
@@ -1894,14 +1814,14 @@ test('previous nudge went over the socket and the heartbeat is still stale → t
 
     expect(r.exitCode).toBe(0);
     expect(tmuxCalls(h)).toContain('/hermitd:heartbeat run');
-    expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('typed');
+    expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('queued');
     expect(inbox.lines).toHaveLength(0); // no second post
   } finally {
     inbox.close();
   }
 }));
 
-test('no inbox socket in runtime.json → wedge nudge types, exactly as before', withHermit(async (h) => {
+test('no inbox socket in runtime.json → wedge nudge is queued for the core mod', withHermit(async (h) => {
   writeConfig(h, '30m');
   writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
@@ -1911,7 +1831,7 @@ test('no inbox socket in runtime.json → wedge nudge types, exactly as before',
 
   expect(r.exitCode).toBe(0);
   expect(tmuxCalls(h)).toContain('/hermitd:heartbeat run');
-  expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('typed');
+  expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('queued');
 }));
 
 test('first run pushes nothing', withHermit(async (h) => {
@@ -2081,7 +2001,7 @@ test('third stale run after escalation pushes nothing', withHermit(async (h) => 
 
 // A stamped path whose session died takes the socket file with it. Reading the
 // stale value as usable would post into nothing and skip the typed recovery.
-test('stamped socket path no longer exists → falls through to typing', withHermit(async (h) => {
+test('stamped socket path no longer exists → falls through to the queue', withHermit(async (h) => {
   writeConfig(h, '30m');
   writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
@@ -2092,7 +2012,7 @@ test('stamped socket path no longer exists → falls through to typing', withHer
 
   expect(r.exitCode).toBe(0);
   expect(tmuxCalls(h)).toContain('/hermitd:heartbeat run');
-  expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('typed');
+  expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('queued');
 }));
 
 // -------------------------------------------------------
@@ -2100,7 +2020,7 @@ test('stamped socket path no longer exists → falls through to typing', withHer
 //
 // Claude Code publishes each session's own state at <config dir>/sessions/<pid>.json.
 // The watchdog reads the resident's entry (keyed on runtime.session_pid, the session's
-// own stamp) for two decisions the pane cannot answer: whether a dialog is blocking it
+// own stamp) for two decisions: whether a dialog is blocking it
 // (status `waiting`, whatever the modal looks like), and whether a socket wake ever
 // started a turn (`idle` since before the post was written).
 //
@@ -2130,35 +2050,26 @@ function writeRegistryEntry(h: Hermit, patch: Record<string, unknown> = {}): str
   return configDir;
 }
 
-const MCP_AUTH_PANE = [
-  'Plugin:cloudflare:cloudflare-api MCP Server',
-  'Authentication timeout',
-  '❯ 1. Authenticate',
-  '  2. Disable',
-  '↑/↓ to navigate · Enter to select · Esc to back',
-].join('\n');
-
-test('registry waiting stall notice quotes the pane tail', withHermit(async (h) => {
+test('registry waiting stall notice names what the session waits for', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, MCP_AUTH_PANE);
+  writeFakeTmux(h, 0, 'Authentication timeout');
   writeFakePgrep(h, 1);
-  const configDir = writeRegistryEntry(h, { status: 'waiting' });
-  patchRuntime(h, { config_dir: configDir, session_pid: process.pid });
+  waitOnDialog(h, 'dialog open');
   const stub = startHttpStub();
   try {
     const r = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
     expect(r.exitCode).toBe(0);
-    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('stall-question-detected');
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('pending dialog, session alive — dialog open');
     expect(stub.requests).toHaveLength(1);
-    expect(stub.requests[0].body.text).toContain('Authentication timeout');
+    expect(stub.requests[0].body.text).toContain('dialog open');
+    expect(stub.requests[0].body.text).not.toContain('Authentication timeout');
   } finally { stub.stop(); }
 }));
 
 test('registry says the resident is waiting on a dialog → alert, no nudge', withHermit(async (h) => {
   writeConfig(h, '30m');
-  // A pane the scanner does NOT recognise as a dialog — the registry is the only signal.
-  writeFakeTmux(h, 0, 'some modal the pane scanner does not know');
+  writeFakeTmux(h, 0, 'some modal');
   writeFakePgrep(h, 1);
   const configDir = writeRegistryEntry(h, { status: 'waiting' });
   patchRuntime(h, { config_dir: configDir, session_pid: process.pid });
@@ -2169,7 +2080,7 @@ test('registry says the resident is waiting on a dialog → alert, no nudge', wi
   expect(r.exitCode).toBe(0);
   const events = fs.readFileSync(eventsFile(h), 'utf-8');
   expect(events).toContain('stall-question-detected');
-  expect(events).toContain('via registry');
+  expect(events).toContain('pending dialog');
   // Step 4 never runs behind a pending dialog.
   expect(tmuxCalls(h)).not.toContain('heartbeat run');
 }));
@@ -2189,7 +2100,7 @@ test('registry says the resident is busy → 3b stays quiet, nudge proceeds', wi
   expect(tmuxCalls(h)).toContain('/hermitd:heartbeat run');
 }));
 
-test('socket nudge never started a turn (idle since before the post) → types now, throttle bypassed', withHermit(async (h) => {
+test('socket nudge never started a turn (idle since before the post) → queued now, throttle bypassed', withHermit(async (h) => {
   const inbox = await fakeInbox(h);
   try {
     writeConfig(h, '30m');
@@ -2209,7 +2120,7 @@ test('socket nudge never started a turn (idle since before the post) → types n
 
     expect(r.exitCode).toBe(0);
     expect(tmuxCalls(h)).toContain('/hermitd:heartbeat run');
-    expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('typed');
+    expect(readJson(state(h, 'watchdog-state.json')).last_nudge_transport).toBe('queued');
     const events = fs.readFileSync(eventsFile(h), 'utf-8');
     expect(events).toContain('socket undelivered');
     expect(events).not.toContain('nudge-throttled');
@@ -2249,9 +2160,9 @@ test('socket nudge landed (resident busy since the post) → throttled, no retyp
 // The contract under test is about the GATE, not about any one dialog: whatever holds
 // stdin — a permission prompt, an AskUserQuestion modal, a first-run wizard, a shape no
 // released Claude Code has shown yet — an idle session arc must still raise exactly one
-// alert. The tests below therefore cover a generic modal, a real captured wizard, and a
-// dialog the pane scanner deliberately does NOT recognise (caught by the queue-liveness
-// net instead). Nothing here keys off the wizard that exposed the bug.
+// alert. The tests below therefore cover the registry's `waiting` status for a wizard and
+// a generic modal, and a blocker the registry does NOT report (caught by the
+// queue-liveness net instead). Nothing here keys off the wizard that exposed the bug.
 //
 // The failure this pins: both detectors return the correct verdict, but the step-2 shutdown
 // gate used to exit before either could run, so a blocked session
@@ -2266,52 +2177,12 @@ test('socket nudge landed (resident busy since the post) → throttled, no retyp
 // wedged hermit is ever in. That is why this shipped green. These tests pin the real state.
 // -------------------------------------------------------
 
-/** A wizard step whose pointer rests on a CHECKBOX row while "Continue" sits unmarked below
- *  it — unlike AUTO_MODE_WIZARD_PANE, where the pointer is on "❯ Continue" itself. The
- *  detector must match a pointer on any row, not only on the confirming one. */
-const CHECKBOX_ROW_WIZARD_PANE = [
-  '  Ran 1 shell command',
-  '▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔',
-  '   Set up auto mode for your environment?',
-  '',
-  '   Claude Code reads this project, your recent Claude sessions, and',
-  '   optionally your shell history and other repositories.',
-  '',
-  '     How you use Claude here    ◀ Mixed ▶',
-  '   ❯ Also scan shell history    [✔]',
-  '     Also scan your other repos [ ]',
-  '',
-  '     Continue',
-  '',
-  '   ←/→ to change usage · Enter to continue · Esc to cancel',
-].join('\n');
-
-test('wizard pane with the pointer on a checkbox row matches', () => {
-  expect(hasPendingQuestion(CHECKBOX_ROW_WIZARD_PANE)).toBe(true);
-});
-
-/** The CC 2.1.282 auto-mode offer block, captured live on 2026-09-25 in a session with
- *  no `autoMode.environment` entries, rendered below the composer (see PENDING_FOOTERS).
- *  Only the six-line block was recorded, re-indented to match the sibling fixtures. */
-const AUTO_MODE_OFFER_PANE = [
-  '   Teach auto mode about your environment?',
-  '   Auto mode works better when it knows your environment. Takes about a minute.',
-  '   ❯ 1. Yes',
-  '     2. Not now',
-  "     3. Don't show again",
-  '   Enter to confirm · Esc to cancel',
-].join('\n');
-
-test('the CC 2.1.282 auto-mode offer matches, with or without blank rows below it', () => {
-  expect(hasPendingQuestion(AUTO_MODE_OFFER_PANE)).toBe(true);
-  expect(hasPendingQuestion(`${AUTO_MODE_OFFER_PANE}${'\n'.repeat(20)}`)).toBe(true);
-});
-
-test('idle arc + pending dialog → stall-question-detected and one push', withHermit(async (h) => {
+test('idle arc + setup wizard → stall-question-detected and one push', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, CHECKBOX_ROW_WIZARD_PANE);
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
+  waitOnDialog(h, 'dialog open');
   const stub = startHttpStub();
   try {
     const r = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
@@ -2326,8 +2197,9 @@ test('idle arc + pending dialog → stall-question-detected and one push', withH
 test('idle arc + generic modal (not the wizard) → stall-question-detected and one push', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  writeFakeTmux(h, 0, PENDING_QUESTION_PANE);
+  writeFakeTmux(h, 0);
   writeFakePgrep(h, 1);
+  waitOnDialog(h, 'input needed');
   const stub = startHttpStub();
   try {
     const r = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
@@ -2337,16 +2209,14 @@ test('idle arc + generic modal (not the wizard) → stall-question-detected and 
   } finally { stub.stop(); }
 }));
 
-// The generic net, and the reason 3c exists at all: a blocker the pane scanner cannot
-// recognise (no pointer glyph, no dialog footer) still gets caught, because a blocked
+// The generic net, and the reason 3c exists at all: a blocker the registry does not
+// report still gets caught, because a blocked
 // session stops draining its notification queue whatever is holding stdin. This is the
 // case that must keep working for dialog shapes no released Claude Code has shipped yet.
 test('idle arc + UNRECOGNISED blocker shape → still alerts via queue liveness', withHermit(async (h) => {
   writeConfig(h);
   configureChannel(h);
-  const novelBlocker = 'Some future modal\n\n  [ Accept ]   [ Decline ]\n\npress a key';
-  expect(hasPendingQuestion(novelBlocker)).toBe(false);   // 3b is blind to it, by design
-  writeFakeTmux(h, 0, novelBlocker);
+  writeFakeTmux(h, 0, 'Some future modal\n\n  [ Accept ]   [ Decline ]\n\npress a key');
   writeFakePgrep(h, 1);
   const stub = startHttpStub();
   try {
@@ -2435,11 +2305,10 @@ test('stopped resident + stale heartbeat + monitor down → no nudge, no restart
     const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
     expect(events).not.toContain('nudge');
     expect(events).not.toContain('restart');
-    const tmuxCalls = fs.existsSync(path.join(h.dir, 'tmux-calls.log'))
-      ? fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')
-      : '';
-    expect(tmuxCalls).not.toContain('send-keys');
-    expect(tmuxCalls).not.toContain('kill-session');
+    const calls = tmuxCalls(h);
+    expect(calls).not.toContain('send-keys');
+    expect(calls).not.toContain('heartbeat run');
+    expect(calls).not.toContain('kill-session');
   } finally { stub.stop(); }
 }));
 
@@ -2506,8 +2375,8 @@ describe('alive + stale + operator silent', () => {
     expect(readJson(state(h, 'watchdog-state.json')).consecutive_stale).toBe(1);
   });
 
-  test('nudge cycle 1 → send-keys called', () => {
-    expect(fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')).toContain('send-keys');
+  test('nudge cycle 1 → heartbeat run queued', () => {
+    expect(queueLog(h)).toContain('/hermitd:heartbeat run');
   });
 });
 
@@ -2614,7 +2483,7 @@ test('stale + last nudge older than the window → nudge fires and re-stamps', w
   writeFakeTmux(h, 0, 'some pane content');
   writeFakePgrep(h, 1);
   await watchdog(h, 'run');
-  expect(fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8')).toContain('heartbeat run');
+  expect(queueLog(h)).toContain('/hermitd:heartbeat run');
   expect(readJson(state(h, 'watchdog-state.json')).last_nudge_at).not.toBe(stale);
 }));
 
@@ -2655,9 +2524,11 @@ test('escalation takes precedence — the throttle is never consulted', withHerm
 //      skipped, so only step 5 is under test here.
 // -------------------------------------------------------
 
+/** Everything the watchdog did to the session: tmux calls (liveness, kill-session) and
+ *  the requests it queued for the core mod. */
 const tmuxCalls = (h: Hermit) => {
   const p = path.join(h.dir, 'tmux-calls.log');
-  return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
+  return [fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '', queueLog(h)].filter(Boolean).join('\n');
 };
 const events = (h: Hermit) => (fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '');
 const writeState = (h: Hermit, name: string, obj: unknown) => {
@@ -3868,19 +3739,14 @@ test('standalone clear: frozen status cache cannot trigger a spurious compact',
     // Bloated pre-clear entry — the dead context's final turn.
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 50000, cache_write_tokens: 0, cache_read_tokens: 200000 }]);
     fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(2) }) + '\n');
-    // Pre-prime the compact tracker's pane hash so quiescence is already satisfied —
-    // absent the fix, tick 2 alone would be enough for the compactor to misfire.
-    primeCompactHash(h, STATIC_HASH);
-    const primed = readWatchdogStateFile(h);
-    primed.last_pane_hash_standalone = STATIC_HASH;
-    writeState(h, 'watchdog-state.json', primed);
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    // Tick 1: standalone /clear fires and leaves the frozen status cache intact.
+    // Tick 1: standalone /clear is queued (compaction waits behind it) and the frozen
+    // status cache is left intact.
     const r1 = await watchdog(h, 'run');
     expect(r1.exitCode).toBe(0);
-    const tmuxLog1 = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+    const tmuxLog1 = tmuxCalls(h);
     expect(tmuxLog1).toContain('/clear');
     expect(readJson(state(h, 'context-clear.json')).last_trigger.reason).toBe('quiet');
     expect(fs.existsSync(path.join(h.dir, '.hermit', 'sessions', '.status.json'))).toBe(true);
@@ -3889,7 +3755,7 @@ test('standalone clear: frozen status cache cannot trigger a spurious compact',
     patchRuntime(h, { session_id: null, cc_session_id: null });
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
-    const tmuxLog2 = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+    const tmuxLog2 = tmuxCalls(h);
     expect(tmuxLog2).not.toContain('/compact');
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).not.toContain('context-compact');
     const ws = readJson(state(h, 'watchdog-state.json'));
@@ -3977,37 +3843,80 @@ function writeCompactMarker(h: Hermit, ageSeconds = 0): void {
   }) + '\n');
 }
 
-/** Write watchdog-state with a specific last_pane_hash_compact (simulates second tick for the compact tracker). */
-function primeCompactHash(h: Hermit, hash: string): void {
-  const p = state(h, 'watchdog-state.json');
-  const existing = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : {};
-  fs.writeFileSync(p, JSON.stringify({ ...existing, last_pane_hash_compact: hash }) + '\n');
+/** Stand in for the core mod: report every queued request with `status`. */
+function finishQueued(h: Hermit, status: 'ok' | 'failed' | 'unknown' | 'skipped'): void {
+  const dir = state(h, 'harness-queue');
+  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    const entry = readJson(path.join(dir, name));
+    finalize(path.join(h.dir, '.hermit'), entry.id, { legs: entry.commands.map((c: { command: string }) => ({ command: c.command, status, text: status === 'ok' ? '' : 'stopped' })) });
+  }
 }
 
-const STATIC_HASH = crypto.createHash('sha256').update('static pane content\n').digest('hex');
-
-test('context_compact: bloated idle + quiescent + operator silent → /compact sent on 2nd tick, context_cleared never set',
+test('context_compact: bloated idle + operator silent → /compact queued, stamped only once reported, context_cleared never set',
   withHermit(async (h) => {
     writeContextCompactConfig(h);
     writeAlwaysOnRuntime(h);
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 50000, cache_write_tokens: 0, cache_read_tokens: 200000 }]);
     fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
-    const snapshotPath = path.join(h.dir, 'runtime-at-compact.json');
-    writeFakeTmux(h, 0, 'static pane content', snapshotPath);
+    writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    const r1 = await watchdog(h, 'run'); // tick 1: hash recorded, no compact yet
+    const r1 = await watchdog(h, 'run');
     expect(r1.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
-
-    const r2 = await watchdog(h, 'run'); // tick 2: same hash → /compact fires
-    expect(r2.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    expect(tmuxLog).toContain(composeCompactSteeringMessage());
+    expect(queueLog(h)).toBe(`/compact ${composeCompactSteeringMessage()}`);
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('context-compact');
+    expect(readJson(state(h, 'watchdog-state.json')).last_compacted_at).toBeUndefined();
     // context_cleared is context_clear's marker only — compact must never touch it.
-    const runtimeAtCompact = readJson(snapshotPath);
-    expect(runtimeAtCompact.context_cleared).not.toBe(true);
+    expect(readJson(state(h, 'runtime.json')).context_cleared).not.toBe(true);
+
+    // Still pending: a second tick queues nothing more.
+    await watchdog(h, 'run');
+    expect(readJson(state(h, 'watchdog-state.json')).last_hygiene_eval.compact.outcome).toBe('skip:request-pending');
+
+    finishQueued(h, 'ok');
+    await watchdog(h, 'run');
+    const ws = readJson(state(h, 'watchdog-state.json'));
+    expect(typeof ws.last_compacted_at).toBe('string');
+    expect(ws.last_hygiene_eval.compact.outcome).toBe('skip:interval-cooldown');
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('"context-compact-result","reason":"ok"');
+  }));
+
+for (const status of ['failed', 'unknown', 'skipped'] as const) {
+  test(`context_compact: a ${status} outcome stamps nothing and stays due`,
+    withHermit(async (h) => {
+      writeContextCompactConfig(h);
+      writeAlwaysOnRuntime(h);
+      writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 50000, cache_write_tokens: 0, cache_read_tokens: 200000 }]);
+      fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
+      writeFakeTmux(h, 0, 'static pane content');
+      writeFakePgrep(h, 1);
+      writeCompactMarker(h);
+
+      await watchdog(h, 'run');
+      finishQueued(h, status);
+      await watchdog(h, 'run');
+      const ws = readJson(state(h, 'watchdog-state.json'));
+      expect(ws.last_compacted_at).toBeUndefined();
+      expect(ws.last_compacted_cost_ts).toBeUndefined();
+      expect(ws.last_hygiene_eval.compact.outcome).toBe('fired');
+      expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(true);
+      expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain(`"context-compact-result","reason":"${status}`);
+    }));
+}
+
+test('context_compact: a hermit whose mod has not loaded skips with a named outcome',
+  withHermit(async (h) => {
+    writeContextCompactConfig(h);
+    writeAlwaysOnRuntime(h);
+    fs.rmSync(state(h, 'harness-mod-loaded.json'));
+    writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 50000, cache_write_tokens: 0, cache_read_tokens: 200000 }]);
+    fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
+    writeFakeTmux(h, 0, 'static pane content');
+    writeFakePgrep(h, 1);
+
+    await watchdog(h, 'run');
+    expect(queueLog(h)).toBe('');
+    expect(readJson(state(h, 'watchdog-state.json')).last_hygiene_eval.compact.outcome).toBe('skip:mod-not-loaded');
   }));
 
 test('context_compact: boundary marker waives min_interval but not the 60k floor',
@@ -4019,12 +3928,11 @@ test('context_compact: boundary marker waives min_interval but not the 60k floor
     fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
-    primeCompactHash(h, STATIC_HASH);
     writeCompactMarker(h); // fresh marker — would waive min_interval, but floor is absolute
 
     const r = await watchdog(h, 'run');
     expect(r.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
     // A fresh marker is preserved (not wasted) when the floor blocks the compact —
     // it keeps its interval-cooldown waiver until the compact it enables actually
     // fires or it goes stale. Consuming it here would drop the waiver a tick early.
@@ -4041,28 +3949,28 @@ test('context_compact: fresh boundary marker waives min_interval and fires again
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run'); // tick 1: prime hash
-    await watchdog(h, 'run'); // tick 2: fires — sets last_compacted_at to now
+    await watchdog(h, 'run'); // tick 1: queues the compaction
+    finishQueued(h, 'ok');
+    await watchdog(h, 'run'); // tick 2: reads the ok outcome — sets last_compacted_at
 
     const ts2 = new Date().toISOString();
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 100000, cache_write_tokens: 0, cache_read_tokens: 200000, timestamp: ts2 }]);
-    await watchdog(h, 'run'); // tick 3: re-primes hash after reset
+    await watchdog(h, 'run'); // tick 3: interval cooldown holds
+    expect(readJson(state(h, 'watchdog-state.json')).last_hygiene_eval.compact.outcome).toBe('skip:interval-cooldown');
 
     writeCompactMarker(h); // fresh boundary marker — waives the still-open min_interval
-    await watchdog(h, 'run'); // tick 4: hash matches, marker waives interval → fires again
+    await watchdog(h, 'run'); // tick 4: fires again
 
-    const events = fs.readFileSync(eventsFile(h), 'utf-8').split('\n').filter(l => l.includes('context-compact'));
-    expect(events.length).toBe(2);
+    const fired = fs.readFileSync(eventsFile(h), 'utf-8').trim().split('\n').map(l => JSON.parse(l)).filter(e => e.action === 'context-compact');
+    expect(fired.length).toBe(2);
+    expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(true); // kept until reported done
+    finishQueued(h, 'ok');
+    await watchdog(h, 'run');
     expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(false); // consumed
   }));
 
-test('context_compact: fresh boundary marker survives the two-tick quiescence wait under an active interval cooldown',
+test('context_compact: fresh boundary marker survives until the compaction it waived is reported done',
   withHermit(async (h) => {
-    // Regression: the marker used to be consumed on read (tick 1), a full tick before
-    // the quiescence gate confirms the pane is stable (tick 2) — so under an active
-    // interval cooldown the waiver was gone by the time the compact could fire, and
-    // the compact the boundary requested never happened. The hash is deliberately NOT
-    // pre-primed here, mirroring a real boundary where work just churned the pane.
     writeContextCompactConfig(h, { minContextTokens: 150000, minInterval: '4h' });
     writeAlwaysOnRuntime(h);
     // Interval cooldown active: compacted 1h ago, on a *different* cost entry so
@@ -4077,18 +3985,16 @@ test('context_compact: fresh boundary marker survives the two-tick quiescence wa
     fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
-    writeCompactMarker(h); // fresh marker, hash not pre-primed
+    writeCompactMarker(h);
 
-    const r1 = await watchdog(h, 'run'); // tick 1: records hash, not yet stable → no compact, marker preserved
+    const r1 = await watchdog(h, 'run');
     expect(r1.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
-    expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(true); // waiver survives to the next tick
+    expect(queueLog(h)).toContain('/compact');
+    expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(true);
 
-    const r2 = await watchdog(h, 'run'); // tick 2: pane stable, marker still waives the cooldown → fires
-    expect(r2.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    expect(tmuxLog).toContain('/compact');
-    expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(false); // consumed on fire
+    finishQueued(h, 'ok');
+    expect((await watchdog(h, 'run')).exitCode).toBe(0);
+    expect(fs.existsSync(state(h, 'compact-requested.json'))).toBe(false); // consumed once reported
   }));
 
 // -------------------------------------------------------
@@ -4108,10 +4014,9 @@ test('context_compact: subagent tail entry is ignored — bloated main line stil
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run'); // tick 1: hash recorded
-    const r2 = await watchdog(h, 'run'); // tick 2: same hash → fires
+    const r2 = await watchdog(h, 'run'); // one tick queues the compaction
     expect(r2.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+    const tmuxLog = tmuxCalls(h);
     expect(tmuxLog).toContain('/compact');
   }));
 
@@ -4127,10 +4032,9 @@ test('context_compact: idle-phase compaction keys on cc_session_id, with no S-NN
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+    const tmuxLog = tmuxCalls(h);
     expect(tmuxLog).toContain('/compact');
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain(`cc_session_id ${CC_SESSION_ID}`);
   }));
@@ -4157,14 +4061,10 @@ test('context_compact: another session in the folder cannot drive the resident\'
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
-    // The tier bails on the token gate before any pane work, so tmux is never invoked
-    // and the log may not exist at all — either way, nothing was typed.
-    const tmuxLogPath = path.join(h.dir, 'tmux-calls.log');
-    const tmuxLog = fs.existsSync(tmuxLogPath) ? fs.readFileSync(tmuxLogPath, 'utf-8') : '';
-    expect(tmuxLog).not.toContain('/compact');
+    // The tier bails on the token gate, so nothing is queued.
+    expect(tmuxCalls(h)).not.toContain('/compact');
     const ws = readJson(state(h, 'watchdog-state.json'));
     expect(ws.last_hygiene_eval?.compact?.outcome).toBe('skip:under-threshold');
     expect(ws.last_hygiene_eval?.compact?.cc_session_id).toBe(CC_SESSION_ID);
@@ -4183,10 +4083,9 @@ test('context_compact: legacy multi-call entry averages down and stays compact-e
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run'); // tick 1: tracker primes its hash
-    const r2 = await watchdog(h, 'run'); // tick 2
+    const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+    const tmuxLog = tmuxCalls(h);
     expect(tmuxLog).toContain('/compact');
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('context-compact');
   }));
@@ -4200,7 +4099,6 @@ test('context_compact: last_hygiene_eval records the fire outcome and prompt tok
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
     const ws = readJson(state(h, 'watchdog-state.json'));
@@ -4258,7 +4156,6 @@ test('context_compact: entry observed after the last context reset still fires',
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
     const ws = readJson(state(h, 'watchdog-state.json'));
@@ -4279,10 +4176,9 @@ test('context_compact: last_call_prompt_tokens wins over the turn-peak max_promp
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
     const ws = readJson(state(h, 'watchdog-state.json'));
     expect(ws.last_hygiene_eval?.compact).toMatchObject({ outcome: 'skip:below-floor', prompt_tokens: 30000 });
   }));
@@ -4313,7 +4209,7 @@ describe('pause enforcement', () => {
       expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('restart');
     }));
 
-  test('nudge suppressed while paused (Escape enforcement supersedes it on the same tick)',
+  test('nudge suppressed while paused (the queued turn abort supersedes it on the same tick)',
     withHermit(async (h) => {
       writeConfig(h);
       writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: new Date().toISOString() });
@@ -4326,11 +4222,11 @@ describe('pause enforcement', () => {
       const events = fs.readFileSync(eventsFile(h), 'utf-8');
       expect(events).not.toContain('nudge');
       expect(events).toContain('pause-enforced');
-      const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
+      const tmuxLog = tmuxCalls(h);
       expect(tmuxLog).not.toContain('heartbeat run');
     }));
 
-  test('Escape sent once when paused mid-turn (execution in flight, live tmux)', withHermit(async (h) => {
+  test('one turn abort queued when paused mid-turn (execution in flight, live tmux)', withHermit(async (h) => {
     writeConfig(h);
     writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: new Date().toISOString() });
     writeFakeTmux(h, 0, 'busy pane');
@@ -4338,30 +4234,30 @@ describe('pause enforcement', () => {
     writePauseFlag(h, { ts: '2026-02-02T00:00:00.000Z' });
     const r = await watchdog(h, 'run');
     expect(r.exitCode).toBe(0);
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    expect(tmuxLog).toContain('Escape');
+    const tmuxLog = tmuxCalls(h);
+    expect(tmuxLog.split('\n')).toContain('pause');
     expect(readJson(state(h, 'watchdog-state.json')).last_escaped_pause_ts).toBe('2026-02-02T00:00:00.000Z');
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('pause-enforced');
   }));
 
-  test('Escape still fires exactly once for a ts-less flag (sentinel dedup)', withHermit(async (h) => {
+  test('the abort is still queued exactly once for a ts-less flag (sentinel dedup)', withHermit(async (h) => {
     writeConfig(h);
     writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: new Date().toISOString() });
     writeFakeTmux(h, 0, 'busy pane');
     writeFakePgrep(h, 1);
     // Hand-crafted/partial flag with no `ts` — a bare `=== status.ts` compare
-    // would read undefined === undefined and skip the interrupt entirely.
+    // would read undefined === undefined and skip the abort entirely.
     fs.writeFileSync(state(h, 'pause.json'),
       JSON.stringify({ paused: true, paused_until: null, reason: 'operator', by: 'test' }) + '\n');
     await watchdog(h, 'run');
     await watchdog(h, 'run');
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    const escapeCount = tmuxLog.split('\n').filter(l => l.includes('Escape')).length;
-    expect(escapeCount).toBe(1);
+    const tmuxLog = tmuxCalls(h);
+    const abortCount = tmuxLog.split('\n').filter(l => l === 'pause').length;
+    expect(abortCount).toBe(1);
     expect(readJson(state(h, 'watchdog-state.json')).last_escaped_pause_ts).toBe('no-ts');
   }));
 
-  test('Escape not repeated on a second tick (same pause episode)', withHermit(async (h) => {
+  test('the abort is not repeated on a second tick (same pause episode)', withHermit(async (h) => {
     writeConfig(h);
     writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: new Date().toISOString() });
     writeFakeTmux(h, 0, 'busy pane');
@@ -4369,12 +4265,12 @@ describe('pause enforcement', () => {
     writePauseFlag(h, { ts: '2026-02-02T00:00:00.000Z' });
     await watchdog(h, 'run');
     await watchdog(h, 'run');
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    const escapeCount = tmuxLog.split('\n').filter(l => l.includes('Escape')).length;
-    expect(escapeCount).toBe(1);
+    const tmuxLog = tmuxCalls(h);
+    const abortCount = tmuxLog.split('\n').filter(l => l === 'pause').length;
+    expect(abortCount).toBe(1);
   }));
 
-  test('Escape sent again for a new pause episode (fresh ts) after a resume', withHermit(async (h) => {
+  test('a new pause episode (fresh ts) after a resume queues another abort (fresh ts) after a resume', withHermit(async (h) => {
     writeConfig(h);
     writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: new Date().toISOString() });
     writeFakeTmux(h, 0, 'busy pane');
@@ -4384,12 +4280,12 @@ describe('pause enforcement', () => {
     fs.rmSync(state(h, 'pause.json')); // resume
     writePauseFlag(h, { ts: '2026-03-03T00:00:00.000Z' }); // new episode
     await watchdog(h, 'run');
-    const tmuxLog = fs.readFileSync(path.join(h.dir, 'tmux-calls.log'), 'utf-8');
-    const escapeCount = tmuxLog.split('\n').filter(l => l.includes('Escape')).length;
-    expect(escapeCount).toBe(2);
+    const tmuxLog = tmuxCalls(h);
+    const abortCount = tmuxLog.split('\n').filter(l => l === 'pause').length;
+    expect(abortCount).toBe(2);
   }));
 
-  test('Escape not sent when execution is idle (nothing in flight)', withHermit(async (h) => {
+  test('no abort when execution is idle (nothing in flight)', withHermit(async (h) => {
     writeConfig(h);
     writeState(h, 'execution.json', { state: 'idle', cc_session_id: CC_SESSION_ID, at: isoAgo(1) });
     writeFakeTmux(h, 0, 'idle pane');
@@ -4397,10 +4293,10 @@ describe('pause enforcement', () => {
     writePauseFlag(h);
     const r = await watchdog(h, 'run');
     expect(r.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
   }));
 
-  test('Escape not sent for an interactive session (never auto-managed)', withHermit(async (h) => {
+  test('no abort for an interactive session (never auto-managed)', withHermit(async (h) => {
     writeConfig(h);
     patchRuntime(h, { runtime_mode: 'interactive' });
     writeFakeTmux(h, 0, 'interactive pane');
@@ -4408,7 +4304,7 @@ describe('pause enforcement', () => {
     writePauseFlag(h);
     const r = await watchdog(h, 'run');
     expect(r.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
   }));
 
   test('no pause.json — normal nudge flow unaffected', withHermit(async (h) => {
@@ -4738,7 +4634,7 @@ test('context_compact: recorded surface subtracted — under-threshold skip carr
 
     const r = await watchdog(h, 'run');
     expect(r.exitCode).toBe(0);
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
     const ws = readWdState(h);
     expect(ws.last_hygiene_eval.compact.outcome).toBe('skip:under-threshold');
     expect(ws.last_hygiene_eval.compact.prompt_tokens).toBe(160000);
@@ -4750,14 +4646,13 @@ test('context_compact: recorded surface subtracted — fires once compactible cr
     writeContextCompactConfig(h, { minContextTokens: 100000 });
     writeAlwaysOnRuntime(h);
     writeSurfaceFile(h, 65000);
-    // 170k total − 65k surface = 105k compactible > 100k threshold → fires on tick 2
+    // 170k total − 65k surface = 105k compactible > 100k threshold → fires
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 0, cache_write_tokens: 0, cache_read_tokens: 170000 }]);
     fs.writeFileSync(state(h, 'last-operator-action.json'), JSON.stringify({ at: isoAgo(1) }) + '\n');
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run'); // tick 1: quiescence pending
-    const r2 = await watchdog(h, 'run'); // tick 2: fires
+    const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
     const events = fs.readFileSync(eventsFile(h), 'utf-8');
     expect(events).toContain('prompt tokens 170000 (compactible ~105000) over threshold 100000');
@@ -4778,7 +4673,7 @@ test('context_compact: no surface file → 50k assumed surface gives cold-start 
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 0, cache_write_tokens: 0, cache_read_tokens: 150000 }]);
     await watchdog(h, 'run');
     await watchdog(h, 'run');
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
     expect(readWdState(h).last_hygiene_eval.compact.outcome).toBe('skip:under-threshold');
 
     // 151k total − 50k assumed = 101k compactible > threshold → fires
@@ -4800,7 +4695,6 @@ test('context_compact: malformed context-surface.json degrades to the assumed-su
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
 
-    await watchdog(h, 'run');
     const r2 = await watchdog(h, 'run');
     expect(r2.exitCode).toBe(0);
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('context-compact');
@@ -4818,7 +4712,7 @@ test('context_compact: floor applies to the subtracted value (compactible below 
 
     await watchdog(h, 'run');
     await watchdog(h, 'run');
-    expect(fs.existsSync(path.join(h.dir, 'tmux-calls.log'))).toBe(false);
+    expect(tmuxCalls(h)).toBe('');
     expect(readWdState(h).last_hygiene_eval.compact.outcome).toBe('skip:below-floor');
   }));
 
@@ -4866,7 +4760,11 @@ const agoISO = (secs: number) => new Date(NOW_MS - secs * 1000).toISOString();
 interface Cascade {
   dir: string;
   world: World;
-  sent: Array<{ session: string; text: string }>;
+  /** Requests queued for the core mod, in order. */
+  sent: Array<{ id: string; source: string; purpose?: string; commands: Array<{ command: string; arg: string | null }> }>;
+  /** Report the last queued request's outcome, as the mod would. */
+  report(status: 'ok' | 'failed' | 'unknown' | 'skipped'): void;
+  setModLoaded(v: boolean): void;
   setPane(v: string | null): void;
   setAlive(v: boolean): void;
   setNow(ms: number): void;
@@ -4887,7 +4785,9 @@ function setupCascade(): Cascade {
   let pane: string | null = 'stable-pane';
   let alive = true;
   let nowMs = NOW_MS;
-  const sent: Array<{ session: string; text: string }> = [];
+  let modLoaded = true;
+  const sent: Cascade['sent'] = [];
+  const outcomes = new Map<string, any>();
 
   const world: World = {
     liveness: { ageSecs: () => null },
@@ -4899,7 +4799,15 @@ function setupCascade(): Cascade {
     tmux: {
       alive: () => alive,
       capture: () => pane,
-      send: (session, text) => { sent.push({ session, text }); },
+    },
+    harness: {
+      enqueue: (request) => {
+        if (!modLoaded) return { status: 'skipped', reason: 'mod_not_loaded' };
+        const id = `q${sent.length}`;
+        sent.push({ ...request, id });
+        return { status: 'queued', id };
+      },
+      outcome: (id) => outcomes.get(id) ?? null,
     },
     files: {
       readJson: (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return null; } },
@@ -4930,6 +4838,15 @@ function setupCascade(): Cascade {
 
   return {
     dir, world, sent,
+    report: (status) => {
+      const request = sent.at(-1)!;
+      outcomes.set(request.id, {
+        id: request.id, source: request.source, purpose: request.purpose ?? null, commands: request.commands,
+        legs: request.commands.map((c) => ({ command: c.command, status, text: status === 'ok' ? '' : 'stopped' })),
+        finished_at: new Date(nowMs).toISOString(),
+      });
+    },
+    setModLoaded: (v) => { modLoaded = v; },
     setPane: (v) => { pane = v; },
     setAlive: (v) => { alive = v; },
     setNow: (ms) => { nowMs = ms; },
@@ -5155,22 +5072,18 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
     expect(c.wdState().last_hygiene_eval.compact.compactible_tokens).toBe(80_000);
   }));
 
-  test('interval-cooldown blocks before quiescence has a say', withCascade((c) => {
+  test('interval-cooldown blocks inside min_interval', withCascade((c) => {
     writeCostEntry(c);
     c.world.files.writeJson(path.join(c.world.paths.stateDir, 'watchdog-state.json'),
       { last_compacted_at: agoISO(3600) }); // 1h ago, inside the 4h min_interval
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:interval-cooldown');
   }));
 
-  // The cooldown-blocked tick still banks the pane hash, so when the interval
-  // reopens the compact fires immediately instead of spending another tick
-  // re-observing a pane that never moved.
-  test('the cooldown lapses as the clock advances, and quiescence banked meanwhile still counts', withCascade((c) => {
+  test('the cooldown lapses as the clock advances', withCascade((c) => {
     writeCostEntry(c);
     c.world.files.writeJson(path.join(c.world.paths.stateDir, 'watchdog-state.json'),
       { last_compacted_at: agoISO(3600) });
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:interval-cooldown');
-    expect(c.wdState().last_pane_hash_compact).toBeTruthy();
     c.setNow(NOW_MS + 4 * 3600 * 1000); // stamp is now >4h old
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('fired');
   }));
@@ -5206,7 +5119,6 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
 
   test('lock-held', withCascade((c) => {
     writeCostEntry(c);
-    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:quiescence-pending');
     // A bare, live, foreign PID — acquireLock treats own-PID or unparseable
     // content as a stale lock it may claim.
     fs.writeFileSync(path.join(c.world.paths.stateDir, '.lifecycle.lock'), String(process.ppid));
@@ -5214,40 +5126,77 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
     expect(c.sent).toEqual([]);
   }));
 
-  test('a busy session past quiescence is skipped, never typed into', withCascade((c) => {
+  test('a busy session is skipped, nothing queued', withCascade((c) => {
     writeCostEntry(c);
     fs.writeFileSync(path.join(c.world.paths.stateDir, 'execution.json'), JSON.stringify({
       state: 'in_flight', cc_session_id: CC_SESSION_ID, at: new Date().toISOString(),
     }));
-    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:quiescence-pending');
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:boundary:execution-not-idle');
     expect(c.sent).toEqual([]);
   }));
 
-  test('fires mid-arc on the second stable tick', withCascade((c) => {
+  test('mod-not-loaded: nothing queued, nothing stamped', withCascade((c) => {
     writeCostEntry(c);
-    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:quiescence-pending');
+    c.setModLoaded(false);
+    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:mod-not-loaded');
+    expect(c.sent).toEqual([]);
+    expect(c.wdState().harness_requests).toBeUndefined();
+  }));
+
+  test('fires mid-arc in one tick, and stamps success only from an ok outcome', withCascade((c) => {
+    writeCostEntry(c);
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('fired');
 
-    expect(c.sent).toHaveLength(1);
-    expect(c.sent[0].session).toBe('hermit-test');
-    expect(c.sent[0].text).toBe(composeCompactSteeringMessage());
-    const ws = c.wdState();
+    expect(c.sent).toEqual([{
+      id: 'q0', source: 'watchdog', purpose: 'watchdog-compact',
+      commands: [{ command: '/compact', arg: composeCompactSteeringMessage() }],
+    }]);
+    let ws = c.wdState();
     expect(ws.last_hygiene_eval.compact).toEqual({
       ts: '2026-08-14T12:00:00Z', outcome: 'fired', cc_session_id: CC_SESSION_ID,
       prompt_tokens: 900_000, compactible_tokens: 850_000,
     });
-    expect(ws.last_compacted_at).toBe('2026-08-14T12:00:00Z');
-    expect(ws.last_pane_hash_compact).toBeNull();
+    expect(ws.last_compacted_at).toBeUndefined();
+    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:request-pending');
+    expect(c.sent).toHaveLength(1);
+
+    c.report('ok');
+    readHarnessOutcomes(c.world);
+    ws = c.wdState();
+    expect(ws.last_compacted_at).toBe('2026-08-14T12:00:00.000Z');
+    expect(ws.last_compacted_cost_ts).toBe(agoISO(60));
+    expect(ws.harness_requests).toEqual({});
   }));
 
-  test('a fresh marker preserves unfinished-work steering and is consumed on fire', withCascade((c) => {
+  for (const status of ['failed', 'unknown', 'skipped'] as const) {
+    test(`a ${status} compaction keeps retry eligibility`, withCascade((c) => {
+      writeCostEntry(c);
+      expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('fired');
+      c.report(status);
+      readHarnessOutcomes(c.world);
+      expect(c.wdState().last_compacted_at).toBeUndefined();
+      expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('fired');
+      expect(c.sent).toHaveLength(2);
+    }));
+  }
+
+  test('no compaction is queued behind a pending clear', withCascade((c) => {
+    writeCostEntry(c);
+    c.world.files.writeJson(path.join(c.world.paths.stateDir, 'watchdog-state.json'),
+      { harness_requests: { clear: { id: 'other', at: agoISO(5) } } });
+    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:request-pending');
+    expect(c.sent).toEqual([]);
+  }));
+
+  test('a fresh marker preserves unfinished-work steering and is consumed once reported', withCascade((c) => {
     const markerPath = path.join(c.world.paths.stateDir, 'compact-requested.json');
     writeCostEntry(c);
     fs.writeFileSync(markerPath, JSON.stringify({ requested_at: agoISO(60) }));
-    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:quiescence-pending');
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('fired');
-    expect(c.sent[0].text).toBe(composeCompactSteeringMessage());
+    expect(c.sent[0].commands[0].arg).toBe(composeCompactSteeringMessage());
+    expect(fs.existsSync(markerPath)).toBe(true);
+    c.report('ok');
+    readHarnessOutcomes(c.world);
     expect(fs.existsSync(markerPath)).toBe(false);
   }));
 });

@@ -18,7 +18,13 @@ export function watchdogWorld() {
     tmux: {
       alive: () => { signals.checks.push(signals.alive); return signals.alive; },
       capture: () => signals.pane,
-      send: (_, text) => { keys.push(text); },
+    },
+    harness: {
+      enqueue: request => {
+        keys.push(request.source === 'pause' ? 'pause' : request.commands.map(c => c.arg ? `${c.command} ${c.arg}` : c.command).join(' + '));
+        return { status: 'queued', id: `q${keys.length}` };
+      },
+      outcome: () => null,
     },
     liveness: { ageSecs: () => signals.age },
     registry: { resident: () => null },

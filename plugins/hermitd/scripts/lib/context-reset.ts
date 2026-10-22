@@ -51,8 +51,9 @@ export function stampContextReset(hermitRoot: string): void {
 /**
  * Apply the hermit-owned bookkeeping that must accompany a context reset.
  *
- * Call this immediately BEFORE the reset keystroke. PreCompact does not fire
- * for /clear, so this path owns its runtime reset timestamp.
+ * The resident's SessionStart with source `clear` calls this once Claude Code has
+ * cleared the context. PreCompact does not fire for /clear, so this path owns its
+ * runtime reset timestamp.
  *
  * Fail-open throughout: a bookkeeping failure must never suppress the reset itself.
  */

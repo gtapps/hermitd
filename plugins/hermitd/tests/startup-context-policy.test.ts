@@ -30,6 +30,7 @@ test('full resident loads refresh policy while compaction and guests preserve th
       expect((await run(source, resident)).exitCode).toBe(0);
       expect(JSON.parse(fs.readFileSync(policyFile, 'utf8'))).toEqual({ ...baseline, last_trigger: trigger });
     }
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'))).toEqual(runtime);
     for (const source of ['clear', 'resume']) {
       fs.appendFileSync(path.join(f.dir, 'TASKS.md'), `\nLoaded on ${source}`);
       const result = await run(source);
@@ -37,9 +38,40 @@ test('full resident loads refresh policy while compaction and guests preserve th
       expect(result.stdout).toContain('Changed confirmation policy');
       expect(JSON.parse(fs.readFileSync(policyFile, 'utf8'))).toEqual({ policy_hash: contextPolicyHash(f.dir), last_trigger: trigger });
     }
-    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'))).toEqual(runtime);
+    // The resident clear is the one load that records a reset.
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'))).toMatchObject({ context_cleared: true });
   } finally { f.cleanup(); }
 });
+
+for (const [label, previous] of [
+  ['a pending watchdog trigger', { policy_hash: 'kept', last_trigger: { reason: 'quiet' } }],
+  ['a manual clear', null],
+] as const) {
+  test(`resident clear records the reset once for ${label}; a guest clear writes nothing`, async () => {
+    const f = taskFixture();
+    try {
+      const policyFile = path.join(f.dir, 'state/context-clear.json');
+      f.put('state/runtime.json', { version: 1, cc_session_id: 'resident' });
+      if (previous) f.put('state/context-clear.json', previous);
+      const run = (resident: string) => runScript('startup-context.ts', {
+        cwd: path.dirname(f.dir),
+        env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: resident, HERMIT_MANAGED: '', CLAUDE_CONFIG_DIR: path.join(f.dir, 'registry') },
+        stdin: JSON.stringify({ source: 'clear', session_id: resident ? 'resident' : 'guest' }),
+      });
+      expect((await run('')).exitCode).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8')).last_context_reset_at).toBeUndefined();
+      expect((await run('1')).exitCode).toBe(0);
+      const runtime = JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'));
+      expect(runtime.context_cleared).toBe(true);
+      expect(typeof runtime.last_context_reset_at).toBe('string');
+      if (previous) {
+        expect(JSON.parse(fs.readFileSync(policyFile, 'utf8')).last_trigger).toEqual({ reason: 'quiet', reset_at: runtime.last_context_reset_at });
+      } else {
+        expect(JSON.parse(fs.readFileSync(policyFile, 'utf8')).last_trigger).toBeUndefined();
+      }
+    } finally { f.cleanup(); }
+  });
+}
 
 test('a failed baseline write does not suppress resident context', async () => {
   const f = taskFixture();

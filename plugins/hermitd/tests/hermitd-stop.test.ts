@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { SCRIPTS_DIR } from './helpers/run';
-import { shutdownReady } from '../scripts/hermitd-stop';
+import { claim, finalize } from '../scripts/lib/harness-mod';
 
 // Black-box contract tests for the hermitd-stop lifecycle script. Written
 // against the Python implementation first, then flipped to the TS port in the
@@ -41,16 +41,13 @@ function readJson(dir: string, rel: string) {
 // the session "exit" mid-run; every invocation is logged for assertions.
 function installFakeTmux(
   dir: string,
-  opts: { hasSession?: boolean; settleOnEnter?: boolean; panePid?: number } = {}
+  opts: { hasSession?: boolean; panePid?: number } = {}
 ) {
   const bin = path.join(dir, 'fake-bin');
   fs.mkdirSync(bin, { recursive: true });
   const log = path.join(dir, 'tmux.log');
   const aliveMarker = path.join(dir, 'session-alive');
   if (opts.hasSession) fs.writeFileSync(aliveMarker, '1');
-  const settleLine = opts.settleOnEnter
-    ? `case "$*" in *Enter*) bun -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({state:"idle",at:new Date().toISOString()}))' '${dir}/.hermit/state/execution.json' ;; esac`
-    : '';
   // list-panes drives the survivor check: echo the injected pane pid so the
   // stop script captures a real process tree to verify.
   const listPanes = opts.panePid
@@ -60,7 +57,6 @@ function installFakeTmux(
     path.join(bin, 'tmux'),
     `#!/usr/bin/env bash
 echo "$@" >> '${log}'
-${settleLine}
 case "$1" in
   has-session) [ -f '${aliveMarker}' ] && exit 0 || exit 1 ;;
   kill-session) rm -f '${aliveMarker}'; exit 0 ;;
@@ -71,6 +67,29 @@ esac
   );
   fs.chmodSync(path.join(bin, 'tmux'), 0o755);
   return { log, aliveMarker, bin };
+}
+
+/** The resident session with the core mod loaded, so the shutdown skill can be queued. */
+function residentWithMod(dir: string) {
+  writeRuntime(dir, { runtime_mode: 'tmux', cc_session_id: 'resident' });
+  fs.writeFileSync(path.join(dir, '.hermit', 'state', 'harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident' }));
+}
+
+/** Stand in for the core mod and the session: once the skill is queued, run it and settle its turn. */
+async function runQueuedSkill(dir: string) {
+  const hermit = path.join(dir, '.hermit');
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    const entry = claim(hermit, 'resident', 'test');
+    if (entry) {
+      const submitted = Date.now();
+      finalize(hermit, entry.id, { legs: [{ command: entry.commands[0].command, status: 'ok', text: 'submitted', submitted_at: new Date(submitted).toISOString() }] });
+      fs.writeFileSync(path.join(hermit, 'state', 'execution.json'), JSON.stringify({ state: 'idle', at: new Date(submitted + 1000).toISOString() }));
+      return entry;
+    }
+    if (Date.now() > deadline) throw new Error('shutdown skill never queued');
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }
 
 async function runStop(dir: string, args: string[], fakeBin?: string, extraEnv?: Record<string, string>) {
@@ -193,17 +212,20 @@ describe('hermitd-stop contract', () => {
     }
   });
 
-  test('graceful: configured skill settles execution before stop', async () => {
+  test('graceful: the queued skill runs and its own turn settles before stop', async () => {
     const dir = makeDir();
     try {
       writeConfig(dir, { shutdown_skill: '/custom:shutdown' });
-      writeRuntime(dir, { runtime_mode: 'tmux' });
+      residentWithMod(dir);
       fs.writeFileSync(path.join(dir, '.hermit/state/execution.json'), JSON.stringify({ state: 'idle', at: '2026-01-01T00:00:00Z' }));
-      const { bin, log } = installFakeTmux(dir, { hasSession: true, settleOnEnter: true });
-      const { exitCode } = await runStop(dir, [], bin);
+      const { bin, log } = installFakeTmux(dir, { hasSession: true });
+      const stopping = runStop(dir, [], bin);
+      const entry = await runQueuedSkill(dir);
+      const { exitCode } = await stopping;
       expect(exitCode).toBe(0);
+      expect(entry).toMatchObject({ source: 'stop', purpose: 'stop', commands: [{ command: '/custom:shutdown', arg: null }] });
       const tmuxLog = fs.readFileSync(log, 'utf-8');
-      expect(tmuxLog).toContain('send-keys -t hermit-test /custom:shutdown\nsend-keys -t hermit-test Enter');
+      expect(tmuxLog).not.toContain('send-keys');
       expect(tmuxLog).toContain('kill-session');
       const rt = readJson(dir, '.hermit/state/runtime.json');
       expect(rt.last_error).toBeNull();
@@ -212,32 +234,34 @@ describe('hermitd-stop contract', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  }, 20000);
+  }, 30000);
 
-  test('graceful: a running turn ends before the shutdown skill is typed', async () => {
+  test('graceful: a running turn ends before the shutdown skill is queued', async () => {
     const dir = makeDir();
     try {
       writeConfig(dir, { shutdown_skill: '/custom:shutdown' });
-      writeRuntime(dir, { runtime_mode: 'tmux' });
+      residentWithMod(dir);
       const executionPath = path.join(dir, '.hermit/state/execution.json');
       fs.writeFileSync(executionPath, JSON.stringify({ state: 'in_flight', at: new Date().toISOString() }));
-      const { bin, log } = installFakeTmux(dir, { hasSession: true, settleOnEnter: true });
-      let typedMidTurn = true;
+      const { bin } = installFakeTmux(dir, { hasSession: true });
+      let queuedMidTurn = true;
       const turnEnds = new Promise<void>(resolve => setTimeout(() => {
-        typedMidTurn = fs.existsSync(log) && fs.readFileSync(log, 'utf-8').includes('/custom:shutdown');
+        const queue = path.join(dir, '.hermit/state/harness-queue');
+        queuedMidTurn = fs.existsSync(queue) && fs.readdirSync(queue).length > 0;
         fs.writeFileSync(executionPath, JSON.stringify({ state: 'idle', at: new Date().toISOString() }));
         resolve();
       }, 2500));
-      const { exitCode } = await runStop(dir, [], bin);
+      const stopping = runStop(dir, [], bin);
       await turnEnds;
-      expect(typedMidTurn).toBe(false);
+      await runQueuedSkill(dir);
+      const { exitCode } = await stopping;
+      expect(queuedMidTurn).toBe(false);
       expect(exitCode).toBe(0);
-      expect(fs.readFileSync(log, 'utf-8')).toContain('send-keys -t hermit-test /custom:shutdown');
       expect(readJson(dir, '.hermit/state/runtime.json').last_error).toBeNull();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  }, 20000);
+  }, 30000);
 
   test('graceful: idle execution needs no shutdown skill', async () => {
     const dir = makeDir();
@@ -248,19 +272,11 @@ describe('hermitd-stop contract', () => {
       const { bin, log } = installFakeTmux(dir, { hasSession: true });
       expect((await runStop(dir, [], bin)).exitCode).toBe(0);
       expect(fs.readFileSync(log, 'utf-8')).not.toContain('send-keys');
+      expect(fs.existsSync(path.join(dir, '.hermit/state/harness-queue'))).toBe(false);
       expect(readJson(dir, '.hermit/state/runtime.json').last_error).toBeNull();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
-
-  test('shutdown boundary rejects active, missing, or stale skill observations', () => {
-    const sentAt = Date.parse('2026-09-16T12:00:00Z');
-    expect(shutdownReady(null, null)).toBe(false);
-    expect(shutdownReady({ state: 'in_flight', at: '2026-09-16T12:00:01Z' }, sentAt)).toBe(false);
-    expect(shutdownReady({ state: 'idle', at: '2026-09-16T12:00:00Z' }, sentAt)).toBe(false);
-    expect(shutdownReady({ state: 'idle', at: '2026-09-16T12:00:01Z' }, sentAt)).toBe(true);
-    expect(shutdownReady({ state: 'idle' }, null)).toBe(true);
   });
 
   test.if(IS_TS)('lifecycle lock contention → exit 1, no state mutation', async () => {

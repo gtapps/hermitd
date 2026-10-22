@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Nothing unattended types into the resident's tmux pane: watchdog compaction, clear, monitor re-arm, the wedge nudge fallback, pause, the shutdown skill (`hermitd-stop`, `hermitd-docker down`, container SIGTERM), live update and `/when-done-switch-to` go through one durable queue that the core mod runs once the session is idle, never answering an open permission prompt or question.
+- Compaction and clear are recorded only when Claude Code reports them done; a failed or uncertain one stays due, and a manual `/clear` now records the reset too.
+- `hermitd update` and `hermitd-docker update` queue `/reload-plugins` and `hermit-evolve` as one batch; evolve runs only after the reload completes.
+- New `harness-request` and `graceful-shutdown` verbs.
+- Lapsed logins are detected from the failed turn's `authentication_failed` error for the resident session, which also catches an invalid API key; pending dialogs come from the session's registry status, and the stall notice names what it waits for.
+- Watchdog compaction, clear and the other queued commands are skipped and logged as `mod-not-loaded` when the core mod has not loaded for the resident session.
+- Requires Claude Code 2.1.308 or newer.
+
+### Fixed
+- A pause no longer leaves chat harness commands refused until someone types at the terminal.
+- A watchdog compact or update no longer approves a permission prompt or question that is open in the resident session.
+
+### Upgrade Instructions
+1. Delete `.hermit/state/pending-harness-switch.json` if it exists.
+2. In `.hermit/state/watchdog-state.json`, remove the `last_pane_hash_standalone` and `last_pane_hash_compact` keys and set `last_nudge_transport` to `null`. Leave every other key unchanged.
+3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so SIGTERM runs `hermitd-run graceful-shutdown`. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
+
 ## [1.4.19] - 2026-10-22
 
 ### Changed

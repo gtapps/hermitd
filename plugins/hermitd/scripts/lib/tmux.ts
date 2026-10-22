@@ -57,46 +57,9 @@ export function capturePane(name: string, transport: Transport = HOST): string |
 }
 
 /**
- * Return a bounded pane window only when its required footer is the final
- * nonblank row.
- *
- * tmux preserves unused blank renderer rows below short dialogs. Ignoring those
- * rows is safe only when the dialog footer still terminates the visible content;
- * otherwise a matching dialog may be stale scrollback above a newer prompt.
- */
-export function anchoredPaneTail(
-  paneContent: string,
-  maxLines: number,
-  terminalAnchor: string,
-): string | null {
-  if (maxLines < 1 || !terminalAnchor) return null;
-
-  const lines = paneContent.split('\n');
-  let lastContentLine = lines.length - 1;
-  while (lastContentLine >= 0 && lines[lastContentLine].trim() === '') {
-    lastContentLine--;
-  }
-  if (lastContentLine < 0 || !lines[lastContentLine].includes(terminalAnchor)) {
-    return null;
-  }
-
-  const firstLine = Math.max(0, lastContentLine - maxLines + 1);
-  return lines.slice(firstLine, lastContentLine + 1).join('\n');
-}
-
-/** Send a single Enter key, returning whether tmux accepted it. */
-export function sendEnter(sessionName: string, transport: Transport = HOST): boolean {
-  if (!sessionName) return false;
-  const submitted = runTmux(transport, ['send-keys', '-t', sessionName, 'Enter']);
-  return !submitted.error && submitted.status === 0;
-}
-
-/**
  * Send one named key (tmux key-name form, e.g. `BTab`) with no trailing Enter.
  *
- * sendKeys below cannot express this: it forces `-l` (literal), so a key name would be
- * typed as its own characters, and it always submits afterwards. Callers here are
- * driving the TUI's own keybindings rather than typing a prompt.
+ * Callers here are driving the TUI's own keybindings rather than typing a prompt.
  *
  * The letters-only shape check is the barrier, not a key allow-list: it keeps the value
  * from carrying an escape sequence or literal text into the pane, and callers are trusted
@@ -140,12 +103,9 @@ const MODE_SCAN_LINES = 4;
  *
  * Null is also the guard against acting while a dialog is up: a dialog terminates the
  * visible content, so the status bar falls outside the scan window and no mode is
- * returned (same property anchoredPaneTail relies on).
+ * returned.
  */
-/**
- * The pane's last `maxLines` non-blank rows, rejoined. The unanchored counterpart to
- * anchoredPaneTail, for callers scanning for text that has no dialog footer to anchor on.
- */
+/** The pane's last `maxLines` non-blank rows, rejoined. */
 export function nonBlankTail(paneContent: string, maxLines: number): string {
   return paneContent
     .split('\n')
@@ -178,44 +138,4 @@ export function expandSessionName(config: Json, projectDir: string): string {
 /** Derive the tmux session name from config (CWD-relative project name). */
 export function getSessionName(config: Json): string {
   return expandSessionName(config, process.cwd());
-}
-
-/**
- * True when the string contains a C0/C7F control character.
- *
- * Last-resort barrier before text reaches a pane. A newline is the dangerous one:
- * send-keys would submit early and the remainder would land as its own prompt.
- * Deliberately a deny-list of control characters rather than an allow-list of
- * punctuation — existing callers send prose (the watchdog's `/compact` steering
- * messages, and localized operator-facing restart/wedge/pause text: commas, hyphens,
- * accents, no control chars) and an allow-list would silently break them. Callers
- * handling UNTRUSTED input apply their own strict grammar on top (see
- * lib/prompt-stages/harness-command.ts).
- */
-function hasControlChars(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return true;
-  }
-  return false;
-}
-
-/**
- * Send text then Enter as two separate calls, returning whether tmux accepted both.
- *
- * The split with a pause between is a workaround for Claude Code's TUI treating
- * text+Enter in one burst as a bracketed paste, which turns Enter into a literal
- * newline instead of a submit (same fix as bin/hermitd-docker).
- *
- * The boolean means "tmux accepted the keystrokes", NOT "Claude Code applied the
- * command" — nothing here can observe whether the harness accepted or rejected it.
- * Callers keeping retry state must read false as "not delivered" and true as
- * "delivered, outcome unknown".
- */
-export function sendKeys(sessionName: string, text: string, transport: Transport = HOST): boolean {
-  if (!sessionName || !text || hasControlChars(text)) return false;
-  const typed = runTmux(transport, ['send-keys', '-t', sessionName, '-l', '--', text]);
-  if (typed.error || typed.status !== 0) return false;
-  Bun.sleepSync(500);
-  return sendEnter(sessionName, transport);
 }

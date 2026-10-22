@@ -2,7 +2,43 @@ import { expect, mock, test } from 'claude-code/testing';
 import { classifyStdout, isCommandPrompt } from '../register';
 
 const channel = (body: string) => ({ text: `<channel source="telegram" chat_id="12345" user="u1">${body}</channel>`, origin: { kind: 'channel' as const, server: 'telegram' } });
-const run = (command = '/effort', arg: string | null = 'low') => ({ decision: 'run', commands: [{ command, arg }], reply_to: { source: 'telegram', chat_id: '12345' } });
+type Cmd = { command: string; arg: string | null };
+const entry = (id: string, commands: Cmd[], extra: object = {}) => ({ id, source: 'chat', commands, reply_to: { source: 'telegram', chat_id: '12345' }, ...extra });
+
+// The bridge and the queue directory as the engine's host would answer them. `queue`
+// is what the directory lists; `claim` hands out its head (a pause first) unless overridden.
+function rig(on: any, options: { id?: () => string; handlers?: Record<string, (payload: string) => unknown> } = {}) {
+  const calls: string[] = [];
+  const payloads: Record<string, any[]> = {};
+  const queue: any[] = [];
+  const commands: string[] = [];
+  on('session.cwd', () => ({ value: '/work' }));
+  on('session.id', () => ({ value: options.id?.() ?? 'resident' }));
+  on('session.start', () => ({ cwd: '/work' }));
+  on('turn.start', ($: unknown, e: any) => ({ turnId: e.turnId }));
+  on('process.run', ($: unknown, e: any) => {
+    const verb = e.argv[3];
+    calls.push(verb);
+    (payloads[verb] ??= []).push(e.argv[5] ? (() => { try { return JSON.parse(e.argv[5]); } catch { return e.argv[5]; } })() : undefined);
+    const handler = options.handlers?.[verb];
+    let out: unknown;
+    if (handler) out = handler(e.argv[5]);
+    else if (verb === 'loaded') out = { decision: 'ok', state: '/state', session_id: e.argv[4] };
+    else if (verb === 'recover') out = { decision: 'pass' };
+    else if (verb === 'claim') {
+      const pauseOnly = e.argv[5] === 'pause';
+      const index = queue.findIndex(q => q.source === 'pause');
+      const pick = index >= 0 ? index : pauseOnly ? -1 : queue.length ? 0 : -1;
+      out = pick >= 0 ? { decision: 'run', ...queue.splice(pick, 1)[0] } : { decision: 'pass' };
+    } else out = { decision: 'ok' };
+    return { value: { exitCode: 0, stdout: JSON.stringify(out), stderr: '' } };
+  });
+  on('fs.list', () => ({ value: queue.map(q => ({ name: `${q.id}.json`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }));
+  on('fs.read', ($: unknown, e: any) => ({ value: JSON.stringify(queue.find(q => e.path.endsWith(`/${q.id}.json`)) ?? {}) }));
+  return { calls, payloads, queue, commands };
+}
+const boot = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+const finalized = (r: { payloads: Record<string, any[]> }) => r.payloads.finalize ?? [];
 
 test('composer and ordinary channel prompts never start a process', async ($, on) => {
   on('prompt.submit', ($, e) => ({ text: e.text }));
@@ -33,97 +69,92 @@ test('non-channel origins cannot submit a channel envelope', async ($, on) => {
   expect(calls).toBe(0);
 });
 
-test('intake drops, dispatches after return, and waits for model switch evidence', async ($, on) => {
+test('intake queues through the bridge, then runs and waits for model switch evidence', async ($, on) => {
   const clock = mock.clock(on);
-  const calls: string[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
-  on('process.run', ($, e) => {
-    calls.push(e.argv[3]);
-    return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run('/model', 'sonnet') : { decision: 'ok' }), stderr: '' } };
-  });
-  on('command.run', ($, e) => { calls.push(e.command); return {}; });
+  const r = rig(on, { handlers: { intake: () => { r.queue.push(entry('m1', [{ command: '/model', arg: 'sonnet' }])); return { decision: 'queued', id: 'm1' }; } } });
+  on('command.run', ($, e) => { r.calls.push(e.command); return {}; });
   on('classic.PreModelSwitch', () => ({}));
   on('classic.PostModelSwitch', () => ({}));
   expect((await $.prompt.submit(channel('!model sonnet'))).drop).toBeDefined();
-  expect(calls).toEqual(['intake']);
+  expect(r.calls).toEqual(['intake']);
   await clock.settle();
-  expect(calls).toEqual(['intake', 'model']);
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'claim', 'model']);
   await $.classic.PreModelSwitch({ requested_model: 'sonnet', to_model: 'claude-sonnet' });
   await $.classic.PostModelSwitch({ from_model: 'opus', to_model: 'unrelated' });
   await clock.settle();
-  expect(calls).toEqual(['intake', 'model']);
+  expect(finalized(r)).toEqual([]);
   await $.classic.PostModelSwitch({ from_model: 'opus', to_model: 'claude-sonnet' });
   await clock.settle();
-  expect(calls).toEqual(['intake', 'model', 'finalize']);
+  expect(finalized(r)).toEqual([{ id: 'm1', legs: [{ command: '/model', status: 'ok', text: 'Model switched to sonnet' }] }]);
 });
 
 for (const decision of ['deny', 'ask', 'none']) {
   test(`model approval respects ${decision} and is armed for one target only`, async ($, on) => {
     const clock = mock.clock(on);
-    on('session.cwd', () => ({ value: '/work' }));
-    on('session.id', () => ({ value: 'resident' }));
-    on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(run('/model', 'sonnet')), stderr: '' } }));
+    const r = rig(on);
     on('command.run', () => ({}));
     const answer = decision === 'none' ? {} : { permissionDecision: decision, permissionDecisionReason: 'settings decision' };
     on('classic.PreModelSwitch', () => answer);
     expect(await $.classic.PreModelSwitch({ requested_model: 'sonnet' })).toEqual(answer);
-    await $.prompt.submit(channel('!model sonnet'));
-    await clock.settle();
+    r.queue.push(entry('m1', [{ command: '/model', arg: 'sonnet' }]));
+    await boot($);
+    await clock.advance(2000);
     expect(await $.classic.PreModelSwitch({ requested_model: 'opus' })).toEqual(answer);
     expect(await $.classic.PreModelSwitch({ requested_model: 'sonnet' })).toEqual(decision === 'none' ? { permissionDecision: 'allow' } : answer);
     if (decision === 'none') expect(await $.classic.PreModelSwitch({ requested_model: 'sonnet' })).toEqual({});
   });
 }
 
-test('two requests execute in order and an unknown model skips dependent effort', async ($, on) => {
+test('one timer; requests run in order and an uncertain model skips the dependent effort', async ($, on) => {
   const clock = mock.clock(on);
-  let intake = 0;
-  const commands: string[] = [];
-  const finalized: any[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
-  on('process.run', ($, e) => {
-    if (e.argv[3] === 'finalize') finalized.push(JSON.parse(e.argv[5]));
-    const result = e.argv[3] === 'intake'
-      ? ++intake === 1 ? { ...run('/model', 'bad'), commands: [{ command: '/model', arg: 'bad' }, { command: '/effort', arg: 'high' }] } : run('/model', 'sonnet')
-      : { decision: 'ok' };
-    return { value: { exitCode: 0, stdout: JSON.stringify(result), stderr: '' } };
-  });
-  on('command.run', ($, e) => { commands.push(e.command); return {}; });
+  const r = rig(on);
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
   on('classic.PreModelSwitch', () => ({}));
   on('classic.PostModelSwitch', () => ({}));
-  await $.prompt.submit(channel('!model bad'));
-  await $.prompt.submit(channel('!model sonnet'));
-  await clock.settle();
-  expect(commands).toEqual(['model']);
+  r.queue.push(entry('a', [{ command: '/model', arg: 'bad' }, { command: '/effort', arg: 'high' }]), entry('b', [{ command: '/model', arg: 'sonnet' }]));
+  await boot($);
+  await boot($);
+  await clock.advance(2000);
+  expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
+  expect(r.commands).toEqual(['model']);
   await clock.advance(120000);
-  await clock.settle();
-  expect(commands).toEqual(['model', 'model']);
+  expect(finalized(r)[0]).toEqual({ id: 'a', legs: [{ command: '/model', status: 'unknown', text: 'deadline reached' }] });
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['model', 'model']);
   await $.classic.PreModelSwitch({ requested_model: 'sonnet', to_model: 'claude-sonnet' });
-  await $.classic.PostModelSwitch({ from_model: 'opus', to_model: 'unrelated' });
-  await clock.settle();
   await $.classic.PostModelSwitch({ from_model: 'opus', to_model: 'claude-sonnet' });
   await clock.settle();
-  expect(finalized.map(f => f.outcomes[0].status)).toEqual(['unknown', 'ok']);
+  expect(finalized(r).map(f => f.legs[0].status)).toEqual(['unknown', 'ok']);
+});
+
+test('the deadline records unknown but keeps the slot until the run settles', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  let release: () => void = () => undefined;
+  on('command.run', ($, e) => { r.commands.push(e.command); return new Promise(resolve => { release = () => resolve({}); }); });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]), entry('b', [{ command: '/effort', arg: 'high' }]));
+  await boot($);
+  await clock.advance(2000);
+  await clock.advance(120000);
+  expect(finalized(r).map(f => f.id)).toEqual(['a']);
+  await clock.advance(10000);
+  expect(r.commands).toEqual(['effort']);
+  expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
+  release();
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['effort', 'effort']);
 });
 
 test('a rejected model reports failed from its engine-origin rows, without the deadline', async ($, on) => {
   const clock = mock.clock(on);
-  const commands: string[] = [];
-  const finalized: any[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
-  on('process.run', ($, e) => {
-    if (e.argv[3] === 'finalize') finalized.push(JSON.parse(e.argv[5]));
-    return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run('/model', 'low') : { decision: 'ok' }), stderr: '' } };
-  });
-  on('command.run', ($, e) => { commands.push(e.command); return {}; });
+  const r = rig(on);
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
   const row = (content: string, uuid: string, origin: any = { kind: 'engine' }, type = 'system') =>
     $.session.append({ message: { type, content: [{ type: 'text', text: content }] }, door: 'command', origin, uuid } as any);
-  await $.prompt.submit(channel('!model low'));
-  await clock.settle();
-  expect(commands).toEqual(['model']);
+  r.queue.push(entry('a', [{ command: '/model', arg: 'low' }]));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['model']);
   // A row naming another command never counts as this run's output.
   await row('<command-name>/reload-plugins</command-name><command-args></command-args>', 'a');
   await row('<local-command-stdout>Reloaded</local-command-stdout>', 'b');
@@ -132,86 +163,168 @@ test('a rejected model reports failed from its engine-origin rows, without the d
   await row('<command-name>/model</command-name><command-args>low</command-args>', 'g', { kind: 'engine' }, 'user');
   await row("<local-command-stdout>Model 'low' not found</local-command-stdout>", 'h', { kind: 'engine' }, 'user');
   await clock.settle();
-  expect(finalized).toEqual([]);
+  expect(finalized(r)).toEqual([]);
   await row('<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>low</command-args>', 'e');
   await row("<local-command-stdout>Model 'low' not found</local-command-stdout>", 'f');
   await clock.settle();
-  expect(finalized[0].outcomes[0]).toMatchObject({ command: '/model', arg: 'low', status: 'failed', text: "Model 'low' not found" });
+  expect(finalized(r)[0].legs[0]).toMatchObject({ command: '/model', status: 'failed', text: "Model 'low' not found" });
 });
 
-test('unknown outcome is reported once on deadline, never retried', async ($, on) => {
+test('a rejected run finalizes failed with the rejection text', async ($, on) => {
   const clock = mock.clock(on);
-  let commands = 0;
-  const outcomes: any[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
-  on('process.run', ($, e) => {
-    if (e.argv[3] === 'finalize') outcomes.push(JSON.parse(e.argv[5]));
-    return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run() : { decision: 'ok' }), stderr: '' } };
-  });
-  on('command.run', () => { commands++; return {}; });
-  await $.prompt.submit(channel('!effort low'));
-  await clock.settle();
-  await clock.advance(120000);
-  expect(outcomes[0].outcomes[0].status).toBe('unknown');
-  expect(commands).toBe(1);
+  const r = rig(on);
+  // A thrown hook is how the kit rejects the run, as the engine does after an operator's Escape.
+  on('command.run', () => { throw new Error('the session was stopped and nobody has sent input since'); });
+  r.queue.push(entry('w', [{ command: '/compact', arg: 'focus on unfinished work' }], { source: 'watchdog' }));
+  await boot($);
+  await clock.advance(2000);
+  expect(finalized(r)[0].legs[0]).toMatchObject({ command: '/compact', status: 'failed' });
+  expect(finalized(r)[0].legs[0].text).not.toBe('');
+  expect(r.calls).not.toContain('leg');
 });
 
-test('subagent completion never claims; main answer claims and acks after dispatch', async ($, on) => {
+test('a main turn gates the queue; a subagent turn does not', async ($, on) => {
   const clock = mock.clock(on);
-  const calls: string[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
+  const r = rig(on);
   on('turn.complete', () => ({ text: '' }));
-  on('process.run', ($, e) => {
-    calls.push(e.argv[3]);
-    return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'claim' ? { ...run(), requested_at: 'identity' } : { decision: 'ok' }), stderr: '' } };
-  });
-  on('command.run', () => { calls.push('dispatch'); return {}; });
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  await boot($);
+  await $.turn.start({ text: '', turnId: 'main' });
+  await clock.advance(4000);
+  expect(r.calls).not.toContain('claim');
+  await $.turn.start({ text: '', turnId: 'sub', agentId: 'worker' });
   await $.turn.complete({ agentId: 'worker', reason: 'answer', answer: '', turnId: 'sub', durationMs: 0, isAborted: false, usage: null });
-  expect(calls).toEqual([]);
+  await clock.advance(2000);
+  expect(r.calls).not.toContain('claim');
+  await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: null });
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['effort']);
+});
+
+test('a request queued mid-turn is claimed on the main turn.complete, not on a subagent one', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('turn.complete', () => ({ text: '' }));
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  await boot($);
+  await $.turn.start({ text: '', turnId: 'main' });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  await $.turn.complete({ agentId: 'worker', reason: 'answer', answer: '', turnId: 'sub', durationMs: 0, isAborted: false, usage: null });
+  await clock.settle();
+  expect(r.calls).not.toContain('claim');
   await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: null });
   await clock.settle();
-  expect(calls).toEqual(['claim', 'dispatch', 'ack']);
+  expect(r.commands).toEqual(['effort']);
 });
 
-test('session start and clear record the current session id', async ($, on) => {
+test('a pause aborts the running main turn at once, ahead of queued work', async ($, on) => {
   const clock = mock.clock(on);
-  const loaded: string[] = [];
+  const r = rig(on);
+  const aborted: string[] = [];
+  on('turn.abort', ($, e) => { aborted.push(e.turnId); return { value: undefined }; });
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'low' }]));
+  await boot($);
+  await $.turn.start({ text: '', turnId: 'main' });
+  await clock.advance(2000);
+  r.queue.push({ id: 'p', source: 'pause', commands: [] });
+  await clock.advance(2000);
+  expect(aborted).toEqual(['main']);
+  expect(r.payloads.claim).toContain('pause');
+  expect(finalized(r)).toEqual([{ id: 'p', legs: [{ command: 'turn.abort', status: 'ok', text: 'turn aborted' }] }]);
+  expect(r.commands).toEqual([]);
+});
+
+test('a pause with no turn in flight finalizes ok', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  r.queue.push({ id: 'p', source: 'pause', commands: [] });
+  await boot($);
+  await clock.advance(2000);
+  expect(finalized(r)).toEqual([{ id: 'p', legs: [{ command: 'turn.abort', status: 'ok', text: 'no turn' }] }]);
+});
+
+test('an unchanged reload continues the batch and records leg progress', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  r.queue.push(entry('u', [{ command: '/reload-plugins', arg: null }, { command: '/hermitd:hermit-evolve', arg: 'unattended' }], { source: 'update' }));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['reload-plugins']);
+  await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: '<command-name>/reload-plugins</command-name><command-args></command-args>' }] }, door: 'command', origin: { kind: 'engine' }, uuid: 'x' } as any);
+  await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: '<local-command-stdout>Reloaded: 7 plugins</local-command-stdout>' }] }, door: 'command', origin: { kind: 'engine' }, uuid: 'y' } as any);
+  await clock.settle();
+  expect(r.payloads.leg).toEqual([{ id: 'u', legs: [{ command: '/reload-plugins', status: 'ok', text: 'Reloaded: 7 plugins' }] }]);
+  expect(r.commands).toEqual(['reload-plugins', 'hermitd:hermit-evolve']);
+  expect(finalized(r)[0].legs.map((l: any) => [l.command, l.status])).toEqual([['/reload-plugins', 'ok'], ['/hermitd:hermit-evolve', 'ok']]);
+  expect(finalized(r)[0].legs[1].submitted_at).toBeDefined();
+});
+
+test('a fresh copy resumes the batch that recover hands back', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { recover: () => ({ decision: 'run', ...entry('u', [{ command: '/reload-plugins', arg: null }, { command: '/hermitd:hermit-evolve', arg: 'unattended' }], { source: 'update' }), legs: [{ command: '/reload-plugins', status: 'ok', text: 'Reloaded to 2.0.0' }] }) } });
+  on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
+  await boot($);
+  await clock.settle();
+  expect(r.commands).toEqual(['hermitd:hermit-evolve']);
+  expect(finalized(r)[0].legs.map((l: any) => l.status)).toEqual(['ok', 'ok']);
+});
+
+test('a fresh copy loaded while a turn is in flight leaves the wait to the engine', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('turn.complete', () => ({ text: '' }));
+  let release: () => void = () => undefined;
+  on('command.run', ($, e) => { r.commands.push(e.command); return new Promise(resolve => { release = () => resolve({}); }); });
+  r.queue.push(entry('a', [{ command: '/clear', arg: null }]));
+  await boot($);
+  await clock.advance(2000);
+  // The copy never saw the turn start, so it claims; $.command.run queues behind the turn.
+  expect(r.commands).toEqual(['clear']);
+  await $.turn.complete({ reason: 'answer', answer: '', turnId: 'unseen', durationMs: 0, isAborted: false, usage: null });
+  release();
+  await clock.settle();
+  expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
+});
+
+test('loaded runs once per session id, never per tick, and catches up on SessionStart', async ($, on) => {
+  const clock = mock.clock(on);
   let id = 'old';
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: id }));
-  on('session.start', () => ({ cwd: '/work' }));
-  on('session.end', () => ({ sessionId: 'old' }));
-  on('classic.SessionStart', () => ({}));
-  // Like the bridge, a stamp lands only when the id matches the resident record.
   let runtime = 'old';
   const stamped: string[] = [];
-  on('process.run', ($, e) => {
-    if (e.argv[3] === 'loaded') {
-      loaded.push(e.argv[4]);
-      if (e.argv[4] === runtime) stamped.push(e.argv[4]);
-    }
-    return { value: { exitCode: 0, stdout: '{"decision":"ok"}', stderr: '' } };
-  });
-  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  const r = rig(on, { id: () => id, handlers: { loaded: () => {
+    if (id !== runtime) return { decision: 'pass' };
+    stamped.push(id);
+    return { decision: 'ok', state: '/state', session_id: id };
+  } } });
+  on('session.end', () => ({ sessionId: 'old' }));
+  on('classic.SessionStart', () => ({}));
+  await boot($);
+  await clock.advance(10000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(1);
+  expect(r.calls.filter(c => c === 'recover')).toHaveLength(1);
   await $.session.end({ reason: 'clear', sessionId: 'old' });
   runtime = 'new';
   id = 'new';
-  await clock.settle();
-  expect(loaded).toEqual(['old']);
   await $.classic.SessionStart({ source: 'clear' });
-  await clock.settle();
-  expect(loaded).toEqual(['old', 'new']);
-  // A forked resume mints another id, and session.start can run before the plugin's
-  // SessionStart command hook restamps the resident record; SessionStart catches up.
+  await clock.advance(10000);
+  expect(stamped).toEqual(['old', 'new']);
+  // A guest id is attempted once, then left alone for every later tick.
+  id = 'guest';
+  await clock.advance(20000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(3);
+  expect(r.calls).not.toContain('claim');
+  // A forked resume can start before the resident record names it; SessionStart catches up.
   id = 'fork';
-  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  await boot($);
   expect(stamped).toEqual(['old', 'new']);
   runtime = 'fork';
   await $.classic.SessionStart({ source: 'fork' });
   await clock.settle();
   expect(stamped).toEqual(['old', 'new', 'fork']);
+  expect(r.calls.filter(c => c === 'recover')).toHaveLength(1);
 });
 
 test('stdout classification recognizes observed success and failures', () => {
@@ -223,6 +336,8 @@ test('stdout classification recognizes observed success and failures', () => {
     ['/advisor', 'Advisor set to Opus', 'ok'],
     ['/advisor', 'Advisor disabled', 'ok'],
     ['/advisor', "Invalid advisor model: Model 'bogusmodel' not found", 'failed'],
+    ['/reload-plugins', 'Reloaded: 7 plugins', 'ok'],
+    ['/reload-plugins', 'Failed to reload', 'failed'],
     ['/clear', '', 'ok'],
     ['/clear', 'Could not clear', 'failed'],
   ]) expect(classifyStdout(command, text)).toBe(expected);
@@ -231,30 +346,25 @@ test('stdout classification recognizes observed success and failures', () => {
 for (const command of ['/compact', '/clear']) {
   test(`${command} finalizes only after its native lifecycle evidence`, async ($, on) => {
     const clock = mock.clock(on);
-    const finalized: any[] = [];
-    on('session.cwd', () => ({ value: '/work' }));
-    on('session.id', () => ({ value: 'resident' }));
-    on('process.run', ($, e) => {
-      if (e.argv[3] === 'finalize') finalized.push(JSON.parse(e.argv[5]));
-      return { value: { exitCode: 0, stdout: JSON.stringify(e.argv[3] === 'intake' ? run(command, null) : { decision: 'ok' }), stderr: '' } };
-    });
+    const r = rig(on);
     on('command.run', () => ({}));
     on('session.compact', () => ({ messages: [{ role: 'user', text: 'summary', toolUses: [] }], tokensBefore: 100, tokensAfter: 10, usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } }));
     on('session.end', () => ({ sessionId: 'resident' }));
     on('classic.SessionStart', () => ({}));
-    await $.prompt.submit(channel('!' + command.slice(1)));
-    await clock.settle();
-    expect(finalized).toEqual([]);
+    r.queue.push(entry('c', [{ command, arg: null }], { source: 'watchdog' }));
+    await boot($);
+  await clock.advance(2000);
+    expect(finalized(r)).toEqual([]);
     if (command === '/compact') await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] });
     else {
       // The id is restamped by the SessionStart command hook, after session.end.
       await $.session.end({ reason: 'clear', sessionId: 'resident' });
       await clock.settle();
-      expect(finalized).toEqual([]);
+      expect(finalized(r)).toEqual([]);
       await $.classic.SessionStart({ source: 'clear' });
     }
     await clock.settle();
-    expect(finalized[0].outcomes[0].status).toBe('ok');
+    expect(finalized(r)[0].legs[0].status).toBe('ok');
   });
 }
 
@@ -275,39 +385,30 @@ test('pass keeps the prompt; refusal drops and a failed send requests one relay'
   expect(relays[1]).toContain('Shutting down');
 });
 
-test('doctor writes the relay before running and reports only a failed start', async ($, on) => {
+test('doctor writes the relay before running and reports a started or failed run', async ($, on) => {
   const clock = mock.clock(on);
-  const calls: string[] = [];
-  const outcomes: any[] = [];
   let fail = false;
   let relayed = 'ok';
-  on('session.cwd', () => ({ value: '/work' }));
-  on('session.id', () => ({ value: 'resident' }));
-  on('process.run', ($, e) => {
-    calls.push(e.argv[3]);
-    if (e.argv[3] === 'finalize') outcomes.push(JSON.parse(e.argv[5]));
-    const reply = e.argv[3] === 'intake' ? run('/doctor', null) : { decision: e.argv[3] === 'relay' ? relayed : 'ok' };
-    return { value: { exitCode: 0, stdout: JSON.stringify(reply), stderr: '' } };
-  });
+  const r = rig(on, { handlers: { relay: () => ({ decision: relayed }) } });
   on('command.run', ($, e) => {
-    calls.push(e.command);
+    r.calls.push(e.command);
     if (fail) throw new Error('no command named /doctor');
     return {};
   });
   expect(isCommandPrompt(channel('!checkup').text)).toBe(true);
-  expect((await $.prompt.submit(channel('!doctor'))).drop).toBeDefined();
-  await clock.settle();
-  await clock.advance(120000);
-  expect(calls).toEqual(['intake', 'relay', 'doctor']);
+  r.queue.push(entry('d1', [{ command: '/doctor', arg: null }]));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.calls.slice(-3)).toEqual(['relay', 'doctor', 'finalize']);
+  expect(finalized(r)[0].legs[0]).toMatchObject({ command: '/doctor', status: 'ok' });
   fail = true;
-  await $.prompt.submit(channel('!doctor'));
-  await clock.settle();
-  expect(calls.slice(3)).toEqual(['intake', 'relay', 'doctor', 'finalize']);
-  expect(outcomes[0].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+  r.queue.push(entry('d2', [{ command: '/doctor', arg: null }]));
+  await clock.advance(2000);
+  expect(finalized(r)[1].legs[0]).toMatchObject({ command: '/doctor', status: 'failed' });
   fail = false;
   relayed = 'pass';
-  await $.prompt.submit(channel('!doctor'));
-  await clock.settle();
-  expect(calls.slice(7)).toEqual(['intake', 'relay', 'finalize']);
-  expect(outcomes[1].outcomes[0]).toMatchObject({ command: '/doctor', status: 'failed' });
+  r.queue.push(entry('d3', [{ command: '/doctor', arg: null }]));
+  await clock.advance(2000);
+  expect(r.calls.slice(-3)).toEqual(['claim', 'relay', 'finalize']);
+  expect(finalized(r)[2].legs[0]).toMatchObject({ command: '/doctor', status: 'failed' });
 });

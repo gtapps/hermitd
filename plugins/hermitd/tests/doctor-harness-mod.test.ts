@@ -22,5 +22,6 @@ for (const [label, booted, session, status] of [
     const result = checkHarnessMod(resolvePaths(root, path.resolve(import.meta.dir, '..')));
     expect(result.status).toBe(status);
     if (status === 'warn') expect(result.detail).toContain('chat harness commands unavailable');
+    if (status === 'ok' && booted) expect(result.detail).toContain('watchdog compaction and clear, shutdown and update');
   });
 }

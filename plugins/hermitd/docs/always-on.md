@@ -36,7 +36,7 @@ Either way, the first launch needs one attended step to clear the trust gate, th
 | **Docker**               | Container    | `docker compose` v2 (Docker Desktop or modern Docker Engine) — see [Install Docker Compose](https://docs.docker.com/compose/install/) |
 | **Node.js 22+**          | Hooks        | Inside the container — handled by the Dockerfile |
 | **Bun**                  | Plugins      | Inside the container — always included          |
-| **Claude Code v2.1.302+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.308+** | Channels, sandbox | Minimum supported version |
 
 ---
 
@@ -255,11 +255,11 @@ Use `hermitd attach` to connect, `hermitd status --json` for one JSON document, 
 
 For complete removal rather than a graceful stop, see [How do I uninstall a hermit?](faq.md#how-do-i-uninstall-a-hermit).
 
-The entrypoint traps SIGTERM. It sends the configured `shutdown_skill`, if any, then waits within its 30-second timeout until `state/execution.json` is no longer `in_flight`. When a skill was sent, the observation must be newer than that send. `hermitd-docker down` uses the same boundary with its existing 60-second timeout before removing the container.
+The entrypoint traps SIGTERM and runs `hermitd-run graceful-shutdown` within its 30-second timeout: it waits until `state/execution.json` is no longer `in_flight`, queues the configured `shutdown_skill`, if any, for the core mod, and waits for the turn that skill started to settle. A skill that fails or is skipped still lets the shutdown proceed. `hermitd-docker down` runs the same verb with a 60-second timeout before removing the container, and the SIGTERM that follows finds that operation instead of running the skill again.
 
 ## Context clear
 
-The watchdog clears context at a safe execution boundary when the operator has been quiet for an hour, the context is a day old, or policy changed. The token floor and two-tick quiescence guard still apply. Records never close because time passed.
+The watchdog queues a context clear for the core mod at a safe execution boundary when the operator has been quiet for an hour, the context is a day old, or policy changed. The token floor applies, and the reset is recorded only once the clear has happened. Records never close because time passed.
 
 ## Crash Recovery
 

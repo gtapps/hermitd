@@ -35,6 +35,8 @@ export interface SessionEntry {
   status: SessionStatus;
   /** ms epoch; stamps the START of `status`, not the last sign of life. */
   statusUpdatedAt: number;
+  /** What a `waiting` session waits on, as the harness words it ("permission prompt"). */
+  waitingFor?: string;
   cwd: string;
   name: string;
   messagingSocketPath: string;

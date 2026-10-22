@@ -134,7 +134,7 @@ Reflect checks dismissed and deferred proposals before creating new ones. If you
 
 ## Context Keeps Growing
 
-Check `context_hygiene.clear.enabled` and the watchdog tick. A standalone clear waits for the token floor, matching idle execution identity, at least 60 seconds idle, no running task worker, an idle/shell registry entry and an unchanged pane across two ticks. Unknown or busy observations deliberately defer it. Inspect `state/watchdog-events.jsonl` for `clear:<reason>` fires. Doctor's watchdog line shows the last tick's `standalone-clear/<outcome>`, naming the guard that deferred it.
+Check `context_hygiene.clear.enabled` and the watchdog tick. A standalone clear waits for the token floor, matching idle execution identity, at least 60 seconds idle, no running task worker and an idle/shell registry entry. Unknown or busy observations deliberately defer it. Inspect `state/watchdog-events.jsonl` for `clear:<reason>` fires and their `context-clear-result`. A `mod-not-loaded` outcome means the core mod has not loaded for the resident session; doctor's `harness-mod` check says so. Doctor's watchdog line shows the last tick's `standalone-clear/<outcome>`, naming the guard that deferred it.
 
 Open tasks do not need closing to permit a safe clear. Their progress and lessons survive in their records. Compaction remains a separate summarizing mechanism.
 

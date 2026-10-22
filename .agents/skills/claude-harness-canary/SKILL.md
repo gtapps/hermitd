@@ -229,18 +229,11 @@ Do not add `allowed_users`. Do not create `state/channel-health.json`. Keep `.cl
 1. Choose a unique harmless target inside the group project.
 2. Prompt Claude to call `Write` once to create it.
 3. Wait for the native permission dialog.
-4. Capture the visible pane exactly with:
+4. Read the session's own entry in the Claude Code session registry (`~/.claude/sessions/<pid>.json` for the claude process in the group's tmux pane) while the dialog is open, and record its `status` and `waitingFor`.
+5. Send Escape once, wait for the normal prompt, and send a harmless nonce prompt to prove the session remains usable.
+6. Verify the target does not exist.
 
-   ```bash
-   tmux capture-pane -p -t "<session>"
-   ```
-
-   Do not add `-S` and do not substitute pipe-pane scrollback. Store stdout from this single capture immediately.
-5. Import `hasPendingQuestion()` from the live `scripts/hermitd-watchdog.ts`, pass the stored capture bytes from Step 4 without recapturing, and record the boolean.
-6. Send Escape once, wait for the normal prompt, and send a harmless nonce prompt to prove the session remains usable.
-7. Verify the target does not exist.
-
-PASS requires a real native permission modal, `hasPendingQuestion() === true`, Escape cancellation, no target file, and a usable session.
+PASS requires a real native permission modal, registry `status` `waiting` while it is open, Escape cancellation, no target file, and a usable session.
 
 ### B. Ask-gate regression
 
