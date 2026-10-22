@@ -293,6 +293,48 @@ describe('settings-gate file writes', () => {
     }
   });
 
+  test('a real redirect beside quoted or heredoc text still asks', async () => {
+    const dir = fixture();
+    for (const command of [
+      'cat > r.md <<EOF\nsee > .hermit/config.json\nEOF\necho x > .hermit/config.json',
+      'echo "it\'s" > .hermit/config.json \'x\'',
+      'echo \'<<X\'; echo x > .hermit/config.json',
+      'cat <<<"x" > .hermit/config.json',
+      'bash -c \'echo x > .hermit/config.json\'',
+      'bash <<\'EOF\'\necho x > .hermit/config.json\nEOF',
+      'echo "$(echo x > .hermit/config.json)"',
+      'cat <<EOF > r.md\n$(echo x > .hermit/config.json)\nEOF',
+      'cat <<EOF\nunterminated > .hermit/config.json',
+      "# don't touch\necho x > .hermit/config.json\n# it's fine",
+      "echo $'it\\'s'; echo x > .hermit/config.json; echo $'a\\'b'",
+      'cat <<EOF-1 > r.md\nx\nEOF-1\necho x > .hermit/config.json\nEOF',
+      'cat <<E"OF" > r.md\nx\nEOF\necho x > .hermit/config.json\nE',
+      'awk \'BEGIN { print 1 > ".hermit/config.json" }\'',
+      "tmux send-keys -t s 'echo x > .hermit/config.json' Enter",
+      "python3 - <<'EOF'\nimport os; os.system('echo x > .hermit/config.json')\nEOF",
+    ]) {
+      const r = await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir);
+      expect(r.exitCode).toBe(0);
+      expectAsk(r.stdout, 'Hermit setting: config.json');
+    }
+    const r = await runGate(payload({ dir, tool: 'Bash', input: { command: 'echo x > .hermit/resident-prompt.md' } }), dir);
+    expectAsk(r.stdout, 'Hermit setting: resident-prompt.md');
+  });
+
+  test('a protected path inside quoted or heredoc text prints nothing', async () => {
+    const dir = fixture();
+    for (const command of [
+      "bun /p/scripts/apply-settings.ts .claude/settings.json deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)'",
+      "cat > .hermit/helper-reports/x.md <<'EOF'\nquoted: `> .hermit/config.json`\nEOF",
+      'cat <<-EOF > r.md\n\tsee > .hermit/config.json\n\tEOF',
+      "cat <<'EOF' > r.md\n$(echo x > .hermit/config.json)\nEOF",
+      'echo "a > .hermit/config.json b"',
+    ]) {
+      const r = await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir);
+      expectSilent(r);
+    }
+  });
+
   test('reading config.json through the shell prints nothing', async () => {
     const dir = fixture();
     for (const command of [

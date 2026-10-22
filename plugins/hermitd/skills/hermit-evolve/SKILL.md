@@ -119,7 +119,7 @@ costs one Bash call instead of loading the routines skill. Route on its JSON `st
   that changed routines shows up in `reasons` as `fallback_drift`) and re-arms the heartbeat leg with it.
 - `arm` with only `heartbeat`: invoke `/hermitd:heartbeat start`.
 - `skip`, reason `paused`: the hermit is paused and fires nothing until resumed. Log it; invoke nothing.
-- `restart_required`: arm nothing, then continue to delivery. Append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. With a fresh update-in-progress marker, the update waits for evolve and restarts the resident at a quiet boundary. Otherwise, an always-on hermit with its watchdog running restarts itself at its next idle moment; without it, restart the resident with `hermitd restart`.
+- `restart_required`: arm nothing, then continue to delivery. With a fresh update-in-progress marker, the single update line in Deliver the result covers it. Otherwise append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself at its next idle moment; without it, restart the resident with `hermitd restart`.
 - An `error` (`check_error:<reason>`): state was unreadable, so nothing is safe to re-arm. Append
   it and the manual `hermit-routines load` next action to the report.
 
@@ -132,7 +132,7 @@ If Upgrade Instructions reported `restart_required` in Operator notes, use that 
 N settings added, M templates refreshed."` Omit segments where nothing changed. **Append the
 deferred/auto-applied segments**: settings set to defaults (Step 4), permission entries added (Step
 8), template conflicts parked as `.new` (Step 5), any deferred migrations, so the operator can follow up via `/hermit-settings`. **Append each
-non-`none` Operator notes line after that list**, one line each. Put each queued micro-proposal question after those lines and all receipts, ending the result with its reply hint.
+non-`none` Operator notes line after that list**, one line each. With an update-in-progress marker whose `at` is under 60 minutes old, drop every restart line, a `restart_required` Operator note included, and say once that the running update applies the refreshed files and restarts the resident at a quiet moment, with nothing for the operator to do. Drop rebuild lines too, unless the marker holds `"build": false`: that update restarts without rebuilding, so the Docker rebuild notice stays. Put each queued micro-proposal question after those lines and all receipts, ending the result with its reply hint.
 
 - **Automated-maintainer:** deliver through `channel-send.ts --notice` with
   `{"maintainer":"<complete condensed result>"}` on stdin and no `client` leg. Follow prompts/resident.md

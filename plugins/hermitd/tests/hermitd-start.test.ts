@@ -40,6 +40,7 @@ import {
   clearChannelFailureCache,
   applyAlwaysOnDoctorSchedule,
   clearShutdownStampsOnBoot,
+  stampFreshSessionOnBoot,
   clearWatchRegistry,
   hydrateSetupTokenEnv,
   shouldRefuseBoot,
@@ -2076,6 +2077,23 @@ describe('clearShutdownStampsOnBoot', () => {
     clearShutdownStampsOnBoot(runtime);
     expect(runtime.shutdown_requested_at).toBeNull();
     expect(runtime.shutdown_completed_at).toBeNull();
+  });
+});
+
+describe('stampFreshSessionOnBoot', () => {
+  const old = '2026-07-01T00:00:00.000Z';
+
+  test('a boot without a resume id stamps the context reset', () => {
+    const runtime: Record<string, unknown> = { last_context_reset_at: old };
+    const before = Date.now();
+    stampFreshSessionOnBoot(runtime, undefined);
+    expect(Date.parse(runtime.last_context_reset_at as string)).toBeGreaterThanOrEqual(before);
+  });
+
+  test('a resumed boot keeps the existing stamp', () => {
+    const runtime: Record<string, unknown> = { last_context_reset_at: old };
+    stampFreshSessionOnBoot(runtime, 'abc');
+    expect(runtime.last_context_reset_at).toBe(old);
   });
 });
 

@@ -495,6 +495,16 @@ function clearShutdownStampsOnBoot(existing: Json): void {
 }
 
 /**
+ * Records a boot without a resume id as a context reset, so chat carry-over
+ * replays recent messages to the new session and the watchdog stops counting
+ * cost rows from the previous one. A resumed session keeps its context and its
+ * stamp. Mutates `existing` in place.
+ */
+function stampFreshSessionOnBoot(existing: Json, resume: string | undefined): void {
+  if (!resume) existing.last_context_reset_at = new Date().toISOString();
+}
+
+/**
  * Stamps a fresh per-process nonce at state/.boot-id on every boot.
  * `routines.ts arm` (the hermit-routines diff planner) compares this against the
  * boot_id stored in its state/cron-registry.json mirror: a mismatch means the
@@ -1761,6 +1771,7 @@ async function main(): Promise<void> {
     existing.peer_name = peerName(config);
     existing.last_start_error = null;
     existing.last_start_error_notified = null;
+    stampFreshSessionOnBoot(existing, resume);
     clearShutdownStampsOnBoot(existing);
     writeRuntimeJson(existing);
   }
@@ -1849,6 +1860,7 @@ export {
   readRuntimeState,
   checkStaleRuntime,
   clearShutdownStampsOnBoot,
+  stampFreshSessionOnBoot,
   writeBootId,
   clearWatchRegistry,
   acquireLifecycleLock,

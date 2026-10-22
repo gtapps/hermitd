@@ -680,6 +680,8 @@ case "$CMD" in
     # hermitd-update's $2/$4 layout). Detects sibling-only bumps as well as core bumps.
     if [ "$CC_ONLY" = false ] && [ "$RELOAD_PLUGINS_SENT" = true ]; then
       # Check whether any registered hermit has a version gap (core or sibling).
+      # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
+      # while evolve stamps the bare version, so the suffix is dropped before comparing.
       EXPECT_ROWS=$(bun -e '
         const rows = process.argv[1].split("\n").filter(Boolean).map(line => line.split("\t"));
         const rank = {local: 0, project: 1, user: 2};
@@ -687,7 +689,8 @@ case "$CMD" in
         try {
           const versions = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))._hermit_versions ?? {};
           const seen = new Set();
-          for (const [id, scope, version] of rows) {
+          for (const [id, scope, listed] of rows) {
+            const version = (listed ?? "").replace(/-[0-9a-f]{12}$/, "");
             if (seen.has(id)) continue;
             seen.add(id);
             const name = id.split("@")[0];
