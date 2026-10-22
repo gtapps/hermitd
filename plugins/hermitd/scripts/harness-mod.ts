@@ -8,7 +8,7 @@ import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } fr
 import { sendToChannel } from './lib/channel-send';
 import {
   claim, enqueue, finalize, MOD_LOADED_FILE, readInflight, recordLegs, recover, writeModState,
-  type Leg, type QueueEntry, type ReplyTarget,
+  type Leg, type ReplyTarget,
 } from './lib/harness-mod';
 
 // The version of the plugin copy this bridge runs from: the mod that called it lives
@@ -60,9 +60,10 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       return { decision: recordLegs(dir, input.id, input.legs) ? 'ok' : 'pass' };
     }
     case 'relay': {
-      const input = JSON.parse(payload) as QueueEntry;
-      const command = input.commands?.[0];
-      if (!command || !input.reply_to || !writeSkillRelay(dir, {
+      // The in-flight entry, not the payload, carries the reply target and requester.
+      const input = readInflight(dir, (JSON.parse(payload) as { id?: string }).id ?? '');
+      const command = input?.commands?.[0];
+      if (!input || !command || !input.reply_to || !writeSkillRelay(dir, {
         command: command.command, arg: command.arg, by: input.by ?? 'terminal', reply_to: input.reply_to, delivered_at: new Date().toISOString(),
       })) throw new Error('Skill relay marker not written');
       return { decision: 'ok' };

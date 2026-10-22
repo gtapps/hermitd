@@ -301,11 +301,11 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
     echo "[hermit] Hermit gap detected (core or sibling). Queuing /reload-plugins then hermit-evolve (unattended)..."
     REQUEST_ARGS+=(--then /hermitd:hermit-evolve unattended)
-    [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
     BATCH=true
   else
     echo "[hermit] Queuing /reload-plugins..."
   fi
+  [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
   REQUEST_ARGS+=(--source update)
   [ "$SELF_RUN" = true ] || REQUEST_ARGS+=(--wait 300)
   IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(_request_status "$(_harness_request "${REQUEST_ARGS[@]}")")"

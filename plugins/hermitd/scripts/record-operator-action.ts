@@ -31,7 +31,7 @@ process.stdout.on('error', () => {});
 //   HEARTBEAT_EVALUATE/HEARTBEAT_ERROR/ROUTINE_DUE/ROUTINE_MONITOR_ERROR — Monitor-delivered
 //                          scheduler wake notifications (heartbeat-monitor.sh, routines.ts due,
 //                          routine-monitor.sh) — see isRoutinePrompt below
-//   hermit's own slash commands — the core mod's in-flight request (see
+//   hermit's own slash commands: the core mod's in-flight request (see
 //   isInflightCommand) and the boot skill (INJECTED_EXACT). Every other bare `/…`
 //   prompt counts as operator activity (see isRoutinePrompt).
 

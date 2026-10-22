@@ -370,7 +370,8 @@ test('doctor relay writes the reply target and a failed start clears it', async 
   expect((await call(wd, 'intake', envelope('!doctor'))).decision).toBe('queued');
   const request = await call(wd, 'claim');
   expect(request).toMatchObject({ decision: 'run', commands: [{ command: '/doctor', arg: null }], reply_to: { source: 'telegram', chat_id: '12345' } });
-  expect(await call(wd, 'relay', JSON.stringify(request))).toEqual({ decision: 'ok' });
+  // The mod relays only the entry's id, source and commands.
+  expect(await call(wd, 'relay', JSON.stringify({ id: request.id, source: request.source, commands: request.commands }))).toEqual({ decision: 'ok' });
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/pending-skill-relay.json'), 'utf8')))
     .toMatchObject({ command: '/doctor', arg: null, reply_to: { source: 'telegram', chat_id: '12345' } });
   await call(wd, 'finalize', JSON.stringify({ id: request.id, legs: [{ command: '/doctor', status: 'failed', text: 'no command' }] }), 'resident', { HERMIT_TELEGRAM_API_URL: 'http://127.0.0.1:9' });

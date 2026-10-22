@@ -2060,7 +2060,7 @@ test('registry waiting stall notice names what the session waits for', withHermi
   try {
     const r = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
     expect(r.exitCode).toBe(0);
-    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('pending dialog, session alive — dialog open');
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('pending dialog, session alive: dialog open');
     expect(stub.requests).toHaveLength(1);
     expect(stub.requests[0].body.text).toContain('dialog open');
     expect(stub.requests[0].body.text).not.toContain('Authentication timeout');
@@ -3951,7 +3951,7 @@ test('context_compact: fresh boundary marker waives min_interval and fires again
 
     await watchdog(h, 'run'); // tick 1: queues the compaction
     finishQueued(h, 'ok');
-    await watchdog(h, 'run'); // tick 2: reads the ok outcome — sets last_compacted_at
+    await watchdog(h, 'run'); // tick 2: reads the ok outcome and sets last_compacted_at
 
     const ts2 = new Date().toISOString();
     writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 100000, cache_write_tokens: 0, cache_read_tokens: 200000, timestamp: ts2 }]);

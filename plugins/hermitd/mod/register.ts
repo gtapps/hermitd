@@ -188,9 +188,13 @@ function start($: EngineInterface, entry: Decision) {
 }
 
 // Called once per session id, never per tick: a guest session costs one process per id change.
+// A bridge failure is not a verdict, so the next tick tries the same id again.
 async function loadedFor($: EngineInterface, id: string) {
   lastId = id;
-  const result = await bridge($, 'loaded');
+  const result = await bridge($, 'loaded').catch(error => {
+    lastId = undefined;
+    throw error;
+  });
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
     return;

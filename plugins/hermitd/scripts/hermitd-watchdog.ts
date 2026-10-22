@@ -1178,7 +1178,7 @@ async function doNudge(sessionName: string, watchdogState: Json, consecutive: nu
     return;
   }
 
-  // Socket first, the command queue second — but only once per episode. A post is queued by
+  // Socket first, the command queue second, but only once per episode. A post is queued by
   // the harness and read at the next tool boundary, so it reaches a session whose
   // pane is mid-tool, which is exactly the state a wedge probe finds. What it
   // cannot do is report its own outcome: `crossSessionInbound: refuse` drops the
@@ -1802,7 +1802,7 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
  *
  * One-shot per pause episode: setPause() stamps a fresh `ts` on every call, so
  * comparing against the last-handled ts (persisted in watchdog-state.json)
- * queues one abort per pause, not one per tick — repeat aborts would also
+ * queues one abort per pause, not one per tick: repeat aborts would also
  * interrupt the reply the paused hermit is still allowed to send.
  */
 function maybeAbortPausedTurn(timezone: string, world: World = REAL_WORLD): void {
@@ -2040,7 +2040,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
   }
 
   // Both recoveries share one state read. This point is reached on every ordinary healthy
-  // tick, and no auth stamp for this session already forces `authLapsed` false — the one
+  // tick, and no auth stamp for this session already forces `authLapsed` false, the one
   // case where it would not is envAuthFailing, which exited above — so reading the file
   // once per check billed the common path twice for nothing.
   //
@@ -2106,7 +2106,7 @@ function stallQuestion({ world, timezone, snap }: RecoveryContext): DecisionResu
     if (!watchdogState.stall_question_notified) {
       const waitingFor = typeof resident?.waitingFor === 'string' && resident.waitingFor ? resident.waitingFor : undefined;
       world.notify.operator(composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
-      appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? ` — ${waitingFor}` : ''}`, world);
+      appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? `: ${waitingFor}` : ''}`, world);
       watchdogState.stall_question_notified = true;
       writeWatchdogState(watchdogState, world);
     }

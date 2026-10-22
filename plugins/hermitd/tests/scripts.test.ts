@@ -786,11 +786,11 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         expect(calls.some(l => l.startsWith('send-keys') || l.startsWith('capture-pane'))).toBe(false);
         if (!scenario.startsWith('timeout-first')) {
           expect(calls.find(l => l.startsWith('harness-request'))).toBe(scenario === 'suffix-current'
-            ? 'harness-request /reload-plugins --source update --wait 300'
+            ? 'harness-request /reload-plugins --expect-version 1.2.0 --source update --wait 300'
             : 'harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
         }
         if (scenario === 'suffix-current') {
-          expect(calls.some(l => l.includes('--expect'))).toBe(false);
+          expect(calls.some(l => l.includes('--expect '))).toBe(false);
         } else if (scenario !== 'timeout-first') {
           expect(calls.some(l => l === 'await-upgrade --expect hermitd=1.2.0')).toBe(true);
         }
