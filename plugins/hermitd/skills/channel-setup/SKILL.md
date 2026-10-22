@@ -209,7 +209,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <c
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy <channel> allowlist
 ```
 
-Run the policy command only after pairing succeeds. Relay the result, retaining pairing's `file` (`state`, `home` or `home+state`) for §6. `home: "set"` means the paired DM became the briefing chat; `kept` leaves the existing one. On `{"error"}`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
+Run the policy command only after pairing succeeds. Relay the result, retaining pairing's `file` (`state`, `home` or `home+state`) for §6. `home: "set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
 
 If Skip: "DM the bot later, then run `/hermitd:channel-setup` from a normal host session." Stop.
 

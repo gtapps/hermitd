@@ -144,10 +144,17 @@ function main(): void {
     if (channelConfig && homeSeedBlock(channelConfig, pending.chatId) === null) {
       const after = structuredClone(config);
       after.channels[channel].default_chat_id = pending.chatId;
-      const result = persistConfig({ hermitDir: dir, before: config, after, actor: 'channel-access' });
-      if (result.newErrors.length > 0) throw new Error('invalid_config');
-      for (const warning of result.newWarnings) console.error(`Warning: ${warning}`);
-      home = 'set';
+      // The code is already consumed, so a failed seed must not fail the pairing;
+      // channel-hook still seeds the home on the first inbound reply.
+      try {
+        const result = persistConfig({ hermitDir: dir, before: config, after, actor: 'channel-access' });
+        if (result.newErrors.length > 0) throw new Error('invalid_config');
+        for (const warning of result.newWarnings) console.error(`Warning: ${warning}`);
+        home = 'set';
+      } catch (error) {
+        console.error(`Warning: home chat not set: ${(error as Error).message}`);
+        home = 'failed';
+      }
     }
     printJson({ channel, sender_id: pending.senderId, file: label, home });
     return;

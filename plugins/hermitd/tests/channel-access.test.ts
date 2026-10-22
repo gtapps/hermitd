@@ -70,7 +70,9 @@ for (const channel of ['discord', 'telegram']) {
       const result = await f.run('pair', ['ABC123']);
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual({ channel, sender_id: '7', file: source, home: 'set' });
-      expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels[channel].default_chat_id).toBe('8');
+      expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels[channel]).toEqual({
+        state_dir: f.channelDir, passive_chats: ['456'], shared_chats: ['456'], default_chat_id: '8',
+      });
       const configBytes = fs.readFileSync(f.configFile);
       const paired = JSON.parse(fs.readFileSync(file, 'utf8'));
       expect(paired.allowFrom).toEqual(['1', '7']);
@@ -110,6 +112,19 @@ for (const channel of ['discord', 'telegram']) {
       expect(fs.readFileSync(f.configFile)).toEqual(configBytes);
     });
   }
+
+  test(`${channel} pair still succeeds when the home chat cannot be written`, async () => {
+    const f = fixture(channel);
+    fs.mkdirSync(`${f.configFile}.tmp`);
+    fs.writeFileSync(f.file, JSON.stringify({ ...access, pending: { ABC123: { senderId: '7', chatId: '8', expiresAt: Date.now() + 60000 } } }));
+    const configBytes = fs.readFileSync(f.configFile);
+    const result = await f.run('pair', ['ABC123']);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ channel, sender_id: '7', file: 'state', home: 'failed' });
+    expect(result.stderr).toContain('home chat not set');
+    expect(JSON.parse(fs.readFileSync(f.file, 'utf8')).allowFrom).toEqual(['1', '7']);
+    expect(fs.readFileSync(f.configFile)).toEqual(configBytes);
+  });
 
   for (const expired of [false, true]) {
     test(`${channel} refuses ${expired ? 'expired' : 'unknown'} code without writing`, async () => {
