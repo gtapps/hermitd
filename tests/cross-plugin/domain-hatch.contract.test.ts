@@ -115,8 +115,14 @@ for (const { slug, text } of HATCHES) {
       }
     });
 
+    // `claude plugin list` spans every project on the machine, so a hatch that
+    // reads it to decide whether a plugin is present here skips wrongly.
+    test('neither detects nor installs other plugins', () => {
+      expect(text).not.toContain('claude plugin list');
+      expect(text).not.toContain('claude plugin install');
+    });
+
     test('does not restate the install-scope precedence rules', () => {
-      expect(text).not.toContain('claude plugin list --json');
       expect(text).not.toMatch(/precedence\s+`?local`?\s*>/);
     });
 

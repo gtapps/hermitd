@@ -1,8 +1,6 @@
 # Recommended Plugins
 
-The `/hermitd-dev:hatch` wizard offers this during setup — an official plugin from `claude-plugins-official`.
-
-> **Note:** `/code-review` is built into Claude Code since v2.1.150. No plugin install needed — invoke it directly for PR-level review with git-blame context. Guided codebase exploration and architecture design are also native now, via the built-in `Plan`/`Explore` agents — no plugin install needed there either.
+Optional plugins that pair well with a dev hermit. `/hermitd-dev:hatch` installs none of them; install the ones you want yourself.
 
 ---
 

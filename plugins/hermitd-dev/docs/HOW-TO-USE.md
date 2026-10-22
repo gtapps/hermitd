@@ -15,7 +15,7 @@ claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 /hermitd-dev:hatch
 ```
 
-The wizard configures protected branches, installs strict hook enforcement with an explicit opt-out, and offers Context7.
+The wizard configures protected branches and installs strict hook enforcement with an explicit opt-out.
 
 **Already set up?** Re-run `/hermitd-dev:hatch` any time. Every key offers `Keep current (<value>)` as the recommended option, so you can sweep through with Enter-presses to fast-confirm — or change individual values.
 
@@ -64,9 +64,9 @@ Or set up a recurring routine via `/hermitd:hermit-routines` if you want it auto
 
 ---
 
-## Companion Plugins
+## Optional Plugins
 
-The setup wizard offers `context7` from `claude-plugins-official`. See [Recommended Plugins](RECOMMENDED-PLUGINS.md) for details.
+See [Recommended Plugins](RECOMMENDED-PLUGINS.md) for plugins you can add yourself.
 
 ---
 

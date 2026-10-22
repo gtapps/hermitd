@@ -56,7 +56,7 @@ claude plugin install hermitd-dev --marketplace gtapps/hermitd --scope local
 /hermitd-dev:hatch
 ```
 
-The wizard asks for protected branches and hook profile, and offers Context7. Defaults to installing `git-push-guard` at strict profile (with an explicit opt-out). Re-run any time to update individual settings; keys already set offer `Keep current (<value>)` for Enter-press sweeps.
+The wizard asks for protected branches and hook profile. Defaults to installing `git-push-guard` at strict profile (with an explicit opt-out). Re-run any time to update individual settings; keys already set offer `Keep current (<value>)` for Enter-press sweeps.
 
 ### 3. Boot the hermit (core)
 

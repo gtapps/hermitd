@@ -1,6 +1,6 @@
 ---
 name: hatch
-description: Activate the dev hermit in the current project. Installs the git-push-guard hook at strict profile by default, and offers companion plugins. Run once per project after /hermitd:hatch; re-run to update individual settings.
+description: Activate the dev hermit in the current project. Installs the git-push-guard hook at strict profile by default. Run once per project after /hermitd:hatch; re-run to update individual settings.
 disable-model-invocation: true
 ---
 
@@ -30,9 +30,8 @@ Check if `.hermit/config.json` exists in the current project.
   - `full` → continue through the wizard.
   - `error`, or any `domain-hatch` command in this skill that prints `error` → tell the operator in plain words what its token means, then stop.
 
-### 2. Detect protected-branch candidates and companions
+### 2. Detect protected-branch candidates
 
-- Installed plugins: `claude plugin list 2>/dev/null` or read `.claude/settings.json`.
 - Base-branch detection: `git branch -r --format='%(refname:short)' 2>/dev/null | sed 's|^origin/||'`. Collect `main`, `master`, `develop`, `development`, `dev`, and `trunk` as suggested protected branches for Round 1.
 
 ### 3. Ask about remaining settings
@@ -41,7 +40,7 @@ Check if `.hermit/config.json` exists in the current project.
 
 Ask a single `AskUserQuestion` with header `Protected` for protected branches (comma-separated, glob patterns OK). Offer at most four options: `Keep current (<value>)` first and recommended when already configured, the detected candidates joined as one comma-separated option, `main, master`, and `Other` for a custom list. Substitute actual values for placeholders before asking.
 
-#### Round 2 — hook profile and companions
+#### Round 2: hook profile
 
 `git-push-guard` defaults to **strict**. The wizard does not ask which profile to use; it installs strict and offers an opt-out.
 
@@ -56,19 +55,9 @@ questions: [
       { label: "Yes — strict (recommended)", description: "Hook hard-blocks the listed operations" },
       { label: "No — leave at standard", description: "No hook enforcement" }
     ]
-  },
-  {
-    header: "Docs MCP",
-    question: "Install context7? Live library docs via MCP — no always-loaded cost.",
-    options: [
-      { label: "Yes", description: "claude plugin install context7@claude-plugins-official" },
-      { label: "No", description: "Skip — add it later with claude plugin install" }
-    ]
   }
 ]
 ```
-
-Skip the `Docs MCP` question entirely if `context7` is already installed (per the `claude plugin list` detection above).
 
 ### 4. Write config and stamp version
 
@@ -80,8 +69,6 @@ Single atomic config.json write:
   - Else if the existing value is already `"strict"` → preserve it (never silently downgrade).
   - Else → write `"standard"` explicitly. Do not leave the key unset; an explicit value makes the operator's choice durable across `hermit-evolve` runs and prevents silent re-prompting.
 - `_hermit_versions["hermitd-dev"]` — set to `self_version` from Step 1's preflight.
-
-If the operator answered "Yes" to `Docs MCP`: `claude plugin install context7@claude-plugins-official --scope project`.
 
 ### 5. Knowledge-schema extension
 
@@ -112,8 +99,6 @@ Git safety:
 
 Updated:
   .hermit/knowledge-schema.md: domain-brainstorm type [added / already present]
-
-Companion plugin: context7 [installed / already present / skipped]
 
 Available skills:
   /hermitd-dev:hatch    — re-run to update settings (idempotent)
