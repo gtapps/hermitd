@@ -54,7 +54,7 @@ Periodic plugin checks are ordinary routines. For example, a weekly check uses `
 
 ## Hooks Not Firing
 
-- Check the `Hook profile:` line in the hermit's launch output — it names the resolved profile and where it came from (ambient / config / default). The profile is **process-scoped**: it rides the tmux env file or the Docker compose environment block, and is deliberately never written to `.claude/settings.local.json`, so a hand-launched `claude` in the same folder does not inherit it. Core hooks need `standard` or `strict`; hermit hooks (e.g. git-push-guard) need `strict`. A managed launch defaults to `strict`; set `AGENT_HOOK_PROFILE` in `config.json` `env` (via `/hermit-settings env`) to override.
+- Check the `Hook profile:` line in the hermit's launch output: it names the resolved profile and where it came from (ambient / config / default). The profile is **process-scoped**: it rides the tmux env file, Docker included, and is deliberately never written to `.claude/settings.local.json`, so a hand-launched `claude` in the same folder does not inherit it. Core hooks need `standard` or `strict`; hermit hooks (e.g. git-push-guard) need `strict`. A managed launch defaults to `strict`; set `AGENT_HOOK_PROFILE` in `config.json` `env` to override (edit the file directly; `/hermit-settings env` refuses this key).
 - Validate hooks.json: `cat hooks/hooks.json | python3 -m json.tool`
 - Test manually: `echo '{}' | bun scripts/cost-tracker.ts`
 - Hooks may not fire for subagent tool calls — see [Architecture](architecture.md).

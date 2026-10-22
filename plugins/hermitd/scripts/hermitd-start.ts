@@ -55,12 +55,12 @@ type BootMode = 'interactive' | 'tmux';
  *
  * A managed (tmux) hermit runs unattended, so it defaults to `strict` — the
  * tighter setting for the hooks that read the profile (the dev hermit's
- * git-push-guard), and it is what a Docker hermit has always had via its
- * compose environment block. An interactive launch stays `standard`: the
- * operator is present. The profile no longer gates any permission rule — the
- * config.json / OPERATOR.md / settings guards are native `permissions.deny` /
- * `permissions.ask` entries seeded once at hatch, and those reach every
- * session regardless of profile.
+ * git-push-guard). A Docker hermit boots through tmux inside its container, so
+ * it gets this default too; compose sets no profile. An interactive launch
+ * stays `standard`: the operator is present. The profile no longer gates any
+ * permission rule: the config.json / OPERATOR.md / settings guards are
+ * native `permissions.deny` / `permissions.ask` entries seeded once at hatch,
+ * and those reach every session regardless of profile.
  */
 function defaultProfileFor(bootMode: BootMode): string {
   return bootMode === 'tmux' ? 'strict' : 'standard';
@@ -70,9 +70,9 @@ function defaultProfileFor(bootMode: BootMode): string {
  * Resolve the hook profile for this launch, and say where it came from.
  *
  * Precedence is ambient > config > mode default. Ambient wins because it is the
- * deployment speaking (Docker's compose block, or an operator's one-off
- * `AGENT_HOOK_PROFILE=… hermitd-start`), which is more specific than a value
- * committed to config.json.
+ * deployment speaking (an operator's one-off `AGENT_HOOK_PROFILE=… hermitd-start`,
+ * or a hand-added compose line), which is more specific than a value committed
+ * to config.json.
  *
  * Every source is validated and floored the same way. That is a change: the old
  * code computed a profile, then only wrote it to `process.env` when nothing was

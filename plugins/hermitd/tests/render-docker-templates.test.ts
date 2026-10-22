@@ -18,7 +18,6 @@ const BASE_INPUT = {
   packages: [] as string[],
   auth: 'oauth-token' as const,
   channels: { envLines: [] as string[], volumeLines: [] as string[] },
-  agentHookProfile: 'strict',
   networkMode: 'bridge' as const,
   gitIdentityMount: true,
 };
@@ -40,6 +39,14 @@ describe('render-docker-templates.ts', () => {
     expect(dockerfile(dir)).not.toMatch(/\{\{[A-Z][A-Z0-9_]*\}\}/);
     expect(compose(dir)).not.toMatch(/\{\{[A-Z][A-Z0-9_]*\}\}/);
     expect(fs.existsSync(path.join(dir, 'docker-entrypoint.hermit.sh'))).toBe(true);
+  });
+
+  // config.json env is the only owner of the hook profile; an ambient compose
+  // value would outrank it and silently override the operator's choice.
+  test('compose carries no AGENT_HOOK_PROFILE', async () => {
+    const dir = freshDir();
+    await render(dir);
+    expect(compose(dir)).not.toContain('AGENT_HOOK_PROFILE');
   });
 
   // The healthcheck must READ config.tmux_session_name at check time, never bake a copy.
@@ -210,7 +217,6 @@ describe('render-docker-templates.ts', () => {
         envLines: ['DISCORD_STATE_DIR=${PWD}/.claude.local/channels/discord'],
         volumeLines: ['${PWD}/.claude.local/channels/discord:/home/claude/.claude/channels/discord'],
       },
-      agentHookProfile: 'strict',
       networkMode: 'host' as const,
       gitIdentityMount: false,
       fleetMesh: true,

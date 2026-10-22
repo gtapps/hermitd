@@ -116,8 +116,6 @@ Read `.hermit/config.json` and extract:
 - `agent_name`
 - Detect project path from `pwd`
 
-Do NOT set `AGENT_HOOK_PROFILE` in `config.json` `env` — leave it unset. The strict profile is rendered into the docker-compose environment block at Step 7b.6 via the `agentHookProfile` render input, which the launcher treats as an ambient value and honors over anything in config. Setting it in config as well only creates a second source to keep in sync.
-
 ### 4. Template inputs (rendering deferred to Step 7b.6)
 
 > `scripts/render-docker-templates.ts` renders the three base files at Step 7b.6, after plugin resolution (Step 7b) and the apt-package union (Step 7b.packages) have finalized `docker.packages` and Step 7 has configured channels. Here, only collect the semantic inputs the render call needs; do not read or write template files yet.
@@ -131,7 +129,6 @@ The render script derives every `{{PLACEHOLDER}}` internally and fails loud (wri
   - volume body: `${PWD}/.claude.local/channels/<plugin>:/home/claude/.claude/channels/<plugin>` (keeps channel writes inside the project tree — no permission prompts under `bypassPermissions`)
   - No channels → both arrays empty.
 - `channelPlugins`: for every enabled channel key, `{ marketplace: channels[key].marketplace ?? 'claude-plugins-official', plugin: channels[key].plugin ?? key }`, except `discord`, `telegram` and `imessage`, which always pass `{ marketplace: 'claude-plugins-official', plugin: key }`. The renderer writes the managed channel approval drop-in when third-party marketplaces are present. Installation of those plugins uses `docker.recommended_plugins` in Step 7b.
-- `agentHookProfile` — always `"strict"` for Docker (the profile the remaining hooks read; permission rules are native `permissions.deny` / `permissions.ask`, not profile-gated).
 - `networkMode` — `docker.network_mode` (`"bridge"` or `"host"`, Step 2).
 - `gitIdentityMount` — the Step 1 preflight `gitconfig_exists`. When **false**, the `.gitconfig` bind-mount is dropped and you must add to the summary: "No ~/.gitconfig found — git commits inside the container will have no author identity. Create one on the host and re-run docker-setup, or set git config manually inside the container."
 - `fleetMesh` - read `docker.fleet_mesh` from the project's `.hermit/config.json`; absent means `false`. Never ask interactively. When true, tell the operator that the two external volumes and the `hermit-fleet-pidns` holder in `docs/always-on.md` must exist before `hermitd-docker up`.
@@ -307,7 +304,6 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts <PROJECT_ROOT> <<'H
   "packages": [...],
   "auth": "oauth-token" | "api-key",
   "channels": { "envLines": [...], "volumeLines": [...] },
-  "agentHookProfile": "strict",
   "networkMode": "bridge" | "host",
   "gitIdentityMount": true | false,
   "fleetMesh": true | false

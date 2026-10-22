@@ -25,7 +25,6 @@ services:
     environment:
       - CLAUDE_CONFIG_DIR=/home/claude/.claude
       - NODE_OPTIONS=--max-old-space-size=4096
-      - AGENT_HOOK_PROFILE={{AGENT_HOOK_PROFILE}}
       - GH_TOKEN=${HERMIT_GH_TOKEN:-}
       # Set HERMIT_FORCE_BOOT=1 in the shell to override the entrypoint singleton
       # guard for split-state recovery (HERMIT_FORCE_BOOT=1 hermitd-docker up).

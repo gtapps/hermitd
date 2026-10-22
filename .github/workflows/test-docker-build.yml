@@ -46,7 +46,6 @@ jobs:
             "packages": [],
             "auth": "oauth-token",
             "channels": { "envLines": [], "volumeLines": [] },
-            "agentHookProfile": "strict",
             "networkMode": "bridge",
             "gitIdentityMount": true
           }' | bun plugins/hermitd/scripts/render-docker-templates.ts "$PWD/build"

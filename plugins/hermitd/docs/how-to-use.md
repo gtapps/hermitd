@@ -294,9 +294,9 @@ To override, edit `config.json` directly:
 "env": { "AGENT_HOOK_PROFILE": "standard" }
 ```
 
-`/hermit-settings env` deliberately refuses this key: the profile is resolved at boot, and an ambient value from Docker compose or your shell outranks whatever is in `config.json`.
+`/hermit-settings env` deliberately refuses this key: the profile is resolved at boot, and an ambient value from your shell outranks whatever is in `config.json`.
 
-The value is process-scoped: it reaches the managed session through the tmux env file or the Docker compose environment block, and is never written to `.claude/settings.local.json`. A `claude` you launch by hand in the same project is unaffected by it.
+The value is process-scoped: it reaches the managed session through the tmux env file (Docker included), and is never written to `.claude/settings.local.json`. A `claude` you launch by hand in the same project is unaffected by it.
 
 ---
 

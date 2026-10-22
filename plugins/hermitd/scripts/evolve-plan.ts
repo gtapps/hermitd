@@ -351,7 +351,13 @@ function classifyDockerTemplates(
     if (recorded) {
       const pristine = readVerifiedPristine(pristinePath, recorded);
       if (pristine !== null) {
-        const baseSources = { ...currentSources, [f.field]: pristine.toString('utf8') };
+        // A pristine compose from 1.4.19 or earlier still carries the retired
+        // `{{AGENT_HOOK_PROFILE}}` placeholder, always rendered as `strict`.
+        // Fill it so the base renders and the 3-way merge drops that line.
+        const baseSources = {
+          ...currentSources,
+          [f.field]: pristine.toString('utf8').replaceAll('{{AGENT_HOOK_PROFILE}}', 'strict'),
+        };
         baseRendered = renderSources(inputs, baseSources)[f.field];
       }
     }
