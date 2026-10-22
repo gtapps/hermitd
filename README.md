@@ -262,7 +262,7 @@ Optional plugins that add domain tools and workflows to your agent.
 - [fitness-hermit](plugins/hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
 - [hermitd-feed](plugins/hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
 - [hermitd-laravel-forge](plugins/hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
-- [hermit-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
+- [hermitd-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 
 You can run separate agents for different responsibilities, each with its own working state, knowledge, and routines. See [Creating Your Own Hermit](plugins/hermitd/docs/creating-your-own-hermit.md).
 

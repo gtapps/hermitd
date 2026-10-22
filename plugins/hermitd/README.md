@@ -1,3 +1,4 @@
+
 <p align="center">
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
@@ -18,8 +19,6 @@ Give it ongoing responsibilities: maintain research, monitor systems, run routin
 Run it on your Claude subscription and extend it with your own MCP servers, skills, and plugins.
 
 **It's Claude Code.** hermitd is a plugin for the official Claude Code CLI, which runs as Anthropic ships it. New Claude models, features, and fixes work as soon as Claude Code supports them.
-
-Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
 <p align="center">
   <img src="assets/cover.png" alt="Always-on Claude Code agent" />
@@ -95,6 +94,8 @@ Optional [Docker security controls](docs/docker-security.md) cover local-network
 - **Proactive work.** Heartbeats regularly check the responsibilities you give the agent. Routines run scheduled work, and watches surface changes. Together, they let the agent follow up without waiting for another request.
 
 - **Work through chat.** Assign work and receive results in your connected chat. Longer assignments get threaded progress updates, with a separate reply when the agent needs a decision. Assignments can also carry a persistent task record with requester, due date, result confirmation, and a dashboard view by person.
+
+- **Your network.** Local databases, SSH, LAN devices, filesystem are reachable because the agent runs where they are.
 
 - **Token efficiency.** With Claude Code’s [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool), heartbeat checks and optional routine prechecks run outside the model. Quiet checks and skipped routines use no model tokens; eligible routines due together can share a wake.
 
@@ -288,6 +289,8 @@ The migration records every agent before replacing the marketplace, moves projec
 Follow the printed start command for each agent, then run `/hermitd:hermit-evolve`. Pending `later` commands that still use old paths are reported for re-arming.
 
 ## Upgrading
+
+Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container.
 
