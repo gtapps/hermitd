@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.19] - 2026-10-22
 
 ### Changed
 - The hermit edits `OPERATOR.md` when the operator asks, through the native approval prompt, and proposes a diff only when the edit is denied or no prompt is available.
@@ -11,15 +11,13 @@
 - `hermitd update` no longer waits 30 minutes for evolve when a plugin installed from a repository lists its version with a build suffix (`1.4.18-467be32f41fc`), and no longer sees a version gap on every later update.
 - A chat answer to a deferred upgrade question is recorded only after the chosen option is applied; a denied or failed apply leaves the question open.
 - After a fresh restart, the first chat message carries recent chat history, so a reply to a question asked before the restart is understood.
+- The watchdog no longer reports a stuck session after a quiet context clear.
+- Context compaction waits while the session is busy, showing a prompt or running a worker, instead of typing into it.
+- The end-of-turn reply check accepts a reply already sent on the channel.
 
 ### Upgrade Instructions
 1. Skip this step when this evolve already ran 1.4.18 Upgrade Instructions step 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `Edit(*.hermit/resident-prompt.md)`, `Edit(*.hermit/helper-prompt.md)`, `Bash(hermitd update*)`, `Bash(*/hermitd update*)`, `Bash(*.hermit/bin/hermitd-update*)`, `Bash(*.hermit/bin/hermitd-run hermitd-update*)`, `Bash(hermitd run *hermitd-update*)` and `Bash(*/hermitd run *hermitd-update*)` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, or the same file's `permissions.deny` already holds `Bash(*> *.hermit/resident-prompt.md*)` (that rule would refuse a call naming it, and its presence means the deny rules were added), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(*> *.hermit/resident-prompt.md*)' 'Bash(*>.hermit/resident-prompt.md*)' 'Bash(*> *.hermit/helper-prompt.md*)' 'Bash(*>.hermit/helper-prompt.md*)'`, adding `'Edit(*.hermit/resident-prompt.md)' 'Edit(*.hermit/helper-prompt.md)' 'Bash(hermitd update*)' 'Bash(*/hermitd update*)' 'Bash(*.hermit/bin/hermitd-update*)' 'Bash(*.hermit/bin/hermitd-run hermitd-update*)' 'Bash(hermitd run *hermitd-update*)' 'Bash(*/hermitd run *hermitd-update*)'` to that call when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened). These operations are additive and idempotent; report added entries, the unseeded skip, or the already-present skip. Never create or edit `.hermit/resident-prompt.md` or `.hermit/helper-prompt.md`: they are operator-owned.
 2. Skip this step when this evolve already ran 1.4.18 Upgrade Instructions step 3. If line 1 of `.hermit/OPERATOR.md` is not `# Your Standing Instructions`, offer a choice with no default. `evolve-runner` must defer this step; step 10 asks the operator. Options: **Retitle only** / **Retitle and apply the improvements**. Both options replace line 1 only when it is exactly `# Operator Context and Instructions` or `# Operator Context`; otherwise insert `# Your Standing Instructions` above the existing first line. Retitle only preserves the body. Retitle and apply the improvements also rewrites the body to the agent under mission, focus, red lines and ask first, preserving the meaning of every operator rule. Leave sections that another plugin's upgrade manages as they are. Move project facts, CI details and code rules out, never drop them: offer an append to an existing `CLAUDE.md` or `CLAUDE.local.md`; otherwise follow `target` in `.hermit/state/hatch-options.json` (`committed` uses `CLAUDE.md`, `local` uses `CLAUDE.local.md`). If only `AGENTS.md` exists, create that target's CLAUDE file with `@AGENTS.md` first and append the moved lines. Otherwise create that target's CLAUDE file with a one-line heading (`# CLAUDE.md` or `# CLAUDE.local.md`) and append the moved lines under a short heading. Never write or edit `AGENTS.md`. Apply the OPERATOR.md edit with Edit so the native approval prompt fires; if it is denied, propose the diff for the operator to apply.
-
-### Fixed
-- The watchdog no longer reports a stuck session after a quiet context clear.
-- Context compaction waits while the session is busy, showing a prompt or running a worker, instead of typing into it.
-- The end-of-turn reply check accepts a reply already sent on the channel.
 
 ## [1.4.18] - 2026-10-22
 
