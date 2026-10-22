@@ -593,6 +593,34 @@ test('docker templates: a custom git identity source merges and survives the 3-w
   expect(result).toContain('# Defense in depth');
 }));
 
+test('docker templates: a pristine compose with the retired hook-profile placeholder merges the line away', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const current = realDockerSources();
+  const nodeOptions = '      - NODE_OPTIONS=--max-old-space-size=4096\n';
+  const baseCompose = current.compose.replace(nodeOptions, `${nodeOptions}      - AGENT_HOOK_PROFILE={{AGENT_HOOK_PROFILE}}\n`);
+  expect(baseCompose).not.toBe(current.compose);
+  const baseRendered = renderSources(DOCKER_INPUTS, {
+    ...current,
+    compose: baseCompose.replace('{{AGENT_HOOK_PROFILE}}', 'strict'),
+  });
+  deployDocker(proj, {
+    compose: `${baseRendered.compose}\nx-operator-setting: true\n`,
+    dockerfile: baseRendered.dockerfile,
+  });
+  writePristineCompose(proj, baseCompose);
+
+  const entries = classifyRealDockerTemplates(proj, sha256(Buffer.from(baseCompose)));
+  const compose = entries.find((entry: any) => entry.name === 'docker-compose.hermit.yml');
+  expect(compose.base_path).toBeDefined();
+
+  const ours = path.join(proj, 'docker-compose.hermit.yml');
+  const merged = Bun.spawnSync({ cmd: ['git', 'merge-file', ours, compose.base_path, compose.theirs_path] });
+  expect(merged.exitCode).toBe(0);
+  const result = fs.readFileSync(ours, 'utf8');
+  expect(result).not.toContain('AGENT_HOOK_PROFILE');
+  expect(result).toContain('x-operator-setting: true');
+}));
+
 test('docker templates: stale pristine bytes force bootstrap without base_path', withProj((proj) => {
   writeDerivableDockerConfig(proj);
   const current = realDockerSources();

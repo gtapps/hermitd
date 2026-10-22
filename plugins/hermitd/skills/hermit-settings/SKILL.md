@@ -325,7 +325,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
 
     AGENT_HOOK_PROFILE              (unset → strict on an always-on launch)
   ```
-- **Protected keys** that cannot be changed via this command: `AGENT_HOOK_PROFILE`. If the operator tries to set one, respond: "The hook profile is resolved at boot — unset means strict for an always-on launch and standard for an interactive one, and an ambient value in the launch environment outranks config. To pin it, edit `config.json` `env` directly; the boot script validates it and floors an always-on launch at standard on the next start."
+- **Protected keys** that cannot be changed via this command: `AGENT_HOOK_PROFILE`. If the operator tries to set one, respond: "The hook profile is resolved at boot: unset means strict for an always-on launch and standard for an interactive one, and an ambient value in the launch environment outranks config. To pin it, edit `config.json` `env` directly; the boot script validates it and floors an always-on launch at standard on the next start."
 - Ask for an env var to set, change, or remove (forms: `<KEY> <VALUE>`, `remove <KEY>`, or `done`; default done).
 - Loop until operator says "done", "skip", or presses Enter:
   - If input targets a protected key: reject with the message above

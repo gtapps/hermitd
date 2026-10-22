@@ -27,6 +27,7 @@
 4. **Hand the hook profile to `config.json`** (Docker hermits only). Hermit-evolve step 5d merges the compose template change, which removes the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml`; until now that line forced `strict` and outranked `config.json`. Then read `env.AGENT_HOOK_PROFILE` in `.hermit/config.json`:
    - **Absent or `"strict"`**: nothing to do. The hermit keeps launching at `strict`.
    - **Any other value**: compose overrode it, so it applies for the first time after this upgrade and turns off the dev plugin's push guard. **Defer per SKILL.md Step 10** with `options: ["Keep <value> (applies from the next restart)", "Return to strict (unset env.AGENT_HOOK_PROFILE)"]`, no `on_resolve`, and `skipped: skipped pending operator`. *Return to strict* runs `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset env.AGENT_HOOK_PROFILE`; *Keep* leaves the key in place.
+   - **Compose not merged**: if step 5d leaves `docker-compose.hermit.yml` unmerged (kept, conflict or report-only) and it still has an `AGENT_HOOK_PROFILE=` line, that line keeps outranking `config.json`. Add to Operator notes: "Delete the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml` so `config.json` owns the hook profile, then run `hermitd-docker update`."
 
 ## [1.4.19] - 2026-10-22
 
