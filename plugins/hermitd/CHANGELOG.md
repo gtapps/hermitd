@@ -14,7 +14,7 @@
 ### Fixed
 - A pause no longer leaves chat harness commands refused until someone types at the terminal.
 - A watchdog compact or update no longer approves a permission prompt or question that is open in the resident session.
-- Chat `!effort` and `/when-done-switch-to` effort switches no longer hang on Claude Code's "Change effort level?" confirmation or rewrite the user-level effort default: the core mod applies the level to each of the resident's own requests.
+- Chat `!effort` and `/when-done-switch-to` effort switches no longer hang on Claude Code's "Change effort level?" confirmation or rewrite the user-level effort default.
 
 ### Upgrade Instructions
 1. Delete `.hermit/state/pending-harness-switch.json` if it exists.
