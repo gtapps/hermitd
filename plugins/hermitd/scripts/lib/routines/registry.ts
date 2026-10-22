@@ -108,8 +108,9 @@ function promptHash(r: Json, shiftedSchedule: string, pluginRoot: string): strin
   }));
 }
 
-// Pure — no fs/network/Date.now() inside. Callers inject now/machineTz so this
-// (and its test fixtures) are fully deterministic.
+// No network/Date.now() inside, and the only fs access is the one plugin.json read
+// that maps a marketplace clone root (installedRootFor). Callers inject now/machineTz
+// so this (and its test fixtures) are fully deterministic.
 function planCron(
   routines: Json[],
   mirror: Mirror,
@@ -126,6 +127,7 @@ function planCron(
   // sweep for deletes, so the planner only needs to hand back shifted schedules.
   const bootMismatch = forceReset || !mirror.boot_id || !currentBootId || mirror.boot_id !== currentBootId;
   const ref = new Date(nowMs);
+  const root = installedRootFor(pluginRoot);
 
   const deletes: string[] = [];
   const creates: PlanCreate[] = [];
@@ -138,7 +140,7 @@ function planCron(
     seen.add(r.id);
     const shift = shiftForRoutine(r.schedule, configTz, machineTz, ref);
     enabledShifted.push({ id: r.id, schedule: shift.result }); // for the wake-spread lint, regardless of create/keep
-    const hash = promptHash(r, shift.result, pluginRoot);
+    const hash = promptHash(r, shift.result, root);
     const existing = mirror.routines[r.id];
 
     if (bootMismatch) {
@@ -255,11 +257,12 @@ function commitCron(
     if (entry) next.routines[id] = entry; // genuine KEEP — no CronCreate happened, age unchanged
   }
 
+  const root = installedRootFor(pluginRoot);
   for (const { id, schedule } of plan.creates) {
     if (!createdIds.has(id)) continue;
     const r = routineById.get(id);
     if (!r) continue;
-    next.routines[id] = { prompt_hash: promptHash(r, schedule, pluginRoot), registered_at: nowMs };
+    next.routines[id] = { prompt_hash: promptHash(r, schedule, root), registered_at: nowMs };
   }
 
   return next;
