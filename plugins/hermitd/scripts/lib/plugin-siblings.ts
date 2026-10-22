@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readJson } from './cli';
 
 // Enumerate the directories that directly contain a sibling plugin's
 // .claude-plugin/. Handles both layouts core actually ships in:
@@ -17,6 +18,21 @@ import path from 'node:path';
 export function versionedCacheCoreDir(pluginRoot: string, coreName: string): string | null {
   const parent = path.resolve(pluginRoot, '..');
   return path.basename(parent) === coreName ? parent : null;
+}
+
+// A marketplace clone root (<base>/plugins/marketplaces/<mp>/plugins/<dir>/) mapped to the
+// install-cache dir Claude Code runs the same release from
+// (<base>/plugins/cache/<mp>/<name>/<version>/). bin/hermitd-run boots from the clone while
+// the session runs the cache copy, so identity checks compare roots through this. Any
+// other root, or a clone without a readable name and version, is returned unchanged.
+export function installedRootFor(pluginRoot: string): string {
+  const pluginsDir = path.dirname(pluginRoot);
+  const mpDir = path.dirname(pluginsDir);
+  const marketplaces = path.dirname(mpDir);
+  if (path.basename(pluginsDir) !== 'plugins' || path.basename(marketplaces) !== 'marketplaces') return pluginRoot;
+  const meta = readJson(path.join(pluginRoot, '.claude-plugin', 'plugin.json'));
+  if (typeof meta?.name !== 'string' || !meta.name || typeof meta.version !== 'string' || !meta.version) return pluginRoot;
+  return path.join(path.dirname(marketplaces), 'cache', path.basename(mpDir), meta.name, meta.version);
 }
 
 export function siblingPluginDirs(pluginRoot: string, coreName: string): string[] {

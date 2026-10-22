@@ -5,6 +5,7 @@
 ### Fixed
 - Pairing a Discord or Telegram bot in `/hermitd:channel-setup` or `/hermitd:docker-setup` sets an empty home chat to the paired DM, so the first boot's readiness notice is delivered without a prior message.
 - An unreachable channel with no home chat is reported with "send the bot a message" instead of `/<channel>:access`.
+- `hermit-doctor` gives the same overlay-hooks, heartbeat and routine-monitor verdicts whether it runs from the marketplace clone or the installed plugin cache.
 
 ### Changed
 - Nothing unattended types into the resident's tmux pane: watchdog compaction, clear, monitor re-arm, the wedge nudge fallback, pause, the shutdown skill (`hermitd-stop`, `hermitd-docker down`, container SIGTERM), live update and `/when-done-switch-to` go through one durable queue that the core mod runs once the session is idle, never answering an open permission prompt or question.

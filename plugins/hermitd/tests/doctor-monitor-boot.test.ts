@@ -169,6 +169,21 @@ describe('doctor monitor command drift', () => {
     expect(sameMonitorCommand(cmd('/c/1.4.7-5954e0f6849a'), cmd('/c/1.4.7-0123456789ab'))).toBe(false);
   });
 
+  test('a marketplace clone root matches its same-version cache dir, not another version', () => {
+    const base = freshDir();
+    const clone = path.join(base, 'plugins', 'marketplaces', 'hermitd', 'plugins', 'hermitd');
+    fs.mkdirSync(path.join(clone, '.claude-plugin'), { recursive: true });
+    writeJson(path.join(clone, '.claude-plugin', 'plugin.json'), { name: 'hermitd', version: '1.4.19' });
+    const cache = (v: string) => path.join(base, 'plugins', 'cache', 'hermitd', 'hermitd', v);
+    const cmd = (root: string) => `bash "${root}"/scripts/monitor-supervisor.sh heartbeat "/h"`;
+    expect(sameMonitorCommand(cmd(cache('1.4.19')), cmd(clone))).toBe(true);
+    expect(sameMonitorCommand(cmd(clone), cmd(cache('1.4.19')))).toBe(true);
+    expect(sameMonitorCommand(cmd(cache('1.4.19-5954e0f6849a')), cmd(clone))).toBe(true);
+    expect(sameMonitorCommand(cmd(cache('1.4.18')), cmd(clone))).toBe(false);
+    expect(sameMonitorCommand(cmd(cache('1.4.18')), cmd(cache('1.4.19')))).toBe(false);
+    expect(sameMonitorCommand(cmd(cache('1.4.19')).replace('heartbeat', 'routines'), cmd(clone))).toBe(false);
+  });
+
   test('a registration from another version dir is drift', () => {
     const p = fixture();
     registerFrom(p, (cmd) => cmd.replace('"/scripts/', '-1.4.6"/scripts/'));

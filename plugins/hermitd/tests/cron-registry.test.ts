@@ -12,13 +12,18 @@
 // threshold is recreated even with unchanged config, so a long-lived process can
 // never silently ride a routine past CC's real 7-day auto-expiry cliff.
 
-import { describe, test, expect } from 'bun:test';
+import { afterAll, describe, test, expect } from 'bun:test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { planCron, commitCron, computeWakeSpread, promptHash, REREGISTER_AGE_MS, filterRoutinesByIds } from '../scripts/lib/routines/registry';
 import { shiftCron } from '../scripts/lib/cron-shift';
+import { freshDirFactory } from './helpers/workdir';
 
 const PLUGIN_ROOT = '/plugin';
 const BOOT_A = 'boot-aaa';
 const T0 = Date.parse('2026-06-01T00:00:00Z');
+const { freshDir, cleanup } = freshDirFactory('cron-registry-');
+afterAll(cleanup);
 
 function r(id: string, overrides: Record<string, any> = {}) {
   return { id, skill: `hermitd:${id}`, schedule: '0 9 * * *', enabled: true, ...overrides };
@@ -256,6 +261,16 @@ describe('commitCron', () => {
     const plain = promptHash(r('a'), '0 9 * * *', '/c/1.4.15');
     expect(promptHash(r('a'), '0 9 * * *', '/c/1.4.15-b9c377356f9e')).toBe(plain);
     expect(promptHash(r('a'), '0 9 * * *', '/c/1.4.16')).not.toBe(plain);
+  });
+
+  test('a marketplace clone root hashes as its same-version cache dir', () => {
+    const base = freshDir();
+    const clone = path.join(base, 'plugins', 'marketplaces', 'hermitd', 'plugins', 'hermitd');
+    fs.mkdirSync(path.join(clone, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(clone, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'hermitd', version: '1.4.15' }));
+    const cache = (v: string) => path.join(base, 'plugins', 'cache', 'hermitd', 'hermitd', v);
+    expect(promptHash(r('a'), '0 9 * * *', clone)).toBe(promptHash(r('a'), '0 9 * * *', cache('1.4.15')));
+    expect(promptHash(r('a'), '0 9 * * *', clone)).not.toBe(promptHash(r('a'), '0 9 * * *', cache('1.4.14')));
   });
 
   test('KEEP entries carry forward with registered_at unchanged (not restamped)', () => {
