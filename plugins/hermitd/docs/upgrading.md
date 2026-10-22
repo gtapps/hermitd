@@ -29,6 +29,8 @@ hermitd update
 hermitd update
 ```
 
+Docker hermits also accept `--plugins-only` (update plugins and restart the container once, without rebuilding the image), `--cc-only` (rebuild with the latest Claude Code, without updating plugins), `--dry-run` (show the plan and change nothing) and `--yes` (skip the confirmation). Local hermits accept `--dry-run`. A Docker update is refused while a host tmux session runs the project's hermit; stop it first with `hermitd stop`.
+
 Always-on hermits do this on their own: the resident-start upgrade banner triggers `hermit-evolve unattended` automatically.
 
 From chat, ask a host hermit to update itself: it asks for approval through Claude Code's permission prompt, which only DM-paired users can answer, then restarts once when quiet. Docker hermits are updated from the host. See [security](security.md#trust-model).
