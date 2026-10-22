@@ -52,6 +52,12 @@ export function channelStateDirKey(chName: string): string | null {
   return ENV_VAR_RE.test(key) ? key : null;
 }
 
+/** Why `id` cannot seed this channel's home chat (`default_chat_id`), or null when it can. */
+export function homeSeedBlock(channel: Json, id: string): 'pinned' | 'maintainer' | null {
+  if (channel.default_chat_id != null && channel.default_chat_id !== '') return 'pinned';
+  const maintainer = channel.maintainer_channel_id;
+  return maintainer != null && String(maintainer) === id ? 'maintainer' : null;
+}
 
 /** Resolve reply tools against built-in and configured server names, longest first. */
 export function replyToolChannel(toolName: string, config: Json): string | null {

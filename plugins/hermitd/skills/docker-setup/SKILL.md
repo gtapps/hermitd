@@ -472,7 +472,7 @@ If the token is present, ask if already paired. If not:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" pair <plugin> <code>
    ```
-   `"file":"state"` confirms the access write and approval marker. Retain a `home` or `home+state` result for sub-step 5. On `{"error"}`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
+   `"file":"state"` confirms the access write and approval marker. Retain a `home` or `home+state` result for sub-step 5. `"home":"set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
 3. Set policy after successful pairing:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" policy <plugin> allowlist
