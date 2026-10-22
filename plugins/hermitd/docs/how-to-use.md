@@ -6,7 +6,7 @@ A paid Claude plan (Pro, Max, Teams, or Enterprise). Linux, macOS, or Windows vi
 
 Claude Code auto memory must stay enabled (the default): learning, preferences, and standing roles live there. Setting `autoMemoryEnabled: false` or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables them.
 
-The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.292+, **Bun** ≥1.4 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
+The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.302+, **Bun** ≥1.4 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
 
 ---
 
@@ -265,6 +265,10 @@ The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unatt
 ## Model and Effort
 
 **`config.model`** controls which Claude model your hermit runs on. Default: `"sonnet"`. Set to `"opus"` for premium reasoning or `"haiku"` for cheap idle loops. See the [Claude Code model configuration docs](https://code.claude.com/docs/en/model-config) for aliases, version pinning, and tier behavior.
+
+**`config.effort`** sets the session's reasoning effort, passed as `--effort` at every start. The default `null` passes no flag. When it is set, a chat `!effort` change lasts until the next restart.
+
+Work the hermit hands off can run at its own effort. A task assignment can name the effort its worker runs at (`low` to `max`). A [routine](config-reference.md#routines) with `model` set can also set `effort` for its subagent. [`heartbeat.model` and `heartbeat.effort`](config-reference.md#heartbeat) choose the heartbeat evaluator, Haiku at `high` by default. In a helper's task thread, `!model` and `!effort` switch that helper and keep its conversation; a busy helper switches when its current turn ends.
 
 Use [`/when-done-switch-to`](../skills/when-done-switch-to/SKILL.md) inside a task turn to switch model and effort when that turn ends idle.
 

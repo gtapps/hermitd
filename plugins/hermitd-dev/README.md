@@ -41,7 +41,7 @@ Two hooks, hatch, and three generic development skills.
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.292+, a Claude plan (Pro, Max, Teams, or Enterprise), Node.js 24+ (for the `git-push-guard` hook at strict profile), a forge CLI when publishing PRs through the project's workflow.
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.302+, a Claude plan (Pro, Max, Teams, or Enterprise), Node.js 24+ (for the `git-push-guard` hook at strict profile), a forge CLI when publishing PRs through the project's workflow.
 
 ### 1. Install
 
