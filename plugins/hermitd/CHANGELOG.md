@@ -15,7 +15,9 @@
 - A pause no longer leaves chat harness commands refused until someone types at the terminal.
 - A watchdog compact or update no longer approves a permission prompt or question that is open in the resident session.
 - Chat `!effort` and `/when-done-switch-to` effort switches no longer hang on Claude Code's "Change effort level?" confirmation or rewrite the user-level effort default.
-- `/hermitd:hatch` Advanced asks how the agent will run, so Docker and tmux operators get their own next steps and sandbox note instead of the interactive ones.
+- `/hermitd:hatch` Advanced no longer gives Docker and tmux operators the interactive next steps and sandbox note.
+- `/hermitd:hatch` Advanced's permission question fits the four-option limit; `dontAsk` is typed via Other.
+- Re-running `/hermitd:hatch` on a Docker hermit points at `hermitd restart` instead of `/hermitd:docker-setup`.
 
 ### Upgrade Instructions
 1. Delete `.hermit/state/pending-harness-switch.json` if it exists.

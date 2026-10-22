@@ -171,15 +171,7 @@ The Visibility question uses the scope-derived `hatch_target` to recommend an op
 
 ```
 questions: [
-  {
-    header: "Deployment",
-    question: "How will you run the agent?",
-    options: [
-      { label: "tmux always-on", description: "Runs on the host as you, no image build. Boots via hermitd start; the watchdog scheduler installs on first boot (opt out with watchdog.scheduler_enabled: false)" },
-      { label: "Docker always-on", description: "Isolated container that restarts itself; guided end to end by /docker-setup" },
-      { label: "Interactive", description: "Just trying it, right here in your terminal" }
-    ]
-  },
+  // The Deployment question from Quick Turn 3, verbatim
   {
     header: "Permissions",
     question: "Permission mode for Claude Code?",
@@ -187,7 +179,6 @@ questions: [
       { label: "auto", description: "**Default.** Classifier-reviewed autonomy — each action reviewed before it runs. Generally available to all users across subscription plans and API usage; supported models and provider configuration can vary. If Claude reports it unavailable for the current selection, choose a supported model or another permission mode." },
       { label: "acceptEdits", description: "Auto-approve file edits, prompt for shell commands. Good balance if auto is unavailable on your plan." },
       { label: "default", description: "Prompt for permission on first use of each tool" },
-      { label: "dontAsk", description: "Deny all tools not in permissions.allow — requires curated allowlist" },
       { label: "bypassPermissions", description: "No permission prompts. Opt-in for fully unattended Docker-isolated hermits that cannot tolerate any pause." }
     ]
   },
@@ -221,9 +212,9 @@ Substitute `<scope>` with the actual `core_install_scope` value.
 
 Record the operator's Visibility choice as `hatch_target` (overrides scope-derived default if different).
 
-Record `deployment` (one of `docker` / `tmux` / `interactive`).
+Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive` as Quick Turn 3 does.
 
-Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` mode can be typed via Other if needed.
+Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` and `dontAsk` (denies every tool not in `permissions.allow`, so it needs a curated allowlist) can be typed via Other.
 
 For routines — if Yes: use the config defaults (`active_hours.start = 08:00`, `end = 23:00`) to derive morning = `08:30` and evening = `22:30`. Add to `routines` array:
 

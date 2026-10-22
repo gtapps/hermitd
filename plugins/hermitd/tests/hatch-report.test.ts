@@ -139,6 +139,14 @@ describe('final next-steps keys off deployment', () => {
     expect(out.running_after_step).toBe(2);
   });
 
+  test('docker already set up (a re-init) restarts the container instead', () => {
+    const root = hatched();
+    fs.writeFileSync(path.join(root, 'docker-compose.hermit.yml'), 'services: {}\n');
+    const out = finalData(observe(root), 'docker');
+    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd restart']);
+    expect(out.running_after_step).toBe(2);
+  });
+
   test('tmux points at the boot script, and is running before pairing', () => {
     const out = finalData(observe(hatched(discord)), 'tmux');
     expect(runs(out)).toEqual(['/reload-plugins', '!hermitd start', '/hermitd:channel-setup']);
