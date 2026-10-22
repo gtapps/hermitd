@@ -27,6 +27,8 @@ function readCache(hermitDir: string): Json {
 }
 
 const TTL_MS = 24 * 60 * 60 * 1000;
+// Env-overridable so tests under parallel load can outlast the production bound.
+const LOOKUP_TIMEOUT_MS = Number(process.env.HERMIT_DISCORD_LOOKUP_TIMEOUT_MS) || 2000;
 
 // Errors expire so a failed lookup costs one request a day, and so do guild
 // roles: a role granted to (or taken from) the bot after the first lookup would
@@ -61,7 +63,7 @@ async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: strin
       const base = process.env.HERMIT_DISCORD_API_URL || 'https://discord.com/api/v10';
       const route = bucket === 'chats' ? `/channels/${id}` : `/guilds/${id}/members/${String(config?.channels?.discord?.bot_user_id)}`;
       const response = await fetch(`${base}${route}`, {
-        headers: { Authorization: `Bot ${token}` }, signal: AbortSignal.timeout(2000),
+        headers: { Authorization: `Bot ${token}` }, signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
       });
       if (!response.ok) entry = { error: response.status, fetched_at };
       else {

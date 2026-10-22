@@ -1,3 +1,4 @@
 [test]
 concurrentTestGlob = ["**/*.test.ts"]
 pathIgnorePatterns = ["mod/**"]
+preload = ["./tests/helpers/preload.ts"]
