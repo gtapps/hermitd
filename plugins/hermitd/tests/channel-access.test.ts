@@ -67,10 +67,11 @@ for (const channel of ['discord', 'telegram']) {
       if (source === 'home+state') fs.writeFileSync(f.file, JSON.stringify({ ...access, pending: {} }));
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify({ ...access, pending: { ABC123: { senderId: '7', chatId: '8', expiresAt: Date.now() + 60000 } } }));
-      const configBytes = fs.readFileSync(f.configFile);
       const result = await f.run('pair', ['ABC123']);
       expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual({ channel, sender_id: '7', file: source });
+      expect(JSON.parse(result.stdout)).toEqual({ channel, sender_id: '7', file: source, home: 'set' });
+      expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels[channel].default_chat_id).toBe('8');
+      const configBytes = fs.readFileSync(f.configFile);
       const paired = JSON.parse(fs.readFileSync(file, 'utf8'));
       expect(paired.allowFrom).toEqual(['1', '7']);
       expect(paired.pending).toEqual({});
@@ -89,6 +90,24 @@ for (const channel of ['discord', 'telegram']) {
       expect(fs.readFileSync(file)).toEqual(bytes);
       expect(fs.readFileSync(f.configFile)).toEqual(configBytes);
       expect(rows(f.dir)).toEqual(audit);
+    });
+  }
+
+  for (const [name, existing, expected] of [
+    ['an existing home chat', { default_chat_id: '5' }, '5'],
+    ['the home chat empty for a maintainer DM', { maintainer_channel_id: '8' }, undefined],
+  ] as const) {
+    test(`${channel} pair keeps ${name}`, async () => {
+      const f = fixture(channel);
+      const config = JSON.parse(fs.readFileSync(f.configFile, 'utf8'));
+      Object.assign(config.channels[channel], existing);
+      fs.writeFileSync(f.configFile, JSON.stringify(config));
+      fs.writeFileSync(f.file, JSON.stringify({ ...access, pending: { ABC123: { senderId: '7', chatId: '8', expiresAt: Date.now() + 60000 } } }));
+      const configBytes = fs.readFileSync(f.configFile);
+      const result = await f.run('pair', ['ABC123']);
+      expect(JSON.parse(result.stdout)).toEqual({ channel, sender_id: '7', file: 'state', home: 'kept' });
+      expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels[channel].default_chat_id).toBe(expected);
+      expect(fs.readFileSync(f.configFile)).toEqual(configBytes);
     });
   }
 

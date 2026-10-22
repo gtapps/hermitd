@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { replyToolChannel } from './lib/channel-config';
+import { homeSeedBlock, replyToolChannel } from './lib/channel-config';
 import { safe } from './lib/sanitize';
 import { hermitDir, transcriptPath, readTailLines, turnPromptText, sessionId } from './lib/cc-compat';
 import { readConfigRaw } from './lib/config-read';
@@ -57,18 +57,18 @@ function writeConfig(config: Json, before: Json): void {
 
 export function seedDefaultChatId(config: Json, channelKey: string, chatId: Json, isInboundReply: boolean): boolean {
   const channel = config.channels[channelKey];
-  if (channel.default_chat_id != null && channel.default_chat_id !== '') return false;
   if (!chatId) return false;
   // Channel plugins may deliver numeric IDs; config IDs are always strings.
   const id = String(chatId);
+  const block = homeSeedBlock(channel, id);
+  if (block === 'pinned') return false;
   if (!isInboundReply) {
     process.stderr.write(
       `[channel-hook] skipped ${channelKey}.default_chat_id — ${safe(id)} reply wasn't opened by a matching inbound message\n`
     );
     return false;
   }
-  const maintainer = channel.maintainer_channel_id;
-  if (maintainer != null && String(maintainer) === id) {
+  if (block === 'maintainer') {
     process.stderr.write(
       `[channel-hook] skipped ${channelKey}.default_chat_id — ${safe(id)} is the maintainer chat\n`
     );

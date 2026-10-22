@@ -109,7 +109,7 @@ The plugin manifest registers 16 shared hooks. The four resident-only hooks (`pa
 | Artifact backend guard | PreToolUse `Artifact` | Denies a native Artifact publish when `artifacts.backend` is not claude, with a reason that names the backend |
 | Channel responder invoked | PostToolUse `Skill` | Resident-only evidence that the channel responder was invoked |
 | Helper report relay | PostToolUse `.*reply$` | Fails the reply when a `[[helper-report <id>]]` placeholder was not substituted |
-| Channel hook | PostToolUse `(discord\|telegram\|imessage).*reply` | Captures outbound reply text and seeds an empty `default_chat_id` only for replies to a matching inbound message |
+| Channel hook | PostToolUse `(discord\|telegram\|imessage).*reply` | Captures outbound reply text and seeds an empty `default_chat_id` only for replies to a matching inbound message (pairing seeds it first when setup pairs) |
 | Config validator | PostToolUse `Edit\|Write` | Validates `config.json`'s required keys, types, routine time formats, and channel structure |
 | Summary generator | PostToolUse `Edit\|Write` | Regenerates `state-summary.md` when a `state/` file is edited |
 | Usage tracker | PostToolUse `Read` | Appends a usage event to `state/usage-metrics.jsonl` when a `compiled/` artifact is read |

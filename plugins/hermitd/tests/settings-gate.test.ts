@@ -507,7 +507,7 @@ describe('static settings policy', () => {
 
 for (const mode of ['bypassPermissions', 'auto', 'default']) {
   for (const [args, label] of [
-    ['pair discord ABC123', 'pair discord code ABC123'],
+    ['pair discord ABC123', 'pair discord code ABC123 (home chat if unset)'],
     ['policy telegram allowlist', 'policy telegram allowlist'],
     ['group-add discord 123 --mention no --allow none --shared no --passive yes --ack-off', 'listen in discord chat 123: mention=no allow=anyone shared=no passive=yes + seen-emoji off (channel-wide)'],
     ["'group-add' 'telegram' '-123' --mention 'yes' --allow '1,2' --shared yes --passive no --nicknames '[\"bot\"]'", 'listen in telegram chat -123: mention=yes allow=2 ids shared=yes passive=no + nickname triggers (channel-wide)'],
