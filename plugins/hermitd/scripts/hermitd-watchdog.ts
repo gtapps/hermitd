@@ -30,7 +30,7 @@ import { resolveResumeTarget } from './lib/resident-prompt';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
-import { readExecution, passesExecutionBoundary } from './lib/tasks';
+import { readExecution, passesExecutionBoundary, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
@@ -466,6 +466,11 @@ export function classifyQueueTail(tailText: string, nowMs: number, staleSecs = W
     let rec: Json;
     try { rec = JSON.parse(line); } catch { continue; } // a truncated first line is expected
     if (rec?.type !== 'queue-operation' || typeof rec.operation !== 'string') continue;
+    // A task notification with no <task-id> is a passive harness notice (CC 2.1.308
+    // queues "hook was skipped" ones at every /clear). Nothing drains it until the next
+    // prompt, so a quiet session would read as wedged; only task-id notices wake a turn.
+    if (rec.operation === 'enqueue' && typeof rec.content === 'string'
+      && rec.content.startsWith('<task-notification>') && !rec.content.includes('<task-id>')) continue;
     const ts = Date.parse(String(rec.timestamp ?? ''));
     if (Number.isNaN(ts)) continue;
     if (last === null || ts >= last.ts) last = { op: rec.operation, ts };
@@ -1562,7 +1567,7 @@ type PoisonReason = 'stale-entry' | 'aberrant-reading';
 
 /** Closed registry of hygiene evaluation outcomes — every setHygieneEval call site
  *  resolves into this union, so hygiene_eval_counts has a fixed key set by
- *  construction (≤20 distinct strings) and a typo'd or
+ *  construction (≤25 distinct strings) and a typo'd or
  *  novel outcome is a compile error, not a silent new counter key. */
 export type HygieneOutcome =
   | 'fired'
@@ -1575,6 +1580,7 @@ export type HygieneOutcome =
   | 'skip:interval-cooldown'
   | 'skip:already-processed'
   | 'skip:quiescence-pending'
+  | `skip:boundary:${BoundaryReason}`
   | 'skip:lock-held';
 
 /** Records this tick's compact-tier outcome on a held watchdog-state object, under
@@ -1764,6 +1770,13 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
 
   if (!paneStable) {
     return stampedState(world, watchdogState, 'skip:quiescence-pending', prompt, compactible);
+  }
+
+  // A still pane can be a dialog (a subagent's permission prompt included): the typed
+  // Enter below would answer it. Same boundary the standalone /clear honours.
+  const boundary = passesExecutionBoundary(world.paths.hermitRoot);
+  if (!boundary.ok) {
+    return stampedState(world, watchdogState, `skip:boundary:${boundary.reason}`, prompt, compactible);
   }
 
   // Pane stable across two ticks — safe to compact
