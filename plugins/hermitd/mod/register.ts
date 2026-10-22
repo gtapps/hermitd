@@ -180,11 +180,13 @@ async function setEffort($: EngineInterface, level: string) {
   running = true;
   let leg: Leg;
   try {
-    if (!EFFORT_LEVELS.has(level)) throw new Error(`Unknown effort level: ${level}`);
+    // `auto` clears the override, as the native command resets to the model default.
+    const clear = level === 'auto';
+    if (!clear && !EFFORT_LEVELS.has(level)) throw new Error(`Unknown effort level: ${level}`);
     if (!stateDir) throw new Error('No resident state directory');
-    await $.fs.write(`${stateDir}/effort-override.json`, JSON.stringify({ level, set_at: new Date().toISOString() }) + '\n');
-    effort = level;
-    leg = { command: '/effort', status: 'ok', text: `Effort set to ${level}; the status line still shows the launch level` };
+    await $.fs.write(`${stateDir}/effort-override.json`, JSON.stringify({ level: clear ? null : level, set_at: new Date().toISOString() }) + '\n');
+    effort = clear ? undefined : level;
+    leg = { command: '/effort', status: 'ok', text: clear ? 'Effort override cleared; the launch level applies' : `Effort set to ${level}; the status line still shows the launch level` };
   } catch (error) {
     leg = { command: '/effort', status: 'failed', text: errorText(error) };
   } finally {
@@ -237,6 +239,7 @@ async function loadedFor($: EngineInterface, id: string) {
   });
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
+    effort = undefined;
     return;
   }
   stateDir = result.state;

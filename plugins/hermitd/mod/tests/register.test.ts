@@ -457,3 +457,20 @@ test('a fresh copy re-reads the effort override from state', async ($, on) => {
   for await (const _ of ($ as any).turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, effort: 'max' })) { /* drain */ }
   expect(sent).toEqual(['low']);
 });
+
+test('/effort auto clears the override', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  const written: Record<string, string> = {};
+  on('fs.write', ($, e: any) => { written[e.path] = e.text; return { value: undefined }; });
+  const sent: (string | undefined)[] = [];
+  on('turn.step', async function* ($, e: any) { sent.push(e.effort); return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }; });
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'high' }]), entry('b', [{ command: '/effort', arg: 'auto' }]));
+  await boot($);
+  await clock.advance(2000);
+  await clock.advance(2000);
+  expect(JSON.parse(written['/state/effort-override.json']).level).toBeNull();
+  expect(finalized(r).map(f => f.legs[0].status)).toEqual(['ok', 'ok']);
+  for await (const _ of ($ as any).turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, effort: 'medium' })) { /* drain */ }
+  expect(sent).toEqual(['medium']);
+});
