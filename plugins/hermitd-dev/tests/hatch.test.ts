@@ -32,7 +32,7 @@ if (fs.existsSync(HATCH_SKILL)) {
   // Regression: the version gate used to say "extract the stamped version from
   // the existing block", but no template or renderer ever wrote a version into
   // the block, so the gate degenerated to marker-present-only. The stamp lives
-  // in config.json (Step 4 writes it every run) — the gate must read from there.
+  // in config.json (Step 4 writes it every run), so the gate must read from there.
   ok('reads the stamped version from _hermit_versions in config.json',
     /_hermit_versions\["hermitd-dev"\]/.test(text));
 }

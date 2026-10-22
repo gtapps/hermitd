@@ -116,7 +116,9 @@ for (const { slug, text } of HATCHES) {
     });
 
     // `claude plugin list` spans every project on the machine, so a hatch that
-    // reads it to decide whether a plugin is present here skips wrongly.
+    // reads it to decide whether a plugin is present here skips wrongly. Without
+    // that detection a hatch cannot offer an install safely, so optional plugins
+    // are documented for the operator to install, never installed by a hatch.
     test('neither detects nor installs other plugins', () => {
       expect(text).not.toContain('claude plugin list');
       expect(text).not.toContain('claude plugin install');
