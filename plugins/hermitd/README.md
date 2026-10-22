@@ -105,13 +105,15 @@ Optional [Docker security controls](docs/docker-security.md) cover local-network
 
 - **Control and visibility.** Track progress, proposals, and usage through the dashboard. Pause is enforced at the tool boundary, and optional usage caps can alert you or pause further work.
 
-**Part of your project channel.** With passive mode, the agent saves incoming group messages to look back on later, and wakes when someone you allow @mentions it. It also remembers instructions for that channel.
+**Part of your project channel.** With passive mode, the agent saves incoming group messages to look back on later, and wakes when someone you allow @mentions it. It also remembers instructions for that channel. Fixed policies you set for a chat change only through an approval prompt, and an optional scheduled review proposes rule updates when the same correction keeps coming up.
+
+**Work that belongs to a chat.** Routines, watches, and reminders created from a chat report back to that chat. A team chat lists and edits its own routines, and changing one it does not own asks for approval. [Third-party channel plugins](docs/channel-plugins.md) can join in: a small send script gives them proactive notices and routine chats, and Docker approves them for you.
 
 <a id="configure-it"></a>
 
 ## Configure
 
-Tune from a terminal with `/hermit-settings`, or change permitted settings from a trusted Discord or Telegram chat. Every write is validated and recorded in a redacted audit ledger; `/hermit-settings history [setting]` shows what changed. Some of the settings available:
+Tune from a terminal with `/hermit-settings`, or change permitted settings from a trusted connected chat. Every write is validated and recorded in a redacted audit ledger; `/hermit-settings history [setting]` shows what changed. Some of the settings available:
 
 | Key | Default / options (default **bold**) |
 |-----|--------------------------------------|
@@ -121,6 +123,7 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 | `language` | detected during setup; fallback **`en`** |
 | `escalation` | how much it does before asking: `conservative` / **`balanced`** / `autonomous` |
 | `model` | session model: **`sonnet`** |
+| `effort` | session reasoning effort: **unset** (Claude Code default) |
 | `permission_mode` | how freely the unattended agent acts: **`auto`** |
 | `AGENT_HOOK_PROFILE` | guardrail profile: `minimal` / **`standard`** (interactive) / **`strict`** (always-on) |
 | `channels` | Discord / Telegram / iMessage / third-party channel plugins (+ `allowed_users`) |
@@ -134,6 +137,7 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 | `heartbeat.enabled` | timed idle sweeps: **`true`** |
 | `heartbeat.every` | idle sweep cadence: **`30m`** |
 | `heartbeat.active_hours` | active window: **`08:00`–`23:00`** |
+| `heartbeat.model` / `heartbeat.effort` | heartbeat evaluator: **`haiku`** at **`high`** |
 | `routines` | persistent routines managed via `/hermit-routines` |
 | `monitors` | persistent background watches managed via `/watch` |
 | `scheduled_checks` | session-triggered skills at task completion |
@@ -152,6 +156,8 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 | `watchdog.enabled` | recovery/restart tier: **`false`** until first scheduler registration (or `/docker-setup`); hygiene still runs |
 
 Full schema in the [Config Reference](docs/config-reference.md)
+
+**Your own prompt.** Replace the agent's built-in prompt and rules with `.hermit/resident-prompt.md`, and spawned helpers' with `.hermit/helper-prompt.md`. Delete the file to return to the shipped prompt. See [Replacing the resident prompt](docs/how-to-use.md#replacing-the-resident-prompt).
 
 ## Observe
 
@@ -212,6 +218,7 @@ Reflection runs at eligible task or session pauses, daily, and after routines co
 | `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
 | “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
+| “Download last month's invoices from the supplier portal.” | Works in web apps through [Claude in Chrome](docs/how-to-use.md#browser-tasks) on any machine signed in to the same claude.ai account as the agent, Docker agents included. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
 | “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
 
@@ -238,7 +245,7 @@ result in your chat  +  usage recorded
 
 - **See what drives usage.** Token usage is recorded per call, including the model, input/output/cache split, and whether work came from a routine, heartbeat, channel, or another source. Session and daily totals feed the dashboard, weekly review, and `/cost-reflect`.
 - **Set limits.** Optional daily, weekly, and monthly caps can alert you or enforce a pause until the exceeded budget window resets. Under Claude subscription billing, dollar figures are usage estimates rather than additional per-token charges.
-- **Choose where to spend.** Set the session model and optionally assign a different model to individual routines. Routine models run in isolated subagents, so use them for work that can return a concise result.
+- **Choose where to spend.** Set the session model and effort, and optionally a model and effort per routine or per task. Heartbeat checks run on Haiku at high effort by default. Routine models run in isolated subagents, so use them for work that can return a concise result.
 
 See [budgets](docs/config-reference.md#budget) and [routine scheduling](docs/routine-authoring.md) for configuration and scheduler fallback behavior.
 
@@ -247,6 +254,7 @@ See [budgets](docs/config-reference.md#budget) and [routine scheduling](docs/rou
 Reach the running agent through your connected channels or Claude Code Remote Control. You can also start separate sessions for additional work:
 
 - **Background sessions with follow-up.** Through [`/spawn-session`](skills/spawn-session/SKILL.md), the agent launches a local Claude Code helper in the project, or in another folder with `--cwd`, and relays its status when it becomes idle. Claude Code isolates the helper's edits in a Git worktree unless the project sets `worktree.bgIsolation` to `none`; pass `--worktree` to give it one from the start. Set the helper’s model and effort with options such as `--model sonnet --effort high`.
+- **Task threads for helpers.** A task thread can be bound to a spawned session: follow-ups in the thread go to that session, its reports land on the task, and `!model` or `!effort` in the thread switch that helper without losing its conversation. A request that continues the same work goes back to the same session.
 - **Local [Remote Control](https://code.claude.com/docs/en/remote-control) gate.** Through [`/rc-gate`](skills/rc-gate/SKILL.md), the agent manages a Remote Control server on your machine or server. While the gate is open, you can spawn new Claude Code sessions from the Claude app, using your local files and tools. Each session gets its own Git worktree, while the agent keeps running.
 
 Both session-spawning paths require a Git workspace. Remote Control requires a Claude sign-in through `/login` on the machine running the agent.
@@ -292,7 +300,7 @@ Follow the printed start command for each agent, then run `/hermitd:hermit-evolv
 
 Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
-Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container.
+Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update waits for a quiet moment, applies migrations, then restarts the agent once and resumes the conversation.
 
 `hermitd list` shows registered and discovered agents on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the first runnable task. Both support `--json`. Listing never removes entries; `hermitd prune` removes missing projects.
 
