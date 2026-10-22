@@ -108,6 +108,22 @@ describe('stop-pipeline — channel reply checkpoint', () => {
     expect(JSON.parse(r.stdout).decision).toBe('block');
   }));
 
+  test('reply stamped after the envelope but missing from the transcript: stdout empty', withDir(async (dir) => {
+    writeTranscript(dir, [{ ...envelope(), timestamp: '2026-10-19T12:45:05.363Z' }, assistantText()]);
+    fs.writeFileSync(hermit(dir, 'state', 'channel-activity.json'), JSON.stringify({ discord: { last_reply_at: '2026-10-19T12:45:10.341Z' } }));
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('');
+  }));
+
+  test('reply stamp older than the envelope: block JSON', withDir(async (dir) => {
+    writeTranscript(dir, [{ ...envelope(), timestamp: '2026-10-19T12:45:05.363Z' }, assistantText()]);
+    fs.writeFileSync(hermit(dir, 'state', 'channel-activity.json'), JSON.stringify({ discord: { last_reply_at: '2026-10-19T12:40:00.000Z' } }));
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).decision).toBe('block');
+  }));
+
   test('non-channel boundary prompt, text only: stdout empty', withDir(async (dir) => {
     writeTranscript(dir, [
       { type: 'user', message: { content: 'typed in the terminal' } },

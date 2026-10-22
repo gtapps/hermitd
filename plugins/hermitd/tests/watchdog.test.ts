@@ -840,6 +840,15 @@ describe('classifyQueueTail', () => {
     expect(classifyQueueTail(tail, NOW)).toBe('draining');
   });
 
+  test('passive task notices with no task-id never count as a wedge', () => {
+    const notice = (iso: string, content: string) =>
+      JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: iso, sessionId: 'sess-1', content });
+    const skipped = '<task-notification>\nhermitd: its classic.SessionStart hook was skipped.\n</task-notification>';
+    expect(classifyQueueTail([notice('2026-08-17T07:30:00Z', skipped), notice('2026-08-17T07:30:01Z', skipped)].join('\n'), NOW)).toBe('unknown');
+    const monitor = '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>';
+    expect(classifyQueueTail([notice('2026-08-17T07:30:00Z', skipped), notice('2026-08-17T07:31:00Z', monitor)].join('\n'), NOW)).toBe('wedged');
+  });
+
   test('a recent enqueue still within the threshold → draining (not yet a wedge)', () => {
     expect(classifyQueueTail(queueRec('enqueue', '2026-08-17T13:50:00Z'), NOW)).toBe('draining');
   });
@@ -3941,7 +3950,7 @@ function writeAlwaysOnRuntime(h: Hermit): void {
 /** Write config with context_hygiene.compact enabled and watchdog.enabled: false (pre-enabled gate). */
 function writeContextCompactConfig(h: Hermit, opts: {
   minContextTokens?: number; minInterval?: string;
-  routines?: unknown[]; timezone?: string;
+  routines?: unknown[]; timezone?: string; withClear?: boolean;
 } = {}): void {
   fs.writeFileSync(path.join(h.dir, '.hermit', 'config.json'), JSON.stringify({
     watchdog: { enabled: false },
@@ -3951,11 +3960,15 @@ function writeContextCompactConfig(h: Hermit, opts: {
         min_context_tokens: opts.minContextTokens ?? 150000,
         min_interval: opts.minInterval ?? '4h',
       },
+      // Isolates the compact tier: with the resident idle, the clear tier would act first.
+      ...(opts.withClear ? {} : { clear: { enabled: false } }),
     },
     heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '23:59' } },
     routines: opts.routines ?? [],
     timezone: opts.timezone ?? 'UTC',
   }, null, 2) + '\n');
+  // The resident is idle past the execution boundary, so compaction may type into it.
+  if (!opts.withClear) writeState(h, 'execution.json', { state: 'idle', cc_session_id: CC_SESSION_ID, at: new Date(Date.now() - 61000).toISOString() });
 }
 
 function writeCompactMarker(h: Hermit, ageSeconds = 0): void {
@@ -4196,7 +4209,7 @@ test('context_compact: last_hygiene_eval records the fire outcome and prompt tok
 
 test('standalone clear: each tick records its outcome in last_hygiene_eval',
   withHermit(async (h) => {
-    writeContextCompactConfig(h);
+    writeContextCompactConfig(h, { withClear: true });
     writeAlwaysOnRuntime(h);
     writeFakeTmux(h, 0, 'static pane content');
     writeFakePgrep(h, 1);
@@ -4911,6 +4924,9 @@ function setupCascade(): Cascade {
     shutdown_requested_at: null,
     shutdown_completed_at: null,
   }, null, 2) + '\n');
+  fs.writeFileSync(path.join(stateDir, 'execution.json'), JSON.stringify({
+    state: 'idle', cc_session_id: CC_SESSION_ID, at: new Date(Date.now() - 61000).toISOString(),
+  }));
 
   return {
     dir, world, sent,
@@ -5195,6 +5211,16 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
     // content as a stale lock it may claim.
     fs.writeFileSync(path.join(c.world.paths.stateDir, '.lifecycle.lock'), String(process.ppid));
     expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:lock-held');
+    expect(c.sent).toEqual([]);
+  }));
+
+  test('a busy session past quiescence is skipped, never typed into', withCascade((c) => {
+    writeCostEntry(c);
+    fs.writeFileSync(path.join(c.world.paths.stateDir, 'execution.json'), JSON.stringify({
+      state: 'in_flight', cc_session_id: CC_SESSION_ID, at: new Date().toISOString(),
+    }));
+    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:quiescence-pending');
+    expect(maybeContextCompact(COMPACT_CONFIG, c.world)).toBe('skip:boundary:execution-not-idle');
     expect(c.sent).toEqual([]);
   }));
 

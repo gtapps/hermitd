@@ -466,6 +466,11 @@ export function classifyQueueTail(tailText: string, nowMs: number, staleSecs = W
     let rec: Json;
     try { rec = JSON.parse(line); } catch { continue; } // a truncated first line is expected
     if (rec?.type !== 'queue-operation' || typeof rec.operation !== 'string') continue;
+    // A task notification with no <task-id> is a passive harness notice (CC 2.1.308
+    // queues "hook was skipped" ones at every /clear). Nothing drains it until the next
+    // prompt, so a quiet session would read as wedged; only task-id notices wake a turn.
+    if (rec.operation === 'enqueue' && typeof rec.content === 'string'
+      && rec.content.startsWith('<task-notification>') && !rec.content.includes('<task-id>')) continue;
     const ts = Date.parse(String(rec.timestamp ?? ''));
     if (Number.isNaN(ts)) continue;
     if (last === null || ts >= last.ts) last = { op: rec.operation, ts };
@@ -1575,6 +1580,7 @@ export type HygieneOutcome =
   | 'skip:interval-cooldown'
   | 'skip:already-processed'
   | 'skip:quiescence-pending'
+  | `skip:boundary:${string}`
   | 'skip:lock-held';
 
 /** Records this tick's compact-tier outcome on a held watchdog-state object, under
@@ -1764,6 +1770,13 @@ export function maybeContextCompact(config: Json, world: World = REAL_WORLD): Hy
 
   if (!paneStable) {
     return stampedState(world, watchdogState, 'skip:quiescence-pending', prompt, compactible);
+  }
+
+  // A still pane can be a dialog (a subagent's permission prompt included): the typed
+  // Enter below would answer it. Same boundary the standalone /clear honours.
+  const boundary = passesExecutionBoundary(world.paths.hermitRoot);
+  if (!boundary.ok) {
+    return stampedState(world, watchdogState, `skip:boundary:${boundary.reason}`, prompt, compactible);
   }
 
   // Pane stable across two ticks — safe to compact
