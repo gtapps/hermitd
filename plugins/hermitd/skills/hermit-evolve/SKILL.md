@@ -132,7 +132,7 @@ If Upgrade Instructions reported `restart_required` in Operator notes, use that 
 N settings added, M templates refreshed."` Omit segments where nothing changed. **Append the
 deferred/auto-applied segments**: settings set to defaults (Step 4), permission entries added (Step
 8), template conflicts parked as `.new` (Step 5), any deferred migrations, so the operator can follow up via `/hermit-settings`. **Append each
-non-`none` Operator notes line after that list**, one line each. With a fresh update-in-progress marker (see Docker rebuild notice), drop every restart and rebuild line, a `restart_required` Operator note included, and say once that the running update applies the refreshed files and restarts the resident at a quiet moment, with nothing for the operator to do. Put each queued micro-proposal question after those lines and all receipts, ending the result with its reply hint.
+non-`none` Operator notes line after that list**, one line each. With an update-in-progress marker whose `at` is under 60 minutes old, drop every restart line, a `restart_required` Operator note included, and say once that the running update applies the refreshed files and restarts the resident at a quiet moment, with nothing for the operator to do. Drop rebuild lines too, unless the marker holds `"build": false`: that update restarts without rebuilding, so the Docker rebuild notice stays. Put each queued micro-proposal question after those lines and all receipts, ending the result with its reply hint.
 
 - **Automated-maintainer:** deliver through `channel-send.ts --notice` with
   `{"maintainer":"<complete condensed result>"}` on stdin and no `client` leg. Follow prompts/resident.md

@@ -305,6 +305,13 @@ describe('settings-gate file writes', () => {
       'echo "$(echo x > .hermit/config.json)"',
       'cat <<EOF > r.md\n$(echo x > .hermit/config.json)\nEOF',
       'cat <<EOF\nunterminated > .hermit/config.json',
+      "# don't touch\necho x > .hermit/config.json\n# it's fine",
+      "echo $'it\\'s'; echo x > .hermit/config.json; echo $'a\\'b'",
+      'cat <<EOF-1 > r.md\nx\nEOF-1\necho x > .hermit/config.json\nEOF',
+      'cat <<E"OF" > r.md\nx\nEOF\necho x > .hermit/config.json\nE',
+      'awk \'BEGIN { print 1 > ".hermit/config.json" }\'',
+      "tmux send-keys -t s 'echo x > .hermit/config.json' Enter",
+      "python3 - <<'EOF'\nimport os; os.system('echo x > .hermit/config.json')\nEOF",
     ]) {
       const r = await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir);
       expect(r.exitCode).toBe(0);
