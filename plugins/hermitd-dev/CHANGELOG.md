@@ -1,9 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.25] - 2026-10-23
 
 ### Changed
-- Requires Claude Code 2.1.302 or newer.
+- Requires Claude Code 2.1.302 or newer and hermitd 1.4.20.
 - Hatch no longer offers to install context7; `docs/RECOMMENDED-PLUGINS.md` covers installing it yourself.
 
 ## [0.4.24] - 2026-10-22
