@@ -951,31 +951,13 @@ describe('plugin routine migrations', () => {
     }
   });
 
-  for (const kind of ['directory', 'frontmatter', 'command', 'target']) {
-    test(`reports ${kind} conflict without changing the routine`, async () => {
-      const root = freshDir();
-      const routines = [row('morning-brief', 'hermitd-example:brief')];
-      if (kind === 'target') routines.push(row('hermitd-example:morning-brief', 'operator-brief'));
-      else if (kind === 'command') {
-        const dir = path.join(root, '.claude/commands');
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, 'brief.md'), 'Operator command');
-      } else {
-        const dir = path.join(root, '.claude/skills', kind === 'directory' ? 'brief' : 'alias');
-        fs.mkdirSync(dir, { recursive: true });
-        if (kind === 'frontmatter') fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: brief\n---\nOperator skill');
-      }
-      const file = seedConfig(root, { routines });
-      const before = fs.readFileSync(file, 'utf8');
-      const r = await migrate(file);
-      expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout).conflicts).toMatchObject([
-        { id: 'morning-brief', target: 'hermitd-example:morning-brief', skill: 'hermitd-example:brief',
-          reason: kind === 'target' ? 'target_taken' : 'project_copy' },
-      ]);
-      expect(fs.readFileSync(file, 'utf8')).toBe(before);
-    });
-  }
+  test('renames even when a project skill shares the plugin skill name', async () => {
+    const root = freshDir();
+    fs.mkdirSync(path.join(root, '.claude/skills/brief'), { recursive: true });
+    const file = seedConfig(root, { routines: [row('morning-brief', 'hermitd-example:brief')] });
+    expect((await migrate(file)).exitCode).toBe(0);
+    expect(readConfig(file).routines[0].id).toBe('hermitd-example:morning-brief');
+  });
 
   test('empty input prints OK for both migrations', async () => {
     const file = seedConfig(freshDir(), {});

@@ -37,7 +37,6 @@ import { persistConfig } from './lib/config-write';
 import { validate, ROUTINE_ID_RE } from './validate-config';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
-import { parseFrontmatter } from './lib/frontmatter';
 
 type Json = any;
 
@@ -54,7 +53,7 @@ export const HERMITD_IDS: Record<string, string> = {
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
 type Report = Record<string, unknown>;
-type MigrationContext = { args: string[]; projectRoot: string };
+type MigrationContext = { args: string[] };
 const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report | void> = {
   'plugin-routine-ids': (config, ctx) => {
     const plugin = flagValue(ctx.args, '--plugin');
@@ -65,57 +64,19 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
       throw new Error('expected --plugin <id> --ids <csv>');
     }
     const seeded = new Set(ids);
-    const routines = Array.isArray(config.routines) ? config.routines : [];
-    const taken = new Set(routines.map((r: Json) => r?.id));
-    const projectSkills = new Map<string, string[]>();
-    const skillsDir = path.join(ctx.projectRoot, '.claude', 'skills');
-    if (fs.existsSync(skillsDir)) {
-      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-        const dir = path.join(skillsDir, entry.name);
-        if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
-        const names = new Set([entry.name]);
-        const file = path.join(dir, 'SKILL.md');
-        if (fs.existsSync(file)) {
-          const name = parseFrontmatter(fs.readFileSync(file, 'utf8'))?.name;
-          if (typeof name === 'string') names.add(name);
-        }
-        for (const name of names) projectSkills.set(name, [...(projectSkills.get(name) ?? []), dir]);
-      }
-    }
     const renamed: Array<{ from: string; to: string }> = [];
-    const conflicts: Array<{ id: string; target: string; skill: string; reason: string; paths?: string[] }> = [];
-    for (const routine of routines) {
+    for (const routine of Array.isArray(config.routines) ? config.routines : []) {
       if (!seeded.has(routine?.id) || typeof routine?.skill !== 'string') continue;
       const tokens = routine.skill.trim().split(/\s+/);
       let invoked = tokens[0].replace(/^\//, '');
-      if (invoked === 'hermitd:reflect') {
-        const check = flagValue(tokens.slice(1), '--check');
-        if (check) invoked = check.replace(/^\//, '');
-      }
-      const prefix = `${plugin}:`;
-      if (!invoked.startsWith(prefix) || !invoked.slice(prefix.length)) continue;
-      const name = invoked.slice(prefix.length);
+      if (invoked === 'hermitd:reflect') invoked = flagValue(tokens.slice(1), '--check')?.replace(/^\//, '') ?? invoked;
+      if (!invoked.startsWith(`${plugin}:`)) continue;
       const target = `${plugin}:${routine.id}`;
-      const paths = [...(projectSkills.get(name) ?? [])];
-      // Only skill names can become paths, never an arbitrary skill argument.
-      if (/^[A-Za-z0-9_-]+$/.test(name)) {
-        const command = path.join(ctx.projectRoot, '.claude', 'commands', `${name}.md`);
-        if (fs.existsSync(command)) paths.push(command);
-      }
-      if (paths.length) {
-        conflicts.push({ id: routine.id, target, skill: invoked, reason: 'project_copy', paths });
-        continue;
-      }
-      if (taken.has(target)) {
-        conflicts.push({ id: routine.id, target, skill: invoked, reason: 'target_taken' });
-        continue;
-      }
       if (!ROUTINE_ID_RE.test(target)) throw new Error(`invalid_target_id:${target}`);
       renamed.push({ from: routine.id, to: target });
-      taken.add(target);
       routine.id = target;
     }
-    return { ...(renamed.length ? { renamed } : {}), ...(conflicts.length ? { conflicts } : {}) };
+    if (renamed.length) return { renamed };
   },
   'clear-sibling-boot-skill': (config, ctx) => {
     const plugin = flagValue(ctx.args, '--plugin');
@@ -540,7 +501,7 @@ if (import.meta.main) {
       if (!migration || (rest[0] !== 'plugin-routine-ids' && rest[0] !== 'clear-sibling-boot-skill' && rest.length !== 1)) exitError('unsupported_migration');
       let report: Report | void;
       try {
-        report = migration(config, { args: rest.slice(1), projectRoot: path.dirname(stateDir) });
+        report = migration(config, { args: rest.slice(1) });
       } catch (err) {
         exitError(`migration_conflict:${(err as Error).message}`);
       }
