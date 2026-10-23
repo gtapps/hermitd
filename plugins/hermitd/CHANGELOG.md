@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.20] - 2026-10-23
 
 ### Changed
 - Nothing unattended types into the resident's tmux pane: watchdog compaction, clear, monitor re-arm, the wedge nudge fallback, pause, the shutdown skill (`hermitd-stop`, `hermitd-docker down`, container SIGTERM), live update and `/when-done-switch-to` go through one durable queue that the core mod runs once the session is idle, never answering an open permission prompt or question.
