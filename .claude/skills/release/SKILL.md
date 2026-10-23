@@ -139,9 +139,9 @@ No `config.json` changes required.
    - Do NOT list internal refactors, helper extractions, test scaffolding, or renamed variables — those are visible in `git diff`.
    - **Recovery procedures, migration shell snippets, and breaking-change steps belong in `### Upgrade Instructions`, never in the narrative bullet.** Write a tight summary ("changed default X to Y") and let that section carry the imperative steps — `hermit-evolve` reads them step-by-step.
 
-2. **Upgrade Instructions** — strict imperative block:
-   - Every step starts with a verb (`Add`, `Replace`, `Copy`, `Run`, `Delete`, `Refresh`).
-   - Each step is a single action. No "also do X, but only if Y, unless Z" run-ons — split into separate numbered steps.
+2. **Upgrade Instructions**: executable outcomes and declarations, following [Upgrade steps that change or remove what operators call](../../../plugins/hermitd/docs/creating-your-own-hermit.md#upgrade-steps-that-change-or-remove-what-operators-call):
+   - Executable steps state the outcome plus constraints the model cannot infer; name migration verbs and required arguments exactly. Operator-dependent file or intent decisions belong to the evolve model. Each entry is self-contained and never references another entry.
+   - Each executable step is a single action. Split independent outcomes into separate numbered steps.
    - No passive voice, no rationale clauses. If an operator needs to understand *why*, that belongs in the Changed bullet above, not here.
    - Include what `hermit-evolve` does NOT need to touch only if omission would cause it to act destructively. Otherwise silence.
    - Close with `No config.json changes required.` if true — it's the most common case and operators scan for it.
@@ -150,9 +150,11 @@ No `config.json` changes required.
    - Why it changed → Changed/Fixed bullet.
    - What evolve executes → Upgrade Instructions (imperative, numbered).
    - An action only the operator's environment can perform (restart, rebuild, host-side command) → one line after the numbered list, prefixed `**Operator action required:**` (canonical example: `.hermit/bin/hermitd-docker restart`). Never a numbered step and never a `**Note:**`.
+   - Renamed or removed names and changed output → a `**Leftover check:**` line. Core may be terse; every other plugin writes a self-contained sentence saying what changed, the replacement, and to ask once before changing anything. Evolve owns check mechanics.
+   - Minimum core floors belong in plugin metadata and dependencies, never in a changelog floor bullet.
    - Behavior deltas that need no action but operators should know → one final line after the numbered list, prefixed `**Note:**`. Not a step.
 
-**The Upgrade Instructions section is the most important part.** The evolve skill reads this to know what actions to take for each hermit. Non-imperative steps cause evolve to misparse or skip them.
+**The Upgrade Instructions section is the most important part.** The evolve skill reads this to know what actions to take for each hermit. Distinguish executable steps from `**Leftover check:**`, `**Operator action required:**` and `**Note:**` lines so evolve can handle each correctly.
 
 ### 4. Refresh references
 

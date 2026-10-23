@@ -218,12 +218,15 @@ Your skill then names only the fields it branches on.
 
 ### Upgrade steps that change or remove what operators call
 
-An Upgrade Instructions step that changes a helper's output or removes a file, verb or config key follows this consumer-scan convention:
+Declare renamed or removed names and changed output with one `**Leftover check:**` line per subject in `### Upgrade Instructions`. Core declarations may be terse. Every other plugin writes a self-contained sentence saying what changed, the replacement or new output contract, and to ask once before changing anything. For example:
 
-- Scan the project's `.claude/skills/`, `.claude/commands/` and `.claude/agents/`, including bundled scripts of any language; the paths and commands in `.hermit/config.json` (`routines[].precheck` and `monitors[].command`); hook commands in `.claude/settings.json` and `.claude/settings.local.json`; `.hermit/dashboard-render.ts`; and project-scope `.hermit/OPERATOR.md` and `.hermit/HEARTBEAT.md`.
-- Skip gitignored files, `.claude/worktrees/`, nested repositories, backups and plugin directories.
-- Count a hit only when a line invokes the changed helper (`hermitd-run <verb>`, the script name or the plugin's own command) and depends on the changed contract. A line that only checks a real failure's exit code is not a hit.
-- Never edit files during the upgrade. Skip silently when there are no real hits. Otherwise list the hits with file and line in one deferred step, with plain options such as "Fix them" / "Leave them" and no `on_resolve`. Describe what each option does: `hermit-evolve` queues it as a micro-proposal, and the operator's chat reply applies the chosen option.
+```markdown
+**Leftover check:** The operator's own files may still invoke the removed skill `old-status`. Find those invocations, ask once before changing anything, and replace each with `/my-plugin:status`.
+```
+
+Executable steps state the desired outcome plus constraints the model cannot infer. Name migration verbs exactly, including their required arguments. A migration verb rewrites data the same way on every install; work depending on the operator's files or intent belongs to the evolve model. An entry never references another entry: include the information it needs within that entry.
+
+Do not copy check mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness, grouped findings, the operator question and the fix procedure.
 
 ### Docker dependencies
 

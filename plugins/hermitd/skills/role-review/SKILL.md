@@ -39,7 +39,7 @@ Send through the owning chat's reply tool. Split the saved `chat` on its first c
 Before a channel send, if formatting rules are not already in context, Read only this excerpt once:
 
 ```json
-{"file_path":"${CLAUDE_PLUGIN_ROOT}/skills/channel-responder/SKILL.md","offset":29,"limit":9}
+{"file_path":"${CLAUDE_PLUGIN_ROOT}/skills/channel-responder/SKILL.md","offset":30,"limit":9}
 ```
 
 Apply that formatting check to every send. Do not invoke the responder or read its full body for formatting. Return only a one-line status to the routine caller.

@@ -8,7 +8,7 @@
 //   proposal.ts micro <hermit-state-dir> match [<MP-id>] [--chat <sourceKey>:<chat_id>] --reply <token>
 //   proposal.ts micro <hermit-state-dir> stamp-chat
 // Output (stdout, one JSON line):
-//   match: {"status":"match","id","answer","tier","on_resolve":<string|null>}
+//   match: {"status":"match","id","question","answer","tier","on_resolve":<string|null>}
 //          With --chat, only entries asked in that chat are visible; without it
 //          (a terminal turn), every pending entry is.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
@@ -322,7 +322,7 @@ function matchReply(stateDir: string, args: string[]): never {
       answer = matches[0];
     }
   }
-  emitJson({ status: 'match', id: entry.id, answer, tier: entry.tier, on_resolve: entry.on_resolve ?? null });
+  emitJson({ status: 'match', id: entry.id, question: entry.question, answer, tier: entry.tier, on_resolve: entry.on_resolve ?? null });
 }
 
 // One-time upgrade step: entries queued before `chat` existed were asked in the home chat.

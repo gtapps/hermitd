@@ -68,7 +68,7 @@ Parse stdout as JSON (the "plan"). The plan's `errors` array is the **sole error
 
 **Stale-runtime check (before everything else):** if the plan's `loaded_core_older_than_applied` is `true`, this session loaded an older plugin copy (v`to`) than the version this hermit has already applied (v`from`) — a stale install, not a pending upgrade. Report: "This session is running plugin v<to>, older than this hermit's applied state v<from> — a stale plugin install. hermit-evolve cannot fix it: update the install that resolves to this plugin root, then re-run." **Stop there.** Do not run any other step: Step 7's sibling migrations would apply while Step 9 refuses to stamp, leaving siblings migrated but unstamped and replaying on the next run. Sibling work waits until the install is fixed — sibling stamps stay where they are and re-plan cleanly.
 
-**Version check:** the plan reports `from`, `to`, `up_to_date`, and `work_pending`. If `work_pending` is `false` (core current AND no sibling gap, path-unresolved, or warnings), report "You're up to date (v<to>). Nothing to upgrade." and stop. If `up_to_date` is `true` but `work_pending` is `true` (sibling-only work), run only Steps 7, 8, 9, and 10 — the core-content steps (2 through 6) have no pending work when core is current. (Sibling migrations happen inside Step 7.) Otherwise (core has a gap) run all steps.
+**Version check:** the plan reports `from`, `to`, `up_to_date`, and `work_pending`. If `work_pending` is `false` (core current AND no sibling gap, path-unresolved, or warnings), report "You're up to date (v<to>). Nothing to upgrade." and stop. If `up_to_date` is `true` but `work_pending` is `true` (sibling-only work), run only Steps 7, 7b, 8, 9, and 10; the core-content steps (2 through 6) have no pending work when core is current. (Sibling migrations happen inside Step 7.) Otherwise (core has a gap) run all steps.
 
 **Snapshot the config for the audit ledger.** Once the version check above has decided the run proceeds (so a stop-here run writes nothing), record what `config.json` looked like before any migration touches it:
 
@@ -87,7 +87,7 @@ Within `changelog_slice` (already ordered oldest-first), each version entry may 
 1. Find the `### Upgrade Instructions` section within each version's entry
 2. If found, execute every instruction in that section — these are the authoritative migration steps
 3. Collect any version-specific operator notes for the step-10 report (delegated mode has no operator to present to live)
-4. **Delegated mode:** if a step is interactive (poses an either/or), do not ask. Apply the non-destructive default (e.g. a delete/cleanup offer → keep the file; a single command such as `deny ask-only`) and note the outcome for step 10. If the step has **no safe default**, **defer** — skip it and record a verbatim deferred-migration block per the Delegated mode rules. A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category: never execute it and never record it as a deferred-migration block; copy its text verbatim, marker included, into the Operator notes collected for step 10.
+4. A line beginning `**Leftover check:**` (numbered or not) is collected verbatim with its source plugin for Step 7b, never executed or deferred. **Delegated mode:** if a step is interactive (poses an either/or), do not ask. Apply the non-destructive default (e.g. a delete/cleanup offer → keep the file; a single command such as `deny ask-only`) and note the outcome for step 10. If the step has **no safe default**, **defer**: skip it and record a verbatim deferred-migration block per the Delegated mode rules. A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category: never execute it and never record it as a deferred-migration block; copy its text verbatim, marker included, into the Operator notes collected for step 10.
 
 The CHANGELOG.md `### Upgrade Instructions` sections are the single source of truth for migrations — do not skip or merely display them. The same pattern applies to sibling-hermit upgrades in Step 7.
 
@@ -239,7 +239,7 @@ For each entry in `plan.siblings`:
 
 - **Version gap (`up_to_date == false`):**
   - Read the sibling's `changelog_slice` (already bounded to the gap range, oldest-first).
-  - **Execute migrations** — within `changelog_slice`, find each version's `### Upgrade Instructions` section and execute every instruction in version order. Same rules as Step 2b: non-interactive default on ambiguous steps; defer if no safe default; a step or line whose text begins with `**Operator action required:**` is copied verbatim into Operator notes, never executed and never deferred.
+  - **Execute migrations**: within `changelog_slice`, find each version's `### Upgrade Instructions` section and execute every instruction in version order. Collect `**Leftover check:**` lines verbatim with their source plugin for Step 7b, never execute or defer them. Same rules as Step 2b: non-interactive default on ambiguous steps; defer if no safe default; a step or line whose text begins with `**Operator action required:**` is copied verbatim into Operator notes, never executed and never deferred.
   - Collect the sibling name for the `--sibling=<name>=<to>` flag in Step 9.
 
 - **No version gap (`up_to_date == true`):** report `<name> current`, skip.
@@ -249,6 +249,23 @@ If `plan.siblings_path_unresolved` is non-empty, report each as `<name> path-unr
 If `plan.siblings_detected_unregistered` is non-empty, report each as "detected but not activated: <name> — run `/<name>:hatch` to register." Never auto-activate; the opt-in gate stays.
 
 If `plan.siblings_warnings` is non-empty, surface each warning (e.g. plugin-list unavailable, CHANGELOG unreadable).
+
+### 7b. Leftover check
+
+Collect the declarations from Steps 2b and 7 into one batch. Infer subjects as `{id, terms, kind: "routine_id" | "name", to?}` from the declared old names and replacements; expand lists of routine ids individually. Each subject needs a unique `id`: when two plugins rename the same old id, give each its own subject (for example `<plugin>/<old-id>`). A rename is live only when its new name exists in current config or the current install; a removal is always live. Check current state, never this run's migration receipt, so replay after a migration still scans. If one old name has two live replacements, list both and leave that reference for the operator to decide.
+
+Pass `{"subjects":[...]}` on stdin to `leftover-check` (Commands). This read-only command enumerates candidate references once. Judge whether each candidate actually invokes the subject and depends on the declared change: prose and references already in the new form are not hits. Open `context_filtered` example lines when they could be real references; use its counts to check remaining filtered lines in the scoped files when needed. Search further only when a declaration calls for it. A `truncated` result means the check is incomplete: report that, never report none. Do not edit any files in this step. With no real hits, say nothing.
+
+For real hits, write one `Findings:` line per subject with replacement(s), hit count, file:line examples and a shared marker for tracked files. Record exactly one deferred-migration block for the whole batch: `source: leftover-check`, the live declarations verbatim as its steps, options `Fix them` / `Leave them`, no `on_resolve`, and `skipped: Leave them`.
+
+Whether or not there are hits, if any live declaration renames routine ids, collect one Operator note for the whole run: run history stays under the old ids, so a gated routine may run once early.
+
+**Fix procedure** (interactive Step 10 and chat answers): re-run `leftover-check` (Commands) with the same subjects and re-find each reference by matched text rather than stale line numbers. Skip references already gone and report those already fixed. Update the working tree only, never commit. Leave ambiguous references with multiple live replacements for the operator.
+
+- Read `.hermit/config.json` hits with `.hermit/bin/hermitd-run settings-edit .hermit/config.json get <dotted.path>`, then change them with `.hermit/bin/hermitd-run settings-edit .hermit/config.json set <dotted.path> <json-value>`, preserving unrelated values and the settings ledger.
+- In a channel session, list `.claude/settings*.json` hits for manual fixing in an interactive session. Interactively, apply them behind the native permission prompt.
+- If auto mode blocks an edit to `.claude/skills`, `.claude/commands` or `.claude/agents`, apply the rest, then ask once in plain words for explicit go-ahead, naming every file and old-to-new change. Retry once only after the explicit reply.
+- Report changed files, marking shared (tracked) files, and say that changes are uncommitted.
 
 ### 8. Ensure plugin permissions in settings file
 

@@ -8,6 +8,7 @@ description: Handles inbound messages tagged <channel source=...> from Claude Co
 When a message arrives via a channel:
 
 ## Commands
+- `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 - `observations-observe`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/observations.ts observe .hermit`
 - `proposal-index`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts index .hermit`
 - `proposal-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit`
@@ -39,7 +40,7 @@ attachments; it does not change the tool's rendering mode or add mention support
 
 Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<chat_id>]` only to the matching normalized bare channel key (§1c) and chat. Roles apply only to messages addressed to you: every 1:1 DM, or a group/server message mentioning your `bot_user_id`/`bot_username` (the §2 self-mention test). Silently ignore other chats' roles. The hook line suffices; do not Read the topic file. A `[chat instructions]` line is operator-set policy: follow it over memory roles here. Route any admitted sender's change to **Settings change request** without refusing it yourself; the native prompt decides.
 
-Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/record-operator-action.ts --force` after authorization; role checks excepted. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
+Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and the §1d `record-operator-action.ts --force` call after authorization; role checks excepted. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
 Apply **Micro-approval response** before treating a bare yes/ok/no as task confirmation. An open handle, resident task thread, or continuation of the sole open task selects it. With multiple open tasks and neither handle nor thread, ask one short question naming the handles and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
 
@@ -165,9 +166,5 @@ Apply to every skill's decision point on a channel-tagged turn (`<channel source
 
 - **(a) Conversational side**: send the question through the channel reply tool.
 - **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, `on_resolve` to the skill invocation with an `{answer}` placeholder, and `chat` to this chat's `<sourceKey>:<chat_id>`. Free-form asks use only the reply tool, with no queued entry.
-- **Whichever surface answers first resolves it.** For an answer within the asking skill's live turn, act on it and resolve the MP entry with § Micro-approval response's script call (never hand-edit `state/micro-proposals.json`):
-  ```bash
-  bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit resolve <id> --action answered --answer "<selected label>"
-  ```
-  Later answers use § Micro-approval response and `on_resolve`.
+- **Whichever surface answers first resolves it.** For an answer within the asking skill's live turn, act on it and resolve the MP entry with `proposal-micro` (Commands) and arguments `resolve <id> --action answered --answer "<selected label>"` (never hand-edit `state/micro-proposals.json`). Later answers use § Micro-approval response and `on_resolve`.
 - **Never call `AskUserQuestion` on a channel-tagged turn.** Its terminal UI is invisible to the remote operator.

@@ -38,7 +38,7 @@ Use Context7 for library/API documentation, code generation, and setup/configura
 
 - Use Conventional Commit subjects and `fix/<issue>-<slug>`, `feat/<issue>-<slug>`, or `chore/<slug>` branches targeting `main` with regular merges. Omit the issue number when none exists.
 - Shipped behavior gets a terse plugin `[Unreleased]` entry under `### Added`, `### Changed`, or `### Fixed`: plain sentence-case bullets, no component prefixes, leading verbs, or file tables; backtick commands and paths. Root-only and docs-only changes get no changelog entry; their rationale belongs in the commit/PR instead. Use plain technical language without em dash punctuation.
-- `### Upgrade Instructions` contains executable migration steps for installed project state, never edits to the plugin tree. Preserve operator edits.
+- `### Upgrade Instructions` contains executable migration steps for installed project state, never edits to the plugin tree. Preserve operator edits. Follow [Upgrade steps that change or remove what operators call](plugins/hermitd/docs/creating-your-own-hermit.md#upgrade-steps-that-change-or-remove-what-operators-call) for outcomes and leftover-check declarations.
 - Releases/version bumps are operator-initiated; do not suggest or start them without a request. Tags use `<slug>--vX.Y.Z`. Installed users update when `plugin.json`'s version changes; new installs and direct-source tests can see `main` immediately, so keep it working.
 - PRs explain behavior and rationale, affected plugins, the public issue, and verification. Keep local proposal IDs out of changelogs, commits, PRs, and branch names. Keep private session/transcript content and Claude Code session, share, or session-tied artifact URLs out of all externally visible surfaces.
 

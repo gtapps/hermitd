@@ -5902,10 +5902,10 @@ describe('session-check config validation', () => {
 
 describe('proposal micro match is read-only', () => {
   const plain = { id: 'MP-plain', status: 'pending', tier: 1, question: 'Proceed?' };
-  const choices = { id: 'MP-options', status: 'pending', tier: 2,
+  const choices = { id: 'MP-options', status: 'pending', tier: 2, question: 'When should we ship?',
     options: ['Ship now', 'Ship later', 'Cancel'], on_resolve: '/example {answer}' };
   const match = (id: string, answer: string, tier: number, on_resolve: string | null) =>
-    ({ status: 'match', id, answer, tier, on_resolve });
+    ({ status: 'match', id, question: id === plain.id ? plain.question : choices.question, answer, tier, on_resolve });
   const ambiguous = (reason: string, ...choices: [string, string[]][]) =>
     ({ status: 'ambiguous', reason, choices: choices.map(([id, options]) => ({ id, options })) });
   const none = (reason: string) => ({ status: 'none', reason });

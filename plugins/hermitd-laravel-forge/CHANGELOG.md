@@ -4,11 +4,11 @@
 
 ### Changed
 - Hatch matches routines by full skill string and assigns new rows `hermitd-laravel-forge:` ids, preserving existing operator fields.
-- The minimum core requirement is `1.4.21`, the pending core release containing routine-id migrations.
 
 ### Upgrade Instructions
-1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-laravel-forge --ids forge-failed-deploys` and report the receipt. Run history stays under the old ids, so a gated routine may run once early after restart.
-2. For each id the receipt renamed, scan project `.claude/skills/` and `.claude/commands/` for references to the old bare id used as a routine id (routine run or load calls, `routine:<id>` cost sources, `[hermit-routine:<id>]` markers). Skip silently when none exist. Otherwise list file and line in one deferred Step 10 with options "Fix them" / "Leave them", no `on_resolve`. "Fix them" rewrites each reference to the `hermitd-laravel-forge:` id, preserving unrelated text; "Leave them" changes nothing and explains those references no longer match the routine. Do not edit those files during unattended evolve.
+1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-laravel-forge --ids forge-failed-deploys` and report the receipt.
+
+**Leftover check:** The operator's own files may still refer to the routine id `forge-failed-deploys`, which this release renamed to `hermitd-laravel-forge:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.0.22] - 2026-10-22
 
