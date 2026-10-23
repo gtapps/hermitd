@@ -34,7 +34,7 @@ import { SETTINGS, READ_ONLY, byArg, type Setting } from './lib/settings/registr
 import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
 import { persistConfig } from './lib/config-write';
-import { validate } from './validate-config';
+import { validate, ROUTINE_ID_RE } from './validate-config';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
 
@@ -52,7 +52,43 @@ export const HERMITD_IDS: Record<string, string> = {
 
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
-const migrations: Record<string, (config: Json) => void> = {
+type Report = Record<string, unknown>;
+type MigrationContext = { args: string[] };
+const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report | void> = {
+  'plugin-routine-ids': (config, ctx) => {
+    const plugin = flagValue(ctx.args, '--plugin');
+    const ids = flagValue(ctx.args, '--ids')?.split(',');
+    if (ctx.args.length !== 4 || ctx.args[0] !== '--plugin' || ctx.args[2] !== '--ids'
+      || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin) || !ids
+      || ids.some(id => !ROUTINE_ID_RE.test(id) || id.includes(':'))) {
+      throw new Error('expected --plugin <id> --ids <csv>');
+    }
+    const seeded = new Set(ids);
+    const renamed: Array<{ from: string; to: string }> = [];
+    for (const routine of Array.isArray(config.routines) ? config.routines : []) {
+      if (!seeded.has(routine?.id) || typeof routine?.skill !== 'string') continue;
+      const tokens = routine.skill.trim().split(/\s+/);
+      let invoked = tokens[0].replace(/^\//, '');
+      if (invoked === 'hermitd:reflect') invoked = flagValue(tokens.slice(1), '--check')?.replace(/^\//, '') ?? invoked;
+      if (!invoked.startsWith(`${plugin}:`)) continue;
+      const target = `${plugin}:${routine.id}`;
+      if (!ROUTINE_ID_RE.test(target)) throw new Error(`invalid_target_id:${target}`);
+      renamed.push({ from: routine.id, to: target });
+      routine.id = target;
+    }
+    if (renamed.length) return { renamed };
+  },
+  'clear-sibling-boot-skill': (config, ctx) => {
+    const plugin = flagValue(ctx.args, '--plugin');
+    if (ctx.args.length !== 2 || ctx.args[0] !== '--plugin' || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin)) {
+      throw new Error('expected --plugin <id>');
+    }
+    if (typeof config.boot_skill === 'string' && config.boot_skill.startsWith(`/${plugin}:`)) {
+      const cleared = config.boot_skill;
+      delete config.boot_skill;
+      return { cleared };
+    }
+  },
   'channel-home': (config) => {
     for (const [name, channel] of Object.entries(config.channels ?? {}) as [string, Json][]) {
       if (name === 'primary' || !channel || typeof channel !== 'object') continue;
@@ -462,13 +498,16 @@ if (import.meta.main) {
   switch (op) {
     case 'migrate': {
       const migration = migrations[rest[0]];
-      if (!migration || rest.length !== 1) exitError('unsupported_migration');
+      if (!migration || (rest[0] !== 'plugin-routine-ids' && rest[0] !== 'clear-sibling-boot-skill' && rest.length !== 1)) exitError('unsupported_migration');
+      let report: Report | void;
       try {
-        migration(config);
+        report = migration(config, { args: rest.slice(1) });
       } catch (err) {
         exitError(`migration_conflict:${(err as Error).message}`);
       }
-      done(JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : []);
+      const warnings = JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : [];
+      if (report && Object.keys(report).length) emitJson({ ...report, ...(warnings.length ? { warnings } : {}) });
+      done(warnings);
       break;
     }
 

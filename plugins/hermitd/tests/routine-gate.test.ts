@@ -469,8 +469,8 @@ describe('precheck validation (pure)', () => {
 
 test('later builtin skips an empty ledger and wakes once for a past-due claim', withDir(async dir => {
   expect(validatePrecheckValue('later')).toBeNull();
-  writeConfig(dir, [ROUTINE({ id: 'later-check', precheck: 'later' })]);
-  const primed = { 'later-check': { last_consumed_mark: '2026-07-15T08:00:00.000Z' } };
+  writeConfig(dir, [ROUTINE({ id: 'hermitd:later-check', precheck: 'later' })]);
+  const primed = { 'hermitd:later-check': { last_consumed_mark: '2026-07-15T08:00:00.000Z' } };
   writeSchedule(dir, primed);
   const empty = await runDue(dir);
   expect(empty.exitCode).toBe(0);
@@ -483,7 +483,7 @@ test('later builtin skips an empty ledger and wakes once for a past-due claim', 
   writeSchedule(dir, primed);
   const due = await runDue(dir);
   expect(due.exitCode).toBe(0);
-  expect(due.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+  expect(due.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:hermitd:later-check]');
   expect((await runDue(dir)).stdout.trim()).toBe('');
 }));
 

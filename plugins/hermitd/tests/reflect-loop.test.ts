@@ -42,7 +42,7 @@ describe('weekly-review reflect vital-signs', () => {
     fs.writeFileSync(path.join(hermitDir, 'config.json'), JSON.stringify({
       timezone: 'UTC',
       routines: [
-        { id: 'reflect', skill: 'hermitd:reflect', schedule: '0 12 * * *', enabled: true },
+        { id: 'hermitd:reflect', skill: 'hermitd:reflect', schedule: '0 12 * * *', enabled: true },
         { id: 'other', skill: 'hermitd:doctor', schedule: '0 12 * * *', enabled: true },
       ],
     }));
@@ -56,10 +56,10 @@ describe('weekly-review reflect vital-signs', () => {
       return JSON.parse(result.stdout);
     };
     fs.writeFileSync(path.join(hermitDir, 'state/routine-metrics.jsonl'), [
-      { routine_id: 'reflect', event: 'fired', ts: `${todayYmd()}T10:00:00Z` },
-      { routine_id: 'reflect', event: 'fired', ts: `${todayYmd()}T11:00:00Z` },
-      { routine_id: 'reflect', event: 'fired', ts: '2020-01-01T12:00:00Z' },
-      { routine_id: 'reflect', event: 'skipped-precheck', ts: TODAY_TS },
+      { routine_id: 'hermitd:reflect', event: 'fired', ts: `${todayYmd()}T10:00:00Z` },
+      { routine_id: 'hermitd:reflect', event: 'fired', ts: `${todayYmd()}T11:00:00Z` },
+      { routine_id: 'hermitd:reflect', event: 'fired', ts: '2020-01-01T12:00:00Z' },
+      { routine_id: 'hermitd:reflect', event: 'skipped-precheck', ts: TODAY_TS },
       { routine_id: 'other', event: 'fired', ts: TODAY_TS },
     ].map(row => JSON.stringify(row)).join('\n') + '\n');
     for (const title of ['First work', 'Second work']) {
@@ -78,9 +78,9 @@ describe('weekly-review reflect vital-signs', () => {
 {"ts":"2020-01-01T12:00:00Z","type":"created","proposal_id":"PROP-OLD"}
 `);
 
-    fs.writeFileSync(path.join(workdir, '.claude', 'cost-log.jsonl'), `{"timestamp":"${TODAY_TS}","source":"routine:reflect-cadence","estimated_cost_usd":0.50,"total_tokens":1000}
+    fs.writeFileSync(path.join(workdir, '.claude', 'cost-log.jsonl'), `{"timestamp":"${TODAY_TS}","source":"routine:hermitd:reflect","estimated_cost_usd":0.50,"total_tokens":1000}
 {"timestamp":"${TODAY_TS}","source":"session","estimated_cost_usd":2.00,"total_tokens":9000}
-{"timestamp":"2020-01-01T12:00:00Z","source":"routine:reflect-cadence","estimated_cost_usd":9.99,"total_tokens":1000}
+{"timestamp":"2020-01-01T12:00:00Z","source":"routine:hermitd:reflect","estimated_cost_usd":9.99,"total_tokens":1000}
 `);
 
     await runScript('weekly-review.ts', { cwd: workdir, args: ['.hermit'] });

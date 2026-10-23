@@ -16,7 +16,7 @@ async function add(dir: string, cmd = 'printf held', claim = 'fix holds') {
 }
 
 test('add, list, due, check and exactly one verdict round trip', withDir(async dir => {
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '3 9 * * *' }] });
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '3 9 * * *' }] });
   const id = await add(dir);
   expect((await call(dir, 'list')).stdout).toContain(id);
   expect((await call(dir, 'due')).stdout.trim()).toBe('SKIP');
@@ -33,7 +33,7 @@ test('add, list, due, check and exactly one verdict round trip', withDir(async d
 }));
 
 test('next fire follows configured cron and disabled routines have none', withDir(async dir => {
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '3 9 * * *' }] });
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '3 9 * * *' }] });
   const args = ['--claim', 'holds', '--cmd', 'true', '--due', NOW, '--origin', 'hermit'];
   expect(JSON.parse((await call(dir, 'add', args)).stdout).next_fire).toBe('2026-09-07T09:03:00.000Z');
   writeConfig(dir, { routines: [] });
@@ -70,7 +70,7 @@ test('combined output is capped at 2048 bytes and cwd is project root', withDir(
 }));
 
 test('check returns at the deadline even when a grandchild keeps the pipes open', withDir(async dir => {
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '3 9 * * *' }] });
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '3 9 * * *' }] });
   const id = await add(dir, 'printf started; sleep 30 & wait');
   const started = Date.now();
   const checked = await runScript('later.ts', {
@@ -103,13 +103,13 @@ test('a verdict landing during a slow check survives the check\'s write', withDi
 }));
 
 test('the first fire after due is never late; the second is', withDir(async dir => {
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '3 9 * * 1-5' }] });
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '3 9 * * 1-5' }] });
   const added = await call(dir, 'add', ['--claim', 'holds', '--cmd', 'true', '--due', '2026-09-05T10:00:00Z', '--origin', 'hermit']);
   const id = JSON.parse(added.stdout).id;
   expect(JSON.parse(added.stdout).next_fire).toBe('2026-09-07T09:03:00.000Z');
   expect(JSON.parse((await call(dir, 'check', [id], '', '2026-09-07T09:04:00Z')).stdout).late).toBe(false);
   expect(JSON.parse((await call(dir, 'check', [id], '', '2026-09-08T09:03:00Z')).stdout).late).toBe(true);
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', schedule: '3 9 * * *' }] });
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', schedule: '3 9 * * *' }] });
   expect(JSON.parse((await call(dir, 'add', ['--claim', 'holds', '--cmd', 'true', '--due', NOW, '--origin', 'hermit'])).stdout).next_fire).toBeNull();
 }));
 
@@ -229,7 +229,7 @@ test('commandless claims still undergo injection scanning', withDir(async dir =>
 for (const mode of ['monitor', 'croncreate-fallback']) {
   for (const kind of ['reminder', 'operator', 'hermit']) {
     test(`next fire for ${kind} in ${mode}`, withDir(async dir => {
-      writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '5 9 * * *' }] });
+      writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '5 9 * * *' }] });
       fs.writeFileSync(path.join(dir, '.hermit/state/routine-monitor.runtime.json'), JSON.stringify({ mode }));
       const args = ['--claim', 'pay invoice', '--due', '2026-10-19T13:00:00Z', '--origin', kind === 'hermit' ? 'hermit' : 'operator'];
       if (kind === 'reminder') args.push('--remind');
@@ -242,8 +242,8 @@ for (const mode of ['monitor', 'croncreate-fallback']) {
   }
 }
 
-test('past-due reminder in monitor mode reports the next later-check fire', withDir(async dir => {
-  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'later-check', enabled: true, schedule: '5 9 * * *' }] });
+test('past-due reminder in monitor mode reports the next hermitd:later-check fire', withDir(async dir => {
+  writeConfig(dir, { timezone: 'UTC', routines: [{ id: 'hermitd:later-check', enabled: true, schedule: '5 9 * * *' }] });
   fs.writeFileSync(path.join(dir, '.hermit/state/routine-monitor.runtime.json'), JSON.stringify({ mode: 'monitor' }));
   const result = await call(dir, 'add', ['--claim', 'pay invoice', '--due', '2026-10-16T16:58:00Z', '--origin', 'operator', '--remind'], '', '2026-10-16T17:00:00Z');
   expect(JSON.parse(result.stdout).next_fire).toBe('2026-10-17T09:05:00.000Z');

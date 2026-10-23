@@ -173,29 +173,29 @@ If the key already exists: update the value. If absent: add it alongside the exi
 
 ### 6b — Merge routines
 
-In the `routines` array, check for each of these four IDs. For any that are **absent**, add the entry. For any that are **present** (by `id`), skip (do not clobber existing operator edits).
+In the `routines` array, match each entry by its full skill string, including arguments. Add a new row with the namespaced id only when that skill is absent; preserve every field on existing matching rows, including operator ids and schedules.
 
 ```json
 {
-  "id": "morning-brief",
+  "id": "hermitd-fitness:morning-brief",
   "schedule": "30 7 * * *",
   "skill": "hermitd-fitness:fitness-brief --morning",
   "enabled": true
 },
 {
-  "id": "evening-brief",
+  "id": "hermitd-fitness:evening-brief",
   "schedule": "30 21 * * *",
   "skill": "hermitd-fitness:fitness-brief --evening",
   "enabled": true
 },
 {
-  "id": "weekly-load-review",
+  "id": "hermitd-fitness:weekly-load-review",
   "schedule": "0 18 * * 0",
   "skill": "hermitd-fitness:weekly-load-review",
   "enabled": true
 },
 {
-  "id": "monday-planning",
+  "id": "hermitd-fitness:monday-planning",
   "schedule": "30 9 * * 1",
   "skill": "hermitd-fitness:monday-planning",
   "enabled": true
@@ -204,10 +204,10 @@ In the `routines` array, check for each of these four IDs. For any that are **ab
 
 ### 6c: Merge the weekly patterns routine
 
-Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
 ```json
-{"id": "weekly-coaching-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns", "enabled": true, "precheck": ".hermit/bin/fitness-weekly-patterns-gate", "precheck_timeout_s": 60}
+{"id": "hermitd-fitness:weekly-coaching-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns", "enabled": true, "precheck": ".hermit/bin/fitness-weekly-patterns-gate", "precheck_timeout_s": 60}
 ```
 
 The weekly routine checks for a trend before waking. Findings pass through reflection gates into the proposal pipeline.

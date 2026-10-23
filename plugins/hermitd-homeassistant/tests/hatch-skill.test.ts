@@ -32,3 +32,13 @@ test('hatch writes the MCP entry via the CLI, never by reading .env', () => {
   expect(skillText).not.toMatch(/\*\*Read\*\* tool on `\.env`/);
   expect(skillText).not.toContain('HOMEASSISTANT_TOKEN=...');
 });
+
+test('house routines match full skills and coexist with core briefs', () => {
+  expect(skillText).toContain('full skill string, including arguments');
+  expect(skillText).toContain('Never replace or disable core routines');
+  expect(skillText).not.toContain('boot_skill');
+  expect(skillText).not.toContain('unified mode');
+  for (const id of ['daily-ha-context', 'morning-brief', 'evening-brief', 'ha-patterns', 'ha-safety-audit', 'ha-integration-health', 'ha-update-check']) {
+    expect(skillText).toContain(`"id": "hermitd-homeassistant:${id}"`);
+  }
+});

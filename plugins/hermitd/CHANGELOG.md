@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Core routine ids use the `hermitd:` namespace; plugin routine migrations rename only a plugin's seeded routines that run its own skill.
+- Startup skill selection belongs to the operator; hatch preserves it and keeps existing brief fields when changing schedules.
+
+### Upgrade Instructions
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate plugin-routine-ids --plugin hermitd --ids heartbeat-restart,reflect,weekly-review,later-check,doctor,capability-brainstorm,morning,evening` and report the receipt, including renamed ids. Renamed routines re-arm at the post-update restart; their run history stays under the old ids, so gated routines may run once early.
+2. For each id the receipt renamed, scan project `.claude/skills/` and `.claude/commands/` for references to the old bare id used as a routine id (routine run or load calls, `routine:<id>` cost sources, `[hermit-routine:<id>]` markers). Skip silently when none exist. Otherwise list file and line in one deferred Step 10 with options "Fix them" / "Leave them", no `on_resolve`. "Fix them" rewrites each reference to the `hermitd:` id, preserving unrelated text; "Leave them" changes nothing and explains those references no longer match the routine. Do not edit those files during unattended evolve.
+
 ## [1.4.20] - 2026-10-23
 
 ### Changed

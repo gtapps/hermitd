@@ -42,7 +42,7 @@ const VALID_BACKUP_MODE: readonly string[] = ENUM.BACKUP_MODE;
 const VALID_BACKUP_INCLUDE: readonly string[] = ENUM.BACKUP_INCLUDE;
 const TIME_RE = /^\d{2}:\d{2}$/;
 // Routine ids travel in bracket markers, --ids CSVs, and JSONL output — shared with lib/routines/due.ts.
-const ROUTINE_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+const ROUTINE_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 
 /** True for loopback hosts (localhost/127.0.0.1/::1) where a plaintext bearer token stays on-box. */
 function isLoopbackUrl(url: string): boolean {
@@ -173,7 +173,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
     if (!isKey(chat)) {
       errors.push(`${location}: chat must be "<channel>:<chat_id>"`);
     } else if (rearm) {
-      warnings.push(`${location}: chat on "heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
+      warnings.push(`${location}: chat on "hermitd:heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
     } else {
       const channel = chat.slice(0, chat.indexOf(':'));
       if (!isDict(config.channels?.[channel])) {
@@ -251,7 +251,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
     config.routines.forEach((r: Json, i: number) => {
       if (!r.id) errors.push(`routines[${i}]: missing id`);
       else if (!ROUTINE_ID_RE.test(r.id)) {
-        errors.push(`routines[${i}]: id "${r.id}" must match ^[A-Za-z0-9._-]{1,64}$ — routine ids travel in bracket markers, --ids CSVs, and JSONL output`);
+        errors.push(`routines[${i}]: id "${r.id}" must match ^[A-Za-z0-9._:-]{1,64}$ — routine ids travel in bracket markers, --ids CSVs, and JSONL output`);
       }
       if (!r.skill) errors.push(`routines[${i}]: missing skill`);
       if (r.time !== undefined) {
@@ -268,10 +268,10 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           errors.push(`routines[${i}]: invalid schedule "${r.schedule}" — ${cronErr}`);
         } else if (neverFires(r.schedule)) {
           warnings.push(`routines[${i}]: schedule "${r.schedule}" never fires — no date matches it`);
-        } else if (r.id === 'heartbeat-restart' && r.schedule.split(/\s+/).slice(2).some((f: string) => f !== '*')) {
+        } else if (r.id === 'hermitd:heartbeat-restart' && r.schedule.split(/\s+/).slice(2).some((f: string) => f !== '*')) {
           // The anchor's re-arm keeps the routine CronCreates inside CC's 7-day expiry
           // and arm.ts's 26h anchor-age window; both assume it fires every day.
-          warnings.push(`routines[${i}]: "heartbeat-restart" schedule "${r.schedule}" is not daily — the re-arm anchor's expiry and age windows assume a daily fire`);
+          warnings.push(`routines[${i}]: "hermitd:heartbeat-restart" schedule "${r.schedule}" is not daily — the re-arm anchor's expiry and age windows assume a daily fire`);
         }
       }
       if (typeof r.enabled !== 'boolean') {
@@ -284,26 +284,26 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (r.model !== undefined && r.model !== null) {
         if (typeof r.model !== 'string' || !VALID_ROUTINE_MODEL.includes(r.model)) {
           errors.push(`routines[${i}]: model "${r.model}" not in [${VALID_ROUTINE_MODEL.join(', ')}] (omit to use session model)`);
-        } else if (r.id === 'heartbeat-restart') {
-          warnings.push(`routines[${i}]: model on "heartbeat-restart" is ignored — re-arm must run in the session`);
+        } else if (r.id === 'hermitd:heartbeat-restart') {
+          warnings.push(`routines[${i}]: model on "hermitd:heartbeat-restart" is ignored — re-arm must run in the session`);
         }
       }
       if (r.effort !== undefined && r.effort !== null) {
         if (typeof r.effort !== 'string' || !VALID_EFFORT.includes(r.effort)) {
           errors.push(`routines[${i}]: effort "${r.effort}" not in [${VALID_EFFORT.join(', ')}] (omit to keep the subagent's default)`);
-        } else if (r.id === 'heartbeat-restart') {
-          warnings.push(`routines[${i}]: effort on "heartbeat-restart" is ignored; re-arm must run in the session`);
+        } else if (r.id === 'hermitd:heartbeat-restart') {
+          warnings.push(`routines[${i}]: effort on "hermitd:heartbeat-restart" is ignored; re-arm must run in the session`);
         } else if (r.model === undefined || r.model === null) {
           warnings.push(`routines[${i}]: effort has no effect without "model"; it applies only to the model-override subagent`);
         }
       }
-      validateChat(r.chat, `routines[${i}]`, 'routine', r.id === 'heartbeat-restart');
+      validateChat(r.chat, `routines[${i}]`, 'routine', r.id === 'hermitd:heartbeat-restart');
       if (r.precheck !== undefined && r.precheck !== null) {
         const preErr = validatePrecheckValue(r.precheck);
         if (preErr) {
           errors.push(`routines[${i}]: precheck ${preErr}`);
-        } else if (r.id === 'heartbeat-restart') {
-          warnings.push(`routines[${i}]: precheck on "heartbeat-restart" is ignored — the re-arm anchor never runs through the routine monitor`);
+        } else if (r.id === 'hermitd:heartbeat-restart') {
+          warnings.push(`routines[${i}]: precheck on "hermitd:heartbeat-restart" is ignored — the re-arm anchor never runs through the routine monitor`);
         }
       }
       if (r.precheck_timeout_s !== undefined && r.precheck_timeout_s !== null) {
@@ -314,8 +314,8 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           warnings.push(`routines[${i}]: precheck_timeout_s has no effect without "precheck"`);
         }
       }
-      if (r.reflect_after === true && r.id === 'heartbeat-restart') {
-        warnings.push(`routines[${i}]: reflect_after on "heartbeat-restart" is ignored — the anchor short-circuits before finish on a healthy check`);
+      if (r.reflect_after === true && r.id === 'hermitd:heartbeat-restart') {
+        warnings.push(`routines[${i}]: reflect_after on "hermitd:heartbeat-restart" is ignored — the anchor short-circuits before finish on a healthy check`);
       }
       if (r.expect_artifact !== undefined && r.expect_artifact !== null) {
         const artErr = validateExpectArtifact(r.expect_artifact);
@@ -346,7 +346,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       }
       if (!c.id) errors.push(`scheduled_checks[${i}]: missing id`);
       else if (typeof c.id !== 'string' || !ROUTINE_ID_RE.test(c.id)) {
-        errors.push(`scheduled_checks[${i}]: id "${c.id}" must match ^[A-Za-z0-9._-]{1,64}$`);
+        errors.push(`scheduled_checks[${i}]: id "${c.id}" must match ^[A-Za-z0-9._:-]{1,64}$`);
       }
       if (!c.skill) errors.push(`scheduled_checks[${i}]: missing skill`);
       else if (typeof c.skill !== 'string') {

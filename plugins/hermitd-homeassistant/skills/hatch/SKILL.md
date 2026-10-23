@@ -110,7 +110,7 @@ After writing `.mcp.json`, check the project's `.gitignore`:
 
 **Step C — Activate and verify**
 
-Tell the user: **restart Claude Code** in this project directory. On first use, Claude Code will prompt you to trust the `homeassistant` server — approve it. Then run `/mcp` to confirm `homeassistant` appears as connected. The next `ha-boot` will verify live HA connectivity.
+Tell the user: **restart Claude Code** in this project directory. On first use, Claude Code will prompt you to trust the `homeassistant` server — approve it. Then run `/mcp` to confirm `homeassistant` appears as connected. Run `/hermitd-homeassistant:ha-house-status` to check live house state.
 
 ### 5. Verify CLI (full probe)
 
@@ -187,52 +187,32 @@ Write `_hermit_versions["hermitd-homeassistant"]` into `.hermit/config.json`, se
 
 **Compiled templates**: Copy `${CLAUDE_PLUGIN_ROOT}/state-templates/compiled/acknowledged-violations.md` to `.hermit/compiled/acknowledged-violations.md` if that file does not already exist. Set `created` in the frontmatter to today's ISO date. This gives the operator a ready-to-use suppression list for the safety audit.
 
-**Boot skill registration**: Read `config.boot_skill` from `config.json`.
-
-The skill name format is `/<plugin-id>:<skill-id>`. Parse the plugin-id as the text between `/` and `:`.
-
-- If `null` or absent → set it to `/hermitd-homeassistant:ha-boot`.
-- If the value starts with `/hermitd-homeassistant:` → no-op (report "already set").
-- Otherwise (another plugin's namespace) → leave it unchanged and warn: "boot_skill is already set to `<value>` from another plugin — skipping to avoid conflict. Run `/hermitd:hermit-settings boot-skill` to update it manually."
-
-**HA routine registration**: `config.routines` is an array of objects with `{id, schedule, skill, enabled}`. For each HA routine below, check whether an entry with that `id` already exists in the array. If it does, skip. If not, prompt and merge it in.
+**HA routine registration**: `config.routines` is an array of objects with `{id, schedule, skill, enabled}`. Match each existing row by the same full skill string, including arguments. If a match exists, preserve all its fields and skip registration. Otherwise offer the optional house routine and append its namespaced id. Never replace or disable core routines.
 
 1. **Context refresh** — "Add daily HA context-refresh routine (08:30 every day)? Keeps entity snapshots fresh automatically."
    ```json
-   {"id": "daily-ha-context", "schedule": "30 8 * * *", "skill": "hermitd-homeassistant:ha-refresh-context", "enabled": true}
+   {"id": "hermitd-homeassistant:daily-ha-context", "schedule": "30 8 * * *", "skill": "hermitd-homeassistant:ha-refresh-context", "enabled": true}
    ```
 
-2. **Morning brief** — three paths based on the current `config.routines` state:
-
-   **Fresh install** (no entry with `id: "morning-brief"` exists): prompt — "Add morning house brief routine? Delivers a unified morning summary combining house state and hermit context."
-   - If yes: follow-up: "Use unified mode (08:30, replaces core `morning` routine)? Recommended for always-on setups."
-     - Unified yes: merge `{"id": "morning-brief", "schedule": "30 8 * * *", "skill": "hermitd-homeassistant:ha-morning-brief", "enabled": true}`. If `config.routines` contains an entry with `id: "morning"` and `enabled: true`, set its `enabled` to `false` and emit: "Disabled core `morning` routine: `morning-brief` subsumes it."
-     - Unified no (legacy): merge `{"id": "morning-brief", "schedule": "0 9 * * *", "skill": "hermitd-homeassistant:ha-morning-brief", "enabled": false}`.
+2. **Morning brief** — "Add morning house brief routine (08:30 every day)? Includes house state, overnight anomalies, energy and HA updates."
+   - If yes: merge `{"id": "hermitd-homeassistant:morning-brief", "schedule": "30 8 * * *", "skill": "hermitd-homeassistant:ha-morning-brief", "enabled": true}`.
    - If no: skip.
 
-   **Re-hatch upgrade** (entry with `id: "morning-brief"` exists but has `schedule: "0 9 * * *"`): prompt: "Your `morning-brief` routine uses the old schedule (09:00). Upgrade to unified mode (08:30, always-on)?"
-   - If yes: update in-place to `schedule: "30 8 * * *"`, `enabled: true`. Then disable core `morning` if present and enabled (same logic as fresh install unified path).
-   - If no: leave unchanged.
-
-   **Already current** (entry exists with `schedule: "30 8 * * *"`): skip (no-op, report "config is current: check `enabled` flag if the routine isn't firing").
-
-   **Non-standard config** (entry exists but matches none of the above conditions — e.g. custom schedule): skip (no-op, report "non-standard `morning-brief` config detected — skipping upgrade prompt").
-
-3. **Evening brief** — "Add evening house-check routine (22:30 every day)? Delivers a brief end-of-day security and device confirmation."
-   - If yes: merge `{"id": "evening-brief", "schedule": "30 22 * * *", "skill": "hermitd-homeassistant:ha-evening-brief", "enabled": true}`. If `config.routines` contains an entry with `id: "evening"` and `enabled: true`, set its `enabled` to `false` and emit: "Disabled core `evening` routine: `evening-brief` subsumes it."
+3. **Evening brief** — "Add evening house-check routine (22:30 every day)? Includes security, device status and energy."
+   - If yes: merge `{"id": "hermitd-homeassistant:evening-brief", "schedule": "30 22 * * *", "skill": "hermitd-homeassistant:ha-evening-brief", "enabled": true}`.
    - If no: skip.
 
 After adding or updating any entries, remind the operator: "Run `/hermitd:hermit-routines load` to activate routines in the current session."
 
 **Analysis routine registration**
 
-Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
 ```json
-{"id": "ha-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id ha-patterns --check hermitd-homeassistant:ha-analyze-patterns", "enabled": true}
-{"id": "ha-safety-audit", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id ha-safety-audit --check hermitd-homeassistant:ha-safety-audit", "enabled": true}
-{"id": "ha-integration-health", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id ha-integration-health --check hermitd-homeassistant:ha-integration-health", "enabled": true}
-{"id": "ha-update-check", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id ha-update-check --check hermitd-homeassistant:ha-update-check", "enabled": true}
+{"id": "hermitd-homeassistant:ha-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id ha-patterns --check hermitd-homeassistant:ha-analyze-patterns", "enabled": true}
+{"id": "hermitd-homeassistant:ha-safety-audit", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id ha-safety-audit --check hermitd-homeassistant:ha-safety-audit", "enabled": true}
+{"id": "hermitd-homeassistant:ha-integration-health", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id ha-integration-health --check hermitd-homeassistant:ha-integration-health", "enabled": true}
+{"id": "hermitd-homeassistant:ha-update-check", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id ha-update-check --check hermitd-homeassistant:ha-update-check", "enabled": true}
 ```
 
 Each routine owns its cadence and passes findings through reflection gates into the proposal pipeline.
@@ -260,8 +240,7 @@ hatch complete
   ✓  CLI: bin/ha-agent-lab boot status --probe → OK / FAILED
   ✓  .mcp.json: homeassistant entry written / already present
   ✓  config.json stamped v<version>
-  ✓  boot_skill: /hermitd-homeassistant:ha-boot (set | already set | operator override preserved)
-  ✓  Routines registered: daily-ha-context, morning-brief, evening-brief, ha-patterns, ha-safety-audit, ha-integration-health, ha-update-check
+  ✓  Routines registered under hermitd-homeassistant: daily-ha-context, morning-brief, evening-brief, ha-patterns, ha-safety-audit, ha-integration-health, ha-update-check
   ✓  knowledge-schema.md: HA types added (or already present)
 
 Manual steps remaining:
@@ -278,14 +257,14 @@ Go always-on (recommended):
       /hermitd:channel-setup first.
 
 Prefer to test interactively first?
-  1. /hermitd-homeassistant:ha-boot
-       — single entry point: starts the hermit session, probes HA,
-         and auto-refreshes the context snapshot if stale/missing.
+  1. /hermitd-homeassistant:ha-house-status
+       — shows live house state. Run /hermitd-homeassistant:ha-refresh-context
+         to refresh the context snapshot.
   2. /hermitd:hermit-routines load
        — activates scheduled routines in the current Claude session.
 
-The always-on runtime does both of these automatically — the interactive
-steps are only for a test drive before handing over to the runtime.
+The always-on runtime loads routines automatically. The daily-ha-context and
+ha-integration-health routines keep house snapshots fresh between manual checks.
 
 Ready to organize your house?
   /hermitd-homeassistant:ha-setup-house

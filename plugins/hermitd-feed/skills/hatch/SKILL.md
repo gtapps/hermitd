@@ -100,23 +100,23 @@ If `config.feed` already exists, merge (keep operator edits; only fill absent ke
 
 ### 4c — Merge routines
 
-In the `routines` array, for each of these IDs that is **absent** (by `id`), add it using the crons from Step 3; skip any already present. Set `enabled` from the slot/weekly enable answers.
+In the `routines` array, match each entry by its full skill string, including arguments. Add a new row with the namespaced id only when that skill is absent, using the crons from Step 3 and `enabled` from the slot/weekly enable answers. Preserve every field on existing matching rows, including operator ids and schedules.
 
 ```json
 {
-  "id": "feed-brief-morning",
+  "id": "hermitd-feed:feed-brief-morning",
   "schedule": "<morning cron>",
   "skill": "hermitd-feed:feed-brief --morning",
   "enabled": <morning enabled>
 },
 {
-  "id": "feed-brief-evening",
+  "id": "hermitd-feed:feed-brief-evening",
   "schedule": "<evening cron>",
   "skill": "hermitd-feed:feed-brief --evening",
   "enabled": <evening enabled>
 },
 {
-  "id": "weekly-digest",
+  "id": "hermitd-feed:weekly-digest",
   "schedule": "<weekly cron>",
   "skill": "hermitd-feed:weekly-digest",
   "enabled": <weekly enabled>
@@ -125,10 +125,10 @@ In the `routines` array, for each of these IDs that is **absent** (by `id`), add
 
 ### 4d: Merge the source-scout routine
 
-Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
 ```json
-{"id": "source-scout", "schedule": "5 9 1 * *", "skill": "hermitd-feed:source-scout --scheduled", "enabled": true}
+{"id": "hermitd-feed:source-scout", "schedule": "5 9 1 * *", "skill": "hermitd-feed:source-scout --scheduled", "enabled": true}
 ```
 
 The monthly routine invokes unattended source discovery directly; candidates remain unverified for operator review.

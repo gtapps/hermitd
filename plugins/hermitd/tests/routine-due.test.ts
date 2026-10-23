@@ -41,7 +41,7 @@ const ROUTINE = (overrides: any = {}) => ({
   id: 'test-routine', skill: 'hermitd:reflect', schedule: '0 9 * * *',
   enabled: true, ...overrides,
 });
-const ANCHOR = { id: 'heartbeat-restart', skill: 'hermitd:heartbeat start', schedule: '0 4 * * *', enabled: true };
+const ANCHOR = { id: 'hermitd:heartbeat-restart', skill: 'hermitd:heartbeat start', schedule: '0 4 * * *', enabled: true };
 
 function withDir(fn: (dir: string) => Promise<void> | void) {
   return async () => {
@@ -54,6 +54,18 @@ const run = (dir: string, now: string) =>
   runScript('routines.ts', { args: ['due', hermit(dir)], env: { HERMIT_NOW: now } });
 
 describe('routine-due', () => {
+  test('namespaced routine ids validate and dispatch', withDir(async (dir) => {
+    const id = 'hermitd-fitness:morning-brief';
+    writeConfig(dir, [ROUTINE({ id })]);
+    writeSchedule(dir, { [id]: { last_consumed_mark: '2026-07-15T08:00:00.000Z' } });
+    const r = await run(dir, '2026-07-15T09:30:00Z');
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).not.toContain('invalid id');
+    expect(r.stdout.trim()).toBe(`ROUTINE_DUE [hermit-routine:${id}]`);
+    expect(readSchedule(dir)[id].last_consumed_mark).toBe('2026-07-15T09:00:00.000Z');
+    expect(readMetricsRows(dir)[0]).toMatchObject({ routine_id: id, event: 'dispatched' });
+  }));
+
   test('no schedule file + due-now mark → init-to-now, NO emission, entry created', withDir(async (dir) => {
     writeConfig(dir, [ROUTINE(), ANCHOR]);
     const r = await run(dir, '2026-07-15T09:00:00Z');
@@ -61,7 +73,7 @@ describe('routine-due', () => {
     expect(r.stdout.trim()).toBe('');
     const sched = readSchedule(dir);
     expect(sched['test-routine'].last_consumed_mark).toBe('2026-07-15T09:00:00.000Z');
-    expect(sched['heartbeat-restart']).toBeUndefined(); // anchor never tracked
+    expect(sched['hermitd:heartbeat-restart']).toBeUndefined(); // anchor never tracked
   }));
 
   test('mark in window → emits bracketed id, consumes latest match', withDir(async (dir) => {
@@ -230,7 +242,7 @@ describe('routine-due', () => {
     expect(readSchedule(dir)['test-routine'].last_consumed_mark).toBe('2026-07-15T09:00:00.000Z');
   }));
 
-  test('heartbeat-restart is never emitted, never touched in schedule file', withDir(async (dir) => {
+  test('hermitd:heartbeat-restart is never emitted, never touched in schedule file', withDir(async (dir) => {
     writeConfig(dir, [ANCHOR]);
     const r = await run(dir, '2026-07-15T04:00:00Z'); // matches anchor's own schedule
     expect(r.stdout.trim()).toBe('');
@@ -415,11 +427,11 @@ describe('routine-due lateness', () => {
   }));
 });
 
-describe('later-check ledger marks', () => {
+describe('hermitd:later-check ledger marks', () => {
   const due = '2026-07-15T14:00:00Z';
   function setupLater(dir: string, row: object | null = { kind: 'reminder', origin: 'hermit' }, enabled = true) {
-    writeConfig(dir, [ROUTINE({ id: 'later-check', skill: 'hermitd:later run', schedule: '5 9 * * *', precheck: 'later', enabled })]);
-    writeSchedule(dir, { 'later-check': { last_consumed_mark: '2026-07-15T13:59:00.000Z' } });
+    writeConfig(dir, [ROUTINE({ id: 'hermitd:later-check', skill: 'hermitd:later run', schedule: '5 9 * * *', precheck: 'later', enabled })]);
+    writeSchedule(dir, { 'hermitd:later-check': { last_consumed_mark: '2026-07-15T13:59:00.000Z' } });
     if (row) fs.writeFileSync(hermit(dir, 'state', 'hypotheses.jsonl'), JSON.stringify({ id: 'reminder', claim: 'pay invoice', cmd: null, state: 'pending', due, ...row }) + '\n');
   }
 
@@ -427,8 +439,8 @@ describe('later-check ledger marks', () => {
     setupLater(dir);
     const result = await run(dir, due);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
-    expect(readSchedule(dir)['later-check'].last_consumed_mark).toBe('2026-07-15T14:00:00.000Z');
+    expect(result.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:hermitd:later-check]');
+    expect(readSchedule(dir)['hermitd:later-check'].last_consumed_mark).toBe('2026-07-15T14:00:00.000Z');
     expect((await run(dir, '2026-07-15T14:01:00Z')).stdout).toBe('');
   }));
 
@@ -436,7 +448,7 @@ describe('later-check ledger marks', () => {
     setupLater(dir, { origin: 'operator', due: '2026-07-15T14:00:30.500Z' });
     // A poll early in the due minute must not consume the mark before the gate sees the row as due.
     expect((await run(dir, '2026-07-15T14:00:10Z')).stdout).toBe('');
-    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:hermitd:later-check]');
   }));
 
   test('hermit claims never create marks', withDir(async dir => {
@@ -448,32 +460,32 @@ describe('later-check ledger marks', () => {
     setupLater(dir);
     setPause(hermit(dir), { reason: 'operator', by: 'test' });
     expect((await run(dir, due)).stdout).toBe('');
-    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'later-check', event: 'skipped-paused' }));
+    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'hermitd:later-check', event: 'skipped-paused' }));
   }));
 
   test('open operator turn defers reminder until the turn closes', withDir(async dir => {
     setupLater(dir);
     writeTurnMarker(dir, due);
     expect((await run(dir, due)).stdout).toBe('');
-    expect(readSchedule(dir)['later-check'].last_consumed_mark).toBe('2026-07-15T13:59:00.000Z');
+    expect(readSchedule(dir)['hermitd:later-check'].last_consumed_mark).toBe('2026-07-15T13:59:00.000Z');
     fs.unlinkSync(turnMarkerPath(dir));
-    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+    expect((await run(dir, '2026-07-15T14:01:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:hermitd:later-check]');
   }));
 
   test('late reminder stamps skipped-late', withDir(async dir => {
     setupLater(dir);
     expect((await run(dir, '2026-07-15T15:01:00Z')).stdout).toBe('');
-    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'later-check', event: 'skipped-late' }));
+    expect(readMetricsRows(dir)).toContainEqual(expect.objectContaining({ routine_id: 'hermitd:later-check', event: 'skipped-late' }));
   }));
 
   test('daily cron still fires without ledger rows', withDir(async dir => {
     setupLater(dir, null);
-    writeConfig(dir, [ROUTINE({ id: 'later-check', schedule: '5 9 * * *' })]);
-    writeSchedule(dir, { 'later-check': { last_consumed_mark: '2026-07-15T09:04:00.000Z' } });
-    expect((await run(dir, '2026-07-15T09:05:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:later-check]');
+    writeConfig(dir, [ROUTINE({ id: 'hermitd:later-check', schedule: '5 9 * * *' })]);
+    writeSchedule(dir, { 'hermitd:later-check': { last_consumed_mark: '2026-07-15T09:04:00.000Z' } });
+    expect((await run(dir, '2026-07-15T09:05:00Z')).stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:hermitd:later-check]');
   }));
 
-  test('disabled later-check emits nothing for reminders', withDir(async dir => {
+  test('disabled hermitd:later-check emits nothing for reminders', withDir(async dir => {
     setupLater(dir, { kind: 'reminder', origin: 'operator' }, false);
     expect((await run(dir, due)).stdout).toBe('');
   }));

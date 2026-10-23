@@ -4,12 +4,12 @@ A Home Assistant domain layer for `hermitd`: skills, subagents, a safety hook, a
 
 ## Structure
 
-- `skills/ha-*/`: workflow skills (`/hermitd-homeassistant:ha-*`); `ha-boot` is the single entry point (starts the hermit session, checks HA connectivity). `skills/domain-brainstorm/` is operator-invoked only.
+- `skills/ha-*/`: workflow skills (`/hermitd-homeassistant:ha-*`); `ha-house-status` checks live house state and `ha-refresh-context` refreshes snapshots. `skills/domain-brainstorm/` is operator-invoked only.
 - `agents/`: `ha-safety-reviewer`, `ha-automation-builder`, `ha-pattern-analyst`
 - `hooks/mcp-safety-gate.ts` + `hooks.json`: PreToolUse on `mcp__homeassistant__.*`, the whole server namespace; read-only tools are allow-listed inside the gate
 - `bin/ha-agent-lab` + `src/*.ts`: the CLI (REST client, WebSocket client, policy engine, simulation, apply). `src/policy.ts` is shared by the CLI and the hook.
 - Permissions: native asks are installed by hatch via `scripts/native-permissions.ts`
-- `.claude-plugin/hermit-meta.json`: `required_core_version`, `requires`, `hermit.boot_skill`
+- `.claude-plugin/hermit-meta.json`: `required_core_version`, `requires`
 - `SAFETY.md`: the safety model; `docs/cli-reference.md`: command usage examples
 
 ## Rules
@@ -45,7 +45,7 @@ REST docs: https://developers.home-assistant.io/docs/api/rest/ ; WebSocket docs:
 
 ## Routines
 
-`hatch` registers routines (`daily-ha-context`, `morning-brief`, `evening-brief`; unified vs legacy brief mode is decided at hatch time) and proposal-producing routines (`ha-patterns`, `ha-safety-audit`, `ha-integration-health`, `ha-update-check`, each invoking `reflect --check-id <id> --check <namespaced skill>`) in `.hermit/config.json`. Schedules live there, not here. Core's `hermit-routines load` activates them.
+`hatch` registers house-only routines (`hermitd-homeassistant:daily-ha-context`, `hermitd-homeassistant:morning-brief`, `hermitd-homeassistant:evening-brief`) and proposal-producing routines (ids prefixed `hermitd-homeassistant:`: `ha-patterns`, `ha-safety-audit`, `ha-integration-health`, `ha-update-check`, each invoking `reflect --check-id <id> --check <namespaced skill>`) in `.hermit/config.json`. Schedules live there, not here. Core's `hermit-routines load` activates them.
 
 ## Hatch target routing
 

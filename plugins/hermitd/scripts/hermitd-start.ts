@@ -153,10 +153,12 @@ const DEFAULT_CONFIG: Json = {
   ask_gate: true,
   routine_max_lateness_minutes: 60,
   routines: [
-    { id: 'heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true },
-    { id: 'reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true },
-    { id: 'weekly-review', schedule: '0 23 * * 0', skill: 'hermitd:weekly-review', enabled: true },
-    { id: 'doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor --maintainer', model: 'haiku', enabled: true, precheck: 'doctor', precheck_timeout_s: 120 },
+    { id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true },
+    { id: 'hermitd:reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true },
+    { id: 'hermitd:weekly-review', schedule: '0 23 * * 0', skill: 'hermitd:weekly-review', enabled: true },
+    { id: 'hermitd:later-check', schedule: '5 9 * * *', skill: 'hermitd:later run', enabled: true, precheck: 'later' },
+    { id: 'hermitd:capability-brainstorm', schedule: '0 10 1 * *', skill: 'hermitd:capability-brainstorm', enabled: true },
+    { id: 'hermitd:doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor --maintainer', model: 'haiku', enabled: true, precheck: 'doctor', precheck_timeout_s: 120 },
   ],
   monitors: [],
   // No AGENT_HOOK_PROFILE here, and none in config.json.template either. Its
@@ -348,7 +350,7 @@ const MAINTAINER_DOCTOR_SKILL = 'hermitd:hermit-doctor --maintainer';
 
 function applyAlwaysOnDoctorSchedule(config: Json): void {
   const routine = Array.isArray(config.routines)
-    ? config.routines.find((r: Json) => r?.id === 'doctor')
+    ? config.routines.find((r: Json) => r?.id === 'hermitd:doctor')
     : null;
   if (routine && KNOWN_DEFAULT_SCHEDULES.includes(routine.schedule)) {
     routine.schedule = DOCTOR_DAILY_SCHEDULE;
@@ -1570,10 +1572,8 @@ async function main(): Promise<void> {
   const autoSession = pyTruthy('auto_session' in config ? config.auto_session : true);
   const hbEnabled = pyTruthy('enabled' in hb ? hb.enabled : false);
   const hasRoutines = pyTruthy(config.routines);
-  // Domain hermits (e.g. homeassistant-hermit) declare a boot_skill that
-  // wraps /hermitd:resident-start plus their own domain setup.
-  // When set, it replaces the core session skill in the bootstrap — the
-  // domain skill is responsible for calling resident-start itself.
+  // Only the operator chooses a replacement bootstrap skill. When set, it
+  // replaces resident-start; the chosen skill owns any core startup it needs.
   const bootSkill = config.boot_skill || '/hermitd:resident-start';
 
   const steps: string[] = [];

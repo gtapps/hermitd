@@ -28,7 +28,7 @@ import {
 
 type Json = any;
 
-const ANCHOR_ID = 'heartbeat-restart';
+const ANCHOR_ID = 'hermitd:heartbeat-restart';
 const MONITOR_INTERVAL_SECS = 60;
 const ANCHOR_MAX_AGE_MS = 26 * 60 * 60 * 1000;
 

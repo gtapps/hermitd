@@ -336,7 +336,7 @@ describe('digestLines — wake classification (trigger entry only)', () => {
   // Live CronCreate routine prompts are isMeta:true. The boundary predicate still
   // opens a turn; classifySource then counts it as a wake.
   test('CronCreate routine prompt is a wake (#939)', () => {
-    expect(wakesOf([triggerEntry('[hermit-routine:heartbeat-restart]\nRun: bun /p/scripts/routines.ts arm anchor', { isMeta: true })])).toBe(1);
+    expect(wakesOf([triggerEntry('[hermit-routine:hermitd:heartbeat-restart]\nRun: bun /p/scripts/routines.ts arm anchor', { isMeta: true })])).toBe(1);
   });
   test('ROUTINE_DUE marker is a wake', () => {
     expect(wakesOf([triggerEntry('ROUTINE_DUE [hermit-routine:daily-brief] due now')])).toBe(1);

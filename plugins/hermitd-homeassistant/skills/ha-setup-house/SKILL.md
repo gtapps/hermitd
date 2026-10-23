@@ -112,5 +112,5 @@ ha-setup-house complete
   Automations: N scaffolded (via ha-build-automation)
   Context: refreshed
 
-Ready to explore? Try /hermitd-homeassistant:ha-boot
+Ready to explore? Try /hermitd-homeassistant:ha-house-status
 ```

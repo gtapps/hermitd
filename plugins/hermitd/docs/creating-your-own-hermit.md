@@ -163,33 +163,9 @@ Keep guidance in the plugin's skills, agent bodies and hooks.
 
 ### Custom boot skill
 
-If your hermit needs to run domain-specific setup on every always-on launch (e.g. connectivity probe, context refresh, pulling a live snapshot), declare a boot skill and wire it via your plugin manifest. Core's `hermitd-start.ts` will fire it into the tmux REPL at boot instead of the default `/hermitd:resident-start`.
+`config.boot_skill` is an operator-only choice, set or cleared through `/hermitd:hermit-settings boot-skill`. It replaces the default `/hermitd:resident-start` bootstrap at launch; core does not run `resident-start` first. A chosen skill owns that turn and invokes core startup only if the operator wants it. Clearing the setting restores core startup.
 
-1. **Write the boot skill**; a normal skill at `skills/<your>-boot/SKILL.md`. First line of the skill's plan must invoke core session init: `/hermitd:resident-start`. After that, run your domain setup. Example from `hermitd-homeassistant`:
-
-   ```markdown
-   1. Invoke /hermitd:resident-start
-   2. Run ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab boot status --probe
-   3. If stale, refresh HA context
-   ```
-
-2. **Declare it in `.claude-plugin/hermit-meta.json`** — hermit-internal fields live in this sidecar, not `plugin.json`, so the native validator passes cleanly:
-
-   ```json
-   {
-     "hermit": {
-       "boot_skill": "/hermitd-homeassistant:ha-boot"
-     }
-   }
-   ```
-
-   Core's `hatch` reads `hermit.boot_skill` when the operator activates your hermit and writes it to the project's `config.json` as a top-level `boot_skill` field. `hermitd-start.ts` then substitutes it for the default bootstrap on every launch — local tmux and Docker alike.
-
-**Contract:** your boot skill owns the full bootstrap turn. Core does not call `resident-start` before invoking it; your skill must. This keeps composition in the skill layer so core's boot script stays domain-agnostic.
-
-**Opt-out:** omit `hermit.boot_skill` entirely if your hermit has no launch-time setup. Core's default bootstrap (`/hermitd:resident-start`) runs instead.
-
-**Operator override:** operators can change or clear the boot skill via `/hermitd:hermit-settings boot-skill` — useful if they install multiple domain hermits and need to pick one, or want to temporarily disable domain bootstrap.
+Sibling plugins never declare or set this choice, including during hatch. Expose domain setup as an ordinary skill or routine instead, such as a house status check or scheduled context refresh.
 
 ### Credential registry
 
@@ -221,19 +197,9 @@ Core's `credential-expiry` doctor check aggregates the built-in Claude OAuth che
 
 ### Brief skills
 
-If your hermit contributes to the operator's daily brief (agenda, news, finance, a domain digest), ship it as a normal skill rather than a new composition mechanism:
+Ship your own brief routine under your own id; never replace or disable core's. A domain brief reads its own domain state and sends a self-contained message. Core's brief and domain briefs can coexist at the operator's chosen times.
 
-- Ship a `/<your-plugin>:<name>-brief` skill that returns a short, self-contained digest in plain channel voice. It must never block the rest of a brief: on a failed upstream fetch it degrades to a single `<name>: unavailable (<reason>)` line and returns.
-- Don't create a competing morning or evening routine. In your `hatch`, check `config.routines` for an existing brief routine and offer to append your skill invocation to that routine's prompt. The routine prompt is the composition point: ordering is prompt order, and the model handles a failed section in-session. If no brief routine exists, offer to create one.
-
-Example of a composed routine prompt after two domain hermits hatch:
-
-```
-Run /hermitd:brief, then /google-workspace-hermit:agenda-brief,
-then /briefing-hermit:news-brief, and send one combined message.
-```
-
-This is a convention, not a core contract: core ships no block registry or brief config schema. The HA hermit's `ha-morning-brief` and the fitness hermit's routine templates follow this shape.
+See [Routine Authoring](routine-authoring.md) for plugin routine ids and hatch matching.
 
 ### Hook patterns
 
@@ -254,7 +220,7 @@ Your skill then names only the fields it branches on.
 
 An Upgrade Instructions step that changes a helper's output or removes a file, verb or config key follows this consumer-scan convention:
 
-- Scan the project's `.claude/skills/`, `.claude/commands/` and `.claude/agents/`, including bundled scripts of any language; the paths and commands in `.hermit/config.json` (`routines[].precheck` and `monitors[].command`); hook commands in `.claude/settings.json` and `.claude/settings.local.json`; and `.hermit/dashboard-render.ts`.
+- Scan the project's `.claude/skills/`, `.claude/commands/` and `.claude/agents/`, including bundled scripts of any language; the paths and commands in `.hermit/config.json` (`routines[].precheck` and `monitors[].command`); hook commands in `.claude/settings.json` and `.claude/settings.local.json`; `.hermit/dashboard-render.ts`; and project-scope `.hermit/OPERATOR.md` and `.hermit/HEARTBEAT.md`.
 - Skip gitignored files, `.claude/worktrees/`, nested repositories, backups and plugin directories.
 - Count a hit only when a line invokes the changed helper (`hermitd-run <verb>`, the script name or the plugin's own command) and depends on the changed contract. A line that only checks a real failure's exit code is not a hit.
 - Never edit files during the upgrade. Skip silently when there are no real hits. Otherwise list the hits with file and line in one deferred step, with plain options such as "Fix them" / "Leave them" and no `on_resolve`. Describe what each option does: `hermit-evolve` queues it as a micro-proposal, and the operator's chat reply applies the chosen option.

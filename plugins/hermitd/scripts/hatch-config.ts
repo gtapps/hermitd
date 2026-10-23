@@ -134,19 +134,19 @@ function timeToCron(hhmm: string): string {
 if (Object.hasOwn(answers, 'routines')) {
   const routinesAnswer = answers.routines || {};
   config.routines = Array.isArray(config.routines) ? config.routines : [];
-  config.routines = config.routines.filter((r: Json) => r?.id !== 'morning' && r?.id !== 'evening');
-  if (routinesAnswer.enabled) {
-    if (routinesAnswer.morning_time) {
-      config.routines.push({
-        id: 'morning', schedule: timeToCron(routinesAnswer.morning_time),
-        skill: 'hermitd:brief --morning', enabled: true,
-      });
+  for (const slot of ['morning', 'evening']) {
+    const id = `hermitd:${slot}`;
+    const time = routinesAnswer[`${slot}_time`];
+    if (!routinesAnswer.enabled || !time) {
+      config.routines = config.routines.filter((r: Json) => r?.id !== id);
+      continue;
     }
-    if (routinesAnswer.evening_time) {
-      config.routines.push({
-        id: 'evening', schedule: timeToCron(routinesAnswer.evening_time),
-        skill: 'hermitd:brief --evening', enabled: true,
-      });
+    const existing = config.routines.find((r: Json) => r?.id === id);
+    if (existing) {
+      existing.schedule = timeToCron(time);
+      existing.enabled = true;
+    } else {
+      config.routines.push({ id, schedule: timeToCron(time), skill: `hermitd:brief --${slot}`, enabled: true });
     }
   }
 }
@@ -165,11 +165,6 @@ if (Object.hasOwn(answers, 'activated_hermit') && answers.activated_hermit) {
   // `_hermit_versions` from their own hatch.
   const { slug } = answers.activated_hermit;
   if (typeof slug !== 'string' || !slug) exitError('invalid_answers:activated_hermit.slug');
-}
-
-// --- boot_skill: only touched when a hermit was (re)activated this run ---
-if (Object.hasOwn(answers, 'activated_hermit')) {
-  config.boot_skill = answers.activated_hermit ? (answers.activated_hermit.boot_skill ?? null) : null;
 }
 
 // --- channels: field-level merge, preserve learned/unknown state on re-init ---

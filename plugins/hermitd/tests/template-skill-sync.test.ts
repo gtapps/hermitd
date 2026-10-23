@@ -231,13 +231,13 @@ describe('routine model defaults', () => {
   } catch {}
 
   test('doctor has model: haiku', () => {
-    const entry = routines.find((r: any) => r.id === 'doctor');
+    const entry = routines.find((r: any) => r.id === 'hermitd:doctor');
     expect(entry).toBeTruthy();
     expect(entry.model).toBe('haiku');
   });
 
   test('no other default routine carries a model field', () => {
-    const ALLOWED_WITH_MODEL = new Set(['daily-auto-close', 'doctor']);
+    const ALLOWED_WITH_MODEL = new Set(['daily-auto-close', 'hermitd:doctor']);
     const withModel = routines.filter((r: any) => !ALLOWED_WITH_MODEL.has(r.id) && r.model !== undefined);
     expect(withModel).toEqual([]);
   });

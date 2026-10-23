@@ -70,7 +70,7 @@ const ROWS: readonly SettingRow[] = [
     label: 'Model', hint: "model name passed straight to --model, or 'none' for the Claude Code default",
     applies: 'next hermitd-start' },
   { arg: 'boot-skill', path: 'boot_skill', group: 'Operational',
-    label: 'Boot skill', hint: "namespaced skill run at always-on launch, or 'none' for /hermitd:resident-start",
+    label: 'Boot skill', hint: "operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start",
     applies: 'next hermitd-start' },
   { arg: 'permissions', path: 'permission_mode', values: PERMISSION_MODE,
     group: 'Operational', label: 'Permission mode', hint: 'how much Claude Code asks before acting',

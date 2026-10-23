@@ -1,4 +1,4 @@
-// Output exception: `due` is the later-check routine gate, so it prints bare `SKIP` or `WAKE`.
+// Output exception: `due` is the hermitd:later-check routine gate, so it prints bare `SKIP` or `WAKE`.
 import fs from 'node:fs';
 import { runEvidence } from './lib/evidence-runner';
 import { readTasks } from './lib/tasks';
@@ -23,10 +23,10 @@ const DAY_MS = 86400000;
 /** Long enough for a monthly schedule to resolve; a rarer one falls back to `due` + 1 day. */
 const HORIZON_MS = 32 * DAY_MS;
 
-/** First fire of the enabled `later-check` routine within the horizon after `after`, or null. */
+/** First fire of the enabled `hermitd:later-check` routine within the horizon after `after`, or null. */
 function laterCheckFire(dir: string, after: Date): Date | null {
   const config = readConfigRaw(dir);
-  const routine = config?.routines?.find((r: any) => r?.id === 'later-check');
+  const routine = config?.routines?.find((r: any) => r?.id === 'hermitd:later-check');
   if (!routine || routine.enabled !== true) return null;
   const fire = nextFire(String(routine.schedule ?? ''), config?.timezone ?? null, after);
   return fire && fire.getTime() - after.getTime() < HORIZON_MS ? fire : null;
@@ -110,7 +110,7 @@ async function main() {
     const monitor = readJson(path.join(dir, 'state', 'routine-monitor.runtime.json'));
     const exact = (row.kind === 'reminder' || row.origin === 'operator')
       && new Date(row.due) > date
-      && config?.routines?.some((r: any) => r?.id === 'later-check' && r.enabled === true)
+      && config?.routines?.some((r: any) => r?.id === 'hermitd:later-check' && r.enabled === true)
       && monitor?.mode === 'monitor';
     printJson({ id: row.id, next_fire: exact ? row.due : laterCheckFire(dir, date)?.toISOString() ?? null });
     return;

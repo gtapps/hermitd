@@ -23,12 +23,12 @@
   "ask_gate": true,
   "routine_max_lateness_minutes": 60,
   "routines": [
-    {"id": "heartbeat-restart",   "schedule": "0 4 * * *",  "skill": "hermitd:hermit-routines load",        "enabled": true},
-    {"id": "reflect",             "schedule": "0 9 * * *",  "skill": "hermitd:reflect",  "precheck": "reflect", "enabled": true},
-    {"id": "weekly-review",       "schedule": "0 23 * * 0", "skill": "hermitd:weekly-review",                "enabled": true},
-    {"id": "later-check",         "schedule": "5 9 * * *",  "skill": "hermitd:later run", "enabled": true, "precheck": "later"},
-    {"id": "doctor",              "schedule": "10 9 * * 1", "skill": "hermitd:hermit-doctor --maintainer", "model": "haiku", "enabled": true, "precheck": "doctor", "precheck_timeout_s": 120},
-    {"id": "capability-brainstorm", "schedule": "0 10 1 * *", "skill": "hermitd:capability-brainstorm", "enabled": true}
+    {"id": "hermitd:heartbeat-restart",   "schedule": "0 4 * * *",  "skill": "hermitd:hermit-routines load",        "enabled": true},
+    {"id": "hermitd:reflect",             "schedule": "0 9 * * *",  "skill": "hermitd:reflect",  "precheck": "reflect", "enabled": true},
+    {"id": "hermitd:weekly-review",       "schedule": "0 23 * * 0", "skill": "hermitd:weekly-review",                "enabled": true},
+    {"id": "hermitd:later-check",         "schedule": "5 9 * * *",  "skill": "hermitd:later run", "enabled": true, "precheck": "later"},
+    {"id": "hermitd:doctor",              "schedule": "10 9 * * 1", "skill": "hermitd:hermit-doctor --maintainer", "model": "haiku", "enabled": true, "precheck": "doctor", "precheck_timeout_s": 120},
+    {"id": "hermitd:capability-brainstorm", "schedule": "0 10 1 * *", "skill": "hermitd:capability-brainstorm", "enabled": true}
   ],
   "monitors": [],
   "env": {
