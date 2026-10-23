@@ -19,10 +19,7 @@ export function parseSubjects(input: string): Subject[] {
 
 export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   const root = fs.realpathSync(path.dirname(path.resolve(hermitDir)));
-  const gitRun = (args: string[]) => Bun.spawnSync(['git', '-C', root, ...args]);
-  // Git only marks shared files; ls-files lists relative to root, so a project inside a larger repo works too.
-  const hasGit = gitRun(['rev-parse', '--show-toplevel']).exitCode === 0;
-  const tracked = new Set(hasGit ? gitRun(['ls-files', '-z']).stdout.toString().split('\0') : []);
+  const walked = ['.claude/skills', '.claude/commands', '.claude/agents', '.claude/rules'];
   const files = new Set<string>();
   const skipped: { file: string; reason: string }[] = [];
   const excluded = (file: string) => file.split('/').some(p => ['node_modules', '.git'].includes(p)) ||
@@ -51,9 +48,9 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
       else visit(file);
     }
   };
-  for (const folder of ['.claude/skills', '.claude/commands', '.claude/agents']) walk(folder, add);
+  for (const folder of walked) walk(folder, add);
   for (const file of ['OPERATOR.md', 'HEARTBEAT.md', 'knowledge-schema.md', 'dashboard-render.ts', 'config.json']) add(path.join(hermitDir, file));
-  for (const file of ['CLAUDE.md', 'CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json']) add(file);
+  for (const file of ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json']) add(file);
   try {
     const config = readConfigRaw(hermitDir);
     if (!config) throw new Error('unreadable_config');
@@ -77,6 +74,16 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
       linkedDirs.add(real);
       walk(file, add);
     } catch {}
+  }
+  // Git marks shared files (paths are relative to root, so a project inside a larger repo works too) and drops
+  // ignored files under the walked folders; the fixed files above are often ignored on purpose and stay.
+  const listed = Bun.spawnSync(['git', '--literal-pathspecs', '-C', root, 'ls-files', '-z', '--', ...files]);
+  const hasGit = listed.exitCode === 0;
+  const tracked = new Set(hasGit ? listed.stdout.toString().split('\0') : []);
+  if (hasGit) {
+    const walkedFiles = [...files].filter(file => walked.some(folder => file.startsWith(folder + '/')));
+    const ignored = Bun.spawnSync(['git', '-C', root, 'check-ignore', '--stdin', '-z'], { stdin: Buffer.from(walkedFiles.join('\0')) });
+    for (const file of ignored.stdout.toString().split('\0')) files.delete(file);
   }
   const counts: Record<string, number> = {};
   const contextFiltered: Record<string, number> = {};

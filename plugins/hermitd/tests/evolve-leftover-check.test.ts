@@ -41,6 +41,8 @@ for (const git of [true, false]) test(`discovery and exclusions, git=${git}`, ()
   write('.claude/skills/house/SKILL.md', 'routine morning-brief\nhermitd:morning-brief\nmorning-briefing\nreflect\nRoutine reflect\nhermitd:reflect');
   write('CLAUDE.md', '/ha-boot');
   write('CLAUDE.local.md', 'ha-boot');
+  write('.claude/CLAUDE.md', 'ha-boot');
+  write('.claude/rules/house.md', 'ha-boot');
   write('.claude/settings.local.json', '{"hook":"ha-boot"}');
   for (const file of ['OPERATOR.md', 'HEARTBEAT.md', 'knowledge-schema.md', 'dashboard-render.ts']) write('.hermit/' + file, 'ha-boot');
   write('custom/.claude-plugin/plugin.json', '{}');
@@ -60,7 +62,7 @@ for (const git of [true, false]) test(`discovery and exclusions, git=${git}`, ()
   expect(result.exitCode).toBe(0);
   const out = JSON.parse(result.stdout.toString());
   expect(out.git).toBe(git);
-  expect(out.counts).toEqual({ brief: 2, boot: 8, reflect: 1 });
+  expect(out.counts).toEqual({ brief: 2, boot: 10, reflect: 1 });
   expect(out.candidates.some((c: any) => c.file.startsWith('custom/'))).toBe(false);
   expect(out.context_filtered.reflect).toBe(1);
   expect(out.candidates.filter((c: any) => c.subject === 'brief').map((c: any) => c.file).sort()).toEqual(['.claude/skills/house/SKILL.md', 'checks/gate.sh']);
@@ -93,6 +95,18 @@ for (const git of [true, false]) test(`symlinked skill directories inside the pr
   const out = JSON.parse(run(root).stdout.toString());
   expect(out.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['.claude/skills/house/SKILL.md']);
 }));
+test('gitignored files under the walked folders are skipped, ignored fixed files are not', () => fixture(true, (root, write) => {
+  write('.gitignore', '.venv/\nCLAUDE.local.md\n.hermit/\n');
+  write('.claude/skills/tool/.venv/lib.py', 'ha-boot');
+  write('.claude/skills/tool/[x].md', 'ha-boot');
+  write('CLAUDE.local.md', 'ha-boot');
+  write('.hermit/OPERATOR.md', '/ha-boot');
+  Bun.spawnSync(['git', '-C', root, 'add', '.claude/skills/tool/[x].md']);
+  const out = JSON.parse(run(root).stdout.toString());
+  const boot = out.candidates.filter((c: any) => c.subject === 'boot');
+  expect(boot.map((c: any) => c.file).sort()).toEqual(['.claude/skills/tool/[x].md', '.hermit/OPERATOR.md', 'CLAUDE.local.md']);
+  expect(boot.find((c: any) => c.file === '.claude/skills/tool/[x].md').tracked).toBe(true);
+}));
 test('a project inside a larger repository marks its tracked files as shared', () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-parent-'));
   try {
@@ -108,6 +122,7 @@ test('a project inside a larger repository marks its tracked files as shared', (
     expect(tracked.git).toBe(true);
     expect(tracked.candidates.filter((c: any) => c.subject === 'boot')).toEqual([expect.objectContaining({ file: 'CLAUDE.md', tracked: true })]);
     const ignored = JSON.parse(run(path.join(parent, 'ignored')).stdout.toString());
+    expect(ignored.git).toBe(true);
     expect(ignored.candidates.filter((c: any) => c.subject === 'boot')).toEqual([expect.objectContaining({ file: 'CLAUDE.md', tracked: false })]);
   } finally { fs.rmSync(parent, { recursive: true }); }
 });
