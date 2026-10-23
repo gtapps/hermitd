@@ -10,7 +10,7 @@ const subjects = { subjects: [
   { id: 'reflect', terms: ['reflect'], kind: 'routine_id', to: 'hermitd:reflect' },
 ] };
 function fixture(git: boolean, body: (root: string, write: (file: string, text: string | Buffer) => void) => void) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'consumer-scan-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-'));
   const write = (file: string, text: string | Buffer) => {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), text);
@@ -21,7 +21,7 @@ function fixture(git: boolean, body: (root: string, write: (file: string, text: 
 }
 function run(root: string, input = JSON.stringify(subjects), mode = true) {
   if (!mode) fs.writeFileSync(path.join(root, 'plugins.json'), '[]');
-  return Bun.spawnSync(['bun', script, '.hermit', ...(mode ? ['consumer-scan'] : ['--plugin-list-json=plugins.json'])], {
+  return Bun.spawnSync(['bun', script, '.hermit', ...(mode ? ['leftover-check'] : ['--plugin-list-json=plugins.json'])], {
     cwd: root, stdin: Buffer.from(input), env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.resolve(import.meta.dir, '..') },
   });
 }
@@ -93,7 +93,7 @@ for (const git of [true, false]) test(`symlinked skill directories inside the pr
   expect(out.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['.claude/skills/house/SKILL.md']);
 }));
 test('missing project directory fails as JSON', () => fixture(false, root => {
-  const result = Bun.spawnSync(['bun', script, path.join(root, 'nope/.hermit'), 'consumer-scan'], { stdin: Buffer.from(JSON.stringify(subjects)) });
+  const result = Bun.spawnSync(['bun', script, path.join(root, 'nope/.hermit'), 'leftover-check'], { stdin: Buffer.from(JSON.stringify(subjects)) });
   expect(result.exitCode).toBe(1);
   expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'scan_failed' });
 }));

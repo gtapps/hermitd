@@ -17,7 +17,7 @@ export function parseSubjects(input: string): Subject[] {
   return value.subjects;
 }
 
-export function consumerScan(hermitDir: string, subjects: Subject[]) {
+export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   const root = fs.realpathSync(path.dirname(path.resolve(hermitDir)));
   const gitRun = (args: string[]) => Bun.spawnSync(['git', '-C', root, ...args]);
   const git = gitRun(['rev-parse', '--show-toplevel']);

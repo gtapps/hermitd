@@ -218,15 +218,15 @@ Your skill then names only the fields it branches on.
 
 ### Upgrade steps that change or remove what operators call
 
-Declare renamed or removed names and changed output with one `**Consumer scan:**` line per subject in `### Upgrade Instructions`. Core declarations may be terse. Every other plugin writes a self-contained sentence saying what changed, the replacement or new output contract, and to ask once before changing anything. For example:
+Declare renamed or removed names and changed output with one `**Leftover check:**` line per subject in `### Upgrade Instructions`. Core declarations may be terse. Every other plugin writes a self-contained sentence saying what changed, the replacement or new output contract, and to ask once before changing anything. For example:
 
 ```markdown
-**Consumer scan:** The operator's own files may still invoke the removed skill `old-status`. Find those invocations, ask once before changing anything, and replace each with `/my-plugin:status`.
+**Leftover check:** The operator's own files may still invoke the removed skill `old-status`. Find those invocations, ask once before changing anything, and replace each with `/my-plugin:status`.
 ```
 
 Executable steps state the desired outcome plus constraints the model cannot infer. Name migration verbs exactly, including their required arguments. A migration verb rewrites data the same way on every install; work depending on the operator's files or intent belongs to the evolve model. An entry never references another entry: include the information it needs within that entry.
 
-Do not copy scanning mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-consumer-scan) owns discovery, liveness, grouped findings, the operator question and the fix procedure.
+Do not copy scanning mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness, grouped findings, the operator question and the fix procedure.
 
 ### Docker dependencies
 

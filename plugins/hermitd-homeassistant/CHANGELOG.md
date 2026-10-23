@@ -14,9 +14,9 @@
 2. Re-enable each disabled core `hermitd:brief --morning` or `hermitd:brief --evening` row whose slot has an enabled `hermitd-homeassistant:ha-morning-brief` or `hermitd-homeassistant:ha-evening-brief` row. Change only `enabled`. Report each re-enabled row, that house and work briefs now arrive separately, and how to turn it off again.
 3. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate clear-sibling-boot-skill --plugin hermitd-homeassistant` and report any cleared startup skill; startup then runs core's resident start unless the operator sets another.
 
-**Consumer scan:** The operator's own files may still invoke the removed skill `ha-boot`. Find those invocations, ask once before changing anything, and replace each with `/hermitd-homeassistant:ha-house-status` for live state or `/hermitd-homeassistant:ha-refresh-context` for snapshots.
+**Leftover check:** The operator's own files may still invoke the removed skill `ha-boot`. Find those invocations, ask once before changing anything, and replace each with `/hermitd-homeassistant:ha-house-status` for live state or `/hermitd-homeassistant:ha-refresh-context` for snapshots.
 
-**Consumer scan:** The operator's own files may still refer to the routine ids `daily-ha-context`, `morning-brief`, `evening-brief`, `ha-patterns`, `ha-safety-audit`, `ha-integration-health` and `ha-update-check`, which this release renamed to `hermitd-homeassistant:<id>`. Find those references, ask once before changing anything, and update each to the new id.
+**Leftover check:** The operator's own files may still refer to the routine ids `daily-ha-context`, `morning-brief`, `evening-brief`, `ha-patterns`, `ha-safety-audit`, `ha-integration-health` and `ha-update-check`, which this release renamed to `hermitd-homeassistant:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.4.26] - 2026-10-22
 

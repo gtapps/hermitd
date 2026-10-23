@@ -19,14 +19,14 @@
 //   tests / when the main loop pre-resolves it). When absent, the script spawns
 //   `claude plugin list --json` itself.
 //
-// Usage: bun evolve-plan.ts <hermit-dir> consumer-scan  (subjects JSON on stdin)
-//   Read-only Step 7b candidate discovery (lib/evolve-consumer-scan.ts). Unlike the
+// Usage: bun evolve-plan.ts <hermit-dir> leftover-check  (subjects JSON on stdin)
+//   Read-only Step 7b candidate discovery (lib/evolve-leftover-check.ts). Unlike the
 //   plan mode, it reads stdin and exits 1 with {"error":...} on bad input or failure.
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { consumerScan, parseSubjects } from './lib/evolve-consumer-scan';
+import { leftoverCheck, parseSubjects } from './lib/evolve-leftover-check';
 import { emitJson, exitError, readStdin } from './lib/cli';
 
 import { sha256 } from './lib/hash';
@@ -693,10 +693,10 @@ export type { ClassifiedFile, FileClass };
 
 if (import.meta.main) {
   const { hermitDir, pluginListJsonPath } = parseArgs(process.argv.slice(2));
-  if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'consumer-scan') {
+  if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'leftover-check') {
     let subjects;
     try { subjects = parseSubjects(await readStdin()); } catch { exitError('bad_subjects'); }
-    try { emitJson(consumerScan(hermitDir, subjects)); } catch { exitError('scan_failed'); }
+    try { emitJson(leftoverCheck(hermitDir, subjects)); } catch { exitError('scan_failed'); }
   }
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;

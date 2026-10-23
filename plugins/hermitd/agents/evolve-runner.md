@@ -22,12 +22,12 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 
 ## Commands
 - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
-- `consumer-scan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit consumer-scan`
 - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
 - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
 - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
 - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
 - `evolve-snapshot`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit snapshot`
+- `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 - `manifest-seed`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit`
 - `settings-get`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get`
 - `settings-set`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set`
@@ -64,7 +64,7 @@ never block:
   is a rule, not a judgment call, and the parked patch is where they stay. `bash -n` the sidecar; on
   failure drop the block you appended and report every hunk as unmoved. Never overwrite an existing
   sidecar.
-- **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Consumer scan:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
+- **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Leftover check:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
   step poses a genuine either/or with **no safe non-destructive default**, do **not** guess — record it
   as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
   A deferred step's channel-resolution stanza (`options`/`on_resolve`, if the instruction carries one)

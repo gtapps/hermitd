@@ -1743,13 +1743,13 @@ describe('hermit-evolve delegation contract', () => {
     expect(block(agent)).toBe(block(skill));
   });
 
-  test('evolve-runner retains consumer scan command and sibling-only step', () => {
+  test('evolve-runner retains leftover check command and sibling-only step', () => {
     const agent = read(path.join(AGENTS, 'evolve-runner.md'));
-    expect(agent).toContain('- `consumer-scan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit consumer-scan`');
+    expect(agent).toContain('- `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`');
     expect(agent).toContain('Steps 3, 4, 7, 7b, 8, 9');
   });
 
-  test('consumer scan runs between sibling upgrades and permission sync', () => {
+  test('leftover check runs between sibling upgrades and permission sync', () => {
     const reference = read(path.join(SKILLS, 'hermit-evolve', 'reference.md'));
     const headings = [...reference.matchAll(/^### (7|7b|8)\. /gm)].map(match => match[1]);
     expect(headings).toEqual(['7', '7b', '8']);

@@ -87,7 +87,7 @@ Within `changelog_slice` (already ordered oldest-first), each version entry may 
 1. Find the `### Upgrade Instructions` section within each version's entry
 2. If found, execute every instruction in that section — these are the authoritative migration steps
 3. Collect any version-specific operator notes for the step-10 report (delegated mode has no operator to present to live)
-4. A line beginning `**Consumer scan:**` (numbered or not) is collected verbatim with its source plugin for Step 7b, never executed or deferred. **Delegated mode:** if a step is interactive (poses an either/or), do not ask. Apply the non-destructive default (e.g. a delete/cleanup offer → keep the file; a single command such as `deny ask-only`) and note the outcome for step 10. If the step has **no safe default**, **defer** — skip it and record a verbatim deferred-migration block per the Delegated mode rules. A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category: never execute it and never record it as a deferred-migration block; copy its text verbatim, marker included, into the Operator notes collected for step 10.
+4. A line beginning `**Leftover check:**` (numbered or not) is collected verbatim with its source plugin for Step 7b, never executed or deferred. **Delegated mode:** if a step is interactive (poses an either/or), do not ask. Apply the non-destructive default (e.g. a delete/cleanup offer → keep the file; a single command such as `deny ask-only`) and note the outcome for step 10. If the step has **no safe default**, **defer** — skip it and record a verbatim deferred-migration block per the Delegated mode rules. A step or line whose text begins with `**Operator action required:**` (numbered or not) is a third category: never execute it and never record it as a deferred-migration block; copy its text verbatim, marker included, into the Operator notes collected for step 10.
 
 The CHANGELOG.md `### Upgrade Instructions` sections are the single source of truth for migrations — do not skip or merely display them. The same pattern applies to sibling-hermit upgrades in Step 7.
 
@@ -239,7 +239,7 @@ For each entry in `plan.siblings`:
 
 - **Version gap (`up_to_date == false`):**
   - Read the sibling's `changelog_slice` (already bounded to the gap range, oldest-first).
-  - **Execute migrations** — within `changelog_slice`, find each version's `### Upgrade Instructions` section and execute every instruction in version order. Collect `**Consumer scan:**` lines verbatim with their source plugin for Step 7b, never execute or defer them. Same rules as Step 2b: non-interactive default on ambiguous steps; defer if no safe default; a step or line whose text begins with `**Operator action required:**` is copied verbatim into Operator notes, never executed and never deferred.
+  - **Execute migrations** — within `changelog_slice`, find each version's `### Upgrade Instructions` section and execute every instruction in version order. Collect `**Leftover check:**` lines verbatim with their source plugin for Step 7b, never execute or defer them. Same rules as Step 2b: non-interactive default on ambiguous steps; defer if no safe default; a step or line whose text begins with `**Operator action required:**` is copied verbatim into Operator notes, never executed and never deferred.
   - Collect the sibling name for the `--sibling=<name>=<to>` flag in Step 9.
 
 - **No version gap (`up_to_date == true`):** report `<name> current`, skip.
@@ -250,13 +250,13 @@ If `plan.siblings_detected_unregistered` is non-empty, report each as "detected 
 
 If `plan.siblings_warnings` is non-empty, surface each warning (e.g. plugin-list unavailable, CHANGELOG unreadable).
 
-### 7b. Consumer scan
+### 7b. Leftover check
 
 Collect the declarations from Steps 2b and 7 into one batch. Infer subjects as `{id, terms, kind: "routine_id" | "name", to?}` from the declared old names and replacements; expand lists of routine ids individually. A rename is live only when its new name exists in current config or the current install; a removal is always live. Check current state, never this run's migration receipt, so replay after a migration still scans. If one old name has two live replacements, list both and leave that reference for the operator to decide.
 
-Pass `{"subjects":[...]}` on stdin to `consumer-scan` (Commands). This read-only command enumerates candidate references once. Judge whether each candidate actually invokes the subject and depends on the declared change: prose and references already in the new form are not hits. Open `context_filtered` example lines when they could be real references; use its counts to check remaining filtered lines in the scoped files when needed. Search further only when a declaration calls for it. A `truncated` result means the scan is incomplete: report that, never report none. Do not edit any files in this step. With no real hits, say nothing.
+Pass `{"subjects":[...]}` on stdin to `leftover-check` (Commands). This read-only command enumerates candidate references once. Judge whether each candidate actually invokes the subject and depends on the declared change: prose and references already in the new form are not hits. Open `context_filtered` example lines when they could be real references; use its counts to check remaining filtered lines in the scoped files when needed. Search further only when a declaration calls for it. A `truncated` result means the scan is incomplete: report that, never report none. Do not edit any files in this step. With no real hits, say nothing.
 
-For real hits, write one `Findings:` line per subject with replacement(s), hit count, file:line examples and a shared marker for tracked files. Record exactly one deferred-migration block for the whole batch: `source: consumer-scan`, the live declarations verbatim as its steps, options `Fix them` / `Leave them`, no `on_resolve`, and `skipped: Leave them`.
+For real hits, write one `Findings:` line per subject with replacement(s), hit count, file:line examples and a shared marker for tracked files. Record exactly one deferred-migration block for the whole batch: `source: leftover-check`, the live declarations verbatim as its steps, options `Fix them` / `Leave them`, no `on_resolve`, and `skipped: Leave them`.
 
 Whether or not there are hits, if any live declaration renames routine ids, collect one Operator note for the whole run: run history stays under the old ids, so a gated routine may run once early.
 

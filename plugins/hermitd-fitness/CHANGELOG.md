@@ -8,7 +8,7 @@
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-fitness --ids morning-brief,evening-brief,weekly-load-review,monday-planning,weekly-coaching-patterns` and report the receipt.
 
-**Consumer scan:** The operator's own files may still refer to the routine ids `morning-brief`, `evening-brief`, `weekly-load-review`, `monday-planning` and `weekly-coaching-patterns`, which this release renamed to `hermitd-fitness:<id>`. Find those references, ask once before changing anything, and update each to the new id.
+**Leftover check:** The operator's own files may still refer to the routine ids `morning-brief`, `evening-brief`, `weekly-load-review`, `monday-planning` and `weekly-coaching-patterns`, which this release renamed to `hermitd-fitness:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.2.8] - 2026-10-19
 

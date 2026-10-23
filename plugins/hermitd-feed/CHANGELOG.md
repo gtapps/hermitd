@@ -8,7 +8,7 @@
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-feed --ids feed-brief-morning,feed-brief-evening,weekly-digest,source-scout` and report the receipt.
 
-**Consumer scan:** The operator's own files may still refer to the routine ids `feed-brief-morning`, `feed-brief-evening`, `weekly-digest` and `source-scout`, which this release renamed to `hermitd-feed:<id>`. Find those references, ask once before changing anything, and update each to the new id.
+**Leftover check:** The operator's own files may still refer to the routine ids `feed-brief-morning`, `feed-brief-evening`, `weekly-digest` and `source-scout`, which this release renamed to `hermitd-feed:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.2.6] - 2026-10-19
 

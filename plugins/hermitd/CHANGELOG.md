@@ -13,7 +13,7 @@
 ### Upgrade Instructions
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate plugin-routine-ids --plugin hermitd --ids heartbeat-restart,reflect,weekly-review,later-check,doctor,capability-brainstorm,morning,evening` and report the receipt, including renamed ids.
 
-**Consumer scan:** routine ids `heartbeat-restart`, `reflect`, `weekly-review`, `later-check`, `doctor`, `capability-brainstorm`, `morning`, `evening` renamed to `hermitd:<id>`.
+**Leftover check:** routine ids `heartbeat-restart`, `reflect`, `weekly-review`, `later-check`, `doctor`, `capability-brainstorm`, `morning`, `evening` renamed to `hermitd:<id>`.
 
 ## [1.4.20] - 2026-10-23
 
