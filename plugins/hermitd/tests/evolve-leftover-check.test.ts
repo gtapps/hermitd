@@ -92,10 +92,29 @@ for (const git of [true, false]) test(`symlinked skill directories inside the pr
   const out = JSON.parse(run(root).stdout.toString());
   expect(out.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['.claude/skills/house/SKILL.md']);
 }));
+test('a project inside a larger repository uses git unless the repository ignores it', () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-parent-'));
+  try {
+    Bun.spawnSync(['git', 'init', '-q', parent]);
+    fs.writeFileSync(path.join(parent, '.gitignore'), 'ignored/\n.hermit/\n');
+    for (const dir of ['proj', 'ignored']) {
+      fs.mkdirSync(path.join(parent, dir, '.hermit'), { recursive: true });
+      fs.writeFileSync(path.join(parent, dir, '.hermit/config.json'), '{}');
+      fs.writeFileSync(path.join(parent, dir, 'CLAUDE.md'), '/ha-boot');
+    }
+    Bun.spawnSync(['git', '-C', parent, 'add', 'proj/CLAUDE.md']);
+    const tracked = JSON.parse(run(path.join(parent, 'proj')).stdout.toString());
+    expect(tracked.git).toBe(true);
+    expect(tracked.candidates.filter((c: any) => c.subject === 'boot')).toEqual([expect.objectContaining({ file: 'CLAUDE.md', tracked: true })]);
+    const ignored = JSON.parse(run(path.join(parent, 'ignored')).stdout.toString());
+    expect(ignored.git).toBe(false);
+    expect(ignored.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['CLAUDE.md']);
+  } finally { fs.rmSync(parent, { recursive: true }); }
+});
 test('missing project directory fails as JSON', () => fixture(false, root => {
   const result = Bun.spawnSync(['bun', script, path.join(root, 'nope/.hermit'), 'leftover-check'], { stdin: Buffer.from(JSON.stringify(subjects)) });
   expect(result.exitCode).toBe(1);
-  expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'scan_failed' });
+  expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'check_failed' });
 }));
 test('unreadable config is reported', () => fixture(false, (root, write) => {
   write('.hermit/config.json', 'invalid');

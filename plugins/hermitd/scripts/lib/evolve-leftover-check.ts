@@ -20,8 +20,11 @@ export function parseSubjects(input: string): Subject[] {
 export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   const root = fs.realpathSync(path.dirname(path.resolve(hermitDir)));
   const gitRun = (args: string[]) => Bun.spawnSync(['git', '-C', root, ...args]);
-  const git = gitRun(['rev-parse', '--show-toplevel']);
-  const hasGit = git.exitCode === 0 && git.stdout.toString().trim() === root;
+  // ls-files lists relative to root, so a project inside a larger repo works too, unless that repo ignores it.
+  const top = gitRun(['rev-parse', '--show-toplevel']);
+  const topDir = top.exitCode === 0 ? top.stdout.toString().trim() : null;
+  const hasGit = topDir !== null && (topDir === root ||
+    Bun.spawnSync(['git', '-C', topDir, 'check-ignore', '-q', path.relative(topDir, root) + '/']).exitCode !== 0);
   const listing = hasGit ? gitRun(['ls-files', '-co', '--exclude-standard', '-z']).stdout.toString().split('\0').filter(Boolean) : [];
   const tracked = new Set(hasGit ? gitRun(['ls-files', '-z']).stdout.toString().split('\0') : []);
   const files = new Set<string>();

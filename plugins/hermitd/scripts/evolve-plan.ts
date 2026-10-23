@@ -696,7 +696,7 @@ if (import.meta.main) {
   if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'leftover-check') {
     let subjects;
     try { subjects = parseSubjects(await readStdin()); } catch { exitError('bad_subjects'); }
-    try { emitJson(leftoverCheck(hermitDir, subjects)); } catch { exitError('scan_failed'); }
+    try { emitJson(leftoverCheck(hermitDir, subjects)); } catch { exitError('check_failed'); }
   }
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;

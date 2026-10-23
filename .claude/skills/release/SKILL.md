@@ -139,7 +139,7 @@ No `config.json` changes required.
    - Do NOT list internal refactors, helper extractions, test scaffolding, or renamed variables — those are visible in `git diff`.
    - **Recovery procedures, migration shell snippets, and breaking-change steps belong in `### Upgrade Instructions`, never in the narrative bullet.** Write a tight summary ("changed default X to Y") and let that section carry the imperative steps — `hermit-evolve` reads them step-by-step.
 
-2. **Upgrade Instructions** — executable outcomes and declarations, following [Upgrade steps that change or remove what operators call](../../../plugins/hermitd/docs/creating-your-own-hermit.md#upgrade-steps-that-change-or-remove-what-operators-call):
+2. **Upgrade Instructions**: executable outcomes and declarations, following [Upgrade steps that change or remove what operators call](../../../plugins/hermitd/docs/creating-your-own-hermit.md#upgrade-steps-that-change-or-remove-what-operators-call):
    - Executable steps state the outcome plus constraints the model cannot infer; name migration verbs and required arguments exactly. Operator-dependent file or intent decisions belong to the evolve model. Each entry is self-contained and never references another entry.
    - Each executable step is a single action. Split independent outcomes into separate numbered steps.
    - No passive voice, no rationale clauses. If an operator needs to understand *why*, that belongs in the Changed bullet above, not here.
