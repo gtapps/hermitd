@@ -60,7 +60,8 @@ for (const git of [true, false]) test(`discovery and exclusions, git=${git}`, ()
   expect(result.exitCode).toBe(0);
   const out = JSON.parse(result.stdout.toString());
   expect(out.git).toBe(git);
-  expect(out.counts).toEqual({ brief: 2, boot: 12, reflect: 1 });
+  expect(out.counts).toEqual({ brief: 2, boot: 8, reflect: 1 });
+  expect(out.candidates.some((c: any) => c.file.startsWith('custom/'))).toBe(false);
   expect(out.context_filtered.reflect).toBe(1);
   expect(out.candidates.filter((c: any) => c.subject === 'brief').map((c: any) => c.file).sort()).toEqual(['.claude/skills/house/SKILL.md', 'checks/gate.sh']);
   expect(out.skipped.map((s: any) => s.reason).sort()).toEqual(['binary', 'outside_project', 'oversized']);
@@ -92,7 +93,7 @@ for (const git of [true, false]) test(`symlinked skill directories inside the pr
   const out = JSON.parse(run(root).stdout.toString());
   expect(out.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['.claude/skills/house/SKILL.md']);
 }));
-test('a project inside a larger repository uses git unless the repository ignores it', () => {
+test('a project inside a larger repository marks its tracked files as shared', () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-parent-'));
   try {
     Bun.spawnSync(['git', 'init', '-q', parent]);
@@ -107,8 +108,7 @@ test('a project inside a larger repository uses git unless the repository ignore
     expect(tracked.git).toBe(true);
     expect(tracked.candidates.filter((c: any) => c.subject === 'boot')).toEqual([expect.objectContaining({ file: 'CLAUDE.md', tracked: true })]);
     const ignored = JSON.parse(run(path.join(parent, 'ignored')).stdout.toString());
-    expect(ignored.git).toBe(false);
-    expect(ignored.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['CLAUDE.md']);
+    expect(ignored.candidates.filter((c: any) => c.subject === 'boot')).toEqual([expect.objectContaining({ file: 'CLAUDE.md', tracked: false })]);
   } finally { fs.rmSync(parent, { recursive: true }); }
 });
 test('missing project directory fails as JSON', () => fixture(false, root => {

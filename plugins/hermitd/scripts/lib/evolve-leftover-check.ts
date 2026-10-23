@@ -20,12 +20,8 @@ export function parseSubjects(input: string): Subject[] {
 export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   const root = fs.realpathSync(path.dirname(path.resolve(hermitDir)));
   const gitRun = (args: string[]) => Bun.spawnSync(['git', '-C', root, ...args]);
-  // ls-files lists relative to root, so a project inside a larger repo works too, unless that repo ignores it.
-  const top = gitRun(['rev-parse', '--show-toplevel']);
-  const topDir = top.exitCode === 0 ? top.stdout.toString().trim() : null;
-  const hasGit = topDir !== null && (topDir === root ||
-    Bun.spawnSync(['git', '-C', topDir, 'check-ignore', '-q', path.relative(topDir, root) + '/']).exitCode !== 0);
-  const listing = hasGit ? gitRun(['ls-files', '-co', '--exclude-standard', '-z']).stdout.toString().split('\0').filter(Boolean) : [];
+  // Git only marks shared files; ls-files lists relative to root, so a project inside a larger repo works too.
+  const hasGit = gitRun(['rev-parse', '--show-toplevel']).exitCode === 0;
   const tracked = new Set(hasGit ? gitRun(['ls-files', '-z']).stdout.toString().split('\0') : []);
   const files = new Set<string>();
   const skipped: { file: string; reason: string }[] = [];
@@ -55,22 +51,9 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
       else visit(file);
     }
   };
-  const pluginRoots = new Set<string>();
-  if (hasGit) {
-    for (const file of listing) if (file.endsWith('.claude-plugin/plugin.json') && !excluded(file) && !nested(file)) pluginRoots.add(path.dirname(path.dirname(file)));
-  } else {
-    walk('.', file => { if (file.endsWith('.claude-plugin/plugin.json')) pluginRoots.add(path.dirname(path.dirname(file))); });
-  }
-  const folders = ['.claude/skills', '.claude/commands', '.claude/agents'];
-  for (const plugin of pluginRoots) for (const folder of ['skills', 'commands', 'agents', 'scripts']) folders.push(path.join(plugin, folder));
-  if (hasGit) {
-    for (const file of listing) if (file === 'CLAUDE.md' || folders.some(folder => file.startsWith(folder + '/'))) add(file);
-  } else {
-    add('CLAUDE.md');
-    for (const folder of folders) walk(folder, add);
-  }
+  for (const folder of ['.claude/skills', '.claude/commands', '.claude/agents']) walk(folder, add);
   for (const file of ['OPERATOR.md', 'HEARTBEAT.md', 'knowledge-schema.md', 'dashboard-render.ts', 'config.json']) add(path.join(hermitDir, file));
-  for (const file of ['CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json']) add(file);
+  for (const file of ['CLAUDE.md', 'CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json']) add(file);
   try {
     const config = readConfigRaw(hermitDir);
     if (!config) throw new Error('unreadable_config');
