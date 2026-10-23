@@ -150,7 +150,7 @@ No `config.json` changes required.
    - Why it changed → Changed/Fixed bullet.
    - What evolve executes → Upgrade Instructions (imperative, numbered).
    - An action only the operator's environment can perform (restart, rebuild, host-side command) → one line after the numbered list, prefixed `**Operator action required:**` (canonical example: `.hermit/bin/hermitd-docker restart`). Never a numbered step and never a `**Note:**`.
-   - Renamed or removed names and changed output → a `**Leftover check:**` line. Core may be terse; every other plugin writes a self-contained sentence saying what changed, the replacement, and to ask once before changing anything. Evolve owns scan mechanics.
+   - Renamed or removed names and changed output → a `**Leftover check:**` line. Core may be terse; every other plugin writes a self-contained sentence saying what changed, the replacement, and to ask once before changing anything. Evolve owns check mechanics.
    - Minimum core floors belong in plugin metadata and dependencies, never in a changelog floor bullet.
    - Behavior deltas that need no action but operators should know → one final line after the numbered list, prefixed `**Note:**`. Not a step.
 
