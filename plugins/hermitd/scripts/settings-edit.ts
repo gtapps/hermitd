@@ -72,7 +72,7 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
     if (fs.existsSync(skillsDir)) {
       for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
         const dir = path.join(skillsDir, entry.name);
-        if (!fs.statSync(dir).isDirectory()) continue;
+        if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
         const names = new Set([entry.name]);
         const file = path.join(dir, 'SKILL.md');
         if (fs.existsSync(file)) {
@@ -117,9 +117,12 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
     }
     return { ...(renamed.length ? { renamed } : {}), ...(conflicts.length ? { conflicts } : {}) };
   },
-  'clear-sibling-boot-skill': (config) => {
-    const match = typeof config.boot_skill === 'string' && config.boot_skill.match(/^\/([^:\s]+):[^\s]+$/);
-    if (match && match[1].includes('hermit') && match[1] !== 'hermitd') {
+  'clear-sibling-boot-skill': (config, ctx) => {
+    const plugin = flagValue(ctx.args, '--plugin');
+    if (ctx.args.length !== 2 || ctx.args[0] !== '--plugin' || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin)) {
+      throw new Error('expected --plugin <id>');
+    }
+    if (typeof config.boot_skill === 'string' && config.boot_skill.startsWith(`/${plugin}:`)) {
       const cleared = config.boot_skill;
       delete config.boot_skill;
       return { cleared };
@@ -534,7 +537,7 @@ if (import.meta.main) {
   switch (op) {
     case 'migrate': {
       const migration = migrations[rest[0]];
-      if (!migration) exitError('unsupported_migration');
+      if (!migration || (rest[0] !== 'plugin-routine-ids' && rest[0] !== 'clear-sibling-boot-skill' && rest.length !== 1)) exitError('unsupported_migration');
       let report: Report | void;
       try {
         report = migration(config, { args: rest.slice(1), projectRoot: path.dirname(stateDir) });

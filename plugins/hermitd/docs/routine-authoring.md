@@ -58,7 +58,7 @@ produce a report.
    subagent (via the Agent tool) instead of running it in the live session — no session
    conversation is inherited, only filesystem access. Two shipped defaults already do this:
    `doctor` is `"model": "haiku"` in
-   `state-templates/config.json.template`. Never set `model` on `heartbeat-restart` — its re-arm
+   `state-templates/config.json.template`. Never set `model` on `hermitd:heartbeat-restart` — its re-arm
    append must run in-session, and `load` ignores the override there regardless.
 
 3. **Return a verdict line, not transcript prose.** A dispatched routine's subagent "returns only

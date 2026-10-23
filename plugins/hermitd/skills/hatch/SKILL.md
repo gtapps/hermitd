@@ -217,8 +217,8 @@ Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/pl
 
 For routines — if Yes: use the config defaults (`active_hours.start = 08:00`, `end = 23:00`) to derive morning = `08:30` and evening = `22:30`. Add to `routines` array:
 
-- `{"id":"morning","schedule":"30 8 * * *","skill":"hermitd:brief --morning","enabled":true}`
-- `{"id":"evening","schedule":"30 22 * * *","skill":"hermitd:brief --evening","enabled":true}`
+- `{"id":"hermitd:morning","schedule":"30 8 * * *","skill":"hermitd:brief --morning","enabled":true}`
+- `{"id":"hermitd:evening","schedule":"30 22 * * *","skill":"hermitd:brief --evening","enabled":true}`
 - Always add (regardless of routine choice): `{"id":"hermitd:heartbeat-restart","schedule":"0 4 * * *","skill":"hermitd:hermit-routines load","enabled":true}`
 - If no routines: still add hermitd:heartbeat-restart to the `routines` array (it's infrastructure, not a user routine)
 - **Routines auto-register only on always-on launches via `hermitd-start.ts`** (as one persistent routine monitor; CronCreate fallback where Monitor is unavailable). Interactive users who want routines active in interactive mode must run `/hermitd:hermit-routines load` themselves. Mention this once at the end of hatch if the operator is running interactively.

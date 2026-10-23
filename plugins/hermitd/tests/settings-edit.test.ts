@@ -980,13 +980,13 @@ describe('plugin routine migrations', () => {
   test('empty input prints OK for both migrations', async () => {
     const file = seedConfig(freshDir(), {});
     expect((await migrate(file)).stdout.trim()).toBe('OK');
-    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill'] })).stdout.trim()).toBe('OK');
+    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill', '--plugin', 'hermitd-example'] })).stdout.trim()).toBe('OK');
   });
 
-  test('clears sibling startup skills and preserves core and operator values', async () => {
-    for (const boot_skill of ['/hermitd-example:start', '/hermitd:resident-start', '/operator:start', 'local-start', null]) {
+  test('clears only the named plugin startup skill', async () => {
+    for (const boot_skill of ['/hermitd-example:start', '/hermitd-other:start', '/acme-hermit:boot', '/hermitd:resident-start', '/operator:start', 'local-start', null]) {
       const file = seedConfig(freshDir(), { boot_skill, custom: true });
-      const args = [file, 'migrate', 'clear-sibling-boot-skill'];
+      const args = [file, 'migrate', 'clear-sibling-boot-skill', '--plugin', 'hermitd-example'];
       const r = await runScript('settings-edit.ts', { args });
       expect(r.exitCode).toBe(0);
       if (boot_skill === '/hermitd-example:start') {
@@ -998,5 +998,19 @@ describe('plugin routine migrations', () => {
       }
       expect((await runScript('settings-edit.ts', { args })).stdout.trim()).toBe('OK');
     }
+  });
+
+  test('argument-free migrations still reject extra arguments', async () => {
+    const file = seedConfig(freshDir(), {});
+    const r = await runScript('settings-edit.ts', { args: [file, 'migrate', 'channel-home', 'extra'] });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'unsupported_migration' });
+  });
+
+  test('clear-sibling-boot-skill requires --plugin', async () => {
+    const file = seedConfig(freshDir(), { boot_skill: '/hermitd-example:start' });
+    const r = await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill'] });
+    expect(r.exitCode).toBe(1);
+    expect(readConfig(file)).toEqual({ boot_skill: '/hermitd-example:start' });
   });
 });

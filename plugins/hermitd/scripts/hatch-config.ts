@@ -144,6 +144,7 @@ if (Object.hasOwn(answers, 'routines')) {
     const existing = config.routines.find((r: Json) => r?.id === id);
     if (existing) {
       existing.schedule = timeToCron(time);
+      existing.enabled = true;
     } else {
       config.routines.push({ id, schedule: timeToCron(time), skill: `hermitd:brief --${slot}`, enabled: true });
     }

@@ -526,3 +526,12 @@ test('re-hatch preserves brief fields, operator ids and the chosen boot skill', 
   expect(out.routines).toEqual([operator]);
   expect(out.boot_skill).toBe('/custom:start');
 });
+
+test('re-hatch with briefs on re-enables a disabled core brief', async () => {
+  const dir = freshDir();
+  const brief = { id: 'hermitd:morning', schedule: '0 8 * * *', skill: 'hermitd:brief --morning', enabled: false };
+  seedConfig(dir, { ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')), routines: [brief] });
+  expect((await runHatchConfig(dir, { routines: { enabled: true, morning_time: '09:30' } }, true)).exitCode).toBe(0);
+  const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
+  expect(out.routines).toEqual([{ ...brief, schedule: '30 9 * * *', enabled: true }]);
+});
