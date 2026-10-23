@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Core routine ids use the `hermitd:` namespace; plugin routine migrations preserve operator routines and defer project-copy conflicts.
+- Startup skill selection belongs to the operator; hatch preserves it and keeps existing brief fields when changing schedules.
+
+### Upgrade Instructions
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate plugin-routine-ids --plugin hermitd --ids heartbeat-restart,reflect,weekly-review,later-check,doctor,capability-brainstorm,morning,evening`, then `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate clear-sibling-boot-skill`. Report both receipts, including renamed ids and any cleared startup skill. Renamed routines re-arm at the post-update restart; their run history stays under the old ids, so gated routines may run once early.
+2. If the first receipt has non-empty `conflicts`, defer them together per `/hermitd:hermit-evolve` Step 10, with options "Keep it with the plugin" / "Make it yours", no `on_resolve`. Explain that a project skill or command copy is unused by that routine, which invokes the plugin skill, or that the target id is already taken. In attended Step 10, "Keep it with the plugin" resolves the reported conflict with the operator before rerunning the migration; "Make it yours" keeps a bare operator id and points the routine at the chosen project skill or command. Preserve unrelated edits and never rename through `set routines`.
+
 ## [1.4.20] - 2026-10-23
 
 ### Changed

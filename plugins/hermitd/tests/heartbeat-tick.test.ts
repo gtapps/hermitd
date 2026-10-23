@@ -524,7 +524,7 @@ describe('heartbeat start-commit', () => {
       config: {
         timezone: 'UTC',
         heartbeat: { every: '30m', active_hours: ALWAYS_ON },
-        routines: [{ id: 'heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true }],
+        routines: [{ id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true }],
       },
     });
     write(hermit, 'state/heartbeat-liveness.json', { last_peek_at: NOW });

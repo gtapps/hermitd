@@ -1,5 +1,14 @@
 # Changelog — laravel-forge-hermit
 
+## [Unreleased]
+
+### Changed
+- Hatch matches routines by full skill string and assigns new rows `hermitd-laravel-forge:` ids, preserving existing operator fields.
+- The minimum core requirement is `1.4.21`, the pending core release containing routine-id migrations.
+
+### Upgrade Instructions
+1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-laravel-forge --ids forge-failed-deploys` and report the receipt. If `conflicts` is non-empty, defer them together per `/hermitd:hermit-evolve` Step 10 with options "Keep it with the plugin" / "Make it yours", no `on_resolve`. Explain that any project skill or command copy is unused by that routine, which invokes the plugin skill, or that the target id is already taken. In attended Step 10, resolve the reported conflict with the operator before rerunning for "Keep it with the plugin"; for "Make it yours", keep a bare operator id and point the routine at the chosen project skill or command. Preserve unrelated edits and never rename through `set routines`. Run history stays under the old ids, so a gated routine may run once early after restart.
+
 ## [0.0.22] - 2026-10-22
 
 ### Fixed

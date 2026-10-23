@@ -224,7 +224,8 @@ try {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line);
-      if (!(e.source || '').startsWith('routine:reflect')) continue;
+      if (typeof e.source !== 'string' || !e.source.startsWith('routine:')
+        || !reflectRoutineIds.has(e.source.slice('routine:'.length))) continue;
       const d = new Date(e.timestamp);
       if (d >= weekStart && d < weekEnd) reflectCost += e.estimated_cost_usd || 0;
     } catch {}

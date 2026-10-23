@@ -677,12 +677,12 @@ describe('settings-edit history', () => {
   test('history names the routine id and field that changed', async () => {
     const dir = freshDir();
     const file = seedConfig(dir, validConfig({
-      routines: [{ id: 'heartbeat-restart', schedule: '0 9 * * *', skill: 'hermitd:brief', enabled: true }],
+      routines: [{ id: 'hermitd:heartbeat-restart', schedule: '0 9 * * *', skill: 'hermitd:brief', enabled: true }],
     }));
     await runScript('settings-edit.ts', { args: [file, 'set', 'routines.0.schedule', '"0 8 * * *"'] });
     const r = await runScript('settings-edit.ts', { args: [file, 'history', 'routines'] });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout).rows[0].diff).toEqual({ added: [], removed: [], changed: { 'heartbeat-restart': ['schedule'] } });
+    expect(JSON.parse(r.stdout).rows[0].diff).toEqual({ added: [], removed: [], changed: { 'hermitd:heartbeat-restart': ['schedule'] } });
   });
 });
 
@@ -909,4 +909,94 @@ test('chat instructions append, replace and remove preserve siblings and reject 
   }
   expect((await edit('unset', '0')).exitCode).toBe(0);
   expect(readConfig(file).channels).toEqual({ discord: { instructions: [sibling], allowed_users: ['U1'] }, telegram: { enabled: true } });
+});
+
+describe('plugin routine migrations', () => {
+  const row = (id: string, skill: string) => ({ id, skill, schedule: '0 9 * * *', enabled: true });
+  const migrate = (file: string, plugin = 'hermitd-example', ids = 'morning-brief,patterns') =>
+    runScript('settings-edit.ts', { args: [file, 'migrate', 'plugin-routine-ids', '--plugin', plugin, '--ids', ids] });
+
+  test('renames only owned seeded routines, including reflect wrappers, and reruns as OK', async () => {
+    const file = seedConfig(freshDir(), { routines: [
+      { ...row('morning-brief', 'hermitd-example:brief --morning'), model: 'haiku', custom: true },
+      row('operator-check', 'hermitd-example:brief'),
+      row('patterns', 'hermitd:reflect --check-id patterns --check hermitd-example:patterns --quick'),
+      row('foreign', 'other:brief'),
+    ] });
+    const r = await migrate(file);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ renamed: [
+      { from: 'morning-brief', to: 'hermitd-example:morning-brief' },
+      { from: 'patterns', to: 'hermitd-example:patterns' },
+    ] });
+    expect(readConfig(file).routines).toEqual([
+      { ...row('hermitd-example:morning-brief', 'hermitd-example:brief --morning'), model: 'haiku', custom: true },
+      row('operator-check', 'hermitd-example:brief'),
+      row('hermitd-example:patterns', 'hermitd:reflect --check-id patterns --check hermitd-example:patterns --quick'),
+      row('foreign', 'other:brief'),
+    ]);
+    const before = fs.readFileSync(file, 'utf8');
+    expect((await migrate(file)).stdout.trim()).toBe('OK');
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  test('same seeded id belongs only to the invoking plugin, including wrapped checks', async () => {
+    for (const skill of ['hermitd-fitness:fitness-brief --morning',
+      'hermitd:reflect --check-id morning-brief --check hermitd-fitness:fitness-brief --morning']) {
+      const file = seedConfig(freshDir(), { routines: [row('morning-brief', skill)] });
+      expect((await migrate(file, 'hermitd-homeassistant')).stdout.trim()).toBe('OK');
+      expect(readConfig(file).routines[0].id).toBe('morning-brief');
+      expect((await migrate(file, 'hermitd-fitness')).exitCode).toBe(0);
+      expect(readConfig(file).routines[0].id).toBe('hermitd-fitness:morning-brief');
+    }
+  });
+
+  for (const kind of ['directory', 'frontmatter', 'command', 'target']) {
+    test(`reports ${kind} conflict without changing the routine`, async () => {
+      const root = freshDir();
+      const routines = [row('morning-brief', 'hermitd-example:brief')];
+      if (kind === 'target') routines.push(row('hermitd-example:morning-brief', 'operator-brief'));
+      else if (kind === 'command') {
+        const dir = path.join(root, '.claude/commands');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'brief.md'), 'Operator command');
+      } else {
+        const dir = path.join(root, '.claude/skills', kind === 'directory' ? 'brief' : 'alias');
+        fs.mkdirSync(dir, { recursive: true });
+        if (kind === 'frontmatter') fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: brief\n---\nOperator skill');
+      }
+      const file = seedConfig(root, { routines });
+      const before = fs.readFileSync(file, 'utf8');
+      const r = await migrate(file);
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout).conflicts).toMatchObject([
+        { id: 'morning-brief', target: 'hermitd-example:morning-brief', skill: 'hermitd-example:brief',
+          reason: kind === 'target' ? 'target_taken' : 'project_copy' },
+      ]);
+      expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    });
+  }
+
+  test('empty input prints OK for both migrations', async () => {
+    const file = seedConfig(freshDir(), {});
+    expect((await migrate(file)).stdout.trim()).toBe('OK');
+    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill'] })).stdout.trim()).toBe('OK');
+  });
+
+  test('clears sibling startup skills and preserves core and operator values', async () => {
+    for (const boot_skill of ['/hermitd-example:start', '/hermitd:resident-start', '/operator:start', 'local-start', null]) {
+      const file = seedConfig(freshDir(), { boot_skill, custom: true });
+      const args = [file, 'migrate', 'clear-sibling-boot-skill'];
+      const r = await runScript('settings-edit.ts', { args });
+      expect(r.exitCode).toBe(0);
+      if (boot_skill === '/hermitd-example:start') {
+        expect(JSON.parse(r.stdout)).toEqual({ cleared: boot_skill });
+        expect(readConfig(file)).toEqual({ custom: true });
+      } else {
+        expect(r.stdout.trim()).toBe('OK');
+        expect(readConfig(file)).toEqual({ boot_skill, custom: true });
+      }
+      expect((await runScript('settings-edit.ts', { args })).stdout.trim()).toBe('OK');
+    }
+  });
 });

@@ -40,7 +40,7 @@ export function monitorFixture(freshDir: () => string, opts: FixtureOpts = {}) {
   const config = {
     heartbeat: { enabled: opts.heartbeatEnabled ?? true, every: '30m' },
     routines: [
-      { id: 'doctor', enabled: true, schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor' },
+      { id: 'hermitd:doctor', enabled: true, schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor' },
     ],
   };
   writeJson(path.join(hermitDir, 'config.json'), config);

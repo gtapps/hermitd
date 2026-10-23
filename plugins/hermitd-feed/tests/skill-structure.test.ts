@@ -50,9 +50,9 @@ test('hatch routines invoke the domain skills with their slot arguments', () => 
   const entries = [...hatch.matchAll(/\{\n  "id": "([^"]+)",[\s\S]*?\n\}/g)]
     .map(([block]) => JSON.parse(block.replace(/<[^>]+>/g, 'true')));
   for (const [id, skill] of [
-    ['feed-brief-morning', 'hermitd-feed:feed-brief --morning'],
-    ['feed-brief-evening', 'hermitd-feed:feed-brief --evening'],
-    ['weekly-digest', 'hermitd-feed:weekly-digest'],
+    ['hermitd-feed:feed-brief-morning', 'hermitd-feed:feed-brief --morning'],
+    ['hermitd-feed:feed-brief-evening', 'hermitd-feed:feed-brief --evening'],
+    ['hermitd-feed:weekly-digest', 'hermitd-feed:weekly-digest'],
   ]) {
     expect(entries.find((entry) => entry.id === id)?.skill).toBe(skill);
     expect(existsSync(join(ROOT, 'skills', skill.split(':')[1].split(' ')[0], 'SKILL.md'))).toBe(true);

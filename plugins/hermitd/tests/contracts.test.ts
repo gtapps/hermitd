@@ -425,7 +425,7 @@ describe('monitors validation', () => {
       monitors: [{ ...monitor, chat: 'imessage:abc' }],
     });
     expect(custom.warnings.some((w: string) => w.includes('chat'))).toBe(false);
-    const anchor = runValidate({ channels, monitors: [{ ...monitor, id: 'heartbeat-restart', chat: 'discord:1' }] });
+    const anchor = runValidate({ channels, monitors: [{ ...monitor, id: 'hermitd:heartbeat-restart', chat: 'discord:1' }] });
     expect(anchor.warnings.some((w: string) => w.includes('ignored'))).toBe(false);
   });
 
@@ -584,25 +584,25 @@ describe('routine precheck validation', () => {
   test('a gate on the re-arm anchor warns — it never runs through the monitor', () => {
     const out = runValidate({
       routines: [{
-        id: 'heartbeat-restart', schedule: '0 4 * * *',
+        id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
         skill: 'hermitd:hermit-routines load', enabled: true, precheck: 'reflect',
       }],
     });
     expect(out.errors).toEqual([]);
-    expect(out.warnings.join(' ')).toContain('heartbeat-restart');
+    expect(out.warnings.join(' ')).toContain('hermitd:heartbeat-restart');
   });
 
   test('the shipped doctor uses its gate and daily-auto-close is retired', () => {
     const template = readJson(path.join(TEMPLATES, 'config.json.template'));
     const byId = (id: string) => template.routines.find((r: any) => r.id === id);
     expect(byId('daily-auto-close')).toBeUndefined();
-    expect(byId('doctor').precheck).toBe('doctor');
+    expect(byId('hermitd:doctor').precheck).toBe('doctor');
     expect(runValidate({ routines: template.routines }).errors).toEqual([]);
   });
 
-  test('the shipped template includes the daily later-check routine', () => {
+  test('the shipped template includes the daily hermitd:later-check routine', () => {
     const template = readJson(path.join(TEMPLATES, 'config.json.template'));
-    const entry = template.routines.find((r: any) => r.id === 'later-check');
+    const entry = template.routines.find((r: any) => r.id === 'hermitd:later-check');
     expect(entry).toBeTruthy();
     expect(entry.schedule).toBe('5 9 * * *');
     expect(entry.skill).toBe('hermitd:later run');
@@ -615,7 +615,7 @@ describe('routine precheck validation', () => {
 
   test('the shipped template includes the monthly capability-brainstorm routine', () => {
     const template = readJson(path.join(TEMPLATES, 'config.json.template'));
-    const entry = template.routines.find((r: any) => r.id === 'capability-brainstorm');
+    const entry = template.routines.find((r: any) => r.id === 'hermitd:capability-brainstorm');
     expect(entry).toBeTruthy();
     expect(entry.schedule).toBe('0 10 1 * *');
     expect(entry.skill).toBe('hermitd:capability-brainstorm');
@@ -699,7 +699,7 @@ describe('routine model validation', () => {
     id: 'check', schedule: '0 9 * * *', skill: 'hermitd:recall', enabled: true,
   };
   const HB_ROUTINE = {
-    id: 'heartbeat-restart', schedule: '0 4 * * *',
+    id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
     skill: 'hermitd:heartbeat start', enabled: true,
   };
 
@@ -730,7 +730,7 @@ describe('routine model validation', () => {
     expect(out.errors.some((e: string) => e.includes('not in'))).toBe(true);
   });
 
-  test('model on heartbeat-restart produces a warning (ignored), not an error', () => {
+  test('model on hermitd:heartbeat-restart produces a warning (ignored), not an error', () => {
     const out = runValidate({ routines: [{ ...HB_ROUTINE, model: 'haiku' }] });
     expect(out.errors).toEqual([]);
     expect(out.warnings.some((w: string) => w.includes('ignored'))).toBe(true);
@@ -750,9 +750,9 @@ describe('routine model validation', () => {
     expect(out.warnings.some((w: string) => w.includes('effort has no effect'))).toBe(true);
   });
 
-  test('effort on heartbeat-restart warns that it is ignored, even beside model', () => {
+  test('effort on hermitd:heartbeat-restart warns that it is ignored, even beside model', () => {
     const out = runValidate({ routines: [{ ...HB_ROUTINE, model: 'haiku', effort: 'high' }] });
-    expect(out.warnings.some((w: string) => w.includes('effort on "heartbeat-restart" is ignored'))).toBe(true);
+    expect(out.warnings.some((w: string) => w.includes('effort on "hermitd:heartbeat-restart" is ignored'))).toBe(true);
     expect(out.warnings.some((w: string) => w.includes('effort has no effect without'))).toBe(false);
   });
 
@@ -770,19 +770,19 @@ describe('routine model validation', () => {
     expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached'))).toBe(false);
     expect(unreachable.warnings.some((w: string) => w.includes('script notices') && w.includes('reply-tool skills'))).toBe(true);
     const anchor = runValidate({ channels, routines: [{ ...HB_ROUTINE, chat: 'discord:1' }] });
-    expect(anchor.warnings.some((w: string) => w.includes('chat on "heartbeat-restart" is ignored'))).toBe(true);
+    expect(anchor.warnings.some((w: string) => w.includes('chat on "hermitd:heartbeat-restart" is ignored'))).toBe(true);
   });
 
-  test('a daily heartbeat-restart schedule produces no warning', () => {
+  test('a daily hermitd:heartbeat-restart schedule produces no warning', () => {
     const out = runValidate({ routines: [HB_ROUTINE] });
     expect(out.errors).toEqual([]);
     expect(out.warnings.some((w: string) => w.includes('not daily'))).toBe(false);
   });
 
-  test('a non-daily heartbeat-restart schedule warns (not an error)', () => {
+  test('a non-daily hermitd:heartbeat-restart schedule warns (not an error)', () => {
     const out = runValidate({ routines: [{ ...HB_ROUTINE, schedule: '0 4 */3 * *' }] });
     expect(out.errors).toEqual([]);
-    expect(out.warnings.some((w: string) => w.includes('heartbeat-restart') && w.includes('not daily'))).toBe(true);
+    expect(out.warnings.some((w: string) => w.includes('hermitd:heartbeat-restart') && w.includes('not daily'))).toBe(true);
   });
 });
 
@@ -3162,7 +3162,7 @@ describe('watchdog validation', () => {
 describe('doctor routine template contract', () => {
   test('template config validates cleanly with the doctor routine present', () => {
     const template = readJson(path.join(TEMPLATES, 'config.json.template'));
-    const routine = template.routines.find((r: any) => r.id === 'doctor');
+    const routine = template.routines.find((r: any) => r.id === 'hermitd:doctor');
     expect(routine).toBeDefined();
     expect(routine.schedule).toBe('10 9 * * 1');
     expect(routine.skill).toBe('hermitd:hermit-doctor --maintainer');

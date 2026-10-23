@@ -56,8 +56,8 @@ function sentinelLine(text: string): string {
 // the same sentinels anchored at the live input boundary; this is that grammar applied
 // to retrospective cost attribution.
 //
-// Routine ids are validated only for presence/uniqueness in config — the strict charset
-// here ([A-Za-z0-9._-]+) is the classifier's own gate, and it rejects skill-template
+// Routine ids share the config charset, including plugin namespace separators.
+// The strict charset here ([A-Za-z0-9._:-]+) rejects skill-template
 // noise ([hermit-routine:*], <id> placeholders).
 function classifySource(triggerText: string): string {
   if (!triggerText) return 'other';
@@ -71,15 +71,15 @@ function classifySource(triggerText: string): string {
   // ran multiple routines. Attribute the shared turn to a synthetic `routine:multi` bucket
   // rather than mis-charging the whole turn to the first id (which would inflate that
   // routine's per-run cost and mask the others in the doctor's routine-cost check).
-  const routineDue = line.match(/^ROUTINE_DUE((?:\s+\[hermit-routine:[A-Za-z0-9._-]+\])+)/);
+  const routineDue = line.match(/^ROUTINE_DUE((?:\s+\[hermit-routine:[A-Za-z0-9._:-]+\])+)/);
   if (routineDue) {
-    const ids = new Set([...routineDue[1].matchAll(/\[hermit-routine:([A-Za-z0-9._-]+)\]/g)].map((m) => m[1]));
+    const ids = new Set([...routineDue[1].matchAll(/\[hermit-routine:([A-Za-z0-9._:-]+)\]/g)].map((m) => m[1]));
     if (ids.size >= 2) return 'routine:multi';
     if (ids.size === 1) return `routine:${[...ids][0].slice(0, 64)}`;
   }
   // CronCreate-delivered routine: the id opens the prompt. Strict charset — must match a
   // real routine id, never a placeholder or glob.
-  const routineMatch = line.match(/^\[hermit-routine:([A-Za-z0-9._-]+)\]/);
+  const routineMatch = line.match(/^\[hermit-routine:([A-Za-z0-9._:-]+)\]/);
   // Length-cap to 64 chars so ids can't overflow markdown table cells
   if (routineMatch) return `routine:${routineMatch[1].slice(0, 64)}`;
   // Inbound-channel envelope (see lib/channel-envelope.ts): source is plugin-qualified

@@ -15,9 +15,9 @@ allowed-tools:
 
 # HA Evening Brief
 
-An end-of-day house check that confirms the house is secure before night. Designed to run as the `evening-brief` routine at 22:30.
+An end-of-day house check that confirms the house is secure before night. Designed to run as the `hermitd-homeassistant:evening-brief` routine at 22:30.
 
-When both `hermitd` and `hermitd-homeassistant` are installed and `evening-brief` is enabled, this skill subsumes `/hermitd:brief --evening` — operators should disable the core `evening` routine to avoid duplicate ~22:30 notifications. For hermits without HA, `/hermitd:brief --evening` remains the standalone path.
+Core's work brief runs independently; neither brief replaces or disables the other.
 
 ## Steps
 
@@ -33,7 +33,7 @@ When both `hermitd` and `hermitd-homeassistant` are installed and `evening-brief
 3a. **Pending updates**: Run `${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates --digest`. It prints one JSON object and exits 0:
    - `status` is `skipped`: pipe one line into `.hermit/bin/hermitd-run task note .hermit <id>` only inside an open record's turn (otherwise skip the note) (`updates fetch failed: <detail>`) and omit the `Updates:` section entirely.
    - `total` is 0: omit the `Updates:` section entirely.
-   - Otherwise: render the `Updates:` section, translating tier labels into the operator's language. `updates` holds the top updates in tier order, one `[tier] Title: installed → latest` line each (a null version renders as `?`); add `+ N more updates pending` when `more` is above 0 and `[hacs] N HACS updates pending` when `hacs_pending` is above 0. No proposal-id lookup here (unlike the morning brief).
+   - Otherwise: render the `Updates:` section, translating tier labels into the operator's language. `updates` holds the top updates in tier order, one `[tier] Title: installed → latest` line each (a null version renders as `?`); add `+ N more updates pending` when `more` is above 0 and `[hacs] N HACS updates pending` when `hacs_pending` is above 0.
 
 4. **Energy snapshot** — From the live context, pull current power draw and day's energy consumption if HA energy entities exist. Omit this section if no energy sensors are available.
 

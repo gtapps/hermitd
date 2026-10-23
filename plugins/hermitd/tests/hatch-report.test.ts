@@ -39,7 +39,7 @@ function hatched(o: HatchedOpts = {}): string {
   fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({
     agent_name: 'Atlas', language: 'en', timezone: 'UTC', escalation: 'balanced',
     permission_mode: 'auto', push_notifications: true,
-    channels: {}, routines: [{ id: 'heartbeat-restart', enabled: true }],
+    channels: {}, routines: [{ id: 'hermitd:heartbeat-restart', enabled: true }],
     scheduled_checks: [], heartbeat: { enabled: false },
     _hermit_versions: { 'hermitd': '1.2.34' },
     ...(o.config ?? {}),
@@ -219,11 +219,11 @@ describe('confirm previews intent, before anything is written', () => {
     expect(out.defaults).not.toContain('permission_mode');
   });
 
-  test('heartbeat folds into routines, and heartbeat-restart stays out', () => {
+  test('heartbeat folds into routines, and hermitd:heartbeat-restart stays out', () => {
     const { routines } = confirmData({ deployment: 'tmux' }).will_apply;
     expect(routines.heartbeat).toEqual({ enabled: true, every: '30m', active_hours: { start: '08:00', end: '23:00' } });
     expect(routines.briefs).toEqual({ morning: '08:30', evening: '22:30' });
-    expect(routines.others).not.toContain('heartbeat-restart');
+    expect(routines.others).not.toContain('hermitd:heartbeat-restart');
   });
 
   test('cosmetic defaults are left out of the preview', () => {

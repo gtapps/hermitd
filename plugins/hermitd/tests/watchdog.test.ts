@@ -2933,7 +2933,7 @@ test('croncreate-fallback from a previous boot → re-arm', withHermit(async (h)
 //
 // A hermit rests at 'idle' between arcs, so that is where a Monitor that died has to be
 // recovered from. Before this, the supervision-only cut exited above step 5, and the
-// only recovery left was the daily heartbeat-restart anchor — a CronCreate that dies with the
+// only recovery left was the daily hermitd:heartbeat-restart anchor — a CronCreate that dies with the
 // process it was registered in, i.e. in the same event that kills the monitors. A restart
 // catching the hermit at 'idle' therefore silenced heartbeat and routines until an operator
 // noticed. Idle still suppresses step 4 (the nudge and the pane-frozen restart); that half of
@@ -2972,10 +2972,10 @@ test('idle arc + stale routine-monitor liveness → monitor-rearm, hermit-routin
 // routine's next real fire, so a non-daily anchor (or a fire whose model turn stopped
 // before `finish`) looked "missed" for most of every cycle and re-injected both
 // bootstrap prompts every damper window. Live monitors are the only signal now.
-test('stale heartbeat-restart fired age + live monitors → no re-arm', withHermit(async (h) => {
+test('stale hermitd:heartbeat-restart fired age + live monitors → no re-arm', withHermit(async (h) => {
   writeRoutineMonitorConfig(h);
   fs.writeFileSync(state(h, 'routine-metrics.jsonl'), JSON.stringify({
-    ts: isoAgoSeconds(28), routine_id: 'heartbeat-restart', event: 'fired', delivery: 'cron-create',
+    ts: isoAgoSeconds(28), routine_id: 'hermitd:heartbeat-restart', event: 'fired', delivery: 'cron-create',
   }) + '\n');
   touchAgo(state(h, '.heartbeat'), 1800); // fresh — wedge detection stays out of the way
   writeState(h, 'heartbeat-monitor.runtime.json', { started_at: isoAgo(9) });

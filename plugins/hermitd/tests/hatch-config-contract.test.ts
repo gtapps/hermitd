@@ -80,12 +80,12 @@ describe('hatch-config.ts', () => {
       tmux_session_name: 'hermit-my-project',
       agent_name: 'Aria', language: 'en', timezone: 'Europe/London',
       escalation: 'balanced', operator_profile: 'technical', remote: true, permission_mode: 'auto',
-      boot_skill: '/hermitd-dev:dev-boot',
+      boot_skill: null,
       _hermit_versions: { 'hermitd': CORE_VERSION },
       routines: [
         ...template.routines,
-        { id: 'morning', schedule: '30 8 * * *', skill: 'hermitd:brief --morning', enabled: true },
-        { id: 'evening', schedule: '30 22 * * *', skill: 'hermitd:brief --evening', enabled: true },
+        { id: 'hermitd:morning', schedule: '30 8 * * *', skill: 'hermitd:brief --morning', enabled: true },
+        { id: 'hermitd:evening', schedule: '30 22 * * *', skill: 'hermitd:brief --evening', enabled: true },
       ],
       channels: {
         discord: { enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/discord', allowed_users: ['12345'], morning_brief: { enabled: true, time: '07:00' } },
@@ -123,7 +123,7 @@ describe('hatch-config.ts', () => {
       push_notifications: false,
       _hermit_versions: { 'hermitd': '1.0.0' },
       routines: [
-        { id: 'heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:heartbeat start', enabled: true },
+        { id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:heartbeat start', enabled: true },
         { id: 'reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true },
         { id: 'custom-routine', schedule: '0 5 * * *', skill: 'foo', enabled: true },
       ],
@@ -169,15 +169,15 @@ describe('hatch-config.ts', () => {
     const ids = out.scheduled_checks.map((c: any) => c.id).sort();
     expect(ids).toEqual(['automation-recommender', 'my-custom-check'].sort());
 
-    // routines: custom routine + heartbeat-restart + reflect preserved, morning/evening upserted once
+    // routines: custom routine + hermitd:heartbeat-restart + reflect preserved, morning/evening upserted once
     const routineIds = out.routines.map((r: any) => r.id);
-    expect(routineIds).toEqual(['heartbeat-restart', 'reflect', 'custom-routine', 'morning', 'evening']);
-    const morning = out.routines.find((r: any) => r.id === 'morning');
-    const evening = out.routines.find((r: any) => r.id === 'evening');
+    expect(routineIds).toEqual(['hermitd:heartbeat-restart', 'reflect', 'custom-routine', 'hermitd:morning', 'hermitd:evening']);
+    const morning = out.routines.find((r: any) => r.id === 'hermitd:morning');
+    const evening = out.routines.find((r: any) => r.id === 'hermitd:evening');
     expect(morning.schedule).toBe('0 9 * * *');
     expect(evening.schedule).toBe('0 21 * * *');
 
-    expect(out.boot_skill).toBe('/hermitd-dev:dev-boot');
+    expect(out.boot_skill).toBeNull();
     expect(out.agent_name).toBe('Aria2');
   });
 
@@ -186,9 +186,9 @@ describe('hatch-config.ts', () => {
     const seed = {
       ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')),
       routines: [
-        { id: 'heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:heartbeat start', enabled: true },
-        { id: 'morning', schedule: '30 8 * * *', skill: 'hermitd:brief --morning', enabled: true },
-        { id: 'evening', schedule: '30 22 * * *', skill: 'hermitd:brief --evening', enabled: true },
+        { id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:heartbeat start', enabled: true },
+        { id: 'hermitd:morning', schedule: '30 8 * * *', skill: 'hermitd:brief --morning', enabled: true },
+        { id: 'hermitd:evening', schedule: '30 22 * * *', skill: 'hermitd:brief --evening', enabled: true },
       ],
     };
     seedConfig(dir, seed);
@@ -196,7 +196,7 @@ describe('hatch-config.ts', () => {
     const r = await runHatchConfig(dir, { routines: { enabled: false } }, true);
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
-    expect(out.routines.map((x: any) => x.id)).toEqual(['heartbeat-restart']);
+    expect(out.routines.map((x: any) => x.id)).toEqual(['hermitd:heartbeat-restart']);
   });
 
   test('remote:false overlay applies (hasOwn, not truthiness)', async () => {
@@ -268,7 +268,7 @@ describe('hatch-config.ts', () => {
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
     expect(out._hermit_versions).toEqual({ 'hermitd': CORE_VERSION });
-    expect(out.boot_skill).toBe('/hermitd-dev:dev-boot');
+    expect(out.boot_skill).toBeNull();
   });
 
   test('null channels payload is refused cleanly, not crashed', async () => {
@@ -506,4 +506,23 @@ describe('hatch-config.ts', () => {
     expect(out.channels.discord.settings_policy).toBeUndefined();
   });
 
+});
+
+
+test('re-hatch preserves brief fields, operator ids and the chosen boot skill', async () => {
+  const dir = freshDir();
+  const brief = { id: 'hermitd:morning', schedule: '0 8 * * *', skill: 'hermitd:brief --morning', enabled: true,
+    model: 'haiku', precheck: 'tools/check.sh', chat: 'discord:123', custom: { keep: true } };
+  const operator = { id: 'morning', schedule: '0 7 * * *', skill: 'my-brief', enabled: true };
+  seedConfig(dir, { ...JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8')),
+    boot_skill: '/custom:start', channels: { discord: {} }, routines: [operator, brief] });
+  expect((await runHatchConfig(dir, { activated_hermit: { slug: 'hermitd-example', boot_skill: '/ignored:start' },
+    routines: { enabled: true, morning_time: '09:30' } }, true)).exitCode).toBe(0);
+  let out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
+  expect(out.boot_skill).toBe('/custom:start');
+  expect(out.routines).toEqual([operator, { ...brief, schedule: '30 9 * * *' }]);
+  expect((await runHatchConfig(dir, { routines: { enabled: false } }, true)).exitCode).toBe(0);
+  out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
+  expect(out.routines).toEqual([operator]);
+  expect(out.boot_skill).toBe('/custom:start');
 });

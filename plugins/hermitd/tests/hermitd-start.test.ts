@@ -536,7 +536,7 @@ describe('duplicateSessionRefusal', () => {
   test('never mutates config on any branch', () => {
     const config = {
       always_on: false,
-      routines: [{ id: 'doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor' }],
+      routines: [{ id: 'hermitd:doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor' }],
     };
     writeConfig(config);
     const before = fs.readFileSync('.hermit/config.json', 'utf-8');
@@ -658,8 +658,8 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
 
   test('doctor routine uses explicit maintainer delivery in template and DEFAULT_CONFIG', () => {
     const expected = 'hermitd:hermit-doctor --maintainer';
-    expect(template.routines.find((r: any) => r.id === 'doctor')?.skill).toBe(expected);
-    expect(DEFAULT_CONFIG.routines.find((r: any) => r.id === 'doctor')?.skill).toBe(expected);
+    expect(template.routines.find((r: any) => r.id === 'hermitd:doctor')?.skill).toBe(expected);
+    expect(DEFAULT_CONFIG.routines.find((r: any) => r.id === 'hermitd:doctor')?.skill).toBe(expected);
   });
 
   test('compact.min_context_tokens value parity: template and DEFAULT_CONFIG carry the same default', () => {
@@ -1946,13 +1946,13 @@ describe('negative paths', () => {
 
 describe('applyAlwaysOnDoctorSchedule', () => {
   test('old (pre-clustering) weekly default ratchets to the new clustered daily', () => {
-    const config = { routines: [{ id: 'doctor', schedule: '0 10 * * 1', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '0 10 * * 1', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('10 9 * * *');
   });
 
   test('current (clustered) weekly default ratchets to daily', () => {
-    const config = { routines: [{ id: 'doctor', schedule: '10 9 * * 1', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '10 9 * * 1', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('10 9 * * *');
   });
@@ -1964,26 +1964,26 @@ describe('applyAlwaysOnDoctorSchedule', () => {
     // the primary migration path is the hermit-evolve Upgrade Instructions
     // (exact-match config.json rewrite); this ratchet is the deterministic
     // backstop for installs that skip that step.
-    const config = { routines: [{ id: 'doctor', schedule: '0 10 * * *', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '0 10 * * *', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('10 9 * * *');
   });
 
   test('custom schedule is left untouched', () => {
-    const config = { routines: [{ id: 'doctor', schedule: '30 6 * * 3', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '30 6 * * 3', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('30 6 * * 3');
   });
 
   test('idempotent — running twice keeps daily', () => {
-    const config = { routines: [{ id: 'doctor', schedule: '0 10 * * 1', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '0 10 * * 1', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('10 9 * * *');
   });
 
   test('already at the new clustered daily schedule — idempotent no-op', () => {
-    const config = { routines: [{ id: 'doctor', schedule: '10 9 * * *', enabled: true }] };
+    const config = { routines: [{ id: 'hermitd:doctor', schedule: '10 9 * * *', enabled: true }] };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0].schedule).toBe('10 9 * * *');
   });
@@ -1991,7 +1991,7 @@ describe('applyAlwaysOnDoctorSchedule', () => {
   test('legacy default skill ratchets to explicit maintainer delivery', () => {
     const config = {
       routines: [{
-        id: 'doctor',
+        id: 'hermitd:doctor',
         schedule: '10 9 * * *',
         skill: 'hermitd:hermit-doctor',
         model: 'haiku',
@@ -2000,7 +2000,7 @@ describe('applyAlwaysOnDoctorSchedule', () => {
     };
     applyAlwaysOnDoctorSchedule(config);
     expect(config.routines[0]).toEqual({
-      id: 'doctor',
+      id: 'hermitd:doctor',
       schedule: '10 9 * * *',
       skill: 'hermitd:hermit-doctor --maintainer',
       model: 'haiku',
@@ -2011,7 +2011,7 @@ describe('applyAlwaysOnDoctorSchedule', () => {
   test('maintainer skill ratchet is idempotent', () => {
     const config = {
       routines: [{
-        id: 'doctor',
+        id: 'hermitd:doctor',
         schedule: '10 9 * * *',
         skill: 'hermitd:hermit-doctor --maintainer',
         enabled: true,
@@ -2025,7 +2025,7 @@ describe('applyAlwaysOnDoctorSchedule', () => {
   test('custom doctor skill arguments are left untouched', () => {
     const config = {
       routines: [{
-        id: 'doctor',
+        id: 'hermitd:doctor',
         schedule: '10 9 * * *',
         skill: 'hermitd:hermit-doctor --custom',
         enabled: true,

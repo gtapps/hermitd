@@ -3847,7 +3847,7 @@ describe('routines.ts log-event', () => {
       fs
         .readFileSync(metrics(), 'utf-8')
         .split('\n')
-        .filter((l) => l.includes('"routine_id":"heartbeat-restart","event":"fired"')).length;
+        .filter((l) => l.includes('"routine_id":"hermitd:heartbeat-restart","event":"fired"')).length;
 
     beforeAll(() => {
       wd = setupWorkdir();
@@ -3855,16 +3855,16 @@ describe('routines.ts log-event', () => {
     afterAll(() => wd.cleanup());
 
     test.serial('suppresses a fired that immediately follows another fired', async () => {
-      await runScript('routines.ts', { args: ['log-event', 'heartbeat-restart', 'started'], cwd: wd.dir });
-      await runScript('routines.ts', { args: ['log-event', 'heartbeat-restart', 'fired'], cwd: wd.dir });
-      await runScript('routines.ts', { args: ['log-event', 'heartbeat-restart', 'fired'], cwd: wd.dir });
+      await runScript('routines.ts', { args: ['log-event', 'hermitd:heartbeat-restart', 'started'], cwd: wd.dir });
+      await runScript('routines.ts', { args: ['log-event', 'hermitd:heartbeat-restart', 'fired'], cwd: wd.dir });
+      await runScript('routines.ts', { args: ['log-event', 'hermitd:heartbeat-restart', 'fired'], cwd: wd.dir });
       expect(firedCount()).toBe(1);
     });
 
     test.serial('allows the next legitimate started→fired cycle', async () => {
       const before = firedCount();
-      await runScript('routines.ts', { args: ['log-event', 'heartbeat-restart', 'started'], cwd: wd.dir });
-      await runScript('routines.ts', { args: ['log-event', 'heartbeat-restart', 'fired'], cwd: wd.dir });
+      await runScript('routines.ts', { args: ['log-event', 'hermitd:heartbeat-restart', 'started'], cwd: wd.dir });
+      await runScript('routines.ts', { args: ['log-event', 'hermitd:heartbeat-restart', 'fired'], cwd: wd.dir });
       expect(firedCount()).toBe(before + 1);
     });
   });
@@ -4440,13 +4440,22 @@ describe('cost-tracker classifySource / resolveTurnSource', () => {
     }
   }
 
+  test('cost-tracker: namespaced routine markers retain the full id', () => {
+    for (const event of ['ROUTINE_DUE [hermit-routine:a:b]', '[hermit-routine:a:b] Run: /example']) {
+      expect(classifySource(event)).toBe('routine:a:b');
+      expect(classifySource(envelope(event))).toBe('routine:a:b');
+    }
+    expect(classifySource('ROUTINE_DUE [hermit-routine:a:b] [hermit-routine:a:c]')).toBe('routine:multi');
+    expect(classifySource('ROUTINE_DUE [hermit-routine:a:b] [hermit-routine:a:b]')).toBe('routine:a:b');
+  });
+
   // classifySource: routine marker — CronCreate delivers it as the prompt's first line
   test('cost-tracker: classifySource([hermit-routine:daily]) = routine:daily', () => {
     expect(classifySource('[hermit-routine:daily]')).toBe('routine:daily');
   });
   test('cost-tracker: classifySource(CronCreate prompt) = routine:<id>', () => {
-    expect(classifySource('[hermit-routine:heartbeat-restart]\nRun: bun /p/scripts/routines.ts arm anchor'))
-      .toBe('routine:heartbeat-restart');
+    expect(classifySource('[hermit-routine:hermitd:heartbeat-restart]\nRun: bun /p/scripts/routines.ts arm anchor'))
+      .toBe('routine:hermitd:heartbeat-restart');
   });
   test('cost-tracker: classifySource([hermit-routine:x] mid-prose) = other', () => {
     expect(classifySource('text [hermit-routine:cortex-refresh] more text')).toBe('other');
@@ -4471,7 +4480,7 @@ describe('cost-tracker classifySource / resolveTurnSource', () => {
     expect(classifySource('ROUTINE_DUE [hermit-routine:daily-brief] fired')).toBe('routine:daily-brief');
   });
   // Anchoring guard: a heartbeat turn whose tool output surfaces multiple [hermit-routine:*]
-  // markers (heartbeat-restart's re-arm CronDelete output) is not a delivered sentinel line
+  // markers (hermitd:heartbeat-restart's re-arm CronDelete output) is not a delivered sentinel line
   // at all — neither heartbeat nor routine:multi.
   test('cost-tracker: classifySource(heartbeat + stray routine markers, no ROUTINE_DUE) = other', () => {
     expect(classifySource('HEARTBEAT_EVALUATE — CronDelete [hermit-routine:reflect] [hermit-routine:doctor]')).toBe('other');
@@ -4625,8 +4634,8 @@ describe('cost-tracker classifySource / resolveTurnSource', () => {
   });
 
   // THE INCIDENT: a routine id appearing in this turn's own TOOL OUTPUT must not capture
-  // the turn. heartbeat-restart's re-arm lists crons, so its CronDelete/CronList output
-  // names concrete routine ids — that is how $3-7 heartbeat-restart turns were billed to
+  // the turn. hermitd:heartbeat-restart's re-arm lists crons, so its CronDelete/CronList output
+  // names concrete routine ids — that is how $3-7 hermitd:heartbeat-restart turns were billed to
   // routine:doctor on the live fleet. Classification reads the delivered prompt only.
   test('cost-tracker: routine id in a tool_result does not capture the turn', () => {
     const lines = [

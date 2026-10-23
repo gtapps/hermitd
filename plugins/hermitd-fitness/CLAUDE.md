@@ -21,7 +21,7 @@ A fitness/training domain layer for `hermitd`: skills, a Strava data subagent, S
 The `weekly-coaching-patterns` routine invokes `reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns`. Hatch installs its pre-wake gate from `state-templates/bin/fitness-weekly-patterns-gate`.
 
 - Routines invoke domain skills directly through `config.json.routines[].skill`; keep the registered skill names and arguments aligned with `skills/`.
-- Routine entries use the no-leading-slash form `"hermitd-fitness:<skill>"`; `boot_skill` in `hermit-meta.json` uses the leading-slash form. This plugin ships no `boot_skill`.
+- Routine entries use the no-leading-slash form `"hermitd-fitness:<skill>"`. Startup skill selection belongs to the operator; this plugin never declares or sets it.
 - `raw/` holds ephemeral Strava pulls (aged out by `knowledge.raw_retention_days`), `compiled/` durable outputs (weekly plans and summaries, activity notes; injected at session start within `compiled_budget_chars`), `state/` machine files. Both `raw/` and `compiled/` are flat, per core's storage contract. Owners, shapes, and retention of `strava-last-activity-id.txt`, `strava-weekly-baselines.json`, `activity-notes.json` (durable, keyed by Strava activity ID), and `strava-pending-rpe.json` (written by the evening brief only after a confirmed channel send; consumed once by `capture-activity-rpe` within 24h) are in `docs/knowledge-schema.md`.
 - `MEMORY.md` (auto-memory) carries the athlete profile, training preferences, and notes.
 

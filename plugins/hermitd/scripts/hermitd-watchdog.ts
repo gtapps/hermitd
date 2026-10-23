@@ -1281,7 +1281,7 @@ function heartbeatMonitorStale(config: Json, world: World = REAL_WORLD): string 
 /** Recoverable routineHealth reason, or null; fallback retains its own boot gate. */
 function routineMonitorStale(config: Json, world: World = REAL_WORLD): string | null {
   const routines = Array.isArray(config?.routines) ? config.routines : [];
-  const anyEnabled = routines.some((r: Json) => r && r.enabled === true && r.id !== 'heartbeat-restart');
+  const anyEnabled = routines.some((r: Json) => r && r.enabled === true && r.id !== 'hermitd:heartbeat-restart');
   if (!anyEnabled) return null;
   const monRt = world.files.readJson(path.join(world.paths.stateDir, 'routine-monitor.runtime.json'));
   if (!monRt) return null; // not loaded — resident-start's job, not the watchdog's

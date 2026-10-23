@@ -136,10 +136,10 @@ Re-read `.hermit/config.json` now — the wizard has been running since Step 1 a
 
 **Merge the failed-deployment routine**
 
-Merge these entries into `config.routines` by id. Create the array if absent. Append each missing id; skip any existing id, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
 
 ```json
-{"id": "forge-failed-deploys", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys", "enabled": true}
+{"id": "hermitd-laravel-forge:forge-failed-deploys", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys", "enabled": true}
 ```
 
 Each routine owns its cadence and passes findings through reflection gates into the proposal pipeline.

@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- House briefs cover HA state, history, energy and updates, independently of core's work briefs.
+- Hatch matches routines by full skill string and gives new rows `hermitd-homeassistant:` ids without disabling core routines.
+- The minimum core requirement is `1.4.21`, the pending core release containing routine-id migrations.
+
+### Removed
+- `ha-boot` and sibling startup-skill registration. Use `/hermitd-homeassistant:ha-house-status` for live house state or `/hermitd-homeassistant:ha-refresh-context` for snapshots; scheduled context and integration-health routines keep them fresh daily.
+
+### Upgrade Instructions
+1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-homeassistant --ids daily-ha-context,morning-brief,evening-brief,ha-patterns,ha-safety-audit,ha-integration-health,ha-update-check` and report the receipt. If `conflicts` is non-empty, defer them together per `/hermitd:hermit-evolve` Step 10 with options "Keep it with the plugin" / "Make it yours", no `on_resolve`. Explain that any project skill or command copy is unused by that routine, which invokes the plugin skill, or that the target id is taken. In attended Step 10, resolve the reported conflict with the operator and rerun for "Keep it with the plugin"; for "Make it yours", keep a bare operator id and point the routine at the chosen project skill or command. Never rename through `set routines`.
+2. Read the array with `.hermit/bin/hermitd-run settings-edit .hermit/config.json get routines`. For each enabled row whose skill is exactly `hermitd-homeassistant:ha-morning-brief` or `hermitd-homeassistant:ha-evening-brief`, find the core row running `hermitd:brief --morning` or `hermitd:brief --evening` for the same slot. If that core row is disabled, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set routines.<index>.enabled true`, substituting its current array index. Report each re-enabled core brief and explain that house and work briefs now arrive separately. Leave other rows unchanged.
+3. Core's upgrade clears a sibling `boot_skill` before this skill is removed. Scan project `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `CLAUDE.md`, `.hermit/OPERATOR.md`, `.hermit/HEARTBEAT.md`, routine skill/precheck and monitor command strings in `.hermit/config.json`, hook commands in `.claude/settings.json` and `.claude/settings.local.json`, and `.hermit/dashboard-render.ts` for invocations of `ha-boot`. Include bundled scripts; skip worktrees, nested repositories, backups and plugin directories. Skip silently when no real hits exist. Otherwise list file and line in one deferred Step 10 with options "Fix them" / "Leave them", no `on_resolve`. "Fix them" replaces each invocation with house status or context refresh according to its purpose, preserving unrelated operator text; "Leave them" changes nothing and explains those calls now name a removed skill. Do not edit consumer files during unattended evolve.
+
 ## [0.4.26] - 2026-10-22
 
 ### Changed

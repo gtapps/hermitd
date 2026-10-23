@@ -24,7 +24,7 @@
 // no catch-up (operator-confirmed). The precheck is the routine's declared world-state
 // gate (lib/routines/gate.ts); it never changes what is emitted, only whether.
 //
-// heartbeat-restart is hardcoded excluded — it stays the CronCreate re-arm anchor.
+// hermitd:heartbeat-restart is hardcoded excluded — it stays the CronCreate re-arm anchor.
 //
 // Exit 0 always. All errors fail-soft: emit nothing, still write liveness, stderr only —
 // a corrupt config must not print an error line every poll.
@@ -44,7 +44,7 @@ import { operatorTurnOpen } from '../operator-turn';
 
 type Json = any;
 
-const ANCHOR_ID = 'heartbeat-restart';
+const ANCHOR_ID = 'hermitd:heartbeat-restart';
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 
@@ -137,9 +137,9 @@ const dueIds: string[] = [];
 // must not leave a skipped-* row whose cursor advance was rolled back (phantom ledger rows).
 const pendingStamps: Array<[string, string, string?]> = [];
 
-// Read once per poll; only later-check consumes ledger marks. A due with seconds rounds up:
+// Read once per poll; only hermitd:later-check consumes ledger marks. A due with seconds rounds up:
 // the `later` gate and run compare the exact due, so an earlier poll in that minute would SKIP and consume it.
-const laterMarks = eligible.some(r => r.id === 'later-check')
+const laterMarks = eligible.some(r => r.id === 'hermitd:later-check')
   ? readRows(path.join(stateDir, 'hypotheses.jsonl'))
     .filter(row => row?.state === 'pending' && (row.kind === 'reminder' || row.origin === 'operator'))
     .map(row => Math.ceil(new Date(row.due).getTime() / MINUTE_MS) * MINUTE_MS)
@@ -170,7 +170,7 @@ for (const routine of eligible) {
   const from = cursor.getTime() < windowFloor.getTime() ? windowFloor : cursor;
 
   let latestMatch: Date | null = latestFires(routine.schedule, timezone, from, nowMinute, 1)[0] ?? null;
-  if (id === 'later-check') {
+  if (id === 'hermitd:later-check') {
     for (const mark of laterMarks) {
       if (mark > from.getTime() && mark <= nowMinute.getTime() && (!latestMatch || mark > latestMatch.getTime())) {
         latestMatch = new Date(mark);

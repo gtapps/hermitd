@@ -34,9 +34,10 @@ import { SETTINGS, READ_ONLY, byArg, type Setting } from './lib/settings/registr
 import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
 import { persistConfig } from './lib/config-write';
-import { validate } from './validate-config';
+import { validate, ROUTINE_ID_RE } from './validate-config';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
+import { parseFrontmatter } from './lib/frontmatter';
 
 type Json = any;
 
@@ -52,7 +53,78 @@ export const HERMITD_IDS: Record<string, string> = {
 
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
-const migrations: Record<string, (config: Json) => void> = {
+type Report = Record<string, unknown>;
+type MigrationContext = { args: string[]; projectRoot: string };
+const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report | void> = {
+  'plugin-routine-ids': (config, ctx) => {
+    const plugin = flagValue(ctx.args, '--plugin');
+    const ids = flagValue(ctx.args, '--ids')?.split(',');
+    if (ctx.args.length !== 4 || ctx.args[0] !== '--plugin' || ctx.args[2] !== '--ids'
+      || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin) || !ids
+      || ids.some(id => !ROUTINE_ID_RE.test(id) || id.includes(':'))) {
+      throw new Error('expected --plugin <id> --ids <csv>');
+    }
+    const seeded = new Set(ids);
+    const routines = Array.isArray(config.routines) ? config.routines : [];
+    const taken = new Set(routines.map((r: Json) => r?.id));
+    const projectSkills = new Map<string, string[]>();
+    const skillsDir = path.join(ctx.projectRoot, '.claude', 'skills');
+    if (fs.existsSync(skillsDir)) {
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        const dir = path.join(skillsDir, entry.name);
+        if (!fs.statSync(dir).isDirectory()) continue;
+        const names = new Set([entry.name]);
+        const file = path.join(dir, 'SKILL.md');
+        if (fs.existsSync(file)) {
+          const name = parseFrontmatter(fs.readFileSync(file, 'utf8'))?.name;
+          if (typeof name === 'string') names.add(name);
+        }
+        for (const name of names) projectSkills.set(name, [...(projectSkills.get(name) ?? []), dir]);
+      }
+    }
+    const renamed: Array<{ from: string; to: string }> = [];
+    const conflicts: Array<{ id: string; target: string; skill: string; reason: string; paths?: string[] }> = [];
+    for (const routine of routines) {
+      if (!seeded.has(routine?.id) || typeof routine?.skill !== 'string') continue;
+      const tokens = routine.skill.trim().split(/\s+/);
+      let invoked = tokens[0].replace(/^\//, '');
+      if (invoked === 'hermitd:reflect') {
+        const check = flagValue(tokens.slice(1), '--check');
+        if (check) invoked = check.replace(/^\//, '');
+      }
+      const prefix = `${plugin}:`;
+      if (!invoked.startsWith(prefix) || !invoked.slice(prefix.length)) continue;
+      const name = invoked.slice(prefix.length);
+      const target = `${plugin}:${routine.id}`;
+      const paths = [...(projectSkills.get(name) ?? [])];
+      // Only skill names can become paths, never an arbitrary skill argument.
+      if (/^[A-Za-z0-9_-]+$/.test(name)) {
+        const command = path.join(ctx.projectRoot, '.claude', 'commands', `${name}.md`);
+        if (fs.existsSync(command)) paths.push(command);
+      }
+      if (paths.length) {
+        conflicts.push({ id: routine.id, target, skill: invoked, reason: 'project_copy', paths });
+        continue;
+      }
+      if (taken.has(target)) {
+        conflicts.push({ id: routine.id, target, skill: invoked, reason: 'target_taken' });
+        continue;
+      }
+      if (!ROUTINE_ID_RE.test(target)) throw new Error(`invalid_target_id:${target}`);
+      renamed.push({ from: routine.id, to: target });
+      taken.add(target);
+      routine.id = target;
+    }
+    return { ...(renamed.length ? { renamed } : {}), ...(conflicts.length ? { conflicts } : {}) };
+  },
+  'clear-sibling-boot-skill': (config) => {
+    const match = typeof config.boot_skill === 'string' && config.boot_skill.match(/^\/([^:\s]+):[^\s]+$/);
+    if (match && match[1].includes('hermit') && match[1] !== 'hermitd') {
+      const cleared = config.boot_skill;
+      delete config.boot_skill;
+      return { cleared };
+    }
+  },
   'channel-home': (config) => {
     for (const [name, channel] of Object.entries(config.channels ?? {}) as [string, Json][]) {
       if (name === 'primary' || !channel || typeof channel !== 'object') continue;
@@ -462,13 +534,16 @@ if (import.meta.main) {
   switch (op) {
     case 'migrate': {
       const migration = migrations[rest[0]];
-      if (!migration || rest.length !== 1) exitError('unsupported_migration');
+      if (!migration) exitError('unsupported_migration');
+      let report: Report | void;
       try {
-        migration(config);
+        report = migration(config, { args: rest.slice(1), projectRoot: path.dirname(stateDir) });
       } catch (err) {
         exitError(`migration_conflict:${(err as Error).message}`);
       }
-      done(JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : []);
+      const warnings = JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : [];
+      if (report && Object.keys(report).length) emitJson({ ...report, ...(warnings.length ? { warnings } : {}) });
+      done(warnings);
       break;
     }
 

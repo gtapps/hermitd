@@ -40,7 +40,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings env              — view/edit environment variables
 /hermitd:hermit-settings docker           — view Docker packages (read-only); edit recommended plugins
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
-/hermitd:hermit-settings boot-skill       — view/clear/change the always-on boot skill
+/hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
 /hermitd:hermit-settings reflection       — tune graduation threshold (graduation_min_sessions)
 /hermitd:hermit-settings push-notifications — toggle PushNotification doorbell (fires when no channel is enabled or a configured channel is unreachable)
@@ -100,7 +100,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `remote` | `remote` | boolean | yes / no; connect from claude.ai/code or phone | next hermitd-start |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
-| `boot-skill` | `boot_skill` | string, nullable | any; namespaced skill run at always-on launch, or 'none' for /hermitd:resident-start | next hermitd-start |
+| `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |
 | `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start |
 | `push-notifications` | `push_notifications` | boolean | yes / no; doorbell when no channel is reachable | immediately |
 | `reflection` | `reflection.graduation_min_sessions` | integer | any; distinct sessions before a pattern becomes a proposal candidate | next reflect run |

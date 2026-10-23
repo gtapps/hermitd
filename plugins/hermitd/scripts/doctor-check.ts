@@ -1367,7 +1367,7 @@ function checkRoutineMonitor(p: DoctorPaths = PATHS) {
     const config = read.config;
 
     const nonAnchorEnabled = (Array.isArray(config.routines) ? config.routines : [])
-      .some((r: Json) => r && r.enabled === true && r.id !== 'heartbeat-restart');
+      .some((r: Json) => r && r.enabled === true && r.id !== 'hermitd:heartbeat-restart');
     if (!nonAnchorEnabled) {
       return { id: 'routine-monitor', status: 'ok', detail: 'routine-monitor: no monitor-scheduled routines' };
     }
@@ -1451,7 +1451,7 @@ function checkRoutinePrecheck(p: DoctorPaths = PATHS) {
     const config = read.config;
 
     const gated = (Array.isArray(config.routines) ? config.routines : [])
-      .filter((r: Json) => r && r.enabled === true && r.precheck != null && r.id !== 'heartbeat-restart');
+      .filter((r: Json) => r && r.enabled === true && r.precheck != null && r.id !== 'hermitd:heartbeat-restart');
     if (gated.length === 0) {
       return { id: 'routine-precheck', status: 'ok', detail: 'routine-precheck: no gated routines' };
     }

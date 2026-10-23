@@ -114,13 +114,13 @@ export function confirmData(answers: Json): Json {
     will.escalation = t.escalation;
     will.remote = !!t.remote;
   }
-  // heartbeat-restart is plumbing, not something the operator would recognize as
+  // hermitd:heartbeat-restart is plumbing, not something the operator would recognize as
   // "a routine that wakes the agent".
   will.routines = {
     briefs: answers.routines?.enabled === false ? null
       : { morning: answers.routines?.morning_time ?? '08:30', evening: answers.routines?.evening_time ?? '22:30' },
     others: (t.routines ?? [])
-      .filter((r: Json) => r.enabled !== false && r.id !== 'heartbeat-restart')
+      .filter((r: Json) => r.enabled !== false && r.id !== 'hermitd:heartbeat-restart')
       .map((r: Json) => r.id),
     heartbeat: t.heartbeat
       ? { enabled: !!t.heartbeat.enabled, every: t.heartbeat.every ?? null, active_hours: t.heartbeat.active_hours ?? null }

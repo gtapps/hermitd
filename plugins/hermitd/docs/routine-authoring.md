@@ -1,5 +1,7 @@
 # Routine Authoring
 
+Plugin-added routines use `<plugin>:<name>` ids; bare ids belong to the operator. Hatches match existing routines by the full skill string, including arguments, and assign namespaced ids only to new rows.
+
 How to convert a costly, broad-context routine into a purpose-built scoped skill — sometimes
 called a "**-light skill**" (e.g. `inbox-check-light`) — the pattern that separates a cheap
 always-on routine from an expensive one.

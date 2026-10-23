@@ -47,7 +47,7 @@ An installed hermit belongs to its operator; they rewrite it and the plugin keep
 
 **Contracts (plugin owns, stay strict).** State-file schemas, hook exit codes and fail-open, the `hermitd-run` → `hermitd-exec.sh` verb path, hatch target stamping, deny patterns, the token/script-mediation boundary. Customization works because these are rigid. `hermitd-exec.sh` resolves a bare name to `$PLUGIN_ROOT/scripts/<name>.ts` or `<name>.sh` only, rejecting `*/*` and `*..*`, so a permission glob spanning `/` cannot drive it outside `scripts/`; that guard is load-bearing for the allow-list. There is deliberately no local-verb fallback: `bin/hermitd-run` is a resolver, not an operator-extensible table, and it is a state-template copy that `hermit-evolve` refreshes.
 
-**Core depends on nothing downstream.** Sibling discovery is generic (`resolve-siblings.ts` matches name-contains-`hermit`) and core consumes only what a sibling declares in its `hermit-meta.json` (`hermit.boot_skill`). Naming a plugin as an example in a comment, doc, or `docker.recommended_plugins` entry is fine; conditioning behavior on it is not.
+**Core depends on nothing downstream.** Sibling discovery is generic (`resolve-siblings.ts` matches name-contains-`hermit`) and core consumes generic metadata from each sibling's `hermit-meta.json`. Startup skill selection belongs to the operator; siblings never declare or set it. Naming a plugin as an example in a comment, doc, or `docker.recommended_plugins` entry is fine; conditioning behavior on it is not.
 
 **Content (operator owns, stay loose).** Extension is declarative:
 

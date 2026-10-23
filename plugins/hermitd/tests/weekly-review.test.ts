@@ -367,3 +367,18 @@ describe('weekly-review.ts — Usage section', () => {
     expect(events.some(e => e.name === 'x:bar')).toBe(true);
   }));
 });
+
+
+test('reflect cost matches configured reflect routine ids exactly', withHermitDir(async dir => {
+  writeConfig(dir, { routines: [
+    { id: 'hermitd:reflect', skill: 'hermitd:reflect', schedule: '0 9 * * *', enabled: true },
+    { id: 'operator-check', skill: 'hermitd:reflect --check-id custom --check example:audit', schedule: '0 9 * * *', enabled: true },
+  ] });
+  const log = costLogPath(dir);
+  fs.mkdirSync(path.dirname(log), { recursive: true });
+  fs.writeFileSync(log, ['hermitd:reflect', 'operator-check', 'reflect-unrelated', 'hermitd:reflect-extra'].map((id, i) =>
+    JSON.stringify({ timestamp: new Date().toISOString(), source: `routine:${id}`, estimated_cost_usd: i < 2 ? 1 : 100 }),
+  ).join('\n') + '\n');
+  expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
+  expect(readReview(dir).fm.reflect_cost_usd).toBe('2.00');
+}));
