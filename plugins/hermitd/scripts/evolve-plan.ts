@@ -22,6 +22,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { consumerScan, parseSubjects } from './lib/evolve-consumer-scan';
+import { emitJson, exitError, readStdin } from './lib/cli';
+
 import { sha256 } from './lib/hash';
 import { cmpSemver } from './lib/semver';
 import { newConfigKeys, isPlainObject } from './lib/evolve-config';
@@ -686,6 +689,11 @@ export type { ClassifiedFile, FileClass };
 
 if (import.meta.main) {
   const { hermitDir, pluginListJsonPath } = parseArgs(process.argv.slice(2));
+  if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'consumer-scan') {
+    let subjects;
+    try { subjects = parseSubjects(await readStdin()); } catch { exitError('bad_subjects'); }
+    emitJson(consumerScan(hermitDir, subjects));
+  }
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;
   try {

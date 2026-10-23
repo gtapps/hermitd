@@ -4,7 +4,7 @@
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
   - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --reply "<token>"`, using this chat's normalized key; pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match. Follow its `status`:
-    - `match`: use the returned `id`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
+    - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
     - `none`, reason `no_pending`: fall through to general classification. Reason `no_match`: ask for clarification once; do not resolve.
     - On a script error, report it and do not resolve or hand-edit the queue.
@@ -16,7 +16,7 @@
     - **No `on_resolve`, "yes" on tier 1** → execute the change at next idle, record the outcome with `task.ts note` when a record is open, then:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action approved`.
     - **No `on_resolve`, "yes" on tier 2** → create PROP-NNN via `/hermitd:proposal-create`, queue for next idle, then run the same `resolve <id> --action approved` call.
-    - **No `on_resolve`, an option label** (a deferred upgrade step) → apply that option as the question describes, in this turn, behind normal permission prompts. Apply `config.json` changes through settings-edit verbs, and never write `.claude/settings*.json` from a channel session. Once it is applied, run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`. If a prompt is denied or the apply fails, leave the entry pending and tell the operator the question is still open and why.
+    - **No `on_resolve`, an option label** (a deferred upgrade step) → apply that option as the returned `question` describes, in this turn, behind normal permission prompts. For a consumer-scan question, follow the `hermit-evolve` reference § 7b Fix procedure. Apply `config.json` changes through settings-edit verbs, and never write `.claude/settings*.json` from a channel session. Once it is applied, run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`. If a prompt is denied or the apply fails, leave the entry pending and tell the operator the question is still open and why.
     - **No `on_resolve`, "no"** → run:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action rejected`.
   - If no pending micro-proposals: classify as normal message (fall through to categories below).

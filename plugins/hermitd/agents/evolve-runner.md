@@ -22,6 +22,7 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 
 ## Commands
 - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
+- `consumer-scan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit consumer-scan`
 - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
 - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
 - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
@@ -63,7 +64,7 @@ never block:
   is a rule, not a judgment call, and the parked patch is where they stay. `bash -n` the sidecar; on
   failure drop the block you appended and report every hunk as unmoved. Never overwrite an existing
   sidecar.
-- **`### Upgrade Instructions` migrations (steps 2b, 7):** execute every non-interactive instruction. If a
+- **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Consumer scan:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
   step poses a genuine either/or with **no safe non-destructive default**, do **not** guess — record it
   as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
   A deferred step's channel-resolution stanza (`options`/`on_resolve`, if the instruction carries one)
@@ -110,6 +111,7 @@ Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
 Audit scope: <whole_run | version_only>
 Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
+Findings: <none | one line per subject: subject -> replacement, N hits, file:line examples, shared marker>
 Deferred for operator: <none | one or more verbatim blocks, each:>
   --- deferred-migration ---
   source: <plugin>@<version>
@@ -127,4 +129,4 @@ check runs in Step 1, **before** the `work_pending` rule below ever applies.
 Never report that state as `already up to date`. If `plan.work_pending` is `false` (core current AND
 no sibling gap or unresolved sibling work), return `Upgrade: already up to date` alone.
 When core is current but `work_pending` is `true` (sibling-only work), use `Upgrade: core current v<to>`
-and still process Steps 3, 4, 7, 8, 9.
+and still process Steps 3, 4, 7, 7b, 8, 9.

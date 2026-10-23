@@ -322,7 +322,7 @@ function matchReply(stateDir: string, args: string[]): never {
       answer = matches[0];
     }
   }
-  emitJson({ status: 'match', id: entry.id, answer, tier: entry.tier, on_resolve: entry.on_resolve ?? null });
+  emitJson({ status: 'match', id: entry.id, question: entry.question, answer, tier: entry.tier, on_resolve: entry.on_resolve ?? null });
 }
 
 // One-time upgrade step: entries queued before `chat` existed were asked in the home chat.

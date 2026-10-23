@@ -78,7 +78,7 @@ The shared precheck consults the binding pause flag.
 **Formatting-only read.** When a routine needs to send a channel message and the formatting rules are not already in its context, use `Read` once with these arguments. Do not search for the heading, read the whole file, or invoke the responder for formatting:
 
 ```json
-{"file_path":"${CLAUDE_PLUGIN_ROOT}/skills/channel-responder/SKILL.md","offset":29,"limit":9}
+{"file_path":"${CLAUDE_PLUGIN_ROOT}/skills/channel-responder/SKILL.md","offset":30,"limit":9}
 ```
 
 In the templates below, replace `<formatting-read>` with this `Read` call and its resolved plugin path. Include the arguments in the dispatched agent's prompt too; the agent must not need to look up the read instructions. Skip it when no channel send is needed or the rules are already in that caller's context.
