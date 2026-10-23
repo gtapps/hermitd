@@ -256,11 +256,13 @@ Collect the declarations from Steps 2b and 7 into one batch. Infer subjects as `
 
 Pass `{"subjects":[...]}` on stdin to `consumer-scan` (Commands). This read-only command enumerates candidate references once. Judge whether each candidate actually invokes the subject and depends on the declared change: prose and references already in the new form are not hits. Open `context_filtered` example lines when they could be real references; use its counts to check remaining filtered lines in the scoped files when needed. Search further only when a declaration calls for it. A `truncated` result means the scan is incomplete: report that, never report none. Do not edit any files in this step. With no real hits, say nothing.
 
-For real hits, write one `Findings:` line per subject with replacement(s), hit count, file:line examples and a shared marker for tracked files. Record exactly one deferred-migration block for the whole batch: `source: consumer-scan`, the live declarations verbatim as its steps, options `Fix them` / `Leave them`, no `on_resolve`, and `skipped: Leave them`. If any live declaration renames routine ids, collect one Operator note for the whole run: run history stays under the old ids, so a gated routine may run once early.
+For real hits, write one `Findings:` line per subject with replacement(s), hit count, file:line examples and a shared marker for tracked files. Record exactly one deferred-migration block for the whole batch: `source: consumer-scan`, the live declarations verbatim as its steps, options `Fix them` / `Leave them`, no `on_resolve`, and `skipped: Leave them`.
+
+Whether or not there are hits, if any live declaration renames routine ids, collect one Operator note for the whole run: run history stays under the old ids, so a gated routine may run once early.
 
 **Fix procedure** (interactive Step 10 and chat answers): re-run the scanner with the same subjects and re-find each reference by matched text rather than stale line numbers. Skip references already gone and report those already fixed. Update the working tree only, never commit. Leave ambiguous references with multiple live replacements for the operator.
 
-- Read `.hermit/config.json` hits with `settings-get` (Commands), then change their dotted paths with `settings-set` (Commands), preserving unrelated values and the settings ledger.
+- Read `.hermit/config.json` hits with `.hermit/bin/hermitd-run settings-edit .hermit/config.json get <dotted.path>`, then change them with `.hermit/bin/hermitd-run settings-edit .hermit/config.json set <dotted.path> <json-value>`, preserving unrelated values and the settings ledger.
 - In a channel session, list `.claude/settings*.json` hits for manual fixing in an interactive session. Interactively, apply them behind the native permission prompt.
 - If auto mode blocks an edit to `.claude/skills`, `.claude/commands` or `.claude/agents`, apply the rest, then ask once in plain words for explicit go-ahead, naming every file and old-to-new change. Retry once only after the explicit reply.
 - Report changed files, marking shared (tracked) files, and say that changes are uncommitted.

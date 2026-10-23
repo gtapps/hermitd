@@ -8,7 +8,7 @@
 //   proposal.ts micro <hermit-state-dir> match [<MP-id>] [--chat <sourceKey>:<chat_id>] --reply <token>
 //   proposal.ts micro <hermit-state-dir> stamp-chat
 // Output (stdout, one JSON line):
-//   match: {"status":"match","id","answer","tier","on_resolve":<string|null>}
+//   match: {"status":"match","id","question","answer","tier","on_resolve":<string|null>}
 //          With --chat, only entries asked in that chat are visible; without it
 //          (a terminal turn), every pending entry is.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}

@@ -16,7 +16,7 @@
 
 **Consumer scan:** The operator's own files may still invoke the removed skill `ha-boot`. Find those invocations, ask once before changing anything, and replace each with `/hermitd-homeassistant:ha-house-status` for live state or `/hermitd-homeassistant:ha-refresh-context` for snapshots.
 
-**Consumer scan:** The operator's own files may still refer to the routine ids step 1 lists, which it renamed to `hermitd-homeassistant:<id>`. Find those references, ask once before changing anything, and update each to the new id.
+**Consumer scan:** The operator's own files may still refer to the routine ids `daily-ha-context`, `morning-brief`, `evening-brief`, `ha-patterns`, `ha-safety-audit`, `ha-integration-health` and `ha-update-check`, which this release renamed to `hermitd-homeassistant:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.4.26] - 2026-10-22
 

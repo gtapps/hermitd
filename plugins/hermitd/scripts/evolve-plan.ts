@@ -18,6 +18,10 @@
 // --plugin-list-json: inject claude plugin list --json output from a file (for
 //   tests / when the main loop pre-resolves it). When absent, the script spawns
 //   `claude plugin list --json` itself.
+//
+// Usage: bun evolve-plan.ts <hermit-dir> consumer-scan  (subjects JSON on stdin)
+//   Read-only Step 7b candidate discovery (lib/evolve-consumer-scan.ts). Unlike the
+//   plan mode, it reads stdin and exits 1 with {"error":...} on bad input or failure.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -692,7 +696,7 @@ if (import.meta.main) {
   if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'consumer-scan') {
     let subjects;
     try { subjects = parseSubjects(await readStdin()); } catch { exitError('bad_subjects'); }
-    emitJson(consumerScan(hermitDir, subjects));
+    try { emitJson(consumerScan(hermitDir, subjects)); } catch { exitError('scan_failed'); }
   }
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;

@@ -20,7 +20,8 @@ function fixture(git: boolean, body: (root: string, write: (file: string, text: 
   try { body(root, write); } finally { fs.rmSync(root, { recursive: true }); }
 }
 function run(root: string, input = JSON.stringify(subjects), mode = true) {
-  return Bun.spawnSync(['bun', script, '.hermit', ...(mode ? ['consumer-scan'] : [])], {
+  if (!mode) fs.writeFileSync(path.join(root, 'plugins.json'), '[]');
+  return Bun.spawnSync(['bun', script, '.hermit', ...(mode ? ['consumer-scan'] : ['--plugin-list-json=plugins.json'])], {
     cwd: root, stdin: Buffer.from(input), env: { ...process.env, CLAUDE_PLUGIN_ROOT: path.resolve(import.meta.dir, '..') },
   });
 }
@@ -83,6 +84,19 @@ test('bounds and context examples', () => fixture(false, (root, write) => {
   expect(out.context_filtered.reflect).toBe(12);
   expect(out.context_filtered_examples.reflect).toHaveLength(5);
 }));
+for (const git of [true, false]) test(`symlinked skill directories inside the project are scanned, git=${git}`, () => fixture(git, (root, write) => {
+  write('shared/house/SKILL.md', 'ha-boot');
+  fs.mkdirSync(path.join(root, '.claude/skills'), { recursive: true });
+  fs.symlinkSync('../../shared/house', path.join(root, '.claude/skills/house'));
+  fs.symlinkSync('..', path.join(root, '.claude/skills/loop'));
+  const out = JSON.parse(run(root).stdout.toString());
+  expect(out.candidates.filter((c: any) => c.subject === 'boot').map((c: any) => c.file)).toEqual(['.claude/skills/house/SKILL.md']);
+}));
+test('missing project directory fails as JSON', () => fixture(false, root => {
+  const result = Bun.spawnSync(['bun', script, path.join(root, 'nope/.hermit'), 'consumer-scan'], { stdin: Buffer.from(JSON.stringify(subjects)) });
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'scan_failed' });
+}));
 test('unreadable config is reported', () => fixture(false, (root, write) => {
   write('.hermit/config.json', 'invalid');
   expect(JSON.parse(run(root).stdout.toString()).skipped).toContainEqual({ file: '.hermit/config.json', reason: 'unreadable_config' });
@@ -94,7 +108,10 @@ test('invalid subjects fail', () => fixture(false, root => {
     expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'bad_subjects' });
   }
 }));
-test('no-mode output is unchanged by scanner calls', () => fixture(false, root => {
+test('no-mode output is unchanged by scanner calls', () => fixture(false, (root, write) => {
+  // A current stamp keeps the plan small; a whole-history changelog slice can outgrow one pipe read.
+  const version = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8')).version;
+  write('.hermit/config.json', JSON.stringify({ _hermit_versions: { hermitd: version } }));
   const before = run(root, '', false);
   run(root);
   const after = run(root, '', false);

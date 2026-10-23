@@ -29,13 +29,13 @@ export function consumerScan(hermitDir: string, subjects: Subject[]) {
   const excluded = (file: string) => file.split('/').some(p => ['node_modules', '.git'].includes(p)) ||
     file.startsWith('.claude/worktrees/') || /(?:\.(?:bak|new|orig)|~)$/.test(file) ||
     /(?:^|[._-])\d{4}-?\d{2}-?\d{2}(?:[T._-]?\d{2}[:._-]?\d{2}(?:[:._-]?\d{2})?)?(?:\.|$)/.test(path.basename(file));
-  const nested = (file: string) => {
-    let dir = path.dirname(file);
-    while (dir !== '.') {
-      if (fs.existsSync(path.join(root, dir, '.git'))) return true;
-      dir = path.dirname(dir);
-    }
-    return false;
+  const repoDirs = new Map<string, boolean>();
+  const nested = (file: string): boolean => {
+    const dir = path.dirname(file);
+    if (dir === '.') return false;
+    let hit = repoDirs.get(dir);
+    if (hit === undefined) repoDirs.set(dir, hit = fs.existsSync(path.join(root, dir, '.git')) || nested(dir));
+    return hit;
   };
   const add = (file: string) => {
     const relative = path.relative(root, path.resolve(root, file));
@@ -80,6 +80,18 @@ export function consumerScan(hermitDir: string, subjects: Subject[]) {
       for (const match of monitor.command.matchAll(/"([^"]+)"|'([^']+)'|([^\s]+)/g)) add(match[1] ?? match[2] ?? match[3]);
     }
   } catch { skipped.push({ file: path.relative(root, path.join(hermitDir, 'config.json')), reason: 'unreadable_config' }); }
+  // Symlinked directories inside the project (a shared skill folder) are walked once; Set iteration sees added entries.
+  const linkedDirs = new Set<string>();
+  for (const file of files) {
+    try {
+      const abs = path.join(root, file);
+      if (!fs.lstatSync(abs).isSymbolicLink()) continue;
+      const real = fs.realpathSync(abs);
+      if (!real.startsWith(root + path.sep) || !fs.statSync(real).isDirectory() || linkedDirs.has(real)) continue;
+      linkedDirs.add(real);
+      walk(file, add);
+    } catch {}
+  }
   const counts: Record<string, number> = {};
   const contextFiltered: Record<string, number> = {};
   const examples: Record<string, Candidate[]> = {};
@@ -97,12 +109,15 @@ export function consumerScan(hermitDir: string, subjects: Subject[]) {
     return positions;
   };
   for (const subject of subjects) { counts[subject.id] = 0; contextFiltered[subject.id] = 0; examples[subject.id] = []; }
+  const scannedReal = new Set<string>();
   for (const file of [...files].sort()) {
     const abs = path.join(root, file);
     let data: Buffer;
     try {
       const real = fs.realpathSync(abs);
       if (!real.startsWith(root + path.sep)) { skipped.push({ file, reason: 'outside_project' }); continue; }
+      if (scannedReal.has(real)) continue;
+      scannedReal.add(real);
       const stat = fs.statSync(real);
       if (!stat.isFile()) continue;
       if (stat.size > 1024 * 1024) { skipped.push({ file, reason: 'oversized' }); continue; }
@@ -112,6 +127,7 @@ export function consumerScan(hermitDir: string, subjects: Subject[]) {
     filesScanned++;
     data.toString('utf8').split('\n').forEach((text, index) => {
       for (const subject of subjects) {
+        if (!subject.terms.some(term => text.includes(term))) continue;
         const replacements = subject.to ? occurrences(text, subject.to) : [];
         const terms = subject.terms.filter(term => occurrences(text, term).some(pos => !replacements.some(newPos => pos >= newPos && pos + term.length <= newPos + subject.to!.length)));
         if (!terms.length) continue;

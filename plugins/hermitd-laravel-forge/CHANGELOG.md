@@ -8,7 +8,7 @@
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-laravel-forge --ids forge-failed-deploys` and report the receipt.
 
-**Consumer scan:** The operator's own files may still refer to the routine ids step 1 lists, which it renamed to `hermitd-laravel-forge:<id>`. Find those references, ask once before changing anything, and update each to the new id.
+**Consumer scan:** The operator's own files may still refer to the routine id `forge-failed-deploys`, which this release renamed to `hermitd-laravel-forge:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
 ## [0.0.22] - 2026-10-22
 
