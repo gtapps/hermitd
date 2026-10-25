@@ -4,6 +4,12 @@
 
 ### Added
 - Notices the agent composes reach a channel without a direct sender or `send_script` through that channel's reply tool; `channel-send --notice` returns `relay` with the target chat.
+### Removed
+- The `claude-code-hermit` migration script and its helpers; agents still on claude-code-hermit 1.4.8 migrate with the prompt in `docs/upgrading.md`.
+- Settings sync no longer removes `claude-code-hermit` era allow entries.
+
+### Fixed
+- `hermitd update` and `hermitd-docker update` announce waits for hermit-evolve and a quiet boundary so normal waits no longer look like hangs.
 
 ## [1.4.21] - 2026-10-25
 

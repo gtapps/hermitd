@@ -248,8 +248,6 @@ const HERMIT_OBSOLETE = [
   'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(python3:*)',
   'Bash(node:*)',
-  'Edit(.claude/.claude-code-hermit/**)',
-  'Write(.claude/.claude-code-hermit/**)',
   'Bash(bun */scripts/run-with-profile.ts*)',
   'Bash(bun */scripts/suggest-compact.ts*)',
   'Bash(bun */scripts/next-prop-id.ts*)',
@@ -264,9 +262,6 @@ const HERMIT_OBSOLETE = [
   'Bash(bun */scripts/queue-micro-proposal.ts*)',
   'Bash(bun */scripts/micro-proposal.ts*)',
   'Bash(bun */scripts/proposals-index.ts*)',
-  // …and the two hermit-run routes that pointed at the pre-absorption names.
-  'Bash(.claude-code-hermit/bin/hermit-run micro-proposal *)',
-  'Bash(.claude-code-hermit/bin/hermit-run proposal-metrics-report *)',
   // Heartbeat/routine scripts absorbed into heartbeat.ts and routines.ts verbs.
   'Bash(bun */scripts/heartbeat-precheck.ts*)',
   'Bash(bun */scripts/routine-precheck.ts*)',
@@ -277,32 +272,6 @@ const HERMIT_OBSOLETE = [
   // Superseded by the no-space form above — CC 2.1.246 warns at startup on this shape
   // (fully-literal `observe` argument following the `*/scripts/…` wildcard).
   'Bash(bun */scripts/observations.ts observe *)',
-  // Distribution rename: exact previously shipped grants.
-  'Bash(.claude-code-hermit/bin/hermit-run task note *)',
-  'Bash(.claude-code-hermit/bin/hermit-run task list *)',
-  'Bash(.claude-code-hermit/bin/hermit-run task block *)',
-  'Bash(.claude-code-hermit/bin/hermit-run task close *)',
-  'Bash(.claude-code-hermit/bin/hermit-run proposal micro *)',
-  'Bash(.claude-code-hermit/bin/hermit-run proposal metrics *)',
-  'Bash(.claude-code-hermit/bin/hermit-run domain-hatch preflight *)',
-  'Bash(.claude-code-hermit/bin/hermit-run domain-hatch ensure-target *)',
-  'Bash(.claude-code-hermit/bin/hermit-run domain-hatch sync-block *)',
-  'Bash(.claude-code-hermit/bin/hermit-run channel-send *)',
-  'Bash(.claude-code-hermit/bin/hermit-run observations observe *)',
-  'Bash(.claude-code-hermit/bin/hermit-run rc-server start)',
-  'Bash(.claude-code-hermit/bin/hermit-run rc-server stop)',
-  'Bash(.claude-code-hermit/bin/hermit-run rc-server status)',
-  'Bash(.claude-code-hermit/bin/hermit-run rc-server gc)',
-  'Bash(.claude-code-hermit/bin/hermit-run later list *)',
-  'Bash(.claude-code-hermit/bin/hermit-run later cancel *)',
-  'Bash(.claude-code-hermit/bin/hermit-run later verdict *)',
-  'Bash(.claude-code-hermit/bin/hermit-run later due *)',
-  'Bash(.claude-code-hermit/bin/hermit-run backup run*)',
-  'Bash(.claude-code-hermit/bin/hermit-run backup status*)',
-  'Bash(.claude-code-hermit/bin/hermit-run memory-dir*)',
-  "Bash(bash -c 'AGENT_DIR=\".claude-code-hermit\"*)",
-  'Edit(.claude-code-hermit/**)',
-  'Read(//**/.claude/plugins/**/claude-code-hermit/**)',
 ];
 
 // The deny half of the same registry. Same rule: only entries this plugin itself

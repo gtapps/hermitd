@@ -560,6 +560,11 @@ case "$CMD" in
 
     _await_upgrade() {
       local output parsed
+      if [ $# -gt 0 ]; then
+        echo "[hermit] Waiting for hermit-evolve, then a quiet boundary (up to 45 min)..."
+      else
+        echo "[hermit] Waiting for a quiet boundary (up to 15 min)..."
+      fi
       # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
       _stamp_update_marker
       if output=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then

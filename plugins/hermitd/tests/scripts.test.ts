@@ -616,6 +616,16 @@ exit 0
         { id: 'hermitd-scribe@hermitd', scope: 'project', before: `0.0.5${suffix}`, after: `0.0.5${suffix}`, status: 'unchanged' },
       ]);
       }
+      if (scenario === 'evolve-ready') {
+        expect(r.stdout).toContain('Waiting for hermit-evolve');
+      }
+      if (scenario === 'full') {
+        expect(r.stdout).toContain('Waiting for a quiet boundary');
+      }
+      if (scenario === 'cc-only') {
+        expect(r.stdout).toContain('Waiting for a quiet boundary');
+        expect(r.stdout).not.toContain('Waiting for hermit-evolve');
+      }
       if (scenario === 'full' || scenario === 'evolve-ready') {
         expect(idx('await-upgrade')).toBeLessThan(idx('claude plugin marketplace update'));
         expect(idx('claude plugin marketplace update')).toBeLessThan(idx(' build '));
@@ -799,12 +809,18 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
         if (scenario === 'self-run') {
           // The resident's own turn keeps the immediate path: reload and evolve queue, nothing waits or restarts.
+          expect(r.stdout).not.toContain('Waiting for a quiet boundary');
+          expect(r.stdout).not.toContain('Waiting for hermit-evolve');
           expect(calls.some(l => l.includes('await-upgrade'))).toBe(false);
           expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update');
           expect(calls.some(l => l.startsWith('send-keys'))).toBe(false);
           expect(calls.some(l => l.startsWith('stop') || l.startsWith('start'))).toBe(false);
           expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
           return;
+        }
+        if (scenario === 'ready') {
+          expect(r.stdout).toContain('Waiting for a quiet boundary');
+          expect(r.stdout).toContain('Waiting for hermit-evolve');
         }
         const stopped = calls.findIndex(line => line.trim() === 'stop');
         const started = calls.indexOf('start --resume');

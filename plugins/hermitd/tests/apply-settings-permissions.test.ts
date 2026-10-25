@@ -487,22 +487,6 @@ describe('apply-settings artifact-revoke', () => {
 });
 
 
-describe('hermitd permission migration', () => {
-  test('replaces old grants and preserves operator rules', withTarget(async (target) => {
-    const custom = 'Bash(my-operator-command *)';
-    const old = [
-      'Bash(.claude-code-hermit/bin/hermit-run task note *)',
-      'Edit(.claude-code-hermit/**)',
-      'Read(//**/.claude/plugins/**/claude-code-hermit/**)',
-    ];
-    seed(target, { permissions: { allow: [...old, custom] } });
-    await run(target, 'permissions-sync');
-    expect(readAllow(target)).toEqual([custom, ...HERMIT_ALLOW]);
-    expect(readAllow(target)).toContain('Bash(.hermit/bin/hermitd-run task note *)');
-  }));
-});
-
-
 describe('apply-settings hatch target guard', () => {
   for (const [op, ...args] of [
     ['permissions-sync'], ['permissions-plan'], ['deny', 'standard'], ['deny-add', 'Bash(operator-own*)'],
