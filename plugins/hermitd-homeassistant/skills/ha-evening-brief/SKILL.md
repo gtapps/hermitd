@@ -39,7 +39,7 @@ Core's work brief runs independently; neither brief replaces or disables the oth
 
 5. **Compose brief**: Write a concise evening brief in the session language. Use the format below.
 
-6. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-evening-<YYYY-MM-DD>.md` with frontmatter:
+6. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-ha-evening-<YYYY-MM-DD>.md` with frontmatter:
    ```yaml
    title: "Evening Brief — <YYYY-MM-DD>"
    type: brief
@@ -47,7 +47,7 @@ Core's work brief runs independently; neither brief replaces or disables the oth
    task: <T-... for the open record in this turn; omit this field otherwise>
    tags: [evening-brief, ha]
    ```
-   Inside an open record's turn, pipe `[[compiled/brief-evening-<YYYY-MM-DD>]]` into
+   Inside an open record's turn, pipe `[[compiled/brief-ha-evening-<YYYY-MM-DD>]]` into
    `.hermit/bin/hermitd-run task note .hermit <id>`. Otherwise skip the note.
 
 ## Output Format

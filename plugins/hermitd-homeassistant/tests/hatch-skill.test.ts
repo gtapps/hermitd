@@ -34,7 +34,8 @@ test('hatch writes the MCP entry via the CLI, never by reading .env', () => {
 });
 
 test('house routines match full skills and coexist with core briefs', () => {
-  expect(skillText).toContain('full skill string, including arguments');
+  // An operator-edited seeded row still matches by id, so re-hatch never duplicates it.
+  expect(skillText).toContain("full skill string (including arguments) or its `id` equals the seeded one's");
   expect(skillText).toContain('Never replace or disable core routines');
   expect(skillText).not.toContain('boot_skill');
   expect(skillText).not.toContain('unified mode');

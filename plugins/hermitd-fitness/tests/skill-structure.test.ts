@@ -57,7 +57,8 @@ ok('hatch checks and writes Strava credentials via fitness-lab, never by reading
   hatch.includes('fitness-lab.ts env-check') && hatch.includes('fitness-lab.ts mcp-config') &&
   !hatch.includes('Use the **Read tool** to read `.env`') && !hatch.includes('held in working context'));
 
-ok('hatch matches complete skill strings without overwriting existing rows', hatch.includes('full skill string, including arguments') && hatch.includes('preserve every field'));
+ok('hatch matches rows by complete skill string or namespaced id without overwriting them',
+  hatch.includes("full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row"));
 
 const routineEntries = [...hatch.matchAll(/\{\n  "id": "([^"]+)",[\s\S]*?\n\}/g)]
   .map(([block]) => JSON.parse(block));

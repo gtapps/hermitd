@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { runScript, PLUGIN_ROOT } from './helpers/run';
+import { runPinnedScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 import { classifyDockerTemplates } from '../scripts/evolve-plan';
 import { render, renderSources } from '../scripts/render-docker-templates';
@@ -128,7 +128,7 @@ const writeConfig = (proj: string, content: string) =>
 async function runPlan(proj: string, _target?: string, pluginListPath?: string): Promise<any> {
   const args = [hermitDir(proj)];
   args.push(`--plugin-list-json=${pluginListPath ?? EMPTY_PLUGIN_LIST}`);
-  const r = await runScript('evolve-plan.ts', { args, env: { CLAUDE_PLUGIN_ROOT: PR } });
+  const r = await runPinnedScript('evolve-plan.ts', hermitDir(proj), args, { env: { CLAUDE_PLUGIN_ROOT: PR } });
   expect(r.exitCode).toBe(0);
   return JSON.parse(r.stdout);
 }
@@ -915,8 +915,7 @@ test('changelog root tokens resolve to each owning plugin install', withProj(asy
     _hermit_versions: { 'hermitd': '1.1.6', 'hermitd-dev': '0.4.1' },
   }));
   const pluginList = writePluginList([{ ...siblingEntry(proj), installPath: siblingRoot }]);
-  const result = await runScript('evolve-plan.ts', {
-    args: [hermitDir(proj), `--plugin-list-json=${pluginList}`],
+  const result = await runPinnedScript('evolve-plan.ts', hermitDir(proj), [hermitDir(proj), `--plugin-list-json=${pluginList}`], {
     env: { CLAUDE_PLUGIN_ROOT: coreRoot },
   });
   expect(result.exitCode).toBe(0);

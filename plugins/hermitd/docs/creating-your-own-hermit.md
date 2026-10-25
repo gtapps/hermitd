@@ -226,7 +226,7 @@ Declare renamed or removed names and changed output with one `**Leftover check:*
 
 Executable steps state the desired outcome plus constraints the model cannot infer. Name migration verbs exactly, including their required arguments. A migration verb rewrites data the same way on every install; work depending on the operator's files or intent belongs to the evolve model. An entry never references another entry: include the information it needs within that entry.
 
-Do not copy check mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness, grouped findings, the operator question and the fix procedure.
+Do not copy check mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness and grouped findings; [the leftover-check guide](../skills/hermit-evolve/leftover-check.md) owns the operator question and the fix procedure.
 
 ### Docker dependencies
 
@@ -307,11 +307,11 @@ Add a `knowledge-schema.md` to document what your hermit produces and when — t
 
 Register cadence-driven skills as ordinary routines. Each routine invokes one skill through `reflect --check-id <id> --check <namespaced skill>` and routes its findings through the proposal pipeline. Routines due together can all run.
 
-**How to register.** Your hatch skill appends an entry to `config.json.routines` only when its id is absent, preserving existing operator edits:
+**How to register.** Your hatch skill gives each seeded entry a namespaced `<plugin>:<name>` id. A row matches a seeded entry when its full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row and append the entry only when no row matches:
 
 ```json
 {
-  "id": "ha-patterns",
+  "id": "hermitd-homeassistant:ha-patterns",
   "schedule": "5 9 * * 1",
   "skill": "hermitd:reflect --check-id ha-patterns --check hermitd-homeassistant:ha-analyze-patterns",
   "enabled": true

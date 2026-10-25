@@ -1,20 +1,80 @@
-// Read-only candidate discovery. The evolve model decides which references depend on a change.
+// Candidate discovery for Step 7b. It changes no operator file; the evolve model decides which
+// references depend on a change. State carries the declarations from the plan and, per check,
+// the subjects and those declarations, so a later Fix re-checks exactly what was asked.
 import fs from 'node:fs';
 import path from 'node:path';
 import { readConfigRaw } from './config-read';
 import { resolveGate } from './routines/gate';
+import { writeFileAtomic } from './md-write';
 
 interface Subject { id: string; terms: string[]; kind: 'routine_id' | 'name'; to?: string }
 interface Candidate { subject: string; file: string; line: number; text: string; tracked: boolean }
+interface Declaration { plugin: string; version: string; text: string }
 
+/** `{subjects}` validated and expanded to concrete subjects. */
 export function parseSubjects(input: string): Subject[] {
-  const value = JSON.parse(input);
+  return validSubjects(JSON.parse(input));
+}
+
+function validSubjects(value: any): Subject[] {
   if (!Array.isArray(value?.subjects) || value.subjects.some((s: Subject) =>
     !s || typeof s.id !== 'string' || !s.id || !Array.isArray(s.terms) || !s.terms.length ||
     s.terms.some(t => typeof t !== 'string' || !t) || !['routine_id', 'name'].includes(s.kind) ||
-    (s.to !== undefined && typeof s.to !== 'string')) ||
-    new Set(value.subjects.map((s: Subject) => s.id)).size !== value.subjects.length) throw new Error('bad_subjects');
-  return value.subjects;
+    (s.to !== undefined && typeof s.to !== 'string'))) throw new Error('bad_subjects');
+  return expandSubjects(value.subjects);
+}
+
+export const CHANGELOG_HEADER = /^## \[(\d+\.\d+\.\d+)\]/;
+
+/** Every `**Leftover check:**` line in each plugin's changelog slice, verbatim, with the version it ships in. */
+export function leftoverDeclarations(slices: { plugin: string; slice?: string }[]): Declaration[] {
+  const declarations: Declaration[] = [];
+  for (const { plugin, slice } of slices) {
+    let version = '';
+    for (const line of (slice ?? '').split('\n')) {
+      version = line.match(CHANGELOG_HEADER)?.[1] ?? version;
+      if (/^\s*(?:\d+\.\s+)?\*\*Leftover check:\*\*/.test(line)) declarations.push({ plugin, version, text: line });
+    }
+  }
+  return declarations;
+}
+
+const declarationsPath = (hermitDir: string) => path.join(hermitDir, 'state', 'leftover-declarations.json');
+export const savedInputPath = (hermitDir: string) => path.join(hermitDir, 'state', 'leftover-check.json');
+
+function writeState(file: string, value: object): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  writeFileAtomic(file, JSON.stringify(value, null, 2) + '\n');
+}
+
+/** Plan mode records the current gap's declarations; with none, it removes the record so none outlive their plan. */
+export function recordDeclarations(hermitDir: string, declarations: Declaration[]): void {
+  if (declarations.length) writeState(declarationsPath(hermitDir), { declarations });
+  else fs.rmSync(declarationsPath(hermitDir), { force: true });
+}
+
+/** A check pairs its concrete subjects with the plan's declarations for a later `--saved` Fix. */
+export function saveCheck(hermitDir: string, subjects: Subject[]): void {
+  const file = declarationsPath(hermitDir);
+  const declarations = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).declarations : [];
+  writeState(savedInputPath(hermitDir), { subjects, declarations });
+}
+
+export function readSavedCheck(hermitDir: string): { subjects: Subject[]; declarations: Declaration[] } {
+  const saved = JSON.parse(fs.readFileSync(savedInputPath(hermitDir), 'utf8'));
+  const declarations = saved.declarations;
+  if (!Array.isArray(declarations) || declarations.some((d: Declaration) =>
+    !d || typeof d.plugin !== 'string' || typeof d.version !== 'string' || typeof d.text !== 'string')) throw new Error('bad_subjects');
+  return { subjects: validSubjects(saved), declarations };
+}
+
+// A routine rename declared as a pattern (`"to": "<plugin>:<id>"`) is one subject per old id.
+function expandSubjects(given: Subject[]): Subject[] {
+  const subjects = given.flatMap(s => s.kind === 'routine_id' && s.to?.includes('<id>')
+    ? s.terms.map(term => ({ id: `${s.id}/${term}`, terms: [term], kind: s.kind, to: s.to!.replaceAll('<id>', term) }))
+    : [s]);
+  if (new Set(subjects.map(s => s.id)).size !== subjects.length) throw new Error('bad_subjects');
+  return subjects;
 }
 
 export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
@@ -51,9 +111,11 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   for (const folder of walked) walk(folder, add);
   for (const file of ['OPERATOR.md', 'HEARTBEAT.md', 'knowledge-schema.md', 'dashboard-render.ts', 'config.json']) add(path.join(hermitDir, file));
   for (const file of ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json']) add(file);
+  let routineIds: Set<string> | null = null;
   try {
     const config = readConfigRaw(hermitDir);
     if (!config) throw new Error('unreadable_config');
+    routineIds = new Set((config.routines ?? []).map((routine: { id?: string }) => routine?.id));
     for (const routine of config.routines ?? []) {
       const gate = resolveGate(routine.precheck, root);
       if (gate.kind === 'script') add(gate.abs);
@@ -101,7 +163,14 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
     }
     return positions;
   };
-  for (const subject of subjects) { counts[subject.id] = 0; contextFiltered[subject.id] = 0; examples[subject.id] = []; }
+  // A routine rename is live only once its new id is a routine in current config.
+  const isLive = (s: Subject) => !routineIds || s.kind !== 'routine_id' || s.to === undefined || routineIds.has(s.to);
+  const live = subjects.filter(isLive);
+  const notLive = subjects.filter(s => !isLive(s)).map(s => s.id);
+  // Any live subject's new form on a line is already migrated, whichever subject's term it contains.
+  const newForms = [...new Set(live.flatMap(s => s.to ? [s.to] : []))];
+  for (const subject of live) { counts[subject.id] = 0; contextFiltered[subject.id] = 0; examples[subject.id] = []; }
+  const configFile = path.join(path.basename(path.resolve(hermitDir)), 'config.json');
   const scannedReal = new Set<string>();
   for (const file of [...files].sort()) {
     const abs = path.join(root, file);
@@ -119,10 +188,15 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
     if (data.includes(0)) { skipped.push({ file, reason: 'binary' }); continue; }
     filesScanned++;
     data.toString('utf8').split('\n').forEach((text, index) => {
-      for (const subject of subjects) {
+      let spans: [number, number][] | null = null;
+      for (const subject of live) {
         if (!subject.terms.some(term => text.includes(term))) continue;
-        const replacements = subject.to ? occurrences(text, subject.to) : [];
-        const terms = subject.terms.filter(term => occurrences(text, term).some(pos => !replacements.some(newPos => pos >= newPos && pos + term.length <= newPos + subject.to!.length)));
+        spans ??= newForms.flatMap(form => occurrences(text, form).map((start): [number, number] => [start, start + form.length]));
+        const hits = subject.terms.map(term => ({ term, positions: occurrences(text, term).filter(pos => !spans!.some(([start, end]) => pos >= start && pos + term.length <= end)) }));
+        if (!hits.some(hit => hit.positions.length)) continue;
+        // In a routine's reflect wrapper, `--check-id <old-id>` is a check key that stays bare on purpose, not a routine id.
+        const checkKey = (pos: number) => file === configFile && subject.kind === 'routine_id' && (text.endsWith('--check-id ', pos) || text.endsWith('--check-id=', pos));
+        const terms = hits.filter(hit => hit.positions.some(pos => !checkKey(pos))).map(hit => hit.term);
         if (!terms.length) continue;
         const candidate = { subject: subject.id, file, line: index + 1, text: text.slice(0, 200), tracked: tracked.has(file) };
         if (subject.kind === 'routine_id' && terms.every(term => !term.includes('-')) && !/routine/i.test(text)) {
@@ -137,5 +211,6 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
   }
   return { status: 'ok', git: hasGit, files_scanned: filesScanned, counts, context_filtered: contextFiltered,
     context_filtered_examples: examples, candidates, truncated: Object.values(counts).reduce((a, b) => a + b, 0) > candidates.length,
+    ...(notLive.length ? { not_live: notLive } : {}),
     ...(skipped.length ? { skipped } : {}) };
 }

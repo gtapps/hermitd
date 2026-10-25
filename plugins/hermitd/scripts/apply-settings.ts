@@ -146,25 +146,22 @@ const HERMIT_ALLOW = [
   'Bash(bun */scripts/heartbeat.ts stop*)',
   // Domain brainstorm skills reach core's shared scripts through the project-resident
   // bin/hermitd-run (their own ${CLAUDE_PLUGIN_ROOT} can't reach core's versioned
-  // cache dir). Pinned to the two verbs they actually need, not a bare
+  // cache dir). Pinned to the one verb they need, not a bare
   // `hermitd-run proposal *` — that would also hand them create, patch,
   // routine, i.e. arbitrary state-dir writes. The
-  // space before * is a word boundary: `proposal micro *` matches
-  // `proposal micro .hermit brief-cycle` but not a
-  // `micro…`-prefixed verb.
+  // space before * is a word boundary: `proposal metrics *` does not match a
+  // `metrics…`-prefixed verb.
   // `block` and `close` are the two commands the waiting-task annotation hands
-  // the resident, so they are sealed beside note and list: the annotation
+  // the resident, so they are sealed beside note: the annotation
   // reaches the model with no resolvable plugin root, and its `bun
   // */scripts/task.ts*` twin is suspended under auto mode.
   'Bash(.hermit/bin/hermitd-run task note *)',
-  'Bash(.hermit/bin/hermitd-run task list *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
   // Role-proposal replies arrive on ordinary chat turns, sealed for the same
   // reason; snapshot and commit stay with the routine's own script path.
   'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
   'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
-  'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(.hermit/bin/hermitd-run proposal metrics *)',
   // The shared domain-hatch protocol, pinned per verb for the same reason:
   // `domain-hatch *` would hand every caller `ensure-target`
@@ -246,6 +243,9 @@ const HERMIT_ALLOW = [
 // reach already-hatched hermits.
 const HERMIT_OBSOLETE = [
   'Bash(.hermit/bin/hermitd-run domain-hatch sync-block *)',
+  // Only the house brief called these; it no longer reads tasks or micro-proposals.
+  'Bash(.hermit/bin/hermitd-run task list *)',
+  'Bash(.hermit/bin/hermitd-run proposal micro *)',
   'Bash(python3:*)',
   'Bash(node:*)',
   'Edit(.claude/.claude-code-hermit/**)',

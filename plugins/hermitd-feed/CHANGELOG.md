@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Hatch matches routines by full skill string and assigns new rows `hermitd-feed:` ids, preserving existing operator fields.
+- Hatch matches existing routines by full skill string or namespaced id and assigns new rows `hermitd-feed:` ids, preserving existing operator fields. Requires hermitd 1.4.21.
 
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-feed --ids feed-brief-morning,feed-brief-evening,weekly-digest,source-scout` and report the receipt.

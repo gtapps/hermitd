@@ -13,7 +13,7 @@ A Laravel Forge domain layer for `hermitd`: deployment skills, server/site manag
 
 ## Architecture
 
-Hatch registers the `forge-failed-deploys` routine with `reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys`; its cadence lives in `config.routines`.
+Hatch registers the `hermitd-laravel-forge:forge-failed-deploys` routine with `reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys`; its cadence lives in `config.routines`.
 
 The agent calls `forge.php <command>` directly via Bash. The SDK handles all HTTP: no hand-rolled API client, no bun CLI, no bridge process. The vendor tree is not committed; hatch installs `laravel/forge-sdk` `--no-dev` via Composer into the consumer project's `.hermit/forge-runtime/vendor/` (persistent, bind-mounted in Docker, isolated from the app's own Composer files).
 

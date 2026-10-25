@@ -189,12 +189,13 @@ Queuing procedure:
 
 Run `proposal-queue-micro` (Commands) and the following stdin payload:
 ```text
-{"tier":<1|2>,"question":"<full question text>","options":["<label>", ...],"on_resolve":"<full skill invocation with an {answer} placeholder>","chat":"<sourceKey>:<chat_id>"}
+{"tier":<1|2>,"question":"<full question text>","options":["<label>", ...],"on_resolve":"<full skill invocation with an {answer} placeholder>","chat":"<sourceKey>:<chat_id>","key":"<stable ask name>"}
 ```
+`key` is optional: a stable name for an ask that may be queued again in new words.
 Set `chat` to the normalized key of the chat the question is sent to: the current chat on a channel-tagged turn, or `<sourceKey>:<maintainer_channel_id>` for a maintainer-only notice that reaches a maintainer chat. Only a reply there can answer the entry. Omit it when the question goes to the home chat: the script records the home chat. `options` and `on_resolve` are optional — used by channel-bridged asks from other skills (see `channel-responder` § Channel-safe ask bridge) as well as reflect's own future N-way candidates. When `on_resolve` is present, the script forces `tier: 1` regardless of the caller-supplied tier (so tier-1 readers like heartbeat keep working unchanged) and tags the metrics event `"kind":"ask"` (a bounded ask is not a yes/no approval, so `generate-summary.ts`/`weekly-review.ts` exclude it from approval-rate calculations).
 
 - `queued`: the script generates the day-scoped `id` (`MP-YYYYMMDD-N`), appends the `pending` entry to `state/micro-proposals.json`, and logs the `micro-queued` metric event.
-- `duplicate`: a pending entry with the same `question` already exists (its `id` is returned); nothing written.
+- `duplicate`: a pending entry with the same `question`, `key` or linked proposal already exists (its `id` is returned); the script keeps that entry and gives it the new `question`.
 
 Notify the operator with the question (using the returned or existing id). Entries without `options`: `MP-YYYYMMDD-N (tier <N>): <question>` — Reply `"MP-YYYYMMDD-N yes"` or `"MP-YYYYMMDD-N no"` (bare `yes`/`no` accepted when only one entry is pending). Entries with `options`: render them numbered (`1. <label>`, `2. <label>`, ...) under the question and hint `Reply "MP-YYYYMMDD-N <number or label>"` (bare number/label accepted when only one entry is pending).
 

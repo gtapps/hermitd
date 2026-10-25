@@ -1,7 +1,7 @@
 // `proposal.ts queue-micro <stateDir>` — generates an MP-id, dedups, appends a
 // pending entry to state/micro-proposals.json, and logs the micro-queued event.
 // Usage: proposal.ts queue-micro <hermit-state-dir> <<'HERMIT_MP'
-//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>"}
+//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>","key":"..."}
 //        HERMIT_MP
 //   — stdin only (question is free text and may contain apostrophes/quotes; no argv mode).
 // Output (stdout, one JSON line):
@@ -13,9 +13,10 @@
 // `on_resolve` are optional per the channel-bridged-ask extension (branches.md:
 // 205-207); when `on_resolve` is present, tier is forced to 1 and the metrics
 // event carries "kind":"ask" (branches.md:207,214) regardless of the caller's tier.
-// Dedup is by exact `question` match against existing `pending` entries, or by
+// Dedup is by exact `question` match against existing `pending` entries, by
 // `proposal_id` when the payload declares one (that link also lets `sweepMoot`
-// retire the ask once its proposal reaches a terminal status).
+// retire the ask once its proposal reaches a terminal status), or by `key`. Any
+// match refreshes the entry's `question` in place.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +54,10 @@ export async function run(stateDir: string): Promise<void> {
       ? payload.proposal_id
       : undefined;
 
+  // `key` names an ask that a caller may re-queue in new words (a replayed run).
+  const key: string | undefined = payload.key;
+  if (key !== undefined && (typeof key !== 'string' || !key)) emitJson({ error: 'invalid_input' });
+
   // The chat the question was asked in; only a reply there can answer it.
   // Callers asking outside a channel turn omit it and get the home chat.
   if (payload.chat !== undefined && !isKey(payload.chat)) emitJson({ error: 'invalid_input' });
@@ -80,14 +85,15 @@ export async function run(stateDir: string): Promise<void> {
   // unlinked asks and for that same legacy window.
   const wanted = proposalId ? normalizeProposalId(proposalId) : null;
   const existing = micro.pending.find((e: Json) => e && e.status === 'pending'
-    && ((wanted !== null && linkedProposalId(e) === wanted) || e.question === question));
+    && ((key !== undefined && e.key === key) || (wanted !== null && linkedProposalId(e) === wanted) || e.question === question));
   if (existing) {
+    let changed = false;
     // A repeat ask from another chat moves the answer there, where the
     // operator now sees the question.
-    if (chat && existing.chat !== chat) {
-      existing.chat = chat;
-      writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
-    }
+    if (chat && existing.chat !== chat) { existing.chat = chat; changed = true; }
+    // A repeat ask keeps the one entry and takes the newest wording.
+    if (existing.question !== question) { existing.question = question; changed = true; }
+    if (changed) writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
     emitJson({ status: 'duplicate', id: existing.id });
   }
 
@@ -116,6 +122,7 @@ export async function run(stateDir: string): Promise<void> {
   if (options) entry.options = options;
   if (onResolve) entry.on_resolve = onResolve;
   if (proposalId) entry.proposal_id = proposalId;
+  if (key !== undefined) entry.key = key;
   if (chat) entry.chat = chat;
   micro.pending.push(entry);
 

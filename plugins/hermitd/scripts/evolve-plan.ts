@@ -1,4 +1,4 @@
-// Read-only analyzer for the hermit-evolve skill. Computes the deterministic
+// Analyzer for the hermit-evolve skill. Computes the deterministic
 // comparisons the skill would otherwise do in-context (version gap, the
 // bounded CHANGELOG slice, new config keys, and changed templates/bin)
 // and emits one JSON "plan" to stdout. The skill
@@ -7,8 +7,8 @@
 // Also computes sibling hermit plans (registry-driven from _hermit_versions)
 // so Step 7 doesn't rely on in-context LLM detection.
 //
-// Analyzer with one bounded write: rendered Docker merge inputs are parked in
-// the hermit's state tree. Fail-open: always exits 0; problems are recorded in
+// Bounded writes, all in the hermit's state tree: rendered Docker merge inputs
+// and the leftover-check declaration record. Fail-open: always exits 0; problems are recorded in
 // the `errors` array (objects of {code, message}), never thrown. No stdin
 // (skill-invoked, like doctor-check.ts / resolve-outbound-channel.ts).
 //
@@ -19,15 +19,30 @@
 //   tests / when the main loop pre-resolves it). When absent, the script spawns
 //   `claude plugin list --json` itself.
 //
-// Usage: bun evolve-plan.ts <hermit-dir> leftover-check  (subjects JSON on stdin)
-//   Read-only Step 7b candidate discovery (lib/evolve-leftover-check.ts). Unlike the
-//   plan mode, it reads stdin and exits 1 with {"error":...} on bad input or failure.
+// Plan mode also records the gap's `**Leftover check:**` lines in
+// state/leftover-declarations.json for Step 7b, removing the record when there are none.
+// A failed record write is skipped: it costs only the Fix's declarations.
+//
+// Usage: bun evolve-plan.ts <hermit-dir> leftover-check  ({"subjects":[...]} JSON on stdin)
+//        bun evolve-plan.ts <hermit-dir> leftover-check --saved
+//   Step 7b candidate discovery (lib/evolve-leftover-check.ts). It changes no operator
+//   file; a check with candidates or context-filtered lines records its concrete subjects
+//   with the plan's declarations in state/leftover-check.json. `--saved` re-runs that
+//   record, adding its `declarations` to the output, or prints
+//   {"status":"none","reason":"no_saved_subjects"}. Unlike the plan mode, it exits 1
+//   with {"error":...} on bad input or failure.
+//
+// Every mode pins <hermit-dir> to this project's state dir (lib/cc-compat.ts
+// assertStateDir): the sealed `Bash(bun */scripts/evolve-plan.ts*)` grant covers every
+// argument, and these modes write state files and print operator file lines. Plan mode
+// reports a foreign dir through `errors`; leftover-check exits 1 with foreign_state_dir.
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { leftoverCheck, parseSubjects } from './lib/evolve-leftover-check';
-import { emitJson, exitError, readStdin } from './lib/cli';
+import { CHANGELOG_HEADER, leftoverCheck, leftoverDeclarations, parseSubjects, readSavedCheck, recordDeclarations, saveCheck, savedInputPath } from './lib/evolve-leftover-check';
+import { emitJson, exitError, readStdin, writeStdout } from './lib/cli';
+import { assertStateDir, pinStateDirOrExit } from './lib/cc-compat';
 
 import { sha256 } from './lib/hash';
 import { cmpSemver } from './lib/semver';
@@ -95,11 +110,10 @@ function resolveChangelogRoot(slice: string, pluginRoot: string): string {
 // 47K-token CHANGELOG read and dodges the Read tool's 2000-line truncation.
 function changelogSlice(text: string, from: string, to: string | null) {
   const lines = text.split('\n');
-  const headerRe = /^## \[(\d+\.\d+\.\d+)\]/;
   const entries: Json[] = [];
   let cur: Json = null;
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(headerRe);
+    const m = lines[i].match(CHANGELOG_HEADER);
     if (m) {
       if (cur) {
         cur.end = i;
@@ -692,19 +706,41 @@ export { buildPlan, cmpSemver, changelogSlice, newConfigKeys, classifyFiles, cla
 export type { ClassifiedFile, FileClass };
 
 if (import.meta.main) {
-  const { hermitDir, pluginListJsonPath } = parseArgs(process.argv.slice(2));
+  const { hermitDir: hermitArg, pluginListJsonPath } = parseArgs(process.argv.slice(2));
   if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'leftover-check') {
-    let subjects;
+    const hermitDir = pinStateDirOrExit(hermitArg);
+    if (process.argv.includes('--saved')) {
+      if (!fs.existsSync(savedInputPath(hermitDir))) emitJson({ status: 'none', reason: 'no_saved_subjects' });
+      let saved!: ReturnType<typeof readSavedCheck>;
+      try { saved = readSavedCheck(hermitDir); } catch { exitError('bad_subjects'); }
+      try { emitJson({ ...leftoverCheck(hermitDir, saved.subjects), declarations: saved.declarations }); } catch { exitError('check_failed'); }
+    }
+    let subjects!: ReturnType<typeof parseSubjects>;
     try { subjects = parseSubjects(await readStdin()); } catch { exitError('bad_subjects'); }
-    try { emitJson(leftoverCheck(hermitDir, subjects)); } catch { exitError('check_failed'); }
+    let result!: ReturnType<typeof leftoverCheck>;
+    try { result = leftoverCheck(hermitDir, subjects); } catch { exitError('check_failed'); }
+    if (result.candidates.length || Object.values(result.context_filtered).some(n => n)) {
+      try { saveCheck(hermitDir, subjects); } catch { exitError('save_failed'); }
+    }
+    emitJson(result);
   }
+  const hermitDir = assertStateDir(hermitArg);
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
   let plan: Json;
-  try {
-    plan = buildPlan({ hermitDir: path.resolve(hermitDir), pluginRoot, pluginListJsonPath });
-  } catch (e: any) {
-    plan = { errors: [{ code: 'fatal', message: e.message }] };
+  if (!hermitDir) {
+    plan = { errors: [{ code: 'foreign_state_dir', message: `state dir must be this project's; got ${hermitArg}` }] };
+  } else {
+    try {
+      plan = buildPlan({ hermitDir, pluginRoot, pluginListJsonPath });
+    } catch (e: any) {
+      plan = { errors: [{ code: 'fatal', message: e.message }] };
+    }
+    // Step 7b reads the gap's declarations from state, so the runner never copies them.
+    try {
+      recordDeclarations(hermitDir, plan.errors.length ? [] : leftoverDeclarations([{ plugin: 'hermitd', slice: plan.changelog_slice },
+        ...plan.siblings.map((s: Json) => ({ plugin: s.name, slice: s.changelog_slice }))]));
+    } catch {}
   }
-  process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
+  writeStdout(JSON.stringify(plan, null, 2) + '\n');
   process.exit(0);
 }

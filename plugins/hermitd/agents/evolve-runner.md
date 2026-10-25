@@ -110,7 +110,7 @@ Siblings detected but not activated: <name ... | none>
 Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
 Audit scope: <whole_run | version_only>
-Operator notes: <one line per version-specific operator note collected in steps 2b/7/7b | none>
+Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
 Findings: <none | one line per subject: subject -> replacement, N hits, file:line examples, shared marker>
 Deferred for operator: <none | one or more verbatim blocks, each:>
   --- deferred-migration ---

@@ -1514,6 +1514,35 @@ export function registerHostProjectOnBoot(project = process.cwd(), root = PLUGIN
   try { registerProject(project, root); } catch { /* Registry failure must never prevent startup. */ }
 }
 
+const DEFAULT_BOOT_SKILL = '/hermitd:resident-start';
+
+/**
+ * The always-on bootstrap prompt, or null when no step is queued. An operator's
+ * boot_skill can name a skill no installed plugin ships (a launch can precede
+ * hermit-evolve), so its step falls back to resident-start. A bare slash command
+ * would pass that clause to the skill as arguments, so a lone operator step
+ * uses the sentence form.
+ */
+export function bootstrapPrompt(opts: {
+  hbEnabled: boolean;
+  hasRoutines: boolean;
+  autoSession: boolean;
+  bootSkill: string;
+}): string | null {
+  const custom = opts.autoSession && opts.bootSkill !== DEFAULT_BOOT_SKILL;
+  const steps: string[] = [];
+  // `hermit-routines load` arms both monitors, so the heartbeat skill is a boot
+  // step only where no routine load will run.
+  if (opts.hbEnabled && !opts.hasRoutines) steps.push('/hermitd:heartbeat start');
+  if (opts.hasRoutines) steps.push('/hermitd:hermit-routines load');
+  if (custom) steps.push(`${opts.bootSkill} (if that skill does not exist, invoke ${DEFAULT_BOOT_SKILL} instead)`);
+  else if (opts.autoSession) steps.push(opts.bootSkill);
+  if (steps.length === 0) return null;
+  if (steps.length === 1) return custom ? `Always-on bootstrap. Invoke ${steps[0]}.` : steps[0];
+  const numbered = steps.map((s, i) => `(${i + 1}) ${s}`).join(', ');
+  return `Always-on bootstrap. Invoke these skills in order: ${numbered}.`;
+}
+
 async function main(): Promise<void> {
   const noTmuxFlag = process.argv.includes('--no-tmux');
   const resumeIndex = process.argv.indexOf('--resume');
@@ -1574,30 +1603,15 @@ async function main(): Promise<void> {
   const hasRoutines = pyTruthy(config.routines);
   // Only the operator chooses a replacement bootstrap skill. When set, it
   // replaces resident-start; the chosen skill owns any core startup it needs.
-  const bootSkill = config.boot_skill || '/hermitd:resident-start';
-
-  const steps: string[] = [];
-  // `hermit-routines load` arms both monitors, so the heartbeat skill is a boot
-  // step only where no routine load will run.
-  if (hbEnabled && !hasRoutines) steps.push('/hermitd:heartbeat start');
-  if (hasRoutines) steps.push('/hermitd:hermit-routines load');
-  if (autoSession) steps.push(bootSkill);
+  const bootSkill = config.boot_skill || DEFAULT_BOOT_SKILL;
+  const bootstrap = bootstrapPrompt({ hbEnabled, hasRoutines, autoSession, bootSkill });
 
   // Bootstrap fires only in always-on mode; interactive runs are operator-driven.
   const isAlwaysOn = !noTmuxFlag && pyTruthy(tools.tmux);
-  const willBootstrap = steps.length > 0 && !setupMode && isAlwaysOn;
+  const willBootstrap = bootstrap !== null && !setupMode && isAlwaysOn;
   const resume = willBootstrap ? resumeId : undefined;
   const cmd = buildClaudeCommand(config, tools, { resume });
-  if (willBootstrap) {
-    let bootstrap: string;
-    if (steps.length === 1) {
-      bootstrap = steps[0];
-    } else {
-      const numbered = steps.map((s, i) => `(${i + 1}) ${s}`).join(', ');
-      bootstrap = `Always-on bootstrap. Invoke these skills in order: ${numbered}.`;
-    }
-    cmd.push(bootstrap);
-  }
+  if (willBootstrap) cmd.push(bootstrap);
 
   checkStaleRuntime(config, sessionName);
 

@@ -1,6 +1,7 @@
 // Shared primitives for the scripts/*.ts verdict-line CLI contract (see
-// CLAUDE.md § Token discipline): emit() writes a bare stdout token (e.g. `OK`)
-// and exits 0; printJson() writes one JSON object line; emitJson() writes it
+// CLAUDE.md § Token discipline): writeStdout() writes stdout synchronously, so an
+// exit right after it cannot drop the tail of a large write; emit() writes a bare
+// stdout token (e.g. `OK`) and exits 0; printJson() writes one JSON object line; emitJson() writes it
 // and exits 1 when it carries an `error` key, else 0; exitError() prints a usage
 // or argument error as `{"error":"<token>"}` and exits 1; failJson() prints a caught
 // error as `{"error":"<token>"}` and sets exit 1 without exiting; readStdin() reads a
@@ -14,13 +15,27 @@ import fs from 'node:fs';
 
 type Json = any;
 
+// Synchronous on purpose: process.stdout.write may still hold the tail of a large
+// write for a pipe when process.exit runs, and exit drops it. EAGAIN means an earlier
+// process.stdout use left the pipe non-blocking, so wait for the reader. Any other
+// error (a closed reader) ends the write and leaves the exit code to the caller.
+function writeStdout(text: string): void {
+  const buf = Buffer.from(text);
+  for (let offset = 0; offset < buf.length;) {
+    try { offset += fs.writeSync(1, buf, offset); } catch (e: any) {
+      if (e?.code !== 'EAGAIN') return;
+      Bun.sleepSync(1);
+    }
+  }
+}
+
 function emit(verdict: string): never {
-  process.stdout.write(verdict + '\n');
+  writeStdout(verdict + '\n');
   process.exit(0);
 }
 
 function printJson(obj: object): void {
-  process.stdout.write(JSON.stringify(obj) + '\n');
+  writeStdout(JSON.stringify(obj) + '\n');
 }
 
 function emitJson(obj: object): never {
@@ -87,4 +102,4 @@ function flagEq(argv: string[], name: string): string | undefined {
   return hit === undefined ? undefined : hit.slice(name.length + 3);
 }
 
-export { emit, printJson, emitJson, exitError, failJson, snakeToken, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };
+export { writeStdout, emit, printJson, emitJson, exitError, failJson, snakeToken, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };

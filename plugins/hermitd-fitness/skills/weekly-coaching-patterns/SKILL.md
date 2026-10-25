@@ -69,5 +69,5 @@ The following metrics follow the same steady-session pattern and would add items
 ## Notes
 
 - **This skill writes no artifact.** Findings are returned for `reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns` to classify and route. Routine execution owns scheduling state.
-- **Registered by `/hermitd-fitness:hatch`** as the `weekly-coaching-patterns` routine. Its schedule lives in `config.routines`.
+- **Registered by `/hermitd-fitness:hatch`** as the `hermitd-fitness:weekly-coaching-patterns` routine. Its schedule lives in `config.routines`.
 - **The `[cardiac-drift-high]` label has two upstream producers.** `activity-deep-dive` step 7b writes single-session observations (graduated to proposals via reflect's current-session path); this skill emits on a multi-session trend. Both flow into `proposal-triage`, which dedups — so a triage `DUPLICATE` verdict here is expected behavior, not a bug.

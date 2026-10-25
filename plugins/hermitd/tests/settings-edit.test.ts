@@ -951,6 +951,59 @@ describe('plugin routine migrations', () => {
     }
   });
 
+  test('carries renamed routines\' schedule cursors and leaves other cursors alone', async () => {
+    const root = freshDir();
+    const file = seedConfig(root, { routines: [
+      row('morning-brief', 'hermitd-example:brief --morning'),
+      row('patterns', 'hermitd:reflect --check-id patterns --check hermitd-example:patterns'),
+      row('foreign', 'other:brief'),
+    ] });
+    const schedulePath = path.join(root, '.hermit', 'state', 'routine-schedule.json');
+    fs.mkdirSync(path.dirname(schedulePath), { recursive: true });
+    const mark = (m: string) => ({ last_consumed_mark: `2026-10-24T0${m}:00:00.000Z` });
+    fs.writeFileSync(schedulePath, JSON.stringify({
+      'morning-brief': mark('1'),
+      patterns: mark('2'),
+      'hermitd-example:patterns': mark('3'),
+      foreign: mark('4'),
+    }));
+    expect((await migrate(file)).exitCode).toBe(0);
+    expect(JSON.parse(fs.readFileSync(schedulePath, 'utf8'))).toEqual({
+      'hermitd-example:morning-brief': mark('1'),
+      patterns: mark('2'),
+      'hermitd-example:patterns': mark('3'),
+      foreign: mark('4'),
+    });
+  });
+
+  test('notes script-gated renames only, and a replay prints OK', async () => {
+    const root = freshDir();
+    const gate = path.join(root, 'gates', 'brief.sh');
+    fs.mkdirSync(path.dirname(gate), { recursive: true });
+    fs.writeFileSync(gate, '#!/bin/sh\necho WAKE\n', { mode: 0o755 });
+    const file = seedConfig(root, { routines: [
+      { ...row('morning-brief', 'hermitd-example:brief'), precheck: 'gates/brief.sh' },
+      { ...row('patterns', 'hermitd-example:patterns'), precheck: 'reflect' },
+    ] });
+    const r = await migrate(file);
+    expect(r.exitCode).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.renamed).toHaveLength(2);
+    expect(out.note).toContain('hermitd-example:morning-brief');
+    expect(out.note).not.toContain('patterns');
+    expect((await migrate(file)).stdout.trim()).toBe('OK');
+  });
+
+  test('builtin-gated and ungated renames carry no note', async () => {
+    const file = seedConfig(freshDir(), { routines: [
+      row('morning-brief', 'hermitd-example:brief'),
+      { ...row('patterns', 'hermitd-example:patterns'), precheck: 'doctor' },
+    ] });
+    const out = JSON.parse((await migrate(file)).stdout);
+    expect(out.renamed).toHaveLength(2);
+    expect(out).not.toHaveProperty('note');
+  });
+
   test('renames even when a project skill shares the plugin skill name', async () => {
     const root = freshDir();
     fs.mkdirSync(path.join(root, '.claude/skills/brief'), { recursive: true });
@@ -962,18 +1015,18 @@ describe('plugin routine migrations', () => {
   test('empty input prints OK for both migrations', async () => {
     const file = seedConfig(freshDir(), {});
     expect((await migrate(file)).stdout.trim()).toBe('OK');
-    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill', '--plugin', 'hermitd-example'] })).stdout.trim()).toBe('OK');
+    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill', '--skill', '/hermitd-example:start'] })).stdout.trim()).toBe('OK');
   });
 
-  test('clears only the named plugin startup skill', async () => {
-    for (const boot_skill of ['/hermitd-example:start', '/hermitd-other:start', '/acme-hermit:boot', '/hermitd:resident-start', '/operator:start', 'local-start', null]) {
+  test('clears only the exact named startup skill', async () => {
+    for (const boot_skill of ['/hermitd-example:start', '/hermitd-example:other', '/hermitd-other:start', '/acme-hermit:boot', '/hermitd:resident-start', '/operator:start', 'local-start', null]) {
       const file = seedConfig(freshDir(), { boot_skill, custom: true });
-      const args = [file, 'migrate', 'clear-sibling-boot-skill', '--plugin', 'hermitd-example'];
+      const args = [file, 'migrate', 'clear-sibling-boot-skill', '--skill', '/hermitd-example:start'];
       const r = await runScript('settings-edit.ts', { args });
       expect(r.exitCode).toBe(0);
       if (boot_skill === '/hermitd-example:start') {
         expect(JSON.parse(r.stdout)).toEqual({ cleared: boot_skill });
-        expect(readConfig(file)).toEqual({ custom: true });
+        expect(readConfig(file)).toEqual({ boot_skill: null, custom: true });
       } else {
         expect(r.stdout.trim()).toBe('OK');
         expect(readConfig(file)).toEqual({ boot_skill, custom: true });
@@ -989,10 +1042,25 @@ describe('plugin routine migrations', () => {
     expect(JSON.parse(r.stdout)).toEqual({ error: 'unsupported_migration' });
   });
 
-  test('clear-sibling-boot-skill requires --plugin', async () => {
-    const file = seedConfig(freshDir(), { boot_skill: '/hermitd-example:start' });
-    const r = await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill'] });
-    expect(r.exitCode).toBe(1);
-    expect(readConfig(file)).toEqual({ boot_skill: '/hermitd-example:start' });
+  test('clear-sibling-boot-skill rejects malformed arguments', async () => {
+    const config = { boot_skill: '/hermitd-example:start' };
+    const bad = [
+      [],
+      ['--skill'],
+      ['--plugin', 'hermitd-example', '--skill', '/hermitd-example:start'],
+      ['--skill', '/hermitd-example:start', 'extra'],
+      ['--skill', 'start'],
+      ['--skill', '/hermitd-example'],
+      ['--skill', '/hermitd-example:'],
+      ['--skill', '/Bad_Id:start'],
+      ['--skill', '/hermitd-example:start --flag'],
+    ];
+    for (const extra of bad) {
+      const file = seedConfig(freshDir(), config);
+      const r = await runScript('settings-edit.ts', { args: [file, 'migrate', 'clear-sibling-boot-skill', ...extra] });
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout).error).toContain('expected --skill /<plugin>:<name>');
+      expect(readConfig(file)).toEqual(config);
+    }
   });
 });

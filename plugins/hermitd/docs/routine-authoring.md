@@ -18,7 +18,7 @@ don't: *when* a routine needs a scoped skill instead of a broad one, and how to 
 A periodic plugin check is an ordinary routine, for example:
 
 ```json
-{"id":"my-check","schedule":"5 9 * * 1","skill":"hermitd:reflect --check-id my-check --check my-plugin:my-audit-skill","enabled":true}
+{"id":"my-plugin:my-check","schedule":"5 9 * * 1","skill":"hermitd:reflect --check-id my-check --check my-plugin:my-audit-skill","enabled":true}
 ```
 
 The wrapper invokes exactly that skill, with all arguments after `--check` passed verbatim. Actionable or contextual findings become one candidate with `Evidence Source: scheduled-check/my-check` and `Sessions: none`, routed through judge, triage, and the existing approval path. Quiet results produce no proposal. The routine owns cadence, model pins, and optional pre-wake gating; `scheduled_checks` is only for task-completion checks.

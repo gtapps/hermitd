@@ -100,7 +100,7 @@ If `config.feed` already exists, merge (keep operator edits; only fill absent ke
 
 ### 4c — Merge routines
 
-In the `routines` array, match each entry by its full skill string, including arguments. Add a new row with the namespaced id only when that skill is absent, using the crons from Step 3 and `enabled` from the slot/weekly enable answers. Preserve every field on existing matching rows, including operator ids and schedules.
+In the `routines` array: A row matches a seeded entry when its full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row. Add a new row only when no row matches, using the crons from Step 3 and `enabled` from the slot/weekly enable answers.
 
 ```json
 {
@@ -125,7 +125,7 @@ In the `routines` array, match each entry by its full skill string, including ar
 
 ### 4d: Merge the source-scout routine
 
-Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by the same matching rule. Create the array if absent. Append each entry with no matching row and leave all other config fields unchanged. No prompt is needed for these read-only analyses.
 
 ```json
 {"id": "hermitd-feed:source-scout", "schedule": "5 9 1 * *", "skill": "hermitd-feed:source-scout --scheduled", "enabled": true}
@@ -150,8 +150,8 @@ Write the updated `config.json` using the Write tool (full-file replacement to k
 Read `.hermit/knowledge-schema.md`. If the string `brief-summary:` is absent, append under `## Work Products` (create the header if only a stub exists):
 
 ```
-- brief: a delivered morning/evening brief. Triggered by feed-brief-morning/evening routines. location: briefs/YYYY-MM-DD-<slot>.md
-- weekly-brief: weekly synthesis over the week's briefs. Triggered by weekly-digest routine. location: briefs/weekly/YYYY-WNN.md
+- brief: a delivered morning/evening brief. Triggered by hermitd-feed:feed-brief-morning/evening routines. location: briefs/YYYY-MM-DD-<slot>.md
+- weekly-brief: weekly synthesis over the week's briefs. Triggered by hermitd-feed:weekly-digest routine. location: briefs/weekly/YYYY-WNN.md
 - brief-summary: one-line last-brief summary injected at session start. Triggered by feed-brief. location: compiled/brief-summary-last-<YYYY-MM-DD>.md
 - story-arcs: developing-story tracker. Triggered by story-arcs skill. location: compiled/story-arcs-<YYYY-MM-DD>.md
 - pending-delivery: queued brief awaiting redelivery. Triggered by feed-brief on send failure. location: compiled/pending-delivery.md
@@ -178,7 +178,7 @@ Installation summary:
   ✓ Prerequisite: hermitd {base_version} confirmed
   ✓ Registries: feed-sources.md / feed-categories.md / FEEDS.md seeded (or already present){; starter pack applied if opted in}
   ✓ .gitignore: tmp/ covered
-  ✓ config.json: feed block written, _hermit_versions stamped, {K}/3 routines added, source-scout routine registered, briefs archive registered in storage_drift.ignore
+  ✓ config.json: feed block written, _hermit_versions stamped, {K}/3 routines added, hermitd-feed:source-scout routine registered, briefs archive registered in storage_drift.ignore
   ✓ knowledge-schema.md: brief types added (or already present)
 
 Next steps:

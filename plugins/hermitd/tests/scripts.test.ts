@@ -2546,6 +2546,34 @@ describe('proposal queue-micro', () => {
     expect(microFile(dir).pending).toHaveLength(1);
   }));
 
+  const keyedAsk = { tier: 1, options: ['Fix them', 'Leave them'], key: 'leftover-check' };
+
+  test('queue-micro (a keyed ask queued again in new words stays one entry with the new question)', withDir(async (dir) => {
+    seed(dir);
+    const first = await queue(dir, { ...keyedAsk, question: 'Old wording' });
+    expect(first.status).toBe('queued');
+    expect(await queue(dir, { ...keyedAsk, question: 'New wording' })).toEqual({ status: 'duplicate', id: first.id });
+    expect(microFile(dir).pending).toEqual([expect.objectContaining({ id: first.id, key: 'leftover-check', question: 'New wording' })]);
+    expect((await queue(dir, { ...keyedAsk, key: 'something-else', question: 'New wording' })).status).toBe('duplicate');
+    expect(microFile(dir).pending[0].key).toBe('leftover-check');
+  }));
+
+  test('queue-micro (match on a keyed entry returns the usual fields only)', withDir(async (dir) => {
+    seed(dir);
+    const keyed = await queue(dir, { ...keyedAsk, question: 'Fix the leftovers?' });
+    const reply = await runProposal(hermit(dir), ['micro', 'match', keyed.id, '--reply', '1']);
+    expect(JSON.parse(reply.stdout)).toEqual({ status: 'match', id: keyed.id, question: 'Fix the leftovers?', answer: 'Fix them', tier: 1, on_resolve: null });
+  }));
+
+  test('queue-micro (a non-string or empty key -> exit 1)', withDir(async (dir) => {
+    seed(dir);
+    for (const key of [7, '']) {
+      const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', key }) });
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
+    }
+  }));
+
   test('queue-micro (a stale non-"pending" row with the same question is not a dedup match)', withDir(async (dir) => {
     seed(dir);
     write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({

@@ -4,11 +4,16 @@
 
 ### Changed
 - Upgrades check your own files once for names a release renamed or removed and ask one grouped question before changing anything.
-- Core routine ids use the `hermitd:` namespace; plugin routine migrations rename only a plugin's seeded routines that run its own skill.
+- Core routine ids use the `hermitd:` namespace; plugin routine migrations rename only a plugin's seeded routines that run its own skill, and the receipt names any script-gated routine that may run once early.
 - Startup skill selection belongs to the operator; hatch preserves it and keeps existing brief fields when changing schedules.
+
+### Removed
+- The unused `.hermit/bin/hermitd-run proposal micro *` and `task list *` allow entries; upgrades remove them from settings.
+- Hatch no longer reads `hermit.boot_skill` from a sibling's `hermit-meta.json` or writes `boot_skill`; choose a startup skill with `/hermitd:hermit-settings boot-skill`.
 
 ### Fixed
 - Answering an upgrade question from chat applies the chosen fix with the question's details, also after a restart.
+- Large helper output, such as an upgrade plan spanning many releases, is no longer cut off when read through a pipe.
 
 ### Upgrade Instructions
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate plugin-routine-ids --plugin hermitd --ids heartbeat-restart,reflect,weekly-review,later-check,doctor,capability-brainstorm,morning,evening` and report the receipt, including renamed ids.

@@ -136,7 +136,7 @@ Re-read `.hermit/config.json` now — the wizard has been running since Step 1 a
 
 **Merge the failed-deployment routine**
 
-Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines`. A row matches a seeded entry when its full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row. Create the array if absent. Append each entry with no matching row and leave all other config fields unchanged. No prompt is needed for these read-only analyses.
 
 ```json
 {"id": "hermitd-laravel-forge:forge-failed-deploys", "schedule": "5 9 * * *", "skill": "hermitd:reflect --check-id forge-failed-deploys --check hermitd-laravel-forge:forge-failed-deploys", "enabled": true}
@@ -176,7 +176,7 @@ Installation summary:
   ✓ .env: FORGE_API_TOKEN present, API check: ok
   ✓ .gitignore: .env covered
   ✓ knowledge-schema.md: deploy-incident type added (or already present)
-  ✓ config.json: _hermit_versions stamped, forge-failed-deploys routine registered
+  ✓ config.json: _hermit_versions stamped, hermitd-laravel-forge:forge-failed-deploys routine registered
 
 Next steps:
   - Run /hermitd:hermit-routines load to activate the daily estate scan.

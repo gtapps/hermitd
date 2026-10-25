@@ -44,8 +44,8 @@ Durable outputs. Injected into session context at startup within `compiled_budge
 
 | Filename pattern | type frontmatter | foundational | Produced by | When |
 |---|---|---|---|---|
-| `brief-morning-<date>.md` | `brief` | no | `ha-morning-brief` | Daily routine |
-| `brief-evening-<date>.md` | `brief` | no | `ha-evening-brief` | Daily routine |
+| `brief-ha-morning-<date>.md` | `brief` | no | `ha-morning-brief` | Daily routine |
+| `brief-ha-evening-<date>.md` | `brief` | no | `ha-evening-brief` | Daily routine |
 | `context-house-profile-<date>.md` | `context` | yes | First `ha-refresh-context` + operator input | Once; updated when house profile changes |
 | `presence-report-<date>.md` | `presence-report` | no | `ha-presence-report` | On demand |
 | `domain-brainstorm-<YYYY-MM-DD-HHMM>.md` | `domain-brainstorm` | no | `domain-brainstorm` | Operator request, only when a proposal was created |

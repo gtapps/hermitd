@@ -11,7 +11,7 @@ description: >-
 # Source Scout
 
 Proactively discover and add new RSS/web sources to `feed-sources.md`. Complements `source-health`
-(removal) with discovery (addition). Runs as the `source-scout` routine with `hermitd-feed:source-scout --scheduled`.
+(removal) with discovery (addition). Runs as the `hermitd-feed:source-scout` routine with `hermitd-feed:source-scout --scheduled`.
 
 ## Flags
 

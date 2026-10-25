@@ -8,7 +8,8 @@ const read = (name: string) => fs.readFileSync(path.join(PLUGIN_ROOT, name), 'ut
 describe('resident startup', () => {
   test('launch default and injected-prompt classification use resident-start', () => {
     expect(fs.existsSync(path.join(PLUGIN_ROOT, 'skills/resident-start/SKILL.md'))).toBe(true);
-    expect(read('scripts/hermitd-start.ts')).toContain("config.boot_skill || '/hermitd:resident-start'");
+    expect(read('scripts/hermitd-start.ts')).toContain("const DEFAULT_BOOT_SKILL = '/hermitd:resident-start';");
+    expect(read('scripts/hermitd-start.ts')).toContain('config.boot_skill || DEFAULT_BOOT_SKILL');
     expect(read('scripts/record-operator-action.ts')).toContain("'/hermitd:resident-start'");
     for (const name of ['session', 'session-start']) expect(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', name))).toBe(false);
   });
