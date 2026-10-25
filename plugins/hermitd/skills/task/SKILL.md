@@ -32,8 +32,6 @@ Finished recommendations, drafts and reviews awaiting acceptance require `--resu
 
 Inspect each command's result. If delivery or recording fails, report what remains incomplete through the available channel; do not claim the failed step succeeded.
 
-For a requester starting with `mcp:`, use its record and dispatch `hermitd:task-worker` with its id, brief and notes, no conversation key and no card. It has no channel: skip step 3's channel send and post nothing to any channel. Pipe the finished report into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --result-stdin`; with no check or approver, require `closed_by: "result"` and a positive `result_rev`, then handle `next_queued` and a pending review per § Closure. Put questions in `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on mcp:client --status-line <question> --next <what the answer unblocks>`. `MCP_TASK <id> answered` resumes from the latest note, steering its worker or dispatching one as needed. `MCP_TASK <id> cancelled` stops its running worker; ignore later `WORKER` lines for a closed record.
-
 ## Channel task procedures
 
 - **Task thread**: one open record owns a chat. An assignment that meets the TASKS.md threshold opens it; every later message in a chat whose context carries `[task thread <key>: …]` belongs to it, including an assignment-shaped one: that is steering, never a second record.
@@ -78,7 +76,7 @@ A stall in unfinished work requires `--waiting-on`, `--status-line` and `--next`
 
 ## Closure
 When the close digest says `skill_review: "pending"`, read [learn.md](learn.md).
-Stored status is only `open` or `closed`; closed_by is only `check`, `confirmed`, `result`, `cancelled` or null. `close`, `cancel`, a passing `task-check.ts` run, and an MCP result post close records. Never infer closure from harness idleness.
+Stored status is only `open` or `closed`; closed_by is only `check`, `confirmed`, `cancelled` or null. `close`, `cancel`, and a passing `task-check.ts` run close records. Never infer closure from harness idleness.
 
 Use `close <id> --by confirmed --actor <sourceKey>:<user_id> --result-rev <current> --reason-stdin` for confirmation of a posted result; with none posted, close without `--result-rev` when the requester explicitly says the work is done (an acknowledgement is not). `TASKS.md` defines what counts as confirmation. Close with a reason quoting the message that confirmed; the reply names the close so the requester can object. When one message both accepts the result and asks for new work, close the accepted record first, then classify the new request. The revision must match and a named approver must be the actor. Any authorized human in the conversation may otherwise confirm, cancel, or change the definition of done. There is no owner list.
 
