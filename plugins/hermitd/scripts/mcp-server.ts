@@ -3,7 +3,7 @@
 //
 // Launch: `.hermit/bin/hermitd-run mcp-server --roots <dir,dir>`
 // Inventory is explicit (arg wins over HERMIT_MCP_ROOTS). Stdout is JSON-RPC
-// frames only; logs go to stderr. The process never writes under a hermit root.
+// frames only; logs go to stderr. Task mutations use the locked task writer.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,9 @@ import { postToSession } from './lib/peer-post';
 import { readRuntimeState, type RuntimeRead } from './lib/runtime';
 import { findResident } from './lib/session-registry';
 import { readTaskReports } from './lib/task-report';
-import { readExecution } from './lib/tasks';
+import { readExecution, mutateTask, readTasks, decodeTask, TASK_ID, taskListing, type Task } from './lib/tasks';
+import { extractSection } from './lib/md-write';
+import { sha256 } from './lib/hash';
 
 type Json = any;
 
@@ -26,20 +28,6 @@ const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.d
 const WAKE_TOKEN = 'HEARTBEAT_EVALUATE';
 const BRIEF_CAP_BYTES = 16 * 1024;
 const RELAY_TIMEOUT_MS = 15_000;
-// This is an `initialize`-handshake server, so the advertised range is bounded
-// on both ends. Ceiling: 2026-07-28 is stateless and has no initialize/ping at
-// all (its spec dir drops lifecycle.mdx and carries the version in per-request
-// _meta), so advertising it would strand modern-only clients on this server's
-// "not initialized" rejection. Floor: revisions before 2025-06-18 require
-// receiving JSON-RPC batches, which this server rejects with -32600.
-const SUPPORTED_PROTOCOL_VERSIONS = [
-  '2025-11-25',
-  '2025-06-18',
-];
-// The latest version this server speaks; offered to a client that asked for one
-// we do not support, per the lifecycle rule below.
-const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
-
 const ROOT_PROP = {
   type: 'object',
   properties: {
@@ -49,6 +37,11 @@ const ROOT_PROP = {
 };
 
 const TOOLS = [
+  {
+    name: 'submit_task',
+    description: 'Hand a job to a hermit as an MCP task. Requires the MCP tasks extension.',
+    inputSchema: { type: 'object', properties: { ...ROOT_PROP.properties, title: { type: 'string' }, brief: { type: 'string' }, done: { type: 'string' } }, required: ['root', 'title', 'brief'] },
+  },
   {
     name: 'list_hermits',
     description: 'List the hermits in this server\'s configured inventory.',
@@ -117,6 +110,7 @@ function rpcError(id: Json, code: number, message: string, data?: Json): Json {
 
 function toolResult(obj: Json, isError = false): Json {
   const result: Json = {
+    resultType: 'complete',
     content: [{ type: 'text', text: JSON.stringify(obj) }],
     structuredContent: obj,
   };
@@ -330,7 +324,7 @@ function getVersion(root: string): Json {
     applied: typeof applied === 'string' ? applied : null,
     required_bun_version: typeof meta.required_bun_version === 'string' ? meta.required_bun_version : null,
     min_claude_code_version: typeof meta.min_claude_code_version === 'string' ? meta.min_claude_code_version : null,
-    contract_version: 1,
+    contract_version: 2,
   };
 }
 
@@ -389,10 +383,45 @@ async function runWakeLocal(projectRoot: string): Promise<boolean> {
   return result.write_status === 'flushed';
 }
 
-async function dispatchTool(name: string, args: Json, inventory: string[]): Promise<Json> {
+function hasTasks(meta: Json): boolean {
+  return meta?.['io.modelcontextprotocol/clientCapabilities']?.extensions?.['io.modelcontextprotocol/tasks'] !== undefined;
+}
+
+function dockerWriteError(root: string): string | null {
+  const runtime = readRuntimeState(stateDir(root));
+  return runtime.kind === 'ok' && runtime.data.runtime_mode === 'docker' && !isContainer()
+    ? 'Run the server inside the container: docker exec -i <container> .hermit/bin/hermitd-run mcp-server --roots <path inside the container>'
+    : null;
+}
+
+async function postTask(root: string, message: string): Promise<boolean> {
+  const runtime = readRuntimeState(stateDir(root));
+  const socket = runtime.kind === 'ok' ? runtime.data.inbox_socket : null;
+  return typeof socket === 'string' && !!socket && await postToSession(socket, message) === 'sent';
+}
+
+async function submitTask(root: string, args: Json, meta: Json): Promise<Json> {
+  if (isPaused(hermitDir(root)).paused) return toolError('paused');
+  const dockerError = dockerWriteError(root);
+  if (dockerError) return toolError(dockerError);
+  if (typeof args.title !== 'string' || !args.title.trim() || typeof args.brief !== 'string' || !args.brief.trim() || (args.done !== undefined && (typeof args.done !== 'string' || !args.done.trim()))) return toolError('title and brief are required strings; done must be a non-empty string');
+  try {
+    const name = meta?.['io.modelcontextprotocol/clientInfo']?.name;
+    const digest = mutateTask(hermitDir(root), 'open', undefined, {
+      title: args.title, requester: 'mcp:client', ...(typeof name === 'string' ? { 'requester-name': name } : {}), 'note-stdin': true, done: args.done ?? args.title,
+    }, args.brief, { bindTurn: false }) as { id: string };
+    const record = readTask(root, digest.id)!;
+    const sent = await postTask(root, `MCP_TASK ${digest.id}: task record ${digest.id} from an MCP client is open. Work it with /hermitd:task.\n${args.title}\n${args.brief}`);
+    return { resultType: 'task', taskId: `${sha256(root).slice(0, 8)}.${digest.id}`, status: 'working', statusMessage: sent ? 'accepted' : 'queued: resident not reachable', createdAt: record.opened_at, lastUpdatedAt: record.opened_at, ttlMs: null, pollIntervalMs: 5000 };
+  } catch (error) { return toolError(error instanceof Error ? error.message : String(error)); }
+}
+
+async function dispatchTool(name: string, args: Json, inventory: string[], meta: Json): Promise<Json> {
+  if (name === 'submit_task' && !hasTasks(meta)) return toolError('MCP tasks requires Claude Code 2.1.304 or later in a CLI or Agent SDK session with the tasks extension');
   if (name === 'list_hermits') return toolResult(listHermits(inventory));
   const resolved = resolveInventoryRoot(args?.root, inventory);
   if (typeof resolved !== 'string') return resolved;
+  if (name === 'submit_task') return submitTask(resolved, args, meta);
   if (name === 'get_status') return toolResult(getStatus(resolved));
   if (name === 'get_health') return toolResult(getHealth(resolved));
   if (name === 'get_brief') return toolResult(getBrief(resolved));
@@ -401,25 +430,92 @@ async function dispatchTool(name: string, args: Json, inventory: string[]): Prom
   return toolError(`Unknown tool: ${name}`);
 }
 
-function handleInitialize(id: Json, params: Json, ctx: { initialized: boolean }): Json {
-  const requested = params?.protocolVersion;
-  // 2025-06-18 and 2025-11-25 lifecycle: an unsupported version is not an
-  // error. "The server MUST respond with another protocol version it supports
-  // ... If the client does not support the version in the server's response,
-  // it SHOULD disconnect." Answering -32022 instead would deny a legacy client
-  // the chance to negotiate down; that code belongs to the stateless revision.
-  const agreed = typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
-    ? requested
-    : LATEST_PROTOCOL_VERSION;
-  ctx.initialized = true;
-  return rpcResult(id, {
-    protocolVersion: agreed,
-    capabilities: { tools: {} },
-    serverInfo: { name: 'hermitd', version: pluginVersion() },
-  });
+// One record file per poll; the whole set is read only when a listing needs it.
+function readTask(root: string, id: string): Task | null {
+  const file = path.join(hermitDir(root), 'tasks', `${id}.md`);
+  return fs.existsSync(file) ? decodeTask(fs.readFileSync(file, 'utf8')) : null;
 }
 
-async function handleLine(line: string, ctx: { inventory: string[]; initialized: boolean }): Promise<void> {
+function lookupTask(taskId: unknown, inventory: string[]): { root: string; record: Task } | null {
+  if (typeof taskId !== 'string') return null;
+  const [prefix, id, extra] = taskId.split('.');
+  if (extra !== undefined || !TASK_ID.test(id ?? '')) return null;
+  const root = inventory.find(root => sha256(root).slice(0, 8) === prefix);
+  if (!root) return null;
+  const record = readTask(root, id!);
+  return record?.requester === 'mcp:client' ? { root, record } : null;
+}
+
+function liveQuestion(record: Task): boolean {
+  return record.status === 'open' && !record.result && record.waiting_on === 'mcp:client' && record.stall_at !== null && record.stall_at === record.waiting_since;
+}
+
+function questionKey(record: Task): string {
+  return `q${Date.parse(record.stall_at!)}`;
+}
+
+function getTask(taskId: string, root: string, record: Task): Json {
+  const latest = (extractSection(record.body, 'Progress') ?? '').split('\n').findLast(line => line.startsWith('- ')) ?? '';
+  const stamps = [record.opened_at, latest.match(/^- (\S+)/)?.[1], record.waiting_since, record.result_at, record.closed_at].filter((stamp): stamp is string => !!stamp && Number.isFinite(Date.parse(stamp)));
+  const base = { resultType: 'complete', taskId, createdAt: record.opened_at, lastUpdatedAt: stamps.reduce((a, b) => Date.parse(a) >= Date.parse(b) ? a : b), ttlMs: null, pollIntervalMs: 5000 };
+  if (record.closed_by === 'cancelled') return { ...base, status: 'cancelled', statusMessage: record.closed_reason };
+  if (record.status === 'closed') return { ...base, status: 'completed', result: { resultType: 'complete', content: [{ type: 'text', text: record.result ?? record.closed_reason }] } };
+  if (record.result) return { ...base, status: 'working', statusMessage: taskListing(record, readTasks(hermitDir(root))).join(', ') };
+  if (liveQuestion(record)) {
+    return {
+      ...base,
+      status: 'input_required',
+      inputRequests: {
+        [questionKey(record)]: {
+          method: 'elicitation/create',
+          params: {
+            mode: 'form',
+            message: `${record.stall_status} Next: ${record.stall_next}`,
+            requestedSchema: {
+              type: 'object',
+              properties: { answer: { type: 'string', title: 'Answer' } },
+              required: ['answer'],
+            },
+          },
+        },
+      },
+    };
+  }
+  return { ...base, status: 'working', statusMessage: latest.slice(0, 120) };
+}
+
+async function taskMethod(method: string, params: Json, inventory: string[], id: Json): Promise<Json> {
+  try {
+    const found = lookupTask(params?.taskId, inventory);
+    if (!found) return rpcError(id, -32602, 'Failed to retrieve task: Task not found');
+    const { root, record } = found;
+    if (method === 'tasks/get') return rpcResult(id, getTask(params.taskId, root, record));
+    const dockerError = dockerWriteError(root);
+    if (dockerError) return rpcError(id, -32603, dockerError);
+    const opts = { bindTurn: false };
+    const cancel = async (reason: string) => {
+      if (record.status === 'closed') return;
+      // The record can close between this read and the locked write; that is the closed case.
+      try { mutateTask(hermitDir(root), 'cancel', record.id, { actor: 'mcp:client', 'reason-stdin': true }, reason, opts); }
+      catch (error) { if (error instanceof Error && error.message === 'not_open') return; throw error; }
+      await postTask(root, `MCP_TASK ${record.id} cancelled`);
+    };
+    if (method === 'tasks/cancel') await cancel('cancelled from MCP client');
+    else if (liveQuestion(record)) {
+      const response = params?.inputResponses?.[questionKey(record)];
+      if (response?.action === 'accept') {
+        if (typeof response.content?.answer !== 'string' || !response.content.answer.trim()) return rpcError(id, -32602, 'answer must be a non-empty string');
+        try {
+          mutateTask(hermitDir(root), 'note', record.id, { actor: 'mcp:client', 'clear-waiting': true }, response.content.answer, { ...opts, expectStallAt: record.stall_at! });
+          await postTask(root, `MCP_TASK ${record.id} answered`);
+        } catch (error) { if (!(error instanceof Error) || error.message !== 'stale_question') throw error; }
+      } else if (response?.action === 'decline' || response?.action === 'cancel') await cancel('declined from MCP client');
+    }
+    return rpcResult(id, { resultType: 'complete' });
+  } catch (error) { return rpcError(id, -32603, `Internal error: ${error instanceof Error ? error.message : error}`); }
+}
+
+async function handleLine(line: string, ctx: { inventory: string[] }): Promise<void> {
   if (!line.trim()) return;
   let msg: Json;
   try {
@@ -441,23 +537,36 @@ async function handleLine(line: string, ctx: { inventory: string[]; initialized:
   const method: string = msg.method;
   const params = msg.params;
 
-  if (method === 'notifications/initialized' || method === 'initialized') return;
   if (isNotification) return;
-
-  if (method === 'initialize') {
-    send(handleInitialize(id, params, ctx));
+  const meta = params?._meta;
+  const requested = method === 'initialize' ? params?.protocolVersion : meta?.['io.modelcontextprotocol/protocolVersion'];
+  if (method === 'initialize' || (requested !== undefined && requested !== '2026-07-28')) {
+    send(rpcError(id, -32022, 'Unsupported protocol version', { supported: ['2026-07-28'], requested }));
     return;
   }
-  if (method === 'ping') {
-    send(rpcResult(id, {}));
+  if (requested === undefined || meta?.['io.modelcontextprotocol/clientCapabilities'] === undefined) {
+    send(rpcError(id, -32602, 'Protocol version and client capabilities are required'));
     return;
   }
-  if ((method === 'tools/list' || method === 'tools/call') && !ctx.initialized) {
-    send(rpcError(id, -32600, 'Server not initialized'));
+  if (method === 'server/discover') {
+    send(rpcResult(id, {
+      resultType: 'complete',
+      supportedVersions: ['2026-07-28'],
+      capabilities: { tools: {}, extensions: { 'io.modelcontextprotocol/tasks': {} } },
+      _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'hermitd', version: pluginVersion() } },
+      ttlMs: 0,
+      cacheScope: 'private',
+    }));
+    return;
+  }
+  if (['tasks/get', 'tasks/update', 'tasks/cancel'].includes(method)) {
+    if (!hasTasks(meta)) {
+      send(rpcError(id, -32021, 'MCP tasks capability required', { requiredCapabilities: { extensions: { 'io.modelcontextprotocol/tasks': {} } } }));
+    } else send(await taskMethod(method, params, ctx.inventory, id));
     return;
   }
   if (method === 'tools/list') {
-    send(rpcResult(id, { tools: TOOLS }));
+    send(rpcResult(id, { resultType: 'complete', tools: TOOLS, ttlMs: 0, cacheScope: 'private' }));
     return;
   }
   if (method === 'tools/call') {
@@ -471,7 +580,7 @@ async function handleLine(line: string, ctx: { inventory: string[]; initialized:
     // would otherwise reach the chain's catch, log to stderr, and leave the
     // client waiting on an id that never comes back.
     try {
-      send(rpcResult(id, await dispatchTool(name, args, ctx.inventory)));
+      send(rpcResult(id, await dispatchTool(name, args, ctx.inventory, meta)));
     } catch (err: any) {
       send(rpcError(id, -32603, `Internal error: ${err?.message ?? err}`));
     }
@@ -481,7 +590,7 @@ async function handleLine(line: string, ctx: { inventory: string[]; initialized:
 }
 
 function startServer(inventory: string[]): void {
-  const ctx = { inventory, initialized: false };
+  const ctx = { inventory };
   const rl = readline.createInterface({ input: process.stdin });
   let chain = Promise.resolve();
   rl.on('line', (line) => {

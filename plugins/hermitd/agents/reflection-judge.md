@@ -106,7 +106,7 @@ A confirming record must describe the same observation independently of the cand
 
 ### 1.6 Provenance weighting
 
-Use normalized outcomes to weigh evidence. `done` means checked or confirmed; `cancelled`
+Use normalized outcomes to weigh evidence. `done` means checked, confirmed, or closed by an MCP result; `cancelled`
 is not success, and `unconfirmed` contains a result awaiting closure. For Tier 2 or Tier 3
 candidates supported only by unconfirmed results, consider a downgrade for unconfirmed evidence.
 Never suppress solely because the outcome is unconfirmed.

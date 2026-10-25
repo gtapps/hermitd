@@ -1,4 +1,4 @@
-import { mutateTask } from '../scripts/lib/tasks';
+import { mutateTask, readTasks } from '../scripts/lib/tasks';
 // Interactive stdio coverage for scripts/mcp-server.ts. runScript() waits for
 // exit on a finite stdin buffer, so these tests drive Bun.spawn with a piped
 // stdin and wait for the matching-id reply line (same arrival-polling pattern
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { PLUGIN_ROOT, SCRIPTS_DIR, runScript } from './helpers/run';
 import { setupWorkdir, writeConfig } from './helpers/workdir';
 import { LIVENESS_FRESH_SECS } from '../scripts/lib/liveness';
-import { setPause } from '../scripts/lib/pause';
+import { setPause, clearPause } from '../scripts/lib/pause';
 import { userMessageLine } from '../scripts/lib/peer-post';
 import { localIdentity } from './helpers/registry-fixture';
 
@@ -140,7 +140,7 @@ class McpSession {
   async rpc(method: string, params?: Json, id?: number | string): Promise<Json> {
     const useId = id ?? this.nextId++;
     const msg: Json = { jsonrpc: '2.0', id: useId, method };
-    if (params !== undefined) msg.params = params;
+    msg.params = { _meta: meta(), ...params };
     this.writeRaw(JSON.stringify(msg));
     return this.waitForId(useId);
   }
@@ -202,14 +202,12 @@ async function collectLines(stream: ReadableStream<Uint8Array>, lines: string[])
   } catch { /* stream closed */ }
 }
 
-async function handshake(session: McpSession, version = '2025-11-25'): Promise<Json> {
-  const init = await session.rpc('initialize', {
-    protocolVersion: version,
-    capabilities: {},
-    clientInfo: { name: 'mcp-server-test', version: '0' },
-  });
-  session.notify('notifications/initialized');
-  return init;
+function meta(): Json {
+  return { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientCapabilities': { extensions: { 'io.modelcontextprotocol/tasks': {} } }, 'io.modelcontextprotocol/clientInfo': { name: 'mcp-server-test', version: '0' } };
+}
+
+async function discover(session: McpSession): Promise<Json> {
+  return session.rpc('server/discover');
 }
 
 async function callTool(session: McpSession, name: string, args: Json = {}): Promise<Json> {
@@ -225,60 +223,25 @@ function toolBody(reply: Json): Json {
   return result.structuredContent;
 }
 
-describe('handshake', () => {
-  test('initialize echoes a supported protocolVersion, capabilities.tools, and plugin version', async () => {
+describe('discovery', () => {
+  test('discover and tools/list expose the stateless envelope', async () => {
     const s = McpSession.start();
     try {
-      const init = await handshake(s);
-      expect(init.result.protocolVersion).toBe('2025-11-25');
-      expect(init.result.capabilities).toEqual({ tools: {} });
-      expect(init.result.serverInfo).toEqual({ name: 'hermitd', version: PLUGIN_VERSION });
-      const pong = await s.rpc('ping');
-      expect(pong.result).toEqual({});
-      const listed = await s.rpc('tools/list');
-      expect(listed.result.tools.map((t: Json) => t.name)).toEqual([
-        'list_hermits', 'get_status', 'get_health', 'get_brief', 'get_version', 'wake',
-      ]);
-    } finally {
-      await s.close();
-    }
+      const reply = await discover(s);
+      expect(reply.result).toEqual({ resultType: 'complete', supportedVersions: ['2026-07-28'], capabilities: { tools: {}, extensions: { 'io.modelcontextprotocol/tasks': {} } }, _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'hermitd', version: PLUGIN_VERSION } }, ttlMs: 0, cacheScope: 'private' });
+      expect((await s.rpc('tools/list')).result).toMatchObject({ resultType: 'complete', ttlMs: 0, cacheScope: 'private' });
+      expect((await s.rpc('ping')).error.code).toBe(-32601);
+    } finally { await s.close(); }
   });
-
-  test('an older supported protocolVersion is echoed back unchanged', async () => {
+  test('legacy initialize, missing metadata and wrong versions are refused', async () => {
     const s = McpSession.start();
     try {
-      const init = await handshake(s, '2025-06-18');
-      expect(init.result.protocolVersion).toBe('2025-06-18');
-      const listed = await s.rpc('tools/list');
-      expect(listed.result.tools).toHaveLength(6);
-    } finally {
-      await s.close();
-    }
-  });
-
-  // 2025-06-18/2025-11-25 lifecycle: an unsupported version is answered with a
-  // successful result naming a version the server does speak, never an error.
-  test('unsupported protocolVersion negotiates down to the latest supported', async () => {
-    const s = McpSession.start();
-    try {
-      const reply = await s.rpc('initialize', { protocolVersion: '1900-01-01', capabilities: {}, clientInfo: { name: 't', version: '0' } });
-      expect(reply.error).toBeUndefined();
-      expect(reply.result.protocolVersion).toBe('2025-11-25');
-    } finally {
-      await s.close();
-    }
-  });
-
-  test('batch-era and stateless-era protocolVersions both negotiate down', async () => {
-    for (const requested of ['2025-03-26', '2024-11-05', '2026-07-28']) {
-      const s = McpSession.start();
-      try {
-        const reply = await s.rpc('initialize', { protocolVersion: requested, capabilities: {}, clientInfo: { name: 't', version: '0' } });
-        expect(reply.result.protocolVersion).toBe('2025-11-25');
-      } finally {
-        await s.close();
-      }
-    }
+      expect((await s.rpc('initialize', { protocolVersion: '2025-11-25' })).error).toMatchObject({ code: -32022, data: { supported: ['2026-07-28'], requested: '2025-11-25' } });
+      expect((await s.rpc('tools/list', { _meta: {} })).error.code).toBe(-32602);
+      expect((await s.rpc('tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } })).error.code).toBe(-32602);
+      expect((await s.rpc('tools/list', { _meta: { 'io.modelcontextprotocol/clientCapabilities': {} } })).error.code).toBe(-32602);
+      expect((await s.rpc('tools/list', { _meta: { ...meta(), 'io.modelcontextprotocol/protocolVersion': 'old' } })).error.code).toBe(-32022);
+    } finally { await s.close(); }
   });
 
   test('malformed line → parse error with id null, process stays up', async () => {
@@ -288,8 +251,8 @@ describe('handshake', () => {
       const err = await s.waitForErrorIdNull();
       expect(err.error.code).toBe(-32700);
       expect(err.id).toBeNull();
-      const init = await handshake(s);
-      expect(init.result.protocolVersion).toBe('2025-11-25');
+      const init = await discover(s);
+      expect(init.result.supportedVersions).toEqual(['2026-07-28']);
     } finally {
       await s.close();
     }
@@ -298,31 +261,20 @@ describe('handshake', () => {
   test('unknown method → -32601, process stays up', async () => {
     const s = McpSession.start();
     try {
-      await handshake(s);
+      await discover(s);
       const reply = await s.rpc('no/such/method');
       expect(reply.error.code).toBe(-32601);
-      const pong = await s.rpc('ping');
-      expect(pong.result).toEqual({});
+      expect((await discover(s)).result.resultType).toBe('complete');
     } finally {
       await s.close();
     }
   });
 
-  test('tools/call before initialize → protocol error', async () => {
-    const s = McpSession.start();
-    try {
-      const reply = await callTool(s, 'list_hermits');
-      expect(reply.error.code).toBe(-32600);
-      const init = await handshake(s);
-      expect(init.result.protocolVersion).toBe('2025-11-25');
-    } finally {
-      await s.close();
-    }
-  });
+
 
   test('stdin EOF shuts down cleanly', async () => {
     const s = McpSession.start();
-    await handshake(s);
+    await discover(s);
     const code = await s.close();
     expect(code).toBe(0);
   });
@@ -353,7 +305,7 @@ describe('list_hermits + get_status', () => {
 
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const listed = toolBody(await callTool(s, 'list_hermits'));
       expect(listed.hermits).toHaveLength(1);
       expect(listed.hermits[0].root).toBe(wd.dir);
@@ -384,7 +336,7 @@ describe('list_hermits + get_status', () => {
     tmpdirs.push(wd.dir);
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const listed = toolBody(await callTool(s, 'list_hermits'));
       expect(listed.hermits[0].name).toBeNull();
       expect(listed.hermits[0].runtime_mode).toBe('unknown');
@@ -407,7 +359,7 @@ describe('list_hermits + get_status', () => {
     fs.writeFileSync(hermit(wd.dir, 'state', 'runtime.json'), '{not json');
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const st = toolBody(await callTool(s, 'get_status', { root: wd.dir }));
       expect(st.runtime.kind).toBe('invalid');
       expect(typeof st.runtime.reason).toBe('string');
@@ -423,7 +375,7 @@ describe('list_hermits + get_status', () => {
     tmpdirs.push(outsider.dir);
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const reply = await callTool(s, 'get_status', { root: outsider.dir });
       expect(reply.error).toBeUndefined();
       expect(reply.result.isError).toBe(true);
@@ -444,7 +396,7 @@ describe('list_hermits + get_status', () => {
     }, {});
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const st = toolBody(await callTool(s, 'get_status', { root: wd.dir }));
       expect(st.resident).toEqual({
         status: 'idle',
@@ -464,7 +416,7 @@ describe('list_hermits + get_status', () => {
     const { ident, configDir } = writeResident(wd.dir, { status: 'busy', statusUpdatedAt: 1_700_000_000_000 }, { config_dir: undefined });
     const s = McpSession.start(['--roots', wd.dir], { CLAUDE_CONFIG_DIR: configDir });
     try {
-      await handshake(s);
+      await discover(s);
       const st = toolBody(await callTool(s, 'get_status', { root: wd.dir }));
       expect(st.resident).toEqual({ status: 'busy', statusUpdatedAt: 1_700_000_000_000, pid: ident.pid });
     } finally {
@@ -480,13 +432,13 @@ describe('list_hermits + get_status', () => {
       args: ['--roots', a.dir],
       env: { HERMIT_MCP_ROOTS: b.dir },
       stdin: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'initialize',
-        params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+        jsonrpc: '2.0', id: 1, method: 'server/discover',
+        params: { _meta: meta() },
       }) + '\n',
     });
     expect(viaArg.exitCode).toBe(0);
     const init = JSON.parse(viaArg.stdout.trim().split('\n')[0]);
-    expect(init.result.protocolVersion).toBe('2025-11-25');
+    expect(init.result.supportedVersions).toEqual(['2026-07-28']);
 
     const dup = await runScript('mcp-server.ts', { args: ['--roots', `${a.dir},${a.dir}`] });
     expect(dup.exitCode).toBe(1);
@@ -524,7 +476,7 @@ describe('get_health, get_brief, get_version', () => {
     });
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const h = toolBody(await callTool(s, 'get_health', { root: wd.dir }));
       expect(h.availability.state).toBe('alive');
       expect(h.availability.liveness_age_secs).toBeLessThan(LIVENESS_FRESH_SECS);
@@ -548,7 +500,7 @@ describe('get_health, get_brief, get_version', () => {
     writeAged(hermit(wd.dir, 'sessions', '.status.json'), LIVENESS_FRESH_SECS + 120);
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const h = toolBody(await callTool(s, 'get_health', { root: wd.dir }));
       expect(h.availability.state).toBe('reported_down');
       expect(h.availability.shutdown_completed_at).toBe('2026-08-01T00:00:00.000Z');
@@ -565,7 +517,7 @@ describe('get_health, get_brief, get_version', () => {
     writeAged(hermit(wd.dir, 'sessions', '.status.json'), LIVENESS_FRESH_SECS + 120);
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const h = toolBody(await callTool(s, 'get_health', { root: wd.dir }));
       expect(h.availability.state).toBe('unknown');
       expect(h.availability.shutdown_completed_at).toBeNull();
@@ -585,7 +537,7 @@ describe('get_health, get_brief, get_version', () => {
     writeAged(hermit(wd.dir, 'sessions', '.status.json'), LIVENESS_FRESH_SECS + 120);
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const h = toolBody(await callTool(s, 'get_health', { root: wd.dir }));
       expect(h.availability.state).toBe('alive');
       expect(h.availability.resident.pid).toBe(ident.pid);
@@ -616,7 +568,7 @@ describe('get_health, get_brief, get_version', () => {
     fs.writeFileSync(hermit(wd.dir, 'sessions', 'S-003-REPORT.md'), '---\nid: S-003\n---\nShould not be used.\n');
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const b = toolBody(await callTool(s, 'get_brief', { root: wd.dir }));
       expect(b.status.tasks).toEqual([]);
       expect(b.last_brief.text).toBe('Overnight: shipped the hatch.');
@@ -640,7 +592,7 @@ describe('get_health, get_brief, get_version', () => {
     mutateTask(hermit(wd.dir), 'open', undefined, { title: body, requester: 'operator', done: 'Verified' }, '');
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const b = toolBody(await callTool(s, 'get_brief', { root: wd.dir }));
       expect(b.last_brief).toBeNull();
       expect(b.report.source_path).toContain('/tasks/T-');
@@ -659,14 +611,14 @@ describe('get_health, get_brief, get_version', () => {
     writeConfig(wd.dir, { _hermit_versions: { 'hermitd': '0.0.1' } });
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const v = toolBody(await callTool(s, 'get_version', { root: wd.dir }));
       expect(v.loaded).toBe(PLUGIN_VERSION);
       expect(v.applied).toBe('0.0.1');
       expect(v.loaded).not.toBe(v.applied);
       expect(v.required_bun_version).toBe(HERMIT_META.required_bun_version);
       expect(v.min_claude_code_version).toBe(HERMIT_META.min_claude_code_version);
-      expect(v.contract_version).toBe(1);
+      expect(v.contract_version).toBe(2);
     } finally {
       await s.close();
     }
@@ -684,7 +636,7 @@ describe('wake', () => {
     });
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const w = toolBody(await callTool(s, 'wake', { root: wd.dir }));
       expect(w).toEqual({ write_status: 'flushed', delivery: 'unconfirmed' });
       await waitForLines(inbox.lines, 1);
@@ -707,7 +659,7 @@ describe('wake', () => {
     });
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const w = toolBody(await callTool(s, 'wake', { root: wd.dir }));
       expect(w).toEqual({ write_status: 'unreachable', delivery: 'unconfirmed' });
     } finally {
@@ -726,7 +678,7 @@ describe('wake', () => {
     setPause(hermit(wd.dir), { reason: 'operator', by: 'test' });
     const s = McpSession.start(['--roots', wd.dir]);
     try {
-      await handshake(s);
+      await discover(s);
       const w = toolBody(await callTool(s, 'wake', { root: wd.dir }));
       expect(w).toEqual({ delivery: 'suppressed', reason: 'paused' });
       await Bun.sleep(80);
@@ -754,7 +706,7 @@ exit 0
     fs.chmodSync(path.join(bin, 'docker'), 0o755);
     const s = McpSession.start(['--roots', wd.dir], { PATH: `${bin}:${process.env.PATH}` });
     try {
-      await handshake(s);
+      await discover(s);
       const w = toolBody(await callTool(s, 'wake', { root: wd.dir }));
       expect(w.write_status).toBe('flushed');
       expect(w.delivery).toBe('unconfirmed');
@@ -778,11 +730,133 @@ exit 0
     fs.chmodSync(path.join(bin, 'docker'), 0o755);
     const s = McpSession.start(['--roots', wd.dir], { PATH: `${bin}:${process.env.PATH}` });
     try {
-      await handshake(s);
+      await discover(s);
       const w = toolBody(await callTool(s, 'wake', { root: wd.dir }));
       expect(w.write_status).toBe('unreachable');
     } finally {
       await s.close();
     }
   });
+});
+
+describe('submit_task', () => {
+  test('refusals open nothing; valid submission records the requester and posts to the resident', async () => {
+    const wd = setupWorkdir(); tmpdirs.push(wd.dir);
+    const inbox = await inboxServer();
+    writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'tmux', inbox_socket: inbox.socketPath });
+    const s = McpSession.start(['--roots', wd.dir]);
+    const args = { root: wd.dir, title: 'Do the job', brief: 'Here is the work' };
+    try {
+      const plain = await s.rpc('tools/call', { name: 'submit_task', arguments: args, _meta: { ...meta(), 'io.modelcontextprotocol/clientCapabilities': {} } });
+      expect(plain.result.isError).toBe(true);
+      expect(plain.result.content[0].text).toContain('2.1.304');
+      expect((await callTool(s, 'submit_task', { ...args, root: os.tmpdir() })).result.isError).toBe(true);
+      setPause(hermit(wd.dir), { reason: 'operator', by: 'test' });
+      expect(toolBody(await callTool(s, 'submit_task', args)).error).toBe('paused');
+      clearPause(hermit(wd.dir));
+      writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'docker' });
+      expect(toolBody(await callTool(s, 'submit_task', args)).error).toContain('docker exec -i');
+      expect(readTasks(hermit(wd.dir))).toEqual([]);
+      writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'tmux', inbox_socket: inbox.socketPath });
+      const reply = (await callTool(s, 'submit_task', args)).result;
+      expect(reply).toMatchObject({ resultType: 'task', status: 'working', statusMessage: 'accepted', ttlMs: null, pollIntervalMs: 5000 });
+      expect(reply.taskId).toMatch(/^[0-9a-f]{8}\.T-\d{8}-\d{6}(-[a-z0-9])?$/);
+      const [record] = readTasks(hermit(wd.dir));
+      expect(record).toMatchObject({ requester: 'mcp:client', requester_name: 'mcp-server-test', summary: args.title });
+      expect(record.body).toContain(args.brief);
+      await waitForLines(inbox.lines, 1);
+      expect(inbox.lines.join('\n')).toContain(`MCP_TASK ${record.id}`);
+      writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'tmux', inbox_socket: '/tmp/mcp-absent.sock' });
+      expect((await callTool(s, 'submit_task', args)).result.statusMessage).toBe('queued: resident not reachable');
+      expect(readTasks(hermit(wd.dir))).toHaveLength(2);
+    } finally { await s.close(); inbox.close(); }
+  });
+});
+
+describe('task methods', () => {
+  test('polling maps record state, answers live questions, and cancels without poll writes', async () => {
+    const wd = setupWorkdir(); tmpdirs.push(wd.dir);
+    const inbox = await inboxServer();
+    writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'tmux', inbox_socket: inbox.socketPath });
+    const s = McpSession.start(['--roots', wd.dir]);
+    const dir = hermit(wd.dir);
+    const submit = async () => (await callTool(s, 'submit_task', { root: wd.dir, title: 'Job', brief: 'Work' })).result.taskId;
+    const poll = async (taskId: string) => (await s.rpc('tasks/get', { taskId })).result;
+    const recordId = (taskId: string) => taskId.split('.')[1];
+    const change = (taskId: string, verb: string, flags: Json, input = '') => mutateTask(dir, verb, recordId(taskId), flags, input);
+    const text = (taskId: string) => fs.readFileSync(path.join(dir, 'tasks', `${recordId(taskId)}.md`), 'utf8');
+    const stall = (taskId: string) => change(taskId, 'block', { 'waiting-on': 'mcp:client', 'status-line': 'Which color?', next: 'Paint' });
+    try {
+      const taskId = await submit();
+      change(taskId, 'note', {}, 'Making progress');
+      const before = text(taskId);
+      const working = await poll(taskId);
+      expect(working.status).toBe('working');
+      expect(working.statusMessage).toContain('Making progress');
+      expect(await poll(taskId)).toEqual(working);
+      expect(text(taskId)).toBe(before);
+      stall(taskId);
+      const question = await poll(taskId);
+      const stalledText = text(taskId);
+      expect(await poll(taskId)).toEqual(question);
+      expect(text(taskId)).toBe(stalledText);
+      expect(question.status).toBe('input_required');
+      const key = Object.keys(question.inputRequests)[0];
+      expect(key).toMatch(/^q\d+$/);
+      expect(question.inputRequests[key].params.message).toBe('Which color? Next: Paint');
+      const waiting = text(taskId);
+      await s.rpc('tasks/update', { taskId, inputResponses: { stale: { action: 'accept', content: { answer: 'No' } } } });
+      expect(text(taskId)).toBe(waiting);
+      await s.rpc('tasks/update', { taskId, inputResponses: { [key]: { action: 'accept', content: { answer: 'Blue' } } } });
+      expect((await poll(taskId)).status).toBe('working');
+      expect(text(taskId)).toContain('mcp:client: Blue');
+      change(taskId, 'block', { 'result-stdin': true }, 'Painted blue');
+      const completed = await poll(taskId);
+      expect(completed).toMatchObject({ status: 'completed', result: { resultType: 'complete', content: [{ type: 'text', text: 'Painted blue' }] } });
+      const closed = text(taskId);
+      expect(await poll(taskId)).toEqual(completed);
+      expect(text(taskId)).toBe(closed);
+      await s.rpc('tasks/cancel', { taskId });
+      expect(text(taskId)).toBe(closed);
+      for (const mode of ['working', 'waiting', 'decline', 'cancel-dialog', 'clear', 'done', 'checked', 'confirmed']) {
+        const job = await submit();
+        if (mode !== 'working') stall(job);
+        if (mode === 'clear' || mode === 'done') {
+          change(job, 'note', mode === 'clear' ? { 'clear-waiting': true } : { done: 'Revised', actor: 'hermit' }, 'Continue');
+          expect((await poll(job)).status).toBe('working');
+        }
+        if (mode === 'checked' || mode === 'confirmed') {
+          change(job, 'note', { check: 'true' });
+          change(job, 'block', { 'result-stdin': true }, 'Ready');
+          expect((await poll(job)).status).toBe('working');
+          if (mode === 'checked') change(job, 'check-result', { exit: '0', 'result-rev': '2', 'output-stdin': true }, 'Passed');
+          else change(job, 'close', { by: 'confirmed', actor: 'mcp:client', 'reason-stdin': true, 'result-rev': '2' }, 'Confirmed');
+          expect((await poll(job)).status).toBe('completed');
+          continue;
+        }
+        if (mode === 'decline' || mode === 'cancel-dialog') {
+          const q = await poll(job);
+          await s.rpc('tasks/update', { taskId: job, inputResponses: { [Object.keys(q.inputRequests)[0]]: { action: mode === 'decline' ? 'decline' : 'cancel' } } });
+        } else await s.rpc('tasks/cancel', { taskId: job });
+        expect((await poll(job)).status).toBe('cancelled');
+      }
+      const foreign = mutateTask(dir, 'open', undefined, { title: 'Chat', requester: 'discord:u1', done: 'Done' }, '') as Json;
+      for (const missing of ['bad', '00000000.' + recordId(taskId), taskId.split('.')[0] + '.invalid', taskId.split('.')[0] + '.' + foreign.id, taskId.split('.')[0] + '.T-19000101-000000']) {
+        expect((await s.rpc('tasks/get', { taskId: missing })).error).toMatchObject({ code: -32602, message: 'Failed to retrieve task: Task not found' });
+      }
+      expect((await s.rpc('tasks/get', { taskId, _meta: { ...meta(), 'io.modelcontextprotocol/clientCapabilities': {} } })).error).toMatchObject({ code: -32021, data: { requiredCapabilities: { extensions: { 'io.modelcontextprotocol/tasks': {} } } } });
+      const dockerJob = await submit();
+      writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'docker' });
+      for (const method of ['tasks/update', 'tasks/cancel']) expect((await s.rpc(method, { taskId: dockerJob })).error.message).toContain('docker exec -i');
+      expect((await poll(dockerJob)).status).toBe('working');
+      writeJson(hermit(wd.dir, 'state/runtime.json'), { runtime_mode: 'tmux' });
+      fs.writeFileSync(path.join(dir, 'state/tasks.lock'), String(process.pid));
+      expect((await s.rpc('tasks/cancel', { taskId: dockerJob })).error).toMatchObject({ code: -32603 });
+      expect((await callTool(s, 'submit_task', { root: wd.dir, title: 'Busy', brief: 'Work' })).result.isError).toBe(true);
+      fs.unlinkSync(path.join(dir, 'state/tasks.lock'));
+      await waitForLines(inbox.lines, 3);
+      expect(inbox.lines.join('\n')).toContain(`MCP_TASK ${recordId(taskId)} answered`);
+      expect(inbox.lines.join('\n')).toContain('cancelled');
+    } finally { await s.close(); inbox.close(); }
+  }, 10_000);
 });

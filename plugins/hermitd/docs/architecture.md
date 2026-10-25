@@ -69,7 +69,7 @@ assignment -> open record -> work -> result awaiting confirmation
 
 **Work:** `task.ts note`, `block`, and `lesson` update the record. Guild assignments may have resident-owned threads and progress cards. Presentation on a channel never replaces the record. Execution observations in `state/execution.json` and the Claude Code registry describe whether the process is safe to interrupt, independently of whether commitments remain open.
 
-**Close:** A record closes only by a successful check, confirmation, or explicit cancellation. Confirmation is the requester clearly accepting the result, in any wording or language. A named approver confirms in their own words. A submitted result alone is unconfirmed. Time, midnight, process shutdown and context resets do not close commitments. Close/cancel returns the next runnable resident record so work can continue in the same turn.
+**Close:** A record closes only by a successful check, confirmation, explicit cancellation, or a result posted for an MCP-requested record with no check or approver. Confirmation is the requester clearly accepting the result, in any wording or language. A named approver confirms in their own words. Any other submitted result alone is unconfirmed. Time, midnight, process shutdown and context resets do not close commitments. Close/cancel returns the next runnable resident record so work can continue in the same turn.
 
 **Read:** Brief, reflection, weekly review, health and reporting use `task-report.ts` to distinguish done, cancelled, unconfirmed and open records. Task spend is split equally across a turn's task IDs and indexed by date. Duty summaries show requested configuration beside observed execution.
 
