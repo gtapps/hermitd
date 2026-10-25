@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Removed
+- The `claude-code-hermit` migration script and its helpers; agents still on claude-code-hermit 1.4.8 migrate with the prompt in `docs/upgrading.md`.
+- Settings sync no longer removes `claude-code-hermit` era allow entries.
+
 ## [1.4.21] - 2026-10-25
 
 ### Changed

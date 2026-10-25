@@ -15,7 +15,6 @@ on:
     paths:
       - 'scripts/install.sh'
       - 'scripts/uninstall.sh'
-      - 'scripts/migrate.sh'
       - '.github/workflows/pages-install.yml'
   workflow_dispatch:
 
@@ -45,7 +44,6 @@ jobs:
           mkdir -p site
           cp scripts/install.sh site/install.sh
           cp scripts/uninstall.sh site/uninstall.sh
-          cp scripts/migrate.sh site/migrate.sh
           # Actions-based Pages does not run Jekyll, but this costs nothing and
           # removes the question entirely.
           touch site/.nojekyll
@@ -58,14 +56,12 @@ jobs:
           <p>Redirecting to <a href="https://github.com/gtapps/hermitd">github.com/gtapps/hermitd</a>.</p>
           <p>Installer: <code>curl -fsSL https://gtapps.github.io/hermitd/install.sh | bash</code></p>
           <p>Uninstaller: <code>curl -fsSL https://gtapps.github.io/hermitd/uninstall.sh | bash</code></p>
-          <p>Migration: <code>curl -fsSL https://gtapps.github.io/hermitd/migrate.sh | bash</code></p>
           HTML
 
       - name: Verify the published file matches the repo
         run: |
           diff -q scripts/install.sh site/install.sh
           diff -q scripts/uninstall.sh site/uninstall.sh
-          diff -q scripts/migrate.sh site/migrate.sh
 
       - uses: actions/configure-pages@v5
 

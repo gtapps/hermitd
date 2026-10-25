@@ -790,51 +790,6 @@ describe('migrate 1.4.0', () => {
   });
 });
 
-describe('migrate hermitd', () => {
-  test('renames fleet references once without changing operator values', async () => {
-    const file = seedConfig(freshDir(), {
-      _hermit_versions: { 'claude-code-hermit': '1.4.8', 'hermit-scribe': '1.0.0', custom: '2' },
-      boot_skill: '/claude-code-hermit:resident-start',
-      shutdown_skill: 'claude-code-dev-hermit:finish',
-      routines: [{ id: 'custom', schedule: '0 9 * * *', skill: '/feed-hermit:brief', enabled: false }],
-      scheduled_checks: [{ plugin: 'claude-code-fitness-hermit', skill: 'hermit-scribe:hermit-scribe' }],
-      docker: { recommended_plugins: [{ plugin: 'laravel-forge-hermit', marketplace: 'gtapps/claude-code-hermit', reason: 'operator' }, { plugin: 'custom' }] },
-      'claude-code-dev-hermit': { custom: 'claude-code-hermit' },
-      agent_name: 'Preserved',
-    });
-    const args = [file, 'migrate', 'hermitd'];
-    const first = await runScript('settings-edit.ts', { args });
-    expect(first.exitCode).toBe(0);
-    const config = readConfig(file);
-    expect(config._hermit_versions).toEqual({ hermitd: '1.4.8', 'hermitd-scribe': '1.0.0', custom: '2' });
-    expect(config.boot_skill).toBe('/hermitd:resident-start');
-    expect(config.shutdown_skill).toBe('hermitd-dev:finish');
-    expect(config.routines[0].skill).toBe('/hermitd-feed:brief');
-    expect(config.scheduled_checks).toEqual([{ plugin: 'hermitd-fitness', skill: 'hermitd-scribe:hermit-scribe' }]);
-    expect(config.docker.recommended_plugins).toEqual([{ plugin: 'hermitd-laravel-forge', marketplace: 'gtapps/hermitd', reason: 'operator' }, { plugin: 'custom' }]);
-    expect(config['hermitd-dev']).toEqual({ custom: 'claude-code-hermit' });
-    expect(config['claude-code-dev-hermit']).toBeUndefined();
-    expect(config.agent_name).toBe('Preserved');
-    const audit = path.join(path.dirname(file), 'state/settings-audit.jsonl');
-    const bytes = fs.readFileSync(file, 'utf8');
-    const recorded = fs.readFileSync(audit, 'utf8');
-    const mtime = fs.statSync(file).mtimeMs;
-    expect((await runScript('settings-edit.ts', { args })).exitCode).toBe(0);
-    expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
-    expect(fs.statSync(file).mtimeMs).toBe(mtime);
-    expect(fs.readFileSync(audit, 'utf8')).toBe(recorded);
-  });
-
-  test('preserves null and unnamespaced shutdown skills', async () => {
-    for (const shutdown_skill of [null, 'operator-command', 'custom:finish']) {
-      const file = seedConfig(freshDir(), { shutdown_skill });
-      const before = fs.readFileSync(file, 'utf8');
-      expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'hermitd'] })).exitCode).toBe(0);
-      expect(fs.readFileSync(file, 'utf8')).toBe(before);
-    }
-  });
-});
-
 describe('migrate channel-home', () => {
   test('seeds empty homes, excludes maintainers, preserves pins, and runs once', async () => {
     const file = seedConfig(freshDir(), {
