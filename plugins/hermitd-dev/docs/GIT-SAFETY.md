@@ -65,7 +65,7 @@ A `PreToolUse` hook on `Edit`/`Write` for the `claude --worktree` workflow. When
 
 | Profile | Hook behavior | When to use |
 |---------|---------------|-------------|
-| `minimal` / `standard` | Hook exits 0 immediately — only prose rules apply | Experimenting, or you trust the agent and just want the prose nudge |
+| `minimal` / `standard` | `git-push-guard` exits 0 immediately | Use core's permission rules without push-guard enforcement |
 | `strict` (default after `/hatch`) | `git-push-guard` blocks the patterns above | Day-to-day work; always-on / Docker deployments; anything production-adjacent |
 
 `/hatch` defaults to installing strict and offers an explicit opt-out. Once strict, re-running `/hatch` never silently downgrades.
