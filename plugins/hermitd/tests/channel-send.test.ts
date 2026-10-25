@@ -8,7 +8,7 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runScript, runPinnedScript, type RunOptions } from './helpers/run';
-import { setupWorkdir, type Workdir } from './helpers/workdir';
+import { setupWorkdir, writeConfig, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
 import { sendOperatorNotice, splitMessage, sendToChannel, sendToOwnedChat } from '../scripts/lib/channel-send';
@@ -1299,6 +1299,62 @@ test('unsendable configured primary stays on its route', async () => {
     expect(stub.requests).toHaveLength(0);
     expect(await sendToChannel(hermit(wd.dir), 'private', { config, target: { id: 'unknown', chat_id: 'X' } })).toEqual({ ok: false, error: 'unsupported_platform' });
   } finally { stub.stop(); wd.cleanup(); }
+});
+
+describe('notice relay on a channel without a send path', () => {
+  const readState = (wd: Workdir, name: string) => {
+    const p = hermit(wd.dir, 'state', name);
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  };
+  // Telegram keeps its token from setupChannelWorkdir so a maintainer leg can still send.
+  const setup = (primary: string, top: object = {}) => {
+    const wd = setupChannelWorkdir();
+    writeConfig(wd.dir, { ...top, channels: {
+      primary,
+      custom: { default_chat_id: 'C1' },
+      telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' },
+    } });
+    return wd;
+  };
+  const run = (wd: Workdir, payload: object, stub: { url: string }, routine?: string) =>
+    runChannelSend({
+      args: [hermit(wd.dir), '--notice', ...(routine ? ['--routine', routine] : [])],
+      stdin: JSON.stringify(payload),
+      env: { HERMIT_TELEGRAM_API_URL: stub.url },
+    });
+
+  test('a client notice returns relay with its chat and saves nothing as undelivered', async () => {
+    const stub = startHttpStub();
+    const wd = setup('custom');
+    try {
+      const out = JSON.parse((await run(wd, { client: 'PLAIN' }, stub)).stdout);
+      expect(out.status).toBe('relay');
+      expect(out.relay).toEqual({ channel: 'custom', chat_id: 'C1' });
+      expect(stub.requests).toHaveLength(0);
+      expect(readState(wd, 'watchdog-events.jsonl')).not.toContain('undelivered-client-notice');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('a routine relays to its owning chat while maintainer detail still goes out', async () => {
+    const stub = startHttpStub();
+    const wd = setup('telegram', { routines: [{ id: 'weekly', schedule: '0 9 * * 1', skill: 'hermitd:brief', enabled: true, chat: 'custom:C9' }] });
+    try {
+      const out = JSON.parse((await run(wd, { client: 'PLAIN', maintainer: 'MAINT' }, stub, 'weekly')).stdout);
+      expect(out.status).toBe('relay');
+      expect(out.relay).toEqual({ channel: 'custom', chat_id: 'C9' });
+      expect(stub.requests.map(q => q.body.text)).toEqual(['MAINT']);
+      expect(readState(wd, 'routine-metrics.jsonl')).not.toContain('chat-undelivered');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('a script caller without relay keeps the undelivered path', async () => {
+    const wd = setup('custom');
+    try {
+      const out = await sendOperatorNotice(hermit(wd.dir), { client: 'PLAIN' });
+      expect(out.client).toMatchObject({ ok: false, error: 'no_send_path', undelivered_saved: true });
+      expect(out.relay).toBeUndefined();
+    } finally { wd.cleanup(); }
+  });
 });
 
 describe('merged notice results and logging', () => {

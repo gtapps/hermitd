@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Notices the agent composes reach a channel without a direct sender or `send_script` through that channel's reply tool; `channel-send --notice` returns `relay` with the target chat.
+
 ## [1.4.21] - 2026-10-25
 
 ### Changed
