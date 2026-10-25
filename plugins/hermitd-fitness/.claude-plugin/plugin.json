@@ -1,6 +1,6 @@
 {
   "name": "hermitd-fitness",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "dependencies": [
     {
       "name": "hermitd",

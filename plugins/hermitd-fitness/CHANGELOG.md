@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.9] - 2026-10-25
 
 ### Changed
 - Hatch matches existing routines by full skill string or namespaced id and assigns new rows `hermitd-fitness:` ids, preserving existing operator fields. Requires hermitd 1.4.21.
