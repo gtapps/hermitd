@@ -93,7 +93,7 @@
       "name": "hermitd-feed",
       "source": "./plugins/hermitd-feed",
       "description": "Scheduled briefs for Hermit from sources you choose, with story tracking, weekly summaries, and source-quality checks.",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "category": "productivity",
       "author": {
         "name": "gtapps",
