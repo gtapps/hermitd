@@ -1467,11 +1467,12 @@ describe('doctor-check', () => {
     expect(c.detail).toContain('does-not-exist.ts');
   }));
 
-  test('hooks: plugin manifest contains exactly the 15 shared scripts', () => {
+  test('hooks: plugin manifest contains exactly the 18 shared scripts', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
     const names = Object.values(manifest.hooks).flatMap((entries: any) =>
       entries.flatMap((entry: any) => entry.hooks.map((hook: any) => path.basename(hook.args[0], '.ts'))));
     expect(names.sort()).toEqual([
+      'skill-guard', 'skill-lint', 'tool-counter',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',
       'helper-report-relay', 'helper-report-relay', 'channel-responder-invoked',
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',

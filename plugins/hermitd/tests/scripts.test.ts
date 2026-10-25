@@ -2234,14 +2234,9 @@ describe('observations.ts observe', () => {
     expect(lines.every((l) => l.pattern === 'skill-preference:email-draft')).toBe(true);
   }));
 
-  test('observations (procedure-noticed source accepted with origin)', withDir(async (dir) => {
-    const r = await observe(hermit(dir), 'procedure-noticed', 'procedure-noticed:weekly-deps', '--origin=own-work');
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout.trim()).toBe('OK');
-    const row = JSON.parse(fs.readFileSync(ledgerOf(dir), 'utf-8').trim());
-    expect(row.source).toBe('procedure-noticed');
-    expect(row.origin).toBe('own-work');
-    expect(row.pattern).toBe('procedure-noticed:weekly-deps');
+  test('observations rejects the retired procedure source', withDir(async (dir) => {
+    const r = await observe(hermit(dir), 'procedure-noticed', 'old-procedure', '--origin=own-work');
+    expect(r.exitCode).toBe(1);
   }));
 
   test('observations (invalid origin value rejected)', withDir(async (dir) => {
@@ -5804,7 +5799,7 @@ describe('proposal metrics', () => {
     afterAll(() => wd.cleanup());
 
     test('metrics segments (every source, snake_case)', () => {
-      expect(out.segments.map((s: any) => s.source)).toEqual(['reflect', 'capability_brainstorm', 'procedure_capture', 'scheduled_check']);
+      expect(out.segments.map((s: any) => s.source)).toEqual(['reflect', 'capability_brainstorm', 'scheduled_check']);
     });
     test('metrics segments (reflect rates)', () => {
       expect(out.segments[0]).toMatchObject({ status: 'insufficient_data', triage_survival_pct: 50, acceptance_pct: 100, accepted: 1, created: 1 });
@@ -5813,7 +5808,7 @@ describe('proposal metrics', () => {
       expect(out.segments[1]).toMatchObject({ triage_survival_pct: null, acceptance_pct: null, sample: 0 });
     });
     test('metrics segments (scheduled-check omits the acceptance keys)', () => {
-      const sched = out.segments[3];
+      const sched = out.segments[2];
       for (const key of ['acceptance_pct', 'accepted', 'created', 'kill_acceptance_pct']) expect(sched).not.toHaveProperty(key);
       expect(sched).not.toHaveProperty('kill_reasons');
     });

@@ -64,6 +64,12 @@ const SPECS: Spec[] = [
     failExit: 0,
   },
   {
+    name: 'core/skill-guard',
+    script: 'plugins/hermitd/scripts/skill-guard.ts',
+    benign: BENIGN_EDIT,
+    failExit: 0, // Malformed input exits 0; it denies only when the raw text names a skill folder.
+  },
+  {
     name: 'core/artifact-backend-guard',
     script: 'plugins/hermitd/scripts/artifact-backend-guard.ts',
     // Bash, not Artifact: the guard returns on any non-Artifact tool_name, so

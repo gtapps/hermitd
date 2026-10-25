@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Inspect and control learned skills in the current project.
+exec "$(dirname "$0")/hermitd-run" skills "$@"

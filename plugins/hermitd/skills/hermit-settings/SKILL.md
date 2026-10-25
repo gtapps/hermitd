@@ -42,6 +42,8 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
 /hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
+/hermitd:hermit-settings skills-learning: enable or disable close-time skill learning
+/hermitd:hermit-settings skills-notify: off, on, or verbose learning notifications
 /hermitd:hermit-settings reflection       — tune graduation threshold (graduation_min_sessions)
 /hermitd:hermit-settings push-notifications — toggle PushNotification doorbell (fires when no channel is enabled or a configured channel is unreachable)
 /hermitd:hermit-settings artifact-dashboard — toggle the Hermit Dashboard artifact (single-URL status/proposals/weekly-evolution page)
@@ -103,6 +105,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |
 | `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start |
 | `push-notifications` | `push_notifications` | boolean | yes / no; doorbell when no channel is reachable | immediately |
+| `skills-learning` | `skills.learning` | boolean | yes / no; review reusable procedures at task close | immediately |
+| `skills-notify` | `skills.notify` | enum | off / on / verbose; off, on, or verbose close replies | immediately |
 | `reflection` | `reflection.graduation_min_sessions` | integer | any; distinct sessions before a pattern becomes a proposal candidate | next reflect run |
 | `artifact-dashboard` | `artifacts.dashboard` | boolean | yes / no; status, proposal queue, weekly evolution | next refresh |
 | `artifact-proposals` | `artifacts.proposals` | boolean | yes / no; full text of open proposals | next refresh |

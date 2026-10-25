@@ -20,7 +20,7 @@ import { utcISOStamp, todayYMD } from './time';
 
 type Origin = 'own-work' | 'external-content';
 
-const CLI_SOURCES = ['quick-deferral', 'reflect-noticed', 'skill-correction', 'procedure-noticed', 'skill-preference', 'skill-preference-applied'] as const;
+const CLI_SOURCES = ['quick-deferral', 'reflect-noticed', 'skill-correction', 'skill-preference', 'skill-preference-applied'] as const;
 const DETERMINISTIC_SOURCES = ['cost-spike', 'behavior-digest', 'startup-drift'] as const;
 
 type CliSource = (typeof CLI_SOURCES)[number];
@@ -28,7 +28,7 @@ type Source = CliSource | (typeof DETERMINISTIC_SOURCES)[number];
 
 // Sources whose rows carry an `origin`. The rest omit the key entirely — readers
 // treat a missing origin as own-work (skills/reflect/SKILL.md § observations).
-const ORIGIN_SOURCES = new Set<string>(['reflect-noticed', 'skill-correction', 'procedure-noticed', 'skill-preference', 'skill-preference-applied', 'startup-drift']);
+const ORIGIN_SOURCES = new Set<string>(['reflect-noticed', 'skill-correction', 'skill-preference', 'skill-preference-applied', 'startup-drift']);
 
 const ORIGINS: string[] = ['own-work', 'external-content'];
 

@@ -38,7 +38,7 @@ Invoked from SKILL.md step 3b when a graduated pattern's label matches `skill-pr
 Recover the settled content from the pointer memory: read the operator's MEMORY.md index and the topic file whose title or body matches `<name>`. Derive the candidate title from that memory topic filename — a pending row and a sweep-emitted candidate for the same settlement then dedup by title-slug in § Candidate processing. Branch:
 
 - **A skill named `<name>` exists** — `.claude/skills/<name>/SKILL.md` is present, or the harness's available-skills list carries a **namespaced** entry `<plugin>:<name>` (a bare `<name>` entry with no file is a user-scope or bundled skill, which `proposal-act`'s gate rejects as `stale-paths`, so it does not satisfy this branch): Tier 2 `## Skill Improvement` candidate naming `<name>` and the settled content recovered from the memory, no anchor line. Carries `Artifact: state/observations.jsonl`. Do not test whether the skill is operator-editable or plugin-shipped: an override does not shadow the plugin skill it overrides, both surface in the list, and `proposal-act` resolves the class once at accept against the filesystem and list as they are then.
-- **No skill covers the output** (list readable, no file at that name, and no namespaced `<plugin>:<name>` entry — a bare `<name>` entry with no file lands here too: it is a user-scope or bundled skill this hermit cannot edit or own the settlement in): follow § Procedure capture's Preference ladder — extend an adjacent skill as a Tier 2 `## Skill Improvement` candidate, or the Tier-3 `## Skill Draft` path when nothing can absorb it.
+- **No skill covers the output** (list readable, no file at that name, and no namespaced `<plugin>:<name>` entry — a bare `<name>` entry with no file lands here too: it is a user-scope or bundled skill this hermit cannot edit or own the settlement in): extend an adjacent owning skill as a Tier 2 `## Skill Improvement` candidate when one exists. Otherwise preserve the settled content in memory; do not propose a plain skill. Close-time learning owns reusable procedure creation.
 - **Neither is established** — no file, and the available-skills list is not in context (after a compaction no `skill_listing` is re-injected, so its absence is unknown, not empty): plain Tier 2 improvement candidate naming `<name>` and the settled content, asserting neither that a skill owns the output nor that none does, and noting that re-running reflect with the list in context settles it. Carries `Artifact: state/observations.jsonl`. Never a `## Skill Improvement` here: on a `<name>` that is an output slug rather than a skill, that marker would reach accept as an authoring instruction and create a skill at that name, bypassing the Preference ladder's extend-before-create rule.
 
 All branches proceed via § Candidate processing.
@@ -59,7 +59,6 @@ Only create a proposal if all three are true:
    - **Tier 1 + `Evidence Source: archived-session`**: requires 2+ archived sessions, identical to Tier 2/3. The loosening above is specific to the `current-session` path, not to Tier 1 generally.
    - **Tier 2 / Tier 3**: 2+ archived sessions required at every phase (baseline: observed more than once, across archived sessions). Ledger-graduated candidates (step 3b's mechanical promotion at `graduation_min_sessions`) satisfy recurrence via the `Artifact: state/observations.jsonl` rule (triage's condition-1 ledger clause; judge §1.4) regardless of this baseline.
    - **Artifact-cited efficiency/cost candidates**: recurrence is satisfied by the cited measurements themselves — the same waste measured ≥2 times in a machine-written state file (`Sessions: none` + `Artifact:` line; the judge verifies the file contains the cited values).
-   - **Procedure-capture ephemerality exception**: a procedure-capture candidate with ephemeral artifacts and quantified cost satisfies recurrence at 1 current session — see § Procedure capture.
 2. **Meaningful consequence** — something goes wrong without fixing it
 3. **Operator-actionable change** — something the operator can concretely approve
 
@@ -86,7 +85,7 @@ Reflect-generated inferences **never** use bypass Evidence Sources (`scheduled-c
 
 ### Evidence Validation
 
-Before acting on any proposal candidate, delegate to `hermitd:reflection-judge`. Collect **all** candidates first — including `routine_candidates` and `procedure_candidates` from the eval runner alongside think-hard and procedure-capture candidates — then make a **single** invocation. Dedup by title-slug before passing (reflection-judge matches verdicts by title; duplicates would produce ambiguous routing). A single candidate is still passed as a batch of one. (Quick mode's stated order — one batched triage call first, then one judge batch for the CREATE survivors — is the exception in ordering only, not batching; follow the order the calling mode specifies.)
+Before acting on any proposal candidate, delegate to `hermitd:reflection-judge`. Collect **all** candidates first — including `routine_candidates` and `procedure_candidates` from the eval runner alongside think-hard candidates — then make a **single** invocation. Dedup by title-slug before passing (reflection-judge matches verdicts by title; duplicates would produce ambiguous routing). A single candidate is still passed as a batch of one. (Quick mode's stated order — one batched triage call first, then one judge batch for the CREATE survivors — is the exception in ordering only, not batching; follow the order the calling mode specifies.)
 
 Pass candidates as a sequence of blocks separated by a blank line:
 ```
@@ -167,7 +166,7 @@ After validating with `hermitd:reflection-judge`, choose exactly one outcome per
 
 1. **No action** — pattern not strong enough, already handled, or already addressed by the Resolution Check.
 2. **Memory update** — for **durable lessons** worth remembering for future sessions: operator-stated rules, preferences that recurred, decision rationales that may apply later, workflow patterns that worked (subject to the placement rule — settled task-scoped or multi-step content belongs to the skill owning the task, with memory as the pointer). Issue the standard "remember it" reflection — the trained auto-memory flow handles the write, with its own discipline (concise, MEMORY.md ≤ 200 lines / 25KB, topic files for detail, respect WHAT_NOT_TO_SAVE). Save nothing if nothing rises above noise. Sub-threshold *patterns* do NOT go to memory — they go to the observations ledger; keeping the recurrence store separate from operator memory is what prevents triage's `covered-by-memory` check from suppressing a pattern at the moment it graduates.
-3. **Proposal candidate**: classify tier (§ Proposal Tier Classification) for every candidate reaching this outcome, batch them all through the Proposal triage gate together, then per candidate on its own verdict: Tier 1/2 `create` → queue micro-approval in `state/micro-proposals.json`; Tier 3 `create` → call `/hermitd:proposal-create` (exception: procedure-capture candidates skip the separate pre-gate; see § Procedure capture).
+3. **Proposal candidate**: classify tier (§ Proposal Tier Classification) for every candidate reaching this outcome, batch them all through the Proposal triage gate together, then per candidate on its own verdict: Tier 1/2 `create` → queue micro-approval in `state/micro-proposals.json`; Tier 3 `create` → call `/hermitd:proposal-create`.
 
 Sub-threshold observations do not surface to the operator in steady state. Before appending, follow SKILL.md's once-per-run `observations-patterns` lookup and reuse the label for the same component and failure. The label goes on stdin, so apostrophes in it are safe:
 Run `observations-observe` (Commands) with arguments `reflect-noticed --origin=own-work` and the following stdin payload:
@@ -198,102 +197,3 @@ Set `chat` to the normalized key of the chat the question is sent to: the curren
 - `duplicate`: a pending entry with the same `question`, `key` or linked proposal already exists (its `id` is returned); the script keeps that entry and gives it the new `question`.
 
 Notify the operator with the question (using the returned or existing id). Entries without `options`: `MP-YYYYMMDD-N (tier <N>): <question>` — Reply `"MP-YYYYMMDD-N yes"` or `"MP-YYYYMMDD-N no"` (bare `yes`/`no` accepted when only one entry is pending). Entries with `options`: render them numbered (`1. <label>`, `2. <label>`, ...) under the question and hint `Reply "MP-YYYYMMDD-N <number or label>"` (bare number/label accepted when only one entry is pending).
-
-### Procedure capture (new-skill creation)
-
-Component Health improves existing components. This subsection is the symmetric path: creating a brand-new skill from a recurring procedure the hermit keeps executing manually.
-
-**Kill criteria (evaluate per candidate surfaced, not per reflect run — recurrence-gating means this fires rarely).**
-
-After ≥8 procedure-capture candidates surfaced, run:
-
-Run `proposal-metrics` (Commands) with arguments `--source=procedure-capture`.
-
-`status: "kill"` (triage survival < 25% or acceptance < 30%, named in `kill_reasons`) → disable procedure capture rather than tune it. `status: "insufficient_data"` means the ≥8-verdict sample hasn't been reached yet; do not read thresholds until it does.
-
-**Detection — when to trigger:**
-
-The eval runner (SKILL.md step 6) reads MEMORY.md and archived `## Lessons` sections and returns recurring procedures as `procedure_candidates`. Each entry already carries `slug`, `title`, `evidence`, `sessions`, `evidence_source`, and `evidence_origin`. Process each entry through the dedup guard and write-brief steps below — **except** entries carrying `evidence_source: "settled-memory"`: those are the ownership signal, not procedures, and route to § `skill-preference:*` routing instead (they name an existing owning skill, which this section's dedup guard would read as full coverage and suppress; they also take no brief, no forced Tier 3, and no place in the kill-criteria sample above).
-
-Recurrence signal (as evaluated by the runner): the same multi-step procedure appears as a Lesson or memory workflow-pattern in **≥ `graduation_min_sessions` distinct archived sessions** (read from `config.json` at `reflection.graduation_min_sessions`; default 1 if absent) and no existing skill covers it.
-
-**Ephemerality exception:** a procedure observed only in the current session is eligible when (a) its artifacts are ephemeral; they live outside the repo and the hermit state dir (e.g. `/tmp` scripts) and will not survive the session; and (b) its cost is quantified in session content that already exists (wall-clock, rerun count, or script count in open record notes / Findings; reflect must not write it there itself; § Evidence integrity rule). Such candidates use `Evidence Source: current-session` with `Sessions: current`, stay Tier 3, write the procedure brief as usual (the brief preserves the evidence before it vanishes), and route through `proposal-create` like any procedure-capture candidate. They count toward the kill-criteria sample above; the safety valve if this exception turns noisy.
-
-**Evidence fields** (standard path — set by construction; ephemerality-exception candidates use `Evidence Source: current-session` instead, as stated above):
-- `Evidence Source: archived-session` (reads MEMORY.md + archived Lessons, never the open task record)
-- `Evidence Origin: own-work` unless the procedure was originally learned from external content (web fetches, `raw/` captures, channel messages) — then `external-content`, which forces Tier 3 anyway
-
-**Dedup guard (both checks required before writing a brief):**
-1. Glob `.claude/skills/*/SKILL.md`; for each, read `name:` and `description:` frontmatter. If an installed skill already covers the procedure (name or trigger-phrase match) → suppress; note as a housekeeping line in open record notes (exempt from evidence-integrity per the rule above).
-2. Consult the harness available-skills list (authoritative — never disk checks or `claude plugin list`). If any `/hermitd:*` or sibling-plugin skill already covers the procedure → suppress.
-3. The standard `proposal-triage` gate still runs and catches an already-open PROP (DUPLICATE verdict).
-
-**Preference ladder (extend before create).** The dedup guard above is binary — *full* coverage suppresses. Between "fully covered" and "no related skill at all" sits the common case: an **adjacent** skill whose domain or trigger phrases overlap the procedure but that does not fully cover it. Prefer **extending the adjacent skill** over drafting a new one: route the procedure as a Component Health `## Skill Improvement` candidate naming that skill (Tier 2, the existing edit path — see § `skill-correction:*` routing and § Component Health) instead of the Tier-3 `## Skill Draft` below, and follow § Candidate processing. Draft a brand-new skill only when no installed or sibling skill can absorb the procedure. Rationale: a proliferation of narrow single-use skills is a failure of the skill library, not a success (reuse over build). When extending, skip the procedure-brief and `## Skill Draft` steps below.
-
-**Write the procedure brief (audit artifact):**
-
-Write `.hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md` before queuing the candidate. This is a housekeeping artifact (not evidence injected into the judged session content), so writing it before the judge call is permitted.
-
-Frontmatter:
-```yaml
----
-title: "Procedure brief — <name>"
-type: procedure-brief
-created: <ISO with tz>
-tags: [procedure-capture]
-source: session
-session: T-... # task id; script-read key retained
-related_sessions: [S-AAA, S-BBB]
-proposed_skill_name: <name>
-proposed_routine:                    # optional
-  id: <slug>
-  schedule: "<cron>"
-  skill: "<invocation string>"
-proposed_agent_name: <name>          # optional
----
-```
-
-A skill alone by default. Add `proposed_routine` when the procedure is schedulable (object: `id`, `schedule` cron, `skill` invocation string). Add `proposed_agent_name` when a sub-step's intermediate context dwarfs its conclusion — a thin skill plus a `.claude/agents/<name>.md` worker (the Delegation rule in prompts/resident.md). No numeric thresholds; the shape is a judgment.
-
-Body (concise — fits the `compiled/` char-budget/lint contract; do NOT write a full SKILL.md here):
-- The recurring steps in order
-- Evidence sessions (which sessions and what Lessons/memory entries show the recurrence)
-- Proposed skill name and trigger phrases
-
-**Naming (applies to `proposed_skill_name` above, `proposed_agent_name`, and the `## Skill Draft` `name` below).** Name the skill (and the agent, when set) for the recurring *capability* it provides, never for the incident that surfaced it — no issue/PR numbers, error strings, dates, or `fix-<X>` phrasings in the name or slug (`fix-issue-44`, `handle-enoent`, `stop-verbose-brief` are all wrong). A skill named after its triggering event never routes on the capability it actually delivers, and the operator gate may rubber-stamp a bad name.
-
-**Routing:** two lanes.
-
-A procedure is **chat-triggered** when its evidence is an operator request from a live conversation (channel or terminal), not a close-debrief `procedure-noticed` row, archived-report `## Completed`/`## Lessons`, or MEMORY.md workflow pattern.
-
-**Lane A (Tier 3 — no proposed routine, chat-triggered, or `Evidence Origin: external-content`).** Classify **Tier 3** (a new skill auto-loads into every future session, its triggers can fire autonomously, and writing under `.claude/` is operator-space — plus chat-triggered and external-origin procedures need full artifact review). This matches the Tier-3 definition and the convention that all `category: capability` writers go straight to `proposal-create`.
-
-Queue as a Tier-3 candidate by calling `/hermitd:proposal-create`: it runs `proposal-triage` internally and emits the `tags`-carrying triage-verdict. Do **not** pre-gate with `proposal-triage` separately: a separate pre-gate emits an untagged `caller: reflect` verdict, so its `suppress` verdicts escape the triage-survival count above and inflate the rate. Call with:
-- `category: capability`
-- `tags: [procedure-capture]`
-- `source: auto-detected`
-- The `## Skill Draft` body block (see `proposal-create` for format):
-  ```
-  ## Skill Draft
-  - name: <skill-name>
-  - source_artifact: .hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md
-  - install_target: .claude/skills/<name>/SKILL.md
-  - triggers: <comma-separated proposed trigger phrases>
-  ```
-
-**Lane B (Tier 2 — routine-bound).** Brief has `proposed_routine`, the procedure is not chat-triggered, and origin is own-work. Classify **Tier 2**. Still call `/hermitd:proposal-create` (single triage gate, `tags: [procedure-capture]`, audit record) with:
-- `category: routine`
-- `tags: [procedure-capture]`
-- `source: auto-detected`
-- A `## Config` block holding the routine JSON (`id`, `schedule`, `skill`, `enabled`) from `proposed_routine`
-- The `## Skill Draft` body block (same format as Lane A)
-- `## Agent Draft` when `proposed_agent_name` is set (see `proposal-create` for format)
-
-Then exactly one bridged ask via `proposal.ts queue-micro`:
-Run `proposal-queue-micro` (Commands) and the following stdin payload:
-```text
-{"tier":2,"question":"<pattern + duration> + <consequence> + save it and run <skill name> on <schedule>?","options":["accept","dismiss"],"on_resolve":"/hermitd:proposal-act {answer} PROP-NNN","proposal_id":"PROP-NNN"}
-```
-(the script forces `tier: 1` for bridged entries; that is expected). The channel message renders `1. accept / 2. dismiss` with the reply hint format already normative above (`Reply "MP-YYYYMMDD-N <number or label>"`), because a bare yes/no is ambiguous against an options entry.
-
-Chat-triggered and external-origin candidates never go to the micro-approval queue. External-origin procedures (where the procedure was derived from external content) should carry `Evidence Origin: external-content` through to proposal-create, which will write the operator-visible provenance line.

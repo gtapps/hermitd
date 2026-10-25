@@ -51,3 +51,9 @@ Before replying, the responder lists open records for the conversation and recor
 A confirmed result closes only the matching revision. Any clear acceptance of a posted result, in any wording or language, confirms it; a named approver confirms in their own words and blocks check closure. The task skill runs a record's check when the result is recorded; the daily run is the fallback. Any authorized human in the conversation can steer a record; a named approver restricts confirmation. Duties may open deduplicated records for work requiring a person when `tasks.duties_open_records` is enabled.
 
 A task thread with a bound session works like a Projects thread: follow-ups go to that session, which answers with its working context. Confirmations, parking and conversation commands stay with the resident. Watched reports land as results on the record and in its thread; unprompted reports land as notes and thread posts. The resident updates the card on each report. Approvals are given directly in the session through `claude attach <id>` or Remote Control, never relayed through the task thread. The next phase can bind the same session to its new record.
+
+## Learned-skill reviews
+
+Records persist `delegated` (default `false`) and `skill_review` (default `null`). Ownership by a worker or helper sets `delegated` permanently. Successful closure, including a passing check, sets `skill_review: pending` when `skills.learning` is enabled and the task was delegated or the resident counter reached ten calls. That closure resets the counter. Cancellation never schedules learning.
+
+`task.ts list .hermit --skill-review pending` includes closed records so startup can recover interrupted reviews. Finish a closed review with `task.ts learn .hermit <id> --disposition saved|covered|nothing`. Repeating the same disposition is a no-op; changing a disposition after completion is refused.

@@ -309,27 +309,11 @@ describe('artifact-cited evidence path', () => {
   });
 });
 
-// ── item 6: ephemerality exception for procedure capture ────────────────────
-
-describe('ephemerality exception', () => {
-  test('reflect: ephemerality exception present', () => {
-    expect(reflect).toContain('Ephemerality exception');
-  });
-
-  test('reflect: exception requires artifacts that will not survive', () => {
-    expect(reflect).toContain('will not survive the session');
-  });
-
-  test('reflect: exception requires pre-existing quantified cost', () => {
-    expect(reflect).toContain('cost is quantified in session content that already exists');
-  });
-
-  test('reflect: exception stays Tier 3 and counts toward kill criteria', () => {
-    expect(reflect).toContain('count toward the kill-criteria sample');
-  });
-
-  test('reflect: procedure-capture recurrence signal reads graduation_min_sessions', () => {
+describe('procedure discovery moved to task close', () => {
+  test('reflect no longer discovers procedures or carries an ephemerality exception', () => {
+    expect(reflect).not.toContain('Ephemerality exception');
+    expect(reflect).not.toContain('### Procedure capture');
+    expect(reflect).toContain('skill-preference:*');
     expect(reflect).toContain('graduation_min_sessions');
-    expect(reflect).toContain('distinct archived sessions');
   });
 });

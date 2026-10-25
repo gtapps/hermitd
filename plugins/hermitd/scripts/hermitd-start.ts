@@ -258,6 +258,7 @@ const DEFAULT_CONFIG: Json = {
       min_interval: '4h',
     },
   },
+  skills: { learning: true, notify: 'on' },
   reflection: {
     graduation_min_sessions: 1,
   },
@@ -713,6 +714,8 @@ function writeSystemPrompts(residentName: string): void {
 
 /** Build the claude launch command from config. */
 function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string }): string[] {
+  // Claude Code watches new skills live only when this directory exists at launch.
+  fs.mkdirSync(path.join(process.cwd(), '.claude', 'skills'), { recursive: true });
   const cmd = ['claude'];
 
   let enabledChannels = getEnabledChannels(config);

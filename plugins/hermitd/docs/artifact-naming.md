@@ -54,7 +54,7 @@ compliant path table.
 - **Foundational pinning:** tag a compiled artifact `foundational` to pin it to every
   session regardless of age.
 - **Example:** `compiled/audit-kitchen-2026-04-17.md`
-- **Procedure briefs** are a special `compiled/` type (`type: procedure-brief`, filename `procedure-brief-<slug>-<YYYY-MM-DD>.md`). They are audit records written by `reflect` when a recurring procedure is detected; not domain outputs meant for startup injection. Do not tag them `foundational`. See [frontmatter-contract.md](frontmatter-contract.md) for the required fields.
+- **Procedure briefs** are a special `compiled/` type (`type: procedure-brief`, filename `procedure-brief-<slug>-<YYYY-MM-DD>.md`). They are legacy reflect audit records still readable by routine/agent proposals; not domain outputs meant for startup injection. Do not tag them `foundational`. See [frontmatter-contract.md](frontmatter-contract.md) for the required fields.
 
 ## state/ — runtime ledgers
 

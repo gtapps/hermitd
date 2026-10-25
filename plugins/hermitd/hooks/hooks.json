@@ -22,6 +22,12 @@
             "command": "bun",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/cache-edit-guard.ts"],
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "bun",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/skill-guard.ts"],
+            "timeout": 3
           }
         ]
       },
@@ -90,6 +96,12 @@
             "command": "bun",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.ts"],
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bun",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/skill-lint.ts"],
+            "timeout": 3
           }
         ]
       },
@@ -111,6 +123,17 @@
             "type": "command",
             "command": "bun",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-track.ts"],
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/tool-counter.ts"],
             "timeout": 3
           }
         ]

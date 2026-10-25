@@ -2537,3 +2537,9 @@ describe('checkStaleRuntime planned restart', () => {
     });
   }
 });
+
+test('launch creates the project skills directory for the first learned skill', async () => {
+  expect(fs.existsSync(path.join(tmpdir, '.claude/skills'))).toBe(false);
+  await runBuildClaudeCommand({ channels: {}, remote: false }, '#!/bin/sh\nexit 0\n');
+  expect(fs.statSync(path.join(tmpdir, '.claude/skills')).isDirectory()).toBe(true);
+});

@@ -123,6 +123,10 @@
       "min_interval": "4h"
     }
   },
+  "skills": {
+    "learning": true,
+    "notify": "on"
+  },
   "reflection": {
     "graduation_min_sessions": 1
   },

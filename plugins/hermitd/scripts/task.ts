@@ -10,13 +10,14 @@ async function main(): Promise<void> {
   const allowed: Record<string, string[]> = {
     open: ['note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     note: ['actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'check', 'owner', 'muted'],
+    learn: ['disposition'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['waiting-on', 'result-stdin', 'status-line', 'next'],
     close: ['by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['actor', 'reason-stdin'],
-    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'limit'], standup: ['json', 'days'],
+    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'limit', 'skill-review'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
-  const requiresId = ['note', 'block', 'close', 'cancel', 'lesson', 'check-snapshot'].includes(verb);
+  const requiresId = ['note', 'block', 'close', 'cancel', 'lesson', 'check-snapshot', 'learn'].includes(verb);
   const id = requiresId ? args.shift() : undefined;
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');
   const booleans = new Set(['note-stdin', 'decision', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check']);

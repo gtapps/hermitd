@@ -33,6 +33,8 @@ Record durable progress on the record as you go with `bun ${CLAUDE_PLUGIN_ROOT}/
 
 ## Your report
 
+When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside your report, using the same `<id>`: steps, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident. The `<id>.md` report stays the requester message, unchanged.
+
 Write what the person in the chat gets to `.hermit/helper-reports/<id>.md`, choosing `<id>` yourself as 6 to 16 characters of `[a-z0-9]`. The file is a plain message body with no frontmatter, so it is plain language for someone reading on a phone: no task ids, no file paths, no internal jargon, at most 8192 characters. A question you need answered goes in the same file, asked plainly and alone.
 
 Then end your turn with exactly one line and nothing after it:

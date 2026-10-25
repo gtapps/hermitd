@@ -253,6 +253,9 @@ _enumerate_plugin_errors() {
 }
 
 case "$CMD" in
+  skills)
+    cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run skills "$@"
+    ;;
   up)
     UP_ARGS=()
     for arg in "$@"; do

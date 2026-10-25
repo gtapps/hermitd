@@ -168,21 +168,21 @@ When the proposed solution involves creating a new agent, skill, heartbeat item,
 2. Test by invoking the skill with a representative input
 3. Verify it completes correctly
 
-**For a captured procedure (procedure-capture — called from reflect):**
-When `reflect` detects a recurring multi-step procedure (≥2 sessions, no existing skill covers it), it calls `proposal-create` with a `## Skill Draft` body block carrying the audit artifact path. Include this block verbatim in the PROP body as the dispatch signal for `proposal-act`. Set `category: capability` (Lane A) or `category: routine` (Lane B, when the brief carries `proposed_routine`), `tags: [procedure-capture]`, `source: auto-detected`. Do not write the SKILL.md here — the accept flow authors it in-main so the operator can review the final skill before install.
+**For a procedure needing a routine or agent:**
+Close-time learning routes authority-widening work here. For a routine, include `## Config` with its routine JSON and a `## Skill Draft` block carrying the procedure input path, and set `category: routine`. For a new agent include `## Agent Draft`. Do not create standalone plain-skill drafts: close-time learning owns those. Do not write the files here; the accepted proposal installs them through the existing routine/agent branches.
 ```markdown
 ## Skill Draft
 - name: <skill-name>
-- source_artifact: .hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md
+- source_artifact: .hermit/helper-reports/<id>.procedure.md
 - install_target: .claude/skills/<name>/SKILL.md
 - triggers: <comma-separated proposed trigger phrases>
 ```
 
-When the brief carries `proposed_agent_name`, also include this block verbatim. Do not write the agent file here — the accept flow authors it in-main.
+When the procedure needs an agent, include this block verbatim. Do not write the agent file here — the accept flow authors it in-main.
 ```markdown
 ## Agent Draft
 - name: <agent-name>
-- source_artifact: .hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md
+- source_artifact: .hermit/helper-reports/<id>.procedure.md
 - install_target: .claude/agents/<name>.md
 - model: <cheapest tier that handles the task>
 - tools: <tool list>
