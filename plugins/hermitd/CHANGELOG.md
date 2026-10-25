@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.22] - 2026-10-25
 
 ### Added
 - Close-time learned skills with fenced resident writes, lint feedback, five revisions, pins, rollback and guarded weekly retirement; `hermitd skills [name]` controls them.
