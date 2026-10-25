@@ -42,16 +42,6 @@ import { renameCursors } from './lib/routines/schedule';
 
 type Json = any;
 
-export const HERMITD_IDS: Record<string, string> = {
-  'claude-code-hermit': 'hermitd',
-  'claude-code-dev-hermit': 'hermitd-dev',
-  'claude-code-homeassistant-hermit': 'hermitd-homeassistant',
-  'claude-code-fitness-hermit': 'hermitd-fitness',
-  'feed-hermit': 'hermitd-feed',
-  'laravel-forge-hermit': 'hermitd-laravel-forge',
-  'hermit-scribe': 'hermitd-scribe',
-};
-
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
 // A migration declares whether it takes arguments and any effect after persist.
@@ -130,43 +120,6 @@ const migrations: Record<string, Migration> = {
         channel.default_chat_id = channel.dm_channel_id;
       }
       delete channel.dm_channel_id;
-    }
-  }),
-  hermitd: noArgs((config) => {
-    const skill = (value: unknown): unknown => typeof value === 'string'
-      ? value.replace(/^(\/?)([^:]+):/, (prefix, slash, id) => HERMITD_IDS[id] ? `${slash}${HERMITD_IDS[id]}:` : prefix)
-      : value;
-    const plugin = (value: unknown): unknown => typeof value === 'string' ? HERMITD_IDS[value] ?? value : value;
-    if (config._hermit_versions) {
-      for (const [old, next] of Object.entries(HERMITD_IDS)) {
-        if (!Object.hasOwn(config._hermit_versions, old)) continue;
-        if (Object.hasOwn(config._hermit_versions, next) && config._hermit_versions[next] !== config._hermit_versions[old]) {
-          throw new Error(`Conflicting version keys: ${old}, ${next}`);
-        }
-        config._hermit_versions[next] = config._hermit_versions[old];
-        delete config._hermit_versions[old];
-      }
-    }
-    for (const key of ['boot_skill', 'shutdown_skill']) {
-      if (Object.hasOwn(config, key)) config[key] = skill(config[key]);
-    }
-    for (const row of config.routines ?? []) {
-      if (Object.hasOwn(row, 'skill')) row.skill = skill(row.skill);
-    }
-    for (const row of config.scheduled_checks ?? []) {
-      if (Object.hasOwn(row, 'plugin')) row.plugin = plugin(row.plugin);
-      if (Object.hasOwn(row, 'skill')) row.skill = skill(row.skill);
-    }
-    for (const row of config.docker?.recommended_plugins ?? []) {
-      if (Object.hasOwn(row, 'plugin')) row.plugin = plugin(row.plugin);
-      if (row.marketplace === 'gtapps/claude-code-hermit') row.marketplace = 'gtapps/hermitd';
-    }
-    if (Object.hasOwn(config, 'claude-code-dev-hermit')) {
-      if (Object.hasOwn(config, 'hermitd-dev') && JSON.stringify(config['hermitd-dev']) !== JSON.stringify(config['claude-code-dev-hermit'])) {
-        throw new Error('Conflicting dev config sections');
-      }
-      config['hermitd-dev'] = config['claude-code-dev-hermit'];
-      delete config['claude-code-dev-hermit'];
     }
   }),
   '1.4.0': noArgs((config) => {

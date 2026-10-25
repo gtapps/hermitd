@@ -6,15 +6,22 @@ Hermit is backwards compatible — nothing breaks if you don't upgrade. But upgr
 
 ## Upgrading from claude-code-hermit
 
-Before migrating, update every registered agent in the Claude config directory to core **1.4.8** and stop all of them, including Docker agents. Run once on the host:
+Stop every agent that uses this Claude config directory, including Docker agents. Then open a plain Claude Code session at one agent's project root and paste:
 
-```bash
-curl -fsSL https://gtapps.github.io/hermitd/migrate.sh | bash
+```text
+Migrate the claude-code-hermit 1.4.8 agents in this Claude config directory to hermitd.
+
+1. Find each agent: projects with `.claude-code-hermit/config.json` whose `_hermit_versions.claude-code-hermit` is `1.4.8`. Stop if one is running or on another version.
+2. Record every `claude plugin list --json` row from the `claude-code-hermit` marketplace (id, scope, projectPath, enabled). Do this on the host and, for Docker agents, inside `docker compose -f docker-compose.hermit.yml run --rm --no-deps --entrypoint bash hermit -lc '…'`.
+3. In each place, run `claude plugin marketplace remove claude-code-hermit` and `claude plugin marketplace add gtapps/hermitd`, then reinstall each enabled row as `<new-name>@hermitd` with its scope. Mapping: claude-code-hermit→hermitd, claude-code-dev-hermit→hermitd-dev, claude-code-homeassistant-hermit→hermitd-homeassistant, claude-code-fitness-hermit→hermitd-fitness, feed-hermit→hermitd-feed, laravel-forge-hermit→hermitd-laravel-forge, hermit-scribe→hermitd-scribe.
+4. In each project, run `mv .claude-code-hermit .hermit`.
+5. In `.hermit/config.json`, rename plugin ids by that mapping in `_hermit_versions` (keep the value `1.4.8`), `boot_skill`, `shutdown_skill`, `routines[].skill`, `scheduled_checks`, `docker.recommended_plugins` (also `gtapps/claude-code-hermit`→`gtapps/hermitd`) and the `claude-code-dev-hermit` section key. Leave every other value alone.
+6. Replace `.claude-code-hermit` with `.hermit` in `.gitignore`, `.worktreeinclude`, and the `deny`/`ask` rules of `.claude/settings.json` and `.claude/settings.local.json`. Remove `allow` entries that name `.claude-code-hermit` or a `claude-code-hermit` plugin-cache path. Rename `.claude/agent-memory/claude-code-hermit-*` to `hermitd-*`.
+7. Delete `.hermit/bin/hermit-*`, saving any you customized as `.bak`. Run `/hermitd:hermit-evolve`. Then run `.hermit/bin/hermitd-run hermitd-cli install` on tmux hosts, or `.hermit/bin/hermitd-docker update` on Docker hosts. Reinstall the watchdog where `~/.config/systemd/user/hermit-watchdog@*` or `~/Library/LaunchAgents/com.hermit.watchdog.*` existed.
+8. Report pending `later` items whose command names `.claude-code-hermit` or `hermit-run`, any `.bak` files, and each agent's start command.
 ```
 
-The migration records every agent before replacing the marketplace, moves project state to `.hermit/`, refreshes launchers and permissions, and rebuilds Docker images. Customized managed files receive `.bak` copies. If interrupted, rerun the same command to resume. Disabled plugin installs are reported and are not reinstalled.
-
-Follow the printed start command for each agent, then run `/hermitd:hermit-evolve`. Pending `later` commands that still use old paths are reported for re-arming.
+Removing the old marketplace uninstalls its plugins from every project in the config directory at once, so migrate all agents in one pass. Agent state in `.hermit/` and channel plugins from other marketplaces are not touched.
 
 ## Core Plugin
 
