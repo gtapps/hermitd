@@ -26,7 +26,7 @@ export interface TaskReport {
 export function taskReport(dir: string, record: Task, cost = 0): TaskReport {
   return {
     source_path: path.join(dir, 'tasks', `${record.id}.md`),
-    outcome: record.status === 'closed' ? (['check', 'confirmed'].includes(record.closed_by ?? '') ? 'done' : 'cancelled') : record.result ? 'unconfirmed' : 'open',
+    outcome: record.status === 'closed' ? (['check', 'confirmed', 'result'].includes(record.closed_by ?? '') ? 'done' : 'cancelled') : record.result ? 'unconfirmed' : 'open',
     result: record.result, result_at: record.result_at, closed_reason: record.closed_reason,
     title: record.title, opened_at: record.opened_at, closed_at: record.closed_at,
     requester: record.requester, due: record.due, waiting_on: record.waiting_on,

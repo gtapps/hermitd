@@ -276,7 +276,7 @@ Optional plugins that add domain tools and workflows to your agent.
 
 You can run separate agents for different responsibilities, each with its own working state, knowledge, and routines. See [Creating Your Own Hermit](docs/creating-your-own-hermit.md).
 
-**External orchestration.** Other agents and tools can check the agent’s status, health, and recent work through its [MCP interface](docs/external-control-surface.md), and request a wake when needed.
+**External orchestration.** Other agents and tools can check the agent’s status, health, and recent work through its [MCP interface](docs/external-control-surface.md), request a wake when needed, and hand over a job as an MCP task.
 
 ## Maintenance
 
