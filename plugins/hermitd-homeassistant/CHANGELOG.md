@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.27] - 2026-10-25
 
 ### Changed
 - House briefs cover only HA state, history, energy and updates. Pending proposals, micro-proposal questions, cost alerts and today's priorities stay in core's work briefs, which arrive as separate messages.
