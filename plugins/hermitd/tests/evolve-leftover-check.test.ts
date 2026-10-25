@@ -10,7 +10,7 @@ const subjects = { subjects: [
   { id: 'reflect', terms: ['reflect'], kind: 'routine_id', to: 'hermitd:reflect' },
 ] };
 function fixture(git: boolean, body: (root: string, write: (file: string, text: string | Buffer) => void) => void) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-'));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-')));
   const write = (file: string, text: string | Buffer) => {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), text);
@@ -220,7 +220,7 @@ test('gitignored files under the walked folders are skipped, ignored fixed files
   expect(boot.find((c: any) => c.file === '.claude/skills/tool/[x].md').tracked).toBe(true);
 }));
 test('a project inside a larger repository marks its tracked files as shared', () => {
-  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-parent-'));
+  const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'leftover-check-parent-')));
   try {
     Bun.spawnSync(['git', 'init', '-q', parent]);
     fs.writeFileSync(path.join(parent, '.gitignore'), 'ignored/\n.hermit/\n');
