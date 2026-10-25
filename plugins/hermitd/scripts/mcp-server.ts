@@ -18,7 +18,7 @@ import { postToSession } from './lib/peer-post';
 import { readRuntimeState, type RuntimeRead } from './lib/runtime';
 import { findResident } from './lib/session-registry';
 import { readTaskReports } from './lib/task-report';
-import { readExecution, mutateTask, readTasks, TASK_ID, taskListing, type Task } from './lib/tasks';
+import { readExecution, mutateTask, readTasks, decodeTask, TASK_ID, taskListing, type Task } from './lib/tasks';
 import { extractSection } from './lib/md-write';
 import { sha256 } from './lib/hash';
 
@@ -404,13 +404,13 @@ async function submitTask(root: string, args: Json, meta: Json): Promise<Json> {
   if (isPaused(hermitDir(root)).paused) return toolError('paused');
   const dockerError = dockerWriteError(root);
   if (dockerError) return toolError(dockerError);
-  if (typeof args.title !== 'string' || !args.title.trim() || typeof args.brief !== 'string' || !args.brief.trim() || (args.done !== undefined && typeof args.done !== 'string')) return toolError('title and brief are required strings; done must be a string');
+  if (typeof args.title !== 'string' || !args.title.trim() || typeof args.brief !== 'string' || !args.brief.trim() || (args.done !== undefined && (typeof args.done !== 'string' || !args.done.trim()))) return toolError('title and brief are required strings; done must be a non-empty string');
   try {
     const name = meta?.['io.modelcontextprotocol/clientInfo']?.name;
     const digest = mutateTask(hermitDir(root), 'open', undefined, {
       title: args.title, requester: 'mcp:client', ...(typeof name === 'string' ? { 'requester-name': name } : {}), 'note-stdin': true, done: args.done ?? args.title,
     }, args.brief, { bindTurn: false }) as { id: string };
-    const record = readTasks(hermitDir(root)).find(record => record.id === digest.id)!;
+    const record = readTask(root, digest.id)!;
     const sent = await postTask(root, `MCP_TASK ${digest.id}: task record ${digest.id} from an MCP client is open. Work it with /hermitd:task.\n${args.title}\n${args.brief}`);
     return { resultType: 'task', taskId: `${sha256(root).slice(0, 8)}.${digest.id}`, status: 'working', statusMessage: sent ? 'accepted' : 'queued: resident not reachable', createdAt: record.opened_at, lastUpdatedAt: record.opened_at, ttlMs: null, pollIntervalMs: 5000 };
   } catch (error) { return toolError(error instanceof Error ? error.message : String(error)); }
@@ -430,15 +430,20 @@ async function dispatchTool(name: string, args: Json, inventory: string[], meta:
   return toolError(`Unknown tool: ${name}`);
 }
 
-function lookupTask(taskId: unknown, inventory: string[]): { root: string; record: Task; records: Task[] } | null {
+// One record file per poll; the whole set is read only when a listing needs it.
+function readTask(root: string, id: string): Task | null {
+  const file = path.join(hermitDir(root), 'tasks', `${id}.md`);
+  return fs.existsSync(file) ? decodeTask(fs.readFileSync(file, 'utf8')) : null;
+}
+
+function lookupTask(taskId: unknown, inventory: string[]): { root: string; record: Task } | null {
   if (typeof taskId !== 'string') return null;
   const [prefix, id, extra] = taskId.split('.');
   if (extra !== undefined || !TASK_ID.test(id ?? '')) return null;
   const root = inventory.find(root => sha256(root).slice(0, 8) === prefix);
   if (!root) return null;
-  const records = readTasks(hermitDir(root));
-  const record = records.find(record => record.id === id && record.requester === 'mcp:client');
-  return record ? { root, record, records } : null;
+  const record = readTask(root, id!);
+  return record?.requester === 'mcp:client' ? { root, record } : null;
 }
 
 function liveQuestion(record: Task): boolean {
@@ -449,13 +454,13 @@ function questionKey(record: Task): string {
   return `q${Date.parse(record.stall_at!)}`;
 }
 
-function getTask(taskId: string, record: Task, records: Task[]): Json {
+function getTask(taskId: string, root: string, record: Task): Json {
   const latest = (extractSection(record.body, 'Progress') ?? '').split('\n').findLast(line => line.startsWith('- ')) ?? '';
   const stamps = [record.opened_at, latest.match(/^- (\S+)/)?.[1], record.waiting_since, record.result_at, record.closed_at].filter((stamp): stamp is string => !!stamp && Number.isFinite(Date.parse(stamp)));
   const base = { resultType: 'complete', taskId, createdAt: record.opened_at, lastUpdatedAt: stamps.reduce((a, b) => Date.parse(a) >= Date.parse(b) ? a : b), ttlMs: null, pollIntervalMs: 5000 };
   if (record.closed_by === 'cancelled') return { ...base, status: 'cancelled', statusMessage: record.closed_reason };
-  if (record.status === 'closed' && ['result', 'check', 'confirmed'].includes(record.closed_by!)) return { ...base, status: 'completed', result: { resultType: 'complete', content: [{ type: 'text', text: record.result ?? record.closed_reason }] } };
-  if (record.result) return { ...base, status: 'working', statusMessage: taskListing(record, records).join(', ') };
+  if (record.status === 'closed') return { ...base, status: 'completed', result: { resultType: 'complete', content: [{ type: 'text', text: record.result ?? record.closed_reason }] } };
+  if (record.result) return { ...base, status: 'working', statusMessage: taskListing(record, readTasks(hermitDir(root))).join(', ') };
   if (liveQuestion(record)) {
     return {
       ...base,
@@ -483,21 +488,23 @@ async function taskMethod(method: string, params: Json, inventory: string[], id:
   try {
     const found = lookupTask(params?.taskId, inventory);
     if (!found) return rpcError(id, -32602, 'Failed to retrieve task: Task not found');
-    const { root, record, records } = found;
-    if (method === 'tasks/get') return rpcResult(id, getTask(params.taskId, record, records));
+    const { root, record } = found;
+    if (method === 'tasks/get') return rpcResult(id, getTask(params.taskId, root, record));
     const dockerError = dockerWriteError(root);
     if (dockerError) return rpcError(id, -32603, dockerError);
     const opts = { bindTurn: false };
     const cancel = async (reason: string) => {
       if (record.status === 'closed') return;
-      mutateTask(hermitDir(root), 'cancel', record.id, { actor: 'mcp:client', 'reason-stdin': true }, reason, opts);
+      // The record can close between this read and the locked write; that is the closed case.
+      try { mutateTask(hermitDir(root), 'cancel', record.id, { actor: 'mcp:client', 'reason-stdin': true }, reason, opts); }
+      catch (error) { if (error instanceof Error && error.message === 'not_open') return; throw error; }
       await postTask(root, `MCP_TASK ${record.id} cancelled`);
     };
     if (method === 'tasks/cancel') await cancel('cancelled from MCP client');
     else if (liveQuestion(record)) {
       const response = params?.inputResponses?.[questionKey(record)];
       if (response?.action === 'accept') {
-        if (typeof response.content?.answer !== 'string') return rpcError(id, -32602, 'answer must be a string');
+        if (typeof response.content?.answer !== 'string' || !response.content.answer.trim()) return rpcError(id, -32602, 'answer must be a non-empty string');
         try {
           mutateTask(hermitDir(root), 'note', record.id, { actor: 'mcp:client', 'clear-waiting': true }, response.content.answer, { ...opts, expectStallAt: record.stall_at! });
           await postTask(root, `MCP_TASK ${record.id} answered`);

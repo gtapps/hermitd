@@ -246,7 +246,7 @@ Each question has a unique key `q<epoch milliseconds of stall_at>` in
 `inputRequests`. Its `elicitation/create` request uses `mode: "form"`, message
 `<stall_status> Next: <stall_next>` and a required string field `answer` titled
 `Answer`. `tasks/update` accepts `inputResponses` keyed by that question key.
-An `accept` response with `content.answer` appends the answer as `mcp:client`,
+An `accept` response with a non-empty `content.answer` appends the answer as `mcp:client`,
 clears waiting and posts `MCP_TASK <id> answered`. Stale keys and answers racing
 a changed question are ignored. `decline` or `cancel` cancels with reason
 `declined from MCP client` and posts `MCP_TASK <id> cancelled`.
