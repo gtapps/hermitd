@@ -9,3 +9,20 @@ it('owner handoff binds the turn', async () => { const f = taskFixture(); try { 
 it('matching binding is consumed once and never by another session', async () => { const f = taskFixture(); try { const lib = await taskLib(); const binding = { cc_session_id: 'resident', task_ids: ['T-20260914-120000'], at: new Date().toISOString(), turn_id: 'turn' }; f.put('state/task-turn.json', binding); const guest = lib.resolveTaskAttribution(f.dir, 'guest', 'other', null); expect(guest.bucket).toBe('conversation'); expect(fs.existsSync(path.join(f.dir, 'state/task-turn.json'))).toBe(true); const a = lib.resolveTaskAttribution(f.dir, 'resident', 'other', null); expect(a.task_id).toBe(binding.task_ids[0]); lib.consumeTaskBinding(f.dir, a); expect(lib.resolveTaskAttribution(f.dir, 'resident', 'other', null).bucket).toBe('conversation'); } finally { f.cleanup(); } });
 it('deduplicated Stop leaves binding for the next logged Stop', async () => { const f = taskFixture(); try { const lib = await taskLib(); const at = new Date().toISOString(); f.put('state/task-turn.json', { cc_session_id: 'resident', task_ids: ['T-20260914-120000'], at, turn_id: 'turn' }); const a = lib.resolveTaskAttribution(f.dir, 'resident', 'other', null); expect(fs.existsSync(path.join(f.dir, 'state/task-turn.json'))).toBe(true); expect(lib.resolveTaskAttribution(f.dir, 'resident', 'other', '2020-01-01T00:00:00Z').task_id).toBe(a.task_id); lib.consumeTaskBinding(f.dir, a); expect(fs.existsSync(path.join(f.dir, 'state/task-turn.json'))).toBe(false); } finally { f.cleanup(); } });
 it('stale bindings are ignored and deleted', async () => { const f = taskFixture(); try { const lib = await taskLib(); f.put('state/task-turn.json', { cc_session_id: 'resident', task_ids: ['T-20260914-120000'], at: '2020-01-01T00:00:00Z' }); expect(lib.resolveTaskAttribution(f.dir, 'resident', 'other', null).bucket).toBe('conversation'); expect(fs.existsSync(path.join(f.dir, 'state/task-turn.json'))).toBe(false); } finally { f.cleanup(); } });
+
+it('bindTurn false preserves the resident binding byte for byte', async () => {
+  const f = taskFixture();
+  try {
+    const lib = await taskLib();
+    f.put('state/execution.json', { state: 'in_flight', cc_session_id: 'resident', turn_id: 'turn', at: new Date().toISOString() });
+    await f.open();
+    const file = path.join(f.dir, 'state/task-turn.json');
+    const before = fs.readFileSync(file, 'utf8');
+    const opts = { bindTurn: false };
+    const { id } = lib.mutateTask(f.dir, 'open', undefined, { title: 'MCP', requester: 'mcp:client', done: 'Done' }, '', opts);
+    lib.mutateTask(f.dir, 'note', id, {}, 'Progress', opts);
+    lib.mutateTask(f.dir, 'block', id, { 'waiting-on': 'mcp:client', 'status-line': 'Question?', next: 'Continue' }, '', opts);
+    lib.mutateTask(f.dir, 'cancel', id, { actor: 'mcp:client', 'reason-stdin': true }, 'Stop', opts);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  } finally { f.cleanup(); }
+});
