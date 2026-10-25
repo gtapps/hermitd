@@ -1,17 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-- The `submit_task` MCP tool hands a job to a hermit as an MCP task.
-- Task records requested over MCP close when the resident posts the result (`closed_by: result`) without a check or approver.
-
-### Changed
-- The MCP server speaks only protocol `2026-07-28`; clients that only speak earlier revisions no longer connect; `get_version` reports `contract_version` 2.
-
-### Upgrade Instructions
-1. If `.hermit/resident-prompt.md` exists and is non-empty, add the `MCP_TASK` routing line from the shipped `prompts/resident.md` next to its peer-message rules, keeping the operator's text.
-
 ## [1.4.22] - 2026-10-25
 
 ### Added

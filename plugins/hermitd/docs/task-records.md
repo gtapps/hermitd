@@ -1,6 +1,6 @@
 # Task records
 
-A commitment lives in `.hermit/tasks/T-YYYYMMDD-HHMMSS[-x].md`. The locked `scripts/lib/tasks.ts` writer is used by `scripts/task.ts` and the MCP server. The record has a title, requester, definition of done (`summary`), owner, due date, conversation and optional approver. Status is `open` or `closed`; a closed record names its actor and `closed_by`: `check`, `confirmed`, `result` or `cancelled`. Passing time never closes a record.
+A commitment lives in `.hermit/tasks/T-YYYYMMDD-HHMMSS[-x].md`. `scripts/task.ts` is the only writer. The record has a title, requester, definition of done (`summary`), owner, due date, conversation and optional approver. Status is `open` or `closed`; a closed record names its actor and `closed_by`: `check`, `confirmed` or `cancelled`. Passing time never closes a record.
 
 ## Record and CLI
 
@@ -13,7 +13,7 @@ Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State target
 | `open` | Requires `--title`, `--requester`, `--done`. Optional `--owner`, `--conversation`, `--card`, `--approver`, `--due`, `--claim`, `--dedupe-key`, `--check`. A matching open dedupe key returns the existing record. |
 | `note <id>` | Appends stdin to Progress. Metadata flags include `--due`, `--card`, `--done`, `--check`, `--clear-waiting`; `--decision` and `--approval` target their sections. Decisions lines surface in task reports and routine briefs. A changed definition of done bumps `result_rev` and clears the result. `note --done` clears the check unless the same call sets one. |
 | `lesson <id>` | Appends stdin under Lessons. |
-| `block <id>` | Records `--waiting-on` with `--status-line` and `--next`, or posts a result with `--result-stdin`. A posted result increments `result_rev` and stays open as unconfirmed, except a requester starting with `mcp:` without a check or approver closes by `result`. |
+| `block <id>` | Records `--waiting-on` with `--status-line` and `--next`, or posts a result with `--result-stdin`. A posted result increments `result_rev` and stays open as unconfirmed. |
 | `close <id>` | Confirmation requires an authorized actor, any named approver, and the matching result revision when a result was posted or a revision is passed; with no posted result, the requester's quoted word is enough. Check closure requires verified evidence from a held claim or the matching duty. A named approver blocks check closure. |
 | `cancel <id>` | Requires actor and reason on stdin. Cancellation is separate from successful completion. |
 | `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, result, waiting_on, closed_by, check, card_chat_id and card_message_id. |
@@ -40,7 +40,7 @@ The standalone watchdog clear additionally requires operator quiet, context age 
 
 Progress-bearing writes bind task ids to the current turn. Matching cost rows carry `bucket: tasks`; shared rows allocate cost and tokens equally across their task ids. Otherwise channel conversation work is `conversation`, while heartbeat and routine work is `duties`. A worker's rows match the record it was dispatched with. The version-4 cost index stores date-keyed `by_task` buckets for 90 days; wider windows fall back to a scan using the same allocator. This is attribution, not a separate provider bill.
 
-`scripts/lib/task-report.ts` normalizes records for brief, reflect, weekly review, cost report, health, MCP, export and dashboard. `done` means check, confirmed or result, `cancelled` remains distinct, and a result on an open record is `unconfirmed`. Lessons and decisions come from the record body. Readers use task records only. Recall also searches retained historical archives.
+`scripts/lib/task-report.ts` normalizes records for brief, reflect, weekly review, cost report, health, MCP, export and dashboard. `done` means check or confirmed, `cancelled` remains distinct, and a result on an open record is `unconfirmed`. Lessons and decisions come from the record body. Readers use task records only. Recall also searches retained historical archives.
 
 SessionStart injects TASKS.md beside operator policy, with a pointer after compaction. Duty summaries combine requested schedules and effective heartbeat mode with observed liveness and verdicts. Effective forced mode applies only to the boot that issued it.
 

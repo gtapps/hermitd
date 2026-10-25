@@ -19,7 +19,7 @@ import { REVIEW_CALLS } from './learned-skills';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed', 'stale_question']);
+const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -53,7 +53,7 @@ export function validateTask(record: Task): void {
   for (const key of nullableStrings) if (record[key] !== null && typeof record[key] !== 'string') fail();
   if (![null, 'pending', 'saved', 'covered', 'nothing'].includes(record.skill_review)) fail();
   if (!TASK_ID.test(record.id) || record.type !== 'task' || !['open', 'closed'].includes(record.status)) fail();
-  if (![null, 'check', 'confirmed', 'cancelled', 'result'].includes(record.closed_by)) fail();
+  if (![null, 'check', 'confirmed', 'cancelled'].includes(record.closed_by)) fail();
   if (!Number.isInteger(record.result_rev) || record.result_rev < 0) fail();
   for (const key of booleans) if (typeof record[key] !== 'boolean') fail();
   for (const key of ['tags', 'claims'] as const) if (!Array.isArray(record[key]) || record[key].some(x => typeof x !== 'string' || !SLUG.test(x))) fail();
@@ -162,7 +162,7 @@ function card(record: Task, value: string | undefined): void {
 }
 
 // This is the only transition that assigns closed_by or closes a record.
-function finish(record: Task, by: 'check' | 'confirmed' | 'cancelled' | 'result', actor: string, reason: string, now: string): void {
+function finish(record: Task, by: 'check' | 'confirmed' | 'cancelled', actor: string, reason: string, now: string): void {
   record.status = 'closed';
   record.closed_by = by;
   record.closed_at = now;
@@ -183,7 +183,7 @@ function heldClaim(dir: string, id: string): boolean {
   });
 }
 
-export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, opts: { bindTurn?: boolean; expectStallAt?: string } = {}): unknown {
+export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
@@ -229,7 +229,6 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const found = records.find(r => r.id === id);
       if (!found) throw new Error('not_found');
       record = found;
-      if (verb === 'note' && opts.expectStallAt !== undefined && (record.status !== 'open' || record.waiting_on === null || record.stall_at !== opts.expectStallAt || record.waiting_since !== opts.expectStallAt)) throw new Error('stale_question');
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
@@ -264,7 +263,6 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (flags['clear-waiting']) { record.waiting_on = null; record.waiting_since = null; }
         if ('done' in flags) {
           record.summary = required(flags, 'done');
-          if (record.requester.startsWith('mcp:')) { record.stall_at = null; record.stall_status = null; record.stall_next = null; }
           record.result_rev++;
           record.result = null;
           record.result_at = null;
@@ -300,13 +298,9 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (flags['result-stdin']) {
           if (!line) throw new Error('empty');
           record.result = line; record.result_rev++; record.result_at = now;
-          if (record.requester.startsWith('mcp:')) { record.stall_at = null; record.stall_status = null; record.stall_next = null; }
           record.waiting_on = flag(flags, 'waiting-on') ?? record.approver ?? record.requester;
           append(record, 'Outcome', actor, line, now);
-          if (record.requester.startsWith('mcp:') && !record.approver && !record.check) {
-            finish(record, 'result', actor, 'result posted for MCP client', now);
-            digest = { id, closed_by: 'result', result_rev: record.result_rev, next_queued: nextQueued(records) };
-          } else digest = { id, listing: 'unconfirmed', result_rev: record.result_rev, waiting_on: record.waiting_on };
+          digest = { id, listing: 'unconfirmed', result_rev: record.result_rev, waiting_on: record.waiting_on };
         } else {
           if (!flag(flags, 'status-line') || !flag(flags, 'next')) throw new Error('stall_needs_status_and_next');
           record.waiting_on = required(flags, 'waiting-on');
@@ -314,7 +308,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           append(record, 'Progress', actor, `${record.stall_status}; next: ${record.stall_next}`, now);
           digest = { id, post_to: { conversation: record.conversation, requester: record.requester }, status_line: record.stall_status, next_step: record.stall_next };
         }
-        if (record.status === 'open') record.waiting_since = now;
+        record.waiting_since = now;
       } else if (verb === 'close') {
         const by = flag(flags, 'by');
         if (by !== 'check' && by !== 'confirmed') throw new Error('invalid_closed_by');
@@ -341,7 +335,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       } else throw new Error('invalid_verb');
     }
     let resetCounter = false;
-    if ((verb === 'close' || verb === 'check-result' || verb === 'block') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
+    if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
       const counter = path.join(dir, 'state', 'skill-review-counter');
       let calls = 0;
       try { calls = fs.statSync(counter).size; } catch { /* no calls yet */ }
@@ -355,7 +349,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
     if (resetCounter) fs.writeFileSync(path.join(dir, 'state', 'skill-review-counter'), '');
-    if (progress && opts.bindTurn !== false) bindTaskTurn(dir, record.id);
+    if (progress) bindTaskTurn(dir, record.id);
     return digest;
   } finally { releaseLock(lock); }
 }
@@ -529,7 +523,7 @@ export function taskStandup(dir: string, days = 7) {
     if (listing.includes('late')) p.late.push(summary);
     if (record.waiting_on) person(record.waiting_on).waiting.push(summary);
   }
-  return { by_person: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled', 'result'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade, execution: readExecution(dir, { registryFallback: true }) };
+  return { by_person: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade, execution: readExecution(dir, { registryFallback: true }) };
 }
 export function startupTasks(dir: string): string[] {
   const list = listTasks(dir);

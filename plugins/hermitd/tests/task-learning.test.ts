@@ -59,14 +59,3 @@ test('muting a closed delegated task preserves its completed review', () => {
   mutateTask(dir, 'note', id, { muted: 'true' }, '');
   expect(readTasks(dir)[0].skill_review).toBe('covered');
 });
-
-test('MCP result closure returns the next queued record and schedules review; cancel skips review', () => {
-  for (const cancel of [false, true]) {
-    const dir = fixture(10);
-    const id = open(dir, { requester: 'mcp:client' });
-    const next = open(dir, { requester: 'mcp:client' });
-    const digest = mutateTask(dir, cancel ? 'cancel' : 'block', id, { actor: 'hermit', 'result-stdin': true, 'reason-stdin': true }, 'Ready') as any;
-    expect(digest.next_queued.id).toBe(next);
-    expect(digest.skill_review).toBe(cancel ? undefined : 'pending');
-  }
-});

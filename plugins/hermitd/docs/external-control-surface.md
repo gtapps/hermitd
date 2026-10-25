@@ -1,18 +1,18 @@
 # External control surface (MCP stdio)
 
-Adapter so an orchestrator (OpenClaw, another hermit, a script) can
-discover, observe, wake, and hand jobs to hermits on this box without reading
+Read-mostly adapter so an orchestrator (OpenClaw, another hermit, a script) can
+discover, observe, and wake hermits on this box without reading
 `.hermit/` internals. Those files stay internal. This MCP server is
 the only supported integration point.
 
-Contract v2 speaks only MCP `2026-07-28`, including its tasks extension.
-Clients that speak only earlier revisions no longer connect.
+v1 is stable and additive-only: new tools or fields may appear; existing field
+names, types, and semantics will not change meaning.
 
 ## Spawn
 
 The server is consumer-spawned over stdio. It never listens on a port. Stdout
-is JSON-RPC frames only; logs go to stderr. Task writes use the locked task
-writer; polling and observation tools are read-only.
+is JSON-RPC frames only; logs go to stderr. The process writes nothing under
+any hermit root.
 
 Inventory is explicit. There is no auto-discovery of hosts or of hermit folders
 on disk. Pass every project root you want visible:
@@ -35,9 +35,6 @@ a protocol error.
 
 ### OpenClaw
 
-OpenClaw’s default runtime likely speaks only earlier protocol revisions.
-Check its runtime support before using this configuration.
-
 ```bash
 openclaw mcp set hermit '{"command":"/home/you/project/.hermit/bin/hermitd-run","args":["mcp-server","--roots","/home/you/project"]}'
 ```
@@ -57,43 +54,34 @@ docker exec -i <container> .hermit/bin/hermitd-run mcp-server --roots /workspace
 ```
 
 Use the path the process inside the container sees. Cross-host auth is out of
-scope; ssh keys are the boundary.
+scope for v1; ssh keys are the boundary.
 
 ## Fleet split
 
 One server is the per-box primitive. It reports only the roots it was given.
 Aggregating many boxes, many hermits, or many hosts is the orchestrator's job.
 
-## Discovery and request metadata
+## Handshake
 
-Newline-delimited JSON-RPC 2.0 over stdin/stdout, protocol `2026-07-28` only.
-There is no initialization handshake or ping. `initialize` and unsupported
-versions return `-32022` with `data: {supported: ["2026-07-28"], requested}`.
-Every request with an id supplies `params._meta`:
+Newline-delimited JSON-RPC 2.0 over stdin/stdout. `capabilities` is
+`{tools:{}}`, and `serverInfo.version` is this plugin's
+`.claude-plugin/plugin.json` version.
 
-```json
-{
-  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-  "io.modelcontextprotocol/clientCapabilities": {
-    "extensions": {"io.modelcontextprotocol/tasks": {}}
-  },
-  "io.modelcontextprotocol/clientInfo": {"name": "my-client", "version": "1"}
-}
-```
+The server speaks `2025-11-25` and `2025-06-18`. `initialize` echoes the
+client's `protocolVersion` when it is one of those, and otherwise returns a
+successful result naming `2025-11-25`, per the lifecycle rule for those
+revisions: the server offers a version it supports and the client disconnects
+if it cannot use it. An unsupported version is never answered with an error.
 
-Missing protocol version or client capabilities returns `-32602`.
-Notifications are ignored. `server/discover` returns `resultType: "complete"`,
-`supportedVersions: ["2026-07-28"]`, `capabilities: {tools: {}, extensions:
-{"io.modelcontextprotocol/tasks": {}}}`, and `_meta` with
-`io.modelcontextprotocol/serverInfo: {name: "hermitd", version}`. The version
-comes from `.claude-plugin/plugin.json`. Discovery and `tools/list` both return
-`ttlMs: 0` and `cacheScope: "private"`; `tools/list` also carries
-`resultType: "complete"` and the tools array. Every successful result carries
-`resultType`.
+`2026-07-28` is deliberately not advertised. That revision is stateless and
+has no `initialize` handshake at all, carrying the version in each request's
+`_meta`; a client speaking it would find nothing to talk to here. Its
+`-32022 Unsupported protocol version` error belongs to that revision and is
+not used by this server.
 
 ## Tools
 
-Observation and wake tool results have `resultType: "complete"` and carry `structuredContent` (the JSON object)
+Every successful tool result carries `structuredContent` (the JSON object)
 plus `content: [{type:"text", text}]` as a JSON-string mirror of the same
 object. Tool-originated errors use `isError: true` inside the result.
 
@@ -157,7 +145,7 @@ Argument: `root`.
 | `applied` | The hermit's `config._hermit_versions["hermitd"]`, or `null` |
 | `required_bun_version` | `.claude-plugin/hermit-meta.json` |
 | `min_claude_code_version` | `.claude-plugin/hermit-meta.json` |
-| `contract_version` | `2` |
+| `contract_version` | `1` |
 
 ### `wake`
 
@@ -168,7 +156,7 @@ If the hermit is paused: `{delivery:"suppressed", reason:"paused"}` and no
 socket write. Pause exists to prevent paid turns; wake does not bypass it.
 
 Suppression is not transient, and this surface cannot lift it: resuming is
-out of scope, so retrying only produces the same refusal. Only the
+out of scope for v1, so retrying only produces the same refusal. Only the
 operator can resume, from their own chat or a terminal. An unattended
 orchestrator should treat `suppressed` as "stop and surface to a human",
 not as a retryable failure, and can confirm the state out of band via
@@ -192,74 +180,7 @@ from the project root. Relay spawn failure, timeout, or nonzero exit is
 `unreachable`. The in-container `--wake-local` path posts locally and does
 not recurse.
 
-### `submit_task`
+## Out of scope (v1)
 
-Arguments: `root`, `title`, `brief` (required strings), and optional `done`
-(defaults to the title). Requires MCP tasks in the client's capabilities,
-with Claude Code 2.1.304 or later in a CLI or Agent SDK session. Missing tasks
-support is a tool error and opens nothing. A root outside the inventory, a
-paused hermit, or a Docker hermit reached from the host also opens nothing.
-For writes to Docker hermits, spawn the server inside the container:
-
-```bash
-docker exec -i <container> .hermit/bin/hermitd-run mcp-server --roots <path inside the container>
-```
-
-A successful call opens a record requested by `mcp:client`, saves the client
-name when supplied and the brief as a note, then posts `MCP_TASK <id>` to the
-resident. It returns `resultType: "task"`, `taskId`, `status: "working"`,
-`statusMessage: "accepted"` or `"queued: resident not reachable"`,
-`createdAt`, `lastUpdatedAt`, `ttlMs: null`, and `pollIntervalMs: 5000`.
-The task id is `<first 8 hex of sha256(realpath root)>.<record id>`.
-There is no idempotency key: retrying a submission opens another record.
-MCP task titles can appear in `!status`.
-
-An unreachable resident leaves the record queued. Boot recovery picks it up
-first; heartbeat's queue nudge is the fallback after `tasks.queue_nudge_minutes`
-(default 60). The nudge is skipped while paused, outside active hours, and for
-waiting or worker-owned records. MCP queue pickup runs at every autonomy level.
-
-## Tasks
-
-`tasks/get`, `tasks/update`, and `tasks/cancel` take `taskId`. Without the tasks
-extension they return `-32021` with `requiredCapabilities.extensions` naming
-`io.modelcontextprotocol/tasks`. Lookup checks the inventory-root hash, valid
-record id, record existence and exact requester `mcp:client`; any miss returns
-`-32602 "Failed to retrieve task: Task not found"`. Writer failures return
-`-32603`. Update and cancel require the same in-container server for Docker
-writes as submission.
-
-`tasks/get` never writes. It returns `resultType: "complete"`, the task id,
-`createdAt`, stable `lastUpdatedAt` (latest opened time, last progress timestamp,
-waiting time, result time or closure time), `ttlMs: null`, and
-`pollIntervalMs: 5000`. Status uses the first matching row:
-
-| Record | Status and payload |
-| --- | --- |
-| Closed by cancellation | `cancelled`, closing reason as `statusMessage` |
-| Closed by `result`, `check` or `confirmed` | `completed`, text result or closing reason in `result.content`, with `result.resultType: "complete"` |
-| Open with a result | `working`, listing as `statusMessage` |
-| Open without result, waiting on `mcp:client`, stall time equals waiting time | `input_required`, question in `inputRequests` |
-| Otherwise | `working`, latest Progress bullet cut to 120 characters as `statusMessage` |
-
-Each question has a unique key `q<epoch milliseconds of stall_at>` in
-`inputRequests`. Its `elicitation/create` request uses `mode: "form"`, message
-`<stall_status> Next: <stall_next>` and a required string field `answer` titled
-`Answer`. `tasks/update` accepts `inputResponses` keyed by that question key.
-An `accept` response with a non-empty `content.answer` appends the answer as `mcp:client`,
-clears waiting and posts `MCP_TASK <id> answered`. Stale keys and answers racing
-a changed question are ignored. `decline` or `cancel` cancels with reason
-`declined from MCP client` and posts `MCP_TASK <id> cancelled`.
-
-`tasks/cancel` cancels any open state with reason `cancelled from MCP client`
-and posts the cancellation; the resident stops its worker. Closed records get
-no write. Updates and cancellation return `resultType: "complete"`.
-
-The resident's result post closes an MCP-requested record with no check or
-approver as `closed_by: result`. Records with a check or approver retain their
-existing closure rules. Chat tasks retain their confirmation behavior.
-
-## Out of scope
-
-Pause/resume, config mutation, lifecycle ops, HTTP transport, cross-host auth,
-automatic host discovery, fleet-wide aggregation.
+`send_message`, pause/resume, config mutation, lifecycle ops, HTTP transport,
+cross-host auth, automatic host discovery, fleet-wide aggregation.
