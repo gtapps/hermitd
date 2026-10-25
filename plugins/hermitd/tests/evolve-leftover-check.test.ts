@@ -97,13 +97,14 @@ const wrapperRows = [
 ];
 const wrapperSubjects = { subjects: wrapperRows.map(row => ({ id: row.id.split(':')[1], terms: [row.id.split(':')[1]], kind: 'routine_id', to: row.id })) };
 const perSubject = (n: number) => Object.fromEntries(wrapperSubjects.subjects.map(s => [s.id, n]));
-test('reflect wrapper --check-id values in config.json are context-filtered without examples, never counted', () => fixture(false, (root, write) => {
+test('reflect wrapper --check-id values in config.json are never counted, filtered or saved', () => fixture(false, (root, write) => {
   write('.hermit/config.json', JSON.stringify({ routines: wrapperRows }, null, 2));
   const out = JSON.parse(run(root, JSON.stringify(wrapperSubjects)).stdout.toString());
   expect(out.counts).toEqual(perSubject(0));
   expect(out.candidates).toEqual([]);
-  expect(out.context_filtered).toEqual(perSubject(1));
+  expect(out.context_filtered).toEqual(perSubject(0));
   expect(out.context_filtered_examples).toEqual(Object.fromEntries(wrapperSubjects.subjects.map(s => [s.id, []])));
+  expect(fs.existsSync(path.join(root, '.hermit', 'state', 'leftover-check.json'))).toBe(false);
 }));
 test('--check-id values outside config.json count', () => fixture(false, (root, write) => {
   write('.hermit/config.json', JSON.stringify({ routines: wrapperRows.map(row => ({ id: row.id })) }));
@@ -250,6 +251,15 @@ test('unreadable config is reported', () => fixture(false, (root, write) => {
 test('invalid subjects fail', () => fixture(false, root => {
   for (const input of ['bad', '{}', '{"subjects":[{}]}']) {
     const result = run(root, input);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'bad_subjects' });
+  }
+}));
+test('--saved refuses a record without valid declarations', () => fixture(false, (root, write) => {
+  const subjects = [{ id: 'reflect', terms: ['reflect'], kind: 'routine_id', to: 'hermitd:reflect' }];
+  for (const record of [{ subjects }, { subjects, declarations: [{ plugin: 'hermitd' }] }]) {
+    write('.hermit/state/leftover-check.json', JSON.stringify(record));
+    const result = runSaved(root);
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout.toString())).toEqual({ error: 'bad_subjects' });
   }

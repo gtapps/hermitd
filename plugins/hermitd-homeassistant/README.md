@@ -31,17 +31,17 @@ claude plugin install hermitd-homeassistant --marketplace gtapps/hermitd --scope
 
 ## What you get
 
-**Knows your house.** Hatch points the hermit at HA, then learns your entities, areas, automations, and patterns — your house becomes the context it reasons from. The `hermitd-homeassistant:daily-ha-context` routine keeps it fresh.
+**Knows your house.** Hatch points the hermit at HA, then learns your entities, areas, automations, and patterns, so your house becomes the context it reasons from. The `hermitd-homeassistant:daily-ha-context` routine keeps it fresh.
 
 **Drive it from anywhere.** Ask what's on, draft an automation, or ask why the porch light fired at 3am. Reach it from the Claude app or claude.ai/code on your phone (handy if you run several hermits), and optionally DM it on Discord or Telegram. Replies are conversational; YAML drafts get isolated, simulated, and only applied after you approve.
 
 **Builds and maintains — not just drafts.** Beyond automations, the hermit works the whole structural side of your setup so you rarely need the HA UI: dashboards, scripts, scenes, helpers, areas/floors/labels, entity metadata and Assist exposure, blueprints, energy preferences, core config, backups, and config-entry reloads. It also runs the dev/maintain loop — render a template, check config, tail the error log and logbook — to test and troubleshoot changes. Every structural write is gated by your safety mode; runtime device control stays with HA Assist.
 
-**It watches the house for you.** Daily `hermitd-homeassistant:ha-integration-health` and `hermitd-homeassistant:ha-update-check` routines, silence detection (dead automations, sensors that stopped triggering, long-unavailable entities); weekly `hermitd-homeassistant:ha-patterns` and `hermitd-homeassistant:ha-safety-audit` routines, plus history-backed automation suggestions. Anomalies surface as proposals you can act on — never silent edits.
+**It watches the house for you.** Daily `hermitd-homeassistant:ha-integration-health` and `hermitd-homeassistant:ha-update-check` routines, silence detection (dead automations, sensors that stopped triggering, long-unavailable entities); weekly `hermitd-homeassistant:ha-patterns` and `hermitd-homeassistant:ha-safety-audit` routines, plus history-backed automation suggestions. Anomalies surface as proposals you can act on, never as silent edits.
 
 **Safety is the default.** `lock`, `alarm_control_panel`, and security-tagged `cover`/`button`/`switch` domains are blocked outright. Vague targets (an area or device with no resolvable entity) fail closed. Every block becomes a proposal — never a surprise.
 
-**Routines that respect your day.** Morning and evening briefs (morning off until you confirm the house profile; evening confirms security before night), daily context refresh, weekly `hermitd-homeassistant:ha-patterns` and `hermitd-homeassistant:ha-safety-audit`, daily `hermitd-homeassistant:ha-integration-health` and `hermitd-homeassistant:ha-update-check`. Need a different cadence or a new routine? Just ask — hermit sets it up.
+**Routines that respect your day.** Morning and evening briefs (morning off until you confirm the house profile; evening confirms security before night), daily context refresh, weekly `hermitd-homeassistant:ha-patterns` and `hermitd-homeassistant:ha-safety-audit`, daily `hermitd-homeassistant:ha-integration-health` and `hermitd-homeassistant:ha-update-check`. Need a different cadence or a new routine? Just ask; hermit sets it up.
 
 **Everything is searchable.** HA sessions, proposals, pattern findings, and cost tracking land in your hermit's compiled knowledge and auto-memory — surfaceable on demand via `/hermit-health`, greppable from the state tree.
 

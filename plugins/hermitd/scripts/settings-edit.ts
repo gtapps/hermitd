@@ -529,7 +529,7 @@ if (import.meta.main) {
 
   switch (op) {
     case 'migrate': {
-      const migration = migrations[rest[0]];
+      const migration = Object.hasOwn(migrations, rest[0]) ? migrations[rest[0]] : undefined;
       if (!migration || (!migration.takesArgs && rest.length !== 1)) exitError('unsupported_migration');
       let report: Report | void;
       try {

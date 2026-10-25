@@ -32,7 +32,7 @@ import { readRoutineHistory } from './lib/routines/history';
 import { promptTokensOf, compactibleTokens, isOwnTurn } from './lib/context-signal';
 import { readContextSurface } from './lib/context-surface';
 import { expandSessionName } from './lib/tmux';
-import { readJson } from './lib/cli';
+import { readJson, writeStdout } from './lib/cli';
 import { modLoadedForResident } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
 import { findResident } from './lib/session-registry';
@@ -2626,7 +2626,7 @@ if (import.meta.main) {
       process.exit(line === 'OK' ? 0 : 1);
     }
     // Print the report JSON so skills/tests can capture it without re-reading.
-    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    writeStdout(JSON.stringify(report, null, 2) + '\n');
   } catch (e: any) {
     process.stderr.write(`[doctor-check] fatal: ${e.message}\n`);
   }

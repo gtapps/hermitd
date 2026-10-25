@@ -62,7 +62,10 @@ export function saveCheck(hermitDir: string, subjects: Subject[]): void {
 
 export function readSavedCheck(hermitDir: string): { subjects: Subject[]; declarations: Declaration[] } {
   const saved = JSON.parse(fs.readFileSync(savedInputPath(hermitDir), 'utf8'));
-  return { subjects: validSubjects(saved), declarations: saved.declarations };
+  const declarations = saved.declarations;
+  if (!Array.isArray(declarations) || declarations.some((d: Declaration) =>
+    !d || typeof d.plugin !== 'string' || typeof d.version !== 'string' || typeof d.text !== 'string')) throw new Error('bad_subjects');
+  return { subjects: validSubjects(saved), declarations };
 }
 
 // A routine rename declared as a pattern (`"to": "<plugin>:<id>"`) is one subject per old id.
@@ -194,7 +197,7 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
         // In a routine's reflect wrapper, `--check-id <old-id>` is a check key that stays bare on purpose, not a routine id.
         const checkKey = (pos: number) => file === configFile && subject.kind === 'routine_id' && (text.endsWith('--check-id ', pos) || text.endsWith('--check-id=', pos));
         const terms = hits.filter(hit => hit.positions.some(pos => !checkKey(pos))).map(hit => hit.term);
-        if (!terms.length) { contextFiltered[subject.id]++; continue; }
+        if (!terms.length) continue;
         const candidate = { subject: subject.id, file, line: index + 1, text: text.slice(0, 200), tracked: tracked.has(file) };
         if (subject.kind === 'routine_id' && terms.every(term => !term.includes('-')) && !/routine/i.test(text)) {
           contextFiltered[subject.id]++;

@@ -2,10 +2,10 @@
 
 ## Queue the question
 
-The `question` has one line per subject from `Findings`: old name to replacement, hit count, up to three file:line locations, `[shared]` after tracked files. Shape the payload like this example:
+The `question` opens with `leftover-check:`, so a chat answer reaches the Fix procedure below, then has one line per subject from `Findings`: old name to replacement, hit count, up to three file:line locations, `[shared]` after tracked files. Shape the payload like this example:
 
 ```json
-{"tier":1,"question":"Old routine names left in your files:\nmorning-brief -> hermitd-fitness:morning-brief, 3 hits: CLAUDE.md:9, .claude/skills/tidy/SKILL.md:4 [shared], .hermit/config.json:41\n\"Fix them\" re-checks and updates these files and leaves the changes uncommitted.","options":["Fix them","Leave them"],"key":"leftover-check"}
+{"tier":1,"question":"leftover-check: old routine names left in your files:\nmorning-brief -> hermitd-fitness:morning-brief, 3 hits: CLAUDE.md:9, .claude/skills/tidy/SKILL.md:4 [shared], .hermit/config.json:41\n\"Fix them\" re-checks and updates these files and leaves the changes uncommitted.","options":["Fix them","Leave them"],"key":"leftover-check"}
 ```
 
 ## Fix procedure
