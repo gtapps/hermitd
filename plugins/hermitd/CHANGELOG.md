@@ -15,6 +15,7 @@
 - Settings sync no longer removes `claude-code-hermit` era allow entries.
 
 ### Fixed
+- Interrupting `hermitd update` before the restart says to rerun it instead of exiting silently.
 - `hermitd update` and `hermitd-docker update` announce waits for hermit-evolve and a quiet boundary so normal waits no longer look like hangs.
 
 ### Upgrade Instructions
