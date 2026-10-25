@@ -1,6 +1,6 @@
 {
   "name": "hermitd-laravel-forge",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "Manage Laravel Forge servers, sites, deployments, and logs with Hermit, with approval before changes.",
   "author": {
     "name": "gtapps",
