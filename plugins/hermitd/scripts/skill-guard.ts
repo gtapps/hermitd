@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { agentId, hermitDir, sessionId } from './lib/cc-compat';
 import { isGuest } from './lib/guest-marker';
-import { readHookInput, OVERSIZE } from './lib/hook-input';
+import { MAX_HOOK_STDIN } from './lib/hook-input';
 import { checkWrite, LearnedSkills } from './lib/learned-skills';
 
 export function skillTarget(payload: any, hermit: string): { file: string; skill: string; relative: string } | null {
@@ -25,12 +25,15 @@ function deny(reason: string): void {
 }
 
 async function main(): Promise<void> {
-  const payload = await readHookInput();
-  const hermit = hermitDir();
-  if (payload === OVERSIZE || !payload) {
-    deny('Cannot inspect oversized or unparseable skill-write payload');
+  const raw = await Bun.stdin.text();
+  let payload: any = null;
+  if (Buffer.byteLength(raw) <= MAX_HOOK_STDIN) { try { payload = JSON.parse(raw); } catch {} }
+  if (!payload) {
+    // Without a parsed path, only a payload naming a skill folder fails closed.
+    if (/\.claude[\\/]+skills[\\/]/.test(raw)) deny('Cannot inspect oversized or unparseable skill-write payload');
     return;
   }
+  const hermit = hermitDir();
   if (isGuest(path.join(hermit, 'state'), sessionId(payload))) return;
   const target = skillTarget(payload, hermit);
   if (!target) return;
@@ -41,7 +44,8 @@ async function main(): Promise<void> {
   let next: string;
   if (payload.tool_name === 'Write' && typeof input.content === 'string') next = input.content;
   else if (payload.tool_name === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string' && input.old_string) {
-    next = input.replace_all ? current.replaceAll(input.old_string, input.new_string) : current.replace(input.old_string, input.new_string);
+    // A function replacer keeps `$&`, `$'` and `$$` in new_string literal, as the Edit tool writes them.
+    next = input.replace_all ? current.replaceAll(input.old_string, () => input.new_string) : current.replace(input.old_string, () => input.new_string);
   } else { deny('Cannot inspect unparseable skill-write payload'); return; }
   const reason = checkWrite(target.relative, current, next);
   if (reason) { deny(reason); return; }

@@ -173,7 +173,7 @@ Close-time learning routes authority-widening work here. For a routine, include 
 ```markdown
 ## Skill Draft
 - name: <skill-name>
-- source_artifact: .hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md
+- source_artifact: .hermit/helper-reports/<id>.procedure.md
 - install_target: .claude/skills/<name>/SKILL.md
 - triggers: <comma-separated proposed trigger phrases>
 ```
@@ -182,7 +182,7 @@ When the procedure needs an agent, include this block verbatim. Do not write the
 ```markdown
 ## Agent Draft
 - name: <agent-name>
-- source_artifact: .hermit/compiled/procedure-brief-<slug>-YYYY-MM-DD.md
+- source_artifact: .hermit/helper-reports/<id>.procedure.md
 - install_target: .claude/agents/<name>.md
 - model: <cheapest tier that handles the task>
 - tools: <tool list>

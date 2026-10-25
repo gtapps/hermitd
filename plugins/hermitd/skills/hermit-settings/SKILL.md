@@ -42,8 +42,8 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
 /hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
-/hermitd:hermit-settings skills-learning — enable or disable close-time skill learning
-/hermitd:hermit-settings skills-notify — off, on, or verbose learning notifications
+/hermitd:hermit-settings skills-learning: enable or disable close-time skill learning
+/hermitd:hermit-settings skills-notify: off, on, or verbose learning notifications
 /hermitd:hermit-settings reflection       — tune graduation threshold (graduation_min_sessions)
 /hermitd:hermit-settings push-notifications — toggle PushNotification doorbell (fires when no channel is enabled or a configured channel is unreachable)
 /hermitd:hermit-settings artifact-dashboard — toggle the Hermit Dashboard artifact (single-URL status/proposals/weekly-evolution page)

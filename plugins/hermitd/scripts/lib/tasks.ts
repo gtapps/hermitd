@@ -14,6 +14,7 @@ import { readContextSurface } from './context-surface';
 import { allocateTaskShares, BY_TASK_RETENTION_DAYS, computeIndex, readCostIndex, costIndexPath } from './cost-log';
 import { todayYMD } from './time';
 import { costLogPath } from './cc-compat';
+import { REVIEW_CALLS } from './learned-skills';
 
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
@@ -338,7 +339,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const counter = path.join(dir, 'state', 'skill-review-counter');
       let calls = 0;
       try { calls = fs.statSync(counter).size; } catch { /* no calls yet */ }
-      if (record.delegated || calls >= 10) {
+      if (record.delegated || calls >= REVIEW_CALLS) {
         record.skill_review = 'pending';
         resetCounter = true;
         digest = { ...(digest as object), skill_review: 'pending' };

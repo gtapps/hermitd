@@ -4,6 +4,8 @@ import { appendJsonlLine } from './append-jsonl';
 import { writeFileAtomic } from './md-write';
 
 export const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** Resident tool calls (one counter byte each) that make a closing task due for skill review. */
+export const REVIEW_CALLS = 10;
 const ALLOWED_KEYS = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'arguments', 'paths', 'disable-model-invocation', 'user-invocable', 'metadata']);
 export type Lint = { errors: string[]; warnings: string[] };
 export type SkillAction = 'create' | 'patch' | 'pin' | 'unpin' | 'rollback' | 'archive' | 'restore';
@@ -67,8 +69,10 @@ export function lint(skillDir: string): Lint {
     const { raw, body } = frontmatter(text);
     const data = Bun.YAML.parse(raw) as Record<string, unknown>;
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Unparsable frontmatter');
-    if (data.name !== path.basename(skillDir)) errors.push('Skill name must equal folder name');
-    if (typeof data.name !== 'string' || !SKILL_NAME.test(data.name)) errors.push('Invalid skill name');
+    // Claude Code defaults a missing name to the folder name.
+    const name = data.name ?? path.basename(skillDir);
+    if (name !== path.basename(skillDir)) errors.push('Skill name must equal folder name');
+    if (typeof name !== 'string' || !SKILL_NAME.test(name)) errors.push('Invalid skill name');
     if (String(data.description ?? '').length + String(data.when_to_use ?? '').length > 1536) warnings.push('Description and when_to_use exceed listing cap (1,536 characters)');
     for (const match of body.matchAll(/\]\((references\/[^)\s#]+)(?:#[^)]*)?\)/g)) {
       if (!fs.existsSync(path.join(skillDir, match[1]))) warnings.push(`Missing reference: ${match[1]}`);
@@ -127,6 +131,8 @@ export class LearnedSkills {
   }
   restoreRevision(skill: string): boolean {
     const destination = this.skillDir(skill);
+    // An archived skill comes back through restore; rolling it back here would strand the archived copy.
+    if (!fs.existsSync(destination)) return false;
     const history = path.join(this.state, 'skill-history', skill);
     let revisions: string[];
     try { revisions = fs.readdirSync(history).sort(); } catch { return false; }

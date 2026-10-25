@@ -19,3 +19,9 @@ test('counter counts resident calls only and prints nothing', async () => {
   }
   expect(fs.statSync(path.join(state, 'skill-review-counter')).size).toBe(3);
 });
+test('counter stops growing once the review threshold is met', async () => {
+  const dir = freshDir(); const state = path.join(dir, '.hermit/state'); fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(path.join(state, 'skill-review-counter'), '1'.repeat(10));
+  await runScript('tool-counter.ts', { cwd: dir, env: { AGENT_DIR: path.join(dir, '.hermit') }, stdin: JSON.stringify({ tool_name: 'Bash' }) });
+  expect(fs.statSync(path.join(state, 'skill-review-counter')).size).toBe(10);
+});

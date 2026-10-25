@@ -67,7 +67,7 @@ const SPECS: Spec[] = [
     name: 'core/skill-guard',
     script: 'plugins/hermitd/scripts/skill-guard.ts',
     benign: BENIGN_EDIT,
-    failExit: 0, // Malformed input emits a JSON deny decision while exiting 0.
+    failExit: 0, // Malformed input exits 0; it denies only when the raw text names a skill folder.
   },
   {
     name: 'core/artifact-backend-guard',

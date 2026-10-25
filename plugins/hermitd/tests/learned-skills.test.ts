@@ -31,6 +31,8 @@ test('lint checks frontmatter, names, and four warnings', () => {
       fs.writeFileSync(path.join(dir, 'SKILL.md'), text);
       expect(lint(dir).errors.length).toBeGreaterThan(0);
     }
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\ndescription: Example\n---\nSteps');
+    expect(lint(dir).errors).toEqual([]);
     fs.writeFileSync(path.join(dir, 'SKILL.md'), draft('sample', `when_to_use: ${'a'.repeat(1600)}\n`, '[ref](references/missing.md) #1 #2 #3 #4 #5 ' + 'b'.repeat(12001)));
     expect(lint(dir).errors).toEqual([]);
     expect(lint(dir).warnings.length).toBe(4);
