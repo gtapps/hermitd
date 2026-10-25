@@ -315,6 +315,8 @@ export interface OperatorNotice {
   routine?: string;
   /** The watch whose events send this notice; its registry `chat` takes the client leg. */
   watch?: string;
+  /** The caller is a model session that can send the client text through the channel's reply tool. */
+  relay?: boolean;
 }
 
 /** The `chat` of entry `id` in `entries` as a send target, or null when it has none. */
@@ -333,6 +335,9 @@ function sameChat(a: { id: string; chat_id: Json } | null, b: { id: string; chat
 export interface OperatorNoticeResult {
   client?: SendResult;
   maintainer?: SendResult;
+  // Set on a relay notice when the client leg's channel has no send path: the
+  // calling model delivers the client text itself through this chat's reply tool.
+  relay?: { channel: string; chat_id: string };
 }
 
 /** Append one notice row to Findings. Returns null on success, else the error. */
@@ -431,12 +436,16 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
         target: target ?? undefined, timeoutMs: notice.timeoutMs, config,
       });
     }
+    // A relayed client leg is the caller's to deliver, so it records no failure.
+    if (notice.relay && target && out.client.error === 'no_send_path') {
+      out.relay = { channel: target.id, chat_id: String(target.chat_id) };
+    }
     // A parent success still records that the routine's original chat failed.
-    if (owned && notice.routine && (!out.client.ok || out.client.route === 'parent')) {
+    if (!out.relay && owned && notice.routine && (!out.client.ok || out.client.route === 'parent')) {
       const failure = `${owned.id}:${owned.chat_id}: ${out.client.error ?? 'original thread unreachable'}`;
       logRoutineEvent(notice.routine, 'chat-undelivered', hermitDir, 'channel-send', failure);
     }
-    if (!out.client.ok) {
+    if (!out.relay && !out.client.ok) {
       const error = appendMaintainerFindings(hermitDir, notice.client, 'undelivered-client-notice');
       out.client.undelivered_saved = error === null;
       if (error !== null) out.client.persistence_error = error;

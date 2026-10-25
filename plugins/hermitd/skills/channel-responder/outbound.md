@@ -21,8 +21,12 @@ Use this protocol for proactive notifications (`prompts/resident.md` § Operator
   Compose each version in the operator's configured `language` and apply §0 Message formatting
   to the completed message bodies before sending.
 
-  The script prints `{ "status", "reason"?, "result" }`.
+  The script prints `{ "status", "reason"?, "relay"?, "result" }`.
   - **`delivered`**: every leg landed. Done.
+  - **`relay`**, or a `relay` field beside another status: this channel has no script send
+    path. Send the client text verbatim through `relay.channel`'s reply tool to
+    `relay.chat_id`, then handle any other status as below. If that reply fails, treat the
+    client leg as `undelivered`; the sender did not save it, so record the client text in Findings.
   - **`error`** (`invalid_payload:…`): nothing was sent. Fix and re-run;
     do not push or record a `channel-send-unavailable` issue.
   - **`undelivered`**, or **`degraded`** when unreachable maintainer detail landed
@@ -32,7 +36,7 @@ Use this protocol for proactive notifications (`prompts/resident.md` § Operator
     The sender persists failed client text to state/watchdog-events.jsonl and reports `undelivered_saved` or `persistence_error` in the client result.
     Here even `reason: "no_reachable_channel"` means an enabled channel is unreachable (no home chat, empty `allowed_users`, or unreadable config).
     For an empty `default_chat_id`, tell the operator to send the bot any message so it learns the chat; a pairing code in reply means pairing goes through `/hermitd:channel-setup`.
-- Never send a proactive notice through a channel reply tool, and never advise `/<channel>:access`: home chats are learned from pairing or a message, and the maintainer chat is reached by direct API POST, not `access.json` pairing (it is outbound routing for technical alerts, `docs/security.md` § Tiered disclosure, not reply routing).
+- Send a proactive notice through a channel reply tool only when the script returns `relay`, and never advise `/<channel>:access`: home chats are learned from pairing or a message, and the maintainer chat is reached by direct API POST, not `access.json` pairing (it is outbound routing for technical alerts, `docs/security.md` § Tiered disclosure, not reply routing).
 
 A request from chat to listen in a group or server channel goes through `hermit-settings channels → edit <name> → group`, never the plugin's `/<channel>:access` skill or a direct `access.json` edit.
 

@@ -99,7 +99,7 @@ the row's own tier and the operator's config, not by the flag.
    maintainer diagnostic was recorded and leave it at that.
 
    **Then confirm delivery**, so those findings stop being re-offered — only when the send actually
-   landed (exit 0):
+   landed (exit 0; on `relay`, only after the reply-tool send succeeds):
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/doctor-check.ts .hermit --mark-notified <id> [<id>…]
    ```

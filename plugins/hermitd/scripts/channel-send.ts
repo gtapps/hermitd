@@ -22,10 +22,13 @@
 //   that routine has a `chat`, the client leg goes there instead of the home
 //   chat. `--watch <id>` does the same with the config watch’s `chat`, or an
 //   ad-hoc watch’s runtime registry entry `chat`.
-//   Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
+//   Prints {"status","reason"?,"relay"?,"result"} at exit 0 whether or not it landed:
 //     delivered    every requested leg landed where it was meant to
 //     degraded     every leg was accepted, but maintainer detail fell back to Findings
 //     undelivered  a leg failed to land (`reason: no_reachable_channel` when none could)
+//     relay        the client leg's channel has no send path and every other leg landed;
+//                  the caller sends the client text through that channel's reply tool to
+//                  `relay.chat_id`. `relay` also prints beside degraded or undelivered.
 //   A rejected payload prints {"error":"invalid_payload:<detail>"} at exit 1: nothing
 //   was sent, and it is not evidence the channel is broken.
 
@@ -148,19 +151,23 @@ async function runNotice(hermitDir: string, routine?: string, watch?: string): P
       : undefined,
     routine,
     watch,
+    relay: true,
   });
 
-  const legs = [out.client, out.maintainer].filter((r): r is SendResult => !!r);
+  // A relayed client leg is the caller's to send, so it is neither a leg nor a printed failure.
+  const { relay, ...result } = out;
+  if (relay) delete result.client;
+  const legs = [result.client, result.maintainer].filter((r): r is SendResult => !!r);
   // Every leg, including both legs of a merged send, must have landed. `some` would report success
   // for a half-delivered notice — e.g. a typo'd maintainer_channel_id degrading
   // the maintainer leg to Findings while the client leg goes out — and the
   // caller's documented "delivered ⇒ done" branch would drop that content silently.
   // Accepted-but-not-delivered can only be the maintainer leg's Findings fallback.
-  const status = legs.every(legDelivered) ? 'delivered' : legs.every((r) => r.ok) ? 'degraded' : 'undelivered';
+  const delivered = legs.every(legDelivered) ? 'delivered' : legs.every((r) => r.ok) ? 'degraded' : 'undelivered';
+  const status = relay && delivered === 'delivered' ? 'relay' : delivered;
   const no_channel = legs.every((r) => r.error === 'no_reachable_channel');
-  emitJson(status === 'undelivered' && no_channel
-    ? { status, reason: 'no_reachable_channel', result: out }
-    : { status, result: out });
+  const reason = status === 'undelivered' && no_channel ? 'no_reachable_channel' : undefined;
+  emitJson({ status, ...(reason && { reason }), ...(relay && { relay }), result });
 }
 
 async function main(): Promise<void> {
