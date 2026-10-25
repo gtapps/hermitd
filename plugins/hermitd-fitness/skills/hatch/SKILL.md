@@ -138,9 +138,9 @@ Check if `activity-streams:` is present in the file. This string only appears in
 If **absent**, append the following block under `## Work Products` (create the section header if the base schema only has a template stub):
 
 ```
-- weekly-plan: weekly training structure suggestion (7-day breakdown). Triggered by monday-planning routine (Mon 09:30). location: compiled/weekly-plan-<YYYY-MM-DD>.md
-- weekly-summary: week-over-week training load review. Triggered by weekly-load-review routine (Sun 18:00). location: compiled/weekly-summary-<YYYY-MM-DD>.md
-- recovery-assessment: recovery indicators from recent activity data. Triggered by operator request or an evening-brief flag. location: compiled/recovery-assessment-<YYYY-MM-DD>.md
+- weekly-plan: weekly training structure suggestion (7-day breakdown). Triggered by the `hermitd-fitness:monday-planning` routine (Mon 09:30). location: compiled/weekly-plan-<YYYY-MM-DD>.md
+- weekly-summary: week-over-week training load review. Triggered by the `hermitd-fitness:weekly-load-review` routine (Sun 18:00). location: compiled/weekly-summary-<YYYY-MM-DD>.md
+- recovery-assessment: recovery indicators from recent activity data. Triggered by operator request or an evening brief flag. location: compiled/recovery-assessment-<YYYY-MM-DD>.md
 - fitness-snapshot: current fitness state snapshot. Triggered by operator request. location: compiled/fitness-snapshot-<YYYY-MM-DD>.md
 - activity-note: per-activity coaching analysis. Triggered by activity-deep-dive skill. location: compiled/activity-<id>-<YYYY-MM-DD>.md
 - domain-brainstorm: report from a domain plugin's `domain-brainstorm` skill, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md
@@ -173,7 +173,7 @@ If the key already exists: update the value. If absent: add it alongside the exi
 
 ### 6b — Merge routines
 
-In the `routines` array, match each entry by its full skill string, including arguments. Add a new row with the namespaced id only when that skill is absent; preserve every field on existing matching rows, including operator ids and schedules.
+In the `routines` array: A row matches a seeded entry when its full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row. Add an entry below only when no row matches.
 
 ```json
 {
@@ -204,7 +204,7 @@ In the `routines` array, match each entry by its full skill string, including ar
 
 ### 6c: Merge the weekly patterns routine
 
-Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge this entry into `config.routines` by the same matching rule. Create the array if absent. Append the entry only when no row matches and leave all other config fields unchanged. No prompt is needed for these read-only analyses.
 
 ```json
 {"id": "hermitd-fitness:weekly-coaching-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns", "enabled": true, "precheck": ".hermit/bin/fitness-weekly-patterns-gate", "precheck_timeout_s": 60}
@@ -240,7 +240,7 @@ Installation summary:
   ✓ .mcp.json: strava server entry written (or was already present)
   ✓ .gitignore: .mcp.json and .env covered
   ✓ knowledge-schema.md: fitness types added (or were already present)
-  ✓ config.json: _hermit_versions stamped, {K}/4 routines added, weekly-coaching-patterns routine registered with precheck
+  ✓ config.json: _hermit_versions stamped, {K}/4 routines added, `hermitd-fitness:weekly-coaching-patterns` routine registered with precheck
 
 Manual steps remaining:
   - Restart Claude Code so the `strava` MCP server loads from .mcp.json

@@ -51,6 +51,8 @@ import {
   checkForUpgrade,
   peerName,
   resolveResumeTarget,
+  bootstrapPrompt,
+  shlexJoin,
 } from '../scripts/hermitd-start';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import { readRuntimeState } from '../scripts/lib/runtime';
@@ -219,6 +221,43 @@ describe('resolveResumeTarget', () => {
     expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ id: 'abc' });
     fs.writeFileSync(path.join(tmpdir, '.hermit/resident-prompt.md'), 'changed prompt');
     expect(resolveResumeTarget({ cc_session_id: 'abc' }, tmpdir, configDir)).toEqual({ skip: 'prompt-changed' });
+  });
+});
+
+describe('bootstrapPrompt', () => {
+  const base = { hbEnabled: false, hasRoutines: false, autoSession: true, bootSkill: '/hermitd:resident-start' };
+  const fallback = '(if that skill does not exist, invoke /hermitd:resident-start instead)';
+
+  test('default resident-start alone is sent as a bare slash command', () => {
+    expect(bootstrapPrompt(base)).toBe('/hermitd:resident-start');
+  });
+
+  test('default resident-start with routines gets no fallback clause', () => {
+    expect(bootstrapPrompt({ ...base, hasRoutines: true })).toBe(
+      'Always-on bootstrap. Invoke these skills in order: (1) /hermitd:hermit-routines load, (2) /hermitd:resident-start.',
+    );
+  });
+
+  test('custom boot skill alone uses the sentence form with the fallback', () => {
+    expect(bootstrapPrompt({ ...base, bootSkill: '/x:y' })).toBe(`Always-on bootstrap. Invoke /x:y ${fallback}.`);
+  });
+
+  test('custom boot skill with routines carries the fallback in the numbered form', () => {
+    expect(bootstrapPrompt({ ...base, hasRoutines: true, bootSkill: '/x:y' })).toBe(
+      `Always-on bootstrap. Invoke these skills in order: (1) /hermitd:hermit-routines load, (2) /x:y ${fallback}.`,
+    );
+  });
+
+  test('a lone heartbeat step stays bare and no steps yields null', () => {
+    const noSession = { ...base, autoSession: false, bootSkill: '/x:y' };
+    expect(bootstrapPrompt({ ...noSession, hbEnabled: true })).toBe('/hermitd:heartbeat start');
+    expect(bootstrapPrompt(noSession)).toBeNull();
+  });
+
+  test('the fallback prompt survives shell quoting as one argument', () => {
+    const prompt = bootstrapPrompt({ ...base, bootSkill: '/x:y' })!;
+    const out = Bun.spawnSync(['sh', '-c', `printf '%s\\n' ${shlexJoin([prompt])}`]).stdout.toString();
+    expect(out).toBe(prompt + '\n');
   });
 });
 

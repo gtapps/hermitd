@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Hatch matches routines by full skill string and assigns new rows `hermitd-laravel-forge:` ids, preserving existing operator fields.
+- Hatch matches existing routines by full skill string or namespaced id and assigns new rows `hermitd-laravel-forge:` ids, preserving existing operator fields. Requires hermitd 1.4.21.
 
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-laravel-forge --ids forge-failed-deploys` and report the receipt.

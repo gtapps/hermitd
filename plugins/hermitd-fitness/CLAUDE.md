@@ -18,7 +18,7 @@ A fitness/training domain layer for `hermitd`: skills, a Strava data subagent, S
 
 ## Routines and state
 
-The `weekly-coaching-patterns` routine invokes `reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns`. Hatch installs its pre-wake gate from `state-templates/bin/fitness-weekly-patterns-gate`.
+The `hermitd-fitness:weekly-coaching-patterns` routine invokes `reflect --check-id weekly-coaching-patterns --check hermitd-fitness:weekly-coaching-patterns`. Hatch installs its pre-wake gate from `state-templates/bin/fitness-weekly-patterns-gate`.
 
 - Routines invoke domain skills directly through `config.json.routines[].skill`; keep the registered skill names and arguments aligned with `skills/`.
 - Routine entries use the no-leading-slash form `"hermitd-fitness:<skill>"`. Startup skill selection belongs to the operator; this plugin never declares or sets it.

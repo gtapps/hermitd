@@ -187,7 +187,7 @@ Write `_hermit_versions["hermitd-homeassistant"]` into `.hermit/config.json`, se
 
 **Compiled templates**: Copy `${CLAUDE_PLUGIN_ROOT}/state-templates/compiled/acknowledged-violations.md` to `.hermit/compiled/acknowledged-violations.md` if that file does not already exist. Set `created` in the frontmatter to today's ISO date. This gives the operator a ready-to-use suppression list for the safety audit.
 
-**HA routine registration**: `config.routines` is an array of objects with `{id, schedule, skill, enabled}`. Match each existing row by the same full skill string, including arguments. If a match exists, preserve all its fields and skip registration. Otherwise offer the optional house routine and append its namespaced id. Never replace or disable core routines.
+**HA routine registration**: `config.routines` is an array of objects with `{id, schedule, skill, enabled}`. A row matches a seeded entry when its full skill string (including arguments) or its `id` equals the seeded one's; preserve every field on a matching row. If a match exists, skip registration. Otherwise offer the optional house routine and append its namespaced id. Never replace or disable core routines.
 
 1. **Context refresh** — "Add daily HA context-refresh routine (08:30 every day)? Keeps entity snapshots fresh automatically."
    ```json
@@ -206,7 +206,7 @@ After adding or updating any entries, remind the operator: "Run `/hermitd:hermit
 
 **Analysis routine registration**
 
-Merge these entries into `config.routines` by full skill string, including arguments. Create the array if absent. Append each missing skill with its namespaced id; skip any existing matching skill, preserving operator edits and all other config fields. No prompt is needed for these read-only analyses.
+Merge these entries into `config.routines` by the same matching rule. Create the array if absent. Append each entry with no matching row and leave all other config fields unchanged. No prompt is needed for these read-only analyses.
 
 ```json
 {"id": "hermitd-homeassistant:ha-patterns", "schedule": "5 9 * * 1", "skill": "hermitd:reflect --check-id ha-patterns --check hermitd-homeassistant:ha-analyze-patterns", "enabled": true}
@@ -263,8 +263,9 @@ Prefer to test interactively first?
   2. /hermitd:hermit-routines load
        — activates scheduled routines in the current Claude session.
 
-The always-on runtime loads routines automatically. The daily-ha-context and
-ha-integration-health routines keep house snapshots fresh between manual checks.
+The always-on runtime loads routines automatically. The
+hermitd-homeassistant:daily-ha-context and hermitd-homeassistant:ha-integration-health
+routines keep house snapshots fresh between manual checks.
 
 Ready to organize your house?
   /hermitd-homeassistant:ha-setup-house

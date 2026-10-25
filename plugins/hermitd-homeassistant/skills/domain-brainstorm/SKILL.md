@@ -16,7 +16,7 @@ Read these in parallel — all are cheap cached reads plus one lightweight listi
 **Entity inventory**
 Read `.hermit/raw/snapshot-ha-normalized-latest.json` → `entity_index` (the universe of areas, devices, and domains).
 - If absent: stop immediately, emit-zero with reason "no context snapshot — run /hermitd-homeassistant:ha-refresh-context first". The entity universe is the required substrate.
-- If mtime > 24h: note "stale snapshot", proceed — the daily-ha-context and ha-integration-health routines own scheduled refresh, do not refresh here.
+- If mtime > 24h: note "stale snapshot", proceed — the `hermitd-homeassistant:daily-ha-context` and `hermitd-homeassistant:ha-integration-health` routines own scheduled refresh, do not refresh here.
 
 **Automation/script inventory**
 Run:

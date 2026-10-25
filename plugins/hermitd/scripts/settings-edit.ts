@@ -37,6 +37,8 @@ import { persistConfig } from './lib/config-write';
 import { validate, ROUTINE_ID_RE } from './validate-config';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
+import { resolveGate, projectRootOf } from './lib/routines/gate';
+import { renameCursors } from './lib/routines/schedule';
 
 type Json = any;
 
@@ -52,44 +54,74 @@ export const HERMITD_IDS: Record<string, string> = {
 
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
+// A migration declares whether it takes arguments and any effect after persist.
 type Report = Record<string, unknown>;
-type MigrationContext = { args: string[] };
-const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report | void> = {
-  'plugin-routine-ids': (config, ctx) => {
-    const plugin = flagValue(ctx.args, '--plugin');
-    const ids = flagValue(ctx.args, '--ids')?.split(',');
-    if (ctx.args.length !== 4 || ctx.args[0] !== '--plugin' || ctx.args[2] !== '--ids'
-      || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin) || !ids
-      || ids.some(id => !ROUTINE_ID_RE.test(id) || id.includes(':'))) {
-      throw new Error('expected --plugin <id> --ids <csv>');
-    }
-    const seeded = new Set(ids);
-    const renamed: Array<{ from: string; to: string }> = [];
-    for (const routine of Array.isArray(config.routines) ? config.routines : []) {
-      if (!seeded.has(routine?.id) || typeof routine?.skill !== 'string') continue;
-      const tokens = routine.skill.trim().split(/\s+/);
-      let invoked = tokens[0].replace(/^\//, '');
-      if (invoked === 'hermitd:reflect') invoked = flagValue(tokens.slice(1), '--check')?.replace(/^\//, '') ?? invoked;
-      if (!invoked.startsWith(`${plugin}:`)) continue;
-      const target = `${plugin}:${routine.id}`;
-      if (!ROUTINE_ID_RE.test(target)) throw new Error(`invalid_target_id:${target}`);
-      renamed.push({ from: routine.id, to: target });
-      routine.id = target;
-    }
-    if (renamed.length) return { renamed };
+type Migration = {
+  run: (config: Json, ctx: { args: string[]; hermitDir: string }) => Report | void;
+  takesArgs?: boolean;
+  afterPersist?: (hermitDir: string, report: Report) => void;
+};
+const noArgs = (run: (config: Json) => Report | void): Migration => ({ run });
+const PLUGIN_ID = '[a-z0-9][a-z0-9-]*';
+const PLUGIN_ID_RE = new RegExp(`^${PLUGIN_ID}$`);
+const SIBLING_SKILL_RE = new RegExp(`^/${PLUGIN_ID}:[^\\s:]+$`);
+type Rename = { from: string; to: string };
+
+const migrations: Record<string, Migration> = {
+  'plugin-routine-ids': {
+    takesArgs: true,
+    run: (config, ctx) => {
+      const plugin = flagValue(ctx.args, '--plugin');
+      const ids = flagValue(ctx.args, '--ids')?.split(',');
+      if (ctx.args.length !== 4 || ctx.args[0] !== '--plugin' || ctx.args[2] !== '--ids'
+        || !plugin || !PLUGIN_ID_RE.test(plugin) || !ids
+        || ids.some(id => !ROUTINE_ID_RE.test(id) || id.includes(':'))) {
+        throw new Error('expected --plugin <id> --ids <csv>');
+      }
+      const seeded = new Set(ids);
+      const renamed: Rename[] = [];
+      const scriptGated: string[] = [];
+      for (const routine of Array.isArray(config.routines) ? config.routines : []) {
+        if (!seeded.has(routine?.id) || typeof routine?.skill !== 'string') continue;
+        const tokens = routine.skill.trim().split(/\s+/);
+        let invoked = tokens[0].replace(/^\//, '');
+        if (invoked === 'hermitd:reflect') invoked = flagValue(tokens.slice(1), '--check')?.replace(/^\//, '') ?? invoked;
+        if (!invoked.startsWith(`${plugin}:`)) continue;
+        const target = `${plugin}:${routine.id}`;
+        if (!ROUTINE_ID_RE.test(target)) throw new Error(`invalid_target_id:${target}`);
+        renamed.push({ from: routine.id, to: target });
+        routine.id = target;
+        // A script gate sees the routine's last fire by id, and that history stays under the old id.
+        if (routine.precheck !== undefined
+          && resolveGate(routine.precheck, projectRootOf(ctx.hermitDir)).kind === 'script') scriptGated.push(target);
+      }
+      if (!renamed.length) return;
+      if (!scriptGated.length) return { renamed };
+      return {
+        renamed,
+        note: `${scriptGated.join(', ')} may run once early because run history stays under the old id. `
+          + 'References to the old ids in operator files still move to the new ones.',
+      };
+    },
+    afterPersist: (hermitDir, report) => {
+      if (report.renamed) renameCursors(hermitDir, report.renamed as Rename[]);
+    },
   },
-  'clear-sibling-boot-skill': (config, ctx) => {
-    const plugin = flagValue(ctx.args, '--plugin');
-    if (ctx.args.length !== 2 || ctx.args[0] !== '--plugin' || !plugin || !/^[a-z0-9][a-z0-9-]*$/.test(plugin)) {
-      throw new Error('expected --plugin <id>');
-    }
-    if (typeof config.boot_skill === 'string' && config.boot_skill.startsWith(`/${plugin}:`)) {
-      const cleared = config.boot_skill;
-      delete config.boot_skill;
-      return { cleared };
-    }
+  'clear-sibling-boot-skill': {
+    takesArgs: true,
+    run: (config, ctx) => {
+      const skill = flagValue(ctx.args, '--skill');
+      if (ctx.args.length !== 2 || ctx.args[0] !== '--skill' || !skill
+        || !SIBLING_SKILL_RE.test(skill)) {
+        throw new Error('expected --skill /<plugin>:<name>');
+      }
+      if (config.boot_skill === skill) {
+        config.boot_skill = null;
+        return { cleared: skill };
+      }
+    },
   },
-  'channel-home': (config) => {
+  'channel-home': noArgs((config) => {
     for (const [name, channel] of Object.entries(config.channels ?? {}) as [string, Json][]) {
       if (name === 'primary' || !channel || typeof channel !== 'object') continue;
       if ((channel.default_chat_id == null || channel.default_chat_id === '')
@@ -99,8 +131,8 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
       }
       delete channel.dm_channel_id;
     }
-  },
-  hermitd: (config) => {
+  }),
+  hermitd: noArgs((config) => {
     const skill = (value: unknown): unknown => typeof value === 'string'
       ? value.replace(/^(\/?)([^:]+):/, (prefix, slash, id) => HERMITD_IDS[id] ? `${slash}${HERMITD_IDS[id]}:` : prefix)
       : value;
@@ -136,8 +168,8 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
       config['hermitd-dev'] = config['claude-code-dev-hermit'];
       delete config['claude-code-dev-hermit'];
     }
-  },
-  '1.4.0': (config) => {
+  }),
+  '1.4.0': noArgs((config) => {
     unsetPath(config, 'post_close_clear');
     if (getPath(config, 'context_hygiene.clear') === undefined) {
       setPath(config, 'context_hygiene.clear', {
@@ -153,7 +185,7 @@ const migrations: Record<string, (config: Json, ctx: MigrationContext) => Report
     if (['/hermitd:session', '/hermitd:session-start'].includes(config.boot_skill)) { // resident-start migration aliases
       config.boot_skill = '/hermitd:resident-start';
     }
-  },
+  }),
 };
 
 // Strict read: an existing-but-malformed file must abort, never fall through to {},
@@ -498,14 +530,15 @@ if (import.meta.main) {
   switch (op) {
     case 'migrate': {
       const migration = migrations[rest[0]];
-      if (!migration || (rest[0] !== 'plugin-routine-ids' && rest[0] !== 'clear-sibling-boot-skill' && rest.length !== 1)) exitError('unsupported_migration');
+      if (!migration || (!migration.takesArgs && rest.length !== 1)) exitError('unsupported_migration');
       let report: Report | void;
       try {
-        report = migration(config, { args: rest.slice(1) });
+        report = migration.run(config, { args: rest.slice(1), hermitDir: stateDir });
       } catch (err) {
         exitError(`migration_conflict:${(err as Error).message}`);
       }
       const warnings = JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : [];
+      if (report) migration.afterPersist?.(stateDir, report);
       if (report && Object.keys(report).length) emitJson({ ...report, ...(warnings.length ? { warnings } : {}) });
       done(warnings);
       break;

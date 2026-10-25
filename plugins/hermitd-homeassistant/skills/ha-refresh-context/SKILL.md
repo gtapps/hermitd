@@ -30,7 +30,7 @@ allowed-tools:
 
 ## When to Use
 
-- On demand when context is stale, or through the daily-ha-context and ha-integration-health routines
+- On demand when context is stale, or through the `hermitd-homeassistant:daily-ha-context` and `hermitd-homeassistant:ha-integration-health` routines
 - Before building any automation
 - After the operator reports changes to their HA setup
 - Periodically to detect drift

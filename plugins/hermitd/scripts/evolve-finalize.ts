@@ -15,7 +15,7 @@
 // config.json, and records the config the finalizer later diffs against. It is
 // fail-open (always exit 0) — a missing snapshot only costs attribution detail,
 // reported back as audit_scope. This script owns both ends of that lifecycle so
-// evolve-plan.ts stays read-only and no second script needs sealing.
+// evolve-plan.ts never writes the snapshot and no second script needs sealing.
 //
 // hermit-dir defaults to .hermit (like evolve-plan.ts).
 // --plugin-root cross-checks --core against plugin.json.version, so the stamp written

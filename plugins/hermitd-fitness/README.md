@@ -39,11 +39,11 @@ claude plugin install hermitd-fitness --marketplace gtapps/hermitd --scope local
 
 **Routines that match a training week:**
 
-- `morning-brief` — daily 07:30 — readiness read + today's plan; checks Strava connectivity
-- `evening-brief` — daily 21:30 — today's training recap + tomorrow's setup; syncs new activities, invites RPE
-- `weekly-load-review` — Sunday 18:00 — week-over-week load summary with trend flag
-- `monday-planning` — Monday 09:30 — weekly training structure suggestion
-- `weekly-coaching-patterns` — Monday 09:05 — cardiac-drift trend; pre-wake gate skips when there is no upward trend
+- `hermitd-fitness:morning-brief` — daily 07:30 — readiness read + today's plan; checks Strava connectivity
+- `hermitd-fitness:evening-brief` — daily 21:30 — today's training recap + tomorrow's setup; syncs new activities, invites RPE
+- `hermitd-fitness:weekly-load-review` — Sunday 18:00 — week-over-week load summary with trend flag
+- `hermitd-fitness:monday-planning` — Monday 09:30 — weekly training structure suggestion
+- `hermitd-fitness:weekly-coaching-patterns` — Monday 09:05 — cardiac-drift trend; pre-wake gate skips when there is no upward trend
 
 Need a different cadence or a new routine? Just ask — hermit sets it up.
 

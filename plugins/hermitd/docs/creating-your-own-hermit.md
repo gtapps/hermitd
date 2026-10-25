@@ -226,7 +226,7 @@ Declare renamed or removed names and changed output with one `**Leftover check:*
 
 Executable steps state the desired outcome plus constraints the model cannot infer. Name migration verbs exactly, including their required arguments. A migration verb rewrites data the same way on every install; work depending on the operator's files or intent belongs to the evolve model. An entry never references another entry: include the information it needs within that entry.
 
-Do not copy check mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness, grouped findings, the operator question and the fix procedure.
+Do not copy check mechanics into the changelog. [The evolve reference, Step 7b](../skills/hermit-evolve/reference.md#7b-leftover-check) owns discovery, liveness and grouped findings; [the leftover-check guide](../skills/hermit-evolve/leftover-check.md) owns the operator question and the fix procedure.
 
 ### Docker dependencies
 

@@ -3,10 +3,16 @@
 ## [Unreleased]
 
 ### Changed
-- Hatch matches routines by full skill string and assigns new rows `hermitd-fitness:` ids, preserving existing operator fields.
+- Hatch matches existing routines by full skill string or namespaced id and assigns new rows `hermitd-fitness:` ids, preserving existing operator fields. Requires hermitd 1.4.21.
+
+### Fixed
+- Hermits where Home Assistant hatched first are offered the fitness morning and evening briefs, which hatch skipped because of a shared routine id.
 
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-fitness --ids morning-brief,evening-brief,weekly-load-review,monday-planning,weekly-coaching-patterns` and report the receipt.
+2. Offer the fitness briefs an earlier hatch skipped. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get _hermit_versions.hermitd-fitness`. If it is not set, skip silently. Otherwise read `.hermit/bin/hermitd-run settings-edit .hermit/config.json get routines`. A slot (morning, evening) is missing when a routine's skill is `hermitd-homeassistant:ha-<slot>-brief`, and no routine's skill is `hermitd-fitness:fitness-brief --<slot>` and no routine's id is `hermitd-fitness:<slot>-brief`. Skip silently when no slot is missing. Otherwise offer a choice with no default: **Add them** / **Leave them**. Defer to the operator through evolve's step 10. Ask one question covering every missing slot: an earlier hatch skipped the fitness morning or evening brief because Home Assistant already used the same routine id, so it never ran; the evening brief also syncs new activities and invites RPE capture.
+   - *Add them*: re-read `routines`. For each slot still missing, append its row with `.hermit/bin/hermitd-run settings-edit .hermit/config.json set routines.<n> '<row>'`, where `<n>` is the current number of routines. Morning: `{"id":"hermitd-fitness:morning-brief","schedule":"30 7 * * *","skill":"hermitd-fitness:fitness-brief --morning","enabled":true}`. Evening: `{"id":"hermitd-fitness:evening-brief","schedule":"30 21 * * *","skill":"hermitd-fitness:fitness-brief --evening","enabled":true}`. Report each added row with its id and schedule, and that asking the hermit to disable it sets its `enabled` to false.
+   - *Leave them*: change nothing.
 
 **Leftover check:** The operator's own files may still refer to the routine ids `morning-brief`, `evening-brief`, `weekly-load-review`, `monday-planning` and `weekly-coaching-patterns`, which this release renamed to `hermitd-fitness:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
