@@ -558,8 +558,12 @@ case "$CMD" in
     }
     _stamp_update_marker
     trap 'rm -f "$UPDATE_MARKER"' EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
+    _update_interrupted() {
+      echo '[hermit] Update interrupted before the restart; rerun `hermitd update` to finish.' >&2
+      exit "$1"
+    }
+    trap '_update_interrupted 130' INT
+    trap '_update_interrupted 143' TERM
 
     _await_upgrade() {
       local output parsed
@@ -738,6 +742,8 @@ case "$CMD" in
     fi
     _await_upgrade || return 0
     _validate_compose
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     echo "[hermit] Bouncing container..."
     cd "$PROJECT_DIR" && "${DC[@]}" down
     export HERMIT_RESUME=1

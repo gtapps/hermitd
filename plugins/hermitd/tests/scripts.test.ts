@@ -13,7 +13,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 import { runScript, runProposal, runPinnedScript, PLUGIN_ROOT, SCRIPTS_DIR, MONOREPO_ROOT } from './helpers/run';
 import { setupGitWorkdir, setupWorkdir, fixturesDir, freshDirFactory, withDir, writeConfig, type Workdir } from './helpers/workdir';
@@ -65,6 +65,41 @@ async function runBash(
     proc.exited,
   ]);
   return { exitCode, stdout, stderr };
+}
+
+/** Interrupt the whole update process group only after its wait fixture is ready. */
+async function runInterruptedBash(
+  scriptPath: string,
+  opts: NonNullable<Parameters<typeof runBash>[1]>,
+  readyFile: string,
+) {
+  const child = spawn('bash', [scriptPath, ...(opts.args ?? [])], {
+    cwd: opts.cwd,
+    env: { ...process.env, ...opts.env },
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout!.on('data', chunk => { stdout += chunk; });
+  child.stderr!.on('data', chunk => { stderr += chunk; });
+  const closed = new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', code => resolve(code));
+  });
+  try {
+    const deadline = Date.now() + 20000;
+    while (!fs.existsSync(readyFile) && Date.now() < deadline && child.exitCode === null) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(fs.existsSync(readyFile)).toBe(true);
+    process.kill(-child.pid!, 'SIGINT');
+    const exitCode = await closed;
+    return { exitCode, stdout, stderr };
+  } finally {
+    try { process.kill(-child.pid!, 'SIGKILL'); } catch {}
+    await closed;
+  }
 }
 
 const isoSec = (d: Date) => d.toISOString().slice(0, 19) + 'Z';
@@ -519,7 +554,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
+  for (const scenario of ['interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
@@ -551,6 +586,10 @@ case "$*" in
     count=0
     [ ! -f "$DOCKER_STUB_CALLS.await" ] || read -r count < "$DOCKER_STUB_CALLS.await"
     count=$((count + 1)); echo "$count" > "$DOCKER_STUB_CALLS.await"
+    if [ "$UPDATE_SCENARIO" = interrupted ] && [ "$count" = 1 ]; then
+      : > "$DOCKER_STUB_CALLS.ready"
+      exec sleep 30
+    fi
     if [ "$UPDATE_SCENARIO" = old-watchdog ]; then echo 'unknown subcommand'; exit 1; fi
     if { [ "$UPDATE_SCENARIO" = timeout-first ] && [ "$count" = 1 ]; } || { [[ "$UPDATE_SCENARIO" = *timeout* ]] && [ "$count" = 2 ]; }; then
       echo '{"status":"timeout","reason":"worker_running"}'
@@ -567,7 +606,10 @@ esac
 exit 0
 `);
       fs.chmodSync(path.join(stub, 'docker'), 0o755);
-      const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
+      const runUpdate = scenario === 'interrupted'
+        ? (script: string, opts: NonNullable<Parameters<typeof runBash>[1]>) => runInterruptedBash(script, opts, `${callsFile}.ready`)
+        : runBash;
+      const r = await runUpdate(hermit(proj, 'bin', 'hermitd-docker'), {
         args: ['update', ...(scenario === 'plugins-only' || scenario === 'below-floor-plugins-only' ? ['--plugins-only'] : scenario === 'cc-only' ? ['--cc-only'] : []), '--yes'], cwd: proj,
         env: {
           PATH: `${stub}:${process.env.PATH}`, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT,
@@ -576,6 +618,13 @@ exit 0
           UPDATE_SCENARIO: scenario, DOCKER_STUB_CALLS: callsFile, DOCKER_STUB_LIST: path.join(stub, 'list.json'),
         },
       });
+      if (scenario === 'interrupted') {
+        expect(r.exitCode).toBe(130);
+        expect(r.stderr).toContain('Update interrupted before the restart; rerun `hermitd update` to finish.');
+        expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
+        expect(fs.readFileSync(callsFile, 'utf8')).not.toContain(' down');
+        return;
+      }
       expect(r.exitCode).toBe(0);
       const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
       const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
@@ -620,6 +669,7 @@ exit 0
         expect(r.stdout).toContain('Waiting for hermit-evolve');
       }
       if (scenario === 'full') {
+        expect(r.stderr).not.toContain('Update interrupted');
         expect(r.stdout).toContain('Waiting for a quiet boundary');
       }
       if (scenario === 'cc-only') {
@@ -657,7 +707,7 @@ exit 0
       }
 
     } finally { wd.cleanup(); }
-  });
+  }, 30000);
   }
 });
 
@@ -740,7 +790,7 @@ describe('hermitd-update host path', () => {
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
 
-  for (const scenario of ['ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
+  for (const scenario of ['interrupted', 'ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
     test(`live host update: ${scenario}`, async () => {
       const f = fixture({ listJson: proj => {
         const list = JSON.parse(listDuplicateScopes(proj, scenario.startsWith('suffix-') ? '-467be32f41fc' : ''));
@@ -762,6 +812,10 @@ printf '%s\\n' "$*" >> "$LIVE_CALLS"
 count=0
 [ ! -f "$LIVE_CALLS.count" ] || read -r count < "$LIVE_CALLS.count"
 count=$((count + 1)); echo "$count" > "$LIVE_CALLS.count"
+if [ "$LIVE_SCENARIO" = interrupted ] && [ "$count" = 1 ]; then
+  : > "$LIVE_CALLS.ready"
+  exec sleep 30
+fi
 if { [ "$LIVE_SCENARIO" = timeout-first ] && [ "$count" = 1 ]; } || { [ "$LIVE_SCENARIO" = timeout-evolve ] && [ "$count" = 2 ]; }; then
   echo '{"status":"timeout","reason":"evolve_pending"}'
 else
@@ -792,10 +846,20 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           const claudeStub = path.join(f.proj, '.stub/claude');
           write(claudeStub, fs.readFileSync(claudeStub, 'utf8').replace('exit 0\n', '') + 'if [ "$1" = "--version" ]; then echo "2.1.301 (Claude Code)"; fi\nexit 0\n');
         }
-        const r = await runBash(hermit(f.proj, 'bin', 'hermitd-update'), {
+        const runUpdate = scenario === 'interrupted'
+          ? (script: string, opts: NonNullable<Parameters<typeof runBash>[1]>) => runInterruptedBash(script, opts, `${log}.ready`)
+          : runBash;
+        const r = await runUpdate(hermit(f.proj, 'bin', 'hermitd-update'), {
           args: ['--yes'], cwd: f.proj,
           env: { ...f.env, LIVE_CALLS: log, LIVE_SCENARIO: scenario, TMUX: scenario === 'self-run' ? '/tmp/tmux-test,1,0' : '' },
         });
+        if (scenario === 'interrupted') {
+          expect(r.exitCode).toBe(130);
+          expect(r.stderr).toContain('Update interrupted before the restart; rerun `hermitd update` to finish.');
+          expect(fs.existsSync(hermit(f.proj, 'state', 'update-in-progress.json'))).toBe(false);
+          expect(fs.readFileSync(log, 'utf8')).not.toMatch(/^stop(?: |$)/m);
+          return;
+        }
         expect(r.exitCode).toBe(0);
         if (scenario === 'below-floor') {
           // Evolve would stop on the old Claude Code: nothing is queued, waited on or restarted.
@@ -819,6 +883,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           return;
         }
         if (scenario === 'ready') {
+          expect(r.stderr).not.toContain('Update interrupted');
           expect(r.stdout).toContain('Waiting for a quiet boundary');
           expect(r.stdout).toContain('Waiting for hermit-evolve');
         }
@@ -848,7 +913,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         }
         expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
       } finally { f.wd.cleanup(); }
-    });
+    }, 30000);
   }
 
   test('duplicate ids keep per-scope versions and failure status in history and summary', async () => {

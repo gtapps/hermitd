@@ -280,8 +280,17 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   mkdir -p "$(dirname "$UPDATE_MARKER")"
   [ "$SELF_RUN" = true ] || _stamp_update_marker
   trap 'rm -f "$UPDATE_MARKER"' EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  if [ "$SELF_RUN" = false ]; then
+    _update_interrupted() {
+      echo '[hermit] Update interrupted before the restart; rerun `hermitd update` to finish.' >&2
+      exit "$1"
+    }
+    trap '_update_interrupted 130' INT
+    trap '_update_interrupted 143' TERM
+  else
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+  fi
   AWAIT_NOTED=false
   _apply_live_update() {
   _await_upgrade || return 0
@@ -359,10 +368,14 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   fi
   if [ "$SELF_RUN" = true ]; then
     echo "[hermit] Run from the resident's own session: commands queued for after this turn; no restart."
-  elif .hermit/bin/hermitd-stop; then
-    .hermit/bin/hermitd-start --resume
   else
-    echo "[hermit] Stop failed; resident was not restarted." >&2
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    if .hermit/bin/hermitd-stop; then
+      .hermit/bin/hermitd-start --resume
+    else
+      echo "[hermit] Stop failed; resident was not restarted." >&2
+    fi
   fi
   }
   _apply_live_update
