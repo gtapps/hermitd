@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.21] - 2026-10-25
 
 ### Changed
 - Upgrades check your own files once for names a release renamed or removed and ask one grouped question before changing anything.
