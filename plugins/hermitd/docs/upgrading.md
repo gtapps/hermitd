@@ -42,7 +42,7 @@ Always-on hermits do this on their own: the resident-start upgrade banner trigge
 
 From chat, ask a host hermit to update itself: it asks for approval through Claude Code's permission prompt, which only DM-paired users can answer, then restarts once when quiet. Docker hermits are updated from the host. See [security](security.md#trust-model).
 
-Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; after a wait timeout or an interrupt nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
+Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; after a wait timeout, or an interrupt before the restart, nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
 
 ### Manual
 
