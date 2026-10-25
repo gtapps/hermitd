@@ -17,6 +17,8 @@
 
 **Leftover check:** The operator's own files may still refer to the routine ids `morning-brief`, `evening-brief`, `weekly-load-review`, `monday-planning` and `weekly-coaching-patterns`, which this release renamed to `hermitd-fitness:<id>`. Find those references, ask once before changing anything, and update each to the new id.
 
+**Leftover check:** The operator's own files may still read fitness briefs at `compiled/brief-morning-<date>.md` or `compiled/brief-evening-<date>.md`, which this release renamed to `compiled/brief-fitness-morning-<date>.md` and `compiled/brief-fitness-evening-<date>.md` for new briefs. Find those references, ask once before changing anything, and update each to the new name.
+
 ## [0.2.8] - 2026-10-19
 
 ### Changed
