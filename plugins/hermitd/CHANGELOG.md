@@ -5,6 +5,7 @@
 ### Removed
 - The `claude-code-hermit` migration script and its helpers; agents still on claude-code-hermit 1.4.8 migrate with the prompt in `docs/upgrading.md`.
 - Settings sync no longer removes `claude-code-hermit` era allow entries.
+
 ### Fixed
 - `hermitd update` and `hermitd-docker update` announce waits for hermit-evolve and a quiet boundary so normal waits no longer look like hangs.
 
