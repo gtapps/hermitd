@@ -11,7 +11,7 @@ import { readJson } from './lib/cli';
  * install when the operator chose gitignored hatch outputs.
  *
  * The always-on hermit sometimes writes `.claude/skills/<name>/SKILL.md` or
- * `.claude/agents/<name>.md` directly (procedure capture, or a conversational
+ * `.claude/agents/<name>.md` directly (routine-bound authoring, or a conversational
  * "make me a skill" request) with no proposal in between. In a `hatch_target:
  * local` project those files are ordinary project files: git would track them,
  * and the next commit ships them to every clone. This hook excludes the path

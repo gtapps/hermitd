@@ -284,7 +284,7 @@ The `proposal-triage` and `reflection-judge` gate agents each carry their own pr
 
 **Ownership boundary:** Claude Code memory owns instructions, preferences, and recurring operating context; hermit knowledge owns domain artifacts; skills own procedures.
 
-A `procedure-brief` (`type: procedure-brief`) is the boundary case: it lives in `compiled/` as a *record* of what recurring procedure was observed and which sessions showed it. The installed skill under `.claude/skills/` is the live procedure. The brief is not injected at startup (it is a transient record, not a durable domain output); the installed skill is what the operator cares about day-to-day.
+A legacy `procedure-brief` (`type: procedure-brief`) is the boundary case: it lives in `compiled/` as a *record* of what recurring procedure was observed and which sessions showed it. Reflect no longer discovers procedures; task-close learning writes live procedures under `.claude/skills/`, with resident-owned ledger, history and archive state under `.hermit/state/`. The brief is not injected at startup (it is a transient record, not a durable domain output); the installed skill is what the operator cares about day-to-day.
 
 **Scope boundary:**
 

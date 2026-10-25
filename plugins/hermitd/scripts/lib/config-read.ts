@@ -143,6 +143,7 @@ export const TABLE: Record<string, Spec> = {
     clear: shape({ enabled: bool(true), quiet: str('1h'), max_age: str('24h'), min_tokens: num(20000) }),
     compact: shape({ enabled: bool(true), min_context_tokens: num(100000), min_interval: str('4h') }),
   }),
+  skills: shape({ learning: bool(true), notify: str('on', { enum: ['off', 'on', 'verbose'] }) }),
   reflection: shape({ graduation_min_sessions: num(1) }),
   routine_wake_lint: shape({ max_windows: num(6, { range: [1, 48] }) }),
   doctor: shape({ routine_cost_floor_usd: num(2, { range: [0, Infinity] }) }),

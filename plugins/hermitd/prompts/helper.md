@@ -15,5 +15,8 @@ Why: <one line>
 Scope change: <none | what changed>
 Next step: <what the operator decides next>
 Evidence: <branch, files, commands>
+Procedure: <optional reusable steps, inputs, pitfalls, and how done was verified>
+
+Omit `Procedure:` when no reusable procedure emerged. Never write project skills yourself; hand the procedure to the resident.
 
 For the hermit's past work, ask the resident with SendMessage instead of reading its state.

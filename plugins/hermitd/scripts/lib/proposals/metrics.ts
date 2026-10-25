@@ -36,12 +36,6 @@ const SEGMENTS: { key: string; arg: string; triage: (e: Json) => boolean; accept
     accept: (src, tags) => tags.includes('capability-brainstorm'),
   },
   {
-    key: 'procedure_capture',
-    arg: 'procedure-capture',
-    triage: e => Array.isArray(e.tags) && e.tags.includes('procedure-capture'),
-    accept: (src, tags) => tags.includes('procedure-capture'),
-  },
-  {
     key: 'scheduled_check',
     arg: 'scheduled-check',
     triage: e => e.caller === 'scheduled-checks',

@@ -126,26 +126,28 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - Read `reference.md` § Standing role; hermit-wide only for a primary operator (§1c).
 
 - **Question** ("why did you...", "what about...", "how does X work?")
-  - Answer in the context of the current session
-  - Reference specific files or decisions from the selected record when relevant
+  - Answer using current session context
+  - Cite relevant files or selected-record decisions
 
 - **Pause / resume / snooze** (exactly `!pause`, `!stop`, `!resume`, or `!snooze <duration>`)
-  - The `user-prompt-pipeline.ts` `UserPromptSubmit` pause stage has already set or cleared `state/operator-pause.json`. No state action remains; acknowledgements use the channel.
-  - The `!` prefix is required. Bare "pause"/"stop"/"resume"/"snooze 2h" changes no pause state; classify bare "stop" as Emergency.
-  - Self-addressed commands also work: `!pause@<your handle>`, `@<your handle> !pause`, or Discord's leading `<@your id>`. Ignore commands addressed to other bots. A mention does not make a bare word binding: `<@you> pause` remains conversation.
-  - **Never attempt to resume yourself while paused.** `pause-gate.ts` denies every tool except channel reply, including Bash running `hermitd-pause.ts off`, and returns the pause reason. Resume requires exact `!resume` from the operator or their own `hermitd pause off`.
+  - The `user-prompt-pipeline.ts` `UserPromptSubmit` pause stage already updated `state/operator-pause.json`; only acknowledge through the channel.
+  - Require `!`: bare "pause"/"stop"/"resume"/"snooze 2h" changes no pause state; bare "stop" is Emergency.
+  - Accept self-addressed `!pause@<your handle>`, `@<your handle> !pause`, or Discord's leading `<@your id>`. Ignore other bots' commands. Mentions do not bind bare words: `<@you> pause` remains conversation.
+  - **Never attempt to resume yourself while paused.** `pause-gate.ts` returns the pause reason and denies all but channel reply, including Bash `hermitd-pause.ts off`. Only operator `!resume` or `hermitd pause off` resumes.
+
+- **Learned skill control**: after §1c authorization, "keep this skill" → `.hermit/bin/hermitd-run skills pin <name> --origin operator`; "stop doing it that way" about a named learned skill → `.hermit/bin/hermitd-run skills rollback <name>`. Ask which if unclear; confirm plainly. Halting current work stays **Emergency**.
 
 - **Emergency** ("abort", "revert", "rollback", or "stop")
-  - Bare "stop" is **cooperative, not binding**. `!stop` or `!pause` blocks every tool except channel reply.
+  - Bare "stop" is **cooperative, not binding**. `!stop`/`!pause` blocks all but channel reply.
   - Halt current work immediately
-  - When a record is selected, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on operator --status-line "Halted on operator request" --next "Await operator direction"`.
-  - Confirm the halt and ask for next steps
+  - For a selected record, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on operator --status-line "Halted on operator request" --next "Await operator direction"`.
+  - Confirm the halt; ask for next steps
 
 ## 3. Response Guidelines
 
-- Write for someone reading on a phone: answer only what was asked, in plain prose, then stop
-- Mention the current task when it helps the operator place the reply
-- If you can't handle the request, say so clearly and suggest what the operator should do
+- Answer only what was asked, in plain phone-readable prose, then stop
+- Mention the current task when it helps place the reply
+- If you can't handle it, say so and suggest the operator's next step
 - **Channel voice:** no internal IDs (PROP-NNN, T-..., MP-…), no token counts or cost-log jargon, no slash commands, no file paths, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the five channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
 
 ## 4. Capture Interactive Patterns

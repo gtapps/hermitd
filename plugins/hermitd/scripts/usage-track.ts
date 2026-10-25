@@ -16,7 +16,7 @@ type Json = any;
  * startup-context injection; Reads whose PostToolUse payload (tool_response
  * carries the full file body) exceeds MAX_STDIN; and the write-then-deliver
  * path, where a doc the hermit authors and relays over a channel is never Read
- * at all. `procedure-brief` artifacts are additionally excluded from the
+ * at all. Legacy `procedure-brief` artifacts remain excluded from the
  * startup catalog, so nothing surfaces them. Docs are therefore only eligible
  * once their own created/updated date is past the window, and weekly-review
  * gates archiving on the ledger having recorded at least one compiled read.

@@ -27,6 +27,7 @@ function registry(root: string) { const mp = marketplace(root); return mp ? read
 function target(args: string[], verb: string, cwd: string, root: string): string {
   const first = args[0];
   const reserved: Record<string, string[]> = {
+    skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
     docker: ['up', 'down', 'attach', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update'],
   };
@@ -122,8 +123,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'update', 'docker', 'pause', 'watchdog', 'run', 'install', 'register'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|update|prune|docker|pause|watchdog|run [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'update', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|update|prune|docker|pause|watchdog|skills|run [name] [args]');
   }
   const project = target(args, verb, cwd, root);
   if (verb === 'register') {
@@ -134,6 +135,14 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'run') {
     if (args[0]?.replace(/\.ts$/, '') === 'hermitd-cli') throw new Error('hermitd run refuses recursive hermitd-cli dispatch');
     return wrapper(project, 'hermitd-run', args);
+  }
+  if (verb === 'skills') {
+    if (args[0] !== 'status') {
+      const docker = dockerTransport(project);
+      if (docker === 'unknown') throw new Error('Owner inspection failed: Docker runtime is unknown');
+      if (docker === 'up') return dockerScript(project, ['skills', ...args], hostInstall(project).installPath);
+    }
+    return wrapper(project, 'hermitd-skills', args);
   }
   if (verb === 'pause' || verb === 'watchdog') return wrapper(project, `hermitd-${verb}`, args);
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);

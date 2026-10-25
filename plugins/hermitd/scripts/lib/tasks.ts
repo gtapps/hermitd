@@ -1,6 +1,6 @@
 import { lastRoutineFire, lastRoutineEvent } from './routines/history';
 import { readAlertState } from './alert-state';
-import { readConfigRaw } from './config-read';
+import { readConfigRaw, readSettledConfig } from './config-read';
 import { failJson, printJson, readJson } from './cli';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,7 @@ import { costLogPath } from './cc-compat';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
+const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -26,8 +26,8 @@ export function reportTaskError(error: unknown): void {
 const SLUG = /^[\w.:~+@;=-]+$/;
 const HOUR = 3600000;
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check'] as const;
-const booleans = ['muted'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review'] as const;
+const booleans = ['muted', 'delegated'] as const;
 export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[]; claims: string[]; result_rev: number; body: string };
 // A worker owner is `worker:<agentId>`; the id is the harness's, not a conversation key.
 // An agent id is lowercase hex (probed shape: `a5670124e38fb50cb`); the charset keeps
@@ -50,6 +50,7 @@ export function validateTask(record: Task): void {
   const fail = () => { throw new Error('invalid_record'); };
   for (const key of requiredStrings) if (typeof record[key] !== 'string' || !record[key]) fail();
   for (const key of nullableStrings) if (record[key] !== null && typeof record[key] !== 'string') fail();
+  if (![null, 'pending', 'saved', 'covered', 'nothing'].includes(record.skill_review)) fail();
   if (!TASK_ID.test(record.id) || record.type !== 'task' || !['open', 'closed'].includes(record.status)) fail();
   if (![null, 'check', 'confirmed', 'cancelled'].includes(record.closed_by)) fail();
   if (!Number.isInteger(record.result_rev) || record.result_rev < 0) fail();
@@ -213,6 +214,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         requester, requester_name: flag(flags, 'requester-name') ?? null, origin_message_id: flag(flags, 'origin-message-id') ?? null,
         approver: flag(flags, 'approver') ?? null, due: dateFlag(flags, 'due'), conversation, handle, owner,
         dedupe_key: dedupe, claims: (flags.claim as string[] | undefined) ?? [], result_rev: 0,
+        delegated: owner !== 'resident',
         muted: 'muted' in flags ? mutedFlag(flags) : false,
         body: '## Progress\n\n## Decisions\n\n## Approvals\n\n## Lessons\n\n## Outcome\n',
       } as Task;
@@ -229,6 +231,16 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
+      if (verb === 'learn') {
+        const disposition = required(flags, 'disposition');
+        if (!['saved', 'covered', 'nothing'].includes(disposition)) throw new Error('invalid_disposition');
+        if (record.status !== 'closed') throw new Error('not_closed');
+        if (record.skill_review === disposition) return { id, skill_review: disposition };
+        if (record.skill_review !== 'pending') throw new Error('review_not_pending');
+        record.skill_review = disposition;
+        writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encodeTask(record));
+        return { id, skill_review: disposition };
+      }
       if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
@@ -244,6 +256,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           const owner = ownerFlag(flags);
           checkOwnerAvailable(records, owner, record.id);
           record.owner = owner;
+          if (owner !== 'resident') record.delegated = true;
         }
         if ('muted' in flags) record.muted = mutedFlag(flags);
         if (flags['clear-waiting']) { record.waiting_on = null; record.waiting_since = null; }
@@ -320,9 +333,21 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
     }
+    let resetCounter = false;
+    if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
+      const counter = path.join(dir, 'state', 'skill-review-counter');
+      let calls = 0;
+      try { calls = fs.statSync(counter).size; } catch { /* no calls yet */ }
+      if (record.delegated || calls >= 10) {
+        record.skill_review = 'pending';
+        resetCounter = true;
+        digest = { ...(digest as object), skill_review: 'pending' };
+      }
+    }
     const encoded = encodeTask(record);
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
+    if (resetCounter) fs.writeFileSync(path.join(dir, 'state', 'skill-review-counter'), '');
     if (progress) bindTaskTurn(dir, record.id);
     return digest;
   } finally { releaseLock(lock); }
@@ -362,11 +387,13 @@ export function listTasks(dir: string, flags: TaskFlags = {}) {
   if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
   if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
-  const selected = records.filter(r => (!flags.all || flags.open ? r.status === 'open' : true)
+  const review = flag(flags, 'skill-review');
+  if (review !== undefined && review !== 'pending') throw new Error('invalid_skill_review');
+  const selected = records.filter(r => (review ? r.skill_review === review : !flags.all || flags.open ? r.status === 'open' : true)
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, delegated: r.delegated, skill_review: r.skill_review, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

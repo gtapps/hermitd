@@ -1307,32 +1307,21 @@ describe('kill metrics contract', () => {
 // in parallel so they can't silently drift. Does NOT simulate the kill verdict.
 // ============================================================
 
-describe('procedure capture contract', () => {
-  // The Procedure capture subsection lives in reflect's branches.md (the
-  // main-session rare-branch procedures file; SKILL.md keeps only the stub).
-  const reflectBranches = read(path.join(SKILLS, 'reflect', 'branches.md'));
-  const proposalCreate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
-
-  /** Extract the kill-criteria block from the Procedure capture subsection. */
-  function procedureCaptureKillSection(): string {
-    const parts = reflectBranches.split('### Procedure capture (new-skill creation)');
-    expect(parts.length).toBeGreaterThan(1); // subsection missing
-    const subsection = parts[1].split('\n## ')[0];
-    const killParts = subsection.split('Kill criteria');
-    expect(killParts.length).toBeGreaterThan(1); // Kill criteria block missing
-    return killParts[1].split('**Detection')[0];
-  }
-
-  test('reflect procedure-capture kill criteria must invoke the metrics verb', () => {
-    expect(procedureCaptureKillSection()).toContain('`proposal-metrics` (Commands)');
+describe('learned procedures and retained proposal branches', () => {
+  test('reflect keeps settled-memory placement and removes plain skill discovery', () => {
+    const branches = read(path.join(SKILLS, 'reflect', 'branches.md'));
+    const reference = read(path.join(SKILLS, 'reflect', 'reference.md'));
+    expect(branches).toContain('skill-preference:*');
+    expect(reference).toContain('evidence_source: "settled-memory"');
+    expect(branches).not.toContain('### Procedure capture');
+    expect(branches).not.toContain('Ephemerality exception');
   });
-
-  test('proposal-create Skill Draft variant must set the procedure-capture tag', () => {
-    const skillDraftParts = proposalCreate.split('## Skill Draft');
-    expect(skillDraftParts.length).toBeGreaterThan(1); // ## Skill Draft variant missing
-    const skillDraftSection = skillDraftParts[1].split('\n**For ')[0];
-    // missing → acceptance-rate grep in reflect kill criteria will find nothing
-    expect(skillDraftSection).toContain('procedure-capture');
+  test('routine-bound and agent draft install branches remain', () => {
+    const act = read(path.join(SKILLS, 'proposal-act', 'branches.md'));
+    expect(act).toContain('body contains `## Config` and `## Skill Draft`');
+    expect(act).toContain('`## Agent Draft` install branch');
+    expect(act).not.toContain('Second confirmation gate');
+    expect(read(path.join(SKILLS, 'proposal-create', 'SKILL.md'))).toContain('## Config');
   });
 });
 
@@ -1798,7 +1787,7 @@ describe('reflect delegation contract', () => {
 
   test('SKILL.md points at branches.md for rare-branch procedures', () => {
     // branches.md is load-bearing post-split: candidate processing, scheduled
-    // checks, and procedure capture live there. A stub that loses the pointer
+    // checks, and settled-memory placement live there. A stub that loses the pointer
     // would strand those flows.
     expect(skill).toContain('skills/reflect/branches.md');
   });

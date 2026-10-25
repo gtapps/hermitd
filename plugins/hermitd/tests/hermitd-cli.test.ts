@@ -16,7 +16,7 @@ function fixture() {
   const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, '.claude'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, CALLS: log, LIST: path.join(root, 'list.json'), FRESH_LIST: path.join(root, 'fresh-list.json'), TMUX_LIVE: '1', DOCKER_LIVE: '', PROJECTS: '', container: '' };
   const project = (name: string, agentName = name) => {
     const p = path.join(root, name); write(path.join(p, '.hermit/config.json'), JSON.stringify({ agent_name: agentName }));
-    for (const verb of ['start', 'stop', 'attach', 'pause', 'watchdog', 'run']) write(path.join(p, `.hermit/bin/hermitd-${verb}`), `#!/bin/sh\nprintf '%s|%s|%s\\n' '${verb}' "$PWD" "$*" >> "$CALLS"\nexit \${WRAPPER_EXIT:-0}\n`);
+    for (const verb of ['start', 'stop', 'attach', 'pause', 'watchdog', 'skills', 'run']) write(path.join(p, `.hermit/bin/hermitd-${verb}`), `#!/bin/sh\nprintf '%s|%s|%s\\n' '${verb}' "$PWD" "$*" >> "$CALLS"\nexit \${WRAPPER_EXIT:-0}\n`);
     return p;
   };
   const p = project('demo');
@@ -160,4 +160,15 @@ test('host install refuses foreign file and notices earlier PATH tool', async ()
   write(path.join(f.bin, 'hermitd'), '#!/bin/sh\nexit 0\n');
   const r = await f.run(['install'], f.p);
   expect(r.exitCode).toBe(0); expect(r.stderr).toContain(path.join(f.bin, 'hermitd')); expect(r.stderr).toContain(shim);
+});
+
+test('skills resolves named and nearest projects and routes Docker mutations', async () => {
+  const f = fixture();
+  expect((await f.run(['skills', 'demo', 'pin', 'sample', '--origin', 'operator'])).exitCode).toBe(0);
+  expect(f.calls()).toContain(`skills|${f.p}|pin sample --origin operator\n`);
+  expect((await f.run(['skills', 'status', '--skill', 'sample'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toContain(`skills|${f.p}|status --skill sample\n`);
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  expect((await f.run(['skills', 'demo', 'rollback', 'sample'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
+  expect(f.calls()).toContain(`old|${f.p}|skills rollback sample\n`);
 });

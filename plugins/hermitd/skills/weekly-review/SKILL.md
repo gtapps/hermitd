@@ -73,7 +73,7 @@ Generates the weekly review for the current ISO week.
    ```
 
 5. Read the frontmatter needed for the channel summary from the freshly-written review file:
-   - Read `.hermit/compiled/review-weekly-<current-week>.md` frontmatter (just written in step 1) — do not read the body; every value the channel message needs lives in frontmatter (`delivered_count`, `delivered`, `proposals_accepted`, `proposals_resolved`, `open_loops_count`, `total_cost_usd`, `usage_untouched_count`, `usage_auto_archived`).
+   - Read `.hermit/compiled/review-weekly-<current-week>.md` frontmatter (just written in step 1) — do not read the body; every value the channel message needs lives in frontmatter (`delivered_count`, `delivered`, `proposals_accepted`, `proposals_resolved`, `open_loops_count`, `total_cost_usd`, `usage_untouched_count`, `usage_auto_archived`, `skills_new`, `skills_archived`, `skills_often_patched`).
    - Also read the prior week's `compiled/review-weekly-*.md` frontmatter (sort by `week` descending, take the second file) for the Spend delta.
    - If no prior week file exists: omit the "vs prior week" comparison and show this week's spend only.
    - If the current-week file is missing (script failed): skip step 6 entirely and fall back to a plain note ("Weekly review didn't generate this week — nothing to send.").
@@ -90,6 +90,7 @@ Generates the weekly review for the current ISO week.
      Waiting on you: <open_loops_count> thing(s) need a yes/no [omit this whole line when 0]
      Tidied: put <usage_auto_archived count> unused doc(s) away — <up to 5 of the usage_auto_archived names, comma-joined and plain; add "and N more" for the rest> — say "restore <name>" to bring one back [omit this whole line when the list is empty]
      Unused: <usage_untouched_count> doc(s) look dormant — say "archive them" if you want them tidied away [omit this whole line when 0]
+     Skills: <skills_new> new, <skills_archived> put away, <skills_often_patched> often adjusted [omit when all are 0]
      Spend: $<total_cost_usd> this week (vs $<prior week's total_cost_usd>, if a prior file exists) — an estimate, not a bill
      ```
      Followed by the `Topic pages:` findings from step 3 when present, plus a final line listing whichever of the dashboard/weekly-review URLs were returned (e.g. `📎 <dashboard url> · 📎 <weekly-review url>` — omit either half that wasn't returned).
@@ -124,3 +125,5 @@ Generates the weekly review for the current ISO week.
 - `archive-compiled.ts` only moves files — it never deletes. Keeps the newest 2 artifacts per type; `foundational`-tagged artifacts and `topic` pages are always retained (living pages compact by merging, not archival). Archived files land in `compiled/.archive/` and can be restored manually.
 - Usage tracking (`state/usage-metrics.jsonl`, fed by `usage-track.ts` on `Read`) sees compiled/ Reads — including subagent reads, since PostToolUse fires for sidechain tool calls (probed on CC 2.1.239). Startup injection isn't tracked, which is why `foundational` and `topic` artifacts are exempt.
 - Auto-archival is usage-evidence-based and move-only: docs with no tracked read in `knowledge.usage_stale_days` (default 30) go to `compiled/.archive/`. It is gated three ways — the ledger must itself be that old, it must hold at least one recorded compiled read (no reads at all reads as a tracking gap, not as disuse), and at most 10 docs move per run. Restoring one is moving the file back; `state/usage-archived.json` remembers every stem already archived, so a restored doc is never taken again. Set `knowledge.usage_auto_archive: false` for suggest-only, and semantic changes stay operator-approved.
+
+Learned skills retire only with create-ledger provenance, no pin, no routine naming them, no use or change in 30 days, recent `skillUsage` capture evidence, and no prior archive. At most ten move per run; others stay suggestions. Relay the script's Skills line. Maintainer restore hint: `hermitd skills <agent> restore <skill>`; in client chat offer to bring the named skill back in plain language. Never archive additional skills on judgment.

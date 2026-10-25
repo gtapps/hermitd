@@ -109,11 +109,6 @@ describe('reflect: skill-correction:* graduation routing', () => {
     expect(reflect).toContain('skill-correction:*` routing');
   });
 
-  test('reflect: procedure-noticed:<slug> graduation routes to Procedure capture at the dedup guard', () => {
-    expect(reflect).toContain('procedure-noticed:<slug>');
-    expect(reflect).toContain('Dedup guard');
-  });
-
   test('reflect: brief search covers compiled/ and compiled/.archive/', () => {
     expect(reflect).toContain('compiled/.archive/procedure-brief-');
   });

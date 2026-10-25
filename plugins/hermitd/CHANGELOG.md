@@ -3,14 +3,26 @@
 ## [Unreleased]
 
 ### Added
+- Close-time learned skills with fenced resident writes, lint feedback, five revisions, pins, rollback and guarded weekly retirement; `hermitd skills [name]` controls them.
 - Notices the agent composes reach a channel without a direct sender or `send_script` through that channel's reply tool; `channel-send --notice` returns `relay` with the target chat.
 
+### Changed
+- Delegated tasks and tasks with ten resident tool calls keep a pending skill review until its disposition is saved; close replies follow `skills.notify`.
+
 ### Removed
+- Reflect procedure discovery and standalone skill-draft installation; routine-bound skill drafts, agent drafts and settled-memory placement remain.
 - The `claude-code-hermit` migration script and its helpers; agents still on claude-code-hermit 1.4.8 migrate with the prompt in `docs/upgrading.md`.
 - Settings sync no longer removes `claude-code-hermit` era allow entries.
 
 ### Fixed
 - `hermitd update` and `hermitd-docker update` announce waits for hermit-evolve and a quiet boundary so normal waits no longer look like hangs.
+
+### Upgrade Instructions
+1. Learned skills are on by settled default, including existing configs with no `skills` block. To opt out, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set skills.learning false`. Learning needs `permission_mode` `auto` or `bypassPermissions`; do not change the operator's permission mode automatically.
+2. Inspect each `.hermit/proposals/PROP-*.md` with status `proposed` or `deferred`. Only when its body has `## Skill Draft` and no `## Config`, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> --set status=dismissed --stdin`, supplying `Decision: Dismissed because close-time learned skills replace standalone skill drafts.` on stdin. Leave routine-bound and agent-only proposals and all other statuses unchanged. Report which drafts were dismissed.
+3. Remove the `procedure-brief` line from `.hermit/knowledge-schema.md` only when it still exactly matches the previous template line: `- procedure-brief: audit record of a recurring procedure detected by reflect. Not session-injected (transient record, not a domain output). Required fields: title, type, created, tags, source, session, related_sessions, proposed_skill_name. location: compiled/procedure-brief-<slug>-<date>.md`. Preserve operator edits and existing brief files.
+
+**Leftover check:** standalone `## Skill Draft` proposals with status `proposed` or `deferred` dismissed only when no `## Config` is present; unchanged template `procedure-brief` schema line removed; custom schema lines and routine/agent proposals preserved. Report learning's enabled state and any permission-mode limitation.
 
 ## [1.4.21] - 2026-10-25
 

@@ -165,48 +165,15 @@ nothing:
   "shell_findings_line": null }
 ```
 
-## Step 3 — Procedure-Capture Detection
+## Step 3 — Settled-memory placement
 
-Run this step only if `compute` is listed in `phases_json`.
+Run this step only if `compute` is listed in `phases_json`. Read the operator's MEMORY.md index in the auto-memory directory named in your dispatch (`memory-dir`). Do not discover recurring procedures from task lessons or memory workflow patterns. Close-time learning owns procedure creation.
 
-Read three sources directly:
+The compatibility field `procedure_candidates` carries only the ownership signal below. Emit `procedure_candidates: []` when no unplaced settled-memory preference exists. Each entry has `slug`, `title`, `tier`, `evidence_source`, `evidence_origin`, `evidence`, `sessions`, and `artifact`; use `evidence_source: "settled-memory"`, `tier: 2`, `evidence_origin: "own-work"`, `sessions: "none"`, and `artifact: null`.
 
-1. The operator's `MEMORY.md` index, in the auto-memory directory named in your dispatch (`memory-dir`).
-   Look for workflow-pattern entries (topic files flagged as workflow patterns, lines with `workflow` in the
-   description).
-
-2. The `lessons` of the three normalized records from the adapter. These come from each
-   record's `## Lessons` section.
-
-3. Their titles and outcomes, to distinguish completed work from cancelled or unconfirmed work.
-   Do not infer an unrecorded multi-step procedure from a title alone.
-
-**Recurrence signal:** a procedure appears in lessons or memory workflow-patterns in at least
-`reflection.graduation_min_sessions` distinct task records (existing configuration key, default 1)
-and no existing skill covers it. The calling main session handles skill deduplication.
-The compatibility `sessions` arrays below carry task IDs from `source_path`, and
-`evidence_source: "archived-session"` remains the existing protocol value for record evidence.
-
-For each recurring procedure found, produce one `procedure_candidates` entry:
-```json
-{ "slug": "<kebab-case-slug>",
-  "title": "<human-readable title>",
-  "tier": 3,
-  "evidence_source": "archived-session",
-  "evidence_origin": "own-work",
-  "evidence": "<which sessions, what Lessons/patterns showed the recurrence>",
-  "sessions": ["<T-id>", "<T-other>"],
-  "artifact": null }
-```
-
-Set `evidence_origin` to `"external-content"` if the procedure was originally learned from external
-content (web fetches, `raw/` captures, channel messages).
-
-Emit `procedure_candidates: []` if no recurring procedures are found.
-
-**Ownership signal:** additionally, emit one entry per MEMORY.md preference that records an explicit
+**Ownership signal:** emit one entry per MEMORY.md preference that records an explicit
 operator endpoint for a task-scoped output ("from now on, always X" — a settled voice, template,
-format, decision rule, or quality bar). Use the same entry shape with `evidence_source: "settled-memory"`
+format, decision rule, or quality bar). Use the entry shape above with `evidence_source: "settled-memory"`
 (the override for this signal only — recurrence is not required; the recorded endpoint declaration is
 the human-initiated evidence; the shape's `tier` is ignored for these — the main session's
 `skill-preference:*` routing sets it). `evidence` must cite the memory topic **filename** plus the **verbatim
@@ -232,7 +199,7 @@ Return a single JSON object — no prose, no markdown wrapping. Every field is r
                             "evidence": "<text>", "sessions": ["<T-...>"],
                             "shell_findings_line": "<pre-rendered>"|null } ],
   "procedure_candidates": [ { "slug": "<slug>", "title": "<title>", "tier": 3,
-                              "evidence_source": "archived-session", "evidence_origin": "own-work",
+                              "evidence_source": "settled-memory", "evidence_origin": "own-work",
                               "evidence": "<text>", "sessions": ["<T-...>"]|"none",
                               "artifact": "<file — value>"|null } ],
   "last_resolution_check": "PROP-NNN|null",
