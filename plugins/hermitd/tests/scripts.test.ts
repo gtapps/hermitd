@@ -619,6 +619,9 @@ exit 0
       if (scenario === 'evolve-ready') {
         expect(r.stdout).toContain('Waiting for hermit-evolve');
       }
+      if (scenario === 'full') {
+        expect(r.stdout).toContain('Waiting for a quiet boundary');
+      }
       if (scenario === 'cc-only') {
         expect(r.stdout).toContain('Waiting for a quiet boundary');
         expect(r.stdout).not.toContain('Waiting for hermit-evolve');
