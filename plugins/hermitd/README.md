@@ -177,7 +177,9 @@ Ask for an update from your terminal or connected chat:
 
 ## Learning loop
 
-The agent reviews evidence from its work and operation. Durable lessons go to memory; non-trivial ideas that would change its behavior are verified, deduplicated, and brought to you for approval.
+The agent reviews evidence from its work and operation. Durable lessons go to memory. When skill learning is enabled, completed work can save or revise reusable skills automatically. Other proposed behavior changes are verified, deduplicated, and brought to you for approval.
+
+The reflection and proposal path works like this:
 
 ```text
 Work produces evidence

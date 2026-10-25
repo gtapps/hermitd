@@ -23,7 +23,7 @@ A routine invoking `reflect --check-id <id> --check <namespaced skill>` supplies
 ## Three-Condition Rule
 
 Only create a proposal if all three are true:
-1. **Repeated pattern** — observed more than once, across sessions. Recurrence is already verified upstream for every evidence source except `archived-session` (by the routine-invoked check's own analysis, the `reflection-judge`, the brainstorm pass, a cited `state/observations.jsonl` graduation, or a cited machine-written state file with the measured values), so re-establish it here only for `archived-session` candidates. Procedure-capture candidates meeting the ephemerality exception (ephemeral artifacts + quantified cost, single current session) also count (see reflect § Procedure capture).
+1. **Repeated pattern** — observed more than once, across sessions. Recurrence is already verified upstream for every evidence source except `archived-session` (by the routine-invoked check's own analysis, the `reflection-judge`, the brainstorm pass, a cited `state/observations.jsonl` graduation, or a cited machine-written state file with the measured values), so re-establish it here only for `archived-session` candidates.
 2. **Meaningful consequence** — something goes wrong without fixing it
 3. **Operator-actionable change** — something the operator can concretely approve
 
