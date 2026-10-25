@@ -75,11 +75,11 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      logged, the rest itself is the information — an earned-recovery day reads very
      differently from a third silent day in a row; use judgment, don't force a script.
      Set up tomorrow. If step 1 captured a new activity, invite an RPE reply.
-   - The single most recent prior brief lives in `compiled/brief-morning-<date>.md` /
-     `compiled/brief-evening-<date>.md` if continuity would genuinely add something —
+   - The single most recent prior brief lives in `compiled/brief-fitness-morning-<date>.md` /
+     `compiled/brief-fitness-evening-<date>.md` if continuity would genuinely add something —
      reading just that one file is optional judgment, not a required step. These briefs
      accumulate daily with no retention cap (per `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`), so never
-     glob-read the whole `brief-*.md` set.
+     glob-read the whole `brief-fitness-*.md` set.
 
 4. **Deliver** per the Operator Notification protocol (core resolves the
    channel and falls back to push when no channel is reachable). Routines can fire while the terminal is unmonitored.
@@ -94,7 +94,7 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
      so a channel RPE reply binds correctly (`capture-activity-rpe` reads and deletes it) —
      the same write-after-confirmed-send guard documented in `${CLAUDE_PLUGIN_ROOT}/docs/knowledge-schema.md`.
 
-5. **Archive.** Write `.hermit/compiled/brief-<slot>-<date>.md`:
+5. **Archive.** Write `.hermit/compiled/brief-fitness-<slot>-<date>.md`:
    ```yaml
    ---
    title: "<Morning|Evening> Brief — <YYYY-MM-DD>"
@@ -105,7 +105,7 @@ orientation — a custom `--slot` follows whichever branch matches its resolved 
    ---
    ```
    Body: the brief as delivered. Inside an open record's turn, pipe the artifact citation
-   `[[compiled/brief-<slot>-<date>]]` into `.hermit/bin/hermitd-run task note .hermit <task-id>`. Otherwise skip the note.
+   `[[compiled/brief-fitness-<slot>-<date>]]` into `.hermit/bin/hermitd-run task note .hermit <task-id>`. Otherwise skip the note.
 
 ## Security
 

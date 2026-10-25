@@ -33,8 +33,8 @@ Durable outputs. Injected into session context at startup within `compiled_budge
 
 | Filename pattern | type | foundational | Produced by | When |
 |---|---|---|---|---|
-| `brief-morning-<date>.md` | `brief` | no | fitness-brief skill (`--morning`) | Daily, `hermitd-fitness:morning-brief` routine |
-| `brief-evening-<date>.md` | `brief` | no | fitness-brief skill (`--evening`) | Daily, `hermitd-fitness:evening-brief` routine |
+| `brief-fitness-morning-<date>.md` | `brief` | no | fitness-brief skill (`--morning`) | Daily, `hermitd-fitness:morning-brief` routine |
+| `brief-fitness-evening-<date>.md` | `brief` | no | fitness-brief skill (`--evening`) | Daily, `hermitd-fitness:evening-brief` routine |
 | `weekly-plan-<date>.md` | `weekly-plan` | no | `hermitd-fitness:monday-planning` routine | Monday 09:30 |
 | `weekly-summary-<date>.md` | `weekly-summary` | no | `hermitd-fitness:weekly-load-review` routine | Sunday 18:00 |
 | `recovery-assessment-<date>.md` | `recovery-assessment` | no | Operator request or evening brief flag | On demand |

@@ -48,7 +48,7 @@ A house-focused morning brief using live HA state and house artifacts. Designed 
    - Otherwise: render the `Updates:` section, translating tier labels into the operator's language. `updates` holds the top updates in tier order, one `[tier] Title: installed → latest` line each (a null version renders as `?`); add `+ N more updates pending` when `more` is above 0 and `[hacs] N HACS updates pending` when `hacs_pending` is above 0.
 9. **Compose brief**: Write a concise morning brief in the session language. Use the format below.
 
-10. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-morning-<YYYY-MM-DD>.md` with frontmatter:
+10. **Write to `compiled/`** — Write the composed brief to `.hermit/compiled/brief-ha-morning-<YYYY-MM-DD>.md` with frontmatter:
    ```yaml
    title: "Morning Brief — <YYYY-MM-DD>"
    type: brief
@@ -56,7 +56,7 @@ A house-focused morning brief using live HA state and house artifacts. Designed 
    task: <T-... for the open record in this turn; omit this field otherwise>
    tags: [morning-brief, ha]
    ```
-   Inside an open record's turn, pipe `[[compiled/brief-morning-<YYYY-MM-DD>]]` into
+   Inside an open record's turn, pipe `[[compiled/brief-ha-morning-<YYYY-MM-DD>]]` into
    `.hermit/bin/hermitd-run task note .hermit <id>`. Otherwise skip the note.
 
 ## Output Format

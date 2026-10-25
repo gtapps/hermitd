@@ -8,6 +8,7 @@
 - Startup skill selection belongs to the operator; hatch preserves it and keeps existing brief fields when changing schedules.
 
 ### Removed
+- The unused `.hermit/bin/hermitd-run proposal micro *` and `task list *` allow entries; upgrades remove them from settings.
 - Hatch no longer reads `hermit.boot_skill` from a sibling's `hermit-meta.json` or writes `boot_skill`; choose a startup skill with `/hermitd:hermit-settings boot-skill`.
 
 ### Fixed

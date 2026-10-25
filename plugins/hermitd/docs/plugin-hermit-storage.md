@@ -56,6 +56,8 @@ compiled/audit-kitchen-2026-04-17.md
 compiled/briefing-home-2026-04-17.md
 ```
 
+A domain plugin's `<slug>` names its own domain (`compiled/briefing-ha-2026-04-17.md`), so two plugins writing the same type on one hermit never share a filename.
+
 **No subdirectories inside `raw/` or `compiled/`.** The `type` field in frontmatter is the discriminator — never a folder. The only exception is `raw/.archive/`, which is managed automatically by the weekly review.
 
 ## Required frontmatter

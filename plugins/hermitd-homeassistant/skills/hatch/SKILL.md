@@ -157,7 +157,7 @@ Check if either `- analysis:` or `- **analysis**:` is present in the file. This 
 If **absent**, append the following block under `## Work Products` (create the section header if the base schema only has a template stub):
 
 ```
-- brief: morning/evening house brief. location: compiled/brief-<morning|evening>-<date>.md
+- brief: morning/evening house brief. location: compiled/brief-ha-<morning|evening>-<date>.md
 - context: foundational house/system profile. location: compiled/context-house-profile-<date>.md
 - presence-report: presence history and tracker diagnostics. location: compiled/presence-report-<date>.md
 - domain-brainstorm: report from a domain plugin's `domain-brainstorm` skill, written only when the run created at least one proposal. location: compiled/domain-brainstorm-<YYYY-MM-DD-HHMM>.md

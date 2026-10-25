@@ -7,6 +7,7 @@
 
 ### Fixed
 - Hermits where Home Assistant hatched first are offered the fitness morning and evening briefs, which hatch skipped because of a shared routine id.
+- Fitness briefs are archived as `compiled/brief-fitness-<slot>-<date>.md`, so continuity no longer reads a Home Assistant house brief as the previous fitness brief.
 
 ### Upgrade Instructions
 1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json migrate plugin-routine-ids --plugin hermitd-fitness --ids morning-brief,evening-brief,weekly-load-review,monday-planning,weekly-coaching-patterns` and report the receipt.
