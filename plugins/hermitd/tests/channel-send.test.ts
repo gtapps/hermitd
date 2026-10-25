@@ -1330,6 +1330,7 @@ describe('notice relay on a channel without a send path', () => {
       const out = JSON.parse((await run(wd, { client: 'PLAIN' }, stub)).stdout);
       expect(out.status).toBe('relay');
       expect(out.relay).toEqual({ channel: 'custom', chat_id: 'C1' });
+      expect(out.result.client).toBeUndefined();
       expect(stub.requests).toHaveLength(0);
       expect(readState(wd, 'watchdog-events.jsonl')).not.toContain('undelivered-client-notice');
     } finally { stub.stop(); wd.cleanup(); }

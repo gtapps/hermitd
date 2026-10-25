@@ -21,12 +21,12 @@ Use this protocol for proactive notifications (`prompts/resident.md` § Operator
   Compose each version in the operator's configured `language` and apply §0 Message formatting
   to the completed message bodies before sending.
 
-  The script prints `{ "status", "reason"?, "result" }`.
+  The script prints `{ "status", "reason"?, "relay"?, "result" }`.
   - **`delivered`**: every leg landed. Done.
   - **`relay`**, or a `relay` field beside another status: this channel has no script send
     path. Send the client text verbatim through `relay.channel`'s reply tool to
     `relay.chat_id`, then handle any other status as below. If that reply fails, treat the
-    client leg as `undelivered`.
+    client leg as `undelivered`; the sender did not save it, so record the client text in Findings.
   - **`error`** (`invalid_payload:…`): nothing was sent. Fix and re-run;
     do not push or record a `channel-send-unavailable` issue.
   - **`undelivered`**, or **`degraded`** when unreachable maintainer detail landed

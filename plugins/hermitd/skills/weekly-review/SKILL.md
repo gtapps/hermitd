@@ -98,7 +98,8 @@ Generates the weekly review for the current ISO week.
      - `client` = the composed message **with the Spend line omitted**
      - `maintainer` = the **Spend line plus technical detail only**. When both audiences share
        a chat the script sends the two parts together, so neither repeats the other.
-   - If a leg didn't land (`status` not `delivered`; on an `error`, fix the payload and
+   - On `relay`, send the client text through the reply tool per § Operator Notification.
+   - If a leg didn't land (`status` not `delivered` or a relayed reply; on an `error`, fix the payload and
      re-run instead), follow § Operator Notification's fallback (push if
      enabled, log to Findings) rather than a bespoke branch here — weekly-review is a recurring
      routine, not an alert, so still skip a `channel-send-unavailable` issue for this call.

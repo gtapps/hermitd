@@ -22,7 +22,7 @@
 //   that routine has a `chat`, the client leg goes there instead of the home
 //   chat. `--watch <id>` does the same with the config watch’s `chat`, or an
 //   ad-hoc watch’s runtime registry entry `chat`.
-//   Prints {"status","reason"?,"result"} at exit 0 whether or not it landed:
+//   Prints {"status","reason"?,"relay"?,"result"} at exit 0 whether or not it landed:
 //     delivered    every requested leg landed where it was meant to
 //     degraded     every leg was accepted, but maintainer detail fell back to Findings
 //     undelivered  a leg failed to land (`reason: no_reachable_channel` when none could)
@@ -154,8 +154,10 @@ async function runNotice(hermitDir: string, routine?: string, watch?: string): P
     relay: true,
   });
 
+  // A relayed client leg is the caller's to send, so it is neither a leg nor a printed failure.
   const { relay, ...result } = out;
-  const legs = [relay ? undefined : out.client, out.maintainer].filter((r): r is SendResult => !!r);
+  if (relay) delete result.client;
+  const legs = [result.client, result.maintainer].filter((r): r is SendResult => !!r);
   // Every leg, including both legs of a merged send, must have landed. `some` would report success
   // for a half-delivered notice — e.g. a typo'd maintainer_channel_id degrading
   // the maintainer leg to Findings while the client leg goes out — and the
