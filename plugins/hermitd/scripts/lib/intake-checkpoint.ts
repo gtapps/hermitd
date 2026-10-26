@@ -1,10 +1,8 @@
-// Channel-intake Stop checkpoint. After "On it" goes out, the next resident
-// Stop holds once if any acknowledged chat has no task record, or a new record
-// is keyed to a guild text channel instead of a thread. Fail-open: any error
-// returns null.
+// Channel-intake Stop checkpoint. After thread-open succeeds, the next resident
+// Stop holds once if its destination chat has no task record. Fail-open: any
+// error returns null.
 import fs from 'node:fs';
 import path from 'node:path';
-import { cachedChat, isGuildChannelType } from './channel-chats';
 import { readJson } from './cli';
 import { readTasks } from './tasks';
 
@@ -49,13 +47,6 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
       return `task skill intake is still open. Run task.ts open now for the work you just acknowledged in ${missing.join(', ')}.`;
     }
 
-    if (tasks.some(task => {
-      if (!openedThisTurn(task) || task.owner !== 'resident' || typeof task.conversation !== 'string') return false;
-      const chatId = task.conversation.slice(task.conversation.indexOf(':') + 1);
-      return isGuildChannelType(cachedChat(dir, chatId));
-    })) {
-      return 'task skill resident guild thread is still open. The task record is keyed to a guild channel; open a thread and key the record to it.';
-    }
     return null;
   } catch {
     return null;

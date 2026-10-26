@@ -6,6 +6,12 @@
 
 - Stall notice for a permission prompt the channel relayed says someone was asked to approve, instead of sending operators to the terminal
 
+### Fixed
+
+- Chat tasks recorded on a server channel move into a thread.
+- The task intake check works in any language.
+- Proposals accepted from chat get the same thread, card and steering as chat tasks.
+
 ## [1.4.22] - 2026-10-25
 
 ### Added

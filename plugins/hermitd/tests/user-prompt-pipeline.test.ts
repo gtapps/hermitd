@@ -764,8 +764,8 @@ describe('task thread admission', () => {
   test('guild text channel with a record is not labeled a task thread', async () => {
     const wd = trackedWorkdir();
     fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['parent'], bot_user_id: '777' } } }));
-    fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { home: { type: 0, parent_id: null, guild_id: 'guild', fetched_at: new Date().toISOString() } } } }));
     expect((await openThreadTask(wd, 'discord:home', 'resident', false)).exitCode).toBe(0);
+    fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { home: { type: 0, parent_id: null, guild_id: 'guild', fetched_at: new Date().toISOString() } } } }));
     const result = await runScript('user-prompt-pipeline.ts', {
       stdin: JSON.stringify({ prompt: '<channel source="discord" chat_id="home" user="u1">continue</channel>' }), cwd: wd.dir,
     });
