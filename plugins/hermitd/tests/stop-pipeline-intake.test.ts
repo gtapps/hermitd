@@ -92,20 +92,6 @@ describe('stop-pipeline — channel intake checkpoint', () => {
     expect(turnExists(dir)).toBe(true);
   }));
 
-  test('ack with a resident record keyed to a cached type 0 chat: block JSON, Resident guild thread, turn marker kept', withDir(async (dir) => {
-    writeTurn(dir);
-    writeAck(dir);
-    writeChats(dir, 'home', 0);
-    await openResident(dir, 'discord:home');
-    const r = await runStop(dir);
-    expect(r.exitCode).toBe(0);
-    const body = JSON.parse(r.stdout);
-    expect(body.decision).toBe('block');
-    expect(body.reason).toContain('resident guild thread');
-    expect(body.reason).toContain('task skill');
-    expect(turnExists(dir)).toBe(true);
-  }));
-
   test('ack in a conversation that already has an open record: stdout empty, turn marker removed', withDir(async (dir) => {
     writeChats(dir, 'thread', 11);
     await openResident(dir, 'discord:thread');

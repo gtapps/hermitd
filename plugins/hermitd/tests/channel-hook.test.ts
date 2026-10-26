@@ -92,50 +92,22 @@ const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 describe('channel-hook intake ack (PostToolUse)', () => {
   const envFor = (dir: string) => ({ AGENT_DIR: hermit(dir) });
 
-  test('ack written with the payload session id', withDir(async (dir) => {
-    const r = await runScript('channel-hook.ts', {
-      stdin: JSON.stringify({
-        tool_name: 'mcp__discord__reply',
-        tool_input: { chat_id: '123', text: 'On it: the label.' },
-        session_id: 'sess-from-payload',
-      }),
-      cwd: dir,
-      env: envFor(dir),
-    });
-    expect(r.exitCode).toBe(0);
-    const ack = JSON.parse(fs.readFileSync(hermit(dir, 'state', 'intake-acks.jsonl'), 'utf8'));
-    expect(ack.session_id).toBe('sess-from-payload');
-    expect(ack.channel).toBe('discord');
-    expect(ack.chat_id).toBe('123');
+  test('reply wording never writes an intake ack', withDir(async (dir) => {
+    for (const text of ['On it', 'Estou nisso']) {
+      const r = await runScript('channel-hook.ts', {
+        stdin: JSON.stringify({
+          tool_name: 'mcp__discord__reply',
+          tool_input: { chat_id: '123', text },
+          session_id: 'sess-from-payload',
+        }),
+        cwd: dir,
+        env: envFor(dir),
+      });
+      expect(r.exitCode).toBe(0);
+      expect(fs.existsSync(hermit(dir, 'state', 'intake-acks.jsonl'))).toBe(false);
+    }
   }));
 
-  test('ack written with null when the payload has none', withDir(async (dir) => {
-    const r = await runScript('channel-hook.ts', {
-      stdin: JSON.stringify({
-        tool_name: 'mcp__telegram__reply',
-        tool_input: { chat_id: '456', text: 'On it' },
-      }),
-      cwd: dir,
-      env: envFor(dir),
-    });
-    expect(r.exitCode).toBe(0);
-    const ack = JSON.parse(fs.readFileSync(hermit(dir, 'state', 'intake-acks.jsonl'), 'utf8'));
-    expect(ack.session_id).toBeNull();
-  }));
-
-  test('plain reply is not written', withDir(async (dir) => {
-    const r = await runScript('channel-hook.ts', {
-      stdin: JSON.stringify({
-        tool_name: 'mcp__discord__reply',
-        tool_input: { chat_id: '123', text: 'All done.' },
-        session_id: 'sess-from-payload',
-      }),
-      cwd: dir,
-      env: envFor(dir),
-    });
-    expect(r.exitCode).toBe(0);
-    expect(fs.existsSync(hermit(dir, 'state', 'intake-acks.jsonl'))).toBe(false);
-  }));
 });
 
 

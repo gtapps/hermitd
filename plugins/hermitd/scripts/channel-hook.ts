@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homeSeedBlock, replyToolChannel } from './lib/channel-config';
 import { safe } from './lib/sanitize';
-import { hermitDir, transcriptPath, readTailLines, turnPromptText, sessionId } from './lib/cc-compat';
+import { hermitDir, transcriptPath, readTailLines, turnPromptText } from './lib/cc-compat';
 import { readConfigRaw } from './lib/config-read';
 import { auditConfigChange } from './lib/config-audit';
 import { parseChannelEnvelope } from './lib/channel-envelope';
@@ -101,26 +101,6 @@ function appendReplyEvent(channelKey: string, ts: string): void {
   } catch {}
 }
 
-export function persistIntakeAck(
-  hermitDir: string,
-  text: unknown,
-  channel: string,
-  chatId: unknown,
-  sessionId: string | null,
-): void {
-  try {
-    if (typeof text !== 'string' || !text.trim().toLowerCase().startsWith('on it')) return;
-    const ackPath = path.join(hermitDir, 'state', 'intake-acks.jsonl');
-    ensureLedgerFile(ackPath);
-    fs.appendFileSync(ackPath, JSON.stringify({
-      at: new Date().toISOString(),
-      channel,
-      chat_id: chatId != null ? String(chatId) : '',
-      session_id: sessionId,
-    }) + '\n');
-  } catch { /* fail-open */ }
-}
-
 // Was this reply sent during a turn that a matching inbound envelope actually
 // opened? Reads only a tail window of the transcript (TAIL_BYTES) — cheap
 // enough to run on every reply, unlike a whole-session read — finds the
@@ -174,8 +154,6 @@ function main() {
       if (!channelKey) return;
 
       const chatId = input[config?.channels?.[channelKey]?.attributes?.chat_id ?? 'chat_id'];
-
-      persistIntakeAck(HERMIT_DIR, input.text, channelKey, chatId, sessionId(event));
 
       // Episodic capture (PROP-010) — deliberately before the "channel
       // configured" gate below, so replies on not-yet-configured channels

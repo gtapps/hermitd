@@ -19,7 +19,7 @@ import { REVIEW_CALLS } from './learned-skills';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed']);
+const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);

@@ -180,3 +180,23 @@ test('thread-open routes every channel to the key its later thread messages carr
     server.stop(true);
   }
 });
+
+test('successful thread-open appends one intake ack for its destination', async () => {
+  const dir = freshDir();
+  fs.writeFileSync(path.join(dir, 'config.json'), '{}');
+  const result = await cli(dir, ['thread-open', '--source', 'fakechat', '--chat-id', '123', '--message-id', '9', '--name', 'Task']);
+  expect(result.code).toBe(0);
+  const lines = fs.readFileSync(path.join(dir, 'state/intake-acks.jsonl'), 'utf8').trim().split('\n');
+  expect(lines).toHaveLength(1);
+  const ack = JSON.parse(lines[0]);
+  expect(ack).toEqual({ at: expect.any(String), channel: 'fakechat', chat_id: '123', session_id: null });
+  expect(Number.isFinite(Date.parse(ack.at))).toBe(true);
+});
+
+test('failed thread-open writes no intake ack', async () => {
+  const dir = freshDir();
+  fs.writeFileSync(path.join(dir, 'config.json'), '{}');
+  const result = await cli(dir, ['thread-open', '--source', 'discord', '--chat-id', '123', '--message-id', '9', '--name', 'Task']);
+  expect(result.code).toBe(1);
+  expect(fs.existsSync(path.join(dir, 'state/intake-acks.jsonl'))).toBe(false);
+});

@@ -3491,9 +3491,13 @@ describe('proposal lifecycle: no tool-mediated state writes', () => {
     expect(proposalCreate).not.toMatch(/Write tool|Edit the/);
   });
 
-  test('proposal-act/SKILL.md invokes proposal.ts patch/routine and task.ts open/note instead of Edit/Write', () => {
+  test('proposal-act/SKILL.md invokes proposal.ts patch/routine and task intake/note instead of Edit/Write', () => {
     expect(proposalAct).toContain('proposal.ts patch');
-    expect(proposalAct).toContain('task.ts open');
+    for (const heading of ['## Start implementing now', '## Queue a task']) {
+      const branch = proposalAct.slice(proposalAct.indexOf(heading)).split('\n## ')[0];
+      expect(branch).toContain('task/SKILL.md');
+      expect(branch).toContain('proposal:PROP-NNN');
+    }
     expect(proposalAct).toContain('task.ts note');
     expect(proposalAct).not.toContain('proposal.ts next-task');
     expect(proposalAct).toContain('proposal.ts routine');
