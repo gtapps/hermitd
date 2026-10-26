@@ -35,8 +35,8 @@ export function yq(s: string): string {
 }
 
 /**
- * JSON with `, ` and `: ` separators (or `indent`), every non-ASCII character
- * escaped unless `ascii` is false. Fixture data and graders keep this one spelling.
+ * JSON with `, ` and `: ` separators (or `indent`), every character past `~`
+ * escaped unless `ascii` is false (json.dumps' ensure_ascii). Fixture data and graders keep this one spelling.
  */
 export function json(v: unknown, opts: { ascii?: boolean; indent?: number } = {}): string {
   const enc = (x: unknown): string => {
@@ -47,7 +47,7 @@ export function json(v: unknown, opts: { ascii?: boolean; indent?: number } = {}
     return JSON.stringify(x);
   };
   const s = opts.indent ? JSON.stringify(v, null, opts.indent) : enc(v);
-  return opts.ascii === false ? s : s.replace(/[^\x00-\x7f]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return opts.ascii === false ? s : s.replace(/[^\x00-\x7e]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
 /** A grader as a YAML block mapping; `criteria` becomes a literal block. */
@@ -55,7 +55,7 @@ export function graderYaml(g: Grader): string {
   const out = [`  - name: ${g.name}`];
   for (const [k, v] of Object.entries(g)) {
     if (k === 'name') continue;
-    if (typeof v === 'number') out.push(`    ${k}: ${v}`);
+    if (typeof v === 'number' || typeof v === 'boolean') out.push(`    ${k}: ${v}`);
     else if (k === 'criteria') out.push(`    ${k}: |`, indent(String(v), 6));
     else out.push(`    ${k}: ${yq(String(v))}`);
   }

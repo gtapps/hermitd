@@ -31,7 +31,7 @@ function realOutput(script: string, ...args: string[]): string {
   try {
     fs.mkdirSync(path.join(d, '.hermit', 'tasks'), { recursive: true });
     fs.writeFileSync(path.join(d, '.hermit', 'config.json'), RESIDENT_CONFIG);
-    const r = Bun.spawnSync(['bun', path.join(PLUGIN, 'scripts', script), ...args], { cwd: d });
+    const r = Bun.spawnSync([process.execPath, path.join(PLUGIN, 'scripts', script), ...args], { cwd: d });
     if (r.exitCode !== 0) throw new Error(`${script} exited ${r.exitCode}: ${r.stderr.toString()}`);
     return r.stdout.toString().trim();
   } finally {
