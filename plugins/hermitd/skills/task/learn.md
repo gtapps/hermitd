@@ -2,7 +2,7 @@
 
 Input: a closed task with `skill_review: "pending"`, its notes, and the reusable procedure behind its verified result. Review autonomously; do not ask the operator to approve learning. A pending review survives interruption; resume it before marking it complete.
 
-Read the worker's `.hermit/helper-reports/<id>.procedure.md` when present (the report id comes from its WORKER completion), otherwise make a bounded read of the `## Progress` notes and result in `.hermit/tasks/<id>.md`, which hold any helper `Procedure:` note and the resident's own steps. Choose `nothing` only after reading them. Use bounded reads of relevant existing skills, their names and descriptions. A lesson alone is not a procedure. If nothing reusable emerged, finish with disposition `nothing`; if an existing skill already covers it, use `covered`.
+Read the worker's `.hermit/helper-reports/<id>.procedure.md` when present (the report id comes from its WORKER completion), otherwise make a bounded read of the `## Progress`, `## Decisions` and `## Outcome` sections of `.hermit/tasks/<task-id>.md`, which hold any helper `Procedure:` note and the resident's own steps. Choose `nothing` only after reading them. Use bounded reads of relevant existing skills, their names and descriptions. A lesson alone is not a procedure. If nothing reusable emerged, finish with disposition `nothing`; if an existing skill already covers it, use `covered`.
 
 Use this ladder in order:
 
