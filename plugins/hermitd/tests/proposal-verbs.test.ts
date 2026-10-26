@@ -234,6 +234,14 @@ describe('verbResolve', () => {
     expect(/accepted_date: (.*)/.exec(content)![1]).toBe(acceptedBefore);
   })());
 
+  test('a Set: line in the input is refused before any row lands', withDir(async (dir) => {
+    const { base, id, file } = seedProposal(dir);
+    const before = fs.readFileSync(file, 'utf-8');
+    expect(verbResolve(base, 'Decision: Resolved on @now.\nSet: status=accepted', id)).toEqual({ error: 'resolve_takes_decision_only' });
+    expect(ledger(base)).toEqual([]);
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+  }));
+
   test('a proposal with no Operator Decision section writes nothing', withDir(async (dir) => {
     const base = seed(dir);
     const file = path.join(base, 'proposals', 'PROP-014-bare.md');
@@ -243,6 +251,25 @@ describe('verbResolve', () => {
     expect(verbResolve(base, '', 'PROP-014-bare.md')).toEqual({ error: 'no_operator_decision_section' });
     expect(fs.readFileSync(file, 'utf-8')).toBe(original);
     expect(fs.existsSync(path.join(base, 'state', 'proposal-metrics.jsonl'))).toBe(false);
+  }));
+
+  test('a proposal with no frontmatter block writes nothing', withDir(async (dir) => {
+    const base = seed(dir);
+    const file = path.join(base, 'proposals', 'PROP-015-nofm.md');
+    const original = '# No frontmatter\n\n## Operator Decision\n';
+    fs.writeFileSync(file, original);
+
+    expect(verbResolve(base, '', 'PROP-015-nofm.md')).toEqual({ error: 'frontmatter_terminator_missing' });
+    expect(fs.readFileSync(file, 'utf-8')).toBe(original);
+    expect(fs.existsSync(path.join(base, 'state', 'proposal-metrics.jsonl'))).toBe(false);
+  }));
+
+  test('a retried resolve writes no second resolved row', withDir(async (dir) => {
+    const { base, id } = seedProposal(dir);
+    expect(verbResolve(base, 'Decision: Resolved on @now.', id)).toEqual({ id });
+    expect(verbResolve(base, 'Decision: Resolved on @now.', id)).toEqual({ id });
+
+    expect(ledger(base).map(r => r.type)).toEqual(['responded', 'resolved']);
   }));
 
   test.each(['../config.json', 'sub/PROP-001.md', '.hidden.md', 'PROP-999-nope.md'])(

@@ -285,7 +285,6 @@ function proposalPath(stateDir: string, filename: string | undefined): string | 
 
 export function verbPatch(stateDir: string, stdin: string, args: string[]): Verdict {
   const { filename, sets: rawSets, requestCompact } = parsePatchArgs(args);
-  if (!filename || filename !== path.basename(filename) || filename.startsWith('.')) return { error: 'no_such_proposal' };
 
   const sets: Record<string, string> = {};
   for (const kv of rawSets) {
@@ -379,18 +378,22 @@ export function verbResolve(stateDir: string, stdin: string, filename: string | 
   const file = target ? path.basename(target) : '';
   const proposalId = shortProposalId(file);
   if (!target || !/^PROP-\d+$/.test(proposalId)) return { error: 'no_such_proposal' };
+  // Resolve takes only a Decision line; a `Set:` line could fail or reopen the patch after the rows land.
+  if (/^Set:/m.test(stdin)) return { error: 'resolve_takes_decision_only' };
   const content = fs.readFileSync(target, 'utf-8');
   if (!findSection(content, 'Operator Decision')) return { error: 'no_operator_decision_section' };
   const fm = parseFrontmatter(content) as Record<string, unknown> | null;
+  if (!fm) return { error: 'frontmatter_terminator_missing' };
   const args = [file, '--set', 'status=resolved', '--set', 'resolved_date=@now', '--request-compact'];
-  if (fm?.status === 'proposed') {
+  if (fm.status === 'proposed') {
     args.push('--set', 'accepted_date=@now');
     if (String(fm.responded) !== 'true') {
       if (appendEvent(stateDir, respondedEvent(proposalId, 'accept'))) return { error: 'proposal_responded_event_failed' };
       args.push('--set', 'responded=true');
     }
   }
-  if (appendEvent(stateDir, resolvedEvent(proposalId))) return { error: 'proposal_resolved_event_failed' };
+  // A retried resolve keeps one `resolved` row per proposal.
+  if (fm.status !== 'resolved' && appendEvent(stateDir, resolvedEvent(proposalId))) return { error: 'proposal_resolved_event_failed' };
   return verbPatch(stateDir, stdin, args);
 }
 
