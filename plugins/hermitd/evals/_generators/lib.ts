@@ -14,6 +14,10 @@ export const PLUGIN = path.dirname(EVALS);
 
 export type Grader = Record<string, unknown>;
 
+/** Synthetic Discord ids the generated cases share: the operator's chat and user. */
+export const CHAT = '400000000000000001';
+export const USER = '100000000000000001';
+
 /** A shipped agent's body, as `append_system_prompt` carries it. */
 export function agentBody(name: string): string {
   return readFileWithFrontmatter(path.join(PLUGIN, 'agents', `${name}.md`))!.body.trim();
@@ -45,6 +49,34 @@ export function graderYaml(g: Grader): string {
     else out.push(`    ${k}: ${yq(String(v))}`);
   }
   return out.join('\n');
+}
+
+/** config.json as config-write.ts writes it. */
+export const configJson = (v: object) => JSON.stringify(v, null, 2) + '\n';
+
+/** Bash lines that write each file through a quoted heredoc, in path order. */
+export function heredocs(files: Record<string, string>): string[] {
+  return Object.keys(files).sort().flatMap(p => [`mkdir -p "${path.dirname(p)}"`, `cat > '${p}' <<'HERMIT_FIXTURE'\n${files[p]}HERMIT_FIXTURE`]);
+}
+
+const VERSION_SH = String.raw`ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)`;
+
+/**
+ * scaffold.sh for a resident install: the live TASKS.md template, `config`, the plugin
+ * files named in `copies` (copied at run time), and fixture files.
+ */
+export function residentScaffold(config: object, fixtures: Record<string, string> = {}, copies: [string, string][] = []): string {
+  const files = { '.hermit/OPERATOR.md': '# Operator\n\nRuns a small online tea shop alone. Prefers short messages.\n', 'memory/MEMORY.md': '', ...fixtures };
+  const sh = ['#!/usr/bin/env bash', '# Seeds a resident hermit state dir for this case (runs only with --scaffold).', 'set -e',
+    'here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"', 'mkdir -p .hermit/tasks .hermit/state',
+    'cp "$here/../../../state-templates/TASKS.md.template" .hermit/TASKS.md',
+    // Stamp the loaded plugin version so the real SessionStart hook injects no upgrade notice.
+    VERSION_SH,
+    // Unquoted heredoc, so bash expands $ver.
+    'cat > .hermit/config.json <<HERMIT_CONFIG\n' + configJson({ ...config, _hermit_versions: { hermitd: '$ver' } }) + 'HERMIT_CONFIG'];
+  for (const [src, dst] of copies) sh.push(`mkdir -p "${path.dirname(dst)}"`, `cp "$here/../../../${src}" "${dst}"`);
+  sh.push(...heredocs(files));
+  return sh.join('\n') + '\n';
 }
 
 /** Write a case directory: case.yaml from its lines, plus an executable scaffold.sh when given. */

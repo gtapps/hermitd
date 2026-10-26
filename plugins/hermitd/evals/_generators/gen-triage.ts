@@ -3,7 +3,7 @@
 
 import path from 'node:path';
 
-import { EVALS, type Grader, graderYaml, indent, report, writeCase, yq } from './lib';
+import { EVALS, type Grader, configJson, graderYaml, heredocs, indent, report, writeCase, yq } from './lib';
 
 type Entry = Record<string, unknown>;
 type Prop = [fname: string, body: string, entry: Entry];
@@ -60,16 +60,11 @@ export const SHOP: Universe = {
   compiled: { 'topic-wholesale-pipeline.md': '---\ntitle: Wholesale pipeline\ntype: topic\ncreated: 2026-09-10T09:00:00+01:00\ntags: [wholesale]\n---\n\nFour cafes ordering monthly.\n' },
 };
 
-/** Bash lines that write each file through a quoted heredoc, in path order. */
-export function heredocs(files: Record<string, string>): string[] {
-  return Object.keys(files).sort().flatMap(p => [`mkdir -p "${path.dirname(p)}"`, `cat > '${p}' <<'HERMIT_FIXTURE'\n${files[p]}HERMIT_FIXTURE`]);
-}
-
 /** scaffold.sh seeding a hermit state dir (config, proposals, index, OPERATOR.md, compiled/) and a memory/ dir. */
 export function scaffold(universe: Universe, withConfig = true): string {
   const files: Record<string, string> = {};
   const root = '.hermit';
-  if (withConfig) files[`${root}/config.json`] = JSON.stringify({ agent_name: 'assistant', timezone: 'Europe/Lisbon' }, null, 2) + '\n';
+  if (withConfig) files[`${root}/config.json`] = configJson({ agent_name: 'assistant', timezone: 'Europe/Lisbon' });
   const entries: Entry[] = [];
   for (const [fname, body, entry] of universe.proposals) {
     files[`${root}/proposals/${fname}`] = body;
