@@ -11,6 +11,7 @@
 - Chat tasks recorded on a server channel move into a thread.
 - The task intake check works in any language.
 - Proposals accepted from chat get the same thread, card and steering as chat tasks.
+- Close-time learning reads the task record's progress notes when the resident did the work itself.
 
 ## [1.4.22] - 2026-10-25
 

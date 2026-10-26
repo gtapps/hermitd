@@ -2,7 +2,7 @@
 
 Input: a closed task with `skill_review: "pending"`, its notes, and the reusable procedure behind its verified result. Review autonomously; do not ask the operator to approve learning. A pending review survives interruption; resume it before marking it complete.
 
-Read the worker's `.hermit/helper-reports/<id>.procedure.md` when present (the report id comes from its WORKER completion), or the helper's `Procedure:` note on the record. Use bounded reads of relevant existing skills, their names and descriptions. A lesson alone is not a procedure. If nothing reusable emerged, finish with disposition `nothing`; if an existing skill already covers it, use `covered`.
+Read the worker's `.hermit/helper-reports/<id>.procedure.md` when present (the report id comes from its WORKER completion), otherwise make a bounded read of the `## Progress`, `## Decisions` and `## Outcome` sections of `.hermit/tasks/<task-id>.md`, which hold any helper `Procedure:` note and the resident's own steps. Choose `nothing` only after reading them. Use bounded reads of relevant existing skills, their names and descriptions. A lesson alone is not a procedure. If nothing reusable emerged, finish with disposition `nothing`; if an existing skill already covers it, use `covered`.
 
 Use this ladder in order:
 
@@ -11,7 +11,7 @@ Use this ladder in order:
 3. Add a `references/` file to that learned skill, linking it from SKILL.md.
 4. Create a new capability-named skill only when those options do not fit.
 
-Autonomous patches touch learned skills only: a skill is learned only if the `skill-ledger.jsonl` contains its `create` action. Operator and shipped skills keep their existing edit path. Inspect `.hermit/bin/hermitd-run skills status --skill <name>` when ownership is unclear. A procedure needing a routine or an agent goes to `/hermitd:proposal-create` with `## Config` plus `## Skill Draft` for a routine, or `## Agent Draft` for an agent; do not widen authority through learned content. Cite the procedure file as its `source_artifact`: the worker's `.hermit/helper-reports/<id>.procedure.md`, or for a helper's `Procedure:` note, first write that procedure to `.hermit/helper-reports/<task-id>.procedure.md`.
+Autonomous patches touch learned skills only: a skill is learned only if the `skill-ledger.jsonl` contains its `create` action. Operator and shipped skills keep their existing edit path. Inspect `.hermit/bin/hermitd-run skills status --skill <name>` when ownership is unclear. A procedure needing a routine or an agent goes to `/hermitd:proposal-create` with `## Config` plus `## Skill Draft` for a routine, or `## Agent Draft` for an agent; do not widen authority through learned content. Cite the procedure file as its `source_artifact`: the worker's `.hermit/helper-reports/<id>.procedure.md`, or for a procedure taken from the record, first write that procedure to `.hermit/helper-reports/<task-id>.procedure.md`.
 
 Author per skill-creator's Skill Writing Guide when that plugin is installed; otherwise use [Anthropic's skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices). Keep SKILL.md focused on reusable inputs, workflow and result; move conditional detail into references. No incident logs, scripts, permission-bearing frontmatter or inline shell blocks.
 
