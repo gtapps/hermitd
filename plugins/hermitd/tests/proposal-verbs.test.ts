@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  verbCreate, verbPatch, verbRoutine,
+  verbCreate, verbPatch, verbResolve, verbRoutine,
   grabHeader, parseStringArray, sectionEndsWithLine,
 } from '../scripts/proposal';
 import { extractSection } from '../scripts/lib/md-write';
@@ -185,6 +185,85 @@ describe('verbPatch grammar', () => {
 
     const marker = JSON.parse(fs.readFileSync(path.join(base, 'state', 'compact-requested.json'), 'utf-8'));
     expect(marker.reason).toBe('proposal-resolve');
+  }));
+});
+
+describe('verbResolve', () => {
+  function seedProposal(dir: string, sets: string[] = []): { base: string; id: string; file: string } {
+    const base = seed(dir);
+    const id = verbCreate(base, heredoc({ Title: 'Resolve me', Source: 'auto-detected' })).id;
+    if (sets.length) verbPatch(base, '', [id, ...sets.flatMap(kv => ['--set', kv])]);
+    return { base, id, file: path.join(base, 'proposals', `${id}.md`) };
+  }
+  // Rows after the `created` row verbCreate writes.
+  function ledger(base: string): Record<string, unknown>[] {
+    return fs.readFileSync(path.join(base, 'state', 'proposal-metrics.jsonl'), 'utf-8')
+      .trim().split('\n').map(l => JSON.parse(l)).filter(r => r.type !== 'created');
+  }
+
+  test('a proposed, unanswered proposal records the accept before resolving', withDir(async (dir) => {
+    const { base, id, file } = seedProposal(dir);
+    expect(verbResolve(base, 'Decision: Resolved on @now.', `${id}.md`)).toEqual({ id });
+
+    expect(ledger(base).map(r => [r.type, r.action])).toEqual([['responded', 'accept'], ['resolved', undefined]]);
+    const content = fs.readFileSync(file, 'utf-8');
+    expect(content).toContain('status: resolved');
+    expect(content).toContain('responded: true');
+    expect(content).toMatch(/accepted_date: \d{4}-/);
+    expect(content).toMatch(/resolved_date: \d{4}-/);
+    expect(content).toMatch(/Resolved on \d{4}-\d{2}-\d{2}T/);
+    expect(fs.existsSync(path.join(base, 'state', 'compact-requested.json'))).toBe(true);
+  }));
+
+  test('a proposed proposal already answered gets the accept date but no second responded row', withDir(async (dir) => {
+    const { base, id, file } = seedProposal(dir, ['responded=true']);
+    expect(verbResolve(base, '', id)).toEqual({ id });
+
+    expect(ledger(base).map(r => r.type)).toEqual(['resolved']);
+    expect(fs.readFileSync(file, 'utf-8')).toMatch(/accepted_date: \d{4}-/);
+  }));
+
+  test.each(['accepted', 'deferred'])('a %s proposal gets only the resolved row', (status) => withDir(async (dir) => {
+    const { base, id, file } = seedProposal(dir, [`status=${status}`, 'responded=true']);
+    const acceptedBefore = /accepted_date: (.*)/.exec(fs.readFileSync(file, 'utf-8'))![1];
+    expect(verbResolve(base, '', id)).toEqual({ id });
+
+    expect(ledger(base).map(r => r.type)).toEqual(['resolved']);
+    const content = fs.readFileSync(file, 'utf-8');
+    expect(content).toContain('status: resolved');
+    expect(/accepted_date: (.*)/.exec(content)![1]).toBe(acceptedBefore);
+  })());
+
+  test('a proposal with no Operator Decision section writes nothing', withDir(async (dir) => {
+    const base = seed(dir);
+    const file = path.join(base, 'proposals', 'PROP-014-bare.md');
+    const original = '---\ntitle: Bare\nstatus: proposed\nresponded: false\n---\n\n## Context\n';
+    fs.writeFileSync(file, original);
+
+    expect(verbResolve(base, '', 'PROP-014-bare.md')).toEqual({ error: 'no_operator_decision_section' });
+    expect(fs.readFileSync(file, 'utf-8')).toBe(original);
+    expect(fs.existsSync(path.join(base, 'state', 'proposal-metrics.jsonl'))).toBe(false);
+  }));
+
+  test.each(['../config.json', 'sub/PROP-001.md', '.hidden.md', 'PROP-999-nope.md'])(
+    '%s is refused as no_such_proposal', (filename) => withDir(async (dir) => {
+      expect(verbResolve(seed(dir), '', filename)).toEqual({ error: 'no_such_proposal' });
+    })());
+
+  // `created` rows carry the full file id and answer rows the bare PROP-NNN, so both readers
+  // must join on the short id for any accept to reach its source.
+  test('a resolve from proposed counts in the source acceptance of both metrics readers', withDir(async (dir) => {
+    const { base, id } = seedProposal(dir);
+    expect(id).toMatch(/^PROP-\d+-./);
+    fs.writeFileSync(path.join(base, 'state', 'alert-state.json'), '{}'); // the summary writes only on an installed hermit
+    const accepted = async () => {
+      const r = await runProposal(base, ['metrics', '--source=reflect']);
+      return JSON.parse(r.stdout).accepted;
+    };
+    expect(await accepted()).toBe(0);
+    expect(verbResolve(base, '', id)).toEqual({ id });
+    expect(await accepted()).toBe(1);
+    expect(fs.readFileSync(path.join(base, 'state', 'state-summary.md'), 'utf-8')).toContain('auto_detect_accept_rate: 1.00');
   }));
 });
 

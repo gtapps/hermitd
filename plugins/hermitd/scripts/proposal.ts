@@ -44,6 +44,12 @@
 //     state/compact-requested.json. Output: `{"id":"<id>"}` (plus `warnings`, as
 //     for create) or `{"error":"<reason>"}`.
 //
+//   resolve <stateDir> <filename> [--stdin]
+//     Resolves a proposal: same <filename> and `Decision:` stdin grammar as patch,
+//     plus the `resolved` metrics row and --request-compact. From `proposed` it
+//     also records the accept it skipped (`accepted_date`, and a responded/accept
+//     row when `responded` is false). Output as for patch.
+//
 //   routine <stateDir>
 //     stdin: one routine entry as JSON ({id, schedule, skill, enabled, ...}).
 //     Upserts by `id` into config.json's routines array. Output:
@@ -77,7 +83,7 @@ import { pinStateDirOrExit, memoryDirFor } from './lib/cc-compat';
 import { appendJsonlLine } from './lib/append-jsonl';
 import { auditConfigChange } from './lib/config-audit';
 import { writeFileAtomic, patchFrontmatter, appendToSection, findSection, escapeRegExp, PATCH_KEY_RE } from './lib/md-write';
-import { computeBase, SUFFIX_LETTERS } from './lib/prop-id';
+import { computeBase, shortProposalId, SUFFIX_LETTERS } from './lib/prop-id';
 import { readSettledConfig } from './lib/config-read';
 import { zonedISOStamp, utcISOStamp } from './lib/time';
 import { rebuildIndex, run as runIndex } from './lib/proposals/index-rebuild';
@@ -87,7 +93,8 @@ import { run as runGate } from './lib/proposals/gate';
 import { run as runQueueMicro } from './lib/proposals/queue-micro';
 import { run as runMicro, sweepMoot, MOOT_STATUSES } from './lib/proposals/micro';
 import { run as runMetrics } from './lib/proposals/metrics';
-import { run as runEvent } from './lib/proposals/event';
+import { run as runEvent, appendEvent, respondedEvent, resolvedEvent } from './lib/proposals/event';
+import { parseFrontmatter } from './lib/frontmatter';
 import { run as runSuccessSignal } from './lib/proposals/success-signal';
 import { run as runQualityGate } from './lib/proposals/quality-gate';
 
@@ -261,14 +268,24 @@ export function sectionEndsWithLine(content: string, heading: string, rawLine: s
   return new RegExp(`^${pattern}$`).test(lines[lines.length - 1]);
 }
 
+// The existing proposal file a write verb names, or null. Direct-child basename
+// only: the `path.join` would otherwise let a `../` prefix escape the proposals
+// dir and patch any frontmatter-bearing .md on disk; the state-dir pin in main()
+// does not constrain this argument. `startsWith('.')` covers `.`, `..`, and
+// dotfiles in one predicate.
+function proposalPath(stateDir: string, filename: string | undefined): string | null {
+  if (!filename || filename !== path.basename(filename) || filename.startsWith('.')) return null;
+  const candidateNames = filename.endsWith('.md') ? [filename] : [filename, `${filename}.md`];
+  for (const name of candidateNames) {
+    const p = path.join(stateDir, 'proposals', name);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 export function verbPatch(stateDir: string, stdin: string, args: string[]): Verdict {
   const { filename, sets: rawSets, requestCompact } = parsePatchArgs(args);
-  if (!filename) return { error: 'no_such_proposal' };
-  // Direct-child basename only. The `path.join` below would otherwise let a
-  // `../` prefix escape the proposals dir and patch any frontmatter-bearing
-  // .md on disk; the state-dir pin in main() does not constrain this argument.
-  // `startsWith('.')` covers `.`, `..`, and dotfiles in one predicate.
-  if (filename !== path.basename(filename) || filename.startsWith('.')) return { error: 'no_such_proposal' };
+  if (!filename || filename !== path.basename(filename) || filename.startsWith('.')) return { error: 'no_such_proposal' };
 
   const sets: Record<string, string> = {};
   for (const kv of rawSets) {
@@ -292,13 +309,7 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
     stdinSets[m[1]] = m[2];
   }
 
-  const proposalsDir = path.join(stateDir, 'proposals');
-  const candidateNames = filename.endsWith('.md') ? [filename] : [filename, `${filename}.md`];
-  let targetPath: string | null = null;
-  for (const name of candidateNames) {
-    const p = path.join(proposalsDir, name);
-    if (fs.existsSync(p)) { targetPath = p; break; }
-  }
+  const targetPath = proposalPath(stateDir, filename);
   if (!targetPath) return { error: 'no_such_proposal' };
 
   let content: string;
@@ -355,6 +366,32 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
   }
 
   return withWarnings({ id: path.basename(targetPath).replace(/\.md$/, '') }, warnings);
+}
+
+// --------------------------------------------------------------- resolve ---
+
+// Every resolve path ends here, so a proposal resolved straight from `proposed`
+// counts as accepted once; other statuses get only the `resolved` row. The
+// section check runs before any ledger row lands: a patch refused afterwards
+// would leave resolved rows for a proposal that stays open.
+export function verbResolve(stateDir: string, stdin: string, filename: string | undefined): Verdict {
+  const target = proposalPath(stateDir, filename);
+  const file = target ? path.basename(target) : '';
+  const proposalId = shortProposalId(file);
+  if (!target || !/^PROP-\d+$/.test(proposalId)) return { error: 'no_such_proposal' };
+  const content = fs.readFileSync(target, 'utf-8');
+  if (!findSection(content, 'Operator Decision')) return { error: 'no_operator_decision_section' };
+  const fm = parseFrontmatter(content) as Record<string, unknown> | null;
+  const args = [file, '--set', 'status=resolved', '--set', 'resolved_date=@now', '--request-compact'];
+  if (fm?.status === 'proposed') {
+    args.push('--set', 'accepted_date=@now');
+    if (String(fm.responded) !== 'true') {
+      if (appendEvent(stateDir, respondedEvent(proposalId, 'accept'))) return { error: 'proposal_responded_event_failed' };
+      args.push('--set', 'responded=true');
+    }
+  }
+  if (appendEvent(stateDir, resolvedEvent(proposalId))) return { error: 'proposal_resolved_event_failed' };
+  return verbPatch(stateDir, stdin, args);
 }
 
 // ------------------------------------------------------------------ routine
@@ -454,6 +491,10 @@ async function main(): Promise<void> {
     case 'patch': {
       const stdin = await readStdinIfFlagged(rest, '--stdin');
       return emitJson(verbPatch(stateDir, stdin, rest));
+    }
+    case 'resolve': {
+      const stdin = await readStdinIfFlagged(rest, '--stdin');
+      return emitJson(verbResolve(stateDir, stdin, rest[0]));
     }
     case 'routine': return emitJson(verbRoutine(stateDir, await readStdin()));
     case 'resolve-id': return runResolveId(stateDir, rest[0]);

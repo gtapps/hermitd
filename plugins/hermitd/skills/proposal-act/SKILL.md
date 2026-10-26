@@ -177,22 +177,17 @@ Dismissed proposals are hidden from the default `/proposal-list` view. Use "show
 Used when reflect has surfaced a sparse-cadence proposal as a resolution candidate (pattern absent from recent sessions but cadence too infrequent to auto-resolve). Also available directly: `/hermitd:proposal-act resolve PROP-NNN`.
 
 1. Resolve the proposal file using the resolution algorithm above, then read it.
-2. Append a `resolved` event to proposal-metrics.jsonl — before the patch call below, so its summary regen reflects it:
-   ```
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts event .hermit resolved --id=PROP-NNN
-   ```
-3. Patch — frontmatter flip, Operator Decision timestamp, and the compaction-boundary marker in one call:
+2. Resolve: metrics rows, frontmatter flip, Operator Decision timestamp, and the compaction-boundary marker in one call:
    ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> \
-       --set status=resolved --set resolved_date=@now --request-compact --stdin <<'HERMIT_PATCH'
+   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve .hermit <filename> --stdin <<'HERMIT_PATCH'
    Decision: Resolved on @now.
    HERMIT_PATCH
    ```
-   Do NOT set `dismissed_date`. When reflect's auto-resolve flow triggered this (pattern absent from recent sessions), the caller may append "Pattern confirmed absent." to the Decision line.
+   When reflect's auto-resolve flow triggered this (pattern absent from recent sessions), the caller may append "Pattern confirmed absent." to the Decision line.
 
-   `--request-compact` writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton — overwrite unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence and execution-boundary guards).
+   A proposal still `proposed` was never accepted, so the verb records that accept first (`accepted_date`, plus the first-response `accept` event when `responded` is false). Any other status gets only the `resolved` event.
+
+   The verb writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton — overwrite unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence and execution-boundary guards).
 
    `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
-4. Respond: "PROP-NNN resolved."
-
-No first-response tracking on resolve — the proposal was already accepted and that event was already logged.
+3. Respond: "PROP-NNN resolved."

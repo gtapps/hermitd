@@ -300,6 +300,19 @@ describe('proposal.ts patch', () => {
     return runProposal(stateArg(dir), ['create'], { stdin }).then(r => out(r).id);
   }
 
+  test('resolve: one call records the accept, the resolved row and the Decision', withDir(async (dir) => {
+    seedState(dir);
+    const id = await createProposal(dir);
+
+    const r = await runProposal(stateArg(dir), ['resolve', id, '--stdin'], { stdin: 'Decision: Resolved on @now.\n' });
+    expect(r.exitCode).toBe(0);
+    expect(out(r)).toEqual({ id });
+    expect(metricsLines(dir).filter(e => e.type !== 'created').map(e => e.type)).toEqual(['responded', 'resolved']);
+    const after = fs.readFileSync(propPath(dir, id), 'utf-8');
+    expect(after).toContain('status: resolved');
+    expect(after).toMatch(/Resolved on \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\./);
+  }));
+
   test('accept flip: in-place frontmatter patch, @now expansion, Decision append', withDir(async (dir) => {
     seedState(dir);
     const id = await createProposal(dir);
