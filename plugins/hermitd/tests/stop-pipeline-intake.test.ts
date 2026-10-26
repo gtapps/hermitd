@@ -24,12 +24,16 @@ function writeTurn(dir: string, at = '2020-01-01T00:00:00.000Z'): void {
 }
 
 function writeAck(dir: string, patch: Record<string, unknown> = {}): void {
-  fs.appendFileSync(hermit(dir, 'state', 'intake-acks.jsonl'), JSON.stringify({
+  const ack = {
     at: '2020-01-01T00:00:01.000Z',
     channel: 'discord',
     chat_id: 'home',
     session_id: SESSION_ID,
     ...patch,
+  };
+  fs.appendFileSync(hermit(dir, 'state', 'intake-acks.jsonl'), JSON.stringify({
+    key: `${ack.channel}:${ack.chat_id}`,
+    ...ack,
   }) + '\n');
 }
 
@@ -143,6 +147,36 @@ describe('stop-pipeline — channel intake checkpoint', () => {
     expect(body.reason).toContain('discord:t2');
     expect(body.reason).not.toContain('discord:t1');
     expect(turnExists(dir)).toBe(true);
+  }));
+
+  test('two thread acks in one parent with only one record: block naming the missing thread', withDir(async (dir) => {
+    writeTurn(dir);
+    writeAck(dir, { channel: 'slack', chat_id: 'C1', key: 'slack:C1~m1' });
+    writeAck(dir, { channel: 'slack', chat_id: 'C1', key: 'slack:C1~m2' });
+    await openResident(dir, 'slack:C1~m1');
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    const body = JSON.parse(r.stdout);
+    expect(body.decision).toBe('block');
+    expect(body.reason).toContain('slack:C1~m2');
+    expect(body.reason).not.toContain('slack:C1~m1');
+  }));
+
+  test('thread ack with its exact record: stdout empty', withDir(async (dir) => {
+    writeTurn(dir);
+    writeAck(dir, { channel: 'slack', chat_id: 'C1', key: 'slack:C1~m1' });
+    await openResident(dir, 'slack:C1~m1');
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('');
+  }));
+
+  test('ack without a key is ignored', withDir(async (dir) => {
+    writeTurn(dir);
+    writeAck(dir, { key: undefined });
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe('');
   }));
 
   test('two acks each with its own record: stdout empty, turn marker removed', withDir(async (dir) => {

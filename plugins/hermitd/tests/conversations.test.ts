@@ -189,7 +189,7 @@ test('successful thread-open appends one intake ack for its destination', async 
   const lines = fs.readFileSync(path.join(dir, 'state/intake-acks.jsonl'), 'utf8').trim().split('\n');
   expect(lines).toHaveLength(1);
   const ack = JSON.parse(lines[0]);
-  expect(ack).toEqual({ at: expect.any(String), channel: 'fakechat', chat_id: '123', session_id: null });
+  expect(ack).toEqual({ at: expect.any(String), channel: 'fakechat', chat_id: '123', key: 'fakechat:123', session_id: null });
   expect(Number.isFinite(Date.parse(ack.at))).toBe(true);
 });
 

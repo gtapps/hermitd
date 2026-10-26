@@ -22,6 +22,7 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
     const acks = raw.split('\n').flatMap(line => {
       try {
         const ack = JSON.parse(line);
+        if (typeof ack?.key !== 'string') return [];
         const ackSession = typeof ack?.session_id === 'string' ? ack.session_id : null;
         if (ackSession && sessionId && ackSession !== sessionId) return [];
         const ackAt = typeof ack.at === 'string' ? Date.parse(ack.at) : NaN;
@@ -39,9 +40,9 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
       if (task.conversation !== null || (task.status === 'closed' && !(Date.parse(task.closed_at ?? '') >= turnAt))) return false;
       try { return fs.statSync(path.join(dir, 'tasks', `${task.id}.md`)).mtimeMs >= turnAt; } catch { return false; }
     });
-    const chats = new Map(acks.map(ack => [`${ack.channel}:${ack.chat_id}`, String(ack.chat_id)]));
+    const chats = new Map(acks.map(ack => [ack.key, String(ack.chat_id)]));
     const missing = [...chats].filter(([key, chatId]) => !tasks.some(task =>
-      (task.conversation === key || task.conversation?.startsWith(`${key}~`) || task.card_chat_id === chatId) && (task.status === 'open' || openedThisTurn(task))
+      (task.conversation === key || task.card_chat_id === chatId) && (task.status === 'open' || openedThisTurn(task))
     )).map(([key]) => key);
     if (missing.length > (resumedConversationless ? 1 : 0)) {
       return `task skill intake is still open. Run task.ts open now for the work you just acknowledged in ${missing.join(', ')}.`;

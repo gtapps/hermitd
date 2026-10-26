@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Re-accepted proposals reuse their open record and thread.
+- Intake acknowledgements require a record for each exact thread key.
 - Chat tasks recorded on a server channel move into a thread.
 - The task intake check works in any language.
 - Proposals accepted from chat get the same thread, card and steering as chat tasks.

@@ -2,20 +2,16 @@ import { conversationKey } from '../conversation-key';
 import { conversationRecords, threadRecords } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
-import { cachedChat, isGuildChannelType } from '../channel-chats';
+import { cachedChat, needsThread } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
 
-// An assignment on a Discord guild channel (type 0 or 5) gets its own thread, and the
-// record's conversation key is that thread. A message in the parent channel therefore
-// belongs to no task thread, whatever record the channel's key might match.
-const inThreadChat = (ctx: StageContext, sourceKey: string, chatId: string) => {
-  if (sourceKey === 'discord') return !isGuildChannelType(cachedChat(ctx.dir, chatId));
-  const threadAttr = ctx.config()?.channels?.[sourceKey]?.attributes?.thread_id;
-  return !threadAttr || ctx.envelope?.thread != null;
-};
+// A parent chat that needs a thread belongs to no task thread unless the envelope
+// carries one, whatever record the parent chat's key might match.
+const inThreadChat = async (ctx: StageContext, sourceKey: string, chatId: string) =>
+  ctx.envelope?.thread != null || !(await needsThread(ctx.dir, ctx.config(), sourceKey, chatId, true));
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
   const env = ctx.envelope;
@@ -30,7 +26,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // harness-command stage could record them for the resident. A resident-owned thread
   // takes them as ordinary session commands, like any other chat.
   const harnessCommand = !!name && ['clear', 'compact', 'model', 'effort', 'advisor', 'permission-mode'].includes(name);
-  const inThread = inThreadChat(ctx, env.sourceKey, env.chatId);
+  const inThread = await inThreadChat(ctx, env.sourceKey, env.chatId);
   // A command outside a task thread needs no records, so an unreadable task file
   // cannot cost it its annotation.
   const records = inThread || !conversationCommand ? threadRecords(ctx.dir) : [];

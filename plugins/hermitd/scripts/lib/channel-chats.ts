@@ -103,6 +103,13 @@ export function isGuildChannelType(chat: Pick<Chat, 'type'> | null | undefined):
   return chat?.type === 0 || chat?.type === 5;
 }
 
+export async function needsThread(hermitDir: string, config: Json, source: string, chatId: string, cachedOnly = false): Promise<boolean> {
+  if (source === 'discord') {
+    return isGuildChannelType(cachedOnly ? cachedChat(hermitDir, chatId) : await lookupChat(hermitDir, config, chatId));
+  }
+  return Boolean(config?.channels?.[source]?.attributes?.thread_id);
+}
+
 // Unlike the cached lookups above this is a non-idempotent write, so it takes the
 // same 10s budget channel-send.ts gives its POSTs rather than the 2s a cache miss
 // can afford: a timeout here can leave a thread created in the operator's server
