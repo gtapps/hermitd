@@ -166,10 +166,12 @@ function buildCompactionPointers(agentDir: string): string {
 }
 
 // --- Residency: resident vs guest ---------------------------------------
-// hermitd-start marks resident launches with HERMIT_RESIDENT=1. Other sessions
-// are guests even when the resident is stopped. A session carrying the flag but
-// not holding the registry stamp is also a guest. The tmux liveness check below
-// only determines whether the guest banner can point to a running resident.
+// hermitd-start marks resident launches with HERMIT_RESIDENT=1; a `claude plugin
+// eval` case sets EVAL_HERMIT_RESIDENT=1 instead, since only EVAL_* variables
+// reach an eval run. Other sessions are guests even when the resident is
+// stopped. A session carrying the flag but not holding the registry stamp is
+// also a guest. The tmux liveness check below only determines whether the
+// guest banner can point to a running resident.
 function residentSessionActive(agentDir: string): boolean {
   const runtime = readRuntimeJson(path.resolve(agentDir, 'state'));
   const tmuxSession = runtime && typeof runtime.tmux_session === 'string' ? runtime.tmux_session : '';
@@ -299,7 +301,8 @@ function main(source: string | null, sessionId: string | null) {
   const stateDir = path.resolve(AGENT_DIR, 'state');
   stampSessionEnv(stateDir, sessionId);
   pruneGuestMarkers(stateDir);
-  if (process.env.HERMIT_RESIDENT !== '1' || !ownsResidentIdentity(readRuntimeJson(stateDir))) {
+  const flagged = process.env.HERMIT_RESIDENT === '1' || process.env.EVAL_HERMIT_RESIDENT === '1';
+  if (!flagged || !ownsResidentIdentity(readRuntimeJson(stateDir))) {
     // The banner only reaches the model; the marker is what the state-writing
     // hooks read, since they run per turn with no model in the loop.
     markGuest(stateDir, sessionId);

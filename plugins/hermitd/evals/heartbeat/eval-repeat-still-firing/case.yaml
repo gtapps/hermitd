@@ -1,0 +1,93 @@
+schema_version: "1.1"
+name: eval-repeat-still-firing
+description: 'An item already alerted and suppressed is still true: it must keep firing (absence would resolve it).'
+tags: [heartbeat, heldout]
+expected_outcome: 'One firing entry for the root disk item despite the existing suppressed alert.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep]
+  append_system_prompt: |
+    You are a generic, isolated-context analysis runner. Your dispatch names one or more instruction files (a `reference.md` or equivalent spec) and the inputs to use. Read each named file and do exactly what it specifies — perform the reads and computations it lists, and return exactly the output it defines, nothing more (no extra prose unless the spec asks for it). When several specs are named in one dispatch, each governs only its own steps and its own keys; merge their outputs into one JSON object and never let one spec's instructions override another's.
+
+    Each dispatched spec is the source of truth for what you read, what you return, and what you defer to the caller. Follow its instructions verbatim in both directions: when it says "populate this field instead of writing the file" or "return this rather than notifying", defer and let the calling skill apply that side effect on its own turn; when it explicitly instructs you to write a file or run a mutating command, perform that write yourself and report the real outcome. Only when a spec is silent on whether to act should you prefer the read-only option and surface the result in your return value instead.
+  prompt: |
+    <system-reminder>
+    Hermit state for this evaluation. This session has no shell and the hermit state directory is not on disk: each block below is that file's content (or that command's output) right now. Use it as the file; do not try to read state files or run commands for them, directly or through subagents.
+    Now: 2026-10-01T14:30:00+01:00 (timezone Europe/Lisbon; today is 2026-10-01).
+    --- .hermit/HEARTBEAT.md ---
+    # Heartbeat Checklist
+    <!-- End each item with [ask] (default), [act], or [note] to set its trust policy; keep the token trailing so its item key stays stable. -->
+    <!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
+
+    ## Standing Checks
+    - Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
+    - Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
+
+    ## Project Checks
+    - Root disk usage above 85% [ask]
+    --- .hermit/state/doctor-report.json ---
+    {
+      "generated_at": "2026-10-01T14:00:03+01:00",
+      "checks": [
+        {
+          "id": "runtime",
+          "status": "ok"
+        },
+        {
+          "id": "credential-expiry",
+          "status": "ok",
+          "detail": "Discord bot token valid for 41 more days."
+        }
+      ]
+    }
+    --- .hermit/state/alert-state.json ---
+    {
+      "total_ticks": 212,
+      "alerts": {
+        "checklist:rootdisk": {
+          "count": 9,
+          "suppressed": true,
+          "consecutive_clean": 0,
+          "first_seen": "2026-09-30T09:00:00+01:00",
+          "text": "Root disk is 90% full."
+        }
+      },
+      "last_digest_date": "2026-10-01"
+    }
+    --- df -h / ---
+    Filesystem      Size  Used Avail Use% Mounted on
+    /dev/sda1       200G  184G  16G  92% /
+    --- proposals/ ---
+    (no files)
+    </system-reminder>
+    Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
+graders:
+  - name: json-only
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*\{[\s\S]*"firing"[\s\S]*\}\s*$'
+  - name: no-reserved-keys
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'proposal-pending|micro-proposal-pending|doctor:'
+    match: 'not_contains'
+  - name: no-internal-ids
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'PROP-\d|\bT-\d{8}|\bMP-\d'
+    match: 'not_contains'
+  - name: fires-1
+    type: 'regex'
+    target: 'last_message'
+    pattern: '"(?:item|key)"\s*:'
+    match: 'count:1'
+    weight: 3
+  - name: disk-item
+    type: 'regex'
+    target: 'last_message'
+    pattern: '"item"\s*:\s*"(?:- )?Root disk usage'
+    flags: 'i'
+    weight: 2

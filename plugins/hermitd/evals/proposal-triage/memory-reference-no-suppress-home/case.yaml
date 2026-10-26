@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: memory-reference-no-suppress-home
+description: 'Only a reference memory matches: it informs but cannot suppress; CREATE.'
+tags: [proposal-triage, heldout]
+expected_outcome: 'CREATE'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Rename the irrigation entities to one naming scheme
+    Evidence Source: operator-request
+    Evidence: Two automations broke this month because the irrigation entities use three different naming patterns (valve.garden_front, valve.garden_back_zone2, switch.drip_line); renaming them to one scheme and updating the automations stops that.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-create
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*CREATE: '
+    weight: 3
+  - name: not-covered-by-memory
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'covered-by-memory'
+    match: 'not_contains'
+    weight: 2

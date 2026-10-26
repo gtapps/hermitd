@@ -1,0 +1,39 @@
+schema_version: "1.1"
+name: not-actionable-shop
+description: 'Vague improvement with no concrete change: SUPPRESS not-actionable.'
+tags: [proposal-triage, heldout]
+expected_outcome: 'SUPPRESS … not-actionable'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Make the shop run better
+    Evidence Source: current-session
+    Evidence: Things felt hectic this week across orders, emails and stock; the shop should generally run more smoothly.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-suppress
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*SUPPRESS: [^\n]*not-actionable'
+    weight: 3
+  - name: meta-failed_condition
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*failed_condition: operator-actionable'
+    weight: 1

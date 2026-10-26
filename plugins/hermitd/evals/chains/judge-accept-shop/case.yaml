@@ -1,0 +1,30 @@
+schema_version: "1.1"
+name: judge-accept-shop
+description: 'Two task records independently show the same failure: ACCEPT.'
+tags: [chains, train]
+expected_outcome: 'ACCEPT: Check supplier invoice VAT numbers …'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running reflect's evidence validation step for this hermit. Dispatch the `hermitd:reflection-judge` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Candidate: Check supplier invoice VAT numbers before filing
+    Tier: 2
+    Evidence Source: archived-session
+    Evidence: Supplier invoices were filed with the wrong VAT number in two separate weeks and had to be reissued.
+    Sessions: T-20261003-090000, T-20261010-090000
+
+    Task records:
+    [{"source_path":".hermit/tasks/T-20261003-090000.md","outcome":"done","result":null,"title":"File September supplier invoices","opened_at":"2026-10-03T09:00:00+01:00","requester":"operator","waiting_on":null,"lessons":["2026-10-03T10:00:00+01:00: Two invoices carried the old VAT number and had to be reissued by the supplier."],"decisions":[]},{"source_path":".hermit/tasks/T-20261010-090000.md","outcome":"done","result":null,"title":"File the tea wholesaler invoice","opened_at":"2026-10-10T09:00:00+01:00","requester":"operator","waiting_on":null,"lessons":["2026-10-10T11:00:00+01:00: The wholesaler invoice used the previous VAT number again; asked them to reissue it."],"decisions":[]}]
+    </input>
+graders:
+  - {"name":"dispatched-reflection-judge","type":"tool_used","tool":"Agent","input_match":"reflection-judge"}
+  - {"name":"verdict-accept","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*ACCEPT[^\\n]*VAT","weight":3}
+  - {"name":"not-suppressed","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*(SUPPRESS|DOWNGRADE)","weight":2,"match":"not_contains"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final reply is only the judge verdict and it accepts the VAT-number candidate. FAIL if it suppresses or downgrades it, or adds commentary beyond the verdict.","weight":2}

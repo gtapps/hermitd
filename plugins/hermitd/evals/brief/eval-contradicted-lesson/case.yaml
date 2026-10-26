@@ -1,0 +1,43 @@
+schema_version: "1.1"
+name: eval-contradicted-lesson
+description: 'Evening findings respect the final task result and healthy precheck skips.'
+tags: [brief, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep]
+  append_system_prompt: |
+    You are a generic, isolated-context analysis runner. Your dispatch names one or more instruction files (a `reference.md` or equivalent spec) and the inputs to use. Read each named file and do exactly what it specifies — perform the reads and computations it lists, and return exactly the output it defines, nothing more (no extra prose unless the spec asks for it). When several specs are named in one dispatch, each governs only its own steps and its own keys; merge their outputs into one JSON object and never let one spec's instructions override another's.
+
+    Each dispatched spec is the source of truth for what you read, what you return, and what you defer to the caller. Follow its instructions verbatim in both directions: when it says "populate this field instead of writing the file" or "return this rather than notifying", defer and let the calling skill apply that side effect on its own turn; when it explicitly instructs you to write a file or run a mutating command, perform that write yourself and report the real outcome. Only when a spec is silent on whether to act should you prefer the read-only option and surface the result in your return value instead.
+  prompt: |
+    <system-reminder>
+    Hermit state for this evaluation. This session has no shell and the hermit state directory is not on disk: each block below is that command's output right now. Use it as the output; do not try to read state files or run commands for them, directly or through subagents.
+    Mode: evening. Today: 2026-10-16. Now: 2026-10-16T19:00:00+01:00.
+    --- task-report --limit 20 ---
+    [{"source_path":".hermit/tasks/T-20261014-100000.md","outcome":"done","result":"The integration test worked on all three targets: Linux, macOS and Windows. All three targets passed the final verification.","result_at":"2026-10-16T17:00:00+01:00","closed_reason":"All three targets verified","title":"Verify the integration test across three targets","opened_at":"2026-10-14T10:00:00+01:00","closed_at":"2026-10-16T17:10:00+01:00","requester":"operator","due":null,"waiting_on":null,"cost":0.25,"lessons":["2026-10-14T11:00:00+01:00: The integration test does not work on macOS."],"decisions":[]}]
+    --- task-list --open --owner resident --json ---
+    []
+    --- duties-summary ---
+    routine:doctor: requested enabled=true, schedule=0 9 * * *, mode=monitor; observed pid=1234, last_woke=2026-10-11T09:00:00+01:00, last_event=skipped-precheck@2026-10-16T09:00:00+01:00
+    </system-reminder>
+    Read `spec/brief-reference.md` for the complete evaluation instructions. Execute the evening evaluation against the supplied task-report, task-list and duties-summary outputs, with today set to 2026-10-16. Return exactly the JSON object specified by the reference, without prose. The calling session handles delivery.
+graders:
+  - name: json-only
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*(?:```(?:json)?\s*)?\{[\s\S]*"sessions_today"[\s\S]*"findings"[\s\S]*\}\s*(?:```\s*)?$'
+  - name: no-contradicted-finding
+    type: 'regex'
+    target: 'last_message'
+    pattern: '"findings"\s*:\s*\[[^\]]*does not work[^\]]*\]'
+    flags: 'i'
+    match: 'not_contains'
+  - name: no-missed-routine
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'missed|not\s+(?:been\s+)?run|hasn.t\s+(?:been\s+)?run|has\s+not\s+(?:been\s+)?run|did\s+not\s+run|didn.t\s+run'
+    flags: 'i'
+    match: 'not_contains'

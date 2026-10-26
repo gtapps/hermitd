@@ -1,0 +1,39 @@
+schema_version: "1.1"
+name: weak-consequence-home
+description: 'Cosmetic idea with no real consequence: SUPPRESS weak-consequence.'
+tags: [proposal-triage, train]
+expected_outcome: 'SUPPRESS … weak-consequence'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Add a weather emoji to the morning brief header
+    Evidence Source: capability-brainstorm
+    Evidence: The morning brief header is plain text; an emoji for the forecast would make it look friendlier.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-suppress
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*SUPPRESS: [^\n]*weak-consequence'
+    weight: 3
+  - name: meta-failed_condition
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*failed_condition: meaningful-consequence'
+    weight: 1

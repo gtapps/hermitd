@@ -1,0 +1,44 @@
+schema_version: "1.1"
+name: operator-conflict-home
+description: 'OPERATOR.md lexically rules out more reports: metadata aligned: false with the excerpt.'
+tags: [proposal-triage, train]
+expected_outcome: 'aligned: false and operator_excerpt quoting the reports line'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Weekly water usage report
+    Evidence Source: scheduled-check/utilities
+    Evidence: The August water bill doubled and a dripping outdoor tap went unnoticed for three weeks; a weekly water report would have shown the jump.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: any-verdict
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*(CREATE|SUPPRESS|DUPLICATE): '
+    weight: 1
+  - name: meta-aligned
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*aligned: false'
+    weight: 3
+  - name: meta-operator_excerpt
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*operator_excerpt: "?[^\n]*report'
+    weight: 2

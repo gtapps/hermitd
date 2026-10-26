@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: proposal-create-duplicate-shop
+description: 'proposal-create gates through triage, which finds the open duplicate; nothing is created.'
+tags: [chains, train]
+expected_outcome: 'Triage dispatched; the existing proposal is named; no new proposal'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 16
+  timeout_seconds: 600
+  allowed_tools: [Skill, Agent, Read, Glob, Grep]
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
+    - proposal-anchor: `Anchor: root=<cwd>/.hermit memory_dir=<cwd>/memory`, where <cwd> is the absolute path of your current working directory; write the line with that path substituted.
+    - proposal-gate (stdin Title/Verdict): maps the verdict line to JSON. Triage gate: `CREATE: …` → {"status":"create"}; `SUPPRESS: … — <code>: …` → {"status":"suppress","code":"<code>"}; `DUPLICATE: … — <PROP-ID>` → {"status":"duplicate","id":"<PROP-ID>"}. Judge gate: `ACCEPT…` → {"status":"accept"}; `DOWNGRADE:<N>…` → {"status":"downgrade","tier":<N>}; `SUPPRESS…` → {"status":"suppress","code":"<code>"}. Anything else → {"status":"gate_failed"}.
+    - proposal.ts create: {"id":"PROP-032-chase-overdue-invoices-100000"} (only once triage returns create)
+    </system-reminder>
+    Run `/hermitd:proposal-create` with this candidate. Title: Chase overdue wholesale invoices automatically. Evidence Source: operator-request. Evidence: Three wholesale invoices are more than 20 days overdue and I keep forgetting to chase them.
+graders:
+  - {"name":"dispatched-proposal-triage","type":"tool_used","tool":"Agent","input_match":"proposal-triage"}
+  - {"name":"names-existing","type":"regex","target":"last_message","pattern":"PROP-021","weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final message says the idea already exists as an open proposal and that no new proposal was created. FAIL if it reports creating one.","weight":2}

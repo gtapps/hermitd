@@ -1,0 +1,39 @@
+schema_version: "1.1"
+name: memory-feedback-home
+description: 'Operator feedback memory already rules the idea out: SUPPRESS covered-by-memory with memory_ref.'
+tags: [proposal-triage, train]
+expected_outcome: 'SUPPRESS … covered-by-memory, memory_ref: feedback_no_camera_automations.md'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Use the living-room camera to tell when the cat's bowl is empty
+    Evidence Source: capability-brainstorm
+    Evidence: The cat's bowl was found empty at dinner twice this week; the living-room camera can see the bowl.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-suppress
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*SUPPRESS: [^\n]*covered-by-memory'
+    weight: 3
+  - name: meta-memory_ref
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*memory_ref: feedback_no_camera_automations\.md'
+    weight: 2

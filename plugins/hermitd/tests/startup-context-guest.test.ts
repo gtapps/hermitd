@@ -41,6 +41,7 @@ function fixture(dir: string, opts: { tmuxSession?: string; tmuxExit?: number; p
 
   return {
     HERMIT_RESIDENT: '',
+    EVAL_HERMIT_RESIDENT: '',
     AGENT_DIR: path.join(dir, '.hermit'),
     PATH: `${binDir}:${process.env.PATH ?? ''}`,
   };
@@ -76,6 +77,20 @@ describe('startup-context.ts — resident vs guest', () => {
       }
     });
   }
+
+  it('eval-run resident flag gets the full framing; no flag gets the guest banner', async () => {
+    const wd = setupWorkdir();
+    try {
+      const env = fixture(wd.dir, { tmuxSession: SESSION, tmuxExit: 1 });
+      const asEval = await run(wd.dir, { ...env, HERMIT_MANAGED: '', EVAL_HERMIT_RESIDENT: '1' });
+      expect(asEval.exitCode).toBe(0);
+      expect(asEval.stdout).toContain('---Open tasks---');
+      const neither = await run(wd.dir, { ...env, HERMIT_MANAGED: '', EVAL_HERMIT_RESIDENT: '' });
+      expect(neither.stdout).toContain('---Guest Session---');
+    } finally {
+      wd.cleanup();
+    }
+  });
 
   it('managed session gets the full framing even while its tmux session is alive', async () => {
     const wd = setupWorkdir();

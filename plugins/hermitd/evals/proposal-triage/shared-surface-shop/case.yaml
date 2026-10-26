@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: shared-surface-shop
+description: 'Shares the invoice surface with a proposed proposal but solves a different problem: CREATE.'
+tags: [proposal-triage, heldout]
+expected_outcome: 'CREATE (not DUPLICATE of PROP-021)'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Alert me when a customer card payment fails
+    Evidence Source: scheduled-check/payments
+    Evidence: The payment provider declined 6 card payments in September and I learned about each only when the customer emailed, days later; two orders were lost. A same-day alert from the provider webhook would let me follow up.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-create
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*CREATE: '
+    weight: 3
+  - name: not-duplicate
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*DUPLICATE:'
+    match: 'not_contains'
+    weight: 2
