@@ -13,7 +13,7 @@ execution:
   prompt: |
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
-    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator); channels.discord.default_chat_id="400000000000000001".
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-index (proposals-index.json): [{"id":"PROP-022","n":22,"status":"proposed","title":"Archive old helper reports"}]

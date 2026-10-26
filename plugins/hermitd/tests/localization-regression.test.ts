@@ -23,6 +23,7 @@ describe('en catalog byte-identity (pre-refactor literals)', () => {
     expect(STATUS.en.redactedWorking()).toBe('Working.');
     expect(STATUS.en.redactedIdle()).toBe('Idle.');
     expect(STATUS.en.oneApproval('ID')).toBe('1 approval waiting (reply "ID yes/no").');
+    expect(STATUS['pt-PT'].oneApproval('ID')).toBe('1 aprovação pendente (responda "ID sim/não").');
     expect(STATUS.en.nApprovals(3)).toBe('3 approvals waiting.');
     expect(STATUS.en.nextRoutine('08', '30', 'reflect')).toBe('Next routine: 08:30 (reflect).');
     expect(STATUS.en.allQuiet()).toBe('All quiet — nothing in progress, nothing waiting.');
