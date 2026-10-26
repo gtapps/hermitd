@@ -2,7 +2,7 @@
 
 ## Micro-approval response
 
-- **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
+- **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
   - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --reply "<token>"`, using this chat's normalized key; pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match. Follow its `status`:
     - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
@@ -34,6 +34,6 @@
 
 - **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified yes/later/no reply, card in view or not — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)
   - **Map the reply to an action by its meaning, in any language; do not match keywords.** A reply meaning go ahead → `accept`, hold for later → `defer`, drop it → `dismiss` (e.g. `YES`/"sim" → `accept`, `LATER`/"depois" → `defer`, `NO`/"não" → `dismiss`). A one-word reply with that meaning is a bare reply below, not a reason to ask again. `accept PROP-`/`approve PROP-` phrasing maps to `accept` directly.
-  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." For a bare reply, filter to `status: "proposed"`: apply when exactly one exists and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
+  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." A bare reply that confirms a selected task (`SKILL.md` §1) or answers your own last question is not a Proposal approval. For any other bare reply, filter to `status: "proposed"`: apply when exactly one exists and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
   - Never surface internal proposal fields back to the channel (the exact list and `#N` derivation are canonical in `proposal-list` §4a) — confirm using the Suggestion number (see `proposal-act`'s channel-tagged notify).
 
