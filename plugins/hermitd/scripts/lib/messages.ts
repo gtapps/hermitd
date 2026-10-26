@@ -261,6 +261,7 @@ export interface WatchdogMessages {
   pauseUntilResume(label: string): string;
   pauseUntilDate(label: string, boundary: string): string;
   stallQuestion(hhmm: string): string;
+  stallPermission(hhmm: string): string;
   sessionWedged(hhmm: string): string;
   orphan(hhmm: string): string;
   lapsedLogin(hhmm: string, howToFix: string): string;
@@ -287,6 +288,8 @@ export const WATCHDOG: Localized<WatchdogMessages> = {
     pauseUntilDate: (label, boundary) => `Your agent is paused (${label}) until ${boundary}.`,
     stallQuestion: (hhmm) =>
       `Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer (${hhmm}).`,
+    stallPermission: (hhmm) =>
+      `The agent asked for permission to continue and is waiting for an answer (${hhmm}). It will pick up where it left off once someone approves.`,
     sessionWedged: (hhmm) =>
       `Your agent has stopped picking up its scheduled work — something on screen is holding it. Open the terminal or Claude app and clear whatever is waiting there (${hhmm}).`,
     orphan: (hhmm) =>
@@ -320,6 +323,8 @@ export const WATCHDOG: Localized<WatchdogMessages> = {
     pauseUntilDate: (label, boundary) => `O seu agente está em pausa (${label}) até ${boundary}.`,
     stallQuestion: (hhmm) =>
       `O seu agente está à espera de uma pergunta que não pode fazer pelo chat — abra o terminal ou a app Claude para responder (${hhmm}).`,
+    stallPermission: (hhmm) =>
+      `O agente pediu autorização para continuar e está à espera de resposta (${hhmm}). Retoma onde parou assim que alguém aprovar.`,
     sessionWedged: (hhmm) =>
       `O seu agente deixou de executar o trabalho agendado — algo no ecrã está a bloqueá-lo. Abra o terminal ou a app Claude e resolva o que está à espera (${hhmm}).`,
     orphan: (hhmm) =>

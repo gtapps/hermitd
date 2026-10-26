@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Stall notice for a permission prompt the channel relayed says someone was asked to approve, instead of sending operators to the terminal
+
 ## [1.4.22] - 2026-10-25
 
 ### Added
