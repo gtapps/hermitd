@@ -251,7 +251,7 @@ function tick(status: string, { reason, hash, detail, budget, queue, model = 'ha
 function runCase(name: string, tag: string, desc: string, expected: string, lines: string[], graders: Grader[], escalation = 'balanced', language?: string): void {
   const config = { agent_name: 'assistant', timezone: 'Europe/Lisbon', escalation, ...(language ? { language } : {}),
     channels: { discord: { enabled: true, allowed_users: [USER], default_chat_id: CHAT } } };
-  // No hook injects these config facts; the stand-in line keeps them in front of the handler, as channel-routing does.
+  // SessionStart injects only the language; the stand-in line keeps the other config facts in front of the handler, as channel-routing does.
   const configLine = `- config.json: escalation=${escalation}; ${language ? `language=${language}` : 'language unset'}; channels.discord enabled, default_chat_id=${CHAT}`;
   const state = '<system-reminder>\nHermit state for this turn. This session has no shell: each line below is what that hermit script returns '
     + 'right now. Use it as the script result; do not try to run scripts, directly or through subagents. '

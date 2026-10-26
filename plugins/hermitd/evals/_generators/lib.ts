@@ -66,7 +66,7 @@ const VERSION_SH = String.raw`ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]
  * files named in `copies` (copied at run time), and fixture files.
  */
 export function residentScaffold(config: object, fixtures: Record<string, string> = {}, copies: [string, string][] = []): string {
-  const files = { '.hermit/OPERATOR.md': '# Operator\n\nRuns a small online tea shop alone. Prefers short messages.\n', 'memory/MEMORY.md': '', ...fixtures };
+  const files = { 'memory/MEMORY.md': '', ...fixtures };
   const sh = ['#!/usr/bin/env bash', '# Seeds a resident hermit state dir for this case (runs only with --scaffold).', 'set -e',
     'here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"', 'mkdir -p .hermit/tasks .hermit/state',
     'cp "$here/../../../state-templates/TASKS.md.template" .hermit/TASKS.md',
