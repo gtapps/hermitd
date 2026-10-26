@@ -41,6 +41,7 @@ function fixture(dir: string, opts: { tmuxSession?: string; tmuxExit?: number; p
 
   return {
     HERMIT_RESIDENT: '',
+    EVAL_HERMIT_RESIDENT: '',
     AGENT_DIR: path.join(dir, '.hermit'),
     PATH: `${binDir}:${process.env.PATH ?? ''}`,
   };

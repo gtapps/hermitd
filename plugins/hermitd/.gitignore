@@ -6,3 +6,6 @@ graphify-out
 
 # claude plugin eval run output
 evals/results/
+
+# Python bytecode from the eval generators
+__pycache__/

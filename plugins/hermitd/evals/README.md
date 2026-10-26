@@ -2,7 +2,7 @@
 
 [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) suites for maintainers. The files are tracked in the repo and ship with the plugin, since the runner reads `evals/` below the plugin root, but nothing here runs in an installed hermit. Run output lands in `results/`, which is gitignored.
 
-Cases copy as little live text as possible. A scaffold seeds `.hermit/` and the case sets `EVAL_HERMIT_RESIDENT=1`, so the real SessionStart hook injects the live task policy and session context. What no hook can produce in an eval run is copied, and `tests/evals-drift.test.ts` fails when a copy goes stale: agent bodies and the resident prompt passed as `append_system_prompt`, and the channel reply reminder and responder nudge (hermitd's mod drops a prompt submitted as a bare `<channel>` envelope, so the UserPromptSubmit pipeline never runs on an eval prompt). Script output the model would fetch with Bash is a stand-in in a `Hermit state` block.
+Cases copy as little live text as possible. A scaffold seeds `.hermit/` and the case sets `EVAL_HERMIT_RESIDENT=1`, so the real SessionStart hook injects the live task policy and session context. What no hook can produce in an eval run is copied, and `tests/evals-drift.test.ts` fails when a copy goes stale: agent bodies and the resident prompt passed as `append_system_prompt`, and the channel reply reminder and responder nudge (hermitd's mod drops a prompt submitted as a bare `<channel>` envelope, so the UserPromptSubmit pipeline never runs on an eval prompt). Script output the model would fetch with Bash is a stand-in in a `Hermit state` block. One copy is not checked yet: the heartbeat `run-*` prompts carry a hand-copied excerpt of `prompts/resident.md` (labelled as SessionStart context), and it has already drifted from the live file. Appending the real resident prompt to those cases, as `chains` does, means regenerating and re-scoring the heartbeat suite.
 
 ## channel-routing
 
@@ -19,7 +19,7 @@ Two case families, tagged `heartbeat` plus `train` or `heldout`. Cases tagged `v
 
 ## brief
 
-The heldout evening case scores `skills/brief/reference.md` against a task whose final result contradicts an earlier lesson and a routine with an old `last_woke` beside a recent `skipped-precheck`. Its scaffold copies the live reference into `spec/brief-reference.md`, and the prompt carries the `skill-eval-runner` body and bounded command outputs. Graders check JSON-only output, exclusion of the contradicted finding, and no missed-run claim for the healthy precheck skip. Run with `--tag brief --scaffold`.
+The heldout evening case scores `skills/brief/reference.md` against a task whose final result contradicts an earlier lesson and a routine with an old `last_woke` beside a recent `skipped-precheck`. Its scaffold copies the live reference into `spec/brief-reference.md`, `append_system_prompt` carries the `skill-eval-runner` body, and the prompt carries bounded command outputs. Graders check JSON-only output, exclusion of the contradicted finding, and no missed-run claim for the healthy precheck skip. Run with `--tag brief --scaffold`.
 
 ## proposal-triage
 

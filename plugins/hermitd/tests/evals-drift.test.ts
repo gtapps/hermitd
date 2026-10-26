@@ -45,8 +45,9 @@ describe('eval case copies of live text', () => {
   test('channel reminder and nudge in every channel case match the UserPromptSubmit pipeline', async () => {
     const routed = CASES.filter(c => c.prompt.includes('<channel '));
     expect(routed.length).toBeGreaterThan(0);
-    // Each case gets its own workdir, so the pipeline runs are independent and can run concurrently.
-    const problems = await Promise.all(routed.map(async (c): Promise<string[]> => {
+    // Each case gets its own workdir, so the pipeline runs are independent; batch them so a
+    // loaded host running other suites does not get dozens of bun processes at once.
+    const check = async (c: Case): Promise<string[]> => {
       const envelope = c.prompt.match(/<channel [\s\S]*?<\/channel>/)?.[0];
       const userId = envelope?.match(/user_id="(\d+)"/)?.[1];
       if (!envelope || !userId) return [`${c.file}: no channel envelope`];
@@ -68,7 +69,9 @@ describe('eval case copies of live text', () => {
       } finally {
         wd.cleanup();
       }
-    }));
+    };
+    const problems: string[][] = [];
+    for (let i = 0; i < routed.length; i += 8) problems.push(...await Promise.all(routed.slice(i, i + 8).map(check)));
     expect(problems.flat()).toEqual([]);
   }, 60_000);
 });
