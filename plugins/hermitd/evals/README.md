@@ -84,7 +84,20 @@ chains: 0.862 overall for $2.34; chains-write: 0.908 for $1.55.
 | `task-answer-waiting-record-shop` | 1, 1, 1 |
 | `task-worker-needs-input-shop` | 0.38, 1, 1 |
 
-After the generators switched fixture JSON to compact `JSON.stringify` (no spaces after separators, non-ASCII written as itself), a rerun scored chains 0.875 ($2.23) and chains-write 0.978 ($1.72). No case flipped beyond the one-run variance above: `reflect-tier3-chain-shop` 0, 0, 0; `watch-relay-live-entry-shop` 1, 1, 1; `task-worker-needs-input-shop` 1, 1, 1; every other case unchanged.
+The generators then switched fixture JSON to plain `JSON.stringify`: compact for script output, indented for the state files and `config.json` the scripts write indented, and non-ASCII written as itself. The rerun scored chains 0.875 ($2.24) and chains-write 0.836 ($1.55). No case flipped beyond one-run variance: `reflect-tier3-chain-shop` 0, 0, 0; `watch-relay-live-entry-shop` 1, 1, 1; `task-answer-waiting-record-shop` 0.6, 1, 1 (one rubric miss on the chat messages); `task-worker-needs-input-shop` 1, 1, 0.13 (one run never dispatched the worker); every other case unchanged.
+
+heartbeat, first per-case baseline on the same settings: 0.908 for $6.98. Every `eval-*` case scores 1 on every run except two single `json-only` misses (`eval-assistant-injection`, `eval-injected-data`). The `run-*` cases that pass through alert-state fail the same graders on every run:
+
+| Case | Runs | Fails |
+|---|---|---|
+| `run-new-finding-notify`, `run-new-finding-pt` | 0.25, 0.25, 0.25 | final token, the notice reply |
+| `run-two-notices-shop` | 0.25, 1, 0.25 | final token, both notices |
+| `run-self-eval-proposal` | 0.5, 0.5, 0.5 | `proposal-create` never invoked |
+| `run-repeat-finding-silent` | 0.71, 0.71, 0.71 | final token |
+| `run-evaluate-dispatch-haiku` | 0.83, 0.83, 0.83 | final token |
+| `run-budget-evaluate` | 0.86, 0.86, 1 | final token |
+
+The handler dispatches the evaluator and then stops before piping its return to alert-state. Running these cases with the earlier fixture spelling gave the same failures, so they predate the JSON change. Every `run-*` prompt carries the drifted `prompts/resident.md` excerpt described above; replacing it with the real resident prompt is the first thing to try.
 
 `reflect-tier3-chain-shop` scores low because the quick-mode path rarely sends a current-session external-content candidate through both gates, and once dispatched the judge before triage. The task cases show a fresh worker redoing finished work instead of resuming from the record notes, and the resident sometimes writing its own reply instead of the `[[helper-report <id>]]` placeholder.
 

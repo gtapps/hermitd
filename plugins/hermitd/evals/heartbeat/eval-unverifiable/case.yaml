@@ -29,7 +29,20 @@ execution:
     ## Project Checks
     - Error lines in the deploy log since the last tick [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
+    {
+      "generated_at": "2026-10-01T14:00:03+01:00",
+      "checks": [
+        {
+          "id": "runtime",
+          "status": "ok"
+        },
+        {
+          "id": "credential-expiry",
+          "status": "ok",
+          "detail": "Discord bot token valid for 41 more days."
+        }
+      ]
+    }
     --- tail -n 200 /srv/app/deploy.log ---
     tail: cannot open '/srv/app/deploy.log' for reading: No such file or directory
     --- proposals/ ---

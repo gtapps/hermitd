@@ -29,7 +29,20 @@ execution:
     ## Project Checks
     - Active tasks with no progress note in the last 4 hours [note]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
+    {
+      "generated_at": "2026-10-01T14:00:03+01:00",
+      "checks": [
+        {
+          "id": "runtime",
+          "status": "ok"
+        },
+        {
+          "id": "credential-expiry",
+          "status": "ok",
+          "detail": "Discord bot token valid for 41 more days."
+        }
+      ]
+    }
     --- task.ts list .hermit --open ---
     {"rows":[{"id":"T-20261001-083000","handle":"dep-upgrade","title":"Upgrade the date library","listing":["active"],"waiting_on":null,"updated_at":"2026-10-01T09:00:00+01:00","last_note":"[09:00] started on the upgrade"},{"id":"T-20261001-130000","handle":"logo-swap","title":"Swap the footer logo","listing":["active"],"waiting_on":null,"updated_at":"2026-10-01T14:10:00+01:00","last_note":"[14:10] new logo staged"}],"total":2,"omitted":0}
     --- proposals/ ---

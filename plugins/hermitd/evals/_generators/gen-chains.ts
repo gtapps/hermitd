@@ -14,7 +14,9 @@ const OUT = path.join(EVALS, 'chains');
 
 const CHAT = '400000000000000001';
 const USER = '100000000000000001';
-const RESIDENT_CONFIG = JSON.stringify({ agent_name: 'assistant', timezone: 'Europe/Lisbon', channels: { discord: { allowed_users: [USER] } } });
+const RESIDENT_CONFIG = { agent_name: 'assistant', timezone: 'Europe/Lisbon', channels: { discord: { allowed_users: [USER] } } };
+// config.json as config-write.ts writes it.
+const configJson = (v: object) => JSON.stringify(v, null, 2) + '\n';
 const VERSION_SH = String.raw`ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)`;
 const NO_SHELL = 'Hermit state for this turn. This session has no shell: each line below is what that hermit script returns '
   + 'right now. Use it as the script result; do not try to run scripts, directly or through subagents. '
@@ -30,7 +32,7 @@ function realOutput(script: string, ...args: string[]): string {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-chains-'));
   try {
     fs.mkdirSync(path.join(d, '.hermit', 'tasks'), { recursive: true });
-    fs.writeFileSync(path.join(d, '.hermit', 'config.json'), RESIDENT_CONFIG);
+    fs.writeFileSync(path.join(d, '.hermit', 'config.json'), configJson(RESIDENT_CONFIG));
     const r = Bun.spawnSync([process.execPath, path.join(PLUGIN, 'scripts', script), ...args], { cwd: d });
     if (r.exitCode !== 0) throw new Error(`${script} exited ${r.exitCode}: ${r.stderr.toString()}`);
     return r.stdout.toString().trim();
@@ -49,7 +51,8 @@ function residentScaffold(fixtures: Record<string, string> = {}, copies: [string
     'cp "$here/../../../state-templates/TASKS.md.template" .hermit/TASKS.md',
     // Stamp the loaded plugin version so the real SessionStart hook injects no upgrade notice.
     VERSION_SH,
-    'cat > .hermit/config.json <<HERMIT_CONFIG\n' + RESIDENT_CONFIG.slice(0, -1) + ',"_hermit_versions":{"hermitd":"$ver"}}\nHERMIT_CONFIG'];
+    // Unquoted heredoc, so bash expands $ver.
+    'cat > .hermit/config.json <<HERMIT_CONFIG\n' + configJson({ ...RESIDENT_CONFIG, _hermit_versions: { hermitd: '$ver' } }) + 'HERMIT_CONFIG'];
   for (const [src, dst] of copies) sh.push(`mkdir -p "${path.dirname(dst)}"`, `cp "$here/../../../${src}" "${dst}"`);
   sh.push(...heredocs(files));
   return sh.join('\n') + '\n';

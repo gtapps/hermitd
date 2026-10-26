@@ -29,9 +29,32 @@ execution:
     ## Project Checks
     - Nightly backup completed within the last 26 hours [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
+    {
+      "generated_at": "2026-10-01T14:00:03+01:00",
+      "checks": [
+        {
+          "id": "runtime",
+          "status": "ok"
+        },
+        {
+          "id": "credential-expiry",
+          "status": "ok",
+          "detail": "Discord bot token valid for 41 more days."
+        }
+      ]
+    }
     --- .hermit/state/alert-state.json ---
-    {"total_ticks":88,"alerts":{"checklist:nightlyb":{"count":3,"suppressed":false,"consecutive_clean":0,"text":"Last night's backup did not run."}}}
+    {
+      "total_ticks": 88,
+      "alerts": {
+        "checklist:nightlyb": {
+          "count": 3,
+          "suppressed": false,
+          "consecutive_clean": 0,
+          "text": "Last night's backup did not run."
+        }
+      }
+    }
     --- cat /srv/backup/last-run.json ---
     {"last_success":"2026-09-29T02:10:00+01:00","last_attempt":"2026-10-01T02:00:00+01:00","last_error":"target unreachable"}
     --- proposals/ ---

@@ -69,7 +69,7 @@ export function heredocs(files: Record<string, string>): string[] {
 export function scaffold(universe: Universe, withConfig = true): string {
   const files: Record<string, string> = {};
   const root = '.hermit';
-  if (withConfig) files[`${root}/config.json`] = '{"agent_name":"assistant","timezone":"Europe/Lisbon"}\n';
+  if (withConfig) files[`${root}/config.json`] = JSON.stringify({ agent_name: 'assistant', timezone: 'Europe/Lisbon' }, null, 2) + '\n';
   const entries: Entry[] = [];
   for (const [fname, body, entry] of universe.proposals) {
     files[`${root}/proposals/${fname}`] = body;

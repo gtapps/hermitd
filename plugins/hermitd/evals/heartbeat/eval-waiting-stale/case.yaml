@@ -29,7 +29,20 @@ execution:
     ## Project Checks
     - Any task waiting on a human for more than 24 hours [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
+    {
+      "generated_at": "2026-10-01T14:00:03+01:00",
+      "checks": [
+        {
+          "id": "runtime",
+          "status": "ok"
+        },
+        {
+          "id": "credential-expiry",
+          "status": "ok",
+          "detail": "Discord bot token valid for 41 more days."
+        }
+      ]
+    }
     --- task.ts list .hermit --open ---
     {"rows":[{"id":"T-20260930-080000","handle":"invoice-export","title":"Export September invoices","listing":["active"],"waiting_on":"discord:100000000000000001","waiting_since":"2026-09-30T08:00:00+01:00","updated_at":"2026-09-30T08:00:00+01:00"},{"id":"T-20261001-100000","handle":"readme-fix","title":"Fix README typo","listing":["active"],"waiting_on":null,"updated_at":"2026-10-01T13:50:00+01:00"}],"total":2,"omitted":0}
     --- proposals/ ---

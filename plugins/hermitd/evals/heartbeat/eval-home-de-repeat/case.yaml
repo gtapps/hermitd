@@ -24,7 +24,17 @@ execution:
     - Garagentor länger als 30 Minuten offen [ask]
     - Waschmaschine meldet einen Fehler [ask]
     --- .hermit/state/alert-state.json ---
-    {"total_ticks":61,"alerts":{"checklist:garagent":{"count":6,"suppressed":true,"consecutive_clean":0,"text":"Das Garagentor ist seit über 30 Minuten offen."}}}
+    {
+      "total_ticks": 61,
+      "alerts": {
+        "checklist:garagent": {
+          "count": 6,
+          "suppressed": true,
+          "consecutive_clean": 0,
+          "text": "Das Garagentor ist seit über 30 Minuten offen."
+        }
+      }
+    }
     --- ha-states (Home Assistant, now) ---
     [{"entity_id":"cover.garage_door","state":"open","last_changed":"2026-10-01T13:20:00+01:00"},{"entity_id":"sensor.washer_error","state":"none"}]
     </system-reminder>

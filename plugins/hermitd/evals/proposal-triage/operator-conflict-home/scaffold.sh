@@ -24,7 +24,10 @@ Average daily use 9.4 kWh.
 HERMIT_FIXTURE
 mkdir -p ".hermit"
 cat > '.hermit/config.json' <<'HERMIT_FIXTURE'
-{"agent_name":"assistant","timezone":"Europe/Lisbon"}
+{
+  "agent_name": "assistant",
+  "timezone": "Europe/Lisbon"
+}
 HERMIT_FIXTURE
 mkdir -p ".hermit/proposals"
 cat > '.hermit/proposals/PROP-004-washer-finished-notice-100000.md' <<'HERMIT_FIXTURE'

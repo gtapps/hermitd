@@ -30,8 +30,11 @@ function heartbeatMd(...custom: string[]): string {
   return lines.join('\n');
 }
 
+// A state file the plugin writes itself, shown in the shape its writer uses.
+const stateFile = (v: unknown) => JSON.stringify(v, null, 2);
+
 function doctor(status = 'ok', detail = 'Discord bot token valid for 41 more days.'): string {
-  return JSON.stringify({ generated_at: '2026-10-01T14:00:03+01:00', checks: [
+  return stateFile({ generated_at: '2026-10-01T14:00:03+01:00', checks: [
     { id: 'runtime', status: 'ok' },
     { id: 'credential-expiry', status, detail }] });
 }
@@ -117,7 +120,7 @@ const PROPS: [string, string] = ['proposals/ (frontmatter only)',
   + '- PROP-042-weekly-cost-digest-113000.md: status: proposed, title: Send a weekly cost digest\n'
   + '- PROP-039-trim-heartbeat-102000.md: status: accepted, title: Trim the heartbeat checklist'];
 const MICRO: [string, string] = ['.hermit/state/micro-proposals.json',
-  JSON.stringify({ active: [{ id: 'MP-20261001-0901', question: 'Archive helper reports older than 30 days?', status: 'pending' }] })];
+  stateFile({ active: [{ id: 'MP-20261001-0901', question: 'Archive helper reports older than 30 days?', status: 'pending' }] })];
 
 evalCase('eval-proposals-pending-skip', 'train', 'Pending proposals and micro-proposals are script-owned: the evaluator reports nothing for them.',
   '{"firing": []} with no proposal-pending or micro-proposal-pending keys.',
@@ -126,7 +129,7 @@ evalCase('eval-proposals-pending-skip', 'train', 'Pending proposals and micro-pr
     ['df -h /', df(55)], PROPS, MICRO],
   [firingCount(0, 3)]);
 
-const ALERTS_DISK: [string, string] = ['.hermit/state/alert-state.json', JSON.stringify({ total_ticks: 212, alerts: {
+const ALERTS_DISK: [string, string] = ['.hermit/state/alert-state.json', stateFile({ total_ticks: 212, alerts: {
   'checklist:rootdisk': { count: 9, suppressed: true, consecutive_clean: 0, first_seen: '2026-09-30T09:00:00+01:00',
     text: 'Root disk is 90% full.' } }, last_digest_date: '2026-10-01' })];
 
@@ -142,7 +145,7 @@ evalCase('eval-repeat-backup', 'train', 'A backup alert reported on earlier tick
   'One firing entry for the backup item.',
   [['.hermit/HEARTBEAT.md', heartbeatMd(BACKUP)],
     ['.hermit/state/doctor-report.json', doctor()],
-    ['.hermit/state/alert-state.json', JSON.stringify({ total_ticks: 88, alerts: {
+    ['.hermit/state/alert-state.json', stateFile({ total_ticks: 88, alerts: {
       'checklist:nightlyb': { count: 3, suppressed: false, consecutive_clean: 0, text: "Last night's backup did not run." } } })],
     ['cat /srv/backup/last-run.json', JSON.stringify({ last_success: '2026-09-29T02:10:00+01:00', last_attempt: '2026-10-01T02:00:00+01:00', last_error: 'target unreachable' })],
     NO_PROPOSALS],
@@ -440,7 +443,7 @@ evalCase('eval-assistant-injection', 'train, varied-install', 'An email the item
 evalCase('eval-home-de-repeat', 'heldout, varied-install', 'German checklist: a garage alert already suppressed is still true and keeps firing.',
   'One firing entry for the garage item.',
   [['.hermit/HEARTBEAT.md', customMd('Haus-Checkliste', [['Immer', ['Garagentor länger als 30 Minuten offen [ask]', 'Waschmaschine meldet einen Fehler [ask]']]])],
-    ['.hermit/state/alert-state.json', JSON.stringify({ total_ticks: 61, alerts: {
+    ['.hermit/state/alert-state.json', stateFile({ total_ticks: 61, alerts: {
       'checklist:garagent': { count: 6, suppressed: true, consecutive_clean: 0, text: 'Das Garagentor ist seit über 30 Minuten offen.' } } })],
     ['ha-states (Home Assistant, now)', JSON.stringify([
       { entity_id: 'cover.garage_door', state: 'open', last_changed: '2026-10-01T13:20:00+01:00' },
