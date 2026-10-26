@@ -27,7 +27,7 @@ Each case's `scaffold.sh` seeds `.hermit/` (config, proposals, `state/proposals-
 
 ## chains
 
-One case per agent chain that runs together in production, plus the rules a chain must not break: the shared end-to-end set that delegation changes (folding a subagent into the main loop, merging gates) are measured against. Compare runs case by case for flips, not only on the mean, and run each case more than once.
+One case per agent chain that runs together in production, plus the rules a chain must not break: the shared end-to-end set that delegation changes (folding a subagent into the main loop, merging gates) are measured against. Compare runs case by case for flips, not only on the mean, and run each case more than once. The method follows Anthropic's [Building agents: When to fold subagents into your main agent loop](https://claude.com/resources/articles/building-agents-when-to-fold-subagents-into-your-main-agent-loop): build the baseline before the first fold, and fold one subagent at a time.
 
 | Case | Chain | Measures |
 |---|---|---|
@@ -43,7 +43,7 @@ One case per agent chain that runs together in production, plus the rules a chai
 
 Resident cases append the resident prompt hermitd-start launches with and set `EVAL_HERMIT_RESIDENT=1`. Cases that write files are tagged `chains-write` and need `--allow-tools Write`, which applies to the whole run, so run that tag on its own; `--tag train` also selects them. Known gaps on a host where Bash cannot run in eval runs: the worker reaching `done`, the helper launch, and a real `evolve-runner` dispatch (its first steps run `claude --version` and `bun --version`), so `evolve-runner-template-conflict-home` runs the agent body directly. `task-worker-needs-input-shop` ends `needs-input` because the worker cannot run `task.ts`; it changes meaning once Bash works. Hand copies in the stand-ins: the `proposal-gate` verdict mapping, the watch registry and the task-report rows. `task.ts list` and the resident prompt are produced by the real code at generation time.
 
-`_generators/` holds the scripts that write the heartbeat, proposal-triage and chains suites: from the plugin root, `python3 evals/_generators/gen_<suite>.py evals`. Edit a generator and regenerate rather than hand-editing many `case.yaml` files.
+`_generators/` holds the Bun scripts that write the heartbeat, proposal-triage and chains suites (`bun evals/_generators/gen-<suite>.ts` from the plugin root, with `<suite>` one of `heartbeat`, `triage`, `chains`); `lib.ts` holds the helpers they share with each other and with the drift test, and `gen-chains.ts` reuses the triage fixtures from `gen-triage.ts`. Edit a generator and regenerate rather than hand-editing many `case.yaml` files, then check that `git diff evals/` shows only the change you meant.
 
 ## Running
 

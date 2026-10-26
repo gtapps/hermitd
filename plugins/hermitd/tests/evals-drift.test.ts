@@ -15,12 +15,9 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readFileWithFrontmatter } from '../scripts/lib/frontmatter';
-import { buildResidentPrompt } from '../scripts/lib/resident-prompt';
-import { PLUGIN_ROOT, runScript, walkFiles } from './helpers/run';
+import { EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
+import { runScript, walkFiles } from './helpers/run';
 import { setupWorkdir } from './helpers/workdir';
-
-const EVALS = path.join(PLUGIN_ROOT, 'evals');
 
 interface Case { file: string; prompt: string; appendSystemPrompt?: string }
 
@@ -31,11 +28,10 @@ const CASES: Case[] = walkFiles(EVALS, n => n === 'case.yaml', new Set(['results
 
 describe('eval case copies of live text', () => {
   test('every append_system_prompt is a shipped agent body or the shipped resident prompt', () => {
-    const agentsDir = path.join(PLUGIN_ROOT, 'agents');
-    const bodies = fs.readdirSync(agentsDir)
+    const bodies = fs.readdirSync(path.join(PLUGIN, 'agents'))
       .filter(f => f.endsWith('.md'))
-      .map(f => readFileWithFrontmatter(path.join(agentsDir, f))!.body.trim());
-    bodies.push(buildResidentPrompt('/nonexistent-project').trim());
+      .map(f => agentBody(f.slice(0, -3)));
+    bodies.push(residentPrompt());
     const withBody = CASES.filter(c => c.appendSystemPrompt !== undefined);
     expect(withBody.length).toBeGreaterThan(0);
     const stale = withBody.filter(c => !bodies.includes(c.appendSystemPrompt!.trim())).map(c => c.file);
