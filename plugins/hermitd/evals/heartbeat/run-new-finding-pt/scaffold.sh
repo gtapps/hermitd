@@ -11,6 +11,12 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
   "language": "pt-PT",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -27,16 +33,14 @@ cat > .hermit/config.json <<HERMIT_CONFIG
 HERMIT_CONFIG
 mkdir -p ".hermit"
 cat > '.hermit/HEARTBEAT.md' <<'HERMIT_FIXTURE'
-# Heartbeat Checklist
-<!-- End each item with [ask] (default), [act], or [note] to set its trust policy; keep the token trailing so its item key stays stable. -->
-<!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
+# Verificações da casa
 
-## Standing Checks
-- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
-- Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
+## Sempre
+- Rever `proposals/` com `status: proposed` à espera da minha decisão. Ignorar `accepted`, `resolved`, `deferred` e `dismissed`.
 
-## Project Checks
-- Root disk usage above 85% [ask]
+## Casa
+- Porta da frente destrancada depois das 23h [ask]
+- Temperatura do congelador acima de -15 °C [ask]
 HERMIT_FIXTURE
 mkdir -p ".hermit"
 cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'

@@ -10,6 +10,12 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -42,6 +48,24 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
 
 Prefers short messages.
+HERMIT_FIXTURE
+mkdir -p ".hermit/state"
+cat > '.hermit/state/alert-state.json' <<'HERMIT_FIXTURE'
+{
+  "alerts": {},
+  "total_ticks": 19,
+  "self_eval": {
+    "checklist:rootdiskusageabove85-ce2a4961": {
+      "text": "- Root disk usage above 85% [ask]",
+      "first_observed": "2026-09-20",
+      "clean_ticks": 19,
+      "noise_ticks": 0,
+      "sessions_seen": 3,
+      "last_session_id": "2026-09-30",
+      "proposed": false
+    }
+  }
+}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

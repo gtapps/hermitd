@@ -10,6 +10,12 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -26,16 +32,13 @@ cat > .hermit/config.json <<HERMIT_CONFIG
 HERMIT_CONFIG
 mkdir -p ".hermit"
 cat > '.hermit/HEARTBEAT.md' <<'HERMIT_FIXTURE'
-# Heartbeat Checklist
-<!-- End each item with [ask] (default), [act], or [note] to set its trust policy; keep the token trailing so its item key stays stable. -->
-<!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
+# Shop checks
 
-## Standing Checks
-- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
-- Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
+## Money
+- Unpaid invoices more than 7 days past their due date [ask]
 
-## Project Checks
-- Root disk usage above 85% [ask]
+## Stock
+- Any product with fewer than 5 units left [ask]
 HERMIT_FIXTURE
 mkdir -p ".hermit"
 cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'

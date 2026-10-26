@@ -79,10 +79,10 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
     - config.json: escalation=conservative; language unset; channels.discord enabled, default_chat_id=400000000000000001
-    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[],"queue":{"task_id":"T-20261001-091500","handle":"invoice-export","title":"Export September invoices","ack":"4be1c0d9"}},"model":"haiku","effort":null}
+    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[],"queue":{"task_id":"T-20261001-113000","handle":"export-september-invoices","title":"Export September invoices","ack":"03e703bb714fab0646032e082febe54b8d79b08e44181fa1fc8f55b66dc47b1f"}},"model":"haiku","effort":"high"}
     - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
-    - task.ts show .hermit T-20261001-091500: {"id":"T-20261001-091500","handle":"invoice-export","title":"Export September invoices","listing":["active"],"owner":"resident","requester":"discord:100000000000000001","conversation":"discord:400000000000000001","opened_at":"2026-10-01T09:15:00+01:00","waiting_on":null}
-    - heartbeat.ts ack-queue .hermit 4be1c0d9: {"acknowledged":true}
+    - task.ts list .hermit --id T-20261001-113000 --json: {"rows":[{"id":"T-20261001-113000","handle":"export-september-invoices","listing":["open"],"requester":"discord:100000000000000001","title":"Export September invoices","due":null,"result_rev":0,"owner":"resident","delegated":false,"skill_review":null,"result":null,"waiting_on":null,"closed_by":null,"check":null,"card_chat_id":null,"card_message_id":null}],"total":1,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
+    - heartbeat.ts ack-queue .hermit 03e703bb714fab0646032e082febe54b8d79b08e44181fa1fc8f55b66dc47b1f: {"acknowledged":true}
     - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[],"heartbeat_result":"ok"}
     </system-reminder>
     <task-notification>

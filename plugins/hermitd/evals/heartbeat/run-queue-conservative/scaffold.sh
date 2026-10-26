@@ -10,6 +10,15 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "conservative",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
+  "tasks": {
+    "queue_nudge_minutes": 60
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -42,6 +51,58 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
 
 Prefers short messages.
+HERMIT_FIXTURE
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20261001-113000.md' <<'HERMIT_FIXTURE'
+---
+id: T-20261001-113000
+type: task
+title: "Export September invoices"
+created: 2026-10-01T11:30:00.000Z
+summary: "September invoices exported for the accountant"
+audience: discord:400000000000000001
+status: open
+opened_at: 2026-10-01T11:30:00.000Z
+requester: discord:100000000000000001
+handle: export-september-invoices
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: discord:400000000000000001
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: null
+check: null
+skill_review: null
+muted: false
+delegated: false
+tags: ["task","discord:100000000000000001"]
+claims: []
+result_rev: 0
+---
+## Progress
+- 2026-10-01T11:30:00.000Z discord:100000000000000001: Opened: September invoices exported for the accountant
+
+## Decisions
+
+## Approvals
+
+## Lessons
+
+## Outcome
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

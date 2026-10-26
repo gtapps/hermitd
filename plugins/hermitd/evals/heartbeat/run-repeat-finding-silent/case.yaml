@@ -1,8 +1,8 @@
 schema_version: "1.1"
 name: run-repeat-finding-silent
-description: 'A finding already reported: alert-state returns ALERT with no notifications, so nothing is sent.'
+description: 'A finding already reported: alert-state returns ok with no notifications, so nothing is sent.'
 tags: [heartbeat, heldout]
-expected_outcome: 'HEARTBEAT_ALERT with zero replies.'
+expected_outcome: 'HEARTBEAT_OK with zero replies.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -79,9 +79,9 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
     - config.json: escalation=balanced; language unset; channels.discord enabled, default_chat_id=400000000000000001
-    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[]},"model":"haiku","effort":null}
+    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[]},"model":"haiku","effort":"high"}
     - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
-    - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[],"heartbeat_result":"alert"}
+    - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[],"heartbeat_result":"ok"}
     </system-reminder>
     <task-notification>
     <task-id>b7k2m9q4x</task-id>
@@ -100,10 +100,10 @@ graders:
     tool: 'Agent'
     input_match: 'skill-eval-runner'
     weight: 1
-  - name: final-heartbeat_alert
+  - name: final-heartbeat_ok
     type: 'regex'
     target: 'last_message'
-    pattern: 'HEARTBEAT_ALERT'
+    pattern: 'HEARTBEAT_OK'
     weight: 2
   - name: replies-0
     type: 'tool_used'

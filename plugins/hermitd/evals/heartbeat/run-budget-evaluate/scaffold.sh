@@ -10,6 +10,12 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -42,6 +48,24 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
 
 Prefers short messages.
+HERMIT_FIXTURE
+mkdir -p ".hermit/state"
+cat > '.hermit/state/budget-alerts.json' <<'HERMIT_FIXTURE'
+{
+  "alerts": {
+    "budget-warn:daily:2026-10-01": {
+      "kind": "budget",
+      "level": "warn",
+      "period": "daily",
+      "action": "alert",
+      "spend": 8,
+      "cap": 10,
+      "ratio": 0.8,
+      "notified": false,
+      "ts": "2026-10-01T13:00:00.000Z"
+    }
+  }
+}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

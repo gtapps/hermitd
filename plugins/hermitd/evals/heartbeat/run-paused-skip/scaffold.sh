@@ -10,6 +10,12 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
   "channels": {
     "discord": {
       "enabled": true,
@@ -42,6 +48,15 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
 
 Prefers short messages.
+HERMIT_FIXTURE
+mkdir -p ".hermit/state"
+cat > '.hermit/state/operator-pause.json' <<'HERMIT_FIXTURE'
+{
+  "paused": true,
+  "reason": "operator",
+  "by": "discord:100000000000000001",
+  "ts": "2026-10-01T12:00:00.000Z"
+}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

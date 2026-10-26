@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: run-self-eval-proposal
-description: 'The every-20-ticks self-evaluation returns a clean entry: create a capability proposal.'
+description: 'The every-20-ticks self-evaluation finds an item that stays quiet: create a capability proposal.'
 tags: [heartbeat, heldout]
 expected_outcome: 'proposal-create invoked; HEARTBEAT_OK.'
 context:
@@ -79,9 +79,9 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
     - config.json: escalation=balanced; language unset; channels.discord enabled, default_chat_id=400000000000000001
-    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[]},"model":"haiku","effort":null}
+    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[]},"model":"haiku","effort":"high"}
     - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
-    - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[{"key":"checklist:rootdisk","kind":"clean","clean_ticks":60,"noise_ticks":0,"sessions_seen":7}],"heartbeat_result":"ok"}
+    - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[{"key":"checklist:rootdiskusageabove85-ce2a4961","kind":"clean","clean_ticks":20,"noise_ticks":0,"sessions_seen":4}],"heartbeat_result":"ok"}
     </system-reminder>
     <task-notification>
     <task-id>b7k2m9q4x</task-id>

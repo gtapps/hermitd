@@ -10,6 +10,13 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   "agent_name": "assistant",
   "timezone": "Europe/Lisbon",
   "escalation": "balanced",
+  "heartbeat": {
+    "active_hours": {
+      "start": "08:00",
+      "end": "22:00"
+    },
+    "model": null
+  },
   "channels": {
     "discord": {
       "enabled": true,

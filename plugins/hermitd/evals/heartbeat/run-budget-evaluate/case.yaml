@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: run-budget-evaluate
-description: 'EVALUATE with a pending budget notice: deliver it, then evaluate.'
+description: 'Tick with a pending budget notice: deliver it, then evaluate.'
 tags: [heartbeat, train]
 expected_outcome: 'One reply carrying the budget notice; evaluation dispatched; HEARTBEAT_OK.'
 context:
@@ -79,9 +79,9 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
     - config.json: escalation=balanced; language unset; channels.discord enabled, default_chat_id=400000000000000001
-    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[{"text":"Daily spend passed 80% of the budget you set. Nothing is paused yet.","mark_key":"budget:daily:warn"}]},"model":"haiku","effort":null}
+    - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[{"text":"Heads up — today's spend is $8.00 of your $10.00 cap (80%).","mark_key":"budget-warn:daily:2026-10-01"}]},"model":"haiku","effort":"high"}
     - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
-    - cost-tracker.ts --mark-budget-notified <mark_key>: OK
+    - cost-tracker.ts --mark-budget-notified budget-warn:daily:2026-10-01: OK
     - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[],"heartbeat_result":"ok"}
     </system-reminder>
     <task-notification>

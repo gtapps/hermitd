@@ -4,6 +4,7 @@
 // compact for script stdout, indented where the script writes the file that way.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { readFileWithFrontmatter } from '../../scripts/lib/frontmatter';
@@ -77,6 +78,45 @@ export function residentScaffold(config: object, fixtures: Record<string, string
   for (const [src, dst] of copies) sh.push(`mkdir -p "${path.dirname(dst)}"`, `cp "$here/../../../${src}" "${dst}"`);
   sh.push(...heredocs(files));
   return sh.join('\n') + '\n';
+}
+
+/** The instant generation-time scripts see unless a call names another. */
+const GEN_NOW = '2026-10-01T13:30:00.000Z';
+
+interface Install {
+  /** Run a plugin script in the install under a frozen clock; returns its trimmed stdout. */
+  run(script: string, args: string[], opts?: { stdin?: string; now?: string }): string;
+  /** A file the scripts wrote, relative to the install root. */
+  read(rel: string): string;
+}
+
+/**
+ * Seed a throwaway hermit install from `files` (paths relative to the project root)
+ * and hand `fn` a runner for the real plugin scripts, so stand-ins are what the
+ * scripts print rather than hand copies. The install is removed afterwards.
+ */
+export function withInstall<T>(files: Record<string, string>, fn: (install: Install) => T): T {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-eval-gen-'));
+  try {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), body);
+    }
+    for (const dir of ['tasks', 'state']) fs.mkdirSync(path.join(root, '.hermit', dir), { recursive: true });
+    return fn({
+      run(script, args, { stdin, now = GEN_NOW } = {}) {
+        const r = Bun.spawnSync([process.execPath, '--preload', path.join(import.meta.dir, 'fixed-clock.ts'), path.join(PLUGIN, 'scripts', script), ...args], {
+          cwd: root, stdin: stdin === undefined ? 'ignore' : Buffer.from(stdin),
+          env: { ...process.env, HERMIT_NOW: now, AGENT_DIR: path.join(root, '.hermit') },
+        });
+        if (r.exitCode !== 0) throw new Error(`${script} ${args.join(' ')} exited ${r.exitCode}: ${r.stderr.toString()}`);
+        return r.stdout.toString().trim();
+      },
+      read: rel => fs.readFileSync(path.join(root, rel), 'utf-8'),
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 /** Write a case directory: case.yaml from its lines, plus an executable scaffold.sh when given. */

@@ -4,11 +4,10 @@
 // chain must not break. Run from anywhere: bun evals/_generators/gen-chains.ts
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { ANCHOR, HOME, SHOP, type Universe, candidate, scaffold as triageScaffold } from './gen-triage';
-import { CHAT, EVALS, type Grader, PLUGIN, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, writeCase, yq } from './lib';
+import { CHAT, EVALS, type Grader, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'chains');
 
@@ -23,20 +22,6 @@ const REMINDER = `[channel reply reminder] Inbound message arrived on the \`disc
   + 'Transcript/terminal output does not reach the operator.';
 const NUDGE = 'Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been '
   + 'observed in this session since the last context reset.';
-
-/** Run a real plugin script against an empty hatched state dir and return its stdout (path-independent output only). */
-function realOutput(script: string, ...args: string[]): string {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-chains-'));
-  try {
-    fs.mkdirSync(path.join(d, '.hermit', 'tasks'), { recursive: true });
-    fs.writeFileSync(path.join(d, '.hermit', 'config.json'), configJson(RESIDENT_CONFIG));
-    const r = Bun.spawnSync([process.execPath, path.join(PLUGIN, 'scripts', script), ...args], { cwd: d });
-    if (r.exitCode !== 0) throw new Error(`${script} exited ${r.exitCode}: ${r.stderr.toString()}`);
-    return r.stdout.toString().trim();
-  } finally {
-    fs.rmSync(d, { recursive: true, force: true });
-  }
-}
 
 const RESIDENT_PROMPT = residentPrompt();
 
@@ -164,7 +149,8 @@ chainCase('reflect-tier3-chain-shop', 'train', 'A current-session external-conte
 
 // --- task -> background task-worker (cases 6-7, Write granted) -----------
 
-const TASK_LIST_EMPTY = realOutput('task.ts', 'list', '.hermit', '--open', '--conversation', `discord:${CHAT}`, '--json');
+const TASK_LIST_EMPTY = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) },
+  ({ run }) => run('task.ts', ['list', '.hermit', '--open', '--conversation', `discord:${CHAT}`, '--json']));
 const envelope = (mid: string, body: string) => `<channel source="plugin:discord:discord" chat_id="${CHAT}" message_id="${mid}" user="sam" user_id="${USER}" `
   + `ts="2026-10-21T09:00:00.000Z">\n${body}\n</channel>`;
 const SUITE_TOOLS = JSON.parse(fs.readFileSync(path.join(EVALS, 'mocks', 'plugin_discord_discord', '_tools.json'), 'utf-8')).tools;
