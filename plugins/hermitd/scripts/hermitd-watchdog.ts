@@ -41,7 +41,7 @@ import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './li
 import { postToSession } from './lib/peer-post';
 import { findResident, type SessionEntry } from './lib/session-registry';
 import { costLogPath, transcriptDirFor } from './lib/cc-compat';
-import { iterChannelConfigs } from './lib/channel-config';
+import { getEnabledChannels } from './lib/channel-config';
 import { channelStateDir } from './lib/channel-token';
 import { readConfigRaw, readSettledConfig } from './lib/config-read';
 import { evaluateBackupDue } from './lib/backup';
@@ -278,17 +278,12 @@ export function composeStallPermissionMessage(timezone: string, locale: Locale =
   return WATCHDOG[locale].stallPermission(nowHHMM(timezone));
 }
 
-/** True when a channel's access.json lists at least one paired user, the relay's audience. Never throws. */
-function permissionRelayReachesAnyone(config: Json): boolean {
-  try {
-    for (const [name, cfg] of iterChannelConfigs(config)) {
-      try {
-        const access = JSON.parse(fs.readFileSync(path.join(channelStateDir(HERMIT_ROOT, name, cfg), 'access.json'), 'utf-8'));
-        if (Array.isArray(access?.allowFrom) && access.allowFrom.length > 0) return true;
-      } catch { /* missing or unreadable: not reached */ }
-    }
-  } catch { /* fail open */ }
-  return false;
+/** True when an enabled channel's access.json lists at least one paired user, the relay's audience. */
+function permissionRelayReachesAnyone(config: Json, world: World): boolean {
+  return getEnabledChannels(config).some((name) => {
+    const access = world.files.readJson(path.join(channelStateDir(world.paths.hermitRoot, name, config.channels[name]), 'access.json'));
+    return Array.isArray(access?.allowFrom) && access.allowFrom.length > 0;
+  });
 }
 
 /** Operator-language message for a session that stopped consuming its queued notifications. */
@@ -2131,7 +2126,7 @@ function stallQuestion({ world, config, timezone, snap }: RecoveryContext): Deci
     if (!watchdogState.stall_question_notified) {
       const waitingFor = typeof resident?.waitingFor === 'string' && resident.waitingFor ? resident.waitingFor : undefined;
       world.notify.operator(
-        waitingFor === 'permission prompt' && permissionRelayReachesAnyone(config)
+        waitingFor === 'permission prompt' && permissionRelayReachesAnyone(config, world)
           ? composeStallPermissionMessage(timezone, OPERATOR_LOCALE)
           : composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
       appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? `: ${waitingFor}` : ''}`, world);

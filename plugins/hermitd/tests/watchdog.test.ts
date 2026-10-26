@@ -1098,13 +1098,21 @@ describe('stall-question detection', () => {
 });
 
 describe('stall-question, relayed permission prompt', () => {
-  const run = async (waitingFor: string, allowFrom: unknown, write = true) => {
+  // `other` adds a second channel, under any name, whose only paired user is '1'.
+  const run = async (waitingFor: string, allowFrom: unknown, other?: { name: string; enabled: boolean }) => {
     const h = setupHermit();
     try {
       writeConfig(h);
       configureChannel(h);
-      if (write) {
-        fs.writeFileSync(path.join(h.dir, '.claude.local', 'channels', 'telegram', 'access.json'), JSON.stringify({ allowFrom }));
+      fs.writeFileSync(path.join(h.dir, '.claude.local', 'channels', 'telegram', 'access.json'), JSON.stringify({ allowFrom }));
+      if (other) {
+        const p = path.join(h.dir, '.hermit', 'config.json');
+        const cfg = readJson(p);
+        cfg.channels[other.name] = { enabled: other.enabled };
+        fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+        const dir = path.join(h.dir, '.claude.local', 'channels', other.name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'access.json'), JSON.stringify({ allowFrom: ['1'] }));
       }
       writeFakeTmux(h, 0);
       writeFakePgrep(h, 1);
@@ -1128,6 +1136,16 @@ describe('stall-question, relayed permission prompt', () => {
     const texts = await run('permission prompt', []);
     expect(texts[0]).toContain("can't ask over chat");
     expect(texts[0]).toContain('permission prompt');
+  });
+
+  test('permission prompt + paired user only on a disabled channel → unchanged notice', async () => {
+    const texts = await run('permission prompt', [], { name: 'discord', enabled: false });
+    expect(texts[0]).toContain("can't ask over chat");
+  });
+
+  test('permission prompt + paired user only on an enabled channel of any name → approval notice', async () => {
+    const texts = await run('permission prompt', [], { name: 'acme-chat', enabled: true });
+    expect(texts[0]).toContain('asked for permission to continue');
   });
 
   test('other dialog + paired user → unchanged notice with suffix', async () => {
