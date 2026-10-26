@@ -13,6 +13,7 @@ import path from 'node:path';
 import { rebuildIndex } from './lib/proposals/index-rebuild';
 import { readMergedAlerts } from './lib/alert-state';
 import { pinUnderStateDirOrExit } from './lib/cc-compat';
+import { shortProposalId } from './lib/prop-id';
 
 type Json = any;
 
@@ -77,13 +78,13 @@ try {
       if (event.type === 'created') {
         proposalsCreated++;
         const src = event.source || 'unknown';
-        if (event.proposal_id) proposalSource[event.proposal_id] = src;
+        if (event.proposal_id) proposalSource[shortProposalId(event.proposal_id)] = src;
         createdBySource[src] = (createdBySource[src] || 0) + 1;
       }
       if (event.type === 'responded') {
         proposalsResponded++;
         if (event.action === 'accept' && event.proposal_id) {
-          const src = proposalSource[event.proposal_id] || 'unknown';
+          const src = proposalSource[shortProposalId(event.proposal_id)] || 'unknown';
           acceptedBySource[src] = (acceptedBySource[src] || 0) + 1;
         }
       }

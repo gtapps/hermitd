@@ -69,13 +69,10 @@ For each `SHIPPED-STRONG` verdict, resolve the proposal ID to a filename. The fi
 bun plugins/hermitd/scripts/proposal.ts resolve-id .hermit "<PROP-ID>"
 ```
 
-For an unambiguous filename, append the metrics event before patching so regenerated summaries include it:
+For an unambiguous filename, resolve it with the `resolve` verb, which writes the metrics rows and the patch together and records the accept first when the proposal was still `proposed`:
 
 ```bash
-bun plugins/hermitd/scripts/proposal.ts event .hermit resolved --id="<PROP-ID>"
-
-bun plugins/hermitd/scripts/proposal.ts patch .hermit <filename> \
-  --set status=resolved --set resolved_date=@now --request-compact --stdin <<'HERMIT_PATCH'
+bun plugins/hermitd/scripts/proposal.ts resolve .hermit <filename> --stdin <<'HERMIT_PATCH'
 Decision: Resolved on @now — shipped in <plugin> <version>. <evidence sentence>
 HERMIT_PATCH
 ```

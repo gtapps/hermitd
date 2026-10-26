@@ -77,15 +77,12 @@ Compare that set against the IDs in the verdict lines. For any ID with no verdic
 
 Skip this entire step under `--no-apply`.
 
-For each `SHIPPED-STRONG` verdict, resolve the ID to a filename, then close it the same way `/hermitd:proposal-act` does — the metrics event goes first so the summary regen reflects it:
+For each `SHIPPED-STRONG` verdict, resolve the ID to a filename, then close it the same way `/hermitd:proposal-act` does: the `resolve` verb writes the metrics rows and the patch together, recording the accept first when the proposal was still `proposed`:
 
 ```bash
 bun plugins/hermitd/scripts/proposal.ts resolve-id .hermit "<PROP-ID>"
 
-bun plugins/hermitd/scripts/proposal.ts event .hermit resolved --id="<PROP-ID>"
-
-bun plugins/hermitd/scripts/proposal.ts patch .hermit <filename> \
-    --set status=resolved --set resolved_date=@now --request-compact --stdin <<'HERMIT_PATCH'
+bun plugins/hermitd/scripts/proposal.ts resolve .hermit <filename> --stdin <<'HERMIT_PATCH'
 Decision: Resolved on @now — shipped in <plugin> <version>. <evidence sentence>
 HERMIT_PATCH
 ```

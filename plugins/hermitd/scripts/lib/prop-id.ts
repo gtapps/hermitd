@@ -42,6 +42,12 @@ export function slugify(title: string): string {
   return slug || 'proposal';
 }
 
+// The `PROP-NNN` key metrics rows join on: `created` rows carry the full file id,
+// answer rows the bare number.
+export function shortProposalId(id: string): string {
+  return /^PROP-\d+/i.exec(id)?.[0].toUpperCase() ?? id;
+}
+
 export const SUFFIX_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 
 export interface BaseId {

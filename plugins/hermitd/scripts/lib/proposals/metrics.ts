@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { emitJson, exitError } from '../cli';
+import { shortProposalId } from '../prop-id';
 
 type Json = any;
 
@@ -82,15 +83,16 @@ function report(rawArgs: string[]): object {
     if (e.type === 'created' && e.proposal_id) {
       const src = e.source || 'unknown';
       const tags = Array.isArray(e.tags) ? e.tags : [];
-      proposalSource[e.proposal_id] = src;
-      proposalTags[e.proposal_id] = tags;
+      const id = shortProposalId(e.proposal_id);
+      proposalSource[id] = src;
+      proposalTags[id] = tags;
       for (const seg of SEGMENTS) {
         if (seg.accept && seg.accept(src, tags)) createdCount[seg.key]++;
       }
     }
 
     if (e.type === 'responded' && e.action === 'accept' && e.proposal_id) {
-      accepted.add(e.proposal_id);
+      accepted.add(shortProposalId(e.proposal_id));
     }
 
     if (e.type === 'triage-verdict') {
