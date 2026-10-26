@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ANCHOR, HOME, SHOP, type Universe, candidate, scaffold as triageScaffold } from './gen-triage';
-import { CHAT, EVALS, type Grader, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { CHAT, EVALS, type Grader, type Install, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'chains');
 
@@ -17,11 +17,6 @@ const chainScaffold = (fixtures: Record<string, string> = {}, copies: [string, s
 const NO_SHELL = 'Hermit state for this turn. This session has no shell: each line below is what that hermit script returns '
   + 'right now. Use it as the script result; do not try to run scripts, directly or through subagents. '
   + 'Every other step of the skill, including any subagent dispatch, runs as written.';
-const REMINDER = `[channel reply reminder] Inbound message arrived on the \`discord\` channel (chat_id=\`${CHAT}\`). Every reply, `
-  + `including a short acknowledgement, must go through \`mcp__plugin_discord_discord__reply\` with chat_id="${CHAT}". `
-  + 'Transcript/terminal output does not reach the operator.';
-const NUDGE = 'Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been '
-  + 'observed in this session since the last context reset.';
 
 const RESIDENT_PROMPT = residentPrompt();
 
@@ -149,10 +144,9 @@ chainCase('reflect-tier3-chain-shop', 'train', 'A current-session external-conte
 
 // --- task -> background task-worker (cases 6-7, Write granted) -----------
 
-const TASK_LIST_EMPTY = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) },
-  ({ run }) => run('task.ts', ['list', '.hermit', '--open', '--conversation', `discord:${CHAT}`, '--json']));
-const envelope = (mid: string, body: string) => `<channel source="plugin:discord:discord" chat_id="${CHAT}" message_id="${mid}" user="sam" user_id="${USER}" `
-  + `ts="2026-10-21T09:00:00.000Z">\n${body}\n</channel>`;
+const MESSAGE_AT = '2026-10-21T09:00:00.000Z';
+const envelope = (chat: string, mid: string, body: string) => `<channel source="plugin:discord:discord" chat_id="${chat}" message_id="${mid}" user="sam" user_id="${USER}" `
+  + `ts="${MESSAGE_AT}">\n${body}\n</channel>`;
 const SUITE_TOOLS = JSON.parse(fs.readFileSync(path.join(EVALS, 'mocks', 'plugin_discord_discord', '_tools.json'), 'utf-8')).tools;
 const EDIT_TOOL = { name: 'edit_message', description: 'Edit a message the bot previously sent. Useful for interim progress updates.',
   inputSchema: { type: 'object', properties: { chat_id: { type: 'string' }, message_id: { type: 'string' },
@@ -160,20 +154,34 @@ const EDIT_TOOL = { name: 'edit_message', description: 'Edit a message the bot p
 // A case-local _tools.json replaces the suite's, so it lists reply again.
 const CARD_MOCK = { '_tools.json': JSON.stringify({ tools: [...SUITE_TOOLS, EDIT_TOOL] }) + '\n', 'edit_message.md': 'edited\n' };
 
-function channelPrompt(stateLines: string[], mid: string, body: string): string {
-  return '<system-reminder>\n' + NO_SHELL + '\n' + stateLines.join('\n') + '\n</system-reminder>\n<system-reminder>\n'
-    + 'UserPromptSubmit hook additional context:\n' + REMINDER + '\n' + NUDGE + '\n</system-reminder>\n'
-    + envelope(mid, body);
+type Run = Install['run'];
+
+/**
+ * A channel turn: the state stand-ins, then what the real UserPromptSubmit pipeline adds for
+ * the message in the install `run` drives (an eval prompt never reaches that pipeline). It runs
+ * after the stand-in scripts, so their output carries no pipeline turn id.
+ */
+function channelPrompt(run: Run, message: string, state: string[]): string {
+  const hook = run('user-prompt-pipeline.ts', [], { stdin: JSON.stringify({ prompt: message }), now: MESSAGE_AT })
+    .split('\n').filter(l => !l.startsWith('[Now:'));
+  return '<system-reminder>\n' + NO_SHELL + '\n' + state.join('\n') + '\n</system-reminder>\n<system-reminder>\n'
+    + 'UserPromptSubmit hook additional context:\n' + hook.join('\n') + '\n</system-reminder>\n' + message;
 }
+
+const WORKER_THREAD = '700000000000000001';
+const WORKER_PROMPT = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run }) =>
+  channelPrompt(run, envelope(CHAT, '500000000000000101', 'work on this: compare our three best-selling teas against the supplier price list and tell me which to reprice'), [
+    `- task.ts list --open --conversation discord:${CHAT}: ${run('task.ts', ['list', '.hermit', '--open', '--conversation', `discord:${CHAT}`, '--json'])}`,
+    `- proposal-micro match: ${run('proposal.ts', ['micro', '.hermit', 'match', '--chat', `discord:${CHAT}`, '--reply', 'work on this'])}`,
+    // thread-open calls the Discord API; this is its output for a server channel, which gets a native thread.
+    `- conversation.ts thread-open: ${JSON.stringify({ key: `discord:${WORKER_THREAD}`, chat_id: WORKER_THREAD })}`,
+    `- task.ts open: ${run('task.ts', ['open', '.hermit', '--title', 'Reprice the best-selling teas', '--requester', `discord:${USER}`,
+      '--conversation', `discord:${WORKER_THREAD}`, '--done', 'Which of the three best-selling teas to reprice'], { now: MESSAGE_AT })}`,
+    '- task.ts note, task.ts block: OK']));
 
 chainCase('task-worker-needs-input-shop', 'train', 'An assignment opens a thread and record and dispatches a background task-worker, which writes its report.',
   'Background hermitd:task-worker dispatch, a report file, a placeholder reply',
-  channelPrompt([`- task.ts list --open --conversation discord:${CHAT}: ${TASK_LIST_EMPTY}`,
-    '- proposal-micro match: NONE|no-pending',
-    `- conversation.ts thread-open: {"key":"discord:${CHAT}:700000000000000001","chat_id":"700000000000000001"}`,
-    '- task.ts open: {"id":"T-20261021-090000","listing":"open"}',
-    '- task.ts note, task.ts block: OK'],
-  '500000000000000101', 'work on this: compare our three best-selling teas against the supplier price list and tell me which to reprice'),
+  WORKER_PROMPT,
   [{ name: 'dispatched-worker-bg', type: 'tool_used', tool: 'Agent', input_match: String.raw`(?=[\s\S]*hermitd:task-worker)(?=[\s\S]*"run_in_background"\s*:\s*true)`, weight: 3 },
     { name: 'report-file', type: 'file_exists', path: '.hermit/helper-reports/*.md', weight: 2 },
     { name: 'replied', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply' },
@@ -181,17 +189,24 @@ chainCase('task-worker-needs-input-shop', 'train', 'An assignment opens a thread
   chainScaffold(), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-worker-needs-input-shop', CARD_MOCK);
 
-const WAIT_KEY = `discord:${CHAT}:700000000000000002`;
+// The record the requester answers: opened in its task thread, then blocked on a question to them.
+const WAIT_THREAD = '700000000000000002';
+const [WAIT_PROMPT, WAIT_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run, read }) => {
+  const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Reprice the autumn tea range', '--requester', `discord:${USER}`,
+    '--conversation', `discord:${WAIT_THREAD}`, '--done', 'Every autumn tea repriced against the current supplier list'], { now: '2026-10-19T09:00:00.000Z' })).id;
+  run('task.ts', ['block', '.hermit', id, '--waiting-on', `discord:${USER}`, '--status-line', 'Compared 6 of 9 teas against the September list',
+    '--next', 'Which supplier price list should I use, the September or the October one?'], { now: '2026-10-19T10:00:00.000Z' });
+  const record = { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) };
+  return [channelPrompt(run, envelope(WAIT_THREAD, '500000000000000102', 'use the October list, and do the remaining teas too'), [
+    `- task.ts notes for ${id}: "Compared 6 of 9 teas against the September list; stopped to ask which list applies."`,
+    '- task.ts note, task.ts note --clear-waiting: OK']), record] as const;
+});
 chainCase('task-answer-waiting-record-shop', 'heldout', 'An answer to a waiting record whose work outlasts the turn dispatches a fresh worker with the notes and the answer.',
   'hermitd:task-worker dispatched with the record notes and the requester answer',
-  channelPrompt([`- [task thread ${WAIT_KEY}: T-20261019-090000 owner=resident, waiting=true]`,
-    '- [waiting task T-20261019-090000 "Reprice the autumn tea range": waiting on sam — "Which supplier price list should I use, the September or the October one?"]',
-    '- task.ts notes for T-20261019-090000: "Compared 6 of 9 teas against the September list; stopped to ask which list applies."',
-    '- task.ts note, task.ts note --clear-waiting: OK'],
-  '500000000000000102', 'use the October list, and do the remaining teas too'),
+  WAIT_PROMPT,
   [{ name: 'dispatched-worker', type: 'tool_used', tool: 'Agent', input_match: String.raw`(?=[\s\S]*hermitd:task-worker)(?=[\s\S]*October)`, weight: 3 },
     rubric('PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.', 'mock_calls')],
-  chainScaffold(), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
+  chainScaffold(WAIT_RECORD), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-answer-waiting-record-shop', CARD_MOCK);
 
 // --- proposal-create -> triage duplicate (case 8) -------------------------

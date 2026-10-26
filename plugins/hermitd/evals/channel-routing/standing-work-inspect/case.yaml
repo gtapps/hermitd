@@ -15,7 +15,7 @@ execution:
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
-    - proposal-micro match: NONE|no-pending
+    - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-index (proposals-index.json): []
     - settings-get-routines: [{"id":"morning-brief","skill":"hermitd:brief","schedule":"0 8 * * *","enabled":true},{"id":"backup-report","skill":"backup-check","schedule":"0 18 * * 5","enabled":true},{"id":"heartbeat-restart","skill":"hermitd:heartbeat","schedule":"*/30 * * * *","enabled":true}]
     - routines-health: {"morning-brief":{"last_fire":"2026-10-01T08:00:02+01:00","failure_total":0},"backup-report":{"last_fire":"2026-09-26T18:00:05+01:00","failure_total":2,"last_precheck_error":"backup target unreachable"},"heartbeat-restart":{"last_fire":"2026-10-01T09:30:00+01:00","failure_total":0}}

@@ -15,7 +15,7 @@ execution:
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[{"id":"T-20261001-091200","handle":"release-note","title":"Draft release note","listing":["unconfirmed"],"waiting_on":"discord:100000000000000001","result_rev":1,"requester":"discord:100000000000000001","due":null,"owner":"resident"}],"total":1,"omitted":0}
-    - proposal-micro match: MATCH|MP-0020|weekly|1|- (pending question: "How often should the backup report run? daily / weekly")
+    - proposal-micro match: {"status":"match","id":"MP-0020","question":"How often should the backup report run? daily / weekly","answer":"weekly","tier":1,"on_resolve":null}
     - proposal-index (proposals-index.json): []
     </system-reminder>
     <system-reminder>

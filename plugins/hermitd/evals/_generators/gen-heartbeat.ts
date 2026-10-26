@@ -1,10 +1,11 @@
 // Generate the heartbeat eval cases (evaluator + run handler) into evals/heartbeat/.
 // Run from anywhere: bun evals/_generators/gen-heartbeat.ts
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { normalizeItemKey } from '../../scripts/lib/heartbeat-items';
-import { CHAT, EVALS, type Grader, USER, agentBody, configJson, graderYaml, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { CHAT, EVALS, type Grader, PLUGIN, USER, agentBody, configJson, graderYaml, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'heartbeat');
 const RUNNER_BODY = agentBody('skill-eval-runner');
@@ -42,10 +43,10 @@ function doctor(status = 'ok', detail = 'Discord bot token valid for 41 more day
 
 const NO_PROPOSALS: [string, string] = ['proposals/', '(no files)'];
 
-const EVAL_PROMPT_TAIL = 'Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file '
-  + 'against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object '
-  + 'exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling '
-  + 'session handles all writes and notifications.';
+// The skill's instructions for the evaluation subagent, pointing at the reference where the scaffold copies it.
+const EVAL_PROMPT_TAIL = fs.readFileSync(path.join(PLUGIN, 'skills', 'heartbeat', 'SKILL.md'), 'utf-8').split('\n')
+  .find(l => l.includes('for the complete evaluation instructions'))!.replace(/^\s*>\s*/, '')
+  .replace('${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/reference.md', 'spec/heartbeat-reference.md');
 
 function caseYaml(name: string, tag: string, desc: string, expected: string, prompt: string, graders: Grader[], allowed: string[], maxTurns: number, extraExec = '', context = ''): string[] {
   const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`,

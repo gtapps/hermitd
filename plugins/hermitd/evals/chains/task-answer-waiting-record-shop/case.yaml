@@ -78,17 +78,17 @@ execution:
   prompt: |
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
-    - [task thread discord:400000000000000001:700000000000000002: T-20261019-090000 owner=resident, waiting=true]
-    - [waiting task T-20261019-090000 "Reprice the autumn tea range": waiting on sam — "Which supplier price list should I use, the September or the October one?"]
     - task.ts notes for T-20261019-090000: "Compared 6 of 9 teas against the September list; stopped to ask which list applies."
     - task.ts note, task.ts note --clear-waiting: OK
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
-    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    [task thread discord:700000000000000002: owner=resident, muted=false, waiting=true]
+    [waiting task T-20261019-090000: Compared 6 of 9 teas against the September list; next: Which supplier price list should I use, the September or the October one?; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261019-090000 --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit T-20261019-090000 --clear-waiting; requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit T-20261019-090000 --by confirmed --actor discord:100000000000000001 --reason-stdin; nothing is owed when this message does not change the task]
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`700000000000000002`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="700000000000000002". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
-    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000102" user="sam" user_id="100000000000000001" ts="2026-10-21T09:00:00.000Z">
+    <channel source="plugin:discord:discord" chat_id="700000000000000002" message_id="500000000000000102" user="sam" user_id="100000000000000001" ts="2026-10-21T09:00:00.000Z">
     use the October list, and do the remaining teas too
     </channel>
 graders:

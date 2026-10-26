@@ -57,7 +57,11 @@ export const configJson = (v: object) => JSON.stringify(v, null, 2) + '\n';
 
 /** Bash lines that write each file through a quoted heredoc, in path order. */
 export function heredocs(files: Record<string, string>): string[] {
-  return Object.keys(files).sort().flatMap(p => [`mkdir -p "${path.dirname(p)}"`, `cat > '${p}' <<'HERMIT_FIXTURE'\n${files[p]}HERMIT_FIXTURE`]);
+  return Object.keys(files).sort().flatMap(p => {
+    // Without a final newline the delimiter lands on the last content line and the heredoc swallows the rest of the script.
+    if (files[p] && !files[p].endsWith('\n')) throw new Error(`heredocs: ${p} must end with a newline`);
+    return [`mkdir -p "${path.dirname(p)}"`, `cat > '${p}' <<'HERMIT_FIXTURE'\n${files[p]}HERMIT_FIXTURE`];
+  });
 }
 
 const VERSION_SH = String.raw`ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)`;
@@ -83,7 +87,7 @@ export function residentScaffold(config: object, fixtures: Record<string, string
 /** The instant generation-time scripts see unless a call names another. */
 const GEN_NOW = '2026-10-01T13:30:00.000Z';
 
-interface Install {
+export interface Install {
   /** Run a plugin script in the install under a frozen clock; returns its trimmed stdout. */
   run(script: string, args: string[], opts?: { stdin?: string; now?: string }): string;
   /** A file the scripts wrote, relative to the install root. */

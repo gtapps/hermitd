@@ -79,9 +79,9 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
-    - proposal-micro match: NONE|no-pending
-    - conversation.ts thread-open: {"key":"discord:400000000000000001:700000000000000001","chat_id":"700000000000000001"}
-    - task.ts open: {"id":"T-20261021-090000","listing":"open"}
+    - proposal-micro match: {"status":"none","reason":"no_pending"}
+    - conversation.ts thread-open: {"key":"discord:700000000000000001","chat_id":"700000000000000001"}
+    - task.ts open: {"id":"T-20261021-090000","handle":"reprice-the-best-selling-teas","created":true,"open_count":1,"queued":false}
     - task.ts note, task.ts block: OK
     </system-reminder>
     <system-reminder>

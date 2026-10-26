@@ -15,7 +15,7 @@ execution:
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
-    - proposal-micro match: NONE|no-pending
+    - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-index (proposals-index.json): []
     </system-reminder>
     <system-reminder>
