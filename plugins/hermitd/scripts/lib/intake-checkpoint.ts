@@ -41,8 +41,9 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
       try { return fs.statSync(path.join(dir, 'tasks', `${task.id}.md`)).mtimeMs >= turnAt; } catch { return false; }
     });
     const chats = new Map(acks.map(ack => [ack.key, String(ack.chat_id)]));
+    // A thread-attribute thread's card sits in its parent chat, so only a whole-chat key can match by card.
     const missing = [...chats].filter(([key, chatId]) => !tasks.some(task =>
-      (task.conversation === key || task.card_chat_id === chatId) && (task.status === 'open' || openedThisTurn(task))
+      (task.conversation === key || (!key.includes('~') && task.card_chat_id === chatId)) && (task.status === 'open' || openedThisTurn(task))
     )).map(([key]) => key);
     if (missing.length > (resumedConversationless ? 1 : 0)) {
       return `task skill intake is still open. Run task.ts open now for the work you just acknowledged in ${missing.join(', ')}.`;

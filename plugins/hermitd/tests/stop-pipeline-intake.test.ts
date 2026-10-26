@@ -43,11 +43,11 @@ function writeChats(dir: string, chatId: string, type: number): void {
   }) + '\n');
 }
 
-async function openResident(dir: string, conversation: string | null): Promise<void> {
+async function openResident(dir: string, conversation: string | null, extra: string[] = []): Promise<void> {
   const r = await runScript('task.ts', {
     cwd: dir,
     env: { AGENT_DIR: hermit(dir) },
-    args: ['open', hermit(dir), '--owner', 'resident', '--requester', 'discord:u1', ...(conversation ? ['--conversation', conversation] : []), '--title', 'Work', '--done', 'Verified'],
+    args: ['open', hermit(dir), '--owner', 'resident', '--requester', 'discord:u1', ...(conversation ? ['--conversation', conversation] : []), ...extra, '--title', 'Work', '--done', 'Verified'],
   });
   expect(r.exitCode).toBe(0);
 }
@@ -160,6 +160,17 @@ describe('stop-pipeline — channel intake checkpoint', () => {
     expect(body.decision).toBe('block');
     expect(body.reason).toContain('slack:C1~m2');
     expect(body.reason).not.toContain('slack:C1~m1');
+  }));
+
+  test('sibling thread card in the same parent does not satisfy a thread ack', withDir(async (dir) => {
+    writeTurn(dir);
+    writeAck(dir, { channel: 'slack', chat_id: 'C1', key: 'slack:C1~m2' });
+    await openResident(dir, 'slack:C1~m1', ['--card', JSON.stringify({ chat_id: 'C1', message_id: 'r1' })]);
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    const body = JSON.parse(r.stdout);
+    expect(body.decision).toBe('block');
+    expect(body.reason).toContain('slack:C1~m2');
   }));
 
   test('thread ack with its exact record: stdout empty', withDir(async (dir) => {
