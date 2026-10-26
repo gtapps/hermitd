@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: spend-technical
+description: 'A spend question from a technical operator goes to cost-reflect.'
+tags: [channel-routing, train]
+expected_outcome: 'cost-reflect invoked.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
+    - proposal-micro match: NONE|no-pending
+    - proposal-index (proposals-index.json): []
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000037" user="sam" user_id="100000000000000001" ts="2026-10-01T09:27:00.000Z">
+    how much have I spent this week?
+    </channel>
+graders:
+  - name: cost-reflect
+    type: tool_used
+    tool: 'Skill'
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?cost-reflect"'
+    weight: 2
+  - name: no-task-skill
+    type: tool_used
+    tool: 'Skill'
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
+    min: 0
+    max: 0

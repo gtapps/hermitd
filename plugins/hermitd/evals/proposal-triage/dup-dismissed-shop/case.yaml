@@ -1,0 +1,34 @@
+schema_version: "1.1"
+name: dup-dismissed-shop
+description: 'Same problem as a dismissed proposal: DUPLICATE, not a fresh CREATE.'
+tags: [proposal-triage, heldout]
+expected_outcome: 'DUPLICATE: … — PROP-024'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Send me a weekly summary of sales
+    Evidence Source: capability-brainstorm
+    Evidence: Sales questions came up in three conversations this month; a weekly sales summary posted to the channel would answer them.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: verdict-duplicate
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*DUPLICATE: [^\n]*PROP-024'
+    weight: 3

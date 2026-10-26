@@ -1,0 +1,52 @@
+schema_version: "1.1"
+name: run-self-eval-proposal
+description: 'The every-20-ticks self-evaluation returns a clean entry: create a capability proposal.'
+tags: [heartbeat, heldout]
+expected_outcome: 'proposal-create invoked; HEARTBEAT_OK.'
+execution:
+  max_turns: 12
+  timeout_seconds: 300
+  allowed_tools: [Skill, Read, Glob, Grep, Agent]
+  prompt: |
+    <system-reminder>
+    SessionStart hook additional context (CLAUDE.md excerpt):
+    - `HEARTBEAT_EVALUATE` notification, or a peer message whose entire body is that token → invoke `/hermitd:heartbeat run`.
+    ## Operator Notification
+    - **Channel enabled:** compose the audience version(s) and run `.hermit/bin/hermitd-run channel-send .hermit --notice` with {"client": "<plain>", "maintainer": "<technical/spend detail>"} on stdin (either key alone is fine).
+    **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat.
+    Config: escalation=balanced; language unset; channels.discord enabled, primary chat_id=400000000000000001.
+    </system-reminder>
+    <system-reminder>
+    Hermit state for this turn. This session has no shell and the hermit state directory is not on disk: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files yourself. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
+    - heartbeat.ts tick .hermitd: {"verdict": "EVALUATE", "notifications": {"budget": []}, "model": "haiku"}
+    - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
+    - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":[],"self_eval_proposals":[{"key":"checklist:rootdisk","kind":"clean","clean_ticks":60,"noise_ticks":0,"sessions_seen":7}],"heartbeat_result":"OK"}
+    </system-reminder>
+    <task-notification>
+    <task-id>b7k2m9q4x</task-id>
+    <summary>Monitor event: "heartbeat"</summary>
+    <event>HEARTBEAT_EVALUATE</event>
+    If this event is something the user would act on now, send a PushNotification.
+    </task-notification>
+graders:
+  - name: heartbeat-skill
+    type: 'tool_used'
+    tool: 'Skill'
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?heartbeat"'
+    weight: 1
+  - name: dispatch-eval-runner
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'skill-eval-runner'
+    weight: 1
+  - name: proposal-create
+    type: 'tool_used'
+    tool: 'Skill'
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?proposal-create"'
+    weight: 3
+  - name: replies-0
+    type: 'tool_used'
+    tool: 'mcp__plugin_discord_discord__reply'
+    min: 0
+    max: 0
+    weight: 1

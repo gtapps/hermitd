@@ -1,0 +1,35 @@
+schema_version: "1.1"
+name: thread-waiting-answer
+description: 'An answer to a waiting record in its thread goes to the task route.'
+tags: [channel-routing, heldout]
+expected_outcome: 'Task route via the task skill.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - task.ts list --open --conversation discord:400000000000000001: {"rows":[{"id":"T-20261001-091400","handle":"report-access","title":"Set up report access","listing":["active"],"waiting_on":"discord:100000000000000001","requester":"discord:100000000000000001","due":null,"owner":"resident"}],"total":1,"omitted":0}
+    - proposal-micro match: NONE|no-pending
+    - proposal-index (proposals-index.json): []
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [task thread discord:400000000000000001: owner=resident, muted=false, waiting=true]
+    [waiting task T-20261001-091400: Need the reporting account name; next: Configure access once the name arrives; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261001-091400 --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit T-20261001-091400 --clear-waiting; nothing is owed when this message does not change the task]
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000023" user="sam" user_id="100000000000000001" ts="2026-10-01T09:13:00.000Z">
+    the account name is ops-reports
+    </channel>
+graders:
+  - name: task-skill
+    type: tool_used
+    tool: 'Skill'
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'

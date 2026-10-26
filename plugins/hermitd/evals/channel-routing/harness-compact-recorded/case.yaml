@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: harness-compact-recorded
+description: 'Recorded !compact: the hook applies it, the turn makes no tool call.'
+tags: [channel-routing, train]
+expected_outcome: 'No tool call and no channel reply.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
+    - proposal-micro match: NONE|no-pending
+    - proposal-index (proposals-index.json): []
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [harness-command] "/compact" requested by sam — will be applied to this session when the current turn ends. End the turn with no tool call and no reply.
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000010" user="sam" user_id="100000000000000001" ts="2026-10-01T09:00:00.000Z">
+    !compact
+    </channel>
+graders:
+  - name: no-channel-reply
+    type: tool_used
+    tool: 'mcp__plugin_discord_discord__reply'
+    min: 0
+    max: 0
+    weight: 2
+  - name: no-skill-call
+    type: tool_used
+    tool: 'Skill'
+    min: 0
+    max: 0

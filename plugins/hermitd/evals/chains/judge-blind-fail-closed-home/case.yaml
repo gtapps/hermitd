@@ -1,0 +1,30 @@
+schema_version: "1.1"
+name: judge-blind-fail-closed-home
+description: 'The anchored root has no config.json: GATE_BLIND and no verdict.'
+tags: [chains, train]
+expected_outcome: 'GATE_BLIND: …'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running reflect's evidence validation step for this hermit. Dispatch the `hermitd:reflection-judge` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Candidate: Remind me to water the herbs on hot days
+    Tier: 1
+    Evidence Source: scheduled-check/garden
+    Evidence: The herbs wilted on two hot afternoons this month.
+    Sessions: none
+
+    Task records:
+    []
+    </input>
+graders:
+  - {"name": "dispatched-reflection-judge", "type": "tool_used", "tool": "Agent", "input_match": "reflection-judge"}
+  - {"name": "verdict-blind", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*`*\\s*GATE_BLIND: ", "weight": 3}
+  - {"name": "no-real-verdict", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*(ACCEPT|DOWNGRADE|SUPPRESS)", "weight": 2, "match": "not_contains"}
+  - {"name": "rubric", "type": "llm", "criteria": "PASS if the final reply is only a GATE_BLIND line for the herbs candidate and nothing claims a proposal or queue item was created. FAIL otherwise.", "weight": 2}

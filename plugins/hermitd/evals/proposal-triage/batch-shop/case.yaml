@@ -1,0 +1,43 @@
+schema_version: "1.1"
+name: batch-shop
+description: 'Batch of two: one duplicate and one new problem, one block each.'
+tags: [proposal-triage, train]
+expected_outcome: 'DUPLICATE … PROP-021 and CREATE for the payout candidate'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 400
+  allowed_tools: [Agent, Read, Glob, Grep]
+  prompt: |
+    You are running proposal-create's triage step for this hermit. Dispatch the `hermitd:proposal-triage` agent with the input below. Replace {ROOT} with the absolute path of `.hermit` in your current working directory and {MEM} with the absolute path of the `memory` directory beside it (also directly in your working directory); change nothing else. Then reply with the agent's output verbatim, with nothing added.
+
+    <input>
+    Anchor: root={ROOT} memory_dir={MEM}
+    Title: Chase wholesale invoices that are overdue
+    Evidence Source: scheduled-check/invoices
+    Evidence: Three wholesale invoices are more than 20 days overdue this month.
+
+    Title: Alert when the payment provider's payout is late
+    Evidence Source: scheduled-check/payments
+    Evidence: The weekly payout arrived 3 and 5 days late in the last two weeks and I only noticed when supplier payments bounced.
+    </input>
+graders:
+  - name: dispatched-triage
+    type: 'tool_used'
+    tool: 'Agent'
+    input_match: 'proposal-triage'
+  - name: verdict-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '^\s*`*\s*(CREATE|SUPPRESS|DUPLICATE|GATE_BLIND): '
+  - name: dup-first
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*DUPLICATE: Chase wholesale[^\n]*PROP-021'
+    weight: 2
+  - name: create-second
+    type: 'regex'
+    target: 'last_message'
+    pattern: '(^|\n)\s*CREATE: Alert when the payment'
+    weight: 2
