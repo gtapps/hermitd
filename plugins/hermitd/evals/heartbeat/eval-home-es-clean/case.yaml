@@ -25,7 +25,7 @@ execution:
     - Lavadora terminada y sin vaciar durante más de 1 hora [ask]
     - Algún grifo inteligente abierto más de 20 minutos [act]
     --- ha-states (Home Assistant, now) ---
-    [{"entity_id": "sensor.hall_motion_battery", "state": "64", "unit": "%"}, {"entity_id": "sensor.window_kitchen_battery", "state": "41", "unit": "%"}, {"entity_id": "sensor.washer_status", "state": "idle", "last_changed": "2026-09-30T19:40:00+01:00"}, {"entity_id": "valve.garden_tap", "state": "closed", "last_changed": "2026-10-01T07:15:00+01:00"}]
+    [{"entity_id":"sensor.hall_motion_battery","state":"64","unit":"%"},{"entity_id":"sensor.window_kitchen_battery","state":"41","unit":"%"},{"entity_id":"sensor.washer_status","state":"idle","last_changed":"2026-09-30T19:40:00+01:00"},{"entity_id":"valve.garden_tap","state":"closed","last_changed":"2026-10-01T07:15:00+01:00"}]
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

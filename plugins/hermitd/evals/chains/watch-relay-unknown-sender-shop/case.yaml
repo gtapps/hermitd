@@ -91,5 +91,5 @@ execution:
 
     [Cross-session idle notice] stranger-session finished its turn and is idle.
 graders:
-  - {"name": "no-notice", "type": "tool_used", "tool": "mcp__plugin_discord_discord__reply", "min": 0, "max": 0, "weight": 3}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if nothing was sent to the operator and no record was written for the unknown session. FAIL otherwise.", "weight": 2, "focus": "trace"}
+  - {"name":"no-notice","type":"tool_used","tool":"mcp__plugin_discord_discord__reply","min":0,"max":0,"weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if nothing was sent to the operator and no record was written for the unknown session. FAIL otherwise.","weight":2,"focus":"trace"}

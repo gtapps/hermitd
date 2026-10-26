@@ -3,7 +3,7 @@
 
 import path from 'node:path';
 
-import { EVALS, type Grader, graderYaml, indent, json, report, writeCase, yq } from './lib';
+import { EVALS, type Grader, graderYaml, indent, report, writeCase, yq } from './lib';
 
 type Entry = Record<string, unknown>;
 type Prop = [fname: string, body: string, entry: Entry];
@@ -12,7 +12,7 @@ export interface Universe { proposals: Prop[]; operator: string; memory: Record<
 function prop(pid: string, slug: string, status: string, title: string, problem: string, created = '2026-08-14T10:00:00+01:00', tags: string[] = []): Prop {
   const fname = `${pid}-${slug}-100000.md`;
   const body = `---\nid: ${pid}-${slug}-100000\ntitle: "${title}"\nstatus: ${status}\nsource: auto-detected\ncreated: ${created}\n`
-    + `category: improvement\ntags: ${json(tags)}\n---\n# Proposal: ${pid} — ${title}\n\n## Problem\n${problem}\n\n`
+    + `category: improvement\ntags: ${JSON.stringify(tags)}\n---\n# Proposal: ${pid} — ${title}\n\n## Problem\n${problem}\n\n`
     + '## Proposed Solution\nSee title.\n';
   const entry = { id: `${pid}-${slug}-100000`, file: fname, status, source: 'auto-detected', category: 'improvement', title, created, tags };
   return [fname, body, entry];
@@ -69,13 +69,13 @@ export function heredocs(files: Record<string, string>): string[] {
 export function scaffold(universe: Universe, withConfig = true): string {
   const files: Record<string, string> = {};
   const root = '.hermit';
-  if (withConfig) files[`${root}/config.json`] = '{"agent_name": "assistant", "timezone": "Europe/Lisbon"}\n';
+  if (withConfig) files[`${root}/config.json`] = '{"agent_name":"assistant","timezone":"Europe/Lisbon"}\n';
   const entries: Entry[] = [];
   for (const [fname, body, entry] of universe.proposals) {
     files[`${root}/proposals/${fname}`] = body;
     entries.push(entry);
   }
-  files[`${root}/state/proposals-index.json`] = json({ updated: '2026-10-01T08:00:00Z', count: entries.length, proposals: entries }, { indent: 2 }) + '\n';
+  files[`${root}/state/proposals-index.json`] = JSON.stringify({ updated: '2026-10-01T08:00:00Z', count: entries.length, proposals: entries }, null, 2) + '\n';
   files[`${root}/OPERATOR.md`] = universe.operator;
   const field = (body: string, key: string) => body.split('\n').find(l => l.startsWith(`${key}:`))!.split(/:(.*)/s)[1].trim();
   const idx: string[] = [];

@@ -30,9 +30,9 @@ execution:
     TEA-07,Sencha 100g,8
     POT-02,Teapot 1L,5
     --- shop-api /errors?since=1h ---
-    {"checkout_errors": 0, "window": "2026-10-01T13:30:00+01:00/2026-10-01T14:30:00+01:00"}
+    {"checkout_errors":0,"window":"2026-10-01T13:30:00+01:00/2026-10-01T14:30:00+01:00"}
     --- inbox (customer support, open threads) ---
-    [{"from": "customer", "subject": "Gift wrap?", "last_customer_message": "2026-10-01T10:02:00+01:00", "replied": false}]
+    [{"from":"customer","subject":"Gift wrap?","last_customer_message":"2026-10-01T10:02:00+01:00","replied":false}]
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

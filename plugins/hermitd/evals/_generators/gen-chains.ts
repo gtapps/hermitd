@@ -8,13 +8,13 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ANCHOR, HOME, SHOP, type Universe, candidate, heredocs, scaffold as triageScaffold } from './gen-triage';
-import { EVALS, type Grader, PLUGIN, agentBody, indent, json, report, residentPrompt, writeCase, yq } from './lib';
+import { EVALS, type Grader, PLUGIN, agentBody, indent, report, residentPrompt, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'chains');
 
 const CHAT = '400000000000000001';
 const USER = '100000000000000001';
-const RESIDENT_CONFIG = json({ agent_name: 'assistant', timezone: 'Europe/Lisbon', channels: { discord: { allowed_users: [USER] } } });
+const RESIDENT_CONFIG = JSON.stringify({ agent_name: 'assistant', timezone: 'Europe/Lisbon', channels: { discord: { allowed_users: [USER] } } });
 const VERSION_SH = String.raw`ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)`;
 const NO_SHELL = 'Hermit state for this turn. This session has no shell: each line below is what that hermit script returns '
   + 'right now. Use it as the script result; do not try to run scripts, directly or through subagents. '
@@ -81,7 +81,7 @@ function chainCase(name: string, tag: string, desc: string, expected: string, pr
     append ??= RESIDENT_PROMPT;
   }
   if (append !== undefined) y.push('  append_system_prompt: |', indent(append));
-  y.push('  prompt: |', indent(prompt), 'graders:', ...graders.map(g => '  - ' + json(g, { ascii: false })));
+  y.push('  prompt: |', indent(prompt), 'graders:', ...graders.map(g => '  - ' + JSON.stringify(g)));
   writeCase(path.join(OUT, name), y, scaffoldSh);
 }
 
@@ -108,7 +108,7 @@ function judgeCase(name: string, tag: string, desc: string, expected: string, un
   records: unknown[], graders: Grader[], withConfig = true): void {
   const [first, ...rest] = cand.split('\n');
   const block = [first.replace('Title:', 'Candidate:'), `Tier: ${tier}`, ...rest, `Sessions: ${sessions}`];
-  const prompt = JUDGE_CALLER + ANCHOR + block.join('\n') + '\n\nTask records:\n' + json(records, { ascii: false }) + '\n</input>';
+  const prompt = JUDGE_CALLER + ANCHOR + block.join('\n') + '\n\nTask records:\n' + JSON.stringify(records) + '\n</input>';
   chainCase(name, tag, desc, expected, prompt, [dispatched('reflection-judge'), ...graders],
     triageScaffold(universe, withConfig), ['Agent', 'Read', 'Glob', 'Grep'], { maxTurns: 8, timeout: 400 });
 }
@@ -160,7 +160,7 @@ const GATE_STATE = '- proposal-gate (stdin Title/Verdict): maps the verdict line
 const REFLECT_STATE = [
   // A real resident did this work earlier in the same session; the stand-in says so, since the transcript is not replayed.
   '- This session worked T-20261020-090000 below and closed it minutes ago: its lesson is current-session evidence.',
-  `- task-report --recent --limit 3: ${json([EXT_RECORD], { ascii: false })}`,
+  `- task-report --recent --limit 3: ${JSON.stringify([EXT_RECORD])}`,
   '- observations-patterns: {"patterns":[]}',
   '- observations-observe: OK',
   ANCHOR_STATE,
@@ -187,7 +187,7 @@ const EDIT_TOOL = { name: 'edit_message', description: 'Edit a message the bot p
   inputSchema: { type: 'object', properties: { chat_id: { type: 'string' }, message_id: { type: 'string' },
     text: { type: 'string' } }, required: ['chat_id', 'message_id', 'text'] } };
 // A case-local _tools.json replaces the suite's, so it lists reply again.
-const CARD_MOCK = { '_tools.json': json({ tools: [...SUITE_TOOLS, EDIT_TOOL] }) + '\n', 'edit_message.md': 'edited\n' };
+const CARD_MOCK = { '_tools.json': JSON.stringify({ tools: [...SUITE_TOOLS, EDIT_TOOL] }) + '\n', 'edit_message.md': 'edited\n' };
 
 function channelPrompt(stateLines: string[], mid: string, body: string): string {
   return '<system-reminder>\n' + NO_SHELL + '\n' + stateLines.join('\n') + '\n</system-reminder>\n<system-reminder>\n'
@@ -241,9 +241,9 @@ const REPORT = 'GUEST_REPORT: The stock export now includes the wholesale column
   + 'and the sample file matches.\nScope change: none\nNext step: review the sample export\nEvidence: branch export-wholesale, export.csv';
 
 function registry(target: string): string {
-  return json({ monitors: [{ id: `session-${target}-1793030000-a1b2`, description: 'wholesale stock export', target,
+  return JSON.stringify({ monitors: [{ id: `session-${target}-1793030000-a1b2`, description: 'wholesale stock export', target,
     started_at: '2026-10-21T08:30:00Z', source: 'adhoc', class: 'peer-idle' }],
-  last_cleared: '2026-10-21T08:00:00Z' }, { indent: 2 }) + '\n';
+  last_cleared: '2026-10-21T08:00:00Z' }, null, 2) + '\n';
 }
 
 function relayPrompt(sender: string): string {

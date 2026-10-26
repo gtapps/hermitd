@@ -24,9 +24,9 @@ execution:
     - Garagentor länger als 30 Minuten offen [ask]
     - Waschmaschine meldet einen Fehler [ask]
     --- .hermit/state/alert-state.json ---
-    {"total_ticks": 61, "alerts": {"checklist:garagent": {"count": 6, "suppressed": true, "consecutive_clean": 0, "text": "Das Garagentor ist seit \u00fcber 30 Minuten offen."}}}
+    {"total_ticks":61,"alerts":{"checklist:garagent":{"count":6,"suppressed":true,"consecutive_clean":0,"text":"Das Garagentor ist seit über 30 Minuten offen."}}}
     --- ha-states (Home Assistant, now) ---
-    [{"entity_id": "cover.garage_door", "state": "open", "last_changed": "2026-10-01T13:20:00+01:00"}, {"entity_id": "sensor.washer_error", "state": "none"}]
+    [{"entity_id":"cover.garage_door","state":"open","last_changed":"2026-10-01T13:20:00+01:00"},{"entity_id":"sensor.washer_error","state":"none"}]
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

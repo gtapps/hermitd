@@ -21,10 +21,10 @@ execution:
     Sessions: T-20261003-090000, T-20261010-090000
 
     Task records:
-    [{"source_path": ".hermit/tasks/T-20261003-090000.md", "outcome": "done", "result": null, "title": "File September supplier invoices", "opened_at": "2026-10-03T09:00:00+01:00", "requester": "operator", "waiting_on": null, "lessons": ["2026-10-03T10:00:00+01:00: Two invoices carried the old VAT number and had to be reissued by the supplier."], "decisions": []}, {"source_path": ".hermit/tasks/T-20261010-090000.md", "outcome": "done", "result": null, "title": "File the tea wholesaler invoice", "opened_at": "2026-10-10T09:00:00+01:00", "requester": "operator", "waiting_on": null, "lessons": ["2026-10-10T11:00:00+01:00: The wholesaler invoice used the previous VAT number again; asked them to reissue it."], "decisions": []}]
+    [{"source_path":".hermit/tasks/T-20261003-090000.md","outcome":"done","result":null,"title":"File September supplier invoices","opened_at":"2026-10-03T09:00:00+01:00","requester":"operator","waiting_on":null,"lessons":["2026-10-03T10:00:00+01:00: Two invoices carried the old VAT number and had to be reissued by the supplier."],"decisions":[]},{"source_path":".hermit/tasks/T-20261010-090000.md","outcome":"done","result":null,"title":"File the tea wholesaler invoice","opened_at":"2026-10-10T09:00:00+01:00","requester":"operator","waiting_on":null,"lessons":["2026-10-10T11:00:00+01:00: The wholesaler invoice used the previous VAT number again; asked them to reissue it."],"decisions":[]}]
     </input>
 graders:
-  - {"name": "dispatched-reflection-judge", "type": "tool_used", "tool": "Agent", "input_match": "reflection-judge"}
-  - {"name": "verdict-accept", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*ACCEPT[^\\n]*VAT", "weight": 3}
-  - {"name": "not-suppressed", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*(SUPPRESS|DOWNGRADE)", "weight": 2, "match": "not_contains"}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the final reply is only the judge verdict and it accepts the VAT-number candidate. FAIL if it suppresses or downgrades it, or adds commentary beyond the verdict.", "weight": 2}
+  - {"name":"dispatched-reflection-judge","type":"tool_used","tool":"Agent","input_match":"reflection-judge"}
+  - {"name":"verdict-accept","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*ACCEPT[^\\n]*VAT","weight":3}
+  - {"name":"not-suppressed","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*(SUPPRESS|DOWNGRADE)","weight":2,"match":"not_contains"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final reply is only the judge verdict and it accepts the VAT-number candidate. FAIL if it suppresses or downgrades it, or adds commentary beyond the verdict.","weight":2}

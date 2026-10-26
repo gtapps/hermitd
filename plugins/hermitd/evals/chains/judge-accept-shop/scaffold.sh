@@ -24,7 +24,7 @@ Four cafes ordering monthly.
 HERMIT_FIXTURE
 mkdir -p ".hermit"
 cat > '.hermit/config.json' <<'HERMIT_FIXTURE'
-{"agent_name": "assistant", "timezone": "Europe/Lisbon"}
+{"agent_name":"assistant","timezone":"Europe/Lisbon"}
 HERMIT_FIXTURE
 mkdir -p ".hermit/proposals"
 cat > '.hermit/proposals/PROP-021-unpaid-invoice-reminders-100000.md' <<'HERMIT_FIXTURE'

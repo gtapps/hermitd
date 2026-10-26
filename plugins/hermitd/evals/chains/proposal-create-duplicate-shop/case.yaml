@@ -18,6 +18,6 @@ execution:
     </system-reminder>
     Run `/hermitd:proposal-create` with this candidate. Title: Chase overdue wholesale invoices automatically. Evidence Source: operator-request. Evidence: Three wholesale invoices are more than 20 days overdue and I keep forgetting to chase them.
 graders:
-  - {"name": "dispatched-proposal-triage", "type": "tool_used", "tool": "Agent", "input_match": "proposal-triage"}
-  - {"name": "names-existing", "type": "regex", "target": "last_message", "pattern": "PROP-021", "weight": 3}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the final message says the idea already exists as an open proposal and that no new proposal was created. FAIL if it reports creating one.", "weight": 2}
+  - {"name":"dispatched-proposal-triage","type":"tool_used","tool":"Agent","input_match":"proposal-triage"}
+  - {"name":"names-existing","type":"regex","target":"last_message","pattern":"PROP-021","weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final message says the idea already exists as an open proposal and that no new proposal was created. FAIL if it reports creating one.","weight":2}

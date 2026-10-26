@@ -24,7 +24,7 @@ execution:
     []
     </input>
 graders:
-  - {"name": "dispatched-reflection-judge", "type": "tool_used", "tool": "Agent", "input_match": "reflection-judge"}
-  - {"name": "verdict-blind", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*`*\\s*GATE_BLIND: ", "weight": 3}
-  - {"name": "no-real-verdict", "type": "regex", "target": "last_message", "pattern": "(^|\\n)\\s*(ACCEPT|DOWNGRADE|SUPPRESS)", "weight": 2, "match": "not_contains"}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the final reply is only a GATE_BLIND line for the herbs candidate and nothing claims a proposal or queue item was created. FAIL otherwise.", "weight": 2}
+  - {"name":"dispatched-reflection-judge","type":"tool_used","tool":"Agent","input_match":"reflection-judge"}
+  - {"name":"verdict-blind","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*`*\\s*GATE_BLIND: ","weight":3}
+  - {"name":"no-real-verdict","type":"regex","target":"last_message","pattern":"(^|\\n)\\s*(ACCEPT|DOWNGRADE|SUPPRESS)","weight":2,"match":"not_contains"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final reply is only a GATE_BLIND line for the herbs candidate and nothing claims a proposal or queue item was created. FAIL otherwise.","weight":2}

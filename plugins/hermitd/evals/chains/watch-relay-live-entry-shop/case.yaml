@@ -91,6 +91,6 @@ execution:
 
     [Cross-session idle notice] export-wholesale finished its turn and is idle.
 graders:
-  - {"name": "watch-skill", "type": "tool_used", "tool": "Skill", "input_match": "watch"}
-  - {"name": "relayed-report", "type": "regex", "target": "mock_calls", "pattern": "wholesale column", "weight": 3}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the operator received one chat notice that carries the helper report (verdict and next step) without paraphrasing it away and without socket paths or process ids. FAIL otherwise.", "weight": 2, "focus": "mock_calls"}
+  - {"name":"watch-skill","type":"tool_used","tool":"Skill","input_match":"watch"}
+  - {"name":"relayed-report","type":"regex","target":"mock_calls","pattern":"wholesale column","weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the operator received one chat notice that carries the helper report (verdict and next step) without paraphrasing it away and without socket paths or process ids. FAIL otherwise.","weight":2,"focus":"mock_calls"}

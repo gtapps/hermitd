@@ -6,7 +6,7 @@ mkdir -p .hermit/tasks .hermit/state
 cp "$here/../../../state-templates/TASKS.md.template" .hermit/TASKS.md
 ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)
 cat > .hermit/config.json <<HERMIT_CONFIG
-{"agent_name": "assistant", "timezone": "Europe/Lisbon", "channels": {"discord": {"allowed_users": ["100000000000000001"]}},"_hermit_versions":{"hermitd":"$ver"}}
+{"agent_name":"assistant","timezone":"Europe/Lisbon","channels":{"discord":{"allowed_users":["100000000000000001"]}},"_hermit_versions":{"hermitd":"$ver"}}
 HERMIT_CONFIG
 mkdir -p "spec/plugin/skills/hermit-evolve"
 cp "$here/../../../skills/hermit-evolve/reference.md" "spec/plugin/skills/hermit-evolve/reference.md"

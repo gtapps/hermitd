@@ -29,7 +29,7 @@ execution:
     ## Project Checks
     - New ERROR lines in the app log [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at": "2026-10-01T14:00:03+01:00", "checks": [{"id": "runtime", "status": "ok"}, {"id": "credential-expiry", "status": "ok", "detail": "Discord bot token valid for 41 more days."}]}
+    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
     --- tail -n 5 /srv/app/app.log ---
     2026-10-01T14:02:11 INFO request served in 41ms
     2026-10-01T14:05:37 ERROR database connection refused (pool exhausted)

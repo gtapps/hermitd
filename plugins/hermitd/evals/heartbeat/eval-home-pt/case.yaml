@@ -27,7 +27,7 @@ execution:
     - Porta da frente destrancada depois das 23h [ask]
     - Temperatura do congelador acima de -15 °C [ask]
     --- ha-states (Home Assistant, now) ---
-    [{"entity_id": "lock.front_door", "state": "unlocked", "last_changed": "2026-10-01T13:05:00+01:00"}, {"entity_id": "sensor.freezer_temperature", "state": "-11.2", "unit": "\u00b0C", "last_changed": "2026-10-01T14:21:00+01:00"}]
+    [{"entity_id":"lock.front_door","state":"unlocked","last_changed":"2026-10-01T13:05:00+01:00"},{"entity_id":"sensor.freezer_temperature","state":"-11.2","unit":"°C","last_changed":"2026-10-01T14:21:00+01:00"}]
     --- proposals/ (frontmatter only) ---
     - PROP-007-rega-automatica-090000.md: status: proposed, title: Rega automática ao amanhecer
     </system-reminder>

@@ -25,9 +25,9 @@ execution:
     - Overlapping events on tomorrow's calendar [note]
     - Flight check-in open for a trip in the next 48h [ask]
     --- inbox (threads awaiting my reply) ---
-    [{"from": "accountant", "subject": "Q3 receipts needed", "received": "2026-09-28T16:40:00+01:00", "replied": false}]
+    [{"from":"accountant","subject":"Q3 receipts needed","received":"2026-09-28T16:40:00+01:00","replied":false}]
     --- calendar 2026-10-02 ---
-    [{"title": "Dentist", "start": "10:00", "end": "11:00"}, {"title": "Call with the builder", "start": "10:30", "end": "11:15"}, {"title": "Gym", "start": "18:00", "end": "19:00"}]
+    [{"title":"Dentist","start":"10:00","end":"11:00"},{"title":"Call with the builder","start":"10:30","end":"11:15"},{"title":"Gym","start":"18:00","end":"19:00"}]
     --- trips ---
     []
     </system-reminder>

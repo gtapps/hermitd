@@ -1,6 +1,7 @@
 // Shared helpers for the eval generators and tests/evals-drift.test.ts: paths,
-// the live text cases copy (agent bodies, the resident prompt), and the YAML and
-// JSON spellings every generated case.yaml uses.
+// the live text cases copy (agent bodies, the resident prompt), and the YAML
+// spelling every generated case.yaml uses. Fixture JSON is plain JSON.stringify:
+// compact for script stdout, indented where the script writes the file that way.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,22 +33,6 @@ export function indent(s: string, n = 4): string {
 /** A single-quoted YAML scalar. */
 export function yq(s: string): string {
   return `'${s.replaceAll("'", "''")}'`;
-}
-
-/**
- * JSON with `, ` and `: ` separators (or `indent`), every character past `~`
- * escaped unless `ascii` is false (json.dumps' ensure_ascii). Fixture data and graders keep this one spelling.
- */
-export function json(v: unknown, opts: { ascii?: boolean; indent?: number } = {}): string {
-  const enc = (x: unknown): string => {
-    if (Array.isArray(x)) return `[${x.map(enc).join(', ')}]`;
-    if (x !== null && typeof x === 'object') {
-      return `{${Object.entries(x).map(([k, val]) => `${JSON.stringify(k)}: ${enc(val)}`).join(', ')}}`;
-    }
-    return JSON.stringify(x);
-  };
-  const s = opts.indent ? JSON.stringify(v, null, opts.indent) : enc(v);
-  return opts.ascii === false ? s : s.replace(/[^\x00-\x7e]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
 /** A grader as a YAML block mapping; `criteria` becomes a literal block. */

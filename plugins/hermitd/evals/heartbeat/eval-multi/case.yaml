@@ -31,12 +31,12 @@ execution:
     - Nightly backup completed within the last 26 hours [ask]
     - TLS certificate for the site expires within 14 days [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at": "2026-10-01T14:00:03+01:00", "checks": [{"id": "runtime", "status": "ok"}, {"id": "credential-expiry", "status": "ok", "detail": "Discord bot token valid for 41 more days."}]}
+    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
     --- df -h / ---
     Filesystem      Size  Used Avail Use% Mounted on
     /dev/sda1       200G  140G  60G  70% /
     --- cat /srv/backup/last-run.json ---
-    {"last_success": "2026-09-29T22:40:00+01:00", "last_attempt": "2026-09-29T22:40:00+01:00"}
+    {"last_success":"2026-09-29T22:40:00+01:00","last_attempt":"2026-09-29T22:40:00+01:00"}
     --- openssl x509 -enddate -noout -in /etc/ssl/site.pem ---
     notAfter=Oct  6 23:59:59 2026 GMT
     --- proposals/ ---

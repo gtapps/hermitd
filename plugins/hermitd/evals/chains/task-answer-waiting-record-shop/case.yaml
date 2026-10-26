@@ -92,5 +92,5 @@ execution:
     use the October list, and do the remaining teas too
     </channel>
 graders:
-  - {"name": "dispatched-worker", "type": "tool_used", "tool": "Agent", "input_match": "(?=[\\s\\S]*hermitd:task-worker)(?=[\\s\\S]*October)", "weight": 3}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.", "weight": 2, "focus": "mock_calls"}
+  - {"name":"dispatched-worker","type":"tool_used","tool":"Agent","input_match":"(?=[\\s\\S]*hermitd:task-worker)(?=[\\s\\S]*October)","weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.","weight":2,"focus":"mock_calls"}

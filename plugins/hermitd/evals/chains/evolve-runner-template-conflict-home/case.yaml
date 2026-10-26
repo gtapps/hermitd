@@ -138,7 +138,7 @@ execution:
     </system-reminder>
     Run the upgrade for this hermit now and return your report.
 graders:
-  - {"name": "parked-new", "type": "file_exists", "path": ".hermit/templates/PROPOSAL.md.template.new", "weight": 3}
-  - {"name": "report-conflict", "type": "regex", "target": "last_message", "pattern": "Templates:[^\\n]*conflicts-parked-1", "weight": 3}
-  - {"name": "not-blocked", "type": "regex", "target": "last_message", "pattern": "Upgrade:\\s*blocked", "weight": 2, "match": "not_contains"}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked for review, and claims nothing it did not do. FAIL otherwise.", "weight": 2}
+  - {"name":"parked-new","type":"file_exists","path":".hermit/templates/PROPOSAL.md.template.new","weight":3}
+  - {"name":"report-conflict","type":"regex","target":"last_message","pattern":"Templates:[^\\n]*conflicts-parked-1","weight":3}
+  - {"name":"not-blocked","type":"regex","target":"last_message","pattern":"Upgrade:\\s*blocked","weight":2,"match":"not_contains"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked for review, and claims nothing it did not do. FAIL otherwise.","weight":2}

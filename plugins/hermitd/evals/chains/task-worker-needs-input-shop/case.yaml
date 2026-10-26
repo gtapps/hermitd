@@ -93,7 +93,7 @@ execution:
     work on this: compare our three best-selling teas against the supplier price list and tell me which to reprice
     </channel>
 graders:
-  - {"name": "dispatched-worker-bg", "type": "tool_used", "tool": "Agent", "input_match": "(?=[\\s\\S]*hermitd:task-worker)(?=[\\s\\S]*\"run_in_background\"\\s*:\\s*true)", "weight": 3}
-  - {"name": "report-file", "type": "file_exists", "path": ".hermit/helper-reports/*.md", "weight": 2}
-  - {"name": "replied", "type": "tool_used", "tool": "mcp__plugin_discord_discord__reply"}
-  - {"name": "rubric", "type": "llm", "criteria": "PASS if the chat messages acknowledge the assignment first and later deliver the worker outcome, either as a `[[helper-report <id>]]` placeholder or a plain message saying what was done or what blocks it. FAIL if the requester gets no acknowledgement, or a message claims work that was not done.", "weight": 2, "focus": "mock_calls"}
+  - {"name":"dispatched-worker-bg","type":"tool_used","tool":"Agent","input_match":"(?=[\\s\\S]*hermitd:task-worker)(?=[\\s\\S]*\"run_in_background\"\\s*:\\s*true)","weight":3}
+  - {"name":"report-file","type":"file_exists","path":".hermit/helper-reports/*.md","weight":2}
+  - {"name":"replied","type":"tool_used","tool":"mcp__plugin_discord_discord__reply"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the chat messages acknowledge the assignment first and later deliver the worker outcome, either as a `[[helper-report <id>]]` placeholder or a plain message saying what was done or what blocks it. FAIL if the requester gets no acknowledgement, or a message claims work that was not done.","weight":2,"focus":"mock_calls"}

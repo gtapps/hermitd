@@ -18,7 +18,7 @@ execution:
     </system-reminder>
     <system-reminder>
     Hermit state for this turn. This session has no shell and the hermit state directory is not on disk: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files yourself. Every other step of the skill, including the evaluation subagent dispatch, runs as written.
-    - heartbeat.ts tick .hermitd: {"verdict": "SKIP", "reason": "paused", "notifications": {"budget": []}, "model": "haiku"}
+    - heartbeat.ts tick .hermitd: {"verdict":"SKIP","reason":"paused","notifications":{"budget":[]},"model":"haiku"}
     - channel-send --notice: this session has no shell. Deliver each operator notice with `mcp__plugin_discord_discord__reply` (chat_id="400000000000000001"), which is where channel-send delivers it here; treat a successful reply as delivered: true.
     </system-reminder>
     <task-notification>

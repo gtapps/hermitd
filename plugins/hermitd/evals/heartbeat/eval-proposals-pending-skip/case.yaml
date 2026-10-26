@@ -29,7 +29,7 @@ execution:
     ## Project Checks
     - Root disk usage above 85% [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at": "2026-10-01T14:00:03+01:00", "checks": [{"id": "runtime", "status": "ok"}, {"id": "credential-expiry", "status": "ok", "detail": "Discord bot token valid for 41 more days."}]}
+    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"ok","detail":"Discord bot token valid for 41 more days."}]}
     --- df -h / ---
     Filesystem      Size  Used Avail Use% Mounted on
     /dev/sda1       200G  110G  90G  55% /
@@ -38,7 +38,7 @@ execution:
     - PROP-042-weekly-cost-digest-113000.md: status: proposed, title: Send a weekly cost digest
     - PROP-039-trim-heartbeat-102000.md: status: accepted, title: Trim the heartbeat checklist
     --- .hermit/state/micro-proposals.json ---
-    {"active": [{"id": "MP-20261001-0901", "question": "Archive helper reports older than 30 days?", "status": "pending"}]}
+    {"active":[{"id":"MP-20261001-0901","question":"Archive helper reports older than 30 days?","status":"pending"}]}
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

@@ -29,7 +29,7 @@ execution:
     ## Project Checks
     - Root disk usage above 85% [ask]
     --- .hermit/state/doctor-report.json ---
-    {"generated_at": "2026-10-01T14:00:03+01:00", "checks": [{"id": "runtime", "status": "ok"}, {"id": "credential-expiry", "status": "warn", "detail": "Discord bot token expires in 2 days. Re-auth with the discord:configure skill."}]}
+    {"generated_at":"2026-10-01T14:00:03+01:00","checks":[{"id":"runtime","status":"ok"},{"id":"credential-expiry","status":"warn","detail":"Discord bot token expires in 2 days. Re-auth with the discord:configure skill."}]}
     --- df -h / ---
     Filesystem      Size  Used Avail Use% Mounted on
     /dev/sda1       200G  96G  104G  48% /

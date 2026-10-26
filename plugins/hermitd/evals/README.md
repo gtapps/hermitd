@@ -84,6 +84,8 @@ chains: 0.862 overall for $2.34; chains-write: 0.908 for $1.55.
 | `task-answer-waiting-record-shop` | 1, 1, 1 |
 | `task-worker-needs-input-shop` | 0.38, 1, 1 |
 
+After the generators switched fixture JSON to compact `JSON.stringify` (no spaces after separators, non-ASCII written as itself), a rerun scored chains 0.875 ($2.23) and chains-write 0.978 ($1.72). No case flipped beyond the one-run variance above: `reflect-tier3-chain-shop` 0, 0, 0; `watch-relay-live-entry-shop` 1, 1, 1; `task-worker-needs-input-shop` 1, 1, 1; every other case unchanged.
+
 `reflect-tier3-chain-shop` scores low because the quick-mode path rarely sends a current-session external-content candidate through both gates, and once dispatched the judge before triage. The task cases show a fresh worker redoing finished work instead of resuming from the record notes, and the resident sometimes writing its own reply instead of the `[[helper-report <id>]]` placeholder.
 
 channel-routing moved from hand-copied session context to the real SessionStart hook. Before: 0.925, 25/33 cases at 1.0 ($10.12). After: 0.889, 23/33 ($9.87). Flips (before → after):
