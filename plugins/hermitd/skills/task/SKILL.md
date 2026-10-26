@@ -59,8 +59,8 @@ All conversation script arguments are shell-quoted values. `history` includes ad
   - If no record is selected: treat as a new **Task thread** (above)
   - If compatible with current task: pipe the steering into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> --actor <sourceKey>:<user_id>` and confirm; the existing progress card, if any, picks the change up at its next milestone
   - If it would replace the current task: confirm with the operator before switching. The replacement follows the **Task thread** rule and gets its own card; the old card's id is never reused
-  - After confirmation of replacement, use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts cancel .hermit <old-id> --actor <sourceKey>:<user_id> --reason-stdin` or `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <old-id> --waiting-on <human> --status-line ... --next ...`, then `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --owner resident --requester <sourceKey>:<user_id> --conversation <sourceKey>:<chat_id> --title ... --done ...` for the replacement.
-  - An ask to do work after the current task runs only `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --owner resident --requester <sourceKey>:<user_id> --conversation <sourceKey>:<chat_id> --title ... --done ...`; § Intake covers its queue position.
+  - After confirmation of replacement, use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts cancel .hermit <old-id> --actor <sourceKey>:<user_id> --reason-stdin` or `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <old-id> --waiting-on <human> --status-line ... --next ...`, then `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --owner resident --requester <sourceKey>:<user_id> --conversation <key> --title ... --done ...` for the replacement.
+  - An ask to do work after the current task runs only **Open the thread**, then `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --owner resident --requester <sourceKey>:<user_id> --conversation <key> --title ... --done ...`; § Intake covers its queue position.
   - Never silently abandon work in progress
 
 ## Worker status

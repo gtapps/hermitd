@@ -47,15 +47,13 @@ async function main(): Promise<void> {
     result = taskStandup(dir, days);
   } else {
     const input = verb === 'note' || verb === 'lesson' || flags['note-stdin'] || flags['result-stdin'] || flags['reason-stdin'] ? await Bun.stdin.text() : '';
-    if (verb === 'open' && typeof flags.conversation === 'string') {
-      if (!flags.conversation.includes('~')) {
-        const config = readSettledConfig(dir);
-        const [source, chatId] = flags.conversation.split(':');
-        const needsThread = source === 'discord'
-          ? isGuildChannelType(await lookupChat(dir, config, chatId))
-          : Boolean(config.channels?.[source]?.attributes?.thread_id);
-        if (needsThread) throw new Error('thread_required');
-      }
+    if (verb === 'open' && typeof flags.conversation === 'string' && !flags.conversation.includes('~')) {
+      const config = readSettledConfig(dir);
+      const [source, chatId] = flags.conversation.split(':');
+      const needsThread = source === 'discord'
+        ? isGuildChannelType(await lookupChat(dir, config, chatId))
+        : Boolean(config.channels?.[source]?.attributes?.thread_id);
+      if (needsThread) throw new Error('thread_required');
     }
     result = mutateTask(dir, verb, id, flags, input);
     if (verb === 'close') resolveProposalOnCheckClose(dir, id!, result as Record<string, unknown>);

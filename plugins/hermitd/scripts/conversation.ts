@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ensureLedgerFile } from './lib/append-jsonl';
+import { appendJsonlLine } from './lib/append-jsonl';
 // `is-trusted` prints `OK` for a trusted sender and `{"status":"untrusted"}` otherwise, both at
 // exit 0: a caller must read stdout, never the exit code alone, to decide trust.
 import { conversationKey, checkKey } from './lib/conversation-key';
@@ -79,15 +79,16 @@ async function main(): Promise<void> {
       }
       const key = conversationKey(opts.source, chatId, thread);
       checkKey(key);
-      const ackPath = path.join(dir, 'state', 'intake-acks.jsonl');
-      fs.mkdirSync(path.dirname(ackPath), { recursive: true });
-      ensureLedgerFile(ackPath);
-      fs.appendFileSync(ackPath, JSON.stringify({
-        at: new Date().toISOString(),
-        channel: opts.source,
-        chat_id: chatId,
-        session_id: null,
-      }) + '\n');
+      // Best-effort: the thread already exists, so a failed ack must not report thread-open as failed.
+      try {
+        fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+        appendJsonlLine(path.join(dir, 'state', 'intake-acks.jsonl'), JSON.stringify({
+          at: new Date().toISOString(),
+          channel: opts.source,
+          chat_id: chatId,
+          session_id: null,
+        }));
+      } catch { /* fail-open */ }
       console.log(JSON.stringify({ key, chat_id: chatId, reply }));
       return;
     }
