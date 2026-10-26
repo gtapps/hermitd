@@ -12,6 +12,7 @@ Take action on a proposal: accept, defer, dismiss, or resolve.
 - `proposal-quality-gate`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts quality-gate .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `task-open`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit`
+- `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
 - `conversation`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/conversation.ts .hermit`
 
 ## Step 0 — Channel reply

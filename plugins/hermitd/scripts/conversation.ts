@@ -86,6 +86,7 @@ async function main(): Promise<void> {
           at: new Date().toISOString(),
           channel: opts.source,
           chat_id: chatId,
+          key,
           session_id: null,
         }));
       } catch { /* fail-open */ }
