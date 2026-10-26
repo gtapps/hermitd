@@ -73,6 +73,12 @@ describe('en catalog byte-identity (pre-refactor literals)', () => {
     expect(WATCHDOG.en.stallQuestion('08:30')).toBe(
       "Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer (08:30).",
     );
+    expect(WATCHDOG.en.stallPermission('08:30')).toBe(
+      'The agent asked for permission to continue and is waiting for an answer (08:30). It will pick up where it left off once someone approves.',
+    );
+    expect(WATCHDOG['pt-PT'].stallPermission('08:30')).toBe(
+      'O agente pediu autorização para continuar e está à espera de resposta (08:30). Retoma onde parou assim que alguém aprovar.',
+    );
     expect(WATCHDOG.en.lapsedLogin('08:30', 'FIX')).toBe(
       "Your Claude login has expired, so your agent can't do any work until you sign in again (08:30). FIX",
     );

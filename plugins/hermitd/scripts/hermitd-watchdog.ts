@@ -41,6 +41,8 @@ import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './li
 import { postToSession } from './lib/peer-post';
 import { findResident, type SessionEntry } from './lib/session-registry';
 import { costLogPath, transcriptDirFor } from './lib/cc-compat';
+import { iterChannelConfigs } from './lib/channel-config';
+import { channelStateDir } from './lib/channel-token';
 import { readConfigRaw, readSettledConfig } from './lib/config-read';
 import { evaluateBackupDue } from './lib/backup';
 import { isPaused, pauseReasonLabel } from './lib/pause';
@@ -269,6 +271,24 @@ export function composeStallQuestionMessage(timezone: string, locale: Locale = O
   const sentence = WATCHDOG[locale].stallQuestion(nowHHMM(timezone));
   if (!waitingFor) return sentence;
   return `${sentence}\n\n${waitingFor}`;
+}
+
+/** Operator-language notice for a native permission prompt the channel relay delivered to approvers. */
+export function composeStallPermissionMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
+  return WATCHDOG[locale].stallPermission(nowHHMM(timezone));
+}
+
+/** True when a channel's access.json lists at least one paired user, the relay's audience. Never throws. */
+function permissionRelayReachesAnyone(config: Json): boolean {
+  try {
+    for (const [name, cfg] of iterChannelConfigs(config)) {
+      try {
+        const access = JSON.parse(fs.readFileSync(path.join(channelStateDir(HERMIT_ROOT, name, cfg), 'access.json'), 'utf-8'));
+        if (Array.isArray(access?.allowFrom) && access.allowFrom.length > 0) return true;
+      } catch { /* missing or unreadable: not reached */ }
+    }
+  } catch { /* fail open */ }
+  return false;
 }
 
 /** Operator-language message for a session that stopped consuming its queued notifications. */
@@ -2089,7 +2109,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
   return 'continue';
 }
 
-function stallQuestion({ world, timezone, snap }: RecoveryContext): DecisionResult {
+function stallQuestion({ world, config, timezone, snap }: RecoveryContext): DecisionResult {
   const { resident, pendingQuestion } = snap;
   // 3b. Stall-question detection (PROP-024) — catches the un-redirectable remainder
   // the AskUserQuestion PreToolUse gate (ask-gate.ts) can't reach: native permission
@@ -2110,7 +2130,10 @@ function stallQuestion({ world, timezone, snap }: RecoveryContext): DecisionResu
   if (pendingQuestion) {
     if (!watchdogState.stall_question_notified) {
       const waitingFor = typeof resident?.waitingFor === 'string' && resident.waitingFor ? resident.waitingFor : undefined;
-      world.notify.operator(composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
+      world.notify.operator(
+        waitingFor === 'permission prompt' && permissionRelayReachesAnyone(config)
+          ? composeStallPermissionMessage(timezone, OPERATOR_LOCALE)
+          : composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
       appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? `: ${waitingFor}` : ''}`, world);
       watchdogState.stall_question_notified = true;
       writeWatchdogState(watchdogState, world);

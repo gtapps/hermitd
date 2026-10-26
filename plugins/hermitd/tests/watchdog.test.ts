@@ -19,7 +19,7 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
   maybeContextCompact, readHarnessOutcomes, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
@@ -1094,6 +1094,46 @@ describe('stall-question detection', () => {
     expect(stub.requests.length).toBe(1);
     expect(stub.requests[0].body.text).toContain("can't ask over chat");
     expect(stub.requests[0].body.text).toContain('permission prompt');
+  });
+});
+
+describe('stall-question, relayed permission prompt', () => {
+  const run = async (waitingFor: string, allowFrom: unknown, write = true) => {
+    const h = setupHermit();
+    try {
+      writeConfig(h);
+      configureChannel(h);
+      if (write) {
+        fs.writeFileSync(path.join(h.dir, '.claude.local', 'channels', 'telegram', 'access.json'), JSON.stringify({ allowFrom }));
+      }
+      writeFakeTmux(h, 0);
+      writeFakePgrep(h, 1);
+      waitOnDialog(h, waitingFor);
+      const stub = startHttpStub();
+      try {
+        await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
+        return stub.requests.map((r) => r.body.text as string);
+      } finally { stub.stop(); }
+    } finally { h.cleanup(); }
+  };
+
+  test('permission prompt + paired user → approval notice', async () => {
+    const texts = await run('permission prompt', ['1']);
+    expect(texts.length).toBe(1);
+    expect(texts[0]).toContain('asked for permission to continue');
+    expect(texts[0]).not.toContain("can't ask over chat");
+  });
+
+  test('permission prompt + empty allowFrom → unchanged notice', async () => {
+    const texts = await run('permission prompt', []);
+    expect(texts[0]).toContain("can't ask over chat");
+    expect(texts[0]).toContain('permission prompt');
+  });
+
+  test('other dialog + paired user → unchanged notice with suffix', async () => {
+    const texts = await run('question', ['1']);
+    expect(texts[0]).toContain("can't ask over chat");
+    expect(texts[0]).toContain('question');
   });
 });
 
@@ -4579,6 +4619,13 @@ describe('watchdog message localization', () => {
       /^Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer \(\d{2}:\d{2}\)\.$/);
     expect(composeStallQuestionMessage('UTC', 'pt-PT')).toMatch(
       /^O seu agente está à espera de uma pergunta que não pode fazer pelo chat — abra o terminal ou a app Claude para responder \(\d{2}:\d{2}\)\.$/);
+  });
+
+  test('composeStallPermissionMessage en / pt-PT', () => {
+    expect(composeStallPermissionMessage('UTC', 'en')).toMatch(
+      /^The agent asked for permission to continue and is waiting for an answer \(\d{2}:\d{2}\)\. It will pick up where it left off once someone approves\.$/);
+    expect(composeStallPermissionMessage('UTC', 'pt-PT')).toMatch(
+      /^O agente pediu autorização para continuar e está à espera de resposta \(\d{2}:\d{2}\)\. Retoma onde parou assim que alguém aprovar\.$/);
   });
 
   test('composeSessionWedgedMessage en / pt-PT', () => {
