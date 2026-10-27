@@ -3378,7 +3378,7 @@ async function runMonitorUntil(opts: {
   interval: string;
   iters: number;
   deadlineMs?: number;
-}): Promise<{ stdout: string }> {
+}): Promise<{ stdout: string; liveness: Record<string, unknown> | null; firstWake?: string }> {
   const { scriptPath, stubBody, envVar, interval, iters, deadlineMs = 30000 } = opts;
   const stubTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mon-stub-'));
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mon-hermit-'));
@@ -3430,7 +3430,11 @@ __iterN++; fs.writeFileSync(__iterFile,String(__iterN));
     if (count < target) {
       throw new Error(`runMonitorUntil: stub invoked ${count}/${target} times within ${deadlineMs}ms`);
     }
-    return { stdout };
+    const livenessPath = path.join(workDir, 'state/heartbeat-liveness.json');
+    const liveness = fs.existsSync(livenessPath) ? readJson(livenessPath) : null;
+    const firstWakePath = path.join(workDir, 'first-wake');
+    const firstWake = fs.existsSync(firstWakePath) ? fs.readFileSync(firstWakePath, 'utf8') : undefined;
+    return { stdout, liveness, firstWake };
   } finally {
     try { fs.rmSync(stubTmp, { recursive: true, force: true }); } catch {}
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
@@ -3521,6 +3525,36 @@ console.log('EVALUATE');
       stub.cleanup();
     }
   }
+
+  for (const verdict of ['ALERT', 'EVALUATE', 'OK', 'SKIP|outside-hours', 'ERROR']) {
+    test(`heartbeat-monitor stamps only emitted wakes for ${verdict}`, async () => {
+      const r = await monitorOnce(`console.log(${JSON.stringify(verdict)});`);
+      try {
+        const live = readJson(path.join(r.hbDir, 'state/heartbeat-liveness.json'));
+        if (verdict === 'ALERT') {
+          expect(live.last_wake_at).toBe(live.last_peek_at);
+          expect(r.stdout).toBe('HEARTBEAT_EVALUATE');
+        } else {
+          expect(live).not.toHaveProperty('last_wake_at');
+        }
+      } finally {
+        r.cleanup();
+      }
+    });
+  }
+
+  test('heartbeat-monitor preserves the emitted wake across quiet iterations', async () => {
+    const { liveness, firstWake } = await runMonitorUntil({
+      scriptPath: MONITOR_SH,
+      stubBody: `if (__iterN === 2) fs.writeFileSync(path.join(d, 'first-wake'), JSON.parse(fs.readFileSync(path.join(d, 'state/heartbeat-liveness.json'), 'utf8')).last_wake_at);
+console.log(__iterN === 1 ? 'ALERT' : 'OK');`,
+      envVar: 'HEARTBEAT_PRECHECK',
+      interval: '0.2',
+      iters: 2,
+    });
+    expect(typeof firstWake).toBe('string');
+    expect(liveness?.last_wake_at).toBe(firstWake);
+  }, 45000);
 
   // 20b. EVALUATE on iter-1 → silent (cold-start suppression)
   test('heartbeat-monitor (iter-1 EVALUATE → silent, cold-start suppressed)', async () => {

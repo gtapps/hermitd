@@ -27,6 +27,7 @@ control_state() {
   bun "$(dirname "$0")/heartbeat.ts" control-state "$HB_DIR"
 }
 first=1
+last_wake_at=""
 while true; do
   control="$(control_state)"
   [[ "$control" == 'stopped' ]] && exit 0
@@ -35,9 +36,15 @@ while true; do
     verdict="$(bun "${PRECHECK[@]}" --peek "$HB_DIR" 2>/dev/null || echo "ERROR")"
   fi
   _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  case "$verdict" in
+    EVALUATE*) [[ -n "$first" ]] || last_wake_at="$_ts" ;;
+    ALERT*) last_wake_at="$_ts" ;;
+  esac
+  _wake=''
+  [[ -n "$last_wake_at" ]] && _wake=",\"last_wake_at\":\"$last_wake_at\""
   _pid=''
   [[ -n "${MONITOR_SUPERVISOR_PID:-}" ]] && _pid=",\"pid\":${MONITOR_SUPERVISOR_PID}"
-  printf '{"last_peek_at":"%s"%s}\n' "$_ts" "$_pid" > "$HB_DIR/state/.heartbeat-liveness.tmp" \
+  printf '{"last_peek_at":"%s"%s%s}\n' "$_ts" "$_pid" "$_wake" > "$HB_DIR/state/.heartbeat-liveness.tmp" \
     && mv "$HB_DIR/state/.heartbeat-liveness.tmp" "$HB_DIR/state/heartbeat-liveness.json" \
     || true
   # Emission grammar is load-bearing: record-operator-action.ts isRoutinePrompt()

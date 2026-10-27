@@ -1263,6 +1263,7 @@ export const MONITOR_REARM_DAMPER_SECS = 6 * 3600;
 // `watchdog.wedge_floor`: an install that deliberately tightened heartbeat.every keeps its
 // own recovery SLA, and "0s" restores the plain stale_factor × every product.
 export const WEDGE_FLOOR_DEFAULT = '4h';
+const WAKE_CONSUME_GRACE_SECS = 30 * 60;
 // A restart this soon after the previous one starts fresh instead of resuming: in a
 // crash loop every resume re-pays the whole conversation's cache write. One hour
 // covers the loop cadences seen on the fleet (every 5 and every 30 minutes).
@@ -2278,6 +2279,20 @@ async function heartbeatWedge({ world, config, timezone, snap }: RecoveryContext
           }
 
           const monitorDead = world.proc.heartbeatMonitorDead();
+
+          if (!monitorDead && heartbeatHealth(world.paths.hermitRoot, config, world.clock.nowMs()).healthy) {
+            const liveness = world.files.readJson(path.join(world.paths.stateDir, 'heartbeat-liveness.json'));
+            const wakeAgeSecs = typeof liveness?.last_wake_at === 'string' ? ageSecs(liveness.last_wake_at, world) : null;
+            const unconsumedWake = wakeAgeSecs !== null && wakeAgeSecs < heartbeatAge && wakeAgeSecs > WAKE_CONSUME_GRACE_SECS;
+            if (!unconsumedWake) {
+              watchdogState.consecutive_stale = 0;
+              watchdogState.last_nudge_at = null;
+              watchdogState.last_nudge_transport = null;
+              watchdogState.last_pane_hash = currentPaneHash;
+              writeWatchdogState(watchdogState, world);
+              return 'continue';
+            }
+          }
 
           const prevHash = watchdogState.last_pane_hash;
           const paneFrozen =

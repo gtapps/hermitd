@@ -2599,6 +2599,53 @@ const writeState = (h: Hermit, name: string, obj: unknown) => {
   }
   fs.writeFileSync(state(h, name), JSON.stringify(obj) + '\n');
 };
+for (const scenario of [
+  { name: 'healthy quiet monitor', monitorFound: 0, peekHours: 0, wakeHours: null, nudge: false },
+  { name: 'wake unconsumed for 45 minutes', monitorFound: 0, peekHours: 0, wakeHours: 0.75, nudge: true },
+  { name: 'wake within 10-minute grace', monitorFound: 0, peekHours: 0, wakeHours: 1 / 6, nudge: false },
+  { name: 'wake consumed by a newer heartbeat', monitorFound: 0, peekHours: 0, wakeHours: 7, nudge: false },
+  { name: 'dead monitor with fresh liveness', monitorFound: 1, peekHours: 0, wakeHours: null, nudge: true },
+  { name: 'live monitor with stale liveness', monitorFound: 0, peekHours: 7, wakeHours: null, nudge: true },
+] as const) {
+  test(`stale heartbeat: ${scenario.name}`, withHermit(async (h) => {
+    writeConfig(h);
+    touchAgo(state(h, '.heartbeat'), 6 * 3600);
+    writeFakeTmux(h, 0, 'quiet pane');
+    writeFakePgrep(h, scenario.monitorFound);
+    fs.writeFileSync(state(h, '.boot-id'), 'native-boot\n');
+    writeState(h, 'heartbeat-monitor.runtime.json', { boot_id: 'native-boot', started_at: isoAgo(9) });
+    writeState(h, 'heartbeat-liveness.json', {
+      pid: process.pid,
+      last_peek_at: isoAgo(scenario.peekHours),
+      ...(scenario.wakeHours === null ? {} : { last_wake_at: isoAgo(scenario.wakeHours) }),
+    });
+    writeState(h, 'watchdog-state.json', {
+      consecutive_stale: 1,
+      last_nudge_at: isoAgo(8),
+      last_nudge_transport: 'queue',
+      last_pane_hash: 'old-pane',
+      wedge_escalated: true,
+    });
+    const result = await watchdog(h, 'run');
+    expect(result.exitCode).toBe(0);
+    expect(events(h)).not.toContain('wedge-recovered');
+    if (scenario.nudge) {
+      expect(queueLog(h)).toContain('/hermitd:heartbeat run');
+      expect(events(h)).toContain('nudge');
+    } else {
+      expect(queueLog(h)).toBe('');
+      expect(events(h)).not.toContain('nudge');
+      expect(events(h)).not.toContain('restart');
+      const saved = readJson(state(h, 'watchdog-state.json'));
+      expect(saved.consecutive_stale).toBe(0);
+      expect(saved.last_nudge_at).toBeNull();
+      expect(saved.last_nudge_transport).toBeNull();
+      expect(saved.last_pane_hash).not.toBe('old-pane');
+      expect(saved.wedge_escalated).toBe(true);
+    }
+  }));
+}
+
 const writeRoutineMonitorConfig = (h: Hermit) =>
   fs.writeFileSync(path.join(h.dir, '.hermit', 'config.json'), JSON.stringify({
     watchdog: { enabled: true, stale_factor: 2, escalate_after: 3, operator_grace: '15m' },
