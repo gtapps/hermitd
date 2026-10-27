@@ -191,9 +191,13 @@ mock('task-worker-needs-input-shop', CARD_MOCK);
 
 // The record the requester answers: opened in its task thread, then blocked on a question to them.
 const WAIT_THREAD = '700000000000000002';
+const WAIT_WORKER = 'a1b2c3d4e5f6a7b8c';
 const [WAIT_PROMPT, WAIT_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run, read }) => {
   const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Reprice the autumn tea range', '--requester', `discord:${USER}`,
     '--conversation', `discord:${WAIT_THREAD}`, '--done', 'Every autumn tea repriced against the current supplier list'], { now: '2026-10-19T09:00:00.000Z' })).id;
+  for (const owner of [`worker:${WAIT_WORKER}`, 'resident']) {
+    run('task.ts', ['note', '.hermit', id, '--owner', owner], { now: '2026-10-19T09:30:00.000Z' });
+  }
   run('task.ts', ['block', '.hermit', id, '--waiting-on', `discord:${USER}`, '--status-line', 'Compared 6 of 9 teas against the September list',
     '--next', 'Which supplier price list should I use, the September or the October one?'], { now: '2026-10-19T10:00:00.000Z' });
   const record = { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) };
@@ -201,12 +205,13 @@ const [WAIT_PROMPT, WAIT_RECORD] = withInstall({ '.hermit/config.json': configJs
     `- task.ts notes for ${id}: "Compared 6 of 9 teas against the September list; stopped to ask which list applies."`,
     '- task.ts note, task.ts note --clear-waiting: OK']), record] as const;
 });
-chainCase('task-answer-waiting-record-shop', 'heldout', 'An answer to a waiting record whose work outlasts the turn dispatches a fresh worker with the notes and the answer.',
-  'hermitd:task-worker dispatched with the record notes and the requester answer',
+chainCase('task-answer-waiting-record-shop', 'heldout', 'An answer to a waiting record sends the answer brief to its last worker; that id does not exist in the eval sandbox, so the refused send falls back to a fresh worker.',
+  'SendMessage to the last worker with October, then hermitd:task-worker dispatched after refusal with the record notes and requester answer',
   WAIT_PROMPT,
-  [{ name: 'dispatched-worker', type: 'tool_used', tool: 'Agent', input_match: String.raw`(?=[\s\S]*hermitd:task-worker)(?=[\s\S]*October)`, weight: 3 },
+  [{ name: 'resumed-worker', type: 'tool_used', tool: 'SendMessage', input_match: String.raw`(?=[\s\S]*"to"\s*:\s*"${WAIT_WORKER}")(?=[\s\S]*October)`, weight: 3 },
+    { name: 'dispatched-worker', type: 'tool_used', tool: 'Agent', input_match: String.raw`(?=[\s\S]*hermitd:task-worker)(?=[\s\S]*October)`, weight: 3 },
     rubric('PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.', 'mock_calls')],
-  chainScaffold(WAIT_RECORD), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
+  chainScaffold(WAIT_RECORD), ['Skill', 'SendMessage', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-answer-waiting-record-shop', CARD_MOCK);
 
 // --- proposal-create -> triage duplicate (case 8) -------------------------

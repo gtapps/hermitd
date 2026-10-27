@@ -6,8 +6,9 @@ test('older records backfill missing nullable fields before validation', async (
   const f = taskFixture();
   try {
     const { id } = await f.open();
-    const old = f.text(id).replace(/^(check|stall_at|stall_status|stall_next):.*\n/gm, '').replace('## Lessons\n\n', '');
+    const old = f.text(id).replace(/^(check|stall_at|stall_status|stall_next|last_worker):.*\n/gm, '').replace('## Lessons\n\n', '');
     const record = decodeTask(old);
+    expect(record.last_worker).toBeNull();
     expect(record.check).toBeNull();
     expect(record.stall_at).toBeNull();
     expect(decodeTask(encodeTask(record))).toEqual(record);

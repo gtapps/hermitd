@@ -89,7 +89,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     const finishing = record.result && !latestIsStall && !record.approver && !record.check
       ? `; approved, outcome pending a command can observe: add --check '<command>' [--due <iso>] to the --clear-waiting note`
       : '';
-    context += `\n[waiting task ${record.id}: ${reason}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
+    context += `\n[waiting task ${record.id}: ${reason}${record.last_worker ? '; last_worker=' + record.last_worker : ''}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
   }
   if (harnessCommand && owner !== 'resident') {
     ctx.skipHarnessCommand = true;
