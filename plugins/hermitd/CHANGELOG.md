@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Watchdog no longer nudges a quiet resident whose heartbeat monitor is healthy and has no wake pending.
 - Re-accepted proposals reuse their open record and thread.
 - Intake acknowledgements require a record for each exact thread key.
 - Chat tasks recorded on a server channel move into a thread.

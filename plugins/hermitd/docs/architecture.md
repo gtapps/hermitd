@@ -210,7 +210,7 @@ One writer per state file. No shared mutation bus. (Exception: `state/micro-prop
 | `state/watch-monitor.runtime.json` | watch poller (`watch-monitor.ts`); `hermitd-start` empties it at launch | watch status and start |
 | `state/watch-duties.json` | `duties.ts`; `hermitd-start` empties it at launch | duty listings |
 | `state/heartbeat-monitor.runtime.json` | `lib/heartbeat/start.ts` only — reached by `heartbeat start` and by `hermit-routines load` (`arm commit --heartbeat`) | heartbeat-start (write), heartbeat-stop (clear), heartbeat-restart (rewrite) |
-| `state/heartbeat-liveness.json` | heartbeat-monitor.sh (every poll iteration)         | doctor-check.ts (heartbeat liveness check), heartbeat status  |
+| `state/heartbeat-liveness.json` | heartbeat-monitor.sh (every poll iteration)         | doctor-check.ts (heartbeat liveness check), heartbeat status, hermitd-watchdog.ts (`last_wake_at` in the wedge tier)  |
 | `state/cc-stop-snapshot.json`  | stop-pipeline.ts only                               | doctor-check.ts (scheduler/background-task health check)      |
 | `state/operator-turn-open.json` | user-prompt-pipeline.ts (opens at hook exit for a kept, non-blocked prompt, via record-operator-action.ts `openTurnMarker`) + record-operator-action.ts `--force`; stop-pipeline.ts (clears at Stop — the only deleter) | routines.ts due + lib/heartbeat/precheck.ts, both via the operator-turn guard (defer gate, 60-min TTL backstop against a marker orphaned by a failed Stop) |
 | `state/stop-failure.json`      | stop-failure-stamp.ts (writer), stop-pipeline.ts (deleter — cleared on the next healthy, non-guest Stop) | hermitd-watchdog.ts (upstream API failure tier, preferred over the transcript scan while the stamp is the newer of the two) |
