@@ -19,6 +19,16 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+const TEST_ENV = {
+  ...process.env, WATCH_MONITOR_TEST: '1', WATCH_MONITOR_POLL_MS: '10',
+  WATCH_MONITOR_BACKOFF_MS: '20', WATCH_MONITOR_MAX_BACKOFF_MS: '80',
+};
+
+function readRuntime(dir: string): any {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'state/watch-monitor.runtime.json'), 'utf8')); }
+  catch { return undefined; }
+}
+
 async function fixture(run: (f: {
   project: string;
   dir: string;
@@ -32,10 +42,7 @@ async function fixture(run: (f: {
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
   const lines: string[] = [];
   const proc = Bun.spawn(['bun', path.join(SCRIPTS_DIR, 'watch-monitor.ts'), dir], {
-    env: {
-      ...process.env, WATCH_MONITOR_TEST: '1', WATCH_MONITOR_POLL_MS: '10',
-      WATCH_MONITOR_BACKOFF_MS: '20', WATCH_MONITOR_MAX_BACKOFF_MS: '80',
-    },
+    env: TEST_ENV,
     stdout: 'pipe', stderr: 'pipe',
   });
   const output = (async () => {
@@ -53,10 +60,7 @@ async function fixture(run: (f: {
     expect(await proc.exited).toBe(0);
     await output;
   };
-  const runtime = () => {
-    try { return JSON.parse(fs.readFileSync(path.join(dir, 'state/watch-monitor.runtime.json'), 'utf8')); }
-    catch { return undefined; }
-  };
+  const runtime = () => readRuntime(dir);
   try {
     await until(() => runtime());
     await run({ project, dir, lines, runtime, stop, configure(command, enabled = true) {
@@ -81,17 +85,16 @@ test('test-mode monitor stops itself and its watch when its runner is killed', a
   ] }));
   const runner = Bun.spawn(['bun', '-e', `
     const monitor = Bun.spawn(['bun', ${JSON.stringify(path.join(SCRIPTS_DIR, 'watch-monitor.ts'))}, ${JSON.stringify(dir)}], {
-      stdout: 'ignore', stderr: 'ignore',
+      stdout: 'ignore', stderr: 'inherit',
     });
     console.log(monitor.pid);
     await monitor.exited;
   `], {
-    env: {
-      ...process.env, WATCH_MONITOR_TEST: '1', WATCH_MONITOR_POLL_MS: '10',
-      WATCH_MONITOR_BACKOFF_MS: '20', WATCH_MONITOR_MAX_BACKOFF_MS: '80',
-    },
-    stdout: 'pipe', stderr: 'ignore',
+    env: TEST_ENV,
+    stdout: 'pipe', stderr: 'pipe',
   });
+  // The monitor inherits this pipe, so it resolves once the monitor exits too.
+  const errors = new Response(runner.stderr).text();
   let monitorPid: number | undefined;
   let watchPid: number | undefined;
   const output = (async () => {
@@ -101,27 +104,24 @@ test('test-mode monitor stops itself and its watch when its runner is killed', a
       if (pending.includes('\n')) monitorPid = Number(pending.trim());
     }
   })();
-  const runtime = () => {
-    try { return JSON.parse(fs.readFileSync(path.join(dir, 'state/watch-monitor.runtime.json'), 'utf8')); }
-    catch { return undefined; }
-  };
+  const runtime = () => readRuntime(dir);
   try {
     const pid = await until(() => monitorPid);
     watchPid = await until(() => runtime()?.watches[0]?.pid || undefined);
     runner.kill('SIGKILL');
     await runner.exited;
     await until(() => !alive(pid) && !alive(watchPid!) ? true : undefined);
-    expect(alive(pid)).toBe(false);
-    expect(alive(watchPid!)).toBe(false);
   } finally {
-    if (runner.exitCode === null) runner.kill('SIGKILL');
+    if (runner.exitCode === null && runner.signalCode === null) runner.kill('SIGKILL');
     await runner.exited;
     await output;
     watchPid ??= runtime()?.watches[0]?.pid;
     for (const pid of [monitorPid, watchPid]) {
       if (pid && alive(pid)) process.kill(pid, 'SIGKILL');
     }
+    const stderr = await errors;
     fs.rmSync(project, { recursive: true });
+    expect(stderr).toBe('');
   }
 }, 15000);
 
