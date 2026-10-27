@@ -19,6 +19,7 @@
 - Resolving a proposal that was never accepted records the accept, through the new `proposal.ts resolve` verb.
 - Proposal acceptance by source counts accepted proposals; it read zero for every source.
 - Replies to a suggestion are understood in any language, so a bare "sim" or "depois" accepts or defers it; the Portuguese status line asks for "sim/não".
+- Heartbeat no longer wakes on every tick for a pending decision asked outside the home chat.
 
 ## [1.4.22] - 2026-10-25
 

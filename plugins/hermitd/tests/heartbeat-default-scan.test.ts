@@ -17,6 +17,7 @@ import path from 'node:path';
 
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
+import { deriveMicroPendingKeys } from '../scripts/lib/alert-state';
 import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChecklistItems, canonicalChecklistKeys } from '../scripts/lib/heartbeat-items';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-hbscan-');
@@ -59,6 +60,8 @@ interface Fixture {
   noProposalsDir?: boolean;  // don't create proposals/ at all (ENOENT readdir path)
   proposalsAsFile?: boolean; // proposals is a regular file, not a dir (ENOTDIR readdir path)
   microCorrupt?: boolean;    // micro-proposals.json present but unparseable (#764)
+  microEntries?: object[];   // raw micro-proposals.json pending entries
+  homeChatId?: string;       // discord default_chat_id, making `discord:<id>` the home chat
 }
 
 function build(fix: Fixture): string {
@@ -69,7 +72,10 @@ function build(fix: Fixture): string {
   } else if (!fix.noProposalsDir) {
     fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
   }
-  fs.writeFileSync(hermit(dir, 'config.json'), CONFIG);
+  fs.writeFileSync(hermit(dir, 'config.json'), fix.homeChatId === undefined ? CONFIG : JSON.stringify({
+    ...JSON.parse(CONFIG),
+    channels: { discord: { enabled: true, default_chat_id: fix.homeChatId } },
+  }));
   fs.writeFileSync(hermit(dir, 'HEARTBEAT.md'), fix.heartbeat ?? HEARTBEAT_DEFAULT);
   const alert = {
     alerts: {},
@@ -97,6 +103,9 @@ function build(fix: Fixture): string {
       hermit(dir, 'state', 'micro-proposals.json'),
       JSON.stringify({ pending: ids.map(id => ({ id, status: 'pending', tier: 1 })) }),
     );
+  }
+  if (fix.microEntries) {
+    fs.writeFileSync(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: fix.microEntries }));
   }
   return dir;
 }
@@ -176,6 +185,30 @@ describe('default proposal-scan resolution', () => {
       alertState: { alerts: microSuppressed('MP-1') },
     });
     expect(await verdict(dir)).toBe('EVALUATE');
+  });
+
+  // Heartbeat alerts post in the home chat, so a decision asked in another chat
+  // never gets an alert key and could never be damped by one.
+  test('6d. pending micro-proposal asked outside the home chat → OK on every tick', async () => {
+    const dir = build({ homeChatId: '5', microEntries: [{ id: 'MP-group', status: 'pending', tier: 1, chat: 'discord:9' }] });
+    expect(await verdict(dir, true)).toBe('OK');
+    for (let i = 0; i < 3; i++) expect(await verdict(dir)).toBe('OK');
+  });
+
+  test('6e. precheck wakes for exactly the entries the alert deriver keys', async () => {
+    const cases: Array<{ chat?: string; home?: string; eligible: boolean }> = [
+      { chat: 'discord:5', home: '5', eligible: true },
+      { chat: 'discord:9', home: '5', eligible: false },
+      { home: '5', eligible: true },                      // queued before entries carried a chat
+      { chat: 'discord:5', home: '7', eligible: false },  // home chat changed after queueing
+      { chat: 'discord:5', eligible: false },             // no channel can be the home chat
+    ];
+    for (const c of cases) {
+      const entry = { id: 'MP-x', status: 'pending', tier: 1, ...(c.chat ? { chat: c.chat } : {}) };
+      const dir = build({ homeChatId: c.home, microEntries: [entry] });
+      expect(deriveMicroPendingKeys(hermit(dir)).items.length === 1).toBe(c.eligible);
+      expect(await verdict(dir)).toBe(c.eligible ? 'EVALUATE' : 'OK');
+    }
   });
 
   test('7. clean scan but 20-tick self-eval is due → EVALUATE (gate precedes item loop)', async () => {
