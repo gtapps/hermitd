@@ -25,6 +25,7 @@ import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChec
 import { isPaused } from '../pause';
 import { probeDeclaredCredentials, strayTokenNote } from '../credential-probe';
 import { readMicroProposals } from '../micro-proposals-io';
+import { askedOutsideHome, homeChatKey } from '../proposals/micro';
 import { scanForInjection } from '../injection-scan';
 import { sha256 } from '../hash';
 
@@ -102,12 +103,15 @@ function resolveProposalScanItem(dir: string, alertMap: Json): 'clean' | 'evalua
 // A corrupt file is NOT an empty queue: the sibling scan above fails open on every
 // ambiguous read of its source of truth, and this one must too, or a hand-edit typo
 // silently buries every pending operator question (#764). Caller damps the repeat.
-function resolveMicroPendingScan(dir: string, alertMap: Json): 'clean' | 'evaluate' | 'corrupt' {
+// An entry asked outside the home chat never gets an alert key (deriveMicroPendingKeys
+// skips it), so it could never be damped; skip it here too.
+function resolveMicroPendingScan(dir: string, alertMap: Json, channels: Json): 'clean' | 'evaluate' | 'corrupt' {
   const read = readMicroProposals(path.join(dir, 'state', 'micro-proposals.json'));
   if (read.status === 'corrupt') return 'corrupt';
   const micro = read.status === 'missing' ? { pending: [] } : read.data;
+  const home = homeChatKey(channels);
   const pending = Array.isArray(micro.pending)
-    ? micro.pending.filter((p: Json) => p && p.status === 'pending' && p.tier === 1)
+    ? micro.pending.filter((p: Json) => p && p.status === 'pending' && p.tier === 1 && !askedOutsideHome(p, home))
     : [];
   for (const p of pending) {
     // deriveMicroPendingKeys skips a non-string id, so no alert key exists to suppress
@@ -243,7 +247,7 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
   if (typeof alertState.total_ticks !== 'number' || !Number.isFinite(alertState.total_ticks)) {
     alertState.total_ticks = 0;
   }
-  const microScan = resolveMicroPendingScan(stateDir, alertState.alerts ?? {});
+  const microScan = resolveMicroPendingScan(stateDir, alertState.alerts ?? {}, config.channels);
   // Recovery clears the damper: a file repaired and re-broken inside the 24h window is a
   // NEW corruption, and inheriting the previous one's stamp would silence its wake. Folded
   // into the tick-increment write below rather than a second writeAlertState call, since
