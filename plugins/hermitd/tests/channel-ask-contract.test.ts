@@ -108,6 +108,7 @@ describe('suggestion cards: channel-facing proposal vocabulary stays plain', () 
     expect(content).toContain('`YES`');
     expect(content).toContain('`LATER`');
     expect(content).toMatch(/`NO`.*dismiss/);
+    expect(content).toContain('by its meaning, in any language; do not match keywords');
   });
 
   test('proposal-act/SKILL.md confirms accept/defer/dismiss in plain voice on a channel-tagged turn', () => {

@@ -17,6 +17,7 @@
 - Close-time learning reads the task record's progress notes when the resident did the work itself.
 - Resolving a proposal that was never accepted records the accept, through the new `proposal.ts resolve` verb.
 - Proposal acceptance by source counts accepted proposals; it read zero for every source.
+- Replies to a suggestion are understood in any language, so a bare "sim" or "depois" accepts or defers it; the Portuguese status line asks for "sim/não".
 
 ## [1.4.22] - 2026-10-25
 

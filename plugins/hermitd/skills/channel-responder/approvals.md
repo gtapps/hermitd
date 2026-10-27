@@ -2,13 +2,13 @@
 
 ## Micro-approval response
 
-- **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
+- **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
   - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --reply "<token>"`, using this chat's normalized key; pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match. Follow its `status`:
     - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
-    - `none`, reason `no_pending`: fall through to general classification. Reason `no_match`: ask for clarification once; do not resolve.
+    - `none`, reason `no_pending`: keep classifying; a bare yes/no can still be a Proposal approval below. Reason `no_match`: ask for clarification once; do not resolve.
     - On a script error, report it and do not resolve or hand-edit the queue.
-  - **Suggestion escape hatch:** on `ambiguous` for bare `yes`/`no`/`later`, run `proposal-index` (Commands) to validate the index against disk, then check `state/proposals-index.json`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.
+  - **Suggestion escape hatch:** on `ambiguous` for a bare yes, no or later, run `proposal-index` (Commands) to validate the index against disk, then check `state/proposals-index.json`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.
   - **On resolved entry:** every branch below resolves the entry via one script call — never hand-edit `state/micro-proposals.json`: the script is the only writer that keeps the file and the ledger consistent.
     - **Entry has `on_resolve`** → **resolve on disk FIRST, then invoke.** Run:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`.
@@ -19,7 +19,7 @@
     - **No `on_resolve`, an option label** (a deferred upgrade step) → apply that option as the returned `question` describes, in this turn, behind normal permission prompts. For a question that names the `leftover-check` source, `Read` [`hermit-evolve/leftover-check.md`](../hermit-evolve/leftover-check.md) whole and follow its Fix procedure. Apply `config.json` changes through settings-edit verbs, and never write `.claude/settings*.json` from a channel session. Once it is applied, run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`. If a prompt is denied or the apply fails, leave the entry pending and tell the operator the question is still open and why.
     - **No `on_resolve`, "no"** → run:
       Run `proposal-micro` (Commands) with arguments `resolve <id> --action rejected`.
-  - If no pending micro-proposals: classify as normal message (fall through to categories below).
+  - If no pending micro-proposals: keep classifying (Proposal approval below, then the other categories).
 
 ## Already-done items
 
@@ -32,8 +32,8 @@
 
 ## Proposal approval
 
-- **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified `YES`/`LATER`/`NO` reply to a Suggestion card — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)
-  - **Map the reply to an action** (case-insensitive): `YES` / "go ahead" / "accept" → `accept`; `LATER` / "hold" / "defer" → `defer`; `NO` / "drop" / "dismiss" → `dismiss`. `accept PROP-`/`approve PROP-` phrasing maps to `accept` directly; the operator can also spell the action out instead of YES/LATER/NO.
-  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." For bare `YES`/`LATER`/`NO`, filter to `status: "proposed"`: apply when exactly one exists and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
+- **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified yes/later/no reply, card in view or not — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)
+  - **Map the reply to an action by its meaning, in any language; do not match keywords.** A reply meaning go ahead → `accept`, hold for later → `defer`, drop it → `dismiss` (e.g. `YES`/"sim" → `accept`, `LATER`/"depois" → `defer`, `NO`/"não" → `dismiss`). A one-word reply with that meaning is a bare reply below, not a reason to ask again. `accept PROP-`/`approve PROP-` phrasing maps to `accept` directly.
+  - **Resolve the target proposal:** run `proposal-index` (Commands) to validate against disk, then check the refreshed `state/proposals-index.json`. Match an explicit `#N` or `PROP-NNN` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On no match, reply in plain voice: "I don't see Suggestion #N; reply with an open number." A bare reply that confirms a selected task (`SKILL.md` §1) or answers your own last question is not a Proposal approval. For any other bare reply, filter to `status: "proposed"`: apply when exactly one exists and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
   - Never surface internal proposal fields back to the channel (the exact list and `#N` derivation are canonical in `proposal-list` §4a) — confirm using the Suggestion number (see `proposal-act`'s channel-tagged notify).
 
