@@ -36,10 +36,17 @@ while true; do
     verdict="$(bun "${PRECHECK[@]}" --peek "$HB_DIR" 2>/dev/null || echo "ERROR")"
   fi
   _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _emit=''
   case "$verdict" in
-    EVALUATE*) [[ -n "$first" ]] || last_wake_at="$_ts" ;;
-    ALERT*) last_wake_at="$_ts" ;;
+    EVALUATE*) [[ -n "$first" ]] || _emit=1 ;;
+    ALERT*) _emit=1 ;;
   esac
+  # --peek is read-only, so an unconsumed wake re-emits every poll. Keep the
+  # oldest unconsumed stamp; restamp only once .heartbeat has caught up with it.
+  if [[ -n "$_emit" ]]; then
+    _hb_at="$(date -u -r "$HB_DIR/state/.heartbeat" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+    [[ -z "$last_wake_at" || ! "$last_wake_at" > "$_hb_at" ]] && last_wake_at="$_ts"
+  fi
   _wake=''
   [[ -n "$last_wake_at" ]] && _wake=",\"last_wake_at\":\"$last_wake_at\""
   _pid=''

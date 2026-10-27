@@ -3556,6 +3556,26 @@ console.log(__iterN === 1 ? 'ALERT' : 'OK');`,
     expect(liveness?.last_wake_at).toBe(firstWake);
   }, 45000);
 
+  for (const consumed of [false, true]) {
+    test(`heartbeat-monitor ${consumed ? 'restamps a repeated wake after .heartbeat catches up' : 'keeps the oldest stamp for a repeated unconsumed wake'}`, async () => {
+      const { liveness, firstWake } = await runMonitorUntil({
+        scriptPath: MONITOR_SH,
+        stubBody: `if (__iterN === 2) {
+  fs.writeFileSync(path.join(d, 'first-wake'), JSON.parse(fs.readFileSync(path.join(d, 'state/heartbeat-liveness.json'), 'utf8')).last_wake_at);
+  ${consumed ? "fs.writeFileSync(path.join(d, 'state/.heartbeat'), '');" : ''}
+}
+console.log('ALERT');`,
+        envVar: 'HEARTBEAT_PRECHECK',
+        // Whole-second stamps: a 1s poll guarantees the second wake lands in a later second.
+        interval: '1',
+        iters: 2,
+      });
+      expect(typeof firstWake).toBe('string');
+      if (consumed) expect(liveness?.last_wake_at).not.toBe(firstWake);
+      else expect(liveness?.last_wake_at).toBe(firstWake);
+    }, 45000);
+  }
+
   // 20b. EVALUATE on iter-1 → silent (cold-start suppression)
   test('heartbeat-monitor (iter-1 EVALUATE → silent, cold-start suppressed)', async () => {
     const r = await monitorOnce('process.stdout.write("EVALUATE\\n");\n');
