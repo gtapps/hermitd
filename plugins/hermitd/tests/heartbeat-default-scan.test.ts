@@ -196,11 +196,12 @@ describe('default proposal-scan resolution', () => {
   });
 
   test('6e. precheck wakes for exactly the entries the alert deriver keys', async () => {
-    const cases: Array<{ chat?: string; home: string; eligible: boolean }> = [
+    const cases: Array<{ chat?: string; home?: string; eligible: boolean }> = [
       { chat: 'discord:5', home: '5', eligible: true },
       { chat: 'discord:9', home: '5', eligible: false },
       { home: '5', eligible: true },                      // queued before entries carried a chat
       { chat: 'discord:5', home: '7', eligible: false },  // home chat changed after queueing
+      { chat: 'discord:5', eligible: false },             // no channel can be the home chat
     ];
     for (const c of cases) {
       const entry = { id: 'MP-x', status: 'pending', tier: 1, ...(c.chat ? { chat: c.chat } : {}) };
