@@ -21,6 +21,8 @@ interface Watch {
 }
 
 const hermitDir = path.resolve(process.argv[2] ?? '.hermit');
+// Test-mode only: a killed test runner must not leave the monitor polling.
+const owner = process.env.WATCH_MONITOR_TEST === '1' ? process.ppid : null;
 const projectRoot = path.dirname(hermitDir);
 const pluginRoot = path.resolve(import.meta.dir, '..');
 // Timing overrides are deliberately restricted to subprocess tests.
@@ -165,6 +167,7 @@ fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
 saveRuntime();
 for (const sig of ['SIGTERM', 'SIGHUP'] as const) process.on(sig, () => { stopping = true; });
 while (!stopping) {
+  if (owner !== null && process.ppid !== owner) { stopping = true; break; }
   await reconcile();
   for (const w of watches.values()) {
     if (!stopping && !w.child && Date.now() >= w.nextStart) {
