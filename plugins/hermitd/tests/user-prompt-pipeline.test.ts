@@ -672,7 +672,7 @@ describe('task thread admission', () => {
     expect(result.stdout).not.toContain('[task thread');
   });
 
-  test('a waiting record is annotated as waiting', async () => {
+  for (const worker of [null, 'a1b2c3d4e5f6a7b8c']) test(`a waiting record is annotated as waiting (last worker: ${worker})`, async () => {
     const wd = trackedWorkdir();
     const dir = hermit(wd.dir);
     fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['parent'], bot_user_id: '777' } } }));
@@ -680,6 +680,11 @@ describe('task thread admission', () => {
     const opened = await openThreadTask(wd, 'discord:thread', 'resident', false);
     expect(opened.exitCode).toBe(0);
     const id = JSON.parse(opened.stdout).id;
+    if (worker) {
+      for (const owner of [`worker:${worker}`, 'resident']) {
+        expect((await runScript('task.ts', { args: ['note', dir, id, '--owner', owner], cwd: wd.dir })).exitCode).toBe(0);
+      }
+    }
     const blocked = await runScript('task.ts', { args: ['block', dir, id, '--waiting-on', 'discord:u1', '--status-line', 'Need input', '--next', 'Answer'], cwd: wd.dir });
     expect(blocked.exitCode).toBe(0);
     const result = await runScript('user-prompt-pipeline.ts', {
@@ -688,6 +693,8 @@ describe('task thread admission', () => {
     expect(result.stdout).toContain('[task thread discord:thread: owner=resident, muted=false, waiting=true]');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`[waiting task ${id}: Need input; next: Answer`);
+    if (worker) expect(result.stdout).toContain(`last_worker=${worker}`);
+    else expect(result.stdout).not.toContain('last_worker=');
     expect(result.stdout).toContain(`hermitd-run task block .hermit ${id} --result-stdin`);
     expect(result.stdout).toContain(`hermitd-run task note .hermit ${id} --clear-waiting`);
     expect(result.stdout).toContain(`requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit ${id} --by confirmed --actor discord:u1 --reason-stdin`);

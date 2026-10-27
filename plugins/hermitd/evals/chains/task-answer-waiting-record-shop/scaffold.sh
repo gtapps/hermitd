@@ -62,8 +62,9 @@ stall_next: "Which supplier price list should I use, the September or the Octobe
 dedupe_key: null
 check: null
 skill_review: null
+last_worker: a1b2c3d4e5f6a7b8c
 muted: false
-delegated: false
+delegated: true
 tags: ["task","discord:100000000000000001"]
 claims: []
 result_rev: 0

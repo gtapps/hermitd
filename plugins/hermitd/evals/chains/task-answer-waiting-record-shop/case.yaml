@@ -1,14 +1,14 @@
 schema_version: "1.1"
 name: task-answer-waiting-record-shop
-description: 'An answer to a waiting record whose work outlasts the turn dispatches a fresh worker with the notes and the answer.'
+description: 'An answer to a waiting record sends the answer brief to its last worker; that id does not exist in the eval sandbox, so the refused send falls back to a fresh worker.'
 tags: [chains-write, heldout]
-expected_outcome: 'hermitd:task-worker dispatched with the record notes and the requester answer'
+expected_outcome: 'SendMessage to the last worker with October, then hermitd:task-worker dispatched after refusal with the record notes and requester answer'
 context:
   scaffold_script: scaffold.sh
 execution:
   max_turns: 30
   timeout_seconds: 900
-  allowed_tools: [Skill, Agent, Read, Glob, Grep]
+  allowed_tools: [Skill, SendMessage, Agent, Read, Glob, Grep]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   append_system_prompt: |
     ## Session Discipline (hermitd)
@@ -84,7 +84,7 @@ execution:
     <system-reminder>
     UserPromptSubmit hook additional context:
     [task thread discord:700000000000000002: owner=resident, muted=false, waiting=true]
-    [waiting task T-20261019-090000: Compared 6 of 9 teas against the September list; next: Which supplier price list should I use, the September or the October one?; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261019-090000 --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit T-20261019-090000 --clear-waiting; requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit T-20261019-090000 --by confirmed --actor discord:100000000000000001 --reason-stdin; nothing is owed when this message does not change the task]
+    [waiting task T-20261019-090000: Compared 6 of 9 teas against the September list; next: Which supplier price list should I use, the September or the October one?; last_worker=a1b2c3d4e5f6a7b8c; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261019-090000 --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit T-20261019-090000 --clear-waiting; requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit T-20261019-090000 --by confirmed --actor discord:100000000000000001 --reason-stdin; nothing is owed when this message does not change the task]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`700000000000000002`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="700000000000000002". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
@@ -92,5 +92,6 @@ execution:
     use the October list, and do the remaining teas too
     </channel>
 graders:
+  - {"name":"resumed-worker","type":"tool_used","tool":"SendMessage","input_match":"(?=[\\s\\S]*\"to\"\\s*:\\s*\"a1b2c3d4e5f6a7b8c\")(?=[\\s\\S]*October)","weight":3}
   - {"name":"dispatched-worker","type":"tool_used","tool":"Agent","input_match":"(?=[\\s\\S]*hermitd:task-worker)(?=[\\s\\S]*October)","weight":3}
   - {"name":"rubric","type":"llm","criteria":"PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.","weight":2,"focus":"mock_calls"}

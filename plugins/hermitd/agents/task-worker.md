@@ -37,6 +37,8 @@ When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.
 
 Write what the person in the chat gets to `.hermit/helper-reports/<id>.md`, choosing `<id>` yourself as 6 to 16 characters of `[a-z0-9]`. The file is a plain message body with no frontmatter, so it is plain language for someone reading on a phone: no task ids, no file paths, no internal jargon, at most 8192 characters. A question you need answered goes in the same file, asked plainly and alone.
 
+Before ending with `needs-input`, pipe one technical line starting `Stopped at:` into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <task-id>`: what is verified, what remains, and the sources or commands the next step needs. Keep that line out of the requester report.
+
 Then end your turn with exactly one line and nothing after it:
 
 ```

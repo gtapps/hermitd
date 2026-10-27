@@ -3622,6 +3622,11 @@ describe('task-worker agent contract', () => {
     expect(read(path.join(SKILLS, 'task', 'SKILL.md'))).toContain('maintainer-only notice and wait on `maintainer`');
   });
 
+  test('a waiting worker leaves a stop note and can receive the answer', () => {
+    expect(agent).toContain('Stopped at:');
+    expect(read(path.join(SKILLS, 'task', 'SKILL.md'))).toContain('--owner worker:<last_worker> --clear-waiting');
+  });
+
   // Consumer half of the WORKER lines and of conversation.ts's task-thread annotation.
   test('the task skill parses both WORKER lines and the task-thread annotation', () => {
     const task = read(path.join(SKILLS, 'task', 'SKILL.md'));

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Answers to a task worker's question continue the same worker when reachable, with a stop note for a fresh worker otherwise
 - Stall notice for a permission prompt the channel relayed says someone was asked to approve, instead of sending operators to the terminal
 - `evals/` suites are tracked and ship in the plugin tree; nothing in them runs in an installed hermit, and `EVAL_HERMIT_RESIDENT=1` lets an eval run load the resident's session context
 

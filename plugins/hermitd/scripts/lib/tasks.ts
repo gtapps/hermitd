@@ -27,7 +27,7 @@ export function reportTaskError(error: unknown): void {
 const SLUG = /^[\w.:~+@;=-]+$/;
 const HOUR = 3600000;
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review', 'last_worker'] as const;
 const booleans = ['muted', 'delegated'] as const;
 export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[]; claims: string[]; result_rev: number; body: string };
 // A worker owner is `worker:<agentId>`; the id is the harness's, not a conversation key.
@@ -62,6 +62,8 @@ export function validateTask(record: Task): void {
   if (!validRequester(record.requester) || !SLUG.test(record.handle)) fail();
   try { if (record.conversation !== null) checkKey(record.conversation); if (record.audience !== 'operator') checkKey(record.audience); } catch { fail(); }
   if (!validOwner(record.owner)) fail();
+  // Injected into the hook context and used as a SendMessage target, so only an agent id passes.
+  if (record.last_worker !== null && !WORKER_OWNER.test('worker:' + record.last_worker)) fail();
 }
 
 export function decodeTask(text: string): Task {
@@ -256,6 +258,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if ('owner' in flags) {
           const owner = ownerFlag(flags);
           checkOwnerAvailable(records, owner, record.id);
+          if (WORKER_OWNER.test(record.owner)) record.last_worker = record.owner.slice('worker:'.length);
           record.owner = owner;
           if (owner !== 'resident') record.delegated = true;
         }
@@ -394,7 +397,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}) {
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, delegated: r.delegated, skill_review: r.skill_review, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, skill_review: r.skill_review, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

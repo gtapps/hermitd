@@ -11,12 +11,12 @@ Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State target
 | Verb | Contract |
 | --- | --- |
 | `open` | Requires `--title`, `--requester`, `--done`. Optional `--owner`, `--conversation`, `--card`, `--approver`, `--due`, `--claim`, `--dedupe-key`, `--check`. A matching open dedupe key returns the existing record. |
-| `note <id>` | Appends stdin to Progress. Metadata flags include `--due`, `--card`, `--done`, `--check`, `--clear-waiting`; `--decision` and `--approval` target their sections. Decisions lines surface in task reports and routine briefs. A changed definition of done bumps `result_rev` and clears the result. `note --done` clears the check unless the same call sets one. |
+| `note <id>` | Appends stdin to Progress; handing a record back from a worker with `--owner` stores that worker's id as `last_worker`. Metadata flags include `--due`, `--card`, `--done`, `--check`, `--clear-waiting`; `--decision` and `--approval` target their sections. Decisions lines surface in task reports and routine briefs. A changed definition of done bumps `result_rev` and clears the result. `note --done` clears the check unless the same call sets one. |
 | `lesson <id>` | Appends stdin under Lessons. |
 | `block <id>` | Records `--waiting-on` with `--status-line` and `--next`, or posts a result with `--result-stdin`. A posted result increments `result_rev` and stays open as unconfirmed. |
 | `close <id>` | Confirmation requires an authorized actor, any named approver, and the matching result revision when a result was posted or a revision is passed; with no posted result, the requester's quoted word is enough. Check closure requires verified evidence from a held claim or the matching duty. A named approver blocks check closure. |
 | `cancel <id>` | Requires actor and reason on stdin. Cancellation is separate from successful completion. |
-| `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, result, waiting_on, closed_by, check, conversation, card_chat_id and card_message_id. |
+| `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, last_worker, result, waiting_on, closed_by, check, conversation, card_chat_id and card_message_id. |
 | `standup` | Reports windowed costs and commitments by person, with closed records grouped by closure actor type. Supports `--days` and `--json`. |
 | `check-snapshot <id>` | Returns check, result revision and status for the gated runner. |
 
