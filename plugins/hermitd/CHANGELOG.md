@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.23] - 2026-10-27
 
 ### Changed
 
@@ -22,6 +22,14 @@
 - Replies to a suggestion are understood in any language, so a bare "sim" or "depois" accepts or defers it; the Portuguese status line asks for "sim/não".
 - A `watch-monitor.ts` started by the test suite exits when its test runner dies, instead of polling indefinitely.
 - Heartbeat no longer wakes on every tick for a pending decision asked outside the home chat.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.22] - 2026-10-25
 
