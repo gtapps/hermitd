@@ -21,6 +21,7 @@ interface Watch {
 }
 
 const hermitDir = path.resolve(process.argv[2] ?? '.hermit');
+const owner = process.ppid;
 const projectRoot = path.dirname(hermitDir);
 const pluginRoot = path.resolve(import.meta.dir, '..');
 // Timing overrides are deliberately restricted to subprocess tests.
@@ -172,6 +173,7 @@ while (!stopping) {
       start(w);
     }
   }
+  if (process.env.WATCH_MONITOR_TEST === '1' && process.ppid !== owner) stopping = true;
   if (!stopping) await Bun.sleep(pollMs);
 }
 await Promise.all([...watches.values()].map(stop));

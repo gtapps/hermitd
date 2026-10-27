@@ -72,6 +72,59 @@ async function fixture(run: (f: {
   }
 }
 
+test('test-mode monitor stops itself and its watch when its runner is killed', async () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-watch-monitor-'));
+  const dir = path.join(project, '.hermit');
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ monitors: [
+    { id: 'sample', description: 'Sample watch', command: 'exec tail -f /dev/null', enabled: true },
+  ] }));
+  const runner = Bun.spawn(['bun', '-e', `
+    const monitor = Bun.spawn(['bun', ${JSON.stringify(path.join(SCRIPTS_DIR, 'watch-monitor.ts'))}, ${JSON.stringify(dir)}], {
+      stdout: 'ignore', stderr: 'ignore',
+    });
+    console.log(monitor.pid);
+    await monitor.exited;
+  `], {
+    env: {
+      ...process.env, WATCH_MONITOR_TEST: '1', WATCH_MONITOR_POLL_MS: '10',
+      WATCH_MONITOR_BACKOFF_MS: '20', WATCH_MONITOR_MAX_BACKOFF_MS: '80',
+    },
+    stdout: 'pipe', stderr: 'ignore',
+  });
+  let monitorPid: number | undefined;
+  let watchPid: number | undefined;
+  const output = (async () => {
+    let pending = '';
+    for await (const chunk of runner.stdout) {
+      pending += new TextDecoder().decode(chunk);
+      if (pending.includes('\n')) monitorPid = Number(pending.trim());
+    }
+  })();
+  const runtime = () => {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, 'state/watch-monitor.runtime.json'), 'utf8')); }
+    catch { return undefined; }
+  };
+  try {
+    const pid = await until(() => monitorPid);
+    watchPid = await until(() => runtime()?.watches[0]?.pid || undefined);
+    runner.kill('SIGKILL');
+    await runner.exited;
+    await until(() => !alive(pid) && !alive(watchPid!) ? true : undefined);
+    expect(alive(pid)).toBe(false);
+    expect(alive(watchPid!)).toBe(false);
+  } finally {
+    if (runner.exitCode === null) runner.kill('SIGKILL');
+    await runner.exited;
+    await output;
+    watchPid ??= runtime()?.watches[0]?.pid;
+    for (const pid of [monitorPid, watchPid]) {
+      if (pid && alive(pid)) process.kill(pid, 'SIGKILL');
+    }
+    fs.rmSync(project, { recursive: true });
+  }
+}, 15000);
+
 test('watch stdout is tagged, substitutes roots, and runs from the project root', () => fixture(async f => {
   f.configure('printf "%s\\n" "$PWD ${CLAUDE_PROJECT_DIR} ${CLAUDE_PLUGIN_ROOT}"; exec tail -f /dev/null');
   const line = await until(() => f.lines.find(l => l.startsWith('WATCH_EVENT ')));
