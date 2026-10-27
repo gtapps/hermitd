@@ -62,6 +62,8 @@ export function validateTask(record: Task): void {
   if (!validRequester(record.requester) || !SLUG.test(record.handle)) fail();
   try { if (record.conversation !== null) checkKey(record.conversation); if (record.audience !== 'operator') checkKey(record.audience); } catch { fail(); }
   if (!validOwner(record.owner)) fail();
+  // Injected into the hook context and used as a SendMessage target, so only an agent id passes.
+  if (record.last_worker !== null && !WORKER_OWNER.test('worker:' + record.last_worker)) fail();
 }
 
 export function decodeTask(text: string): Task {

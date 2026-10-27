@@ -3624,7 +3624,7 @@ describe('task-worker agent contract', () => {
 
   test('a waiting worker leaves a stop note and can receive the answer', () => {
     expect(agent).toContain('Stopped at:');
-    expect(read(path.join(SKILLS, 'task', 'SKILL.md'))).toContain('last_worker');
+    expect(read(path.join(SKILLS, 'task', 'SKILL.md'))).toContain('--owner worker:<last_worker> --clear-waiting');
   });
 
   // Consumer half of the WORKER lines and of conversation.ts's task-thread annotation.
