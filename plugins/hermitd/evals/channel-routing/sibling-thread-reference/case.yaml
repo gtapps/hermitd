@@ -1,0 +1,39 @@
+schema_version: "1.1"
+name: sibling-thread-reference
+description: 'The same operator still hears that an approval waits in their other chat.'
+tags: [channel-routing, heldout]
+expected_outcome: 'Reply in this chat pointing to the approval waiting in the other chat.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - task.ts list --open --conversation discord:400000000000000002: {"rows":[],"total":0,"omitted":0}
+    - proposal-micro match: {"status":"none","reason":"no_pending"}
+    - proposal-index (proposals-index.json): []
+    - Earlier in this session, chat 400000000000000001 (you): "Three LinkedIn drafts are ready for your approval: Ana Flores, Rui Geraldes and Pedro Ribeiro. Reply 'approve' here to send them tomorrow."
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000002`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000002". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000002" message_id="500000000000000063" user="sam" user_id="100000000000000001" ts="2026-10-01T09:40:00.000Z">
+    what is still waiting for my approval?
+    </channel>
+graders:
+  - name: replied-in-thread
+    type: tool_used
+    tool: 'mcp__plugin_discord_discord__reply'
+    input_match: '"chat_id"\s*:\s*"400000000000000002"'
+  - name: names-sibling-drafts
+    type: llm
+    focus: 'mock_calls'
+    criteria: 'PASS if the reply sent to chat 400000000000000002 tells the operator that an approval is waiting in their other chat, either naming the drafts or pointing to it and offering to bring the details over. FAIL if it says nothing is waiting anywhere, hides that the other approval exists, or no reply was sent.'
+    weight: 2

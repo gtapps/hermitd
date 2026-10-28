@@ -20,11 +20,12 @@ const approvals = fs.readFileSync(path.join(path.dirname(SKILL_PATH), 'approvals
 // ~/.agents/probe-results/cc-skill-truncation-after-compaction-and-reinvoke.md
 // records a 20,000-character rendered retention limit; leave room for growth.
 // The Commands block costs ~700 rendered chars.
-for (const name of ['channel-responder', 'task', 'proposal-act']) {
+// channel-responder carries the chat-boundary rule every reply needs, so its cap is higher.
+for (const [name, budget] of [['channel-responder', 19_000], ['task', 18_500], ['proposal-act', 18_500]] as const) {
   test(`${name} fits the rendered retention budget`, () => {
     const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md'), 'utf-8');
     const rendered = text.replaceAll('${CLAUDE_PLUGIN_ROOT}', '/' + 'p'.repeat(99));
-    expect(rendered.length).toBeLessThanOrEqual(18_500);
+    expect(rendered.length).toBeLessThanOrEqual(budget);
   });
 }
 
