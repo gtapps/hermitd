@@ -149,6 +149,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - Mention the current task when it helps place the reply
 - If you can't handle it, say so and suggest the operator's next step
 - **Channel voice:** no internal IDs (PROP-NNN, T-..., MP-…), no token counts or cost-log jargon, no slash commands, no file paths, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the five channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
+- **Chat boundary:** each chat's messages, tasks and decisions belong to it, even though this session holds them all: mention them elsewhere only where this chat's readers could already read them, never carry maintainer-chat content into another chat, and answer an ask pending in another chat in that chat. Resolve a reference or bare go-ahead against this chat's own latest exchange first; reach into another chat only when this chat holds no candidate, and then say which one.
 
 ## 4. Capture Interactive Patterns
 

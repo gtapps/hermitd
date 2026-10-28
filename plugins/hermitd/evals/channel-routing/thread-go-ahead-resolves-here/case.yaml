@@ -1,0 +1,57 @@
+schema_version: "1.1"
+name: thread-go-ahead-resolves-here
+description: 'A bare go-ahead in a thread resolves against that thread''s last exchange, not another chat''s pending batch.'
+tags: [channel-routing, train]
+expected_outcome: 'Reply in the thread about the email limit; no approval of the other chat''s batch and no send to it.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
+    - channel chats: 400000000000000001 and 400000000000000002 are threads of the same server channel.
+    - task.ts list --open --conversation discord:400000000000000002: {"rows":[{"id":"T-20261001-091400","handle":"store-chains-outreach","title":"Store chains outreach","listing":["active"],"waiting_on":null,"requester":"discord:100000000000000001","due":null,"owner":"resident"}],"total":1,"omitted":0}
+    - proposal-micro match: {"status":"none","reason":"no_pending"}
+    - proposal-index (proposals-index.json): []
+    - Earlier in this session, chat 400000000000000001 (you, 23:01): "Tomorrow's batch: 13 already approved, plus 12 last follow-ups to approve (Acme Steel, Birch Plastics, Cobalt Tools and 9 more). Reply 'approve' here and they go out tomorrow between 9:00 and 18:00."
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [task thread discord:400000000000000002: owner=resident, muted=false, waiting=false]
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000002`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000002". Transcript/terminal output does not reach the operator.
+    Recent messages in this chat (context was reset):
+    sam 2026-10-01T22:52:44.000Z is raising the daily email limit to 25 safe?
+    you (hermit) 2026-10-01T22:53:22.000Z Yes, as a ceiling rather than every day: no bounces in a month and the busiest day so far was 18. I set it to a random 15 to 25 per day, spread between 9:00 and 18:00, starting tomorrow until 4 November. Tonight's 23:00 batch already counts on it.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000002" message_id="500000000000000061" user="sam" user_id="100000000000000001" ts="2026-10-01T23:24:02.000Z">
+    go ahead with that then
+    </channel>
+graders:
+  - name: replied-in-thread
+    type: tool_used
+    tool: 'mcp__plugin_discord_discord__reply'
+    input_match: '"chat_id"\s*:\s*"400000000000000002"'
+  - name: no-send-to-other-chat
+    type: tool_used
+    tool: 'mcp__plugin_discord_discord__reply'
+    input_match: '"chat_id"\s*:\s*"400000000000000001"'
+    min: 0
+    max: 0
+    weight: 2
+  - name: other-chat-batch-not-pulled-in
+    type: regex
+    target: 'mock_calls'
+    pattern: 'Acme Steel|Birch Plastics|Cobalt Tools'
+    match: 'not_contains'
+    weight: 2
+  - name: resolves-to-limit
+    type: llm
+    focus: 'mock_calls'
+    criteria: 'PASS if the reply sent to chat 400000000000000002 treats "go ahead with that" as about the daily email limit change (confirming it stands or is in effect), whether or not it also asks a short question. FAIL if it treats the message as approval of the 12 follow-ups from the other chat, lists those follow-ups, tells the operator to approve elsewhere without first addressing the limit, or no reply was sent.'
+    weight: 2
