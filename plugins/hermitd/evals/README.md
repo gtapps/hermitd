@@ -6,7 +6,7 @@ Cases copy as little live text as possible. A scaffold seeds `.hermit/` and the 
 
 ## channel-routing
 
-Synthetic channel turns that score `skills/channel-responder/SKILL.md` § 2 (Classify the Message): which route each message takes and whether the reply stays in channel voice.
+Synthetic channel turns that score `skills/channel-responder/SKILL.md` § 2 (Classify the Message): which route each message takes and whether the reply stays in channel voice. The `maintainer-content-stays`, `sibling-thread-reference` and `thread-go-ahead-resolves-here` cases score the § 3 chat boundary.
 
 Each case's `scaffold.sh` copies the live `state-templates/TASKS.md.template` and writes `config.json` with the case's `operator_profile`, so the task policy comes from the real hook. The prompt carries what no hook produces in an eval run: the reply reminder and responder nudge (checked by the drift test), any `[harness-command]`, `[pause]`, `[task thread]` or `[conversation command]` line, and a `Hermit state` block standing in for the `config.json` facts the responder reads (`operator_profile`, language, primary operator), `task.ts list`, `proposal-micro match` and the proposals index. No hook injects those config facts; without that line, the non-technical spend case called cost-reflect in 3 of 3 runs on 2026-10-26. The cases are hand-written; update them in the same change as that wording. The Discord reply tool is a fixed mock under `mocks/plugin_discord_discord/`, so reply text is graded through `mock_calls`. The resident prompt is not appended here, unlike in `chains`.
 

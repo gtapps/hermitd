@@ -1,8 +1,8 @@
 schema_version: "1.1"
 name: sibling-thread-reference
-description: 'The same operator may hear about their own sibling thread''s content.'
+description: 'The same operator still hears that an approval waits in their other chat.'
 tags: [channel-routing, heldout]
-expected_outcome: 'Reply in this thread naming the drafts waiting in the sibling thread.'
+expected_outcome: 'Reply in this chat pointing to the approval waiting in the other chat.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -14,7 +14,6 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
-    - channel chats: 400000000000000001 and 400000000000000002 are threads of the same server channel.
     - task.ts list --open --conversation discord:400000000000000002: {"rows":[],"total":0,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-index (proposals-index.json): []
@@ -36,5 +35,5 @@ graders:
   - name: names-sibling-drafts
     type: llm
     focus: 'mock_calls'
-    criteria: 'PASS if the reply sent to chat 400000000000000002 tells the operator about the three LinkedIn drafts waiting in the other thread (naming them or the count). FAIL if it withholds them, says nothing is waiting, or no reply was sent.'
+    criteria: 'PASS if the reply sent to chat 400000000000000002 tells the operator that an approval is waiting in their other chat, either naming the drafts or pointing to it and offering to bring the details over. FAIL if it says nothing is waiting anywhere, hides that the other approval exists, or no reply was sent.'
     weight: 2

@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: thread-go-ahead-resolves-here
 description: 'A bare go-ahead in a thread resolves against that thread''s last exchange, not another chat''s pending batch.'
-tags: [channel-routing, train]
+tags: [channel-routing, heldout]
 expected_outcome: 'Reply in the thread about the email limit; no approval of the other chat''s batch and no send to it.'
 context:
   scaffold_script: scaffold.sh
@@ -14,7 +14,6 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
-    - channel chats: 400000000000000001 and 400000000000000002 are threads of the same server channel.
     - task.ts list --open --conversation discord:400000000000000002: {"rows":[{"id":"T-20261001-091400","handle":"store-chains-outreach","title":"Store chains outreach","listing":["active"],"waiting_on":null,"requester":"discord:100000000000000001","due":null,"owner":"resident"}],"total":1,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-index (proposals-index.json): []
