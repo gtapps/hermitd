@@ -300,6 +300,8 @@ Run `hermitd update` from the project folder, or `hermitd update <name>` from an
 
 Use `hermitd start|stop|restart|attach [name]` for lifecycle commands, `hermitd pause [name] on|off|snooze <duration>|status`, `hermitd watchdog [name] run|install|uninstall`, or `hermitd run [name] <script> [args]` for maintenance. Names match the project folder or agent name; with no name, the nearest project above the current folder is used.
 
+`hermitd agents [name]` opens Claude Code's agent view (`claude agents`) where the agent runs: inside the container for Docker agents, on the host under the agent's Claude config folder otherwise. On the host that view lists every session in the config folder, so pass `--cwd <path>` to narrow it. Extra flags pass through, and `--json` works from scripts.
+
 `hermitd skills [name] status|pin|unpin|rollback|archive|restore [skill]` inspects or controls learned skills. Use `status --skill <skill>` for one bounded history. Mutations run inside the container when the Docker agent is up. A task close can save a reusable procedure automatically; "keep this skill" pins it and "stop doing it that way" about a named learned skill rolls back its latest revision.
 
 See the [Upgrade guide](docs/upgrading.md) for details.

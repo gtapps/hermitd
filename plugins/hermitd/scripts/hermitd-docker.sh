@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Docker management CLI for hermit containers.
 # Usage: hermitd-docker <command> [args...]
-# Commands: up, down, attach, bash, login, setup-token, logs, restart [--build]
+# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build]
 set -euo pipefail
 
 SCRIPT_DIR="$PWD/.hermit/bin"
 CONFIG="$SCRIPT_DIR/../config.json"
-CMD="${1:?Usage: hermitd docker <up|down|attach|bash|login|setup-token|logs|restart [--build]|update> [args...]}"
+CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]}"
 shift
 
 if [ ! -f "$CONFIG" ]; then
@@ -332,6 +332,14 @@ case "$CMD" in
     echo "[hermit] Attaching to tmux session: $TMUX_SESSION"
     echo "[hermit] Detach with: Ctrl+B then D"
     cd "$PROJECT_DIR" && "${DC[@]}" exec "$SERVICE" tmux -u attach -t "$TMUX_SESSION"
+    ;;
+
+  agents)
+    _require_running
+    # Interactive view from a terminal; `-T` keeps `hermitd agents --json | jq` working from scripts.
+    TTY=-T
+    if [ -t 0 ] && [ -t 1 ]; then TTY=; fi
+    cd "$PROJECT_DIR" && "${DC[@]}" exec $TTY "$SERVICE" claude agents "$@"
     ;;
 
   bash)
@@ -889,7 +897,7 @@ JSEOF
     ;;
 
   *)
-    echo "Usage: hermitd docker <up|down|attach|bash|login|setup-token|logs|restart [--build]|update> [args...]" >&2
+    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]" >&2
     exit 1
     ;;
 esac
