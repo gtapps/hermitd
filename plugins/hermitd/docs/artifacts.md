@@ -12,9 +12,8 @@ plugin's research-preview feature-defaults rule, except the weekly-review page, 
 disable Artifacts entirely via Claude Code's own `disableArtifact`,
 `CLAUDE_CODE_DISABLE_ARTIFACT`, or `permissions.deny`). Only reachable from the
 interactive TUI session (`hermitd-start`'s surface); absent under `claude -p`.
-Runs in **main only, never a subagent** — publishing is a main-session-owned
-notification action, same as `prompts/resident.md` § Operator Notification, and subagent
-`Artifact` tool availability is unverified.
+Main owns publishing, the same as `prompts/resident.md` § Operator Notification; step 3
+hands one piece, a republish this session has not made yet, to a runner subagent.
 
 Unattended (non-interactive/channel) sessions cannot answer the first-publish
 permission ask — a headless "ask" is an effective deny — and on a `permission_mode:
@@ -60,18 +59,23 @@ differ per type (called out in each subsection below):
    gate below and leave the recorded URL pointing at the old host. Only on a backend match,
    compare `hash` to `<key>.hash`: **unchanged → stop here**, no publish (avoids minting a
    no-op artifact version).
-3. Changed, no prior record, or a backend mismatch from step 2 → publish. When a
-   **backend-matching** entry has a `url`, first call `Artifact` with `action: "read"` and
-   that `url`. Claude Code 2.1.x refuses a publish to an artifact this session has neither
-   read nor published (it fires after any restart, since the session only read the URL from
-   state), and `force: true` does **not** bypass that guard: it only overrides a version
-   conflict, and the refused publish is re-refused as identical content on retry. The read
-   result is discarded (the rendered file is authoritative; a large page lands in a local
-   file, not in context). Then call `Artifact` with `file_path` set to the rendered path, a
-   stable `<title>` for that type, a stable favicon (pick once, keep it across republishes),
-   and `url` set to `<key>.url` (redeploys to the same address instead of minting a new one).
-   Never pass `force`. A first publish omits `url` and skips the read, and per step 2, a
-   backend mismatch **is** a first publish, however stale-but-present the recorded `url` looks.
+3. Changed, no prior record, or a backend mismatch from step 2 → publish. Call `Artifact`
+   with `file_path` set to the rendered path, a stable `<title>` for that type, a stable
+   favicon (pick once, keep it across republishes), and, for a **backend-matching** entry
+   with a `url`, `url` set to `<key>.url` (redeploys to the same address instead of minting
+   a new one). Never pass `force`; it only overrides a version conflict. A first publish
+   omits `url`, and per step 2, a backend mismatch **is** a first publish, however
+   stale-but-present the recorded `url` looks.
+
+   Claude Code refuses a `url` publish to an artifact this session has not published or
+   viewed, and viewing puts the page's source, or a diff of it, in context. So publish
+   inline only a first publish or a `url` this session has already published (that
+   publish's result is in your context). Hand every other republish, and any inline one
+   that is refused, to `hermitd:skill-eval-runner` pointed at `artifacts-republish.md`
+   beside this file, passing each page's state key, rendered path, title, favicon and
+   `url`. When one turn refreshes several pages, run steps 1 and 2 for all of them first
+   and send one dispatch. Wait for its result: each returned `url` goes to step 4, each
+   `error` to step 5.
 4. On success, write `.hermit/state/artifacts.json`:
    `{"<key>": {"url": "<returned url>", "hash": "<hash from step 1>", "updated": "<now, ISO>", "backend": "<active backend>"}}`
    (merge — never drop sibling keys belonging to other artifact types).
@@ -293,7 +297,7 @@ types including its `backend` field, so a repeated request for the same document
 redeploys to the same URL instead of minting a new one — under the same gate discipline
 as step 2: a backend mismatch is a first publish on the new host (no `url`);
 otherwise skip the publish call when the file's content hash is unchanged from the last
-recorded one, and on redeploy read the recorded `url` first, then publish without `force`
-(step 3; the local file is authoritative). No automatic per-document publishing; the
+recorded one, and redeploy to the recorded `url` per step 3, runner hand-off included
+(the local file is authoritative). No automatic per-document publishing; the
 dashboard's compiled-docs index is the discovery surface for what's available to ask
 for.
