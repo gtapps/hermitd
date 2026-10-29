@@ -9,8 +9,8 @@ import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatu
 import { printJson } from './lib/cli';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
-function execute(command: string, args: string[], project: string): number {
-  const result = spawnSync(command, args, { cwd: project, env: { ...process.env }, stdio: 'inherit' });
+function execute(command: string, args: string[], project: string, env: Record<string, string> = {}): number {
+  const result = spawnSync(command, args, { cwd: project, env: { ...process.env, ...env }, stdio: 'inherit' });
   if (result.error) console.error(`[hermit] ${result.error.message}`);
   return result.status ?? 1;
 }
@@ -29,7 +29,7 @@ function target(args: string[], verb: string, cwd: string, root: string): string
   const reserved: Record<string, string[]> = {
     skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
-    docker: ['up', 'down', 'attach', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update'],
+    docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update'],
   };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
   if (matches.length > 1) throw new Error(`Ambiguous name ${first}: ${matches.map(row => row.project_dir).join(', ')}`);
@@ -123,8 +123,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'update', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|update|prune|docker|pause|watchdog|skills|run [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|prune|docker|pause|watchdog|skills|run [name] [args]');
   }
   const project = target(args, verb, cwd, root);
   if (verb === 'register') {
@@ -154,6 +154,10 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   const interactive = runtime.runtime_mode === 'interactive' && docker !== 'up' && tmux !== 'up';
   const useDocker = docker === 'up' || (tmux !== 'up' && fs.existsSync(path.join(project, 'docker-compose.hermit.yml')));
   if (verb === 'update') return updateProject(project, args, useDocker);
+  if (verb === 'agents') {
+    if (useDocker) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);
+    return execute('claude', ['agents', ...args], project, runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {});
+  }
   if (interactive && verb === 'attach') { console.error('[hermit] Interactive session: nothing to attach to.'); return 1; }
   if (interactive && verb === 'stop') return wrapper(project, 'hermitd-stop', args);
   if (useDocker) return dockerScript(project, [verb === 'start' ? 'up' : verb === 'stop' ? 'down' : verb, ...args], hostInstall(project).installPath);

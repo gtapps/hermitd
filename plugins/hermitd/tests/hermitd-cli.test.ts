@@ -30,7 +30,7 @@ function fixture() {
   write(env.LIST, listing(core)); write(env.FRESH_LIST, listing(fresh));
   write(path.join(bin, 'tmux'), '#!/bin/sh\nif [ "$1" = list-sessions ]; then printf "%s\\n" "$PROJECTS"; exit 0; fi\nexit "$TMUX_LIVE"\n');
   write(path.join(bin, 'docker'), '#!/bin/sh\nif [ "$1" = ps ]; then printf "%s\\n" "$PROJECTS"; else printf "%s\\n" "$DOCKER_LIVE"; fi\n');
-  write(path.join(bin, 'claude'), '#!/bin/sh\nif [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; cp "$FRESH_LIST" "$LIST"; fi\n');
+  write(path.join(bin, 'claude'), '#!/bin/sh\nif [ "$1" = agents ]; then printf "claude|%s|%s|%s\\n" "$PWD" "$CLAUDE_CONFIG_DIR" "$*" >> "$CALLS"; exit "${AGENTS_EXIT:-0}"; fi\nif [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; cp "$FRESH_LIST" "$LIST"; fi\n');
   const register = (projects = [p]) => write(path.join(root, 'plugins/data/hermitd-mp/instances.json'), JSON.stringify(projects.map(project_dir => ({ project_dir, name: path.basename(project_dir), agent_name: JSON.parse(fs.readFileSync(path.join(project_dir, '.hermit/config.json'), 'utf8')).agent_name, runtime_hint: 'tmux', registered_at: new Date().toISOString() }))));
   register();
   const run = async (args: string[], cwd = root, extra: Record<string, string> = {}) => {
@@ -162,6 +162,23 @@ test('host install refuses foreign file and notices earlier PATH tool', async ()
   expect(r.exitCode).toBe(0); expect(r.stderr).toContain(path.join(f.bin, 'hermitd')); expect(r.stderr).toContain(shim);
 });
 
+test('agents runs claude agents on the host with the session config dir', async () => {
+  const f = fixture();
+  expect((await f.run(['agents', '--json'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`claude|${f.p}|${path.join(f.root, '.claude')}|agents --json\n`);
+  write(path.join(f.p, '.hermit/state/runtime.json'), JSON.stringify({ config_dir: '/srv/claude' }));
+  expect((await f.run(['agents', 'demo', '--all'], f.root, { AGENTS_EXIT: '3' })).exitCode).toBe(3);
+  expect(f.calls()).toContain(`claude|${f.p}|/srv/claude|agents --all\n`);
+});
+test('agents routes a Docker hermit into the container and refuses a live-owner conflict', async () => {
+  const f = fixture(); write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  expect((await f.run(['agents', 'demo', '--json'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
+  expect((await f.run(['docker', 'agents', '--json'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`old|${f.p}|agents --json\nold|${f.p}|agents --json\n`);
+  write(path.join(f.p, '.hermit/state/runtime.json'), '{"tmux_session":"hermit-demo"}');
+  const r = await f.run(['agents', 'demo'], f.root, { TMUX_LIVE: '0', DOCKER_LIVE: 'hermit' });
+  expect(r.exitCode).toBe(1); expect(r.stderr).toContain('Live-owner conflict');
+});
 test('skills resolves named and nearest projects and routes Docker mutations', async () => {
   const f = fixture();
   expect((await f.run(['skills', 'demo', 'pin', 'sample', '--origin', 'operator'])).exitCode).toBe(0);

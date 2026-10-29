@@ -143,6 +143,7 @@ The generated Compose file uses `pid: "container:hermit-fleet-pidns"` so peer re
 | Stop      | `hermitd stop`                  |
 | Force stop| `hermitd stop --force`          |
 | Attach    | `hermitd attach`                |
+| Agents    | `hermitd agents`                |
 | Shell     | `hermitd docker bash`                  |
 | Logs      | `hermitd docker logs -f`               |
 | Restart   | `hermitd restart`               |

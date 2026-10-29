@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `hermitd agents [name]` opens Claude Code's `claude agents` view where the agent runs, inside the container for Docker agents
+
 ### Changed
 
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
