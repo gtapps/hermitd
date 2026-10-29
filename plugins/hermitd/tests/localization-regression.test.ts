@@ -49,7 +49,8 @@ describe('en catalog byte-identity (pre-refactor literals)', () => {
 
   test('DENY maintainer frame', () => {
     expect(DENY.en.maintainerBase('Bash')).toBe('Auto-mode denied: Bash');
-    expect(DENY.en.maintainerTail()).toBe('. Session continues. If intended: /hermit-settings or handle at the pane.');
+    expect(DENY.en.maintainerTail()).toBe('. Session continues; the agent will try another way. If it was intended, tell the agent in chat.');
+    expect(DENY['pt-PT'].maintainerTail()).toBe('. A sessão continua; o agente vai tentar outra via. Se foi intencional, diga-o ao agente na conversa.');
   });
 
   test('MINT openLink / failed / signedIn (ackPrompt deliberately excluded)', () => {
