@@ -175,6 +175,9 @@ test('agents routes a Docker hermit into the container and refuses a live-owner 
   expect((await f.run(['agents', 'demo', '--json'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
   expect((await f.run(['docker', 'agents', '--json'], f.p)).exitCode).toBe(0);
   expect(f.calls()).toBe(`old|${f.p}|agents --json\nold|${f.p}|agents --json\n`);
+  write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');
+  expect((await f.run(['agents', 'demo'])).exitCode).toBe(0);
+  expect(f.calls()).toContain(`claude|${f.p}|${path.join(f.root, '.claude')}|agents\n`);
   write(path.join(f.p, '.hermit/state/runtime.json'), '{"tmux_session":"hermit-demo"}');
   const r = await f.run(['agents', 'demo'], f.root, { TMUX_LIVE: '0', DOCKER_LIVE: 'hermit' });
   expect(r.exitCode).toBe(1); expect(r.stderr).toContain('Live-owner conflict');

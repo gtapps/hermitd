@@ -155,7 +155,7 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   const useDocker = docker === 'up' || (tmux !== 'up' && fs.existsSync(path.join(project, 'docker-compose.hermit.yml')));
   if (verb === 'update') return updateProject(project, args, useDocker);
   if (verb === 'agents') {
-    if (useDocker) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);
+    if (useDocker && !interactive) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);
     return execute('claude', ['agents', ...args], project, runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {});
   }
   if (interactive && verb === 'attach') { console.error('[hermit] Interactive session: nothing to attach to.'); return 1; }
