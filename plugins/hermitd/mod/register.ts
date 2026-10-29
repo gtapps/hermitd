@@ -295,6 +295,8 @@ async function confirmFromStamp($: EngineInterface, dir: string) {
   try {
     const stamp = JSON.parse(String(await $.fs.read(`${dir}/execution.json`)));
     if (stamp.reason !== expected.reason || !(Date.parse(stamp.at) >= current.startedAt)) return;
+    // The classic events may have landed during the read; their evidence is richer.
+    if (active !== current || current.evidence) return;
     current.evidence = { command: current.command.command, status: 'ok', text: expected.text };
     observe($);
   } catch {}
@@ -385,7 +387,7 @@ export const register: Register = on => {
     if (command === '/compact' || SKILL_RE.test(command)) return result;
     const observed = stdout[1];
     const status = classifyStdout(command, observed);
-    // A cleared context is reported from classic.SessionStart, once the resident id is current.
+    // A cleared context is reported from classic.SessionStart or the SessionStart stamp, once the resident id is current.
     if (command === '/clear' && status === 'ok') return result;
     active.evidence = { command, status, text: observed };
     observe($);
