@@ -205,7 +205,7 @@ export const DENY: Localized<DenyMessages> = {
   'pt-PT': {
     maintainerBase: (toolName) => `Negado em modo automático: ${toolName}`,
     maintainerSuppressed: (count) => ` (+${count} nos 30 min anteriores)`,
-    maintainerTail: () => '. A sessão continua; o agente vai tentar outra via. Se era intencional, diga-o ao agente na conversa.',
+    maintainerTail: () => '. A sessão continua; o agente vai tentar outra via. Se foi intencional, diga-o ao agente na conversa.',
   },
 };
 

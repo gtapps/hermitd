@@ -50,8 +50,8 @@ const LOCK_WAIT_MS = 2000;
 const LOCK_STALE_MS = 10_000;
 const MESSAGE_MAX_LEN = 300;
 // The reason is bounded on its own so a long one (permission-rule denials are
-// far wordier than the classifier's fixed string) cannot push the trailing
-// "what to do about it" guidance past MESSAGE_MAX_LEN and truncate it away.
+// far wordier than the classifier's fixed string) cannot crowd out the tool name
+// and suppressed count; the trailing guidance is always kept whole.
 const REASON_MAX_LEN = 150;
 // tool_name is model-supplied and is now a state-file key, so bound it. Plain
 // truncation would be wrong: long MCP names share a prefix (`mcp__<server>__`),
@@ -227,8 +227,8 @@ async function main(raw: string): Promise<void> {
   let maintainerText = DENY[locale].maintainerBase(key);
   if (reason) maintainerText += ` — ${reason}`;
   if (claim.suppressed > 0) maintainerText += DENY[locale].maintainerSuppressed(claim.suppressed);
-  maintainerText += DENY[locale].maintainerTail();
-  maintainerText = maintainerText.slice(0, MESSAGE_MAX_LEN);
+  const tail = DENY[locale].maintainerTail();
+  maintainerText = maintainerText.slice(0, MESSAGE_MAX_LEN - tail.length) + tail;
 
   // The diagnostic is recorded whatever the channel is doing. An absent or dead
   // channel is a reason not to POST, never a reason to lose the record: with no
