@@ -1509,7 +1509,7 @@ export function duplicateSessionRefusal(sessionName: string): string[] | null {
     'Recover:',
     '  hermitd stop',
     '  hermitd start',
-    `To inspect it first: tmux attach -t ${sessionName}`,
+    `To inspect it first: tmux -u attach -t ${sessionName}`,
   ];
 }
 
@@ -1748,7 +1748,7 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       console.log(`[hermit] Session "${sessionName}" already running (always-on).`);
-      console.log(`[hermit] Attach: hermitd attach  (or: tmux attach -t ${sessionName})`);
+      console.log(`[hermit] Attach: hermitd attach  (or: tmux -u attach -t ${sessionName})`);
       console.log('[hermit] Send tasks via channel, or run hermitd stop to shut down.');
       process.exit(0);
     } else {
@@ -1820,7 +1820,7 @@ async function main(): Promise<void> {
     console.log(`[hermit] ERROR: tmux session "${sessionName}" died after creation.`);
     console.log('[hermit] The shell command inside tmux likely failed.');
     console.log('[hermit] Common causes: `claude` not in PATH, missing ANTHROPIC_API_KEY.');
-    console.log('[hermit] To debug: tmux new-session -s hermit-debug then run `claude` manually.');
+    console.log('[hermit] To debug: tmux -u new-session -s hermit-debug then run `claude` manually.');
     console.log('[hermit] Falling back to interactive mode...');
     // Same secret-hygiene reason as the spawn-failure branch above: tmux created
     // the session, but a shell that died before reaching `rm -f` (a non-POSIX
@@ -1861,7 +1861,7 @@ async function main(): Promise<void> {
   }
 
   console.log('[hermit] Mode: always-on (session stays open between tasks)');
-  console.log(`[hermit] Attach: hermitd attach  (or: tmux attach -t ${sessionName})`);
+  console.log(`[hermit] Attach: hermitd attach  (or: tmux -u attach -t ${sessionName})`);
   console.log('[hermit] Stop: hermitd stop');
 }
 

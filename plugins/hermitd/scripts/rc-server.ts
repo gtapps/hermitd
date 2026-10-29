@@ -103,7 +103,7 @@ function start(): Json {
     if (url || READY_RE.test(pane)) return { status: 'ready', url: url?.[0] ?? null };
   }
 
-  // The session is left running for inspection (`tmux attach -t hermit-rc-gate`).
+  // The session is left running for inspection (`tmux -u attach -t hermit-rc-gate`).
   return { error: 'ready_timeout' };
 }
 

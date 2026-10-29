@@ -331,7 +331,7 @@ case "$CMD" in
     _require_running
     echo "[hermit] Attaching to tmux session: $TMUX_SESSION"
     echo "[hermit] Detach with: Ctrl+B then D"
-    cd "$PROJECT_DIR" && "${DC[@]}" exec "$SERVICE" tmux attach -t "$TMUX_SESSION"
+    cd "$PROJECT_DIR" && "${DC[@]}" exec "$SERVICE" tmux -u attach -t "$TMUX_SESSION"
     ;;
 
   bash)

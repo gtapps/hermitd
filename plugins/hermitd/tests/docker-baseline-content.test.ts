@@ -259,6 +259,12 @@ describe('Dockerfile: base image', () => {
   });
 });
 
+describe('Dockerfile: locale', () => {
+  test('Dockerfile: UTF-8 locale for attached tmux clients', () => {
+    expect(dockerfile).toContain('ENV LANG=C.UTF-8');
+  });
+});
+
 describe('Entrypoint: Python retired, PATH covers bun', () => {
   test('entrypoint: no python3 invocations remain', () => {
     expect(entrypoint).not.toContain('python3');
