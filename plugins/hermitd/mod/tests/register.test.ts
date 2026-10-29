@@ -423,10 +423,10 @@ for (const command of ['/compact', '/clear']) {
     await boot($);
     const kind = command.slice(1);
     // A stamp from before the dispatch is an earlier reset, not this one.
-    r.files['/state/execution.json'] = JSON.stringify({ state: 'unknown', reason: `resident-start:${kind}`, at: '2020-01-01T00:00:00Z' });
+    r.files['/state/session-start.json'] = JSON.stringify({ source: kind, at: '2020-01-01T00:00:00Z' });
     await clock.advance(4000);
     expect(finalized(r)).toEqual([]);
-    r.files['/state/execution.json'] = JSON.stringify({ state: kind === 'clear' ? 'idle' : 'unknown', reason: `resident-start:${kind}`, at: new Date(Date.now() + 1000).toISOString() });
+    r.files['/state/session-start.json'] = JSON.stringify({ source: kind, at: new Date(Date.now() + 1000).toISOString() });
     await clock.advance(2000);
     await clock.settle();
     expect(finalized(r)[0].legs[0].status).toBe('ok');

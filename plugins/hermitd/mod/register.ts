@@ -283,9 +283,9 @@ async function hasPause($: EngineInterface, dir: string, names: string[]): Promi
 
 // classic.SessionStart and session.compact never reach the mod when a builtin plugin seats
 // ahead of it, so the SessionStart hook's own stamp confirms the clear or compaction too.
-const STAMPED: Record<string, { reason: string; text: string }> = {
-  '/clear': { reason: 'resident-start:clear', text: 'Context cleared' },
-  '/compact': { reason: 'resident-start:compact', text: 'Context compacted' },
+const STAMPED: Record<string, { source: string; text: string }> = {
+  '/clear': { source: 'clear', text: 'Context cleared' },
+  '/compact': { source: 'compact', text: 'Context compacted' },
 };
 async function confirmFromStamp($: EngineInterface, dir: string) {
   const current = active;
@@ -293,8 +293,8 @@ async function confirmFromStamp($: EngineInterface, dir: string) {
   const expected = STAMPED[current.command.command];
   if (!expected) return;
   try {
-    const stamp = JSON.parse(String(await $.fs.read(`${dir}/execution.json`)));
-    if (stamp.reason !== expected.reason || !(Date.parse(stamp.at) >= current.startedAt)) return;
+    const stamp = JSON.parse(String(await $.fs.read(`${dir}/session-start.json`)));
+    if (stamp.source !== expected.source || !(Date.parse(stamp.at) >= current.startedAt)) return;
     // The classic events may have landed during the read; their evidence is richer.
     if (active !== current || current.evidence) return;
     current.evidence = { command: current.command.command, status: 'ok', text: expected.text };
