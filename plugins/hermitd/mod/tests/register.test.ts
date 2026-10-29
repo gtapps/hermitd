@@ -414,6 +414,25 @@ for (const command of ['/compact', '/clear']) {
   });
 }
 
+for (const command of ['/compact', '/clear']) {
+  test(`${command} finalizes from the SessionStart stamp when the classic events never arrive`, async ($, on) => {
+    const clock = mock.clock(on);
+    const r = rig(on);
+    on('command.run', () => ({}));
+    r.queue.push(entry('c', [{ command, arg: null }], { source: 'watchdog' }));
+    await boot($);
+    const kind = command.slice(1);
+    // A stamp from before the dispatch is an earlier reset, not this one.
+    r.files['/state/execution.json'] = JSON.stringify({ state: 'unknown', reason: `resident-start:${kind}`, at: '2020-01-01T00:00:00Z' });
+    await clock.advance(4000);
+    expect(finalized(r)).toEqual([]);
+    r.files['/state/execution.json'] = JSON.stringify({ state: 'idle', reason: `resident-start:${kind}`, at: new Date(Date.now() + 1000).toISOString() });
+    await clock.advance(2000);
+    await clock.settle();
+    expect(finalized(r)[0].legs[0].status).toBe('ok');
+  });
+}
+
 test('pass keeps the prompt; refusal drops and a failed send requests one relay', async ($, on) => {
   const clock = mock.clock(on);
   let intakes = 0;

@@ -313,7 +313,8 @@ function main(source: string | null, sessionId: string | null) {
   // (resume/compact reuse it; /clear mints a new one): this session is the resident now, so drop
   // the verdict rather than leave it silently muting its own liveness signal.
   clearGuest(stateDir, sessionId);
-  observeExecution(AGENT_DIR, 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
+  // A clear only runs between turns, so the new session starts idle.
+  observeExecution(AGENT_DIR, source === 'clear' ? 'idle' : 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
   if (source === 'clear') recordClear(stateDir);
   seedOperatorActivity();
   if (source === 'compact') {

@@ -18,7 +18,7 @@ for (const prompt of ['Hello', 'ROUTINE_DUE test', 'HEARTBEAT_EVALUATE', '[peer]
 for (const [script, event, state, extra] of [
   ['stop-pipeline.ts', 'Stop', 'idle', {}], ['stop-failure-stamp.ts', 'StopFailure', 'idle', { error: 'api_error' }],
   ['precompact-stamp.ts', 'PreCompact', 'unknown', { trigger: 'manual' }],
-  ...['startup', 'resume', 'clear', 'compact'].map(source => ['startup-context.ts', 'SessionStart', 'unknown', { source }]),
+  ...['startup', 'resume', 'clear', 'compact'].map(source => ['startup-context.ts', 'SessionStart', source === 'clear' ? 'idle' : 'unknown', { source }]),
 ] as [string, string, string, object][]) {
   it(`${event} ${JSON.stringify(extra)} writes ${state}`, async () => { const f = taskFixture(); try {
     const r = await runScript(script, { cwd: f.dir, env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ hook_event_name: event, session_id: 'resident', ...extra }) });
