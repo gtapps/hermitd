@@ -157,7 +157,7 @@ describe('permission-denied-notify', () => {
       const r = await run({ ...DENIAL_PAYLOAD, reason: 'x'.repeat(400) }, wd.dir, stub.url);
       expect(r.exitCode).toBe(0);
       expect(stub.requests).toHaveLength(1);
-      expect(stub.requests[0].body.text).toContain('/hermit-settings');
+      expect(stub.requests[0].body.text).toContain('tell the agent in chat');
     } finally {
       stub.stop();
       wd.cleanup();

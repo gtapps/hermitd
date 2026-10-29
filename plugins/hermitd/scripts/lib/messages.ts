@@ -200,12 +200,12 @@ export const DENY: Localized<DenyMessages> = {
   en: {
     maintainerBase: (toolName) => `Auto-mode denied: ${toolName}`,
     maintainerSuppressed: (count) => ` (+${count} more in the previous 30 min)`,
-    maintainerTail: () => '. Session continues. If intended: /hermit-settings or handle at the pane.',
+    maintainerTail: () => '. Session continues; the agent will try another way. If it was intended, tell the agent in chat.',
   },
   'pt-PT': {
     maintainerBase: (toolName) => `Negado em modo automático: ${toolName}`,
     maintainerSuppressed: (count) => ` (+${count} nos 30 min anteriores)`,
-    maintainerTail: () => '. A sessão continua. Se for intencional: /hermit-settings ou trate no terminal.',
+    maintainerTail: () => '. A sessão continua; o agente vai tentar outra via. Se era intencional, diga-o ao agente na conversa.',
   },
 };
 
