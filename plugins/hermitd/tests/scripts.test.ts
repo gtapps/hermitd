@@ -560,7 +560,7 @@ describe('hermitd-attach host tmux', () => {
 
       const r = await runBash(dest, { cwd: proj, env: { PATH: `${stubDir}:${process.env.PATH}` } });
       expect(r.exitCode).toBe(0);
-      expect(fs.readFileSync(callsFile, 'utf8')).toContain('-u attach -t hermit-demo');
+      expect(fs.readFileSync(callsFile, 'utf8').split('\n')).toContain('-u attach -t hermit-demo');
     } finally {
       wd.cleanup();
     }

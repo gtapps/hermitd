@@ -44,7 +44,7 @@ hermitd pause on|off|snooze <dur>|status
 
 ```bash
 tmux new-session -d -s hermit
-tmux attach -t hermit
+tmux -u attach -t hermit
 cd /path/to/your/project
 claude --permission-mode auto
 ```

@@ -1820,7 +1820,7 @@ async function main(): Promise<void> {
     console.log(`[hermit] ERROR: tmux session "${sessionName}" died after creation.`);
     console.log('[hermit] The shell command inside tmux likely failed.');
     console.log('[hermit] Common causes: `claude` not in PATH, missing ANTHROPIC_API_KEY.');
-    console.log('[hermit] To debug: tmux new-session -s hermit-debug then run `claude` manually.');
+    console.log('[hermit] To debug: tmux -u new-session -s hermit-debug then run `claude` manually.');
     console.log('[hermit] Falling back to interactive mode...');
     // Same secret-hygiene reason as the spawn-failure branch above: tmux created
     // the session, but a shell that died before reaching `rm -f` (a non-POSIX

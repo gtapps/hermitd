@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next rebuild
+- `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next `hermitd update`
 
 ## [1.4.23] - 2026-10-27
 
