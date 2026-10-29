@@ -37,7 +37,7 @@ case "$RUNTIME_MODE" in
       echo "[hermit] Session \"$TMUX_SESSION\" is not alive — run hermitd start to relaunch." >&2
       exit 1
     fi
-    exec tmux attach -t "$TMUX_SESSION"
+    exec tmux -u attach -t "$TMUX_SESSION"
     ;;
   interactive)
     echo "[hermit] Hermit is running in foreground (interactive mode) — nothing to attach to." >&2

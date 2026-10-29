@@ -1509,7 +1509,7 @@ export function duplicateSessionRefusal(sessionName: string): string[] | null {
     'Recover:',
     '  hermitd stop',
     '  hermitd start',
-    `To inspect it first: tmux attach -t ${sessionName}`,
+    `To inspect it first: tmux -u attach -t ${sessionName}`,
   ];
 }
 
@@ -1748,7 +1748,7 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       console.log(`[hermit] Session "${sessionName}" already running (always-on).`);
-      console.log(`[hermit] Attach: hermitd attach  (or: tmux attach -t ${sessionName})`);
+      console.log(`[hermit] Attach: hermitd attach  (or: tmux -u attach -t ${sessionName})`);
       console.log('[hermit] Send tasks via channel, or run hermitd stop to shut down.');
       process.exit(0);
     } else {
@@ -1861,7 +1861,7 @@ async function main(): Promise<void> {
   }
 
   console.log('[hermit] Mode: always-on (session stays open between tasks)');
-  console.log(`[hermit] Attach: hermitd attach  (or: tmux attach -t ${sessionName})`);
+  console.log(`[hermit] Attach: hermitd attach  (or: tmux -u attach -t ${sessionName})`);
   console.log('[hermit] Stop: hermitd stop');
 }
 
