@@ -60,22 +60,23 @@ differ per type (called out in each subsection below):
    compare `hash` to `<key>.hash`: **unchanged → stop here**, no publish (avoids minting a
    no-op artifact version).
 3. Changed, no prior record, or a backend mismatch from step 2 → publish. Call `Artifact`
-   with `file_path` set to the rendered path, a stable `<title>` for that type, a stable
-   favicon (pick once, keep it across republishes), and, for a **backend-matching** entry
-   with a `url`, `url` set to `<key>.url` (redeploys to the same address instead of minting
-   a new one). Never pass `force`; it only overrides a version conflict. A first publish
-   omits `url`, and per step 2, a backend mismatch **is** a first publish, however
+   with `file_path` set to the rendered path, a stable `<title>` for that type, and, for a
+   **backend-matching** entry with a `url`, `url` set to `<key>.url` (redeploys to the same
+   address instead of minting a new one). Never pass `force`; it only overrides a version
+   conflict. A first publish omits `url` and passes an `icon`, which the page then keeps
+   across republishes, and per step 2, a backend mismatch **is** a first publish, however
    stale-but-present the recorded `url` looks.
 
    Claude Code refuses a `url` publish to an artifact this session has not published or
    viewed, and viewing puts the page's source, or a diff of it, in context. So publish
-   inline only a first publish or a `url` this session has already published (that
-   publish's result is in your context). Hand every other republish, and any inline one
-   that is refused, to `hermitd:skill-eval-runner` pointed at `artifacts-republish.md`
-   beside this file, passing each page's state key, rendered path, title, favicon and
-   `url`. When one turn refreshes several pages, run steps 1 and 2 for all of them first
-   and send one dispatch. Wait for its result: each returned `url` goes to step 4, each
-   `error` to step 5.
+   inline only a first publish or a `url` this session has already published, inline or
+   through the runner (that publish's result, or the runner's returned `url`, is in your
+   context; publish state is session-wide). Hand every other republish, and any inline one
+   that is refused, to `hermitd:skill-eval-runner` pointed at the absolute path of
+   `artifacts-republish.md` beside this file, passing each page's state key, rendered
+   path, title and `url`. When one turn refreshes several pages, run steps 1 and
+   2 for all of them first and send one dispatch. Wait for its result: each returned `url`
+   goes to step 4, each `error` to step 5.
 4. On success, write `.hermit/state/artifacts.json`:
    `{"<key>": {"url": "<returned url>", "hash": "<hash from step 1>", "updated": "<now, ISO>", "backend": "<active backend>"}}`
    (merge — never drop sibling keys belonging to other artifact types).
@@ -96,7 +97,7 @@ unchanged (render, then the hash and backend gate). Steps 3 and 5 change:
   A recurring page is **updated in place** so its URL stays stable across refreshes — never
   re-created, with one exception: after a backend switch, step 2 treats the page as
   unpublished, so the first publish on the new host is a create, not an update against a
-  URL another host minted. `file_path`, `force`, and favicon are `Artifact`-tool concepts
+  URL another host minted. `file_path`, `force`, and `icon` are `Artifact`-tool concepts
   and do not apply here.
 - **Step 5 — same skip-and-log as the default path above, plus no fallback.** Server not
   connected, its tools unavailable, or any call fails → skip and log as above.
