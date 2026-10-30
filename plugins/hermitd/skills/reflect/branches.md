@@ -149,7 +149,7 @@ Evidence: <one-paragraph evidence summary>
 Artifact: <the candidate's Artifact: line, verbatim, when it has one>
 ```
 
-The gate returns one verdict block per candidate, matched by `<title>`. Line 1 of each block is that candidate's verdict; lines 2+ are additive metadata (`closest_prop`, `aligned`, `operator_excerpt`, `overlap_compiled`, `prior_discussion`, `failed_condition`) — read for context if useful, but do not treat as part of the verdict for branching. For each candidate, record its verdict line (use `"caller":"reflect"` on a normal reflect run, or `"caller":"scheduled-checks"` when invoked via § Scheduled checks):
+The gate returns one verdict block per candidate, matched by `<title>`. Line 1 of each block is that candidate's verdict; lines 2+ are additive metadata (`closest_prop`, `aligned`, `operator_excerpt`, `overlap_compiled`, `failed_condition`) — read for context if useful, but do not treat as part of the verdict for branching. For each candidate, record its verdict line (use `"caller":"reflect"` on a normal reflect run, or `"caller":"scheduled-checks"` when invoked via § Scheduled checks):
 Run `proposal-gate` (Commands) with arguments `--gate triage --caller reflect` and the following stdin payload:
 ```text
 Title: <title>

@@ -2489,6 +2489,12 @@ describe('proposal gate', () => {
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'DUPLICATE' });
   }));
 
+  test('gate (triage SUPPRESS with the reason dropped -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-consequence');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-consequence' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'SUPPRESS' });
+  }));
+
   test('gate (triage garbled verdict -> gate-failed + gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
     expect(out).toEqual({ status: 'gate_failed' });
@@ -2530,6 +2536,11 @@ describe('proposal gate', () => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS: Bar — no-sessions: no cross-session evidence cited');
     expect(out).toEqual({ status: 'suppress', code: 'no-sessions' });
     expect(ledgerLines(dir)).toHaveLength(0);
+  }));
+
+  test('gate (judge SUPPRESS with the reason dropped -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS (current-session): Bar — no-evidence');
+    expect(out).toEqual({ status: 'suppress', code: 'no-evidence' });
   }));
 
   test('gate (judge empty verdict -> gate-failed + gate-failed event tagged reflection-judge)', withDir(async (dir) => {

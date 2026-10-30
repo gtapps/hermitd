@@ -75,7 +75,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
 
   if (gate === 'triage') {
     const create = verdictLine.match(/^CREATE:\s*.+$/);
-    const suppress = verdictLine.match(/^SUPPRESS:\s*.+?—\s*([a-z-]+):/);
+    const suppress = verdictLine.match(/^SUPPRESS:\s*.+?—\s*([a-z-]+)(?::|\s*$)/);
     const duplicate = verdictLine.match(/^DUPLICATE:\s*.+?—\s*(PROP-[\w-]+):/);
 
     if (create) {
@@ -96,7 +96,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   // gate === 'judge'
   const accept = verdictLine.match(/^ACCEPT(?:\s*\([^)]+\))?:/);
   const downgrade = verdictLine.match(/^DOWNGRADE:(\d+)(?:\s*\([^)]+\))?:/);
-  const suppress = verdictLine.match(/^SUPPRESS(?:\s*\([^)]+\))?:\s*.+?—\s*([a-z-]+):/);
+  const suppress = verdictLine.match(/^SUPPRESS(?:\s*\([^)]+\))?:\s*.+?—\s*([a-z-]+)(?::|\s*$)/);
 
   if (accept) emitJson({ status: 'accept' });
   if (downgrade) emitJson({ status: 'downgrade', tier: Number(downgrade[1]) });
