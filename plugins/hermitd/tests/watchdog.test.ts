@@ -2006,6 +2006,28 @@ test('wedge-recovered with a maintainer channel sends there', withHermit(async (
   } finally { stub.stop(); }
 }));
 
+test('a notice the maintainer chat refuses records a failed push', withHermit(async (h) => {
+  writeConfig(h);
+  configureMaintainerChannel(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  touchAgo(state(h, '.heartbeat'), 60);
+  fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
+    last_nudge_at: isoAgo(5),
+    wedge_escalated: true,
+  }) + '\n');
+  const stub = startHttpStub();
+  stub.setStatus(400);
+  try {
+    const r = await watchdog(h, 'run', { env: { HERMIT_TELEGRAM_API_URL: stub.url } });
+    expect(r.exitCode).toBe(0);
+    expect(stub.requests.length).toBeGreaterThan(0);
+    const events = fs.readFileSync(eventsFile(h), 'utf-8');
+    expect(events).toContain('maintainer-notice');
+    expect(events).toContain('push_failed');
+  } finally { stub.stop(); }
+}));
+
 test('wedge-recovered without escalation pushes nothing', withHermit(async (h) => {
   writeConfig(h);
   configureMaintainerChannel(h);
