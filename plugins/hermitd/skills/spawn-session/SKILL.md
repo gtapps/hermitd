@@ -81,12 +81,14 @@ Use only the launch options documented here. Never add bypass flags, tool
 preapprovals, or settings overrides to widen the helper's permissions. If launch
 or execution is blocked, report the blocker; do not retry through a script,
 alternate invocation, or weaker permission mode. The exceptions are
-§ Follow-ups, "Resume with new instructions", for an operator follow-up, and
-§ Switch a running helper for a model or effort switch.
+§ Follow-ups, "Resume with new instructions", for an operator follow-up,
+§ Switch a running helper for a model or effort switch, and
+[untrusted-folder.md](untrusted-folder.md) for a refused workspace.
 
 ## Commands
 
 - `helper-switch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/helper-switch.ts`
+- `trust-workspace`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/trust-workspace.ts`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
 - `proposal-patch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit`
@@ -118,7 +120,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    Bash tool's working directory, which persists across calls and can sit in a
    subdirectory. `<dir>` is `--cwd` when given, else `<abs>`. No further
    check on `<dir>`: a folder the CLI refuses is reported with the CLI's own
-   message. With `--worktree`, run
+   message, except for the untrusted-folder branch in step 3. With `--worktree`, run
    `git -C <dir> rev-parse --verify HEAD`; on failure, refuse with one line
    before composing any launch: `<dir>` is not a git repository or has no
    commits; make an initial commit, then retry. An unborn HEAD makes the background launch report
@@ -151,7 +153,9 @@ alternate invocation, or weaker permission mode. The exceptions are
    whatever the launch returned: the `task.ts` and `proposal.ts` calls below
    resolve the relative `.hermit` against the Bash tool's
    persisted directory. Print the returned bg id and `claude logs <id>`,
-   `claude attach <id>`, `claude stop <id>` hints. If the spawn is declined or
+   `claude attach <id>`, `claude stop <id>` hints. For a `Workspace not trusted. Run`
+   refusal, follow [untrusted-folder.md](untrusted-folder.md). Home-directory
+   and unresolvable refusals are reported without that branch. If the spawn is declined or
    fails, stop; do not watch, open a record, or patch a Decision.
    After every successful launch, read the full session id `<sid>` once:
    ```bash

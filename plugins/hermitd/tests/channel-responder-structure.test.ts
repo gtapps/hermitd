@@ -49,6 +49,15 @@ test('task points its rare conversation commands at the branches sibling', () =>
   for (const name of branches.matchAll(/`([a-z-]+)` \(Commands\)/g)) expect(task).toContain(`- \`${name[1]}\`: \`bun `);
 });
 
+test('spawn-session names the trust command and untrusted-folder sibling', () => {
+  const dir = path.join(PLUGIN_ROOT, 'skills', 'spawn-session');
+  const spawn = fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+  const branch = fs.readFileSync(path.join(dir, 'untrusted-folder.md'), 'utf8');
+  expect(spawn).toContain('- `trust-workspace`: `bun ');
+  expect(spawn).toContain('[untrusted-folder.md](untrusted-folder.md)');
+  expect(branch).toContain('`trust-workspace` (Commands)');
+});
+
 // Consumer half of the annotations the UserPromptSubmit stages inject
 // (pause-keyword.ts, harness-command.ts, conversation.ts).
 test('responder branches on every hook annotation the prompt stages emit', () => {

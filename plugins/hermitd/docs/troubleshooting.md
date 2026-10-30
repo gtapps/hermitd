@@ -62,6 +62,7 @@ Periodic plugin checks are ordinary routines. For example, a weekly check uses `
 ## Resident Startup Hangs
 
 - **Workspace trust:** Run `claude` interactively once first and accept the trust prompt. Then restart headless.
+- **Helper workspace trust:** If `spawn-session` reports `Workspace not trusted`, on a person's turn it can describe the repository configuration and ask for approval in chat. Declining keeps the clone; Hardened or `dontAsk` requires the terminal path.
 - **Interrupted work:** inspect open task records and the execution observation with `/hermitd:task`. Restart through `hermitd-start` when process metadata needs recovery; do not delete records.
 - **Auth expired:** Check with `claude --version`. Run `claude /login` if needed.
 

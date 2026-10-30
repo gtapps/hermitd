@@ -21,7 +21,8 @@ import { auditConfigChange } from './lib/config-audit';
 import { writeRuntimeJson, readRuntimeJson, readRuntimeState, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
 import { localISOStamp } from './lib/time';
 import { tmuxSessionAlive, getSessionName } from './lib/tmux';
-import { AuthMode, claudeStateFile, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
+import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
+import { markWorkspaceTrusted, updateClaudeState } from './lib/claude-state';
 import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { isContainer } from './lib/container';
 import { chromeAuthNote } from './lib/credential-probe';
@@ -1250,37 +1251,15 @@ function renderLaunchOverlay(config: Json): string | null {
   }
 }
 
-/** Seed once at boot. This is an unsynchronised read-modify-write of Claude Code's live
- *  per-user state, which every session on the machine shares and rewrites wholesale, so
- *  any write landing between the read and the rename is lost — a guest exit is only the
- *  nearest example, not the bound. Accepted because the early return below makes this
- *  write happen about once per project, and no in-session writer is added. */
+/** Seed workspace trust once at boot. */
 function seedWorkspaceTrust(): void {
-  const project = process.cwd();
-  seedClaudeState('workspace trust', (state) => {
-    if ('projects' in state && !isDict(state.projects)) throw new Error('invalid Claude Code state');
-    const projects = state.projects ?? {};
-    if (project in projects && !isDict(projects[project])) throw new Error('invalid project state');
-    if (projects[project]?.hasTrustDialogAccepted === true) return false;
-    state.projects = { ...projects, [project]: { ...projects[project], hasTrustDialogAccepted: true } };
-    return true;
-  });
+  seedClaudeState('workspace trust', (state) => markWorkspaceTrusted(state, process.cwd()));
 }
 
 /** Read-modify-write of Claude Code's state file; `apply` mutates and returns false to skip the write. */
 function seedClaudeState(label: string, apply: (state: Json) => boolean): void {
-  const file = claudeStateFile();
   try {
-    let state: Json = {};
-    try {
-      state = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    if (!isDict(state)) throw new Error('invalid Claude Code state');
-    if (!apply(state)) return;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
+    updateClaudeState(apply);
   } catch (error: any) {
     console.log(`[hermit] WARNING: ${label} not seeded (${error?.message ?? error}): continuing boot.`);
   }
