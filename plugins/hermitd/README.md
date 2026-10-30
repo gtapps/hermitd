@@ -304,7 +304,7 @@ Use `hermitd start|stop|restart|attach [name]` for lifecycle commands, `hermitd 
 
 `hermitd agents [name]` opens Claude Code's agent view (`claude agents`) where the agent runs: inside the container for Docker agents, on the host under the agent's Claude config folder otherwise. On the host that view lists every session in the config folder, so pass `--cwd <path>` to narrow it. Extra flags pass through, and `--json` works from scripts.
 
-`hermitd skills [name] status|pin|unpin|rollback|archive|restore [skill]` inspects or controls learned skills. Use `status --skill <skill>` for one bounded history. Mutations run inside the container when the Docker agent is up. A task close can save a reusable procedure automatically; "keep this skill" pins it and "stop doing it that way" about a named learned skill rolls back its latest revision.
+`hermitd skills [name] status|pin|unpin|rollback|archive|restore [skill]` inspects or controls learned skills. Use `status --skill <skill>` for one bounded history and its last use. Mutations run inside the container when the Docker agent is up. A task close can save a reusable procedure automatically; "keep this skill" pins it and "stop doing it that way" about a named learned skill rolls back its latest revision.
 
 See the [Upgrade guide](docs/upgrading.md) for details.
 

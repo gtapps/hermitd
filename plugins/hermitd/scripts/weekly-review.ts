@@ -19,9 +19,8 @@ import { formatTokens } from './lib/format';
 import { writeFileAtomic } from './lib/md-write';
 import { shortPropId } from './lib/dashboard';
 import { lint as knowledgeLint } from './knowledge-lint';
-import { LearnedSkills, SKILL_NAME } from './lib/learned-skills';
-import { claudeStateFile } from './lib/setup-token';
-import { printJson, readJson } from './lib/cli';
+import { LearnedSkills, SKILL_NAME, lastSkillUse, usageTime } from './lib/learned-skills';
+import { printJson } from './lib/cli';
 
 type Json = any;
 
@@ -387,11 +386,9 @@ const skillPins = learned.pins();
 const skillArchivedOnce = learned.archivedOnce();
 const skillConfig = readSettledConfig(hermitDir);
 const routineSkills = new Set(skillConfig.routines.map((routine: any) => String(routine.skill ?? '').split(/\s+/)[0]));
-const runtime = readJson(path.join(hermitDir, 'state', 'runtime.json'));
-const skillUsage = readJson(claudeStateFile(runtime?.config_dir))?.skillUsage;
+const skillUsage = learned.skillUsage();
 const skillCutoff = now.getTime() - 30 * 86400000;
-const usageTime = (entry: any): number => typeof entry?.lastUsedAt === 'number' ? entry.lastUsedAt : Date.parse(entry?.lastUsedAt ?? '');
-const skillCapture = skillUsage && typeof skillUsage === 'object' && Object.values(skillUsage).some(entry => {
+const skillCapture = Object.values(skillUsage).some(entry => {
   const at = usageTime(entry);
   return at >= skillCutoff && at <= now.getTime();
 });
@@ -401,7 +398,7 @@ for (const name of learnedNames) {
   if (!fs.existsSync(learned.skillDir(name)) || skillPins.has(name) || routineSkills.has(name) || skillArchivedOnce.has(name)) continue;
   const changes = skillLedger.filter(row => row.skill === name && ['create', 'patch', 'restore', 'rollback'].includes(row.action));
   const lastChange = Math.max(...changes.map(row => Date.parse(row.ts)));
-  const lastUse = usageTime(skillUsage?.[name]);
+  const lastUse = lastSkillUse(skillUsage, name);
   if (!Number.isFinite(lastChange) || lastChange >= skillCutoff || Number.isFinite(lastUse) && lastUse >= skillCutoff) continue;
   if (skillCapture && skillsArchived.length < RUN_CAP) {
     try { if (learned.archive(name)) { skillsArchived.push(name); continue; } } catch { /* report as a suggestion */ }

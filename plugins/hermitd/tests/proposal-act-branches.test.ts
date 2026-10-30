@@ -42,4 +42,9 @@ describe('proposal-act branches.md dispatch', () => {
     expect(front).toContain('"Queue a task"');
     expect(front).toContain("I'll handle it manually");
   });
+
+  test('immediate and queued improvements apply edits to existing text', () => {
+    expect(branches.match(/not a missing behavior/g)).toHaveLength(2);
+    expect(branches.match(/that outcome exists/g)).toHaveLength(1);
+  });
 });

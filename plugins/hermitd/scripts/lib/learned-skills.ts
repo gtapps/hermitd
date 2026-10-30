@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { appendJsonlLine } from './append-jsonl';
 import { writeFileAtomic } from './md-write';
+import { claudeStateFile } from './setup-token';
 
 export const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** Resident tool calls while a task is open that make it due for skill review. */
@@ -10,6 +11,23 @@ const ALLOWED_KEYS = new Set(['name', 'description', 'when_to_use', 'argument-hi
 export type Lint = { errors: string[]; warnings: string[] };
 export type SkillAction = 'create' | 'patch' | 'pin' | 'unpin' | 'rollback' | 'archive' | 'restore';
 export type LedgerLine = { ts: string; skill: string; action: SkillAction; origin?: string; lint?: Lint };
+export type SkillUsage = Record<string, unknown>;
+
+export function usageTime(entry: unknown): number {
+  if (!entry || typeof entry !== 'object' || !('lastUsedAt' in entry)) return NaN;
+  const value = entry.lastUsedAt;
+  return typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN;
+}
+
+export function lastSkillUse(usage: SkillUsage, name: string): number {
+  let latest = NaN;
+  for (const [key, entry] of Object.entries(usage)) {
+    if (key !== name && !key.endsWith(`:${name}`)) continue;
+    const time = usageTime(entry);
+    if (Number.isFinite(time) && (!Number.isFinite(latest) || time > latest)) latest = time;
+  }
+  return latest;
+}
 
 function frontmatter(text: string): { raw: string; body: string } {
   if (!/^---\r?\n/.test(text)) throw new Error('Missing frontmatter');
@@ -92,6 +110,14 @@ export class LearnedSkills {
   constructor(readonly hermit: string) {
     this.state = path.join(hermit, 'state');
     this.root = path.join(path.dirname(hermit), '.claude', 'skills');
+  }
+  skillUsage(): SkillUsage {
+    // A launch with no CLAUDE_CONFIG_DIR stamps no config_dir; Claude Code's default file applies.
+    try {
+      const runtime = JSON.parse(fs.readFileSync(path.join(this.state, 'runtime.json'), 'utf8'));
+      const usage = JSON.parse(fs.readFileSync(claudeStateFile(runtime?.config_dir || undefined), 'utf8'))?.skillUsage;
+      return usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : {};
+    } catch { return {}; }
   }
   changedSince(sinceMs: number): boolean {
     let skills: string[];

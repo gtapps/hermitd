@@ -316,4 +316,23 @@ describe('procedure discovery moved to task close', () => {
     expect(reflect).toContain('skill-preference:*');
     expect(reflect).toContain('graduation_min_sessions');
   });
+
+  test('learning-shape checks follow recurring requests and precede evidence integrity', () => {
+    const branches = read('skills', 'reflect', 'branches.md');
+    const requests = branches.indexOf('**Recurring operator requests');
+    const shape = branches.indexOf('### Learning-shape check');
+    const integrity = branches.indexOf('### Evidence integrity rule');
+    expect(requests).toBeGreaterThan(-1);
+    expect(shape).toBeGreaterThan(requests);
+    expect(integrity).toBeGreaterThan(shape);
+    for (const label of ['Mechanism', 'Missed trigger', 'Already covered', 'Decision change']) {
+      expect(branches.slice(shape, integrity)).toContain(label);
+    }
+  });
+
+  test('a graduated mechanism label routes to the Mechanism check with its failure recovered', () => {
+    expect(reflect).toContain('When a label matches `mechanism:<name>`');
+    expect(reflect).toContain('`rows` of 1 is one incident, so build no candidate yet');
+    expect(reflect).toContain('No recoverable failure means no candidate');
+  });
 });
