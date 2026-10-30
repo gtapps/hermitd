@@ -97,6 +97,26 @@ describe('apply-settings.ts deny', () => {
     ]) expect(ASK).toContain(pattern);
   });
 
+  test('trust-workspace apply spellings are seeded asks, but check is not', () => {
+    const patterns = [
+      'Bash(bun */scripts/trust-workspace.ts apply *)',
+      'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)',
+      'Bash(hermitd run trust-workspace apply*)',
+      'Bash(*/hermitd run trust-workspace apply*)',
+    ];
+    expect(ASK.filter((pattern) => pattern.includes('trust-workspace'))).toEqual(patterns);
+    for (const [index, command] of [
+      'bun /plugin/scripts/trust-workspace.ts check /root/.hermit /root/repo',
+      '/root/.hermit/bin/hermitd-run trust-workspace check /root/.hermit /root/repo',
+      'hermitd run trust-workspace check /root/.hermit /root/repo',
+      '/usr/bin/hermitd run trust-workspace check /root/.hermit /root/repo',
+    ].entries()) {
+      const glob = patterns[index].slice(5, -1).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*');
+      expect(new RegExp(`^${glob}$`).test(command)).toBe(false);
+      expect(new RegExp(`^${glob}$`).test(command.replace(' check ', ' apply '))).toBe(true);
+    }
+  });
+
   test('deny ask-only skips and writes nothing on a virgin file', async () => {
     const dir = freshDir();
     const file = seedSettings(dir, { permissions: { deny: ['Bash(operator-own*)'] } });

@@ -4,6 +4,16 @@
 
 Cases copy as little live text as possible. A scaffold seeds `.hermit/` and the case sets `EVAL_HERMIT_RESIDENT=1`, so the real SessionStart hook injects the live task policy and session context. What no hook can produce in an eval run is copied, and `tests/evals-drift.test.ts` fails when a copy goes stale: agent bodies and the resident prompt passed as `append_system_prompt`, and the channel reply reminder and responder nudge (hermitd's mod drops a prompt submitted as a bare `<channel>` envelope, so the UserPromptSubmit pipeline never runs on an eval prompt). Script output the model would fetch with Bash is a stand-in in a `Hermit state` block. Where a generator can seed the state a script needs, it runs the real script at generation time and pastes its output (the heartbeat `run-*` stand-ins, the task stand-ins and UserPromptSubmit context in `chains`), so regenerating picks up a change to that output. The rest are hand copies the drift test does not check; update them in the same change as the script.
 
+## spawn-session
+
+The `spawn-session` cases start after a refused helper launch. One checks that
+a person-started turn inspects the repository and describes its hook and MCP
+server before approval; the other checks that a routine reports the refusal
+without running either trust command. The scaffolds create local fixtures only,
+not Claude sessions. Run with `--tag spawn-session --scaffold --allow-tools Bash`.
+The person case stops before `apply` because the eval has no interactive approval
+surface.
+
 ## channel-routing
 
 Synthetic channel turns that score `skills/channel-responder/SKILL.md` § 2 (Classify the Message): which route each message takes and whether the reply stays in channel voice. The `maintainer-content-stays`, `sibling-thread-reference` and `thread-go-ahead-resolves-here` cases score the § 3 chat boundary.

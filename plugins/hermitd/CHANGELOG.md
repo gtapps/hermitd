@@ -4,6 +4,7 @@
 
 ### Added
 
+- Chat approval for `spawn-session` to trust a refused repository and its MCP servers
 - Script-sent channel notices (watchdog, status reply, budget, denial and login messages) follow any configured language: the agent translates them once into `.hermit/state/messages.json` when the language is set and after upgrades, and every send falls back to English per message
 - `/hermitd:hermit-settings messages` rewords any of those notices; custom wording survives upgrades and retranslation, and doctor's `message-catalog` check flags wording an upgrade made unusable
 - `hermitd agents [name]` opens Claude Code's `claude agents` view where the agent runs, inside the container for Docker agents
@@ -31,6 +32,8 @@
 ### Upgrade Instructions
 
 Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entry.
+
+Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
 
 No `config.json` changes required.
 
