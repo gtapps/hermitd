@@ -39,7 +39,7 @@ test('full resident loads refresh policy while compaction and guests preserve th
       expect(JSON.parse(fs.readFileSync(policyFile, 'utf8'))).toEqual({ policy_hash: contextPolicyHash(f.dir), last_trigger: trigger });
     }
     // The resident clear is the one load that records a reset.
-    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'))).toMatchObject({ context_cleared: true });
+    expect(typeof JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8')).last_context_reset_at).toBe('string');
   } finally { f.cleanup(); }
 });
 
@@ -62,7 +62,6 @@ for (const [label, previous] of [
       expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8')).last_context_reset_at).toBeUndefined();
       expect((await run('1')).exitCode).toBe(0);
       const runtime = JSON.parse(fs.readFileSync(path.join(f.dir, 'state/runtime.json'), 'utf8'));
-      expect(runtime.context_cleared).toBe(true);
       expect(typeof runtime.last_context_reset_at).toBe('string');
       if (previous) {
         expect(JSON.parse(fs.readFileSync(policyFile, 'utf8')).last_trigger).toEqual({ reason: 'quiet', reset_at: runtime.last_context_reset_at });

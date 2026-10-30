@@ -55,7 +55,7 @@ function fixture() {
     outcomes.set(request.id, { id: request.id, source: 'watchdog', purpose: 'watchdog-clear', commands: request.commands, legs: [{ command: '/clear', status, text: status === 'ok' ? '' : 'stopped' }], finished_at: new Date(at).toISOString() });
     if (status === 'ok') {
       const resetAt = new Date(at).toISOString();
-      f.put('state/runtime.json', { ...read('state/runtime.json'), context_cleared: true, last_context_reset_at: resetAt });
+      f.put('state/runtime.json', { ...read('state/runtime.json'), last_context_reset_at: resetAt });
       const record = read('state/context-clear.json');
       f.put('state/context-clear.json', { ...record, policy_hash: contextPolicyHash(f.dir), last_trigger: { ...record.last_trigger, reset_at: resetAt } });
     }

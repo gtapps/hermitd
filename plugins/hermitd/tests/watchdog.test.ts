@@ -3981,7 +3981,7 @@ function finishQueued(h: Hermit, status: 'ok' | 'failed' | 'unknown' | 'skipped'
   }
 }
 
-test('context_compact: bloated idle + operator silent → /compact queued, stamped only once reported, context_cleared never set',
+test('context_compact: bloated idle + operator silent → /compact queued, stamped only once reported',
   withHermit(async (h) => {
     writeContextCompactConfig(h);
     writeAlwaysOnRuntime(h);
@@ -3995,8 +3995,6 @@ test('context_compact: bloated idle + operator silent → /compact queued, stamp
     expect(queueLog(h)).toBe(`/compact ${composeCompactSteeringMessage()}`);
     expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('context-compact');
     expect(readJson(state(h, 'watchdog-state.json')).last_compacted_at).toBeUndefined();
-    // context_cleared is context_clear's marker only — compact must never touch it.
-    expect(readJson(state(h, 'runtime.json')).context_cleared).not.toBe(true);
 
     // Still pending: a second tick queues nothing more.
     await watchdog(h, 'run');
