@@ -39,6 +39,7 @@
 - Chat `!` commands keep working after the agent's shell changes directory, and doctor run from a worktree or child checkout reports on the real `.hermit/` instead of creating `state/` in its copy
 - Channel setup flags an unreachable maintainer chat instead of confirming it, and watchdog notices that only reached `state/watchdog-events.jsonl` record a failed push
 - Relogin cancels and reports a sign-in link that can't reach the maintainer chat, and keeps that link out of the searchable channel log
+- A boot after `/clear` no longer counts as a context refresh, which could skip `/hermitd:watch start` and the online ping
 
 ### Upgrade Instructions
 

@@ -22,9 +22,7 @@ const CONTEXT_RESET_LIB = path.resolve(import.meta.dir, '../scripts/lib/context-
 async function applyResetFromCwd(hermitRoot: string, cwd: string, runtime: Record<string, unknown>) {
   const code = `
     const { applyContextReset } = await import(${JSON.stringify(CONTEXT_RESET_LIB)});
-    applyContextReset(${JSON.stringify(hermitRoot)}, ${JSON.stringify(runtime)}, {
-      kind: 'cleared', trigger: 'test', hhmm: '12:00',
-    });
+    applyContextReset(${JSON.stringify(hermitRoot)}, ${JSON.stringify(runtime)});
   `;
   const proc = Bun.spawn({
     cmd: [process.execPath, '-e', code],
@@ -36,7 +34,7 @@ async function applyResetFromCwd(hermitRoot: string, cwd: string, runtime: Recor
   expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: '' });
 }
 
-test('applyContextReset anchors both fields to hermitRoot, not the cwd', async () => {
+test('applyContextReset anchors its write to hermitRoot, not the cwd', async () => {
   const hermitRoot = path.join(freshDir(), '.hermit');
   fs.mkdirSync(path.join(hermitRoot, 'state'), { recursive: true });
   fs.mkdirSync(path.join(hermitRoot, 'sessions'), { recursive: true });
@@ -49,15 +47,12 @@ test('applyContextReset anchors both fields to hermitRoot, not the cwd', async (
   await applyResetFromCwd(hermitRoot, foreignCwd, { cc_session_id: 'resident', tmux_session: 'hermit' });
 
   const written = JSON.parse(fs.readFileSync(runtimeJson, 'utf-8'));
-  expect(written.context_cleared).toBe(true);
   expect(typeof written.last_context_reset_at).toBe('string');
-  // Both fields land in ONE file: the stamp used to be written by a second, separately
-  // anchored call, so a foreign cwd split them across two runtime.json files.
   expect(written.cc_session_id).toBe('resident');
   expect(typeof written.updated_at).toBe('string');
 
   // writeRuntimeJson mkdirs its target, so a cwd-relative resolve would have silently
-  // created a decoy state dir here and written the flag into it.
+  // created a decoy state dir here and written into it.
   expect(fs.existsSync(path.join(foreignCwd, '.hermit'))).toBe(false);
   expect(fs.readFileSync(shellPath, 'utf-8')).toBe('## Progress Log\n');
 

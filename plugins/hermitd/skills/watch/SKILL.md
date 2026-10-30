@@ -169,7 +169,7 @@ or watch id.
 - Use `grep --line-buffered` in pipelines so events arrive promptly, and emit stdout only on a genuine change or event.
 - Add `|| true` after API calls in poll loops when a failed request should leave the loop running.
 - For filesystem events in Docker use `inotifywait` from `inotify-tools`, included in the base image, instead of macOS-only `fswatch`.
-- At a genuine boot the ad-hoc/session registry and config-watch duty records are cleared. Context refresh leaves surviving watches alone.
+- Each launch clears the ad-hoc/session registry and config-watch duty records. `/clear` and compaction leave surviving watches alone.
 
 ## Watch duty records
 
