@@ -146,8 +146,9 @@ Standard seeds these as approval prompts. Hardened writes them into `permissions
 ```
 
 For an untrusted helper repository, Yes to `trust-workspace apply` trusts the
-repository and approves its `.mcp.json` servers; its hooks then run. Hardened
-denies these commands instead. The rule that this path runs only on a person's
+repository and approves its `.mcp.json` servers; its hooks, permission rules and
+environment settings then take effect. A repository subfolder is refused, because
+its configuration differs from the root's. Hardened denies these commands instead. The rule that this path runs only on a person's
 turn is skill policy, not a permission-engine boundary. To undo the trust,
 remove `projects["<key>"]` from Claude Code's `.claude.json` state file and run
 `claude mcp reset-project-choices` in the repository.

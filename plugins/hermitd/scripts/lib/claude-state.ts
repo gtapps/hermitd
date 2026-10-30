@@ -43,15 +43,20 @@ export function withClaudeStateLock<T>(file: string, action: () => T): T {
   }
 }
 
+export function readClaudeState(file = claudeStateFile()): Json {
+  let state: Json = {};
+  try {
+    state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error: any) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (!isDict(state)) throw new ClaudeStateError('invalid Claude Code state');
+  return state;
+}
+
 export function updateClaudeState(apply: (state: Json) => boolean, file = claudeStateFile()): boolean {
   return withClaudeStateLock(file, () => {
-    let state: Json = {};
-    try {
-      state = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    if (!isDict(state)) throw new ClaudeStateError('invalid Claude Code state');
+    const state = readClaudeState(file);
     if (!apply(state)) return false;
     writeJsonKeepingMode(file, state);
     return true;

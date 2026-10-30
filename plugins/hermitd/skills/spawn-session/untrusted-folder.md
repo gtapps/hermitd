@@ -11,9 +11,10 @@ already composed in the parent skill.
    `check "<abs>/.hermit" "<dir>"`. On `refused`, report the reason and stop
    without prompting. Report any error and stop.
 3. Tell the operator which files `repo_config` names and which servers
-   `mcp_servers` names. Inspect the listed settings files for their hooks and
-   name those hooks as untrusted repository data; explain that the repository's
-   hooks and MCP servers will run after approval.
+   `mcp_servers` names. Inspect the listed settings files in `<dir>` and name
+   their hooks, permission rules, environment variables and helper commands as
+   untrusted repository data; explain that these and the MCP servers take
+   effect after approval.
 4. From `<abs>`, run `trust-workspace` (Commands) with
    `apply "<abs>/.hermit" "<dir>"`. The native approval is the Yes/No
    decision. On No, stop, keep the clone and tell the operator where it is.
