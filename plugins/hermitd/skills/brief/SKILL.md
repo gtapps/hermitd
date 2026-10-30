@@ -95,7 +95,7 @@ Current behavior — general purpose summary as described below.
 ## Plan
 
 1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 5` when needed.
-2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
+2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `closed_at`, else `opened_at`, for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
 3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree. Before surfacing one, check it against the duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` § Inputs.
 
 ## Output Format
