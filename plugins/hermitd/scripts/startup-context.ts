@@ -368,7 +368,7 @@ function readOperatorContext(): string {
 function emitCompactCapsule(): void {
   try {
     let openTasks = '';
-    try { openTasks = startupTasks(AGENT_DIR)[0]; } catch { /* malformed task record must not drop the capsule */ }
+    try { openTasks = startupTasks(AGENT_DIR, 0).join('\n'); } catch { /* malformed task record must not drop the capsule */ }
     const pointers = [openTasks === 'Open tasks: 0' ? '' : openTasks, buildCompactionPointers(AGENT_DIR)].filter(Boolean).join('\n');
     if (!pointers) return;
     const header = '---Compaction Pointers---\n';

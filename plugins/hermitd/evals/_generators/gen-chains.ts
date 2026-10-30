@@ -214,6 +214,27 @@ chainCase('task-answer-waiting-record-shop', 'heldout', 'An answer to a waiting 
   chainScaffold(WAIT_RECORD), ['Skill', 'SendMessage', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-answer-waiting-record-shop', CARD_MOCK);
 
+// --- close outside the task skill -> review guide -------------------------
+
+// The digest comes from the real script. Its guide path is a machine path, so it points at the
+// scaffold's copy, and leaving Skill out keeps the task skill's own instruction out of reach.
+const [CLOSE_PROMPT, CLOSE_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run, read }) => {
+  const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Add the autumn teas to the shop page', '--requester', 'operator',
+    '--dedupe-key', 'helper:PROP-044', '--done', 'The autumn teas are live on the shop page'], { now: '2026-10-19T09:00:00.000Z' })).id;
+  run('task.ts', ['note', '.hermit', id], { stdin: '[guest:shop-page] Added the nine autumn teas and opened PR #42.\n', now: '2026-10-19T10:00:00.000Z' });
+  const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
+    { stdin: 'PR #42 merged.\n', now: '2026-10-19T11:00:00.000Z' }));
+  const stood = JSON.stringify({ ...digest, next: 'read .hermit/guides/learn.md' });
+  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n- task.ts learn ${id} --disposition <value>: {"id":"${id}","skill_review":"<value>"}\n</system-reminder>\n`
+    + 'PR #42 merged, so the shop page task is finished. Thanks.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
+});
+chainCase('task-close-outside-skill-shop', 'heldout', 'A close digest flags a skill review in a turn without the task skill; the digest alone has to lead the resident to the review guide.',
+  'The review guide is read and the reply reports the outcome of the review',
+  CLOSE_PROMPT,
+  [{ name: 'read-guide', type: 'tool_used', tool: 'Read', input_match: String.raw`learn\.md`, weight: 3 },
+    rubric('PASS if the final reply says the skill review of the closed task finished, with its outcome (saved, covered or nothing). FAIL if it only acknowledges the merge or the close.')],
+  chainScaffold(CLOSE_RECORD, [['skills/task/learn.md', '.hermit/guides/learn.md']]), ['Read', 'Glob', 'Grep'], { resident: true });
+
 // --- proposal-create -> triage duplicate (case 8) -------------------------
 
 chainCase('proposal-create-duplicate-shop', 'train', 'proposal-create gates through triage, which finds the open duplicate; nothing is created.',

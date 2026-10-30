@@ -8,7 +8,6 @@ description: 'Tracks chat assignments, steering in a task thread, WORKER complet
 Read `.hermit/TASKS.md` first for record threshold, wording and confirmation policy. Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...` for every record operation. Never edit `tasks/` directly. Consult `../../docs/task-records.md` for the command contract.
 
 ## Commands
-- `task-learn`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts learn .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `conversation`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/conversation.ts .hermit`
 
@@ -75,7 +74,7 @@ Record every outcome, not only one awaiting acceptance, with § Complete a task 
 A stall in unfinished work requires `--waiting-on`, `--status-line` and `--next`; post the digest's one status/next-step message to its requester in its conversation.
 
 ## Closure
-When the close digest says `skill_review: "pending"`, read [learn.md](learn.md).
+When a close digest says `skill_review: "pending"`, read [learn.md](learn.md). When session context counts pending skill reviews, list them with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --skill-review pending` and review each the same way.
 Stored status is only `open` or `closed`; closed_by is only `check`, `confirmed`, `cancelled` or null. `close`, `cancel`, and a passing `task-check.ts` run close records. Never infer closure from harness idleness.
 
 Use `close <id> --by confirmed --actor <sourceKey>:<user_id> --result-rev <current> --reason-stdin` for confirmation of a posted result; with none posted, close without `--result-rev` when the requester explicitly says the work is done (an acknowledgement is not). `TASKS.md` defines what counts as confirmation. Close with a reason quoting the message that confirmed; the reply names the close so the requester can object. When one message both accepts the result and asks for new work, close the accepted record first, then classify the new request. The revision must match and a named approver must be the actor. Any authorized human in the conversation may otherwise confirm, cancel, or change the definition of done. There is no owner list.

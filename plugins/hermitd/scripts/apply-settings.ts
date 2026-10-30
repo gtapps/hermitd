@@ -156,10 +156,13 @@ const HERMIT_ALLOW = [
   // `block` and `close` are the two commands the waiting-task annotation hands
   // the resident, so they are sealed beside note: the annotation
   // reaches the model with no resolvable plugin root, and its `bun
-  // */scripts/task.ts*` twin is suspended under auto mode.
+  // */scripts/task.ts*` twin is suspended under auto mode. `learn` is sealed for
+  // the same reason: a close digest sends a caller without the task skill to the
+  // review guide, and the verb only records a pending review's disposition.
   'Bash(.hermit/bin/hermitd-run task note *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
+  'Bash(.hermit/bin/hermitd-run task learn *)',
   // Role-proposal replies arrive on ordinary chat turns, sealed for the same
   // reason; snapshot and commit stay with the routine's own script path.
   'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',

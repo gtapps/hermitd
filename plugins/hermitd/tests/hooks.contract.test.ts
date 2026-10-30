@@ -919,6 +919,16 @@ Rota body.
     expect(r.stdout).toContain('outbound channel: discord (chat_id: 999888)');
   }));
 
+  test('startup-context (source=compact, pending skill review → count survives)', withDir(async (dir) => {
+    const task = (args: string[], stdin?: string) => runScript('task.ts', { cwd: dir, env: ENV, args: [args[0], '.hermit', ...args.slice(1)], stdin });
+    const { id } = JSON.parse((await task(['open', '--title', 'Ship', '--requester', 'operator', '--done', 'Shipped', '--dedupe-key', 'helper:PROP-001'])).stdout);
+    await task(['close', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'], 'done');
+    const r = await runScript('startup-context.ts', {
+      cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
+    });
+    expect(r.stdout).toContain('Open tasks: 0\nPending skill reviews: 1.');
+  }));
+
   test('startup-context (source=compact, malformed runtime/MP/config → fail-open per field)', withDir(async (dir) => {
     write(hermit(dir, 'state', 'runtime.json'), 'not json');
     write(hermit(dir, 'state', 'micro-proposals.json'), '{ broken');

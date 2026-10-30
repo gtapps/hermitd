@@ -373,6 +373,7 @@ describe('literal-path hermitd-run grants', () => {
     'Bash(.hermit/bin/hermitd-run task note *)',
     'Bash(.hermit/bin/hermitd-run task block *)',
     'Bash(.hermit/bin/hermitd-run task close *)',
+    'Bash(.hermit/bin/hermitd-run task learn *)',
     'Bash(.hermit/bin/hermitd-run rc-server start)',
     'Bash(.hermit/bin/hermitd-run rc-server stop)',
     'Bash(.hermit/bin/hermitd-run rc-server status)',
@@ -390,11 +391,12 @@ describe('literal-path hermitd-run grants', () => {
     });
   }
 
-  test('task resolver grants expose only the verbs the annotation offers', () => {
+  test('task resolver grants expose only the annotation verbs and the review finish', () => {
     expect(HERMIT_ALLOW.filter((entry: string) => entry.includes('hermitd-run task '))).toEqual([
       'Bash(.hermit/bin/hermitd-run task note *)',
       'Bash(.hermit/bin/hermitd-run task block *)',
       'Bash(.hermit/bin/hermitd-run task close *)',
+      'Bash(.hermit/bin/hermitd-run task learn *)',
     ]);
     expect(HERMIT_ALLOW.some((entry: string) => entry.includes('task-check.ts'))).toBe(false);
   });

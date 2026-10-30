@@ -26,6 +26,8 @@ export function reportTaskError(error: unknown): void {
 }
 const SLUG = /^[\w.:~+@;=-]+$/;
 const HOUR = 3600000;
+// Absolute, because a close outside the task skill has no plugin root to resolve against.
+const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
 const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review', 'last_worker'] as const;
 const booleans = ['muted', 'delegated'] as const;
@@ -361,7 +363,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
       if (record.delegated || reviewCallsReached(dir, record)) {
         record.skill_review = 'pending';
-        digest = { ...(digest as object), skill_review: 'pending' };
+        digest = { ...(digest as object), skill_review: 'pending', next: `read ${LEARN_GUIDE}` };
       }
     }
     const encoded = encodeTask(record);
@@ -400,8 +402,7 @@ function checkFlag(flags: TaskFlags): string | null {
   return !value || ['null', 'none', 'clear'].includes(value) ? null : value;
 }
 
-export function listTasks(dir: string, flags: TaskFlags = {}) {
-  const records = readTasks(dir);
+export function listTasks(dir: string, flags: TaskFlags = {}, records = readTasks(dir)) {
   const owner = flag(flags, 'owner');
   if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
@@ -543,9 +544,15 @@ export function taskStandup(dir: string, days = 7) {
   }
   return { by_person: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade, execution: readExecution(dir, { registryFallback: true }) };
 }
-export function startupTasks(dir: string): string[] {
-  const list = listTasks(dir);
-  return [`Open tasks: ${list.total}`, ...list.rows.slice(0, 4).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`)];
+export function startupTasks(dir: string, rows = 4): string[] {
+  const records = readTasks(dir);
+  const list = listTasks(dir, {}, records);
+  const reviews = records.filter(r => r.skill_review === 'pending').length;
+  return [
+    `Open tasks: ${list.total}`,
+    ...list.rows.slice(0, rows).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`),
+    ...(reviews ? [`Pending skill reviews: ${reviews}. Resume through /hermitd:task closure.`] : []),
+  ];
 }
 
 export function deriveDuties(dir: string): { name: string; last_run: string | null; last_verdict: string | null; scope?: string }[] {
