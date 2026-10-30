@@ -29,6 +29,7 @@ for (const [script, event, state, extra] of [
     markGuest(path.join(f.dir, 'state'), 'guest');
     await runScript(script, { cwd: f.dir, env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: '' }, stdin: JSON.stringify({ hook_event_name: event, session_id: 'guest', ...extra }) });
     expect(fs.existsSync(path.join(f.dir, 'state/execution.json'))).toBe(false);
+    expect(fs.existsSync(path.join(f.dir, 'state/session-start.json'))).toBe(false);
   } finally { f.cleanup(); } });
 }
 it('resident SessionStart records its source in session-start.json and a later prompt leaves it', async () => { const f = taskFixture(); try {
