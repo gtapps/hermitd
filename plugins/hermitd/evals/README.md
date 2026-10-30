@@ -21,6 +21,24 @@ Two case families, tagged `heartbeat` plus `train` or `heldout`. Cases tagged `v
 
 The heldout evening case scores `skills/brief/reference.md` against a task whose final result contradicts an earlier lesson and a routine with an old `last_woke` beside a recent `skipped-precheck`. Its scaffold copies the live reference into `spec/brief-reference.md`, `append_system_prompt` carries the `skill-eval-runner` body, and the prompt carries bounded command outputs. Graders check JSON-only output, exclusion of the contradicted finding, and no missed-run claim for the healthy precheck skip. Run with `--tag brief --scaffold`.
 
+The `run-*` and `dispatch-*` cases drive the real `/hermitd:brief` against a busy seeded install, with the real read-only scripts and the resident prompt. They need the plugin outside `$HOME` (see Running), so copy it to `/tmp` first and target the copy by absolute path, with `--allow-tools Bash Write`. `dispatch-*` (tag `brief-dispatch`) has one grader, that the runner was dispatched. `run-*` (tag `brief-run`) grades the delivered brief with regexes: an LLM rubric failed briefs that were correct, 3 votes to 0. `run-stale-context` resumes `history.jsonl`, an earlier conversation that calls finished work waiting. To size the main context, generate with `BRIEF_HISTORY_KB=250` in the copy; commit only the default. A run labelled with the runner arm may not have dispatched, so classify each run from the `Agent` calls in its `--keep-temp` trace.
+
+### Runner against inline, 2026-10-30
+
+Claude Code 2.1.314, `--model sonnet`, default effort, `--runs 3`, one busy install (`task-report` about 42 KB). Arm A is `SKILL.md` as shipped. Arm B reads `reference.md` in main for evening, daily and default-no-session. Output was graded from the terminal, not the Discord mock. Passed applies the committed regexes to the run traces.
+
+| Path | Runs | Passed | Cost per brief | Main turns | Main context added |
+|---|---|---|---|---|---|
+| Arm A, runner dispatched | 10 | 10 | $0.24 to $0.30 | 5 | 9k tokens |
+| Arm A, dispatch skipped | 8 | 1 | $0.12 | 3 to 4 | 9k tokens |
+| Arm B, inline | 18 | 17 | $0.11 to $0.16 | 6 | 13k tokens |
+
+Runs and Passed include the resumed runs below; the cost column does not. On a resumed 86k-token main context, one dispatched run cost $0.53, two skipped runs $0.39 and three inline runs $0.43 to $0.46.
+
+- Arm A skipped the dispatch in 10 of 24 runs counting `dispatch-*`, and in all 3 `run-default-no-session` runs. Skipped runs never read `reference.md`. Four told the operator a finished task was not in the records.
+- No case scored lower on arm B. Inline saved about $0.10 per brief but took one more main turn and carried about 4k more tokens, so the fold was not shipped: the saving depends on the turns until the next compaction, which was not measured.
+- Failed default briefs on both arms said the `task-report` output was cut off, so `--limit 20` can exceed what a main turn reads whole.
+
 ## proposal-triage
 
 Each case's `scaffold.sh` seeds `.hermit/` (config, proposals, `state/proposals-index.json`, `OPERATOR.md`, `compiled/`) and a `memory/` auto-memory dir. It uses one of two generic installs, a home-automation hermit or a small online shop. A Sonnet caller resolves the absolute `Anchor:` line, dispatches the real `hermitd:proposal-triage` agent, and relays its output, which the graders read. The agent's frontmatter pins `model: haiku`, so set the arm's model with `CLAUDE_CODE_SUBAGENT_MODEL=<model> CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`.
@@ -43,7 +61,7 @@ One case per agent chain that runs together in production, plus the rules a chai
 
 Resident cases append the resident prompt hermitd-start launches with and set `EVAL_HERMIT_RESIDENT=1`. Cases that write files are tagged `chains-write` and need `--allow-tools Write`, which applies to the whole run, so run that tag on its own; `--tag train` also selects them. Known gaps on a host where Bash cannot run in eval runs: the worker reaching `done`, the helper launch, and a real `evolve-runner` dispatch (its first steps run `claude --version` and `bun --version`), so `evolve-runner-template-conflict-home` runs the agent body directly. `task-worker-needs-input-shop` ends `needs-input` because the worker cannot run `task.ts`; it changes meaning once Bash works. Hand copies in the stand-ins: the `proposal-gate` verdict mapping, `conversation.ts thread-open` (it calls the Discord API), the watch registry and the task-report rows. `task.ts list`, `task.ts open`, `proposal-micro match`, the task cases' UserPromptSubmit context and the resident prompt are produced by the real code at generation time.
 
-`_generators/` holds the Bun scripts that write the heartbeat, proposal-triage and chains suites (`bun evals/_generators/gen-<suite>.ts` from the plugin root, with `<suite>` one of `heartbeat`, `triage`, `chains`); `lib.ts` holds the helpers they share with each other and with the drift test, and `gen-chains.ts` reuses the triage fixtures from `gen-triage.ts`. Edit a generator and regenerate rather than hand-editing many `case.yaml` files, then check that `git diff evals/` shows only the change you meant.
+`_generators/` holds the Bun scripts that write the heartbeat, proposal-triage, chains and brief run suites (`bun evals/_generators/gen-<suite>.ts` from the plugin root, with `<suite>` one of `heartbeat`, `triage`, `chains`, `brief`); `lib.ts` holds the helpers they share with each other and with the drift test, and `gen-chains.ts` reuses the triage fixtures from `gen-triage.ts`. Edit a generator and regenerate rather than hand-editing many `case.yaml` files, then check that `git diff evals/` shows only the change you meant.
 
 ## Running
 
@@ -61,7 +79,7 @@ claude plugin eval plugins/hermitd --tag chains-write --allow-tools Write --abla
 - Hillclimb on sonnet with both tags; confirm the kept wording on opus before merging. Always-on agents do not run on haiku.
 - `--tag` matches any listed tag, so `--tag train` spans every suite. Select one suite by its tag (`--tag heartbeat`) and read the splits from the JSON. Repeating `--case` keeps only the last glob.
 - Every suite needs `--scaffold`. Pick an effort level with `CLAUDE_CODE_EFFORT_LEVEL`, which reaches the child; a case's `env` accepts only `EVAL_*` keys, and `HERMIT_RESIDENT` from the shell does not reach a run.
-- Bash inside eval runs fails on the maintainer host, so cases stand in for script output instead of running scripts. The host runs Ubuntu 26.04, where the distribution's `bwrap-userns-restrict` AppArmor profile confines everything bubblewrap starts (`unpriv_bwrap`, `audit deny capability`), so the sandbox's seccomp step cannot get `CAP_SYS_ADMIN`. The bubblewrap profile from the [sandboxing docs](https://code.claude.com/docs/en/sandboxing) does not lift that restriction.
+- Bash inside eval runs works on the maintainer host when granted (`--allow-tools Bash`), checked on Claude Code 2.1.314, including inside subagents. Each call reports `Exit code 1` and a read-only `cwd` file error beside its real stdout. `$HOME` is unreadable, so `${CLAUDE_PLUGIN_ROOT}/scripts` resolves only for a plugin copied outside it. Bash writes under `.hermit/state/` fail while the Write tool works, so stand in for mutating scripts. Older suites still stand in for all script output and describe the host as having no shell; their known gaps in chains date from when it had none.
 - Measured on 2026-10-02 with `--runs 3`, mean cost per run: heartbeat evaluator sonnet $0.055, haiku $0.030; heartbeat handler sonnet $0.110, haiku $0.068; proposal-triage (Sonnet caller) about $0.085. Measured on 2026-10-07 (Sonnet 5.5, Haiku 5.5): heartbeat evaluator sonnet $0.055, haiku $0.0034; proposal-triage with a Sonnet caller, agent on sonnet $0.087, on haiku $0.049. Low effort costs the same as default effort, because the cached system and plugin context dominates every run.
 
 ## Baseline, 2026-10-26
