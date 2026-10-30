@@ -1,6 +1,7 @@
 import { test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { markGuest } from '../scripts/lib/guest-marker';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('skill-lint-');
@@ -61,7 +62,11 @@ test('post hook corrects changed skills after Edit and Bash, but not references 
   await runScript('skill-guard.ts', referenceOpts);
   expect((await runScript('skill-lint.ts', referenceOpts)).stdout).toBe('');
 
-  const guest = hookOpts(bashDir, { tool_name: 'Bash', session_id: 'resident', agent_id: 'worker', duration_ms: 60_000 });
+  const worker = hookOpts(bashDir, { tool_name: 'Bash', session_id: 'resident', agent_id: 'worker', duration_ms: 60_000 });
+  expect((await runScript('skill-lint.ts', worker)).stdout).toBe('');
+
+  markGuest(path.join(bashDir, '.hermit/state'), 'visitor');
+  const guest = hookOpts(bashDir, { tool_name: 'Bash', session_id: 'visitor', duration_ms: 60_000 });
   expect((await runScript('skill-lint.ts', guest)).stdout).toBe('');
 });
 test('post hook exits 2 for each lint error and leaves written content', async () => {
