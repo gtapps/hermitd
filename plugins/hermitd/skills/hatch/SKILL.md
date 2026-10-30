@@ -276,17 +276,18 @@ with this run's final `hatch_target` (the Step 1.5 scope default or the Advanced
 
 This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to inherit the operator's target choice without re-running scope detection.
 
-### 5b. Localize artifact chrome (non-`en` operators only)
+### 5b. Localize fixed text (non-`en` operators only)
 
-The script-rendered Artifact pages (dashboard, proposals) read their fixed UI chrome from `.hermit/state/artifact-strings.json` when present, overlaying it per key over the English defaults (a missing key or an absent file falls back to English). Model-authored content already follows `language`; this closes the gap for the ~35 hardcoded chrome labels so a non-`en` dashboard isn't half-English.
+Two kinds of fixed text are written by scripts, not the model: the Artifact pages' UI chrome (`.hermit/state/artifact-strings.json`, overlaid per key over the English defaults) and the script notices sent to the channel, such as watchdog, status, budget and login messages (`.hermit/state/messages.json`). A missing key or an absent file falls back to English, so model-authored content and these surfaces only match when both are translated.
 
 Run **only** when the chosen `language` is set and is not `en`:
 
-1. Emit the English scaffold: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <language> <current-ISO-timestamp>`.
-2. Translate every value inside the `strings` object into the operator's language. Leave the keys and any `{placeholder}` tokens **verbatim** (word order may move around a token, but the token text must not change or be translated). Leave the `language` and `generated` fields as emitted.
-3. Write the result to `.hermit/state/artifact-strings.json`.
+1. Emit the artifact scaffold: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <language> <current-ISO-timestamp>`. Translate every value inside its `strings` object, leave the `language` and `generated` fields as emitted, and write the result to `.hermit/state/artifact-strings.json`.
+2. Emit the notice scaffold: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit <language>`. Translate each `todo` entry's `en` text, using its `note` for context, and write `.hermit/state/messages-draft.json` as `{"language":"<language>","locale":"<BCP 47 tag, e.g. pt-PT>","strings":{"<key>":"<translation>"}}`. Then run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`; translate again any key it lists under `rejected`.
 
-When `language` is `en` or unset, skip — absent file ⇒ English chrome.
+In both, keep keys and `{placeholder}` tokens verbatim (word order may move around a token, but the token text must not change or be translated).
+
+When `language` is `en` or unset, skip: no file means English.
 
 ### 5a. OPERATOR.md onboarding
 
@@ -680,7 +681,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
 | Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
 | Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
-| Step 5b | artifact chrome localization | run verbatim — generate the translated table only when `language` is set and not `en`; skip silently otherwise |
+| Step 5b | fixed-text localization | run verbatim — generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |

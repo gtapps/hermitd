@@ -24,6 +24,8 @@ execution:
     - `evolve-snapshot`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit snapshot`
     - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
     - `manifest-seed`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit`
+    - `messages-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`
+    - `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit`
     - `settings-get`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get`
     - `settings-set`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set`
     - `settings-unset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json unset`
@@ -104,6 +106,7 @@ execution:
     Siblings detected but not activated: <name ... | none>
     Siblings warnings: <one line per siblings_warnings entry | none>
     Permissions added: <entries | none>
+    Messages: <retranslated-N | none>
     Audit scope: <whole_run | version_only>
     Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
     Findings: <none | one line per subject: subject -> replacement, N hits, file:line examples, shared marker>

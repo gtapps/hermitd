@@ -26,7 +26,7 @@ import { isKey } from './conversation-key';
 import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
-import { OWNED_CHAT, resolveLocale } from './messages';
+import { loadMessages } from './messages';
 
 type Json = any;
 
@@ -276,7 +276,7 @@ async function fallbackToParent(
   if (!chat || (chat.type !== 10 && chat.type !== 11) || !chat.parent_id) return unchanged;
   const parent = await lookupChat(hermitDir, opts.config, chat.parent_id);
   if (!isGuildChannelType(parent)) return unchanged;
-  const note = OWNED_CHAT[resolveLocale(opts.config?.language)].threadUnreachable();
+  const note = loadMessages(hermitDir, opts.config?.language).t('owned_chat_thread_unreachable');
   const sent = await sendToChannel(hermitDir, `${note}\n${text}`, {
     ...opts, target: { id: target.id, chat_id: chat.parent_id }, recordHealth: false,
   });

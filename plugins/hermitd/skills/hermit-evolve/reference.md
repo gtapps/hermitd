@@ -276,6 +276,12 @@ where `<resolved-settings-file>` is `.claude/settings.local.json` (local) or `.c
 
 (On a hermit whose allow-list predates `apply-settings.ts` itself, this command may hit a permission gate inside this subagent, which can't prompt — relay that to the step-10 report so the operator can add `Bash(bun */scripts/apply-settings.ts*)` and re-run, rather than wedging.)
 
+### 8b. Retranslate changed notices
+
+Skip this step when `config.language` is unset or `en` (`settings-get` (Commands) with `language`).
+
+Run `messages-scaffold` (Commands) with the language. Its `todo` holds only the script notices this upgrade added or reworded, plus any never translated; when `todo` is empty, skip. Otherwise translate each entry's `en` text into the language (its `note` gives context; keep every `{placeholder}` token verbatim), write `.hermit/state/messages-draft.json` as `{"language":"<language>","locale":"<BCP 47 tag>","strings":{"<key>":"<translation>"}}`, and run `messages-apply` (Commands). Translate again, once, any key it returns under `rejected`; a key still rejected sends in English and doctor reports it. Existing translations and the operator's custom wordings are kept. Report `Messages: retranslated-<applied>`.
+
 ### 9. Write updated config
 
 - **Do not merge `new_config_keys` by hand, and never Edit/Write `config.json`.** The finalizer below re-reads config from disk and applies every still-missing template default itself, in the same atomic write as the version stamp. Operator values and anything Step 2b or Step 4 already wrote are present by then, so they are never revisited. (Under the strict profile a tool write to `config.json` is hook-blocked outright.)

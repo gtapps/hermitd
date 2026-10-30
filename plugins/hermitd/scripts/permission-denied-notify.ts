@@ -33,7 +33,7 @@ import { acquireLock, releaseLock } from './lib/lockfile';
 import { appendDenial } from './lib/denial-log';
 import { safe } from './lib/sanitize';
 import { localISOStamp } from './lib/time';
-import { DENY, resolveLocale } from './lib/messages';
+import { loadMessages } from './lib/messages';
 
 type Json = any;
 
@@ -223,11 +223,11 @@ async function main(raw: string): Promise<void> {
   const claim = recordDenial(dir, key, bashProgram(payload), now);
   if (!claim.send) return; // inside an open window — counted, and stays quiet
 
-  const locale = resolveLocale(config.language);
-  let maintainerText = DENY[locale].maintainerBase(key);
+  const m = loadMessages(dir, config.language);
+  let maintainerText = m.t('deny_base', { tool: key });
   if (reason) maintainerText += ` — ${reason}`;
-  if (claim.suppressed > 0) maintainerText += DENY[locale].maintainerSuppressed(claim.suppressed);
-  const tail = DENY[locale].maintainerTail();
+  if (claim.suppressed > 0) maintainerText += m.t('deny_suppressed', { count: claim.suppressed });
+  const tail = m.t('deny_tail');
   maintainerText = maintainerText.slice(0, MESSAGE_MAX_LEN - tail.length) + tail;
 
   // The diagnostic is recorded whatever the channel is doing. An absent or dead

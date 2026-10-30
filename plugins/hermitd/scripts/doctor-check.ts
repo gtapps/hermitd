@@ -32,6 +32,7 @@ import { readRoutineHistory } from './lib/routines/history';
 import { promptTokensOf, compactibleTokens, isOwnTurn } from './lib/context-signal';
 import { readContextSurface } from './lib/context-surface';
 import { expandSessionName } from './lib/tmux';
+import { auditMessages, isEnglish, readMessagesFile } from './lib/messages';
 import { readJson, writeStdout } from './lib/cli';
 import { modLoadedForResident } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
@@ -2341,6 +2342,33 @@ function checkClassifierDenials(p: DoctorPaths = PATHS) {
   }
 }
 
+/** state/messages.json against config.language and the shipped English: a
+ *  non-English agent with no translations, keys an upgrade changed, and operator
+ *  overrides that lost a placeholder all send in English until fixed. */
+function checkMessageCatalog(p: DoctorPaths = PATHS) {
+  const id = 'message-catalog';
+  try {
+    const language = readSettledConfig(p.hermitDir).language;
+    const file = readMessagesFile(p.hermitDir);
+    const a = auditMessages(file, language);
+    const issues: string[] = [];
+    if (!isEnglish(language)) {
+      if (!a.live) issues.push(`no ${language} translations (run /hermitd:hermit-settings language)`);
+      else {
+        const redo = a.stale.length + a.invalid.length + a.missing.length;
+        if (redo > 0) issues.push(`${redo} message(s) not translated for the current version (run /hermitd:hermit-evolve or /hermitd:hermit-settings language)`);
+      }
+    }
+    if (a.invalidOverrides.length > 0) issues.push(`custom wording no longer fits: ${a.invalidOverrides.join(', ')}`);
+    if (issues.length > 0) return { id, status: 'warn', detail: issues.join('; ') };
+    const parts = [isEnglish(language) ? 'English' : `${a.translated.length} translated`];
+    if (a.overridden.length > 0) parts.push(`${a.overridden.length} custom`);
+    return { id, status: 'ok', detail: parts.join(', ') };
+  } catch (e: any) {
+    return { id, status: 'warn', detail: `check failed: ${e.message}` };
+  }
+}
+
 // ----------------- Orchestration -----------------
 
 async function runAllChecks(p: DoctorPaths = PATHS) {
@@ -2371,6 +2399,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkPassiveChats(p),
     checkContextScan(p),
     checkVoiceCarrier(p),
+    checkMessageCatalog(p),
     checkOverlayHooks(p),
     checkHarnessMod(p),
     checkClassifierDenials(p),
@@ -2583,7 +2612,7 @@ export {
   checkDockerSecurity, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
-  checkCredentialExpiry, checkChromeAuth, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
+  checkCredentialExpiry, checkChromeAuth, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
   satisfiesRange, cidrOverlap,
   // Tests build their own paths for a scratch dir; the CLI runs on the argv-derived default.
   resolvePaths,

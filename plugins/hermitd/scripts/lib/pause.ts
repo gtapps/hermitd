@@ -23,7 +23,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { PAUSE, type Locale } from './messages';
+import { EN_MESSAGES, type Messages } from './messages';
 
 export type PauseReason = 'operator' | 'budget' | 'watchdog';
 
@@ -32,8 +32,8 @@ export type PauseReason = 'operator' | 'budget' | 'watchdog';
 const PAUSE_PRIORITY: Record<PauseReason, number> = { operator: 3, watchdog: 2, budget: 1 };
 
 /** Operator-language label for a pause reason — shared by the watchdog's pushes and the status responder. */
-export function pauseReasonLabel(reason: PauseReason | string | null | undefined, locale: Locale = 'en'): string {
-  return PAUSE[locale].reasonLabel(reason == null ? '' : String(reason));
+export function pauseReasonLabel(reason: PauseReason | string | null | undefined, m: Messages = EN_MESSAGES): string {
+  return m.t(reason === 'budget' ? 'pause_reason_budget' : reason === 'watchdog' ? 'pause_reason_watchdog' : 'pause_reason_request');
 }
 
 export interface PauseFlag {
