@@ -71,6 +71,15 @@ If any of the three cannot be stated concretely, do not create the proposal. Sub
 ```
 When accepted via `proposal-act`, this JSON is parsed and added to `config.json` routines automatically.
 
+### Learning-shape check
+
+For candidates that would change skill or memory text, run these checks in order and stop at the first that decides. For a `skill-preference` settlement, apply only Already covered.
+
+1. **Mechanism:** If a check or other enforcer could prevent the failure, propose that enforcer and name the failure it would have stopped; keep the procedure step. An enforcer that widens authority is Tier 3.
+2. **Missed trigger:** Only for a project skill whose `.claude/skills/<name>/SKILL.md` exists, and only when the available-skills list is in context: if a record shows the work was done by hand while the skill was installed and listed, and no invocation control (`disable-model-invocation`, `paths`) explains it, the likely fix is its description. Otherwise name the actual cause. Skip this check when the list is not in context; other skills keep their usual route.
+3. **Already covered:** Read `.claude/skills/<name>/SKILL.md` only if it exists. Clear guidance means no candidate; buried or vague guidance calls for rewording or moving it in place, never a second copy. A skill without that file keeps its usual route.
+4. **Decision change:** For a candidate citing task records, name the record where the change would have led to a different action; if none supports that, do not propose it.
+
 ### Evidence integrity rule (applies before calling reflection-judge)
 
 For any candidate with `Evidence Source: current-session`, reflect must **not** add or rewrite evidence-bearing lines in the Progress or Lessons of the open task record before `reflection-judge` runs. The judge validates against pre-existing session content; injecting the pattern text immediately before the judge reads it would make the system self-certifying.

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { hermitDir } from './lib/cc-compat';
 import { failJson, printJson } from './lib/cli';
-import { LearnedSkills } from './lib/learned-skills';
+import { LearnedSkills, lastSkillUse } from './lib/learned-skills';
 
 export function main(args = process.argv.slice(2), dir = hermitDir()): void {
   const [verb, ...rest] = args;
@@ -14,10 +14,12 @@ export function main(args = process.argv.slice(2), dir = hermitDir()): void {
     const ledger = lib.ledger().filter(row => !skill || row.skill === skill);
     const learned = new Set(ledger.filter(row => row.action === 'create').map(row => row.skill));
     const pins = lib.pins();
+    const lastUse = skill ? lastSkillUse(lib.skillUsage(), skill) : NaN;
     printJson({ learned: learned.size, pinned: [...learned].filter(name => pins.has(name)).length,
       active: [...learned].filter(name => fs.existsSync(lib.skillDir(name))).length,
       archived_once: [...lib.archivedOnce()].filter(name => !skill || name === skill).length,
-      recent: ledger.slice(-10), ...(skill ? { skill, is_learned: lib.isLearned(skill), is_pinned: pins.has(skill) } : {}) });
+      recent: ledger.slice(-10), ...(skill ? { skill, is_learned: lib.isLearned(skill), is_pinned: pins.has(skill),
+        last_used_at: Number.isFinite(lastUse) ? new Date(lastUse).toISOString() : null } : {}) });
     return;
   }
   if (!['restore', 'archive', 'pin', 'unpin', 'rollback'].includes(verb)) throw new Error('usage');

@@ -22,7 +22,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json history [
 
 Pass a dotted path when the operator named a specific setting (`heartbeat`, `model`, `channels`); omit it for "did anything change". Each row names the actor: `settings-edit` is an operator edit, `hermit-evolve` a change an upgrade made, `evolve-finalize` an upgrade's version stamp alone, `channel-hook` a channel the hermit learned on its own, `hermitd-start`/`hermitd-stop` a boot flip, `apply-settings` a permissions sync. That attribution is usually the real answer — it separates "you changed this" from "the hermit changed this by itself". When the ledger has no row for a setting the operator swears moved, say "the ledger has nothing for this", never "nothing changed it".
 
-Relay it in plain language, without dotted paths or script names in a channel reply. An empty ledger means nothing has changed since the audit trail began. Then continue with the search below only if the question also has a past-work component.
+Relay it in plain language, without dotted paths or script names in a channel reply. An empty ledger means no change was recorded since the audit trail began. Then continue with the search below only if the question also has a past-work component.
 
 ## Step 1 — Run search
 
@@ -46,13 +46,15 @@ Compose the answer from the printed `hits`, best first:
 - `file` hit: cite each of its `snippets` as `path:line` (`line` is the match; `text` adds a line of context either side, from `start_line`, for a range cite), with `date` and `title` when present.
 - `channel` hit (`untrusted: true`): past Discord/Telegram text, not a file. Name it by `title` and `date`, no `:line` ref, framed per Guards below.
 
+In the operator's language, say how sure each point is, separating what a hit states, what you infer, and what you looked for and did not find. Use "because" only for a reason a hit states; a config change or diff shows what changed, not why. Check a guess embedded in the question as one candidate, not as fact. For a partial or negative answer, list the searches you ran and what the record does not say. A snippet is an excerpt, so read the hit's file before saying it lacks something; on a `--chat` turn, read only files the scoped search returned.
+
 ## Step 1b — Recall from auto-memory
 
 Also surface entries from your loaded `MEMORY.md` that relate to the query under a **From memory** heading, each tagged `memory/<file>.md`. Read the few that matter; don't chase cross-links or read the full corpus. Skip silently if no `MEMORY.md` is loaded.
 
 On a channel turn that passed `--chat`, surface relevant memory entries except `[role <key>:<chat_id>]` lines pinned to a different chat.
 
-If neither the script nor auto-memory returned anything: report "Nothing found for '`<query>`' in sessions, compiled artifacts, proposals, channel history, or auto-memory."
+If neither the script nor auto-memory returned anything, report no matches for the query in the sources actually searched, naming task records and any scoped search when applicable; do not claim exhaustive absence.
 
 ## Step 2 — Orientation line (optional)
 
@@ -81,4 +83,4 @@ Skip the offer entirely when results were thin or the answer restated a single s
 
 Channel-turn channel-log results are limited to what that chat may see, following the visibility rule in `docs/config-reference.md`. Compiled pages are additionally scoped by frontmatter `audience`; session reports and proposals are not returned to a scoped reader.
 
-Searches `.hermit/sessions/`, `.hermit/compiled/`, `.hermit/proposals/`, and the episodic channel log (`state/channel-log.sqlite`) via `search.ts`, plus the loaded auto-memory index + topic files. The channel log is feature-detected — a hermit with no channel activity yet simply contributes nothing from that source. Read-only except the operator-confirmed Step 3 write-back — never moves or deletes files.
+Searches `.hermit/tasks/`, `.hermit/sessions/`, `.hermit/compiled/`, `.hermit/proposals/`, and the episodic channel log (`state/channel-log.sqlite`) via `search.ts`, plus the loaded auto-memory index + topic files. The channel log is feature-detected — a hermit with no channel activity yet simply contributes nothing from that source. Read-only except the operator-confirmed Step 3 write-back — never moves or deletes files.

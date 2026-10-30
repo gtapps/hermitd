@@ -27,3 +27,23 @@ test('skills commands refuse operator skills and provide reversible bounded cont
   expect(status.learned).toBe(1); expect(status.recent.length).toBe(10); expect(status.is_learned).toBe(true);
   expect((await run('status', '--skill', '../escape')).exitCode).toBe(1);
 });
+
+test('skill status reports the newest matching use and null for unknown use', async () => {
+  const dir = freshDir(); const hermit = path.join(dir, '.hermit');
+  const state = path.join(hermit, 'state'); const configDir = path.join(dir, 'test-claude');
+  fs.mkdirSync(state, { recursive: true }); fs.mkdirSync(configDir);
+  fs.writeFileSync(path.join(state, 'runtime.json'), JSON.stringify({ config_dir: configDir }));
+  const run = (...args: string[]) => runScript('skills.ts', { args, cwd: dir, env: { AGENT_DIR: hermit } });
+  const newest = '2026-03-04T05:06:07.000Z';
+  fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage: {
+    sample: { lastUsedAt: '2026-01-01T00:00:00.000Z' },
+    'plugin:sample': { lastUsedAt: newest },
+    '.claude/worktrees/example:sample': { lastUsedAt: '2026-02-01T00:00:00.000Z' },
+    'plugin:not-sample': { lastUsedAt: '2027-01-01T00:00:00.000Z' },
+  } }));
+  expect(JSON.parse((await run('status', '--skill', 'sample')).stdout).last_used_at).toBe(newest);
+  expect(JSON.parse((await run('status', '--skill', 'missing')).stdout).last_used_at).toBeNull();
+  expect(JSON.parse((await run('status')).stdout)).not.toHaveProperty('last_used_at');
+  fs.writeFileSync(path.join(configDir, '.claude.json'), '{');
+  expect(JSON.parse((await run('status', '--skill', 'sample')).stdout).last_used_at).toBeNull();
+});

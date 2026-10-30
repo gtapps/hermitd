@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dir, '..');
 test('close-time learning and handoffs retain their core instructions', () => {
   const checks: Record<string, string[]> = {
     'skills/task/SKILL.md': ['skill_review: "pending"', 'learn.md'],
-    'skills/task/learn.md': ['## Progress', 'umbrella learned skill', 'references/', 'capability-named', 'hermitd:proposal-create', 'Skill Writing Guide', 'hermitd:skill-eval-runner', 'model: sonnet', 'duplicate_of', 'skills pin <name> --origin operator', 'skills.notify', '--disposition saved|covered|nothing'],
+    'skills/task/learn.md': ['## Progress', '## Lessons', '## Decisions', 'shape the lesson', 'never append a duplicate', 'is not a skill', 'does not count', 'last_used_at', 'still lacks', 'reflect-noticed', 'umbrella learned skill', 'references/', 'capability-named', 'hermitd:proposal-create', 'Skill Writing Guide', 'hermitd:skill-eval-runner', 'model: sonnet', 'duplicate_of', 'skills pin <name> --origin operator', 'skills.notify', '--disposition saved|covered|nothing'],
     'skills/task/skill-gate-reference.md': ['draft skill', 'existing skill names and descriptions', 'duplicate_of', 'findings'],
     'agents/task-worker.md': ['<id>.procedure.md', 'inputs, pitfalls', 'requester message, unchanged'],
     'prompts/helper.md': ['Evidence:', 'Procedure:'],

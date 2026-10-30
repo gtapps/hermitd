@@ -406,6 +406,20 @@ describe('weekly learned-skill retirement', () => {
     expect(readReview(dir).fm.skills_archived).toBe('0');
     expect(readReview(dir).body).toContain('no recent skillUsage capture evidence');
   }));
+  test('recent worktree and plugin usage protects learned skills', withHermitDir(async dir => {
+    seedSkills(dir, 2, false);
+    const configDir = path.join(dir, 'test-claude');
+    fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage: {
+      '.claude/worktrees/example:learned-00': { lastUsedAt: Date.now() },
+      'example-plugin:learned-01': { lastUsedAt: new Date().toISOString() },
+    } }));
+    expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
+    expect(readReview(dir).fm.skills_archived).toBe('0');
+    expect(readReview(dir).body).not.toContain('dormant suggestion');
+    for (const name of ['learned-00', 'learned-01']) {
+      expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name))).toBe(true);
+    }
+  }));
   test('cap, pins, routine names, recent patches and operator skills stay protected', withHermitDir(async dir => {
     seedSkills(dir, 16, true);
     writeConfig(dir, { routines: [{ skill: 'learned-01 --arg' }] });

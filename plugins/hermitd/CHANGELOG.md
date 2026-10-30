@@ -11,6 +11,11 @@
 
 ### Changed
 
+- Reflect checks for enforcement, missed triggers and existing guidance before proposing learning changes
+- Close-time learning shapes lessons and patches learned skills using evidence of errors or general operator corrections
+- Accepted skill improvements apply requested rewording, moves and description changes to existing text
+- Recall answers distinguish stated evidence from inference and report search limits
+- `skills status --skill` reports the latest recorded use
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
 - Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
@@ -20,6 +25,7 @@
 
 - Morning briefs always carry the newest record's task context instead of varying between mornings
 - Scheduled briefs always read the full day's records, and plain briefs read only the records they need
+- Learned-skill retirement counts use recorded under worktree and plugin keys
 - Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
 - `hermitd update` and watchdog restarts no longer wait out the 15-minute quiet cap on an agent that was cleared and then left quiet
 - Chat `!clear` and `!compact` report success on Claude Team and Enterprise accounts instead of "outcome unknown"
