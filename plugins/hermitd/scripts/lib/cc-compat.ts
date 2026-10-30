@@ -597,6 +597,16 @@ function toolUseNames(entry: Json): Array<{ id: string; name: string }> {
   return out;
 }
 
+/**
+ * Add the ids of main-chain tool_use blocks timestamped at or after `since` to
+ * `ids`, stopping once it holds `limit`. Reads the whole transcript, so a caller
+ * gets a threshold answer, not a full count. A missing or unreadable file adds
+ * nothing; an id already in `ids` counts once, however many sessions carry it.
+ * @param {string} file transcript path
+ * @param {string} since ISO lower bound, inclusive
+ * @param {number} limit size at which `ids` is full
+ * @param {Set<string>} ids accumulator shared across a caller's transcripts
+ */
 function collectToolUseIds(file: string, since: string, limit: number, ids: Set<string>): void {
   if (ids.size >= limit) return;
   let contents: string;

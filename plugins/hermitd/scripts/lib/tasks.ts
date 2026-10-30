@@ -191,7 +191,7 @@ function reviewCallsReached(dir: string, record: Task): boolean {
   const ids = new Set<string>();
   const sessions = new Set<string>();
   const visit = (session: unknown) => {
-    if (typeof session !== 'string' || !session || sessions.has(session) || ids.size >= REVIEW_CALLS) return;
+    if (typeof session !== 'string' || !session || sessions.has(session)) return;
     sessions.add(session);
     collectToolUseIds(path.join(transcripts, `${session}.jsonl`), record.opened_at, REVIEW_CALLS, ids);
   };
@@ -199,12 +199,9 @@ function reviewCallsReached(dir: string, record: Task): boolean {
   visit(runtime?.cc_session_id);
   if (ids.size < REVIEW_CALLS) {
     const start = Date.parse(record.opened_at);
-    const rows = readTaskCostRows(dir)
-      .filter(row => row?.guest !== true && !row?.subagent)
-      .map(row => ({ session: row?.cc_session_id, at: Date.parse(row?.observed_at ?? row?.timestamp) }))
-      .filter(row => row.at >= start)
-      .sort((a, b) => b.at - a.at);
-    for (const row of rows) visit(row.session);
+    for (const row of readTaskCostRows(dir).reverse()) {
+      if (row?.guest !== true && !row?.subagent && Date.parse(row?.observed_at ?? row?.timestamp) >= start) visit(row.cc_session_id);
+    }
   }
   return ids.size >= REVIEW_CALLS;
 }
