@@ -33,7 +33,7 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.308+ and Bun 1.4+ installed:
+With Claude Code 2.1.312+ and Bun 1.4+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
@@ -283,6 +283,8 @@ You can run separate agents for different responsibilities, each with its own wo
 ## Maintenance
 
 **Sign-in renewal from chat.** When your agent’s Claude sign-in needs renewing, use `/relogin` from your connected chat. Open the link in your browser, sign in, and send the code back in chat.
+
+**Tool sign-ins from chat.** When a connected tool or claude.ai connector needs you to sign in again, say "reconnect" in chat. Open each link, approve access, and paste back the address your browser fails to load; the tool works again without a restart.
 
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
