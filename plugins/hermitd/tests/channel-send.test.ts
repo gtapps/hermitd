@@ -266,6 +266,44 @@ describe('channel-send CLI', () => {
     }
   });
 
+  test('--tier maintainer reports no delivery when the configured chat is unreachable', async () => {
+    const stub = startHttpStub();
+    stub.setStatus(400);
+    const wd = setupChannelWorkdir({ maintainer_channel_id: '99999' });
+    try {
+      const r = await runChannelSend({
+        args: [hermit(wd.dir), '--tier', 'maintainer', 'unreachable notice'],
+        env: { HERMIT_TELEGRAM_API_URL: stub.url },
+      });
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'no_delivery' });
+      expect(stub.requests.length).toBe(1);
+      expect(stub.requests[0].body.chat_id).toBe('99999');
+      expect(findings(wd)).toContain('unreachable notice');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('--tier maintainer keeps non-technical notices in Findings when no maintainer chat exists', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({}, { operator_profile: 'non-technical' });
+    try {
+      const r = await runChannelSend({
+        args: [hermit(wd.dir), '--tier', 'maintainer', 'local notice'],
+        env: { HERMIT_TELEGRAM_API_URL: stub.url },
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout.trim()).toBe('OK');
+      expect(stub.requests.length).toBe(0);
+      expect(findings(wd)).toContain('local notice');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('--tier maintainer with no maintainer channel falls back to the primary chat', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();

@@ -11,7 +11,7 @@
 //              falling back to the primary chat when none is configured.
 //   <text|- >  literal text, or "-" to read the message from stdin (avoids
 //              argv length/newline edges — the form spawnSync callers use).
-//   Prints `OK` once sent, else {"error":"<token>"} at exit 1.
+//   Prints `OK` when delivered, else {"error":"<token>"} at exit 1.
 //
 // Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id> | --watch <id>]
 //   Reads a JSON payload on stdin: { client?, maintainer?, sensitive?, fallback? }.
@@ -196,7 +196,7 @@ async function main(): Promise<void> {
   if (parsed.tier === 'maintainer') {
     const res = await sendOperatorNotice(stateDir, { maintainer: { text, fallback: 'client' } });
     const m = res.maintainer;
-    if (m?.ok) emit('OK');
+    if (m?.delivered) emit('OK');
     // A send error can be free text (a fetch message); failJson keeps only a token.
     failJson(m?.error ?? 'no_delivery', 'send_failed');
     return;
