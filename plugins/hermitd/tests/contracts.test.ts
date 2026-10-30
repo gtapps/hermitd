@@ -2075,7 +2075,8 @@ describe('brief delegation contract', () => {
   test('morning task context has no caller-chosen switch', () => {
     expect(skill).not.toContain('context_recovery');
     expect(refFile).not.toContain('context_recovery');
-    expect(refFile).toContain('Summarize the newest normalized record');
+    expect(refFile).toContain('Summarize the newest normalized record (the first `rows` entry)');
+    expect(skill).toContain('does not make it overnight activity');
   });
 
   test('schema block is byte-identical in reference.md and SKILL.md', () => {

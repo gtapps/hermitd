@@ -62,7 +62,7 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 - **Operator priorities:** use `runner.operator_priorities`
 - **Queued work:** use `runner.queued_work`
 - **Waiting:** use `runner.waiting` (records awaiting a reply or confirmation); omit the line when the array is empty
-- **Context recovery:** if `runner.report_summary` is non-null, use it for task context
+- **Task context:** if `runner.report_summary` is non-null, include it as the latest record with its date; it can predate last night, so the framing below does not make it overnight activity
 - If `config.always_on` is `true`: frame as "what happened overnight (activity since evening routine)"
 - If `config.always_on` is `false`: frame as "here's where things stand"
 - **Decisions:** use `runner.decisions` for what changed and why; omit the line when the array is empty
