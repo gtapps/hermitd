@@ -5,12 +5,11 @@
 ### Added
 
 - `hermitd agents [name]` opens Claude Code's `claude agents` view where the agent runs, inside the container for Docker agents
-- `/hermitd:mcp-login` signs MCP servers and claude.ai connectors back in from chat: it relays each sign-in link, takes the pasted localhost address back, and the tools work again in the running session
 
 ### Changed
 
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
-- Requires Claude Code 2.1.312 or newer
+- Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
 
 ### Fixed
 
