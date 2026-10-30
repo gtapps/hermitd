@@ -481,7 +481,7 @@ Modify with `/hermit-settings`. Validated by `validate-config.ts` when present.
 
 ## `skills`
 
-`skills.learning` defaults to `true`: closed delegated tasks and tasks with at least ten resident tool calls receive a persisted skill review. `skills.notify` accepts `off`, `on` (default), or `verbose`: no close-reply learning line, one line, or one line plus a short change preview. Set these through `/hermitd:hermit-settings skills-learning` and `skills-notify`. Learning writes require `permission_mode` `auto` or `bypassPermissions`.
+`skills.learning` defaults to `true`: closed delegated tasks and tasks with at least ten resident tool calls while the task is open receive a persisted skill review. `skills.notify` accepts `off`, `on` (default), or `verbose`: no close-reply learning line, one line, or one line plus a short change preview. Set these through `/hermitd:hermit-settings skills-learning` and `skills-notify`. Learning writes require `permission_mode` `auto` or `bypassPermissions`.
 
 ## `reflection`
 

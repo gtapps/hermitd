@@ -10,6 +10,7 @@
 
 ### Changed
 
+- Skill reviews use each task's own open window
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
 - Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
@@ -17,6 +18,7 @@
 
 ### Fixed
 
+- Closing one task no longer uses up the next task's skill review
 - Morning briefs always carry the newest record's task context instead of varying between mornings
 - Scheduled briefs always read the full day's records, and plain briefs read only the records they need
 - Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
@@ -33,6 +35,8 @@
 ### Upgrade Instructions
 
 Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entry.
+
+Delete `.hermit/state/skill-review-counter` if it exists.
 
 No `config.json` changes required.
 

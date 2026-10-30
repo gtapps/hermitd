@@ -54,6 +54,6 @@ A task thread with a bound session works like a Projects thread: follow-ups go t
 
 ## Learned-skill reviews
 
-Records persist `delegated` (default `false`) and `skill_review` (default `null`). Ownership by a worker or helper sets `delegated` permanently. Successful closure, including a passing check, sets `skill_review: pending` when `skills.learning` is enabled and the task was delegated or the resident counter reached ten calls. That closure resets the counter. Cancellation never schedules learning.
+Records persist `delegated` (default `false`) and `skill_review` (default `null`). Ownership by a worker or helper sets `delegated` permanently, as does opening a record with a `helper:` dedupe key. Successful closure, including a passing check, sets `skill_review: pending` when `skills.learning` is enabled and the task was delegated or ten resident tool calls occurred while the record was open. Attempts, including failed or denied calls, and unrelated work count. Cancellation never schedules learning.
 
 `task.ts list .hermit --skill-review pending` includes closed records so startup can recover interrupted reviews. Finish a closed review with `task.ts learn .hermit <id> --disposition saved|covered|nothing`. Repeating the same disposition is a no-op; changing a disposition after completion is refused.

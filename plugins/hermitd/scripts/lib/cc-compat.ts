@@ -597,6 +597,28 @@ function toolUseNames(entry: Json): Array<{ id: string; name: string }> {
   return out;
 }
 
+function collectToolUseIds(file: string, since: string, limit: number, ids: Set<string>): void {
+  if (ids.size >= limit) return;
+  let contents: string;
+  try {
+    contents = fs.readFileSync(file, 'utf8');
+  } catch {
+    return;
+  }
+  const start = Date.parse(since);
+  for (const line of contents.split('\n')) {
+    if (!line.includes('"tool_use"')) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (entry.isSidechain === true || !(Date.parse(entry.timestamp) >= start)) continue;
+      for (const { id } of toolUseNames(entry)) {
+        ids.add(id);
+        if (ids.size >= limit) return;
+      }
+    } catch {}
+  }
+}
+
 /**
  * Classify the tool_result blocks of a carrier user entry into denials (with
  * kind) and genuine-failure tool_use_ids, per block. Both denials and failures
@@ -762,6 +784,7 @@ export {
   turnPromptText,
   isCompactBoundary,
   toolUseNames,
+  collectToolUseIds,
   classifyToolResults,
   transcriptPathKey,
   transcriptDirFor,
