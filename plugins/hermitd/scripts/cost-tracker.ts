@@ -16,7 +16,7 @@ import { readSettledConfig } from './lib/config-read';
 import { setPause, isPaused } from './lib/pause';
 import { evaluateBudget, pauseBoundary } from './lib/budget';
 import { sendOperatorNotice } from './lib/channel-send';
-import { BUDGET, resolveLocale, type Locale } from './lib/messages';
+import { EN_MESSAGES, loadMessages, type MessageKey, type Messages } from './lib/messages';
 import { classifySource } from './lib/trigger-source';
 import { runtimeTmpPath } from './lib/runtime';
 import { readContextSurface, writeContextSurface } from './lib/context-surface';
@@ -490,19 +490,26 @@ const BUDGET_PUSH_TIMEOUT_MS = 6000;
 // create-only dedup in applyBudgetCheck). Breached and warned periods are framed
 // separately so a warn batched with a breach isn't mislabeled "cap reached".
 // This is the maintainer-tier text (full USD/cap/ratio detail). Exported for tests.
-function composeBudgetMessage(newPeriods: Json[], action: 'alert' | 'pause', until: string | null, timezone: string, locale: Locale = 'en'): string {
-  const B = BUDGET[locale];
-  const clause = (p: Json) =>
-    B.clause(B.periodPossessive(p.period), p.spend, p.cap, Math.round(p.ratio * 100));
+const BUDGET_PERIOD: Record<string, MessageKey> = {
+  daily: 'budget_period_daily', weekly: 'budget_period_weekly', monthly: 'budget_period_monthly',
+};
+
+function composeBudgetMessage(newPeriods: Json[], action: 'alert' | 'pause', until: string | null, timezone: string, m: Messages = EN_MESSAGES): string {
+  const clause = (p: Json) => m.t('budget_clause', {
+    period: BUDGET_PERIOD[p.period] ? m.t(BUDGET_PERIOD[p.period]) : p.period,
+    spend: p.spend.toFixed(2),
+    cap: p.cap.toFixed(2),
+    pct: Math.round(p.ratio * 100),
+  });
   const breached = newPeriods.filter((p) => p.level === 'breach');
   const warned = newPeriods.filter((p) => p.level === 'warn');
   if (breached.length > 0) {
-    let msg = B.capReachedPrefix() + breached.map(clause).join('; ');
-    if (warned.length > 0) msg += B.alsoApproaching() + warned.map(clause).join('; ');
-    if (action === 'pause' && until) msg += B.pausedUntilSuffix(friendlyBoundary(until, timezone));
+    let msg = m.t('budget_cap_reached_prefix') + breached.map(clause).join('; ');
+    if (warned.length > 0) msg += m.t('budget_also_approaching') + warned.map(clause).join('; ');
+    if (action === 'pause' && until) msg += m.t('budget_paused_until_suffix', { boundary: friendlyBoundary(until, timezone) });
     return `${msg}.`;
   }
-  return B.headsUpPrefix() + warned.map(clause).join('; ') + '.';
+  return m.t('budget_heads_up_prefix') + warned.map(clause).join('; ') + '.';
 }
 
 // Record `notified: true` on already-persisted budget alert entries via a fresh
@@ -531,7 +538,7 @@ function markBudgetNotified(newPeriods: Json[], periodKey: Record<string, string
 // `heartbeat.ts precheck` EVALUATE wake as the fallback announcement path.
 // Fail-open throughout — never throws, since run()'s caller must never be blocked by
 // this check.
-async function applyBudgetCheck(costIdx: Json, timezone: string, budgetConfig: Json, locale: Locale = 'en'): Promise<void> {
+async function applyBudgetCheck(costIdx: Json, timezone: string, budgetConfig: Json, language: unknown = null): Promise<void> {
   try {
     if (!budgetConfig || typeof budgetConfig !== 'object') return;
     const caps = {
@@ -624,8 +631,10 @@ async function applyBudgetCheck(costIdx: Json, timezone: string, budgetConfig: J
       // maintainer channel, technical profile) it falls back to the primary chat,
       // together with the plain localized "paused until X" client line when
       // a pause is in force.
-      const message = composeBudgetMessage(newPeriods, result.action, until, timezone, locale);
-      const clientLine = until ? BUDGET[locale].clientPaused(friendlyBoundary(until, timezone)) : undefined;
+      // Loaded only here: this runs on every Stop, and a push is rare.
+      const m = loadMessages(HERMIT_DIR, language);
+      const message = composeBudgetMessage(newPeriods, result.action, until, timezone, m);
+      const clientLine = until ? m.t('budget_client_paused', { boundary: friendlyBoundary(until, timezone) }) : undefined;
       const res = await sendOperatorNotice(HERMIT_DIR, {
         client: clientLine,
         maintainer: { text: message, fallback: 'client' },
@@ -791,7 +800,7 @@ async function run(data: Json): Promise<string | null> {
     const costIdx = updateCostIndex(COST_LOG, COST_INDEX, timezone);
 
     // PROP-016: compare the freshly-updated index against config.budget's caps.
-    await applyBudgetCheck(costIdx, timezone, config.budget, resolveLocale(config.language));
+    await applyBudgetCheck(costIdx, timezone, config.budget, config.language);
 
     // Return brief summary (pipeline writes this to stderr)
     return `[cost-tracker] ${model}: ${kStr(totalTokens)} tokens (${kStr(cacheReadTokens)} cached), $${roundedCost.toFixed(4)}`;

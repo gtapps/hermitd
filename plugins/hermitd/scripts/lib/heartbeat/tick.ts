@@ -9,7 +9,7 @@ import { readSettledConfig } from '../config-read';
 import { readMergedAlerts, readAlertState, alertStatePath, activeSuppressedEntries, isStructuredKey } from '../alert-state';
 import { isPaused } from '../pause';
 import { resolveHermitNowMs, todayYMD } from '../time';
-import { resolveLocale } from '../messages';
+import { loadMessages } from '../messages';
 
 type Json = any;
 
@@ -80,7 +80,7 @@ async function composeBudgetAlerts(hermitDir: string, config: Json, out: Notific
   // nothing for a branch it does not take.
   const { composeBudgetMessage } = await import('../../cost-tracker');
   const timezone = config.timezone ?? 'UTC';
-  const locale = resolveLocale(config.language);
+  const messages = loadMessages(hermitDir, config.language);
   for (const key of pending) {
     const entry = merged[key];
     const action = entry.action === 'pause' ? 'pause' : 'alert';
@@ -91,7 +91,7 @@ async function composeBudgetAlerts(hermitDir: string, config: Json, out: Notific
       const status = isPaused(hermitDir);
       if (status.paused && status.reason === 'budget') until = status.until ?? null;
     }
-    out.push({ text: composeBudgetMessage([entry], action, until, timezone, locale), mark_key: key });
+    out.push({ text: composeBudgetMessage([entry], action, until, timezone, messages), mark_key: key });
   }
 }
 

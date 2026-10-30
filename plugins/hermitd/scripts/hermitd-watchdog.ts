@@ -46,7 +46,7 @@ import { channelStateDir } from './lib/channel-token';
 import { readConfigRaw, readSettledConfig } from './lib/config-read';
 import { evaluateBackupDue } from './lib/backup';
 import { isPaused, pauseReasonLabel } from './lib/pause';
-import { WATCHDOG, resolveLocale, type Locale } from './lib/messages';
+import { LOCKED, EN_MESSAGES, loadMessages, type Messages } from './lib/messages';
 import { claudeStateFile, credentialsFilePath, defaultConfigDir, envAuthPresent, inspectStoredLogin, msUntilExpiry, msUntilLoginExpiry, resolveAuthMode, storedLoginUsable } from './lib/setup-token';
 import { isContainer } from './lib/container';
 import { writeFileAtomic } from './lib/md-write';
@@ -200,11 +200,12 @@ function appendEvent(action: string, reason: string, world: World = REAL_WORLD):
 // it mid-flight.
 const CHANNEL_SEND_SCRIPT = path.join(import.meta.dir, 'channel-send.ts');
 
-// The operator's locale for all watchdog pushes. Resolved once from config in
-// main() before any compose call fires; the compose functions default to this
-// value at call time (tests override it by passing an explicit locale arg). The
-// watchdog is single-shot, so a module-level holder IS "pinned at run start".
-let OPERATOR_LOCALE: Locale = 'en';
+// The operator's message catalog for all watchdog pushes. Loaded once from config
+// and state/messages.json in tick() before any compose call fires; the compose
+// functions default to this value at call time (tests override it by passing an
+// explicit catalog). The watchdog is single-shot, so a module-level holder IS
+// "pinned at run start".
+let OPERATOR_MESSAGES: Messages = EN_MESSAGES;
 
 /** Best-effort operator push. Watchdog lifecycle events are ops content, so they
  * route maintainer-tier — falling back to the primary chat when no maintainer
@@ -243,39 +244,38 @@ function nowHHMM(timezone: string, ref?: Date): string {
 /** Operator-language message for a watchdog restart. `resumed` says whether hermitd-start was
  *  asked to restore the conversation, so a fresh start never promises one. Reason `requested`
  *  marks a restart someone asked for (cmdRestart), whatever reason they gave. */
-export function composeRestartMessage(reason: string, resumed: boolean, timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  const hhmm = nowHHMM(timezone);
-  const cause = reason === 'dead-process'
-    ? WATCHDOG[locale].restartCauseNotRunning()
+export function composeRestartMessage(reason: string, resumed: boolean, timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  const cause = m.t(reason === 'dead-process'
+    ? 'watchdog_cause_not_running'
     : reason === 'upgrade'
-      ? WATCHDOG[locale].restartCauseUpgrade()
+      ? 'watchdog_cause_upgrade'
       : reason === 'requested'
-        ? WATCHDOG[locale].restartCauseRequested()
-        : WATCHDOG[locale].restartCauseFrozen();
-  return WATCHDOG[locale].restart(hhmm, cause, resumed);
+        ? 'watchdog_cause_requested'
+        : 'watchdog_cause_frozen');
+  return m.t(resumed ? 'watchdog_restart_resumed' : 'watchdog_restart_fresh', { time: nowHHMM(timezone), cause });
 }
 
 /** Operator-language message for a wedge episode after a failed wake. */
-export function composeWedgeMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  return WATCHDOG[locale].wedge(nowHHMM(timezone));
+export function composeWedgeMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_wedge', { time: nowHHMM(timezone) });
 }
 
 /** Operator-language all-clear after a wedge episode that reached the notice stage. */
-export function composeWedgeRecoveredMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  return WATCHDOG[locale].wedgeRecovered(nowHHMM(timezone));
+export function composeWedgeRecoveredMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_wedge_recovered', { time: nowHHMM(timezone) });
 }
 
 /** Operator-language message for an un-redirectable stalled question (PROP-024's fail-loud half).
  *  `waitingFor` is the session's own account of what it waits on (the registry's `waitingFor`). */
-export function composeStallQuestionMessage(timezone: string, locale: Locale = OPERATOR_LOCALE, waitingFor?: string): string {
-  const sentence = WATCHDOG[locale].stallQuestion(nowHHMM(timezone));
+export function composeStallQuestionMessage(timezone: string, m: Messages = OPERATOR_MESSAGES, waitingFor?: string): string {
+  const sentence = m.t('watchdog_stall_question', { time: nowHHMM(timezone) });
   if (!waitingFor) return sentence;
   return `${sentence}\n\n${waitingFor}`;
 }
 
 /** Operator-language notice for a native permission prompt the channel relay delivered to approvers. */
-export function composeStallPermissionMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  return WATCHDOG[locale].stallPermission(nowHHMM(timezone));
+export function composeStallPermissionMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_stall_permission', { time: nowHHMM(timezone) });
 }
 
 /** True when an enabled channel's access.json lists at least one paired user, the relay's audience. */
@@ -287,23 +287,24 @@ function permissionRelayReachesAnyone(config: Json, world: World): boolean {
 }
 
 /** Operator-language message for a session that stopped consuming its queued notifications. */
-export function composeSessionWedgedMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  return WATCHDOG[locale].sessionWedged(nowHHMM(timezone));
+export function composeSessionWedgedMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_session_wedged', { time: nowHHMM(timezone) });
 }
 
 /** Operator-language message for a likely orphan (tmux gone, state still fresh). */
-export function composeOrphanMessage(timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  return WATCHDOG[locale].orphan(nowHHMM(timezone));
+export function composeOrphanMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_orphan', { time: nowHHMM(timezone), command: LOCKED.orphan_command });
 }
 
 /** Operator-language message for an upstream API failure — see ApiFailureVerdict. */
 export function composeApiFailureMessage(
-  verdict: ApiFailureVerdict, timezone: string, locale: Locale = OPERATOR_LOCALE,
+  verdict: ApiFailureVerdict, timezone: string, m: Messages = OPERATOR_MESSAGES,
 ): string {
-  if (verdict.kind === 'api-unavailable') return WATCHDOG[locale].apiUnavailable(nowHHMM(timezone));
+  const time = nowHHMM(timezone);
+  if (verdict.kind === 'api-unavailable') return m.t('watchdog_api_unavailable', { time, url: LOCKED.status_url });
   return verdict.resetAt
-    ? WATCHDOG[locale].usageLimit(nowHHMM(timezone), verdict.resetAt)
-    : WATCHDOG[locale].usageLimitNoReset(nowHHMM(timezone));
+    ? m.t('watchdog_usage_limit', { time, reset: verdict.resetAt })
+    : m.t('watchdog_usage_limit_no_reset', { time });
 }
 
 /**
@@ -314,12 +315,14 @@ export function composeApiFailureMessage(
 export function composeLapsedLoginMessage(
   timezone: string,
   inDocker: boolean = isContainer(),
-  locale: Locale = OPERATOR_LOCALE,
+  m: Messages = OPERATOR_MESSAGES,
 ): string {
   const fix = inDocker
-    ? WATCHDOG[locale].lapsedLoginFixDocker()
-    : WATCHDOG[locale].lapsedLoginFixHost();
-  return WATCHDOG[locale].lapsedLogin(nowHHMM(timezone), fix);
+    ? m.t('watchdog_lapsed_login_fix_docker', { login: LOCKED.docker_login, restart: LOCKED.docker_restart })
+    : m.t('watchdog_lapsed_login_fix_host', {
+      claude: LOCKED.host_claude, login: LOCKED.host_login, stop: LOCKED.host_stop, start: LOCKED.host_start,
+    });
+  return m.t('watchdog_lapsed_login', { time: nowHHMM(timezone), fix });
 }
 
 /** The auth-failure notice for a hermit whose credential comes from its environment.
@@ -327,14 +330,14 @@ export function composeLapsedLoginMessage(
  *  provider is not a login the hermit can re-mint, and the relay has nothing to offer. */
 export function composeEnvAuthFailureMessage(
   timezone: string,
-  locale: Locale = OPERATOR_LOCALE,
+  m: Messages = OPERATOR_MESSAGES,
 ): string {
-  return WATCHDOG[locale].envAuthFailure(nowHHMM(timezone));
+  return m.t('watchdog_env_auth_failure', { time: nowHHMM(timezone) });
 }
 
 /**
  * Focus argument for the watchdog-queued `/compact`. Never operator-facing (it is read
- * by Claude, not shown in a channel), so no locale — unlike the compose*Message
+ * by Claude, not shown in a channel), so no catalog, unlike the compose*Message
  * functions above.
  */
 export function composeCompactSteeringMessage(): string {
@@ -342,14 +345,14 @@ export function composeCompactSteeringMessage(): string {
 }
 
 /** Operator-language message for a forced pause enforcement (any reason). */
-export function composePauseMessage(reason: string, until: string | null, timezone: string, locale: Locale = OPERATOR_LOCALE): string {
-  const label = pauseReasonLabel(reason, locale);
+export function composePauseMessage(reason: string, until: string | null, timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  const label = pauseReasonLabel(reason, m);
   // Fall back to the indefinite phrasing when `until` is absent or unparseable —
   // a malformed timestamp shouldn't leak a raw ISO string to the operator. Dated
   // form (not bare HH:MM) so a resume days/weeks out isn't read as minutes away.
   const valid = until != null && !isNaN(new Date(until).getTime());
-  if (!valid) return WATCHDOG[locale].pauseUntilResume(label);
-  return WATCHDOG[locale].pauseUntilDate(label, friendlyBoundary(until as string, timezone));
+  if (!valid) return m.t('watchdog_paused_until_resume', { label });
+  return m.t('watchdog_paused_until_date', { label, boundary: friendlyBoundary(until as string, timezone) });
 }
 
 /** Seconds elapsed since an ISO-8601 timestamp, or null when unparseable. */
@@ -2128,8 +2131,8 @@ function stallQuestion({ world, config, timezone, snap }: RecoveryContext): Deci
       const waitingFor = typeof resident?.waitingFor === 'string' && resident.waitingFor ? resident.waitingFor : undefined;
       world.notify.operator(
         waitingFor === 'permission prompt' && permissionRelayReachesAnyone(config, world)
-          ? composeStallPermissionMessage(timezone, OPERATOR_LOCALE)
-          : composeStallQuestionMessage(timezone, OPERATOR_LOCALE, waitingFor));
+          ? composeStallPermissionMessage(timezone, OPERATOR_MESSAGES)
+          : composeStallQuestionMessage(timezone, OPERATOR_MESSAGES, waitingFor));
       appendEvent('stall-question-detected', `pending dialog, session alive${waitingFor ? `: ${waitingFor}` : ''}`, world);
       watchdogState.stall_question_notified = true;
       writeWatchdogState(watchdogState, world);
@@ -2366,7 +2369,7 @@ export async function tick(world: World): Promise<void> {
   // Keep the prologue's fail-loud storage contract before any recovery work.
   writeFileAtomic(path.join(world.paths.stateDir, 'watchdog-state.json'), JSON.stringify(liveness, null, 2) + '\n');
   const timezone = config.timezone ?? 'UTC';
-  OPERATOR_LOCALE = resolveLocale(config.language);
+  OPERATOR_MESSAGES = loadMessages(world.paths.hermitRoot, config.language);
   const ctx: TickContext = { world, config, timezone };
   for (const decision of MAINTENANCE) {
     if (await decision.run(ctx) === 'stop') return;
@@ -2404,6 +2407,7 @@ async function cmdRestart(reason: string): Promise<void> {
   adoptSessionConfigDir(runtime);
   const sessionName = runtime.tmux_session || deriveSessionName(config);
   if (!sessionName) process.exit(0);
+  OPERATOR_MESSAGES = loadMessages(HERMIT_ROOT, config.language);
   await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', false);
 }
 

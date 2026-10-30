@@ -20,6 +20,7 @@ import path from 'node:path';
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
+import { writePtMessages } from './helpers/pt-messages';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
@@ -323,12 +324,13 @@ describe('channel-status-responder', () => {
 
   // ---- pt-PT localization (config.language: "português") ----
   // The exact-English assertions above stay untouched; these cover the same
-  // reply shapes composed through the pt-PT StatusMessages table.
+  // reply shapes read from a Portuguese state/messages.json.
   describe('pt-PT localization', () => {
     test('working line', async () => {
       const stub = startHttpStub();
       const wd = setupChannelWorkdir({ language: 'português' });
       try {
+        writePtMessages(hermit(wd.dir), 'português');
         await openTask(wd, 'o plano');
         await run(wd, '!status', stub.url);
         expect(stub.requests[0].body.text).toContain('A trabalhar em o plano.');
@@ -342,6 +344,7 @@ describe('channel-status-responder', () => {
       const stub = startHttpStub();
       const wd = setupChannelWorkdir({ language: 'português' });
       try {
+        writePtMessages(hermit(wd.dir), 'português');
         fs.mkdirSync(hermit(wd.dir, 'state'), { recursive: true });
         write(hermit(wd.dir, 'state', 'pause.json'), JSON.stringify({
           paused: true, paused_until: null, reason: 'operator', by: 'test', ts: new Date().toISOString(),
@@ -358,6 +361,7 @@ describe('channel-status-responder', () => {
       const stub = startHttpStub();
       const wd = setupChannelWorkdir({ language: 'português' });
       try {
+        writePtMessages(hermit(wd.dir), 'português');
         await run(wd, '!status', stub.url);
         expect(stub.requests[0].body.text).toContain('Tudo calmo — nada em curso, nada à espera.');
       } finally {
@@ -373,6 +377,7 @@ describe('channel-status-responder', () => {
         channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
       });
       try {
+        writePtMessages(hermit(wd.dir), 'português');
         await openTask(wd, 'segredo');
         const stranger = JSON.stringify({ prompt: '<channel source="telegram" chat_id="999" user="stranger">!status</channel>' });
         const r = await runScript('user-prompt-pipeline.ts', { stdin: stranger, cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url } });

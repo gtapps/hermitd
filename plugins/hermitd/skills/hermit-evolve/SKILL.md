@@ -61,6 +61,7 @@ Sibling hermits: <one or more of the following per sibling, space-separated, or 
 Siblings detected but not activated: <name ... | none>
 Siblings warnings: <one line per siblings_warnings entry | none>
 Permissions added: <entries | none>
+Messages: <retranslated-N | none>
 Audit scope: <whole_run | version_only>
 Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
 Findings: <none | one line per subject: subject -> replacement, N hits, file:line examples, shared marker>

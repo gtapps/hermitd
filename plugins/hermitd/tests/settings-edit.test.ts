@@ -276,7 +276,7 @@ describe('settings registry', () => {
     const tableArgs = new Set(tableSettings().map(s => s.arg));
     // A branch that is also in the table means the prose was left behind.
     for (const b of branches) expect(tableArgs.has(b)).toBe(false);
-    expect(branches.length).toBe(13); // 8 stateful + 3 side-effecting + history (read-only) + voice (edits a file, not config)
+    expect(branches.length).toBe(14); // 8 stateful + 3 side-effecting + history (read-only) + voice (edits a file, not config) + messages (edits state/messages.json)
   });
 
   test('enums come from the shared module, not a second copy', () => {
