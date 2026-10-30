@@ -45,7 +45,7 @@ Every write operation goes through **surface-then-approve**: the canonical targe
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.308+, a paid Claude plan (Pro, Max, Teams, or Enterprise), PHP 8.5+ with `ext-json` and `ext-curl`, Composer (for the SDK install at hatch time), and a [Laravel Forge API token](https://forge.laravel.com/profile/api).
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.312+, a paid Claude plan (Pro, Max, Teams, or Enterprise), PHP 8.5+ with `ext-json` and `ext-curl`, Composer (for the SDK install at hatch time), and a [Laravel Forge API token](https://forge.laravel.com/profile/api).
 
 ### 1. Install
 
