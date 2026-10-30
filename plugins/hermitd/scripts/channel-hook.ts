@@ -79,7 +79,7 @@ export function seedDefaultChatId(config: Json, channelKey: string, chatId: Json
   return true;
 }
 
-function updateLastReplyAt(channelKey: string, ts: string): void {
+function updateLastReplyAt(channelKey: string, ts: string, inboundChat?: string): void {
   try {
     let activity: Json = {};
     try {
@@ -88,6 +88,7 @@ function updateLastReplyAt(channelKey: string, ts: string): void {
 
     if (!activity[channelKey]) activity[channelKey] = {};
     activity[channelKey].last_reply_at = ts;
+    if (inboundChat) activity[channelKey].last_inbound_reply = { chat_id: inboundChat, at: ts };
 
     fs.writeFileSync(ACTIVITY_PATH, JSON.stringify(activity, null, 2) + '\n');
   } catch {}
@@ -178,15 +179,20 @@ function main() {
       if (!config || !config.channels || !config.channels[channelKey]) return;
 
       const home = config.channels[channelKey].default_chat_id;
-      if (home == null || home === '') {
+      const unseeded = home == null || home === '';
+      // Seeding and two-way proof both concern the home chat; the eligibility check
+      // walks the transcript tail, so other chats' replies skip it.
+      const isInboundReply = !!chatId && (unseeded || String(chatId) === String(home))
+        && isEligibleInboundReply(event, channelKey, chatId, config);
+      if (unseeded) {
         // Snapshot before seeding so the audit attributes the home to this hook.
         const configBefore = structuredClone(config);
-        const isInboundReply = isEligibleInboundReply(event, channelKey, chatId, config);
         if (seedDefaultChatId(config, channelKey, chatId, isInboundReply)) writeConfig(config, configBefore);
       }
 
       const ts = new Date().toISOString();
-      updateLastReplyAt(channelKey, ts);
+      const repliedHome = isInboundReply && String(chatId) === String(config.channels[channelKey].default_chat_id);
+      updateLastReplyAt(channelKey, ts, repliedHome ? String(chatId) : undefined);
       appendReplyEvent(channelKey, ts);
     } catch (e) {
       // Silently ignore errors — don't block the agent

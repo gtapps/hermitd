@@ -4,6 +4,8 @@
 
 ### Added
 
+- Private terminal channel-token entry, named preflight failures and two-way reply evidence
+- First conversation for new agents confirms time, sets up one job and offers to save standing purpose
 - Chat approval for `spawn-session` to trust a refused repository and its MCP servers
 - Script-sent channel notices (watchdog, status reply, budget, denial and login messages) follow any configured language: the agent translates them once into `.hermit/state/messages.json` when the language is set and after upgrades, and every send falls back to English per message
 - `/hermitd:hermit-settings messages` rewords any of those notices; custom wording survives upgrades and retranslation, and doctor's `message-catalog` check flags wording an upgrade made unusable
@@ -11,6 +13,10 @@
 
 ### Changed
 
+- Plain `/hermitd:hatch` asks where to chat and starts your agent; `advanced` selects the full wizard
+- Restricted pairing saves access and the home chat together while preserving existing users
+- Changed timezones require a valid IANA name and save its canonical spelling
+- Interactive startup requires a terminal, and restart refuses from the resident or a container
 - Skill reviews use each task's own open window
 - Reflect checks for enforcement, missed triggers and existing guidance before proposing learning changes
 - Close-time learning shapes lessons and patches learned skills using evidence of errors or general operator corrections

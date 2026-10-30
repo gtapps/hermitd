@@ -77,6 +77,7 @@ const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.d
 // single source of truth: hatch and hermit-evolve reach it through permissions-plan /
 // permissions-sync rather than restating it, so there is nothing to keep in sync.
 const HERMIT_ALLOW = [
+  'Bash(.hermit/bin/hermitd-run first-chat clear)',
   'Bash(git diff:*)',
   'Bash(git status:*)',
   'Bash(git log:*)',

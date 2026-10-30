@@ -53,11 +53,11 @@ curl -fsSL https://gtapps.github.io/hermitd/install.sh | bash
 
 </details>
 
-Both options set up the agent in this folder. Hatch guides you through the agent’s purpose and preferences, then shows how to start it. Choose Quick for defaults you can adjust later.
+Both options set up your agent in this folder. Plain `/hermitd:hatch` asks where you want to chat, guides private token entry and pairing when needed, and starts your agent in tmux. Your first message opens a conversation that confirms the time, sets up one real job, and offers to save its purpose. Use `/hermitd:hatch advanced` for the full wizard or Docker deployment.
 
 ## Keep it running
 
-After setup, follow the printed next steps to start your agent.
+Plain hatch starts your agent itself. The advanced wizard prints the next steps for your chosen deployment.
 
 ### On your machine
 
@@ -67,7 +67,7 @@ Run in a persistent tmux session:
 hermitd start
 ```
 
-Requires tmux. The watchdog recovers failed sessions while your machine stays on. Claude Code's `/sandbox` is recommended for unattended use. To connect a chat, run `/hermitd:channel-setup` as directed by the setup handoff.
+Requires tmux. The watchdog recovers failed sessions while your machine stays on. Claude Code's `/sandbox` is recommended for unattended use. To add or repair a chat later, run `/hermitd:channel-setup`. Private token entry is `hermitd run channel-token-set <channel>` from a separate project terminal; pasting in chat keeps the token in session history.
 
 [Host setup and operations](docs/always-on-ops.md)
 

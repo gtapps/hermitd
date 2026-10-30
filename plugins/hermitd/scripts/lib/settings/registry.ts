@@ -19,7 +19,7 @@
 import { PERMISSION_MODE } from './enums';
 import { specAt } from '../config-read';
 
-export type Kind = 'string' | 'boolean' | 'enum' | 'int';
+export type Kind = 'string' | 'boolean' | 'enum' | 'int' | 'timezone';
 
 export interface Setting {
   /** The `/hermit-settings <arg>` token. */
@@ -109,7 +109,7 @@ export const SETTINGS: readonly Setting[] = ROWS.map(row => {
     throw new Error(`Setting ${row.arg} must name a scalar config table leaf: ${row.path}`);
   }
   const values = row.values ?? (spec.kind === 'string' ? spec.enum : undefined);
-  const kind: Kind = values ? 'enum' : spec.kind === 'number' ? 'int' : spec.kind as 'string' | 'boolean';
+  const kind: Kind = row.path === 'timezone' ? 'timezone' : values ? 'enum' : spec.kind === 'number' ? 'int' : spec.kind as 'string' | 'boolean';
   return { ...row, kind, values, nullable: 'nullable' in spec ? spec.nullable : false };
 });
 

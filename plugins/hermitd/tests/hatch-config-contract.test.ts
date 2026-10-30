@@ -535,3 +535,11 @@ test('re-hatch with briefs on re-enables a disabled core brief', async () => {
   const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
   expect(out.routines).toEqual([{ ...brief, schedule: '30 9 * * *', enabled: true }]);
 });
+
+test('custom channel plugin and marketplace survive configuration and reinit', async () => {
+  const dir = freshDir();
+  const answers = { project_name: 'x', channels: { custom: { plugin: 'custom', marketplace: 'example' } } };
+  expect((await runHatchConfig(dir, answers)).exitCode).toBe(0);
+  expect((await runHatchConfig(dir, { channels: { custom: {} } }, true)).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8')).channels.custom).toMatchObject({ plugin: 'custom', marketplace: 'example' });
+});

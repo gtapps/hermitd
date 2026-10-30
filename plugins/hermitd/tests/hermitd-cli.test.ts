@@ -13,7 +13,7 @@ function fixture() {
   const core = path.join(root, 'plugins/cache/mp/hermitd/1');
   const fresh = path.join(root, 'plugins/cache/mp/hermitd/2');
   const bin = path.join(root, 'tools'); const log = path.join(root, 'calls');
-  const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, '.claude'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, CALLS: log, LIST: path.join(root, 'list.json'), FRESH_LIST: path.join(root, 'fresh-list.json'), TMUX_LIVE: '1', DOCKER_LIVE: '', PROJECTS: '', container: '' };
+  const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, '.claude'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, CALLS: log, LIST: path.join(root, 'list.json'), FRESH_LIST: path.join(root, 'fresh-list.json'), TMUX_LIVE: '1', DOCKER_LIVE: '', PROJECTS: '', container: '', HERMIT_RESIDENT: '' };
   const project = (name: string, agentName = name) => {
     const p = path.join(root, name); write(path.join(p, '.hermit/config.json'), JSON.stringify({ agent_name: agentName }));
     for (const verb of ['start', 'stop', 'attach', 'pause', 'watchdog', 'skills', 'run']) write(path.join(p, `.hermit/bin/hermitd-${verb}`), `#!/bin/sh\nprintf '%s|%s|%s\\n' '${verb}' "$PWD" "$*" >> "$CALLS"\nexit \${WRAPPER_EXIT:-0}\n`);
@@ -54,6 +54,33 @@ test('ambiguous agent name lists candidates', async () => {
 test('failed stop prevents restart from starting', async () => {
   const f = fixture(); expect((await f.run(['restart', 'demo'], f.root, { WRAPPER_EXIT: '7' })).exitCode).toBe(7);
   expect(f.calls()).toBe(`stop|${f.p}|\n`);
+});
+test('resident restart refuses before transport dispatch', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const r = await f.run(['restart', 'demo'], f.root, { HERMIT_RESIDENT: '1', DOCKER_LIVE: 'hermit' });
+  expect(r.exitCode).toBe(1);
+  expect(r.stderr).toContain('restart_refused_resident');
+  expect(f.calls()).toBe('');
+});
+test('container restart refuses before transport dispatch', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const r = await f.run(['restart', 'demo'], f.root, { container: 'docker', HERMIT_RESIDENT: '', DOCKER_LIVE: 'hermit' });
+  expect(r.exitCode).toBe(1);
+  expect(r.stderr).toContain('restart_refused_container');
+  expect(f.calls()).toBe('');
+});
+test('docker restart refuses from the resident and in a container', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const resident = await f.run(['docker', 'demo', 'restart'], f.root, { HERMIT_RESIDENT: '1' });
+  expect(resident.exitCode).toBe(1);
+  expect(resident.stderr).toContain('restart_refused_resident');
+  const container = await f.run(['docker', 'demo', 'restart'], f.root, { container: 'docker', HERMIT_RESIDENT: '' });
+  expect(container.exitCode).toBe(1);
+  expect(container.stderr).toContain('restart_refused_container');
+  expect(f.calls()).toBe('');
 });
 test('interactive status and attach', async () => {
   const f = fixture(); write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');

@@ -15,6 +15,9 @@ Generate Docker scaffolding for running hermit as an always-on autonomous agent 
 Templates live in `${CLAUDE_SKILL_DIR}/../../state-templates/docker/`.
 
 ## Commands
+- `channel-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-preflight.ts .hermit <channel>`
+- `channel-bot-id-write`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts .hermit <channel> --write`
+- `channel-pair-restrict`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code> --restrict`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
 
 ## Plan
@@ -170,15 +173,7 @@ Skip if no enabled channels in `config.json`. Read `.hermit/config.json` from th
 
 If iMessage detected, note it won't work in Docker and skip.
 
-For each configured channel:
-
-1. **Install plugin locally** (if not already): `claude plugin install <plugin>@claude-plugins-official --scope local`
-2. **Ensure state dir:** Record `channels.<channel>.state_dir` as a relative path (e.g. `.claude.local/channels/discord`). `hermitd-start` resolves it against the project root at boot and derives the `*_STATE_DIR` env var — no need to add it to `env`. Absolute paths also work.
-3. **Check local token file** (`.claude.local/channels/<plugin>/.env`):
-   - Already configured → "Discord is ready — connects automatically on start."
-   - Not configured → ask with `AskUserQuestion` (header: "Bot token"): **Skip** (write the token to `.claude.local/channels/{channel}/.env` later and restart) / **Enter now** (paste token via Other).
-     - If "Enter now" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved.
-     - If "Skip": "Write it to `.claude.local/channels/<plugin>/.env` later and restart."
+For each configured channel, install its configured plugin and marketplace (official defaults when absent), then run Credentials and Check in [channel connection stages](../channel-setup/references/connection-stages.md) on the host. Print `.hermit/bin/hermitd-run channel-token-set <channel>` for private entry because the host CLI installs later. A failed check stops this channel with its named cause. After the container starts, use that reference's Access and Two-way proof stages. iMessage needs macOS and cannot run inside Docker; third-party plugins follow their own setup and report `not_checked` when no probe exists.
 
 ### 7b. Recommended plugins
 
@@ -464,37 +459,9 @@ Wait for the operator to confirm they have detached before continuing.
 
 **Channel pairing** (skip if no channels or no tokens configured):
 
-For each channel, **first verify the token is configured** — check that `.claude.local/channels/<plugin>/.env` exists and contains the expected `*_BOT_TOKEN` var. If missing, skip pairing for this channel and tell the operator: "No token configured for `<channel>` — write it to `.claude.local/channels/<plugin>/.env`, restart the container, then re-run `/hermitd:channel-setup` to pair." Move to the next channel.
+For each configured channel, run the Access stage in [channel connection stages](../channel-setup/references/connection-stages.md), against the host-visible `<project_path>/.hermit`. Follow its named failure and access-location rules. Do not copy paired ids or repeat a separate policy command.
 
-If the token is present, ask if already paired. If not:
-1. Ask with `AskUserQuestion` (header: `"<channel> pairing"`) — `"I have the code"` / `"Skip this channel"`. On `"I have the code"`: ask for the 6-char code via `Other` (header: `"Bot code"`).
-2. Pair against the host-visible Hermit state directory:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" pair <plugin> <code>
-   ```
-   `"file":"state"` confirms the access write and approval marker. Retain a `home` or `home+state` result for sub-step 5. `"home":"set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
-3. Set policy after successful pairing:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" policy <plugin> allowlist
-   ```
-   Relay the result or stop on `{"error"}`.
-4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose -f docker-compose.hermit.yml exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
-5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `/hermitd:channel-setup` from the host to complete its home-to-state location check before proceeding.
-6. **Default delivery settings** (skip if pairing was skipped this run):
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <plugin>
-   ```
-   Relay `ack` (`set` or `kept`); an empty string or custom reaction stays unchanged. Stop this channel on `{"error"}`.
-7. **Server channel / group chat (optional)** (run even if "Already paired" was chosen; skip only if `imessage`, if "Skip this channel" was chosen, or if pairing returned "No response"):
-   Run [the group questionnaire](../channel-setup/references/group-enrollment.md) with the channel key, absolute `<project_path>/.hermit` state directory, and native `AskUserQuestion` prompts. Then continue to sub-step 8.
-8. **Capture the bot's own identity** (host-side, like `channel-access.ts` — `config.json` and the channel `.env` are both on the host):
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts <project_path>/.hermit <plugin> --write
-   ```
-   Records `bot_user_id` (and `bot_username`) so the hermit reads a mention of itself as addressed to it, rather than as third-party traffic. A `skip` status is a non-event — report it and continue.
-9. Confirm: "Paired and locked down. If the bot doesn't respond to your first message, give it up to 2 minutes — the hermit may still be booting or running initial checks (plugin installs, workspace trust, auto-memory seeding)."
-
-If "skip": tell them to DM the bot later and run the commands manually.
+After successful access, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <channel>` for Telegram and Discord only. Preserve customized reactions. Then offer [the group questionnaire](../channel-setup/references/group-enrollment.md) with the channel key, absolute Hermit directory and native `AskUserQuestion` prompts, including when Already paired was chosen. Skip groups for iMessage, third-party setup protocols or deferred pairing. Finish with the shared Two-way proof stage and report its actual verdict, never an unconditional paired/verified claim.
 
 ### 8b. Finalize — clean restart
 

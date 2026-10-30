@@ -8,6 +8,12 @@ description: View or change hermit configuration for this project. Manages model
 View or modify the hermit configuration for this project.
 
 ## Commands
+- `artifact-strings-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <language> <current-ISO-timestamp>`
+- `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit <language>`
+- `messages-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`
+- `messages-clear`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts clear .hermit`
+- `messages-status`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts status .hermit`
+- `messages-reset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts reset .hermit --all`
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
 - `proposal-queue-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit`
@@ -98,7 +104,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | Argument | Config path | Type | Values | Applies |
 |---|---|---|---|---|
 | `name` | `agent_name` | string, nullable | any; any string, or 'none' to clear | immediately |
-| `timezone` | `timezone` | string, nullable | any; IANA tz (UTC, Europe/Lisbon, America/New_York) | immediately |
+| `timezone` | `timezone` | timezone, nullable | any; IANA tz (UTC, Europe/Lisbon, America/New_York) | immediately |
 | `escalation` | `escalation` | enum | conservative / balanced / autonomous; how much it acts without asking | immediately |
 | `remote` | `remote` | boolean | yes / no; connect from claude.ai/code or phone | next hermitd-start |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
@@ -126,14 +132,7 @@ The remaining arguments each do more than write one leaf, so they keep their own
 Auto-detect the system locale via Bash as a default suggestion.
 Ask for the preferred language (e.g. pt, en, es, fr), offering the current value or the detected locale as default.
 Run `settings-edit ... set language <value>`.
-Then re-sync the two fixed-text tables: the dashboard/proposals chrome (`.hermit/state/artifact-strings.json`) and the script notices sent to the channel (`.hermit/state/messages.json`). Both fall back to English per key.
-- New value is **not** `en`:
-  1. Emit `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <value> <current-ISO-timestamp>`, translate every `strings` value, and write `.hermit/state/artifact-strings.json`.
-  2. Emit `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit <value>`, translate each `todo` entry's `en` text (its `note` gives context), write `.hermit/state/messages-draft.json` as `{"language":"<value>","locale":"<BCP 47 tag>","strings":{"<key>":"<translation>"}}`, and run `messages.ts apply .hermit`. Translate again any key it returns under `rejected`.
-
-  In both, keep keys and `{placeholder}` tokens verbatim.
-- New value is `en`: delete `.hermit/state/artifact-strings.json` if it exists, and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts clear .hermit`.
-- Custom wordings are written in the language they were set in. When `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts status .hermit` lists any under `overrides`, ask whether to keep them or drop them (`messages.ts reset .hermit --all`).
+Read and follow [fixed-text resync](references/fixed-text.md) using the new saved language.
 
 **If argument is "messages":**
 The fixed notices scripts send to the channel (watchdog, status reply, budget, denial and login messages) can be reworded per message. `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts list .hermit` gives every key with its English text and any custom wording. Pick the key the operator means, write the new wording in their language, and run `messages.ts set .hermit <key> "<text>"`. A `placeholder_mismatch` reply names the `{placeholder}` tokens the text must keep (they carry times, commands and the `reauth` word the login flow listens for); rewrite and set again. `messages.ts reset .hermit <key>` restores the default. Custom wordings survive upgrades and retranslation; doctor's `message-catalog` check names any an upgrade made unusable.

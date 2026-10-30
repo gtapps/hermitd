@@ -52,3 +52,7 @@ for (const [label, inflight, prompt] of [
 test('the boot skill is never operator activity', async () => {
   expect(await counted(fixture(null), '/hermitd:resident-start')).toBe(false);
 });
+
+test('multi-skill bootstrap is never operator activity', async () => {
+  expect(await counted(fixture(null), 'Always-on bootstrap. Invoke these skills in order: (1) /hermitd:hermit-routines load, (2) /hermitd:resident-start.')).toBe(false);
+});

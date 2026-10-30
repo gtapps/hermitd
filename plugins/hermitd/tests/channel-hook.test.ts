@@ -173,3 +173,19 @@ for (const home of ['', 'HOME']) test(`hook home=${home} eligibility and audit`,
     expect(fs.readFileSync(hermit(dir, 'state/settings-audit.jsonl'), 'utf8')).toContain('channel-hook');
   }
 }));
+
+for (const [prompt, chat, expected] of [
+  ['<channel source="discord" chat_id="HOME">hi</channel>', 'HOME', 'HOME'],
+  ['<channel source="discord" chat_id="OTHER">hi</channel>', 'OTHER', undefined],
+  ['routine wake', 'HOME', undefined],
+  ['<channel source="discord" chat_id="HOME">hi</channel>', undefined, undefined],
+] as const) test(`two-way evidence: ${prompt}, ${chat}`, withDir(async dir => {
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ channels: { discord: { default_chat_id: 'HOME' } } }));
+  const transcript = path.join(dir, 'turn.jsonl');
+  fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: prompt } }) + '\n');
+  const r = await runScript('channel-hook.ts', { env: { AGENT_DIR: hermit(dir) }, stdin: JSON.stringify({ tool_name: 'mcp__discord__reply', tool_input: { chat_id: chat }, transcript_path: transcript }) });
+  expect(r.exitCode).toBe(0);
+  const activity = JSON.parse(fs.readFileSync(hermit(dir, 'state/channel-activity.json'), 'utf8'));
+  expect(activity.discord.last_inbound_reply?.chat_id).toBe(expected);
+  expect(activity.discord.last_reply_at).toBeString();
+}));

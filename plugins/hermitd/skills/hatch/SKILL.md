@@ -2,6 +2,8 @@
 name: hatch
 description: Initializes the autonomous agent in the current project. Creates the state directory, templates, OPERATOR.md, and config.json. Detects installed hermits. Run once per project, like git init.
 disable-model-invocation: true
+argument-hint: "[advanced]"
+allowed-tools: Read, Glob, Grep, AskUserQuestion, Skill(init), Bash(bun ${CLAUDE_PLUGIN_ROOT}/scripts/*), Bash(.hermit/bin/hermitd-run *), Bash(.hermit/bin/hermitd-start), Bash(command -v tmux), Bash(uname -s), Bash(git rev-parse *), Bash(git init), Bash(ls *), Bash(claude plugin install telegram@claude-plugins-official --scope local), Bash(claude plugin install discord@claude-plugins-official --scope local), Bash(claude plugin install imessage@claude-plugins-official --scope local), Bash(claude plugin enable telegram@claude-plugins-official --scope local), Bash(claude plugin enable discord@claude-plugins-official --scope local), Bash(claude plugin enable imessage@claude-plugins-official --scope local)
 ---
 
 # Initialize Autonomous Agent
@@ -9,6 +11,18 @@ disable-model-invocation: true
 Set up the autonomous agent for this project. This creates the per-project state directory, configures the project for session-based work, and optionally activates hermits.
 
 **`AskUserQuestion` convention — applies to every question in this skill, both branches.** Each question needs 2-4 `options` (Other is auto-provided for free text), and each option needs both a `label` and a `description`; a bare label is rejected as an invalid tool parameter. Where a step lists options as bare labels (the tables in Step 5a, the activation prompts), write a short description for each before sending the call.
+
+## Commands
+
+- `channel-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-preflight.ts .hermit <channel>`
+- `channel-bot-id-write`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts .hermit <channel> --write`
+- `channel-pair-restrict`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code> --restrict`
+- `artifact-strings-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <language> <current-ISO-timestamp>`
+- `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit <language>`
+- `messages-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`
+- `messages-clear`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts clear .hermit`
+- `messages-status`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts status .hermit`
+- `messages-reset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts reset .hermit --all`
 
 ## Plan
 
@@ -23,49 +37,48 @@ Check whether `.hermit/config.json` exists in the current project. That file (wr
 
 Before the setup-mode gate or any file writes, gather context silently. Run all commands in parallel where possible:
 
-1. **Auto-detect language and timezone**:
-   - Language: `echo $LANG | cut -d_ -f1` (fallback: `en`)
-   - Timezone: `cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || date +%Z` (fallback: `UTC`)
-
-2. **Silent hermit detection + core scope detection** (split out so it's available before the mode gate without an operator prompt):
+1. **Silent hermit detection + core scope detection** (split out so it's available before the mode gate without an operator prompt):
    - **Core scope detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role core-scope`. It emits `{ "core_scope": "local"|"project"|"user"|null, "target": "committed"|"local" }` — set `core_install_scope` from `core_scope` and `hatch_target` from `target`. (project → committed; local/user/null → local, the safer default the operator can override in Advanced.)
    - **Sibling hermit detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role siblings --core-root "${CLAUDE_PLUGIN_ROOT}"`. It emits a JSON array of the project-or-local + enabled hermit siblings (each carrying `plugin`, `id`, `marketplace_name`, `installPath`), already excluding user-scope, disabled, cross-project, and `hermitd` itself.
    - Stash the array as `detected_hermits`. Step 3 reads activation metadata from each entry's `installPath` directly.
    - Note: sibling detection is intentionally restrictive. A hermit installed at user scope does NOT auto-detect — operator can install it at project scope and re-run, or activate via `/hermit-settings`.
 
-3. **Detect git-init eligibility** — run in parallel with items 1–2. Set `git_init_eligible = true` if and only if all three hold:
+2. **Detect git-init eligibility** — run in parallel with item 1. Set `git_init_eligible = true` if and only if all three hold:
    - `is_reinit == false`.
    - `git rev-parse --is-inside-work-tree 2>/dev/null` is falsy (not already under version control).
    - `ls -A` of the project root yields only names from this **explicit allowed set**: `.hermit`, `.claude`, `.gitignore`, `.worktreeinclude`, `.bash_profile`, `.bashrc`, `.zshrc`, `.zprofile`, `.profile`, `.gitconfig`, `.ripgreprc`. The dotfile entries (`.bash_profile` through `.ripgreprc`) come from the sandbox-dotfile block at the bottom of `state-templates/GITIGNORE-APPEND.txt` — keep those in sync if that block changes.
 
-4. **Print one summary line** so the operator sees what was detected:
+3. **Print one summary line** so the operator sees what was detected:
 
-   > Initializing hermit in `<project-name>`. Detected: language=<lang>, timezone=<tz>, scope=<project|local|user>, target=<committed|local>, hermit candidates=<N> (<comma-separated names or "none">), git=<fresh|existing|n/a>.
+   > Initializing hermit in `<project-name>`. Detected: scope=<project|local|user>, target=<committed|local>, hermit candidates=<N> (<comma-separated names or "none">), git=<fresh|existing|n/a>.
 
 ### 1.6. Setup mode gate
 
-**If `is_reinit == true`: skip this gate entirely and run Advanced** — Quick is for first-time install. Re-init operators have existing customizations to preserve, and Advanced's merge logic is the right tool. Quick re-running on an existing config would risk destructive overwrites of operator-tuned fields.
+Plain `/hermitd:hatch` runs the fast path below, without a mode question. The positional argument `advanced` selects the full wizard (Steps 2–10); re-init always forces that wizard. Do not carry fast-path defaults into re-init.
 
-Otherwise, ask:
+## Fast path
 
-```
-questions: [
-  {
-    header: "Setup mode",
-    question: "How would you like to configure hermit?",
-    options: [
-      { label: "Quick", description: "Sensible defaults, ~4 questions, ~3 min. Tweak via /hermit-settings later." },
-      { label: "Advanced", description: "Full wizard — every option exposed (~15 questions, ~15 min)." }
-    ]
-  }
-]
-```
+Goal: start your agent and reach its first real job. Ask only the chat-choice question during hatch; credentials and pairing take their own stages. OPERATOR.md stays the template until the first conversation. Language and agent name stay unset.
 
-Branch on choice:
-- **Advanced** → continue to Step 2 file writes, then Step 3 hermit activation prompt, then Step 4 setup wizard.
-- **Quick** → continue to Step 2 file writes, then jump to Section "Quick Branch" (after Step 9).
+1. Before any write, run `command -v tmux`. If missing, stop with `tmux_missing`: install tmux (`brew install tmux` on macOS or the platform package manager on Linux), then rerun `/hermitd:hatch`. Do not fall back to an interactive start.
+2. Ask one `AskUserQuestion`, header **Chat**, question **Where do you want to talk with your agent?** Options: **Telegram** (BotFather bot), **Discord** (your server bot), **iMessage** on macOS only (Messages permissions), **Claude app** (Remote Control or terminal). Other is supplied by the harness: accept `plugin@marketplace`, validate both components as plugin/marketplace names, and use that plugin's setup. No extra identity, purpose, deployment, or mode question.
+3. Run Step 2 with `--session-id "${CLAUDE_SESSION_ID}"` as well as `--reinit=false`. The scaffold marks this setup session as a guest on every run.
+4. Run Step 5 and its `domain-hatch ensure-target` call. Use the scope-derived `hatch_target`. Answers contain the project directory name and the selected channel, or `channels: {}` for Claude app; for Other include `channels.<plugin>.plugin` and `.marketplace`. Leave `agent_name`, `language` and `timezone` omitted, using the template. Set `deployment = tmux`. Leave routines at template defaults; do not add morning/evening routines before the first conversation.
+5. Run Steps 7, 7a and 7.5 silently, applying missing ignore lines, the worktree managed block and eligible git initialization without questions. Preserve the backup marker and all existing content as those steps specify.
+6. Run Step 8, Step 9 with Standard denies (`deny standard`), Step 9a and Step 9c. Apply the additive settings merges silently to the resolved target. Keep the template's `permission_mode` (`auto`).
+7. Run **Create the project's CLAUDE file** now, before start: inspect only the project manifest, README or source-tree presence needed by that step. No mission draft or OPERATOR.md write. Keep `AGENTS.md` intact.
+8. Install the host command: `.hermit/bin/hermitd-run hermitd-cli install`.
+9. For a selected channel install and enable its plugin at local scope. Official commands are literal `claude plugin install telegram@claude-plugins-official --scope local`, `claude plugin install discord@claude-plugins-official --scope local`, or `claude plugin install imessage@claude-plugins-official --scope local`, with corresponding `claude plugin enable` calls. Other uses the supplied `plugin@marketplace`.
+10. Read [channel connection stages](../channel-setup/references/connection-stages.md) and perform Credentials and Check. iMessage follows macOS permissions without token or Hermit pairing; Other follows its plugin setup and explicitly reports `not_checked` when appropriate. Claude app skips channel stages.
+11. Arm the first conversation: `.hermit/bin/hermitd-run first-chat arm`.
+12. Start your agent yourself: `.hermit/bin/hermitd-start`. A non-zero exit stops with the diagnostic's named cause; do not claim it started or launch interactive Claude. Keep the first-chat marker armed for recovery.
+13. Once your agent is up, perform the shared Access stage for Telegram/Discord, using `pair <channel> <code> --restrict`. Tell the operator to DM the bot now, then provide its code. Skip channel setup's §6a, §6c, §6e and §7a on this fast path. Pairing approval includes the access restriction. Leave first chat armed so the client's first message, rather than the installer's setup session, opens it.
+14. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deployment tmux --started`. Compose the observed summary as **your agent started**, with actual warnings. For Claude app, say where to open Remote Control (claude.ai/code or the Claude app) or `hermitd attach`; do not print typed setup next steps. Tell them to send the first message: your agent will confirm the time and help set up one job, then offer to save its purpose with one approval.
+15. Hand off pending domain hatches as the last action below.
 
-Both branches share Steps 2 (file writes) and 5-9 (config write, CLAUDE.md/.gitignore/settings, deny patterns, report). Quick replaces Steps 3-4 with the Quick Branch turns described later.
+Skip Step 5a and setup-time fixed-text resync on this path. The first chat saves language, confirms timezone and runs resync after replying. Any failure after config is written stops with its named cause and points to `/hermitd:channel-setup` to finish channel setup; leave the written state available for recovery. Never turn a failed or unchecked check into success.
+
+The full wizard follows. Only `advanced` or re-init enters it; the fast path calls the shared steps explicitly in the order above and returns after its domain hand-off.
 
 ### 2. Create state directory structure
 
@@ -88,7 +101,7 @@ The reasoned artifacts are NOT scaffolded here: `config.json` (Step 5), the OPER
 
 ### 3. Hermit activation prompt (Advanced branch only)
 
-**Quick mode handles activation in Quick Turn 1 — skip this entire step in the Quick branch.**
+**Wizard only.** The fast path leaves activation to the final generic domain hand-off.
 
 Use the `detected_hermits` list cached in Step 1.5 (no re-globbing).
 
@@ -102,9 +115,9 @@ If the list is non-empty:
 
 Collect project preferences in the phases below. Use `AskUserQuestion` for all questions, following the label+description convention at the top of this skill.
 
-#### Phase 1 — Auto-detect (already done in Step 1.5)
+#### Phase 1 — Auto-detect
 
-Step 1.5 already ran the language/timezone detection silently. Reuse those values — do not re-run the commands.
+Wizard only: read the system locale for a language suggestion; `C`, `C.UTF-8` and `POSIX` count as unset (suggest `en`). Detect the timezone with `bun -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)'`. Offer that canonical IANA name; do not use an abbreviation or offset fallback.
 
 #### Phase 2 — Identity
 
@@ -170,7 +183,15 @@ The Visibility question uses the scope-derived `hatch_target` to recommend an op
 
 ```
 questions: [
-  // The Deployment question from Quick Turn 3, verbatim
+  {
+    header: "Deployment",
+    question: "How will you run your agent?",
+    options: [
+      { label: "tmux always-on", description: "Runs on the host; watchdog installs on first boot unless disabled" },
+      { label: "Docker always-on", description: "Isolated container; /hermitd:docker-setup guides the build and start" },
+      { label: "Interactive", description: "Try your agent here in the terminal" }
+    ]
+  },
   {
     header: "Permissions",
     question: "Permission mode for Claude Code?",
@@ -211,7 +232,7 @@ Substitute `<scope>` with the actual `core_install_scope` value.
 
 Record the operator's Visibility choice as `hatch_target` (overrides scope-derived default if different).
 
-Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive` as Quick Turn 3 does.
+Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive`.
 
 Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` and `dontAsk` (denies every tool not in `permissions.allow`, so it needs a curated allowlist) can be typed via Other.
 
@@ -278,16 +299,7 @@ This file is read by `hermit-evolve`, `docker-setup`, and every domain hatch to 
 
 ### 5b. Localize fixed text (non-`en` operators only)
 
-Two kinds of fixed text are written by scripts, not the model: the Artifact pages' UI chrome (`.hermit/state/artifact-strings.json`, overlaid per key over the English defaults) and the script notices sent to the channel, such as watchdog, status, budget and login messages (`.hermit/state/messages.json`). A missing key or an absent file falls back to English, so model-authored content and these surfaces only match when both are translated.
-
-Run **only** when the chosen `language` is set and is not `en`:
-
-1. Emit the artifact scaffold: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts scaffold-strings <language> <current-ISO-timestamp>`. Translate every value inside its `strings` object, leave the `language` and `generated` fields as emitted, and write the result to `.hermit/state/artifact-strings.json`.
-2. Emit the notice scaffold: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit <language>`. Translate each `todo` entry's `en` text, using its `note` for context, and write `.hermit/state/messages-draft.json` as `{"language":"<language>","locale":"<BCP 47 tag, e.g. pt-PT>","strings":{"<key>":"<translation>"}}`. Then run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`; translate again any key it lists under `rejected`.
-
-In both, keep keys and `{placeholder}` tokens verbatim (word order may move around a token, but the token text must not change or be translated).
-
-When `language` is `en` or unset, skip: no file means English.
+Read and follow [fixed-text resync](../hermit-settings/references/fixed-text.md) using the saved language.
 
 ### 5a. OPERATOR.md onboarding
 
@@ -444,7 +456,7 @@ The file contains a managed block bounded by marker comments (`# >>> hermitd ...
 If `git_init_eligible`:
 
 - **Advanced branch:** ask with `AskUserQuestion` (header: "Git init") — "Initialize a local git repo here? The hermit's build output will be tracked; its internal churn (sessions, proposals, state) stays gitignored." — options: **Yes** (default) / **No**. Run `git init` only on Yes.
-- **Quick branch:** announced in the Quick Turn 5 confirm bundle and run as part of the shared steps only after the operator confirms (see "Quick — silent defaults applied to shared steps" table — Step 7.5 row). Never auto-runs before confirmation.
+- **Fast path:** run `git init` without a question.
 
 When run, `git init` creates the repo at the project root. The `.gitignore` written in Step 7 is immediately in effect.
 
@@ -555,143 +567,6 @@ Note to the operator: "Artifact publishing is on — added `Artifact` to `permis
 
 ---
 
-## Quick Branch
-
-Replaces Steps 3-4 with batched turns + confirm; resumes shared Steps 5-9 after approval. Same files written, same `config.json` fields populated, same OPERATOR.md questionnaire, same security gates — Quick just defaults incidental decisions and shows the resolved bundle before any config writes.
-
-**Entry condition:** Step 1.6 returned `Quick` AND `is_reinit` is `false` (re-init forces Advanced).
-
-### Quick Turn 1 — Hermit activation (conditional)
-
-Only fires if `detected_hermits` from Step 1.5 is non-empty. Same prompt shape as Step 3 of the Advanced branch — uses the cached candidate list, does not re-glob. If multiple hermits detected, list all + Skip. If none, this turn is skipped entirely.
-
-If a hermit is selected: record the full entry from `detected_hermits` as `activated_hermit` (carries `plugin`, `id`, `marketplace_name`, `installPath`). Pass only its plugin slug in Step 5’s `hatch-config.ts` answers payload.
-
-### Quick Turn 2 — Identity batch (one `AskUserQuestion`, 3 questions)
-
-```
-questions: [
-  {
-    header: "Agent name",
-    question: "What should I be called?",
-    options: [
-      { label: "Atlas", description: "Use Atlas as agent name" },
-      { label: "Hermit", description: "Use Hermit as agent name" },
-      { label: "Skip", description: "Leave agent name unset" }
-    ]
-  },
-  {
-    header: "Language",
-    question: "Primary language?",
-    options: [
-      { label: "<auto-detected from Step 1.5> (auto-detected)", description: "Use detected primary language" },
-      { label: "<one common alternative — e.g. en if auto = pt, otherwise pt>", description: "Use suggested alternative language" }
-    ]
-  },
-  {
-    header: "Timezone",
-    question: "Timezone?",
-    options: [
-      { label: "<auto-detected from Step 1.5> (auto-detected)", description: "Use detected local timezone" },
-      { label: "UTC", description: "Use Coordinated Universal Time" }
-    ]
-  }
-]
-```
-
-Record `agent_name` (null if Skip), `language`, `timezone`.
-
-### Quick Turn 3 — Deployment + Channel batch
-
-Ask both questions in one `AskUserQuestion` call.
-
-```
-questions: [
-  {
-    header: "Deployment",
-    question: "How will you run the agent?",
-    options: [
-      { label: "tmux always-on", description: "Runs on the host as you, no image build. Boots via hermitd start; the watchdog scheduler installs on first boot (opt out with watchdog.scheduler_enabled: false)" },
-      { label: "Docker always-on", description: "Isolated container that restarts itself; guided end to end by /docker-setup" },
-      { label: "Interactive", description: "Just trying it, right here in your terminal" }
-    ]
-  },
-  {
-    header: "Chat",
-    question: "How do you want to communicate with your agent?",
-    options: [
-      { label: "Claude app (for now)", description: "Push notifications + Remote Control. Pair Discord or Telegram anytime later." },
-      { label: "Discord + Remote Control", description: "Communicate with your agent via Discord + Remote Control if available" },
-      { label: "Telegram + Remote Control", description: "Communicate with your agent via Telegram + Remote Control if available" }
-    ]
-  }
-]
-```
-
-Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one of `none` / `discord` / `telegram`). Map the labels to those values — **"Claude app (for now)" is `none`**, not the label text; downstream code (the confirm bundle, Step 5's `channels` overlay) compares against the sentinel.
-
-`push_notifications` is left at the template default (`true`) — no follow-up question. Push is dormant whenever a channel is reachable (the runtime guard in prompts/resident.md sends channel-first) and fires only as fallback when a channel is unreachable or absent.
-
-**Derived values from this turn (used in the confirm bundle and Step 5 overlay):**
-- `permission_mode`: `auto` (same default for both Docker and non-Docker deployments). Generally available to all users across subscription plans and API usage; supported models and provider configuration can vary. If Claude reports it unavailable for the current selection, choose a supported model or run `/hermit-settings permissions` to select another mode.
-- Deny pattern profile: Standard (`deny standard`). Applied at Step 9 silently.
-
-### Quick Turn 4 — OPERATOR.md questionnaire (run "5a. OPERATOR.md onboarding" verbatim)
-
-Run the existing "5a. OPERATOR.md onboarding" step verbatim: same scan, same draft, same Phase 3 questions (Call 1 and the Call 2 Mission question), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
-
-### Quick Turn 5 — Confirm bundle
-
-Get the preview data from the script, so what the operator approves is derived from the answers rather than re-typed:
-
-```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERMIT_ANSWERS'
-{ ...the same answers payload Step 5 will send to hatch-config.ts, plus "deployment", "channel", "plugins", "hatch_target", "git_init" }
-HERMIT_ANSWERS
-```
-
-**Compose the preview as message text before calling `AskUserQuestion`.** The operator cannot see Bash output (the transcript collapses it), so your message is the only preview; asking first means they approve a configuration they never saw. Show every `will_apply` fact as a short table in plain words (`channel: "none"` is the Claude app for now; a chat channel pairs after setup), mark each key in `defaults` as a default, and close with: nothing is written yet, and every default is tunable later with `/hermit-settings`.
-
-Before asking, when the conditions in "Create the project's CLAUDE file" hold, state which CLAUDE file will be created after the report: `CLAUDE.md` for `committed`, `CLAUDE.local.md` for `local`. This is information, not another question; include the AGENTS.md import case only when set-aside lines exist.
-
-Then ask:
-
-```
-questions: [
-  {
-    header: "Confirm",
-    question: "Apply this configuration?",
-    options: [
-      { label: "Yes", description: "Apply and continue" },
-      { label: "Customize", description: "Restart in Advanced (your Quick answers will not carry over)" }
-    ]
-  }
-]
-```
-
-- **Customize**: jump to Step 3 of the Advanced branch (no prefill — Advanced restarts from scratch). Discard all Quick answers.
-- **Yes**: continue to the shared steps below.
-
-### Quick — silent defaults applied to shared steps
-
-Quick replaces Step 4 entirely and applies these defaults silently at the shared Steps 5-9c (no prompts):
-
-| Source | Field | Quick value |
-|---|---|---|
-| Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
-| Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
-| Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
-| Step 5b | fixed-text localization | run verbatim: generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
-| Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
-| Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
-| Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
-| Step 7 | .gitignore append | apply silently (per-line idempotent) |
-| Step 7a | .worktreeinclude managed block | apply silently (marker-block idempotent — skip if marker already present) |
-| Step 7.5 | git init (fresh dirs only) | run `git init` if `git_init_eligible`; omit otherwise |
-| Step 8 | plugin permissions (target settings file) | merge silently into `hatch_target` settings file (auto-mode policy needs no seeding — it ships in the per-session overlay `hermitd-start` renders at boot) |
-| Step 9 | deny patterns (target settings file) | Standard (`deny standard`) silently; write to `hatch_target` settings file |
-| Step 9c | Artifact publish permission | same as Advanced — `artifact-allow` applied silently (skip entirely if all three `artifacts.*` are `false`) and `artifacts.publish_authorized` set to `true` in config |
-
 ### 10. Report results
 
 On the host, install the operator command after setup, from the project root:
@@ -709,7 +584,7 @@ Compose the report from its JSON as message text (the operator cannot see Bash o
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
 - Otherwise: `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
 
-`--deployment` is the one thing it cannot read: Quick Turn 3 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
+`--deployment` is the one thing it cannot read: Wizard Phase 5 asks for it and nothing persists it. Pass the recorded `deployment`.
 
 ---
 
@@ -717,18 +592,18 @@ After the report, add: `.hermit/claude-settings.json` is the optional hermit-onl
 
 ### Create the project's CLAUDE file
 
-After the report, without another question, check the project-root instruction files. Never write or edit `AGENTS.md`. Resolve the destination from `hatch_target`: `committed` uses `CLAUDE.md`; `local` uses `CLAUDE.local.md`.
+At the point the selected flow calls this step, without another question, check the project-root instruction files. Never write or edit `AGENTS.md`. Resolve the destination from `hatch_target`: `committed` uses `CLAUDE.md`; `local` uses `CLAUDE.local.md`.
 
 - If `CLAUDE.md` or `CLAUDE.local.md` already exists, show any set-aside codebase lines from Phase 4 as suggested additions. Write nothing.
 - If only `AGENTS.md` exists, do not run `/init`. Create the target's CLAUDE file only when set-aside lines exist, starting with `@AGENTS.md` on its first line, then a short `## Project rules` heading and those lines.
-- If none of those three files exists and the 5a Phase 1 scan found a project (a manifest, README or source tree), invoke `Skill(init)` yourself. For a committed target, let it write `CLAUDE.md`. For a local target, invoke `Skill(init)` with args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.` Append any set-aside lines under a short `## Project rules` heading.
+- If none of those three files exists and a project manifest, README or source tree exists, invoke `Skill(init)` yourself. For a committed target, let it write `CLAUDE.md`. For a local target, invoke `Skill(init)` with args `Write the result to CLAUDE.local.md instead of CLAUDE.md, titled # CLAUDE.local.md.` Append any set-aside lines under a short `## Project rules` heading.
 - In an empty folder, skip silently.
 
 Report the file actually created and who sees it: "Created `CLAUDE.local.md` with Claude Code's /init: project notes every session here reads, kept out of git." Or: "Created `CLAUDE.md` with Claude Code's /init: project notes every session here reads, tracked by git so your team sees it." For an AGENTS.md import, report the import and the added project rules instead of claiming `/init` ran. Follow the report with any appended lines.
 
 ### Hand off pending domain hatches
 
-Applies on **both** Quick and Advanced paths and is the **last** action of the skill. After the report, build the pending set from `detected_hermits` (Step 1.5). A sibling is **pending** when a file exists at `<installPath>/skills/hatch/SKILL.md` and its `plugin` was **not** already present in `config.json._hermit_versions` when Step 1 read the config. An activated hermit is never stamped by core, so the generic rule covers it.
+Applies on **both** fast and wizard paths and is the **last** action of the skill. After the report, build the pending set from `detected_hermits` (Step 1.5). A sibling is **pending** when a file exists at `<installPath>/skills/hatch/SKILL.md` and its `plugin` was **not** already present in `config.json._hermit_versions` when Step 1 read the config. An activated hermit is never stamped by core, so the generic rule covers it.
 
 For each pending sibling, print the block below with its `plugin` field substituted for `<slug>` — the bare plugin name, not `id`, which carries an `@marketplace` suffix. Repeat the complete block once per pending sibling. Do not invoke the Skill tool. If none are pending, stop after the report.
 

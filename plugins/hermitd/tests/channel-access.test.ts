@@ -271,3 +271,33 @@ for (const channel of ['discord', 'telegram']) {
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).dmPolicy).toBe('allowlist');
   });
 }
+
+for (const fail of [false, true]) test(`restricted pairing config persistence failure=${fail}`, async () => {
+  const f = fixture('telegram');
+  const config = JSON.parse(fs.readFileSync(f.configFile, 'utf8'));
+  config.channels.telegram.allowed_users = ['1'];
+  fs.writeFileSync(f.configFile, JSON.stringify(config));
+  fs.writeFileSync(f.file, JSON.stringify({ ...access, pending: { ABC123: { senderId: '7', chatId: '8', expiresAt: Date.now() + 60000 } } }));
+  if (fail) fs.mkdirSync(`${f.configFile}.tmp`);
+  const r = await f.run('pair', ['ABC123', '--restrict']);
+  expect(r.exitCode).toBe(fail ? 1 : 0);
+  if (fail) {
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'access_config_write_failed' });
+    expect(JSON.parse(fs.readFileSync(f.file, 'utf8')).pending.ABC123).toBeDefined();
+  } else {
+    expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels.telegram).toMatchObject({ allowed_users: ['1', '7'], default_chat_id: '8' });
+    expect(JSON.parse(fs.readFileSync(f.file, 'utf8')).dmPolicy).toBe('allowlist');
+  }
+});
+test('restricted pairing without allowed_users keeps already paired users', async () => {
+  const f = fixture('telegram');
+  fs.writeFileSync(f.file, JSON.stringify({ ...access, allowFrom: ['1'], pending: { ABC123: { senderId: '7', chatId: '8', expiresAt: Date.now() + 60000 } } }));
+  expect((await f.run('pair', ['ABC123', '--restrict'])).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(f.configFile, 'utf8')).channels.telegram.allowed_users).toEqual(['1', '7']);
+});
+test('restrict refuses an expired pairing code without changing access', async () => {
+  const f = fixture('discord');
+  const bytes = fs.readFileSync(f.file);
+  expect(JSON.parse((await f.run('pair', ['ABC123', '--restrict'])).stdout)).toEqual({ error: 'code_expired' });
+  expect(fs.readFileSync(f.file)).toEqual(bytes);
+});
