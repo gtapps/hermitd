@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: run-daily-busy
 description: 'A busy daily brief states outcomes from the records.'
-tags: [brief, brief-run]
+tags: [brief-run]
 context:
   scaffold_script: scaffold.sh
 execution:

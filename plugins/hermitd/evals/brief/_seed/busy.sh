@@ -34,7 +34,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-0
 owner: resident
-closed_at: __TODAY__T16:10:00.000Z
+closed_at: __TODAY__T00:10:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -88,7 +88,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-1
 owner: resident
-closed_at: __TODAY__T16:11:00.000Z
+closed_at: __TODAY__T00:11:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -142,7 +142,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-2
 owner: resident
-closed_at: __TODAY__T16:12:00.000Z
+closed_at: __TODAY__T00:12:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -196,7 +196,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-3
 owner: resident
-closed_at: __TODAY__T16:13:00.000Z
+closed_at: __TODAY__T00:13:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -250,7 +250,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-4
 owner: resident
-closed_at: __TODAY__T16:14:00.000Z
+closed_at: __TODAY__T00:14:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -304,7 +304,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-5
 owner: resident
-closed_at: __TODAY__T16:15:00.000Z
+closed_at: __TODAY__T00:15:00.000Z
 closed_by: cancelled
 closed_actor: null
 closed_reason: "Operator dropped it, the supplier closed"
@@ -358,7 +358,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-6
 owner: resident
-closed_at: __TODAY__T16:16:00.000Z
+closed_at: __TODAY__T00:16:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
@@ -412,7 +412,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-7
 owner: resident
-closed_at: __TODAY__T16:17:00.000Z
+closed_at: __TODAY__T00:17:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"

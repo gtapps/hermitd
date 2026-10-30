@@ -21,21 +21,21 @@ Two case families, tagged `heartbeat` plus `train` or `heldout`. Cases tagged `v
 
 The heldout evening case scores `skills/brief/reference.md` against a task whose final result contradicts an earlier lesson and a routine with an old `last_woke` beside a recent `skipped-precheck`. Its scaffold copies the live reference into `spec/brief-reference.md`, `append_system_prompt` carries the `skill-eval-runner` body, and the prompt carries bounded command outputs. Graders check JSON-only output, exclusion of the contradicted finding, and no missed-run claim for the healthy precheck skip. Run with `--tag brief --scaffold`.
 
-The `run-*` and `dispatch-*` cases drive the real `/hermitd:brief` against a busy seeded install, with the real read-only scripts and the resident prompt. They need the plugin outside `$HOME` (see Running), so copy it to `/tmp` first and target the copy by absolute path, with `--allow-tools Bash Write`. `dispatch-*` (tag `brief-dispatch`) has one grader, that the runner was dispatched. `run-*` (tag `brief-run`) grades the delivered brief with regexes: an LLM rubric failed briefs that were correct, 3 votes to 0. `run-stale-context` resumes `history.jsonl`, an earlier conversation that calls finished work waiting. To size the main context, generate with `BRIEF_HISTORY_KB=400` in the copy; commit only the default. A run labelled with the runner arm may not have dispatched, so classify each run from the `Agent` calls in its `--keep-temp` trace.
+The `run-*` and `dispatch-*` cases drive the real `/hermitd:brief` against a busy seeded install, with the real read-only scripts and the resident prompt. They need the plugin outside `$HOME` (see Running), so copy it to `/tmp` first and target the copy by absolute path, with `--allow-tools Bash Write`. `dispatch-*` (tag `brief-dispatch`) has one grader, that the runner was dispatched. `run-*` (tag `brief-run`) grades the delivered brief with regexes: an LLM rubric failed briefs that were correct, 3 votes to 0. `run-stale-context` resumes `history.jsonl`, an earlier conversation that calls finished work waiting. To size the main context, generate with `BRIEF_HISTORY_KB=250` in the copy; commit only the default. A run labelled with the runner arm may not have dispatched, so classify each run from the `Agent` calls in its `--keep-temp` trace.
 
 ### Runner against inline, 2026-10-30
 
-Claude Code 2.1.314, `--model sonnet`, default effort, `--runs 3`, one busy install (`task-report` about 42 KB). Arm A is `SKILL.md` as shipped. Arm B reads `reference.md` in main for evening, daily and default-no-session. Output was graded from the terminal, not the Discord mock.
+Claude Code 2.1.314, `--model sonnet`, default effort, `--runs 3`, one busy install (`task-report` about 42 KB). Arm A is `SKILL.md` as shipped. Arm B reads `reference.md` in main for evening, daily and default-no-session. Output was graded from the terminal, not the Discord mock. Passed applies the committed regexes to the run traces.
 
 | Path | Runs | Passed | Cost per brief | Main turns | Main context added |
 |---|---|---|---|---|---|
 | Arm A, runner dispatched | 10 | 10 | $0.24 to $0.30 | 5 | 9k tokens |
-| Arm A, dispatch skipped | 8 | 5 | $0.12 | 3 to 4 | 9k tokens |
+| Arm A, dispatch skipped | 8 | 1 | $0.12 | 3 to 4 | 9k tokens |
 | Arm B, inline | 18 | 17 | $0.11 to $0.16 | 6 | 13k tokens |
 
-On a resumed 86k-token main context, one dispatched run cost $0.53, two skipped runs $0.39 and three inline runs $0.43 to $0.46.
+Runs and Passed include the resumed runs below; the cost column does not. On a resumed 86k-token main context, one dispatched run cost $0.53, two skipped runs $0.39 and three inline runs $0.43 to $0.46.
 
-- Arm A skipped the dispatch in 10 of 24 runs counting `dispatch-*`, and in all 3 `run-default-no-session` runs. Skipped runs never read `reference.md`. One told the operator a finished task did not exist.
+- Arm A skipped the dispatch in 10 of 24 runs counting `dispatch-*`, and in all 3 `run-default-no-session` runs. Skipped runs never read `reference.md`. Four told the operator a finished task was not in the records.
 - No case scored lower on arm B. Inline saved about $0.10 per brief but took one more main turn and carried about 4k more tokens, so the fold was not shipped: the saving depends on the turns until the next compaction, which was not measured.
 - Failed default briefs on both arms said the `task-report` output was cut off, so `--limit 20` can exceed what a main turn reads whole.
 

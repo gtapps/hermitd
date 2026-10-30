@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: run-stale-context
 description: 'Earlier conversation says closed work is waiting; the brief follows the records.'
-tags: [brief, brief-run]
+tags: [brief-run]
 context:
   scaffold_script: scaffold.sh
   history_file: history.jsonl
@@ -81,14 +81,14 @@ graders:
   - name: no-stale-waiting
     type: 'regex'
     target: 'last_message'
-    pattern: 'waiting[^\n]*gift box'
+    pattern: 'waiting[^\n]*gift box|gift box stock\W+(result\s+)?(still\s+|stays\s+|is\s+)*a?waiting'
     flags: 'i'
     weight: 2
     match: 'not_contains'
   - name: no-denied-record
     type: 'regex'
     target: 'last_message'
-    pattern: 'no gift box'
+    pattern: 'no gift box|gift box stock\W+(it\s+)?(isn.t|is not)\s+in\b'
     flags: 'i'
     weight: 2
     match: 'not_contains'
@@ -98,3 +98,10 @@ graders:
     pattern: 'gift box stock'
     flags: 'i'
     weight: 2
+  - name: whole-report-read
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'cut off|truncated|only read'
+    flags: 'i'
+    weight: 2
+    match: 'not_contains'

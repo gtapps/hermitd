@@ -1,4 +1,4 @@
-// Generate the brief run-* cases into evals/brief/.
+// Generate the brief run-* and dispatch-* cases into evals/brief/.
 //
 // These drive the real /hermitd:brief against a busy seeded install, with the
 // real read-only scripts, so a run can compare the runner dispatch with composing
@@ -31,7 +31,8 @@ function record(i: number, kind: Kind): [string, string] {
   const id = `T-20261001-${String(100000 + i)}`;
   const cancelled = kind === 'cancelled-today';
   const closed = kind === 'done-today' || cancelled || kind === 'done-earlier';
-  const closedAt = kind === 'done-earlier' ? '2026-10-20T16:00:00.000Z' : `${TODAY}T16:${String(10 + i)}:00.000Z`;
+  // Just after midnight, so a close stamped today is never later than the run's clock.
+  const closedAt = kind === 'done-earlier' ? '2026-10-20T16:00:00.000Z' : `${TODAY}T00:${String(10 + i)}:00.000Z`;
   const result = kind === 'done-today' || kind === 'done-earlier' || kind === 'unconfirmed' ? RESULT(w) : null;
   const waiting = kind === 'waiting' ? `discord:${USER}` : null;
   const front = [`id: ${id}`, 'type: task', `title: "${ACTION(w)}"`, 'created: 2026-10-20T09:00:00.000Z', `summary: "${ACTION(w)} from the current sources"`,
@@ -68,7 +69,8 @@ const scaffold = (delta: Record<string, string>) => ['#!/usr/bin/env bash', '# S
 /** A resumable transcript: the turns, then `BRIEF_HISTORY_KB` of filler to size the main context for a cost comparison. */
 function history(turns: [string, string][]): string {
   const filler = Number(process.env.BRIEF_HISTORY_KB ?? 0);
-  const pad: [string, string][] = Array.from({ length: Math.ceil(filler / 8) }, (_, i) =>
+  // One pad exchange is about 5 KB on disk.
+  const pad: [string, string][] = Array.from({ length: Math.ceil(filler / 5) }, (_, i) =>
     [`Note ${i} for the shop log: ${'stock moved between shelves and the counts were recorded. '.repeat(70)}`, 'Noted.']);
   const session = '00000000-0000-4000-8000-000000000001';
   let parent: string | null = null;
@@ -83,7 +85,7 @@ function history(turns: [string, string][]): string {
 }
 
 function runCase(name: string, tags: string[], desc: string, prompt: string, graders: Grader[], delta: Record<string, string> = {}, transcript?: string): void {
-  const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [${['brief', ...tags].join(', ')}]`,
+  const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [${tags.join(', ')}]`,
     'context:', '  scaffold_script: scaffold.sh', ...(transcript ? ['  history_file: history.jsonl'] : []), 'execution:', '  max_turns: 24', '  timeout_seconds: 420',
     '  allowed_tools: [Skill, Read, Glob, Grep, Bash, Agent, Write]', '  env: {EVAL_HERMIT_RESIDENT: "1"}',
     '  append_system_prompt: |', indent(residentPrompt()), '  prompt: |', indent(prompt), 'graders:', ...graders.map(graderYaml)];
@@ -96,8 +98,9 @@ const dispatchedRunner: Grader = { name: 'dispatched-runner', type: 'tool_used',
 const present = (name: string, pattern: string): Grader => ({ name, type: 'regex', target: 'last_message', pattern, flags: 'i', weight: 2 });
 const absent = (name: string, pattern: string): Grader => ({ ...present(name, pattern), match: 'not_contains' });
 
+const WHOLE_REPORT = absent('whole-report-read', 'cut off|truncated|only read');
 const TRUE_STATE = [present('waiting-labels', 'loose leaf labels'), present('waiting-courier', 'courier contract'), present('unconfirmed-photos', 'storefront photos'),
-  present('runnable-work', 'matcha reorder'), present('finished-work', 'gift box stock'), absent('whole-report-read', 'cut off|truncated|only read')];
+  present('runnable-work', 'matcha reorder'), present('finished-work', 'gift box stock'), WHOLE_REPORT];
 const EVENING = 'Invoke /hermitd:brief --evening';
 const DAILY = 'Invoke /hermitd:brief, the daily summary: brief today.';
 
@@ -106,19 +109,20 @@ for (const [mode, prompt] of [['evening', EVENING], ['daily', DAILY]] as const) 
   runCase(`run-${mode}-busy`, ['brief-run'], `A busy ${mode} brief states outcomes from the records.`, prompt, TRUE_STATE);
 }
 runCase('run-default-no-session', ['brief-run'], 'No flag and no open records: a one-screen brief of the newest record.', 'Invoke /hermitd:brief',
-  [present('status-completed', 'status\\W+completed'), absent('whole-report-read', 'cut off|truncated|only read')],
+  [present('status-completed', 'status\\W+completed'), present('newest-record', 'wholesale invoices'), WHOLE_REPORT],
   changes(busyInstall(KINDS.map(k => (k === 'done-today' || k === 'cancelled-today' ? k : 'done-earlier')))));
 
 const [firstPath, firstRecord] = record(0, KINDS[0]);
 runCase('run-contradicted-lesson', ['brief-run'], 'A lesson the final result disproved stays out of the evening findings.', EVENING,
-  [absent('no-contradicted-lesson', 'does not work on the new spreadsheet')],
+  [absent('no-contradicted-lesson', 'does not work on the new spreadsheet'), present('finished-work', 'price list'), WHOLE_REPORT],
   { [firstPath]: firstRecord
     .replace('## Lessons\n', '## Lessons\n- 2026-10-20T11:00:00.000Z: The price list import does not work on the new spreadsheet.\n')
     .replace(/result: "[^\n]*"/, 'result: "The price list import worked on the new spreadsheet, every row imported and verified."') });
 
 const STALE = ACTION('gift box stock');
 runCase('run-stale-context', ['brief-run'], 'Earlier conversation says closed work is waiting; the brief follows the records.', EVENING,
-  [absent('no-stale-waiting', 'waiting[^\\n]*gift box'), absent('no-denied-record', 'no gift box'), present('finished-work', 'gift box stock')],
+  [absent('no-stale-waiting', 'waiting[^\\n]*gift box|gift box stock\\W+(result\\s+)?(still\\s+|stays\\s+|is\\s+)*a?waiting'),
+    absent('no-denied-record', 'no gift box|gift box stock\\W+(it\\s+)?(isn.t|is not)\\s+in\\b'), present('finished-work', 'gift box stock'), WHOLE_REPORT],
   {}, history([['Where do things stand?', `Waiting on you: ${STALE}, I need your decision on the gift box count before I can finish it.`],
     ['I will get back to you on the gift box stock.', `Understood. ${STALE} stays waiting on your reply.`]]));
 

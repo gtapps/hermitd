@@ -135,5 +135,5 @@ export function writeCase(dir: string, yaml: string[], scaffold?: string): void 
 
 /** The generator's one-line result: the suite and how many cases it now holds. */
 export function report(suite: string): void {
-  console.log(JSON.stringify({ suite, cases: fs.readdirSync(path.join(EVALS, suite)).length }));
+  console.log(JSON.stringify({ suite, cases: fs.readdirSync(path.join(EVALS, suite)).filter(name => !name.startsWith('_')).length }));
 }

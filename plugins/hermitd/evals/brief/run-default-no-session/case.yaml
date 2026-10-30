@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: run-default-no-session
 description: 'No flag and no open records: a one-screen brief of the newest record.'
-tags: [brief, brief-run]
+tags: [brief-run]
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -81,6 +81,12 @@ graders:
     type: 'regex'
     target: 'last_message'
     pattern: 'status\W+completed'
+    flags: 'i'
+    weight: 2
+  - name: newest-record
+    type: 'regex'
+    target: 'last_message'
+    pattern: 'wholesale invoices'
     flags: 'i'
     weight: 2
   - name: whole-report-read

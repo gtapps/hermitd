@@ -17,7 +17,7 @@ opened_at: 2026-10-20T09:00:00.000Z
 requester: discord:100000000000000001
 handle: update-0
 owner: resident
-closed_at: __TODAY__T16:10:00.000Z
+closed_at: __TODAY__T00:10:00.000Z
 closed_by: confirmed
 closed_actor: null
 closed_reason: "Confirmed by the operator"
