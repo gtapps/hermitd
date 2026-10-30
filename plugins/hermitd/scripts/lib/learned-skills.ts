@@ -93,6 +93,13 @@ export class LearnedSkills {
     this.state = path.join(hermit, 'state');
     this.root = path.join(path.dirname(hermit), '.claude', 'skills');
   }
+  changedSince(sinceMs: number): boolean {
+    let skills: string[];
+    try { skills = fs.readdirSync(this.root); } catch { return false; }
+    return skills.some(skill => {
+      try { return fs.statSync(path.join(this.root, skill, 'SKILL.md')).ctimeMs >= sinceMs; } catch { return false; }
+    });
+  }
   skillDir(skill: string): string {
     // Keep paths contained even for an invalid draft name: lint must report it.
     if (!skill || skill === '.' || skill === '..' || /[\\/]/.test(skill) || path.isAbsolute(skill)) throw new Error('Invalid skill name');

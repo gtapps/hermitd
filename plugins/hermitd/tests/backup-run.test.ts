@@ -21,6 +21,11 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', ['-c', `safe.directory=${cwd}`, ...IDENT, ...args], { cwd, encoding: 'utf-8' });
 }
 
+// An explicit git dir, so this also works where safe.bareRepository=explicit.
+function bareHead(bare: string): string {
+  return git(bare, '--git-dir=.', 'rev-parse', 'HEAD').trim();
+}
+
 interface Fixture {
   root: string;
   hermit: string;
@@ -101,7 +106,7 @@ describe('backup run — workspace mode', () => {
     expect(git(f.root, 'log', '-1', '--pretty=%s')).toContain('hermit backup');
     expect(git(f.root, 'log', '-1', '--pretty=%ae').trim()).toBe('Testhermit@hermit.local');
     // The remote got it, and the workspace's own remote config was never touched.
-    expect(git(f.bare, 'rev-parse', 'HEAD').trim()).toBe(git(f.root, 'rev-parse', 'HEAD').trim());
+    expect(bareHead(f.bare)).toBe(git(f.root, 'rev-parse', 'HEAD').trim());
     expect(() => git(f.root, 'remote', 'get-url', 'origin')).toThrow();
   });
 
@@ -154,7 +159,7 @@ describe('backup run — workspace mode', () => {
     git(other, 'add', '-A');
     git(other, 'commit', '-q', '-m', 'other work');
     git(other, 'push', '-q', 'origin', 'HEAD:main');
-    const remoteHead = git(f.bare, 'rev-parse', 'HEAD').trim();
+    const remoteHead = bareHead(f.bare);
 
     write(f.root, 'local.md', 'local work\n');
     await run(f);
@@ -164,7 +169,7 @@ describe('backup run — workspace mode', () => {
     expect(s.push).toBe('diverged');
     expect(committedFiles(f.root)).toContain('local.md');
     // The local commit is preserved; the remote is untouched; nothing was merged.
-    expect(git(f.bare, 'rev-parse', 'HEAD').trim()).toBe(remoteHead);
+    expect(bareHead(f.bare)).toBe(remoteHead);
     expect(git(f.root, 'log', '--oneline').split('\n').length).toBeGreaterThan(2);
   });
 
@@ -286,7 +291,7 @@ describe('backup setup', () => {
     expect(ignore).toContain('.hermit state is tracked here');
     expect(ignore).toContain('.env');
 
-    expect(git(f.bare, 'rev-parse', 'HEAD').trim()).toBe(git(f.root, 'rev-parse', 'HEAD').trim());
+    expect(bareHead(f.bare)).toBe(git(f.root, 'rev-parse', 'HEAD').trim());
     expect(status(f).configured_at).toBeTruthy();
     // The cursor is seeded so the next tick does not immediately re-fire.
     const sched = JSON.parse(fs.readFileSync(path.join(f.hermit, 'state', 'backup-schedule.json'), 'utf-8'));
