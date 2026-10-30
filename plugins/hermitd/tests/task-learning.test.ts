@@ -1,7 +1,7 @@
 import { test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { mutateTask, listTasks, readTasks, decodeTask, encodeTask } from '../scripts/lib/tasks';
+import { mutateTask, listTasks, readTasks, decodeTask, encodeTask, startupTasks } from '../scripts/lib/tasks';
 import { collectToolUseIds, transcriptDirFor } from '../scripts/lib/cc-compat';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('task-learning-');
@@ -83,7 +83,27 @@ test('worker and helper ownership persist delegation; both close paths schedule 
     expect(readTasks(dir)[0].delegated).toBe(true);
     const digest = mutateTask(dir, 'check-result', id, { 'result-rev': '0', exit: '0', 'output-stdin': true }, 'passed') as any;
     expect(digest.skill_review).toBe('pending');
+    expect(digest.next).toEndWith('skills/task/learn.md');
   }
+});
+test('a pending close names the review guide by absolute path; other closes stay silent', () => {
+  const dir = fixture();
+  const quiet = close(dir, open(dir));
+  expect(quiet.skill_review).toBeUndefined(); expect(quiet).not.toHaveProperty('next');
+  const { next } = close(dir, open(dir, { 'dedupe-key': 'helper:PROP-001' }));
+  const guide = next.replace(/^read /, '');
+  expect(path.isAbsolute(guide)).toBe(true);
+  expect(fs.readFileSync(guide, 'utf8')).toContain('# Close-time skill learning');
+});
+test('startup context counts pending reviews only when some exist', () => {
+  const dir = fixture();
+  close(dir, open(dir));
+  expect(startupTasks(dir).join('\n')).not.toContain('Pending skill reviews');
+  close(dir, open(dir, { 'dedupe-key': 'helper:PROP-001' }));
+  close(dir, open(dir, { 'dedupe-key': 'helper:PROP-002' }));
+  const lines = startupTasks(dir);
+  expect(lines[0]).toBe('Open tasks: 0');
+  expect(lines).toContain('Pending skill reviews: 2. Resume through /hermitd:task closure.');
 });
 test('helper dedupe keys mark new resident records delegated but preserve reused records', () => {
   const dir = fixture();

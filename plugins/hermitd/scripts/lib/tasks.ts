@@ -26,6 +26,8 @@ export function reportTaskError(error: unknown): void {
 }
 const SLUG = /^[\w.:~+@;=-]+$/;
 const HOUR = 3600000;
+// Absolute, because a close outside the task skill has no plugin root to resolve against.
+const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
 const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review', 'last_worker'] as const;
 const booleans = ['muted', 'delegated'] as const;
@@ -361,7 +363,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
       if (record.delegated || reviewCallsReached(dir, record)) {
         record.skill_review = 'pending';
-        digest = { ...(digest as object), skill_review: 'pending' };
+        digest = { ...(digest as object), skill_review: 'pending', next: `read ${LEARN_GUIDE}` };
       }
     }
     const encoded = encodeTask(record);
@@ -545,7 +547,12 @@ export function taskStandup(dir: string, days = 7) {
 }
 export function startupTasks(dir: string): string[] {
   const list = listTasks(dir);
-  return [`Open tasks: ${list.total}`, ...list.rows.slice(0, 4).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`)];
+  const reviews = readTasks(dir).filter(r => r.skill_review === 'pending').length;
+  return [
+    `Open tasks: ${list.total}`,
+    ...list.rows.slice(0, 4).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`),
+    ...(reviews ? [`Pending skill reviews: ${reviews}. Resume through /hermitd:task closure.`] : []),
+  ];
 }
 
 export function deriveDuties(dir: string): { name: string; last_run: string | null; last_verdict: string | null; scope?: string }[] {

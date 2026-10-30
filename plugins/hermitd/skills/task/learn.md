@@ -30,4 +30,4 @@ Use native Write/Edit under `.claude/skills/<name>/`: the classifier reviews eac
 
 Pin a skill the operator asked for with `.hermit/bin/hermitd-run skills pin <name> --origin operator`. For the close reply follow settled `skills.notify`: `off` adds no learning line; `on` adds one line saying what was saved, covered, or found unnecessary; `verbose` adds that line plus a short change preview. Keep channel wording free of internal paths and ids.
 
-Finish by running `task-learn` (Commands) with `<id> --disposition saved|covered|nothing`, selecting one disposition. `saved` means the create or patch passed lint. Check the returned digest before claiming completion.
+Finish by running `.hermit/bin/hermitd-run task learn .hermit <id> --disposition saved|covered|nothing`, selecting one disposition. `saved` means the create or patch passed lint. Check the returned digest before claiming completion.

@@ -8,7 +8,6 @@ description: 'Tracks chat assignments, steering in a task thread, WORKER complet
 Read `.hermit/TASKS.md` first for record threshold, wording and confirmation policy. Use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...` for every record operation. Never edit `tasks/` directly. Consult `../../docs/task-records.md` for the command contract.
 
 ## Commands
-- `task-learn`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts learn .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `conversation`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/conversation.ts .hermit`
 

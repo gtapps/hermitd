@@ -65,6 +65,7 @@ One case per agent chain that runs together in production, plus the rules a chai
 | `reflect-tier3-chain-shop` | reflect quick → proposal-triage → reflection-judge → proposal-create → proposal-triage | gate dispatch count and order for an external-content candidate |
 | `task-worker-needs-input-shop` | task → background task-worker | real background dispatch, the worker's report file, the chat placeholder |
 | `task-answer-waiting-record-shop` | task answer path → last worker → fresh task-worker on refusal | the answer reaches the last worker; the fallback receives the record notes and answer |
+| `task-close-outside-skill-shop` | close digest → review guide | a pending close leads to the guide with the task skill out of reach |
 | `proposal-create-duplicate-shop` | proposal-create → proposal-triage | an open duplicate is named, nothing is created |
 | `watch-relay-live-entry-shop`, `watch-relay-unknown-sender-shop` | helper `GUEST_REPORT` → watch | verbatim relay to the operator; no reply for an unknown sender |
 | `evolve-runner-template-conflict-home` | evolve-runner (standalone body) | a template conflict is parked as `.new` and reported |

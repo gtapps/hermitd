@@ -24,6 +24,7 @@
 
 ### Fixed
 
+- Skill reviews run when a task closes outside the task skill, and pending ones surface after `/clear`
 - Closing one task no longer uses up the next task's skill review
 - Morning briefs always carry the newest record's task context instead of varying between mornings
 - Scheduled briefs always read the full day's records, and plain briefs read only the records they need
