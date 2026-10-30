@@ -49,7 +49,7 @@ Evidence: <one-paragraph evidence summary>
 
 `Evidence Source:` is optional (default: `archived-session`). `Evidence Origin:` is optional (default: `own-work`).
 
-This is a single-candidate call (a batch of one), so the response is one verdict block. Lines 2+ are additive metadata (`closest_prop`, `aligned`, `operator_excerpt`, `overlap_compiled`, `prior_discussion`, `failed_condition`) — read for context if useful but do not branch on them. Record line 1 as the verdict:
+This is a single-candidate call (a batch of one), so the response is one verdict block. Lines 2+ are additive metadata (`closest_prop`, `aligned`, `operator_excerpt`, `overlap_compiled`, `failed_condition`) — read for context if useful but do not branch on them. Record line 1 as the verdict:
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts gate .hermit --gate triage --caller proposal-create \
     --evidence-source "<evidence source>" --tags '[<caller-supplied tags>]' <<'HERMIT_GATE'
@@ -61,7 +61,7 @@ HERMIT_GATE
 
 - `create`: proceed with the steps below
 - `duplicate`: stop and report "Proposal already exists as <id>" to the caller
-- `suppress`: stop and report the suppression reason (from the agent's line 1) to the caller
+- `suppress`: stop and report the suppression code and any reason (from the agent's line 1) to the caller
 - `gate_failed` (unrecognized or empty line 1, because the agent errored, returned malformed output, or was terminated before emitting a verdict): fail closed and do not create the proposal. When inside an open task record turn, note it with the record id; otherwise report it to the caller:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> <<'HERMIT_LINE'

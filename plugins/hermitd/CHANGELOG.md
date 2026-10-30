@@ -13,9 +13,11 @@
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
 - Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
+- `proposal-triage` no longer reads frozen session reports, and its unused `prior_discussion` metadata line is gone
 
 ### Fixed
 
+- Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
 - `hermitd update` and watchdog restarts no longer wait out the 15-minute quiet cap on an agent that was cleared and then left quiet
 - Chat `!clear` and `!compact` report success on Claude Team and Enterprise accounts instead of "outcome unknown"
 - The first artifact page republish after a restart or `/clear` runs in a subagent, keeping the live page's source out of the agent's context
