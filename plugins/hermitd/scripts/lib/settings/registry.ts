@@ -13,7 +13,8 @@
 // and `quality-gate` / `artifact-authorization` (bounded asks with a channel
 // re-entry path). Those keep their prose in the skill. `language` has a row
 // because `show` must render it, but the skill keeps its prose too — changing it
-// retranslates `state/artifact-strings.json`, which no table can express.
+// retranslates `state/artifact-strings.json` and `state/messages.json`, which no
+// table can express.
 
 import { PERMISSION_MODE } from './enums';
 import { specAt } from '../config-read';

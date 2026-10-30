@@ -15,7 +15,7 @@
 
 import { isAllowedSender } from '../channel-auth';
 import { sendToChannel } from '../channel-send';
-import { SHUTDOWN, resolveLocale } from '../messages';
+import { loadMessages } from '../messages';
 import type { StageContext, StageResult } from './types';
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
@@ -38,8 +38,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // wouldn't act on anyway needs no reply or block.
   if (!isAllowedSender(config, envelope.source, envelope.userId)) return;
 
-  const locale = resolveLocale(config?.language);
-  const reply = SHUTDOWN[locale].inProgress();
+  const reply = loadMessages(dir, config?.language).t('shutdown_in_progress');
   const thread = envelope.thread === null ? {} : { thread: envelope.thread };
   if (ctx.harnessMode) return { harness: {
     decision: 'refuse', reason: reply,

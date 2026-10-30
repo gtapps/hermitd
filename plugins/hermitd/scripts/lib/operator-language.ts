@@ -10,9 +10,9 @@
 // remote-influenceable and also goes through the same injection scan every
 // other injected surface gets.
 //
-// Locale *selection* (which catalog table to use) is a separate, always-safe
-// concern handled by resolveLocale() in ./messages — that only reads a prefix
-// and returns an enum, so it needs no sanitization.
+// Catalog *selection* (whether state/messages.json applies) is a separate,
+// always-safe concern handled by loadMessages() in ./messages: that only
+// compares the value with the file's own `language`, so it needs no sanitization.
 
 import { scanInjected } from './sanitize';
 import { readSettledConfig } from './config-read';

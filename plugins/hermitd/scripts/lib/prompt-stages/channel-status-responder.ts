@@ -26,7 +26,7 @@ import { resolveTimezone, budgetLine } from '../spend-status';
 import { friendlyBoundary, parseSimpleCronTime } from '../time';
 import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
-import { STATUS, resolveLocale, type Locale } from '../messages';
+import { loadMessages, type Messages } from '../messages';
 import { readTasks, isRunnable, type Task } from '../tasks';
 import type { StageContext, StageResult } from './types';
 
@@ -40,14 +40,14 @@ function readJson(p: string): Json | null {
   }
 }
 
-function pauseLine(dir: string, timezone: string, locale: Locale): string | null {
+function pauseLine(dir: string, timezone: string, m: Messages): string | null {
   const status = isPaused(dir);
   if (!status.paused) return null;
-  const label = pauseReasonLabel(status.reason, locale);
+  const label = pauseReasonLabel(status.reason, m);
   // Dated form (not bare HH:MM) so a resume days/weeks out isn't read as minutes away.
   const valid = status.until != null && !isNaN(new Date(status.until).getTime());
-  if (!valid) return STATUS[locale].pausedUntilResume(label);
-  return STATUS[locale].pausedUntilDate(label, friendlyBoundary(status.until as string, timezone));
+  if (!valid) return m.t('status_paused_until_resume', { label });
+  return m.t('status_paused_until_date', { label, boundary: friendlyBoundary(status.until as string, timezone) });
 }
 
 // The resident's first runnable record is its current work. An unreadable store is
@@ -60,22 +60,22 @@ function currentTask(dir: string): Task | null {
   }
 }
 
-function taskLine(dir: string, locale: Locale): string | null {
+function taskLine(dir: string, m: Messages): string | null {
   const task = currentTask(dir);
-  return task ? STATUS[locale].workingOn(task.title) : null;
+  return task ? m.t('status_working_on', { task: task.title }) : null;
 }
 
 // Only worth a line when something is actually pending — an empty queue
 // shouldn't crowd out the "all quiet" fallback in composeStatusReply.
-function approvalsLine(dir: string, locale: Locale): string | null {
+function approvalsLine(dir: string, m: Messages): string | null {
   const mp = readJson(path.join(dir, 'state', 'micro-proposals.json'));
   const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) => p?.status === 'pending') : [];
   if (pending.length === 0) return null;
   if (pending.length === 1) {
     const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
-    return STATUS[locale].oneApproval(id);
+    return m.t('status_one_approval', { id });
   }
-  return STATUS[locale].nApprovals(pending.length);
+  return m.t('status_n_approvals', { n: pending.length });
 }
 
 // Cron day-of-week matcher (0=Sun..6=Sat; 7 also Sun). Supports '*', comma
@@ -119,7 +119,7 @@ function minutesUntilNextFire(dowField: string, fireMin: number, nowMin: number,
   return null;
 }
 
-function nextRoutineLine(config: Json, timezone: string, locale: Locale): string | null {
+function nextRoutineLine(config: Json, timezone: string, m: Messages): string | null {
   const routines = Array.isArray(config?.routines) ? config.routines : [];
   const now = wallMinutes(timezone, new Date());
   if (now === null) return null;
@@ -139,37 +139,37 @@ function nextRoutineLine(config: Json, timezone: string, locale: Locale): string
   if (!best) return null;
   const hh = String(best.hour).padStart(2, '0');
   const mm = String(best.minute).padStart(2, '0');
-  return STATUS[locale].nextRoutine(hh, mm, best.id);
+  return m.t('status_next_routine', { hh, mm, id: best.id });
 }
 
 export function composeStatusReply(dir: string, config: Json, opts: { redact?: boolean } = {}): string {
   const timezone = resolveTimezone(config);
-  const locale = resolveLocale(config?.language);
+  const m = loadMessages(dir, config?.language);
   const lines: string[] = [];
 
-  const pause = pauseLine(dir, timezone, locale);
+  const pause = pauseLine(dir, timezone, m);
   if (pause) lines.push(pause);
 
   if (opts.redact) {
     // Unauthenticated sender on a no-allowlist channel: coarse state only — never
     // spend figures, task text, pending-approval IDs, or the routine schedule.
-    lines.push(currentTask(dir) ? STATUS[locale].redactedWorking() : STATUS[locale].redactedIdle());
+    lines.push(m.t(currentTask(dir) ? 'status_working' : 'status_idle'));
     return lines.join(' ');
   }
 
-  const task = taskLine(dir, locale);
+  const task = taskLine(dir, m);
   if (task) lines.push(task);
 
-  const budget = budgetLine(dir, config, timezone, locale);
+  const budget = budgetLine(dir, config, timezone, m);
   if (budget) lines.push(budget);
 
-  const approvals = approvalsLine(dir, locale);
+  const approvals = approvalsLine(dir, m);
   if (approvals) lines.push(approvals);
 
-  const routine = nextRoutineLine(config, timezone, locale);
+  const routine = nextRoutineLine(config, timezone, m);
   if (routine) lines.push(routine);
 
-  if (lines.length === 0) return STATUS[locale].allQuiet();
+  if (lines.length === 0) return m.t('status_all_quiet');
   return lines.join(' ');
 }
 

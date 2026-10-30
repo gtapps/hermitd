@@ -8,7 +8,7 @@
 import { costLogPath } from './cc-compat';
 import { costIndexPath, readCostIndex, computeIndex } from './cost-log';
 import { todayYMD, thisWeekKey, thisMonthYYYYMM } from './time';
-import { SPEND, type Locale } from './messages';
+import { EN_MESSAGES, type Messages } from './messages';
 
 type Json = any;
 
@@ -51,10 +51,11 @@ function budgetStatus(dir: string, config: Json, timezone: string): { period: Bu
   return { period, spend, cap };
 }
 
-function budgetLine(dir: string, config: Json, timezone: string, locale: Locale = 'en'): string | null {
+function budgetLine(dir: string, config: Json, timezone: string, m: Messages = EN_MESSAGES): string | null {
   const status = budgetStatus(dir, config, timezone);
   if (!status) return null;
-  return SPEND[locale].capStatus(SPEND[locale].capLabel(status.period), money(status.spend), money(status.cap));
+  const label = m.t(status.period === 'daily' ? 'spend_label_daily' : status.period === 'weekly' ? 'spend_label_weekly' : 'spend_label_monthly');
+  return m.t('spend_cap_status', { label, spend: money(status.spend), cap: money(status.cap) });
 }
 
 export { money, resolveTimezone, budgetStatus, budgetLine };

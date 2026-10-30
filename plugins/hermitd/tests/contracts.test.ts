@@ -2174,7 +2174,7 @@ const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age',
   'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'model-pricing-known',
-  'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
+  'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
   'backup',
 ];
 

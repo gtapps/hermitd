@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { extractToken, extractUrl, findAck, findCode, mintCommand } from '../scripts/setup-token-mint';
-import { MINT, dates } from '../scripts/lib/messages';
+import { EN_MESSAGES, LOCKED, friendlyDate } from '../scripts/lib/messages';
+import { PT } from './helpers/pt-messages';
 import { runScript } from './helpers/run';
 
 const FULL_URL =
@@ -92,27 +93,27 @@ describe('channel reply matching', () => {
   });
 });
 
-// PROP-059: the ack matcher is locale-agnostic — both catalog prompts keep the
-// literal `reauth` protocol token so findAck (/\breauth\b/i) fires either way.
-describe('mint ack prompt keeps the reauth keyword in both locales', () => {
-  test('en and pt-PT ack prompts both match the reauth matcher', () => {
-    expect(MINT.en.ackPrompt()).toMatch(/\breauth\b/i);
-    expect(MINT['pt-PT'].ackPrompt()).toMatch(/\breauth\b/i);
-    expect(findAck([{ text: MINT.en.ackPrompt() }])).toBe(true);
-    expect(findAck([{ text: MINT['pt-PT'].ackPrompt() }])).toBe(true);
+// The ack matcher is language-agnostic: `reauth` is a locked placeholder value,
+// so every wording of the prompt, translated or custom, carries it.
+describe('mint ack prompt keeps the reauth keyword in every language', () => {
+  test('English and translated ack prompts both match the reauth matcher', () => {
+    for (const m of [EN_MESSAGES, PT]) {
+      const prompt = m.t('mint_ack_prompt', { keyword: LOCKED.keyword });
+      expect(prompt).toMatch(/\breauth\b/i);
+      expect(findAck([{ text: prompt }])).toBe(true);
+    }
   });
 });
 
-// PROP-059: the mint success line renders the next-renewal date via
-// dates.friendlyDate — en verbatim en-GB, pt-PT from the static month table.
+// The mint success line renders the next-renewal date in the catalog's locale.
 describe('mint renewal date rendering', () => {
   const ISO = '2026-07-05T12:00:00Z'; // noon UTC -> day 5 in every real timezone
-  test('en is byte-identical to the en-GB long form', () => {
+  test('English is byte-identical to the en-GB long form', () => {
     const expected = new Date(ISO).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    expect(dates.friendlyDate('en', ISO)).toBe(expected);
+    expect(friendlyDate(EN_MESSAGES, ISO)).toBe(expected);
   });
-  test('pt-PT uses the Portuguese month table', () => {
-    expect(dates.friendlyDate('pt-PT', ISO)).toBe('5 de julho de 2026');
+  test('a pt-PT catalog renders the Portuguese long form', () => {
+    expect(friendlyDate(PT, ISO)).toBe('5 de julho de 2026');
   });
 });
 

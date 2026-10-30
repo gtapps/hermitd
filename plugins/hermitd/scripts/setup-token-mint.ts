@@ -69,7 +69,7 @@ import { inboundSince } from './lib/channel-log';
 import { tmuxSessionAlive } from './lib/tmux';
 import { readSettledConfig } from './lib/config-read';
 import { resolve as resolveOutboundChannel } from './resolve-outbound-channel';
-import { resolveLocale, MINT, dates } from './lib/messages';
+import { LOCKED, loadMessages, friendlyDate } from './lib/messages';
 import { readRuntimeJson } from './lib/runtime';
 import { flagValue, exitError, printJson, snakeToken } from './lib/cli';
 import { writeFileAtomic } from './lib/md-write';
@@ -104,13 +104,13 @@ const CODE_TIMEOUT_MS = 30 * 60_000;
 const POLL_MS = 2_000;
 
 // Resolved once at process start (the relay is a single-shot process, so this IS
-// "pinned at flow start"): the operator's locale for all prompts, and the primary
+// "pinned at flow start"): the operator's message catalog for all prompts, and the primary
 // reply route the ack/code intake is bound to. A login code pasted in any other
 // chat the bot can see must never be accepted — matching the physical chat_id is
 // the strong pin. Null route = no channel configured (terminal/attended flow), so
 // no filtering.
 const MINT_CONFIG: any = readSettledConfig(HERMIT_DIR);
-const OPERATOR_LOCALE = resolveLocale(MINT_CONFIG.language);
+const MESSAGES = loadMessages(HERMIT_DIR, MINT_CONFIG.language);
 const REPLY_ROUTE = resolveOutboundChannel(MINT_CONFIG.channels);
 
 // Which credential this run mints. Resolved from config + volume at process start;
@@ -418,7 +418,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
 
   if (requireAck) {
     writeMarker('awaiting-ack', mode);
-    const reached = await io.notify(MINT[OPERATOR_LOCALE].ackPrompt());
+    const reached = await io.notify(MESSAGES.t('mint_ack_prompt', { keyword: LOCKED.keyword }));
     // No way to reach the operator means no way to finish: bail now rather than
     // minting a link nobody will see and then waiting on a reply that can't come.
     if (!reached) {
@@ -443,7 +443,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   if (!url) return abortMint('no_sign_in_link');
 
   writeMarker('awaiting-code', mode);
-  await io.notify(MINT[OPERATOR_LOCALE].openLink(url));
+  await io.notify(MESSAGES.t('mint_open_link', { url }));
   // The code window opens only once the link is out. Anchoring it earlier (at
   // the ack) would let ordinary chatter between "reauth" and the link — an "ok",
   // a "sure" — be picked up as the login code and pasted into the pane, failing
@@ -470,7 +470,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   if (!got) {
     cleanupMint();
     clearMarker();
-    await io.notify(MINT[OPERATOR_LOCALE].failed());
+    await io.notify(MESSAGES.t('mint_failed'));
     return fail(AUTH_TARGET === 'login' ? 'no_sign_in_captured' : 'no_token_captured');
   }
 
@@ -488,8 +488,8 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
     // dateless phrasing rather than silence.
     await io.notify(
       expiresAt
-        ? MINT[OPERATOR_LOCALE].signedIn(dates.friendlyDate(OPERATOR_LOCALE, expiresAt))
-        : MINT[OPERATOR_LOCALE].signedInUndated(),
+        ? MESSAGES.t('mint_signed_in', { date: friendlyDate(MESSAGES, expiresAt) })
+        : MESSAGES.t('mint_signed_in_undated'),
     );
     console.log(JSON.stringify({ ok: true, expires_at: expiresAt }));
     return 0;
@@ -500,7 +500,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   cleanupMint();
   clearMarker();
 
-  await io.notify(MINT[OPERATOR_LOCALE].signedIn(dates.friendlyDate(OPERATOR_LOCALE, record.expires_at)));
+  await io.notify(MESSAGES.t('mint_signed_in', { date: friendlyDate(MESSAGES, record.expires_at) }));
   console.log(JSON.stringify({ ok: true, expires_at: record.expires_at }));
   return 0;
 }

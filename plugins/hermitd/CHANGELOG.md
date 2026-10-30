@@ -4,10 +4,13 @@
 
 ### Added
 
+- Script-sent channel notices (watchdog, status reply, budget, denial and login messages) follow any configured language: the agent translates them once into `.hermit/state/messages.json` when the language is set and after upgrades, and every send falls back to English per message
+- `/hermitd:hermit-settings messages` rewords any of those notices; custom wording survives upgrades and retranslation, and doctor's `message-catalog` check flags wording an upgrade made unusable
 - `hermitd agents [name]` opens Claude Code's `claude agents` view where the agent runs, inside the container for Docker agents
 
 ### Changed
 
+- Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
 - Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
 
@@ -16,6 +19,12 @@
 - The first artifact page republish after a restart or `/clear` runs in a subagent, keeping the live page's source out of the agent's context
 - Auto-mode denial notices suggest telling the agent in chat when the action was intended, instead of `/hermit-settings` or the terminal
 - `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next `hermitd update`
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entry.
+
+No `config.json` changes required.
 
 ## [1.4.23] - 2026-10-27
 

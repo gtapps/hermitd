@@ -14,6 +14,7 @@ import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { startHttpStub, type Stub } from './helpers/http-stub';
 import { triggerPrompt, assistantEntryFor as assistantEntry } from './helpers/transcript';
 import { writeConfig } from './helpers/workdir';
+import { writePtMessages } from './helpers/pt-messages';
 
 function setupWithChannel(budgetConfig: object, opts: { maintainerChannelId?: string } = {}): { dir: string; cchDir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-cost-budget-push-'));
@@ -152,7 +153,7 @@ describe('cost-tracker: a repeat breach tick at the same boundary does not re-st
 });
 
 // PROP-059: localized + tiered budget pushes. Stock installs stay byte-identical
-// (covered above); these add pt-PT and the maintainer/client split.
+// (covered above); these add a translated messages file and the maintainer/client split.
 function setupCustom(config: object): { dir: string; cchDir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-cost-budget-tier-'));
   fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
@@ -174,11 +175,13 @@ describe('cost-tracker: pt-PT budget push (stock, single message)', () => {
   let dir: string; let stub: Stub;
   beforeAll(async () => {
     stub = startHttpStub();
-    ({ dir } = setupCustom({
+    let cchDir: string;
+    ({ dir, cchDir } = setupCustom({
       timezone: 'UTC', language: 'pt',
       channels: telegram(),
       budget: { daily_usd: 1.0, weekly_usd: null, monthly_usd: null, action: 'pause' },
     }));
+    writePtMessages(cchDir);
     await runTurn(dir, stub.url, 100000, 50000); // 1.05 -> breach
   });
   afterAll(() => { stub.stop(); fs.rmSync(dir, { recursive: true }); });

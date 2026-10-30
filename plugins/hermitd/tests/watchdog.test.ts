@@ -26,6 +26,8 @@ import {
 import { startHttpStub, type Stub } from './helpers/http-stub';
 import { localIdentity } from './helpers/registry-fixture';
 import { finalize, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
+import { EN_MESSAGES } from '../scripts/lib/messages';
+import { PT } from './helpers/pt-messages';
 
 // The one line to flip when hermitd-watchdog is ported to TypeScript.
 // (Absolute bun path via process.execPath: Bun.spawn resolves the executable
@@ -4447,9 +4449,9 @@ describe('inActiveHours (timezone)', () => {
 // ---------- deterministic channel voice: operator-language message composers ----------
 
 describe('composeRestartMessage / composeWedgeMessage / composePauseMessage', () => {
-  test('upgrade restart message names finishing the upgrade in both locales', () => {
-    expect(composeRestartMessage('upgrade', true, 'UTC', 'en')).toContain('finish an upgrade');
-    expect(composeRestartMessage('upgrade', true, 'UTC', 'pt-PT')).toContain('concluir uma atualização');
+  test('upgrade restart message names finishing the upgrade in English and a translated catalog', () => {
+    expect(composeRestartMessage('upgrade', true, 'UTC', EN_MESSAGES)).toContain('finish an upgrade');
+    expect(composeRestartMessage('upgrade', true, 'UTC', PT)).toContain('concluir uma atualização');
   });
 
   test('restart message distinguishes dead-process from pane-frozen', () => {
@@ -4457,10 +4459,10 @@ describe('composeRestartMessage / composeWedgeMessage / composePauseMessage', ()
     expect(composeRestartMessage('pane-frozen', true, 'UTC')).toContain('had frozen');
   });
 
-  test('requested restart message says it was requested, not frozen, in both locales', () => {
-    expect(composeRestartMessage('requested', false, 'UTC', 'en')).toContain('a restart was requested');
-    expect(composeRestartMessage('requested', false, 'UTC', 'en')).not.toContain('frozen');
-    expect(composeRestartMessage('requested', false, 'UTC', 'pt-PT')).toContain('foi pedido um reinício');
+  test('requested restart message says it was requested, not frozen, in English and a translated catalog', () => {
+    expect(composeRestartMessage('requested', false, 'UTC', EN_MESSAGES)).toContain('a restart was requested');
+    expect(composeRestartMessage('requested', false, 'UTC', EN_MESSAGES)).not.toContain('frozen');
+    expect(composeRestartMessage('requested', false, 'UTC', PT)).toContain('foi pedido um reinício');
   });
 
   test('wedge message names the check-in time', () => {
@@ -4645,75 +4647,75 @@ describe('state backup (step 0e)', () => {
 
 // -------------------------------------------------------
 // 14. Compose-function localization (PROP-059): the four watchdog message
-//     families compose through WatchdogMessages (frames asserted around the
+//     families compose through the message catalog (frames asserted around the
 //     live HH:MM clock);
-//     `pt-PT` is exercised with an explicit locale arg.
+//     a translated catalog (tests/helpers/pt-messages.ts) is passed explicitly.
 // -------------------------------------------------------
 
 describe('watchdog message localization', () => {
   test('composeRestartMessage en describes an attempt (both causes)', () => {
-    expect(composeRestartMessage('dead-process', true, 'UTC', 'en')).toMatch(
+    expect(composeRestartMessage('dead-process', true, 'UTC', EN_MESSAGES)).toMatch(
       /^Attempting to restart your agent at \d{2}:\d{2}: it wasn't running\. Its conversation is restored where possible, but work in flight since the last save may not have carried over, so it will re-check its work before continuing\.$/);
-    expect(composeRestartMessage('pane-frozen', true, 'UTC', 'en')).toMatch(
+    expect(composeRestartMessage('pane-frozen', true, 'UTC', EN_MESSAGES)).toMatch(
       /^Attempting to restart your agent at \d{2}:\d{2}: it had frozen\. Its conversation is restored where possible, but work in flight since the last save may not have carried over, so it will re-check its work before continuing\.$/);
   });
 
   test('composeRestartMessage never promises a restored conversation on a fresh start', () => {
-    expect(composeRestartMessage('dead-process', false, 'UTC', 'en')).toMatch(
+    expect(composeRestartMessage('dead-process', false, 'UTC', EN_MESSAGES)).toMatch(
       /^Attempting to restart your agent at \d{2}:\d{2}: it wasn't running\. It starts a fresh conversation, so work in flight since the last save is lost and it picks up from its saved work\.$/);
-    expect(composeRestartMessage('dead-process', false, 'UTC', 'pt-PT')).toMatch(
+    expect(composeRestartMessage('dead-process', false, 'UTC', PT)).toMatch(
       /^A tentar reiniciar o seu agente às \d{2}:\d{2}: não estava a correr\. Começa uma conversa nova, por isso o trabalho em curso desde o último registo perde-se e o agente retoma a partir do trabalho guardado\.$/);
   });
 
   test('composeRestartMessage pt-PT', () => {
-    expect(composeRestartMessage('dead-process', true, 'UTC', 'pt-PT')).toMatch(
+    expect(composeRestartMessage('dead-process', true, 'UTC', PT)).toMatch(
       /^A tentar reiniciar o seu agente às \d{2}:\d{2}: não estava a correr\. A conversa é retomada sempre que possível, mas o trabalho em curso desde o último registo pode não ter sido mantido, por isso o agente volta a verificar o seu trabalho antes de continuar\.$/);
-    expect(composeRestartMessage('pane-frozen', true, 'UTC', 'pt-PT')).toMatch(
+    expect(composeRestartMessage('pane-frozen', true, 'UTC', PT)).toMatch(
       /^A tentar reiniciar o seu agente às \d{2}:\d{2}: tinha bloqueado\. A conversa é retomada sempre que possível, mas o trabalho em curso desde o último registo pode não ter sido mantido, por isso o agente volta a verificar o seu trabalho antes de continuar\.$/);
   });
 
   test('composeWedgeMessage en / pt-PT', () => {
-    expect(composeWedgeMessage('UTC', 'en')).toMatch(
+    expect(composeWedgeMessage('UTC', EN_MESSAGES)).toMatch(
       /^Your agent hasn't responded in a while — checking on it now \(\d{2}:\d{2}\)\. If it has to be restarted, work in flight may be lost\.$/);
-    expect(composeWedgeMessage('UTC', 'pt-PT')).toMatch(
+    expect(composeWedgeMessage('UTC', PT)).toMatch(
       /^O seu agente não responde há algum tempo — estou a verificá-lo agora \(\d{2}:\d{2}\)\. Se tiver de ser reiniciado, o trabalho em curso pode perder-se\.$/);
   });
 
   test('composeStallQuestionMessage en / pt-PT', () => {
-    expect(composeStallQuestionMessage('UTC', 'en')).toMatch(
+    expect(composeStallQuestionMessage('UTC', EN_MESSAGES)).toMatch(
       /^Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer \(\d{2}:\d{2}\)\.$/);
-    expect(composeStallQuestionMessage('UTC', 'pt-PT')).toMatch(
+    expect(composeStallQuestionMessage('UTC', PT)).toMatch(
       /^O seu agente está à espera de uma pergunta que não pode fazer pelo chat — abra o terminal ou a app Claude para responder \(\d{2}:\d{2}\)\.$/);
   });
 
   test('composeStallPermissionMessage en / pt-PT', () => {
-    expect(composeStallPermissionMessage('UTC', 'en')).toMatch(
+    expect(composeStallPermissionMessage('UTC', EN_MESSAGES)).toMatch(
       /^The agent asked for permission to continue and is waiting for an answer \(\d{2}:\d{2}\)\. It will pick up where it left off once someone approves\.$/);
-    expect(composeStallPermissionMessage('UTC', 'pt-PT')).toMatch(
+    expect(composeStallPermissionMessage('UTC', PT)).toMatch(
       /^O agente pediu autorização para continuar e está à espera de resposta \(\d{2}:\d{2}\)\. Retoma onde parou assim que alguém aprovar\.$/);
   });
 
   test('composeSessionWedgedMessage en / pt-PT', () => {
-    expect(composeSessionWedgedMessage('UTC', 'en')).toMatch(
+    expect(composeSessionWedgedMessage('UTC', EN_MESSAGES)).toMatch(
       /^Your agent has stopped picking up its scheduled work — something on screen is holding it\. Open the terminal or Claude app and clear whatever is waiting there \(\d{2}:\d{2}\)\.$/);
-    expect(composeSessionWedgedMessage('UTC', 'pt-PT')).toMatch(
+    expect(composeSessionWedgedMessage('UTC', PT)).toMatch(
       /^O seu agente deixou de executar o trabalho agendado — algo no ecrã está a bloqueá-lo\. Abra o terminal ou a app Claude e resolva o que está à espera \(\d{2}:\d{2}\)\.$/);
   });
 
   test('composePauseMessage indefinite form is deterministic and localized', () => {
-    expect(composePauseMessage('operator', null, 'UTC', 'en')).toBe(
+    expect(composePauseMessage('operator', null, 'UTC', EN_MESSAGES)).toBe(
       'Your agent is paused (your request) until you resume it.');
-    expect(composePauseMessage('operator', null, 'UTC', 'pt-PT')).toBe(
+    expect(composePauseMessage('operator', null, 'UTC', PT)).toBe(
       'O seu agente está em pausa (o seu pedido) até que a retome.');
-    expect(composePauseMessage('budget', null, 'UTC', 'pt-PT')).toBe(
+    expect(composePauseMessage('budget', null, 'UTC', PT)).toBe(
       'O seu agente está em pausa (um limite de orçamento) até que a retome.');
   });
 
   test('composePauseMessage dated form carries the localized frame and reason label', () => {
     const until = '2026-07-05T12:00:00Z';
-    const en = composePauseMessage('budget', until, 'UTC', 'en');
+    const en = composePauseMessage('budget', until, 'UTC', EN_MESSAGES);
     expect(en).toContain('Your agent is paused (a budget cap) until ');
-    const pt = composePauseMessage('watchdog', until, 'UTC', 'pt-PT');
+    const pt = composePauseMessage('watchdog', until, 'UTC', PT);
     expect(pt).toContain('O seu agente está em pausa (o watchdog) até ');
   });
 });

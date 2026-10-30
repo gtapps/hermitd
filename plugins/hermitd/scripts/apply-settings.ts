@@ -117,6 +117,8 @@ const HERMIT_ALLOW = [
   // used to take. Without a grant those writes hit the permission engine in a
   // session that has no AskUserQuestion to recover with.
   'Bash(bun */scripts/settings-edit.ts*)',
+  // hermit-evolve's unattended retranslation of reworded script notices.
+  'Bash(bun */scripts/messages.ts*)',
   'Bash(bun */scripts/manifest-seed.ts*)',
   'Bash(bun */scripts/docker-bun-pin.ts*)',
   'Bash(bun */scripts/apply-settings.ts*)',
