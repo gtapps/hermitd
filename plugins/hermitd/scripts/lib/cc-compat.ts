@@ -737,6 +737,7 @@ export {
   // Project-root resolution
   hermitDir,
   findHermitDir,
+  resolveProjection,
   assertStateDir,
   assertUnderStateDir,
   pinStateDirOrExit,

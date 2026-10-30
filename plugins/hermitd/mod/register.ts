@@ -39,7 +39,7 @@ export function classifyStdout(command: string, text: string): 'ok' | 'failed' {
 }
 
 async function bridge($: EngineInterface, verb: string, payload = ''): Promise<Decision> {
-  const [id, cwd] = await Promise.all([$.session.id(), $.session.cwd()]);
+  const [id, cwd] = await Promise.all([$.session.id(), $.session.root()]);
   const result = await $.process.run([
     'bash', `${$.plugin.root}/scripts/hermitd-exec.sh`, 'harness-mod', verb, id, payload,
   ], { cwd });

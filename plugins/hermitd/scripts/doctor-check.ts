@@ -14,7 +14,7 @@ import { globDir, readFrontmatter } from './lib/frontmatter';
 import { validate } from './validate-config';
 import { kStr } from './lib/format';
 import { costIndexPath, readCostIndex, scanRoutineLedger } from './lib/cost-log';
-import { costLogPath, transcriptDirFor, memoryDirFor } from './lib/cc-compat';
+import { costLogPath, resolveProjection, transcriptDirFor, memoryDirFor } from './lib/cc-compat';
 import { readSettledConfig, readConfigRaw, configExists } from './lib/config-read';
 import { resolvePricing, PRICING_VERIFIED } from './lib/pricing';
 import { HERMIT_OUTPUT_STYLE, VOICE_FILE_REL, voiceFileExists, resolvePersistedStyle, outputStyleFor } from './lib/voice';
@@ -80,7 +80,7 @@ function resolvePaths(dir: string, root: string): DoctorPaths {
 }
 
 const PATHS = resolvePaths(
-  process.argv[2] || '.hermit',
+  resolveProjection(path.resolve(process.argv[2] || '.hermit')),
   process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..'),
 );
 

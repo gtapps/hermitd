@@ -24,6 +24,7 @@
 - Auto-mode denial notices suggest telling the agent in chat when the action was intended, instead of `/hermit-settings` or the terminal
 - `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next `hermitd update`
 - After the agent creates or edits a project skill, it is told the change loads on its own, so it can follow the file instead of advising a restart or new session.
+- Chat `!` commands keep working after the agent's shell changes directory, and doctor run from a worktree or child checkout reports on the real `.hermit/` instead of creating `state/` in its copy
 - Channel setup flags an unreachable maintainer chat instead of confirming it, and watchdog notices that only reached `state/watchdog-events.jsonl` record a failed push
 - Relogin cancels and reports a sign-in link that can't reach the maintainer chat, and keeps that link out of the searchable channel log
 

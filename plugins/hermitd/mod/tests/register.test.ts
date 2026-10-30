@@ -12,14 +12,16 @@ function rig(on: any, options: { id?: () => string; handlers?: Record<string, (p
   const payloads: Record<string, any[]> = {};
   const queue: any[] = [];
   const commands: string[] = [];
+  const inits: { cwd?: string }[] = [];
   const files: Record<string, string> = {};
-  on('session.cwd', () => ({ value: '/work' }));
+  on('session.root', () => ({ value: '/work' }));
   on('session.id', () => ({ value: options.id?.() ?? 'resident' }));
   on('session.start', () => ({ cwd: '/work' }));
   on('turn.start', ($: unknown, e: any) => ({ turnId: e.turnId }));
   on('process.run', ($: unknown, e: any) => {
     const verb = e.argv[3];
     calls.push(verb);
+    inits.push(e.init);
     (payloads[verb] ??= []).push(e.argv[5] ? (() => { try { return JSON.parse(e.argv[5]); } catch { return e.argv[5]; } })() : undefined);
     const handler = options.handlers?.[verb];
     let out: unknown;
@@ -36,10 +38,24 @@ function rig(on: any, options: { id?: () => string; handlers?: Record<string, (p
   });
   on('fs.list', () => ({ value: queue.map(q => ({ name: `${q.id}.json`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }));
   on('fs.read', ($: unknown, e: any) => ({ value: files[e.path] ?? JSON.stringify(queue.find(q => e.path.endsWith(`/${q.id}.json`)) ?? {}) }));
-  return { calls, payloads, queue, commands, files };
+  return { calls, payloads, queue, commands, inits, files };
 }
 const boot = ($: any) => $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
 const finalized = (r: { payloads: Record<string, any[]> }) => r.payloads.finalize ?? [];
+
+test('bridge processes use the session root when the shell cwd drifts', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { intake: () => {
+    r.queue.push(entry('c', [{ command: '/clear', arg: null }], { source: 'watchdog' }));
+    return { decision: 'queued', id: 'c' };
+  } } });
+  on('session.cwd', () => ({ value: '/work/nested' }));
+  on('command.run', () => ({}));
+  expect((await $.prompt.submit(channel('!clear'))).drop).toBeDefined();
+  await clock.settle();
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'claim']);
+  expect(r.inits).toEqual(r.calls.map(() => ({ cwd: '/work' })));
+});
 
 test('composer and ordinary channel prompts never start a process', async ($, on) => {
   on('prompt.submit', ($, e) => ({ text: e.text }));
@@ -437,7 +453,7 @@ test('pass keeps the prompt; refusal drops and a failed send requests one relay'
   const clock = mock.clock(on);
   let intakes = 0;
   const relays: string[] = [];
-  on('session.cwd', () => ({ value: '/work' }));
+  on('session.root', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'resident' }));
   on('prompt.submit', ($, e) => { relays.push(e.text); return { text: e.text }; });
   on('process.run', ($, e) => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify(e.argv[3] === 'intake'
