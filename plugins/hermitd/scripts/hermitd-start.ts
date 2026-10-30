@@ -530,7 +530,7 @@ function writeBootId(): void {
  * beside writeBootId, after the duplicate-session exit, so an "already running" start
  * leaves the live session's registry alone. Every entry names an ad-hoc Monitor task
  * or idle subscription of the previous process, which died with it, so a leftover
- * entry is stale. A context refresh never runs hermitd-start, so its surviving
+ * entry is stale. A `/clear` never runs hermitd-start, so its surviving
  * monitors keep their entries. Config-watch duties and the watch poller's process
  * list are reset for the new session as well. Missing files stay missing.
  */

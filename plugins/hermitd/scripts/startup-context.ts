@@ -344,9 +344,7 @@ function recordClear(stateDir: string): void {
   const file = path.join(stateDir, 'context-clear.json');
   const record = readJson(file);
   const pending = typeof record?.last_trigger?.reason === 'string' && !record.last_trigger.reset_at ? record.last_trigger : null;
-  applyContextReset(AGENT_DIR, runtime, {
-    kind: 'cleared', trigger: pending ? `clear:${pending.reason}` : 'clear', hhmm: new Date().toISOString().slice(11, 16),
-  });
+  applyContextReset(AGENT_DIR, runtime);
   if (!pending) return;
   try {
     writeFileAtomic(file, JSON.stringify({ ...record, last_trigger: { ...pending, reset_at: runtime.last_context_reset_at } }) + '\n');

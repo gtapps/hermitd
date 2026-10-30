@@ -57,11 +57,7 @@ export function stampContextReset(hermitRoot: string): void {
  *
  * Fail-open throughout: a bookkeeping failure must never suppress the reset itself.
  */
-export function applyContextReset(
-  hermitRoot: string,
-  runtime: Json,
-  opts: { kind: 'cleared' | 'compacted'; trigger: string; hhmm: string; tokens?: number },
-): void {
+export function applyContextReset(hermitRoot: string, runtime: Json): void {
   // Anchored to hermitRoot: writeRuntimeJson() otherwise resolves .hermit/state RELATIVE
   // TO THE CWD and mkdirs it, so a caller running anywhere but the project root would
   // write into a freshly created decoy state dir.

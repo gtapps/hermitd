@@ -22,9 +22,7 @@ const CONTEXT_RESET_LIB = path.resolve(import.meta.dir, '../scripts/lib/context-
 async function applyResetFromCwd(hermitRoot: string, cwd: string, runtime: Record<string, unknown>) {
   const code = `
     const { applyContextReset } = await import(${JSON.stringify(CONTEXT_RESET_LIB)});
-    applyContextReset(${JSON.stringify(hermitRoot)}, ${JSON.stringify(runtime)}, {
-      kind: 'cleared', trigger: 'test', hhmm: '12:00',
-    });
+    applyContextReset(${JSON.stringify(hermitRoot)}, ${JSON.stringify(runtime)});
   `;
   const proc = Bun.spawn({
     cmd: [process.execPath, '-e', code],
