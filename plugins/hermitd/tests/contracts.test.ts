@@ -2060,6 +2060,18 @@ describe('brief delegation contract', () => {
     expect(skill).toContain('skills/brief/reference.md');
   });
 
+  test('scheduled briefs require dispatch and default briefs use bounded reads', () => {
+    expect(skill).toContain('Do not compose');
+    expect(skill).not.toContain('default-no-session');
+    expect(refFile).not.toContain('default-no-session');
+    expect(skill).not.toContain('use the current task list');
+    expect(skill).not.toContain('--limit 20');
+    expect(skill).toContain('task-report.ts .hermit --recent --limit 5');
+    expect(skill).toContain('task-report.ts .hermit --limit 1');
+    expect(skill).toContain('"brief today"/"daily summary"/"what happened today"');
+    expect(skill).toContain('duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`');
+  });
+
   test('schema block is byte-identical in reference.md and SKILL.md', () => {
     const block = (text: string) => extractBlock(text, '<!-- brief-eval-schema:start -->', '<!-- brief-eval-schema:end -->');
     expect(block(refFile)).toBe(block(skill));

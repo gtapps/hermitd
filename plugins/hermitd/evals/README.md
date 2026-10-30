@@ -36,7 +36,7 @@ Claude Code 2.1.314, `--model sonnet`, default effort, `--runs 3`, one busy inst
 Runs and Passed include the resumed runs below; the cost column does not. On a resumed 86k-token main context, one dispatched run cost $0.53, two skipped runs $0.39 and three inline runs $0.43 to $0.46.
 
 - Arm A skipped the dispatch in 10 of 24 runs counting `dispatch-*`, and in all 3 `run-default-no-session` runs. Skipped runs never read `reference.md`. Four told the operator a finished task was not in the records.
-- No case scored lower on arm B. Inline saved about $0.10 per brief but took one more main turn and carried about 4k more tokens, so the fold was not shipped: the saving depends on the turns until the next compaction, which was not measured.
+- No case scored lower on arm B. Inline saved about $0.10 per brief but took one more main turn and carried about 4k more tokens, so the fold was not shipped for evening and daily: the saving depends on the turns until the next compaction, which was not measured. No-flag briefs compose in main with smaller reads.
 - Failed default briefs on both arms said the `task-report` output was cut off, so `--limit 20` can exceed what a main turn reads whole.
 
 ## proposal-triage
