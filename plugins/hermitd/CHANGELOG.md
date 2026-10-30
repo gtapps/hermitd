@@ -11,6 +11,7 @@
 
 ### Changed
 
+- Skill reviews use each task's own open window
 - Reflect checks for enforcement, missed triggers and existing guidance before proposing learning changes
 - Close-time learning shapes lessons and patches learned skills using evidence of errors or general operator corrections
 - Accepted skill improvements apply requested rewording, moves and description changes to existing text
@@ -23,6 +24,7 @@
 
 ### Fixed
 
+- Closing one task no longer uses up the next task's skill review
 - Morning briefs always carry the newest record's task context instead of varying between mornings
 - Scheduled briefs always read the full day's records, and plain briefs read only the records they need
 - Learned-skill retirement counts use recorded under worktree and plugin keys
@@ -41,6 +43,7 @@
 
 Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entry.
 
+Delete `.hermit/state/skill-review-counter` if it exists.
 Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
 
 No `config.json` changes required.

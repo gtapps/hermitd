@@ -5,7 +5,7 @@ import { writeFileAtomic } from './md-write';
 import { claudeStateFile } from './setup-token';
 
 export const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
-/** Resident tool calls (one counter byte each) that make a closing task due for skill review. */
+/** Resident tool calls while a task is open that make it due for skill review. */
 export const REVIEW_CALLS = 10;
 const ALLOWED_KEYS = new Set(['name', 'description', 'when_to_use', 'argument-hint', 'arguments', 'paths', 'disable-model-invocation', 'user-invocable', 'metadata']);
 export type Lint = { errors: string[]; warnings: string[] };

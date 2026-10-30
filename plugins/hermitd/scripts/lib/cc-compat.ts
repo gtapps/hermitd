@@ -598,6 +598,38 @@ function toolUseNames(entry: Json): Array<{ id: string; name: string }> {
 }
 
 /**
+ * Add the ids of main-chain tool_use blocks timestamped at or after `since` to
+ * `ids`, stopping once it holds `limit`. Reads the whole transcript, so a caller
+ * gets a threshold answer, not a full count. A missing or unreadable file adds
+ * nothing; an id already in `ids` counts once, however many sessions carry it.
+ * @param {string} file transcript path
+ * @param {string} since ISO lower bound, inclusive
+ * @param {number} limit size at which `ids` is full
+ * @param {Set<string>} ids accumulator shared across a caller's transcripts
+ */
+function collectToolUseIds(file: string, since: string, limit: number, ids: Set<string>): void {
+  if (ids.size >= limit) return;
+  let contents: string;
+  try {
+    contents = fs.readFileSync(file, 'utf8');
+  } catch {
+    return;
+  }
+  const start = Date.parse(since);
+  for (const line of contents.split('\n')) {
+    if (!line.includes('"tool_use"')) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (entry.isSidechain === true || !(Date.parse(entry.timestamp) >= start)) continue;
+      for (const { id } of toolUseNames(entry)) {
+        ids.add(id);
+        if (ids.size >= limit) return;
+      }
+    } catch {}
+  }
+}
+
+/**
  * Classify the tool_result blocks of a carrier user entry into denials (with
  * kind) and genuine-failure tool_use_ids, per block. Both denials and failures
  * carry `is_error:true`, so we walk each is_error block and separate them:
@@ -762,6 +794,7 @@ export {
   turnPromptText,
   isCompactBoundary,
   toolUseNames,
+  collectToolUseIds,
   classifyToolResults,
   transcriptPathKey,
   transcriptDirFor,

@@ -131,17 +131,6 @@
             "timeout": 3
           }
         ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/tool-counter.ts"],
-            "timeout": 3
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [

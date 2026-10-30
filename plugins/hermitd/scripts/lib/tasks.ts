@@ -13,7 +13,7 @@ import { compactibleTokens, isOwnTurn } from './context-signal';
 import { readContextSurface } from './context-surface';
 import { allocateTaskShares, BY_TASK_RETENTION_DAYS, computeIndex, readCostIndex, costIndexPath } from './cost-log';
 import { todayYMD } from './time';
-import { costLogPath } from './cc-compat';
+import { collectToolUseIds, costLogPath, transcriptDirFor } from './cc-compat';
 import { REVIEW_CALLS } from './learned-skills';
 
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
@@ -185,6 +185,27 @@ function heldClaim(dir: string, id: string): boolean {
   });
 }
 
+function reviewCallsReached(dir: string, record: Task): boolean {
+  const runtime = readJson(path.join(dir, 'state/runtime.json'));
+  const transcripts = transcriptDirFor(path.dirname(dir), runtime?.config_dir);
+  const ids = new Set<string>();
+  const sessions = new Set<string>();
+  const visit = (session: unknown) => {
+    if (typeof session !== 'string' || !session || sessions.has(session)) return;
+    sessions.add(session);
+    collectToolUseIds(path.join(transcripts, `${session}.jsonl`), record.opened_at, REVIEW_CALLS, ids);
+  };
+  visit(readExecution(dir).cc_session_id);
+  visit(runtime?.cc_session_id);
+  if (ids.size < REVIEW_CALLS) {
+    const start = Date.parse(record.opened_at);
+    for (const row of readTaskCostRows(dir).reverse()) {
+      if (row?.guest !== true && !row?.subagent && Date.parse(row?.observed_at ?? row?.timestamp) >= start) visit(row.cc_session_id);
+    }
+  }
+  return ids.size >= REVIEW_CALLS;
+}
+
 export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
@@ -217,7 +238,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         requester, requester_name: flag(flags, 'requester-name') ?? null, origin_message_id: flag(flags, 'origin-message-id') ?? null,
         approver: flag(flags, 'approver') ?? null, due: dateFlag(flags, 'due'), conversation, handle, owner,
         dedupe_key: dedupe, claims: (flags.claim as string[] | undefined) ?? [], result_rev: 0,
-        delegated: owner !== 'resident',
+        delegated: owner !== 'resident' || !!dedupe?.startsWith('helper:'),
         muted: 'muted' in flags ? mutedFlag(flags) : false,
         body: '## Progress\n\n## Decisions\n\n## Approvals\n\n## Lessons\n\n## Outcome\n',
       } as Task;
@@ -337,21 +358,15 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
     }
-    let resetCounter = false;
     if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
-      const counter = path.join(dir, 'state', 'skill-review-counter');
-      let calls = 0;
-      try { calls = fs.statSync(counter).size; } catch { /* no calls yet */ }
-      if (record.delegated || calls >= REVIEW_CALLS) {
+      if (record.delegated || reviewCallsReached(dir, record)) {
         record.skill_review = 'pending';
-        resetCounter = true;
         digest = { ...(digest as object), skill_review: 'pending' };
       }
     }
     const encoded = encodeTask(record);
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
-    if (resetCounter) fs.writeFileSync(path.join(dir, 'state', 'skill-review-counter'), '');
     if (progress) bindTaskTurn(dir, record.id);
     return digest;
   } finally { releaseLock(lock); }
