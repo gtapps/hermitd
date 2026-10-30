@@ -61,7 +61,7 @@ HERMIT_GATE
 
 - `create`: proceed with the steps below
 - `duplicate`: stop and report "Proposal already exists as <id>" to the caller
-- `suppress`: stop and report the suppression reason (from the agent's line 1) to the caller
+- `suppress`: stop and report the suppression code and any reason (from the agent's line 1) to the caller
 - `gate_failed` (unrecognized or empty line 1, because the agent errored, returned malformed output, or was terminated before emitting a verdict): fail closed and do not create the proposal. When inside an open task record turn, note it with the record id; otherwise report it to the caller:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> <<'HERMIT_LINE'

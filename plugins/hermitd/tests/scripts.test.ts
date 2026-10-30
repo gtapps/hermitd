@@ -2495,6 +2495,28 @@ describe('proposal gate', () => {
     expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'SUPPRESS' });
   }));
 
+  test('gate (triage SUPPRESS with only the excerpt kept -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-consequence ("one-off")');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-consequence' });
+  }));
+
+  test('gate (triage SUPPRESS ending in title words, no code -> gate-failed)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Cache layer — eviction', 'SUPPRESS: Cache layer — eviction');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage' });
+  }));
+
+  test('gate (triage DUPLICATE with the reason dropped -> duplicate with PROP-ID)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'DUPLICATE: Foo — PROP-019-cache-103612');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019-cache-103612' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'DUPLICATE' });
+  }));
+
+  test('gate (triage DUPLICATE with a PROP-ID in the title -> the verdict PROP-ID wins)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Fix — PROP-012 regression', 'DUPLICATE: Fix — PROP-012 regression — PROP-019');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019' });
+  }));
+
   test('gate (triage garbled verdict -> gate-failed + gate-failed event)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
     expect(out).toEqual({ status: 'gate_failed' });
@@ -2541,6 +2563,17 @@ describe('proposal gate', () => {
   test('gate (judge SUPPRESS with the reason dropped -> suppress with code)', withDir(async (dir) => {
     const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS (current-session): Bar — no-evidence');
     expect(out).toEqual({ status: 'suppress', code: 'no-evidence' });
+  }));
+
+  test('gate (judge SUPPRESS with the reason dropped and the capped suffix -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS: Bar — no-evidence (evidence-capped)');
+    expect(out).toEqual({ status: 'suppress', code: 'no-evidence' });
+  }));
+
+  test('gate (judge SUPPRESS ending in title words, no code -> gate-failed)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Retry storm — backoff', 'SUPPRESS: Retry storm — backoff');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge' });
   }));
 
   test('gate (judge empty verdict -> gate-failed + gate-failed event tagged reflection-judge)', withDir(async (dir) => {

@@ -17,7 +17,7 @@
 
 ### Fixed
 
-- Proposal `gate` accepts a `SUPPRESS` verdict whose reason was dropped, so a shortened line records the suppression instead of a false `gate-failed`
+- Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
 - `hermitd update` and watchdog restarts no longer wait out the 15-minute quiet cap on an agent that was cleared and then left quiet
 - Chat `!clear` and `!compact` report success on Claude Team and Enterprise accounts instead of "outcome unknown"
 - The first artifact page republish after a restart or `/clear` runs in a subagent, keeping the live page's source out of the agent's context

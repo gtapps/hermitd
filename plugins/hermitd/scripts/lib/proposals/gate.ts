@@ -22,7 +22,10 @@
 // appends `gate-failed`; this script preserves that rather than introducing a
 // new judge-verdict metric type. A `gate-failed` row carries the rejected line,
 // capped at 200 chars, as `verdict`. Verdict grammars: agents/proposal-triage.md
-// § Output, agents/reflection-judge.md § Verdicts.
+// § Output, agents/reflection-judge.md § Verdicts. A `SUPPRESS` or `DUPLICATE`
+// line that dropped its `: <reason>` still routes, but a suppress code without
+// the colon counts only when the grammar lists it, so a title's trailing words
+// never read as a code.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -75,8 +78,8 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
 
   if (gate === 'triage') {
     const create = verdictLine.match(/^CREATE:\s*.+$/);
-    const suppress = verdictLine.match(/^SUPPRESS:\s*.+?—\s*([a-z-]+)(?::|\s*$)/);
-    const duplicate = verdictLine.match(/^DUPLICATE:\s*.+?—\s*(PROP-[\w-]+):/);
+    const suppress = verdictLine.match(/^SUPPRESS:\s*.+?—\s*((?:weak-recurrence|weak-consequence|not-actionable|covered-by-memory)(?![\w-])|[a-z-]+(?=:))/);
+    const duplicate = verdictLine.match(/^DUPLICATE:\s*.+?—\s*(PROP-[\w-]+)(?::|$)/);
 
     if (create) {
       appendJsonlLine(ledger, JSON.stringify({ ts: utcISOStamp(), type: 'triage-verdict', verdict: 'CREATE', caller, evidence_source: evidenceSource, tags }));
@@ -96,7 +99,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   // gate === 'judge'
   const accept = verdictLine.match(/^ACCEPT(?:\s*\([^)]+\))?:/);
   const downgrade = verdictLine.match(/^DOWNGRADE:(\d+)(?:\s*\([^)]+\))?:/);
-  const suppress = verdictLine.match(/^SUPPRESS(?:\s*\([^)]+\))?:\s*.+?—\s*([a-z-]+)(?::|\s*$)/);
+  const suppress = verdictLine.match(/^SUPPRESS(?:\s*\([^)]+\))?:\s*.+?—\s*((?:no-evidence|no-sessions)(?![\w-])|[a-z-]+(?=:))/);
 
   if (accept) emitJson({ status: 'accept' });
   if (downgrade) emitJson({ status: 'downgrade', tier: Number(downgrade[1]) });
