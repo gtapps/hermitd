@@ -547,11 +547,13 @@ if [ -f /etc/hermit/managed-browser ]; then
   mkdir -p /home/claude/.claude/browser/profile /tmp/hermit-browser
   chmod 700 /home/claude/.claude/browser/profile /tmp/hermit-browser
   rm -f /home/claude/.claude/browser/profile/Singleton*
-  rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+  # /tmp survives a container restart, and a stale daemon pid can name a live process.
+  rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 /tmp/hermit-browser-*/*.pid /tmp/hermit-browser-*/admissions.json
   Xvnc :1 -geometry 500x1082 -depth 24 -rfbport -1 \
     -rfbunixpath /tmp/hermit-browser/vnc.sock -rfbunixmode 0600 \
     -SecurityTypes None -nolisten tcp -SendCutText=0 &
   HERMIT_XVNC_PID=$!
+  for _ in $(seq 1 50); do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.1; done
   DISPLAY=:1 openbox &
   HERMIT_OPENBOX_PID=$!
 fi
@@ -600,9 +602,9 @@ cleanup() {
   ' "${AGENT_DIR}/state/runtime.json" 2>/dev/null || true
   if [ -f /etc/hermit/managed-browser ]; then
     # Closing is still a claimed command, including after release or idle expiry.
-    bun "${HERMIT_PLUGIN_ROOT}/scripts/browser.ts" claim shutdown >/dev/null 2>&1 || true
+    bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" claim shutdown >/dev/null 2>&1 || true
     agent-browser close >/dev/null 2>&1 || true
-    bun "${HERMIT_PLUGIN_ROOT}/scripts/browser.ts" release >/dev/null 2>&1 || true
+    bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" release >/dev/null 2>&1 || true
     kill "$HERMIT_OPENBOX_PID" "$HERMIT_XVNC_PID" 2>/dev/null || true
   fi
   echo "[docker-entrypoint] Shutting down."

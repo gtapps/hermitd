@@ -33,11 +33,21 @@ test('persistent commands require a live claim, renew it and preserve argv and e
   expect(await run(['open', 'https://example.com'])).toMatchObject({ code: 1, data: { error: 'browser_not_claimed' } });
   browserLease('claim', 'task-a', dir, Date.now() - 5000);
   const before = browserLease('status', undefined, dir).expires_at!;
-  const result = await run(['open', 'https://example.com/a?x=1&y=two words'], { TEST_EXIT: '7' });
+  const result = await run(['--task', 'task-a', 'open', 'https://example.com/a?x=1&y=two words'], { TEST_EXIT: '7' });
   expect(result.code).toBe(7);
   expect(result.data.argv).toEqual(['open', 'https://example.com/a?x=1&y=two words']);
   expect(result.data.env).toMatchObject({ DISPLAY: ':1', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: '--no-sandbox,--window-size=500,1082,--window-position=0,0', AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
   expect(browserLease('status', undefined, dir).expires_at!).toBeGreaterThan(before);
+});
+
+test('only the holding task drives the persistent browser', async () => {
+  const { dir, run } = fixture();
+  browserLease('claim', 'task-b', dir);
+  const before = browserLease('status', undefined, dir).expires_at!;
+  expect(await run(['open', 'https://example.com'])).toMatchObject({ code: 1, data: { error: 'browser_not_claimed', holder: 'task-b' } });
+  expect(await run(['--task', 'task-a', 'open', 'https://example.com'])).toMatchObject({ code: 1, data: { error: 'browser_not_claimed', holder: 'task-b' } });
+  expect(browserLease('status', undefined, dir).expires_at!).toBe(before);
+  expect((await run(['--task=task-b', 'snapshot'])).data.argv).toEqual(['snapshot']);
 });
 
 test('named sessions strip headed and ambient profile/display and cap live sessions at three', async () => {
@@ -49,9 +59,17 @@ test('named sessions strip headed and ambient profile/display and cap live sessi
   expect(result.data.argv).toEqual(['--session', 'one', 'open', 'https://example.com']);
   for (const key of ['DISPLAY', 'AGENT_BROWSER_PROFILE', 'AGENT_BROWSER_HEADED']) expect(result.data.env[key]).toBeUndefined();
   expect(result.data.env.AGENT_BROWSER_SOCKET_DIR).toBe(socket);
-  expect(result.data.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('0');
+  expect(result.data.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined();
   fs.writeFileSync(path.join(socket, 'three.pid'), '99999999');
   expect((await run(['--session', 'four', 'open', 'https://example.com'])).code).toBe(0);
+});
+
+test('the cap ignores the dashboard pid file and reads no invalid pid as live', async () => {
+  const { run, socket } = fixture();
+  for (const name of ['one', 'two']) fs.writeFileSync(path.join(socket, `${name}.pid`), String(process.pid));
+  fs.writeFileSync(path.join(socket, 'dashboard.pid'), String(process.pid));
+  fs.writeFileSync(path.join(socket, 'empty.pid'), '');
+  expect((await run(['--session', 'three', 'open', 'https://example.com'])).code).toBe(0);
 });
 
 test('plugin absence fails closed and hermits do not share sockets', async () => {
@@ -63,8 +81,8 @@ test('plugin absence fails closed and hermits do not share sockets', async () =>
 test('explicit launch flags cannot override the managed profile or anonymous isolation', async () => {
   const { dir, run } = fixture();
   browserLease('claim', 'task', dir);
-  const flags = ['--profile', '/unmanaged', '--args=--bad', '--executable-path', '/bad', '--headed'];
-  const persistent = await run([...flags, 'open', 'https://example.com']);
+  const flags = ['--profile', '/unmanaged', '--args=--bad', '--executable-path', '/bad', '--namespace', 'other', '--session-name', 'kept', '--config', '/bad.json', '--idle-timeout', '10s', '--headed', 'false'];
+  const persistent = await run(['--task', 'task', ...flags, 'open', 'https://example.com']);
   expect(persistent.data.argv).toEqual(['open', 'https://example.com']);
   expect(persistent.data.env.AGENT_BROWSER_PROFILE).toBe('/home/claude/.claude/browser/profile');
   const anonymous = await run(['--session', 'public', ...flags, 'open', 'https://example.com']);

@@ -15,11 +15,11 @@ Before signed-in work, claim the shared profile with:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser.ts claim <task-id>
 ```
 
-A `claimed` result permits commands without `--session`. A `busy` result names `holder`: block the current task through `task.ts block` with `--waiting-on <holder>`, `--status-line` explaining the busy browser and `--next` describing the retry. Report that it is waiting. Release after the task with `browser.ts release`; this clears the next task's wait. `browser.ts status` reports the current claim. Commands renew the claim; 15 minutes idle expires it. Reclaim after expiry before continuing.
+A `claimed` result permits commands that pass `--task <task-id>` instead of `--session`, for example `agent-browser --task <task-id> open <url>`. `browser_not_claimed` with a `holder` means another task holds the profile: claim again and do not touch its page. A `busy` result names `holder`: run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <task-id> --waiting-on <holder> --status-line ... --next ...`, with the status line explaining the busy browser and the next step describing the retry. Report that it is waiting. Release after the task with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser.ts release <task-id>`; this clears the next task's wait. A `not_holder` result means your claim expired and `holder` took over: leave its claim alone. `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser.ts status` reports the current claim. Commands renew the claim; 15 minutes idle expires it and the next heartbeat wakes a waiter. Reclaim after expiry before continuing.
 
-For public, anonymous work use a unique `--session <name>` (letters, numbers, hyphens and underscores). These sessions are headless and separate from the signed-in profile. At most three are live at once; close your session when finished. On `session_cap`, wait for a slot rather than retrying with the shared profile.
+For public, anonymous work use a unique `--session <name>` (letters, numbers, hyphens and underscores). These sessions are headless and separate from the signed-in profile. At most three are live at once; close your session when finished, because an unclosed one holds its slot until it has been idle for an hour. On `session_cap`, wait for a slot rather than retrying with the shared profile.
 
-Read upstream command guidance with `agent-browser --session <name> skills get core`; do not guess command syntax. Use a named session for this read because commands without one require a claim.
+Read upstream command guidance with `agent-browser --session <name> skills get core`; do not guess command syntax. Use a named session for this read because the shared profile requires a claim.
 
 After a browser restart, the next command lands on a blank page. Reopen the task URL and check the page before continuing; the profile keeps sign-ins. A hard kill within about 30 seconds of login can lose the sign-in.
 

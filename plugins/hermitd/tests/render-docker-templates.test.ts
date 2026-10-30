@@ -412,7 +412,7 @@ test('browser true pins and verifies both architectures above the root operator 
   expect(image).not.toContain('ENV AGENT_BROWSER_PROFILE');
   const baseline = freshDir();
   await render(baseline);
-  expect(compose(dir).replace('      - HERMIT_PROJECT_DIR=${PWD}', '')).toBe(compose(baseline));
+  expect(compose(dir)).toBe(compose(baseline));
 });
 
 test('managed browser startup and cleanup actions are marker-gated', () => {

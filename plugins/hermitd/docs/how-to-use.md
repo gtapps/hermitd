@@ -212,6 +212,8 @@ Full parallel use needs **4 GiB** of container memory. `/docker-security` defaul
 
 Turn on `chrome: true` via `/hermitd:hermit-settings` for the operator's own signed-in account. Enabling it warns that Claude in Chrome uses the operator's signed-in browser. The hermit's own browser remains the default and it never silently switches after a failure. Hermit passes `--no-chrome` when Chrome is off or auth refuses it. See [Claude Code's Chrome documentation](https://code.claude.com/docs/en/chrome) for prerequisites and tool behavior.
 
+Chrome needs a claude.ai `/login` sign-in (`auth_mode: login`). Setup-tokens and env credentials keep Chrome off; boot and doctor warn when Chrome is requested with either. If netguard filters DNS, its allowlist needs `server=/claudeusercontent.com/1.1.1.1`; the shipped template includes it. Existing installs receive the entry through `/hermitd:hermit-evolve`, and it takes effect after `hermitd-docker down && hermitd-docker up` on the host.
+
 With netguard in enforce mode, browser DNS is limited to the allowlist; add the domains the task needs. The allowlist does not contain the browser: pages can fetch a public IP directly, just as `curl` can. The managed browser runs with `--no-sandbox` beside the agent's credentials. There is no vault or new network filter; see [security limitations](security.md#known-limitations).
 
 ## Common Workflows

@@ -126,7 +126,6 @@ export function renderSources(
   // channel-specific name — fleet mesh reuses them instead of adding its own.
   const envLines = [
     ...(channels.envLines ?? []),
-    ...(inputs.browser ? ['HERMIT_PROJECT_DIR=${PWD}'] : []),
     ...(inputs.fleetMesh ? ['XDG_RUNTIME_DIR=/run/hermit-fleet'] : []),
   ];
   const volumeLines = [
@@ -152,7 +151,7 @@ export function renderSources(
   const dockerfile = renderTemplate(dockerfileTemplate, {
     PACKAGES_BLOCK: [packagesBlock(packages), ...(inputs.browser ? [browserBlock()] : [])].filter(Boolean).join('\n\n'),
     BROWSER_ENV: inputs.browser
-      ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\nENV AGENT_BROWSER_IDLE_TIMEOUT_MS=0\n'
+      ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\n'
       : '',
     CHANNEL_ALLOWLIST_BLOCK: channelAllowlistBlock(inputs.channelPlugins ?? []),
   });

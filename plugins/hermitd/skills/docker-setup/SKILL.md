@@ -307,7 +307,7 @@ After plugin selection is finalized, union the two sources of apt package candid
 
 ### 7b.6. Render templates (deferred from Step 4)
 
-Before rendering, persist the resolved `docker.browser` choice with `settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set docker.browser true|false`. Complete its native permission request. This write precedes the render so interrupted setup retries keep the choice.
+Before rendering, persist the resolved `docker.browser` choice with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set docker.browser true|false`. Complete its native permission request. This write precedes the render so interrupted setup retries keep the choice.
 
 Now that `docker.packages` (Step 7b.packages), channel state dirs (Step 7), and the auth/network choices (Step 2) are finalized, render the three base files in **one** call. `render-docker-templates.ts` derives every `{{PLACEHOLDER}}`, renders `Dockerfile.hermit` + `docker-compose.hermit.yml`, `cp`-copies the entrypoint verbatim, and fails loud (exit 1, nothing written) if any placeholder survives. Anchor the argv to the **absolute** `<PROJECT_ROOT>` (Step 1) — cwd can drift after earlier `docker compose` / `tmux` calls. Pipe the Step 4 input object on stdin:
 
@@ -531,7 +531,7 @@ Why this step exists: mid-setup, claude REPL starts before plugins are fully ena
 
 Why `down` + `up` rather than `hermitd-docker restart`: a recreated container clears ephemeral container-layer state and re-runs the entrypoint from a clean slate.
 
-If `docker.browser` is true, finish with one public-page check inside the container: `docker compose -f docker-compose.hermit.yml exec -T hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. Report whether the page loaded; surface a failure rather than switching browsers.
+If `docker.browser` is true, finish with one public-page check inside the container: `docker compose -f docker-compose.hermit.yml exec -T -e HERMIT_PLUGIN_ROOT=/home/claude/.claude/plugins/marketplaces/hermitd/plugins/hermitd hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. The `-e` is required because `exec` does not inherit the entrypoint's environment. Report whether the page loaded; surface a failure rather than switching browsers.
 
 ### 8c. Seed permission rules
 

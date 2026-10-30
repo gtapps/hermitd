@@ -38,11 +38,16 @@ export function browserLease(action: 'claim' | 'release' | 'status' | 'renew', t
       lease.holder = null;
       lease.expires_at = 0;
       save();
+    } else if (action === 'status' && !lease.holder && lease.waiters.length) {
+      // Recovers a waiter that blocked after the release meant to wake it.
+      clearNextWaiter(dir, lease);
+      save();
     }
     if (action === 'status') return lease.holder
       ? { status: 'claimed', holder: lease.holder, expires_at: lease.expires_at }
       : { status: 'available' };
     if (action === 'release') {
+      if (task && lease.holder && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
       if (lease.holder) clearNextWaiter(dir, lease);
       lease.holder = null;
       lease.expires_at = 0;
@@ -51,13 +56,14 @@ export function browserLease(action: 'claim' | 'release' | 'status' | 'renew', t
     }
     if (action === 'claim' && !task?.trim()) throw new Error('task_required');
     if (action === 'claim' && lease.holder && lease.holder !== task) {
-      if (!lease.waiters.some(waiter => waiter.task === task)) {
-        lease.waiters.push({ task: task!, waiting_on: lease.holder });
-        save();
-      }
+      const waiter = lease.waiters.find(waiter => waiter.task === task);
+      if (waiter) waiter.waiting_on = lease.holder;
+      else lease.waiters.push({ task: task!, waiting_on: lease.holder });
+      save();
       return { status: 'busy', holder: lease.holder };
     }
     if (action === 'renew' && !lease.holder) return { status: 'unclaimed' };
+    if (action === 'renew' && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
     if (action === 'claim') {
       lease.holder = task!;
       lease.waiters = lease.waiters.filter(waiter => waiter.task !== task);
@@ -70,13 +76,18 @@ export function browserLease(action: 'claim' | 'release' | 'status' | 'renew', t
   }
 }
 
+/** A holder that never releases has no other trigger for its idle expiry. */
+export function sweepBrowserLease(dir: string): void {
+  if (fs.existsSync(path.join(dir, 'state/browser-lease.json'))) browserLease('status', undefined, dir);
+}
+
 function clearNextWaiter(dir: string, lease: BrowserLease): void {
-  const records = readTasks(dir);
-  while (lease.waiters.length) {
-    const next = lease.waiters.shift()!;
-    const task = records.find(record => record.id === next.task && record.status === 'open' && record.waiting_on === next.waiting_on);
-    if (!task) continue;
-    mutateTask(dir, 'note', task.id, { 'clear-waiting': true }, '');
-    return;
-  }
+  if (!lease.waiters.length) return;
+  const open = new Map(readTasks(dir).filter(record => record.status === 'open').map(record => [record.id, record]));
+  // An open task not waiting yet stays queued: it may be between `busy` and its block.
+  lease.waiters = lease.waiters.filter(waiter => open.has(waiter.task));
+  const next = lease.waiters.find(waiter => open.get(waiter.task)!.waiting_on === waiter.waiting_on);
+  if (!next) return;
+  lease.waiters.splice(lease.waiters.indexOf(next), 1);
+  mutateTask(dir, 'note', next.task, { 'clear-waiting': true }, '');
 }

@@ -6,7 +6,7 @@ import { hermitDir } from './lib/cc-compat';
 import { browserLease } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
-import { printJson } from './lib/cli';
+import { failJson, printJson, readJson } from './lib/cli';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 
@@ -21,18 +21,16 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   const lock = `${file}.lock`;
   if (!acquireLockWithWait(lock, 2000)) throw new Error('browser_lock_unavailable');
   try {
-    let pending: Record<string, number[]> = {};
-    try { pending = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error: any) {
-      if (error.code !== 'ENOENT') throw error;
-    }
+    const pending: Record<string, number[]> = readJson(file) ?? {};
     for (const [name, pids] of Object.entries(pending)) {
       pending[name] = pids.filter(pid => alive(pid) && !(remove && name === session && pid === process.pid));
       if (!pending[name].length) delete pending[name];
     }
     const live = new Set(Object.keys(pending));
     for (const name of fs.readdirSync(socketDir)) {
-      if (!name.endsWith('.pid') || name === 'default.pid') continue;
-      const pid = Number(fs.readFileSync(path.join(socketDir, name), 'utf8').trim());
+      if (!name.endsWith('.pid') || name === 'default.pid' || name === 'dashboard.pid') continue;
+      // Tolerant read: another session's close can remove its file mid-scan.
+      const pid = readJson(path.join(socketDir, name));
       if (Number.isInteger(pid) && pid > 0 && alive(pid)) live.add(name.slice(0, -4));
     }
     if (!remove && !live.has(session) && live.size >= 3) return false;
@@ -56,6 +54,9 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
   delete env.AGENT_BROWSER_NAMESPACE;
   delete env.AGENT_BROWSER_PROFILE;
   delete env.AGENT_BROWSER_HEADED;
+  delete env.AGENT_BROWSER_CONFIG;
+  // Anonymous sessions keep upstream's idle backstop: one nobody closed frees its cap slot.
+  delete env.AGENT_BROWSER_IDLE_TIMEOUT_MS;
   delete env.DISPLAY;
   const index = argv.indexOf('--session');
   const equals = argv.find(arg => arg.startsWith('--session='));
@@ -68,17 +69,21 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
   fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   fs.chmodSync(socketDir, 0o700);
   env.AGENT_BROWSER_SOCKET_DIR = socketDir;
-  env.AGENT_BROWSER_IDLE_TIMEOUT_MS = '0';
-  // Launch-policy flags cannot override the wrapper's profile or headed mode.
-  const policyFlags = new Set(['--profile', '--args', '--executable-path']);
-  const argsWithoutPolicy: string[] = [];
+  const taskIndex = argv.indexOf('--task');
+  const task = taskIndex >= 0 ? argv[taskIndex + 1] : argv.find(arg => arg.startsWith('--task='))?.slice('--task='.length);
+  // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy or headed
+  // mode. --task is the wrapper's own, so it never reaches the real binary.
+  const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task']);
+  const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (policyFlags.has(argv[i])) { i++; continue; }
     if ([...policyFlags].some(flag => argv[i].startsWith(flag + '='))) continue;
-    if (argv[i] === '--headed' || argv[i].startsWith('--headed=')) continue;
-    argsWithoutPolicy.push(argv[i]);
+    if (argv[i] === '--headed' || argv[i].startsWith('--headed=')) {
+      if (argv[i] === '--headed' && ['true', 'false'].includes(argv[i + 1])) i++;
+      continue;
+    }
+    args.push(argv[i]);
   }
-  let args = argsWithoutPolicy;
   if (session) {
     env.AGENT_BROWSER_ARGS = '--no-sandbox';
     if (!sessionAdmission(socketDir, session)) {
@@ -86,11 +91,14 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
       return 1;
     }
   } else {
-    if (browserLease('renew', undefined, dir).status !== 'claimed') {
-      printJson({ error: 'browser_not_claimed' });
+    // A task whose claim expired must not drive the page the next holder opened.
+    const renewed = browserLease('renew', task, dir);
+    if (renewed.status !== 'claimed') {
+      printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
       return 1;
     }
     env.DISPLAY = ':1';
+    env.AGENT_BROWSER_IDLE_TIMEOUT_MS = '0';
     env.AGENT_BROWSER_HEADED = '1';
     env.AGENT_BROWSER_PROFILE = '/home/claude/.claude/browser/profile';
     env.AGENT_BROWSER_ARGS = '--no-sandbox,--window-size=500,1082,--window-position=0,0';
@@ -99,14 +107,12 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
     const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' });
     return await child.exited;
   } finally {
-    if (session) sessionAdmission(socketDir, session, true);
+    // A reservation left behind ends with this pid; it must not replace the child's exit code.
+    if (session) try { sessionAdmission(socketDir, session, true); } catch {}
   }
 }
 
 if (import.meta.main) {
   try { process.exitCode = await runBrowserAgent(process.argv.slice(2)); }
-  catch (error) {
-    printJson({ error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
-  }
+  catch (error) { failJson(error); }
 }
