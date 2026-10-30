@@ -31,6 +31,30 @@ test('doctor reports on the real root without creating state in a projection', a
   expect(fs.existsSync(path.join(projection, 'state'))).toBe(false);
 });
 
+test('doctor never creates state in a projection outside the pinned root', async () => {
+  const root = freshDir();
+  const pinnedHermit = path.join(root, 'pinned', '.hermit');
+  const realHermit = path.join(root, 'other', '.hermit');
+  const nested = path.join(root, 'other', 'nested');
+  const projection = path.join(nested, '.hermit');
+  fs.mkdirSync(path.join(pinnedHermit, 'state'), { recursive: true });
+  fs.mkdirSync(path.join(realHermit, 'state'), { recursive: true });
+  fs.mkdirSync(projection, { recursive: true });
+  fs.writeFileSync(path.join(pinnedHermit, 'config.json'), '{}');
+  fs.writeFileSync(path.join(realHermit, 'config.json'), '{}');
+  fs.writeFileSync(path.join(projection, 'config.json'), '{}');
+
+  const result = await runScript('doctor-check.ts', {
+    cwd: nested,
+    args: ['.hermit'],
+    env: { AGENT_DIR: pinnedHermit, CLAUDE_PROJECT_DIR: '' },
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(fs.existsSync(path.join(realHermit, 'state', 'doctor-report.json'))).toBe(true);
+  expect(fs.existsSync(path.join(projection, 'state'))).toBe(false);
+});
+
 test('doctor retains a state directory that fails the pin', async () => {
   const root = freshDir();
   const localHermit = path.join(root, '.hermit');
