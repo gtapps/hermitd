@@ -146,6 +146,10 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   }
   if (verb === 'pause' || verb === 'watchdog') return wrapper(project, `hermitd-${verb}`, args);
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);
+  if (verb === 'restart') {
+    if (process.env.HERMIT_RESIDENT === '1') throw new Error('restart_refused_resident: restart your agent from a separate terminal');
+    if (isContainer()) throw new Error('restart_refused_container: restart your agent from the host');
+  }
   const runtime = readRuntime(project);
   const docker = dockerTransport(project);
   const tmux = tmuxTransport(project, runtime.tmux_session);

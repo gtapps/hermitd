@@ -57,6 +57,8 @@ import { run as harnessCommand } from './lib/prompt-stages/harness-command';
 import { run as skillRelay } from './lib/prompt-stages/skill-relay';
 import { run as harnessVerify } from './lib/prompt-stages/harness-verify';
 import { run as shutdownGate } from './lib/prompt-stages/shutdown-gate';
+import { firstChatContext } from './lib/prompt-stages/first-chat';
+import { deliveredFirstChat } from './lib/first-chat';
 import { run as channelStatusResponder } from './lib/prompt-stages/channel-status-responder';
 
 // Matches stop-pipeline.ts — a prompt payload far past this is not something a
@@ -68,6 +70,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
   const out: string[] = [];
   let blockReason: string | null = null;
   let operatorActivityKept = false;
+  let firstChatDelivered: string | null = null;
   let residentAdmitted = false;
   let admittedSession: string | null = null;
   let admittedSource: string | null = null;
@@ -198,6 +201,10 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     if (!ctx.skipHarnessCommand) await stage('harness-command', harnessCommand, ctx);
     if (harnessMode) return;
     await stage('channel-responder-invoke', invokeResponder, ctx);
+    await stage('first-chat', () => {
+      const context = firstChatContext(ctx, operatorActivityKept);
+      if (context) { firstChatDelivered = dir; return { context }; }
+    }, ctx);
     await stage('skill-relay', skillRelay, ctx);
 
     // 7. Deterministic status.
@@ -225,6 +232,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // Last, and only here: the disposition is now settled as "the model will take
     // this turn". Written after stdout so a throw on this write can never swallow
     // the decision or the injected context — emit()'s caller catches and exits 0.
+    if (firstChatDelivered) deliveredFirstChat(firstChatDelivered);
     if (operatorActivityKept) openTurnMarker();
     if (residentAdmitted) observeExecution(hermitDir(), 'in_flight', admittedSession, admittedSource, null);
   }

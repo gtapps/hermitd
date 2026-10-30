@@ -157,7 +157,8 @@ your-project/
 │   │   ├── runtime.json              # Process stamp (config_dir, env_auth, inbox_socket, session_pid, peer_name); execution is state/execution.json
 │   │   ├── alert-state.json          # Alert dedup state + self-eval evidence (heartbeat-owned)
 │   │   ├── reflection-state.json     # Last reflection timestamp (reflect-owned)
-│   │   ├── channel-activity.json     # Last channel interaction timestamp (channel-hook-owned)
+│   │   ├── channel-activity.json     # Last reply + matching inbound-reply evidence (channel-hook-owned)
+│   │   ├── first-chat.json           # Fresh-install first-conversation marker; absent on existing installs
 │   │   ├── channel-replies.jsonl     # Append-only channel reply log (channel-hook-owned)
 │   │   ├── channel-log.sqlite        # Episodic DM log + FTS5 index (PROP-010); created lazily, absent until first message
 │   │   ├── proposal-metrics.jsonl    # Append-only event log (proposal-create + proposal-act)
@@ -198,7 +199,8 @@ One writer per state file. No shared mutation bus. (Exception: `state/micro-prop
 | `state/alert-state.json`       | heartbeat only                                      | heartbeat     |
 | `state/reflection-state.json`  | reflect + session (non-overlapping phases)          | heartbeat (debounce), hermit-settings (session-check display) |
 | `state/channel-responder-invoked.json` | channel-responder-invoked.ts only (resident Skill PostToolUse; session id and invocation time) | channel-reply-reminder stage (compares session and context-reset stamp) |
-| `state/channel-activity.json`  | channel-hook.ts only                                | channel-responder, heartbeat                                  |
+| `state/first-chat.json` | first-chat.ts arm/clear + delivered user-prompt pipeline (resident-only attempts) | first-chat pipeline stage, resident-start |
+| `state/channel-activity.json`  | channel-hook.ts only                                | channel-responder, heartbeat, channel-preflight                                  |
 | `state/channel-replies.jsonl`  | channel-hook.ts (append only)                       | none — reflect's engagement join was removed (the ledger records outbound sends only, so it could not measure operator engagement) |
 | `state/channel-log.sqlite`     | channel-reply-reminder stage + channel-hook.ts (append, via `lib/channel-log.ts`); weekly-review marks/prunes | search.ts (recall, fourth source); weekly-review consolidation |
 | `state/observations.jsonl`     | reflect-precheck (`cost-spike`, `startup-drift`) + transcript-digest `--record-observation` (`behavior-digest`) + channel-responder via `observations.ts` (`skill-correction`) + reflect (`quick-deferral`, `reflect-noticed`); append only | reflect (step 3b graduation), reflection-judge (§1.4 ledger verification) |
@@ -413,3 +415,9 @@ Deny patterns block dangerous operations regardless of permission mode. See [Sec
 2. **Boot script timing** — `hermitd-start.ts` waits 3 seconds before sending commands to tmux. May not be enough on slow hardware. Fix: poll `tmux capture-pane` for readiness.
 
 3. ~~**Silent cost-log corruption**~~ — Fixed: `cost-index.json` carries a `skipped_corrupt_lines` counter incremented on every `JSON.parse` failure; `doctor-check.ts` surfaces a `warn` when the counter is non-zero.
+
+### First conversation
+
+Plain hatch marks its setup session as a guest and arms `state/first-chat.json` before starting the resident. The user-prompt pipeline injects `prompts/first-chat.md` on eligible operator turns in the terminal or home chat, excluding guests, routine/bootstrap prompts and paused turns. Only emitted, unblocked injections increment attempts; three deliveries clear the marker. The conversation saves language, confirms timezone, sets up one job and offers an approved OPERATOR.md purpose write. Fixed-text resync follows the reply. Existing installs have no marker; their per-turn cost is one file stat with no injected text.
+
+Channel preflight is fail-closed for known platforms and explicitly unchecked for other plugins. `last_inbound_reply: {chat_id, at}` in channel activity proves two-way reachability only when its chat matches the configured home. Private terminal token entry preserves other environment lines and writes mode 600.

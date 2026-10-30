@@ -33,7 +33,7 @@ import path from 'node:path';
 import { SETTINGS, READ_ONLY, byArg, type Setting } from './lib/settings/registry';
 import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
-import { persistConfig } from './lib/config-write';
+import { persistConfig, canonicalTimezone } from './lib/config-write';
 import { validate, ROUTINE_ID_RE } from './validate-config';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
@@ -355,6 +355,10 @@ export function coerce(setting: Setting, raw: string): { ok: true; value: Json }
   const enumHasDefault = setting.kind === 'enum' && (setting.values ?? []).includes('default');
   if (setting.nullable && raw === 'default' && !enumHasDefault) return { ok: true, value: null };
   switch (setting.kind) {
+    case 'timezone': {
+      const zone = canonicalTimezone(raw);
+      return zone ? { ok: true, value: zone } : { ok: false, message: 'timezone expects an IANA timezone name (for example Europe/Lisbon)' };
+    }
     case 'boolean': {
       const truthy = ['true', 'yes', 'on', 'enable', 'enabled'];
       const falsy = ['false', 'no', 'off', 'disable', 'disabled'];

@@ -1,3 +1,4 @@
+import { BOOTSTRAP_PREFIX } from './lib/bootstrap-prompt';
 process.stdout.on('error', () => {});
 
 // UserPromptSubmit + SessionStart hook — records when an operator prompt is received.
@@ -144,6 +145,7 @@ function isRoutinePrompt(prompt: string, channel?: ChannelGateInputs): boolean {
       && !isSelfMentionedSync(AGENT_DIR, config, envelope.sourceKey, envelope.chatId, envelope.body, envelope)) return true;
     return !isAllowedSender(config, envelope.source, envelope.userId);
   }
+  if (t.startsWith(BOOTSTRAP_PREFIX)) return true;
   if (INJECTED_EXACT.has(t)) return true;
   if (t.startsWith('/') && isInflightCommand(t)) return true;
   // Peer delivery passes only the message body to this hook, not the

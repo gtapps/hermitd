@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { BOOTSTRAP_PREFIX } from './lib/bootstrap-prompt';
 /**
  * Boot script for hermit autonomous sessions.
  *
@@ -1308,8 +1309,12 @@ function clearChannelFailureCache(cmd: string[]): void {
  * command with inherited stdio and exit with its status. The lifecycle lock
  * is released first — Python's flock fd was O_CLOEXEC and released on exec.
  */
-function execvp(cmd: string[]): never {
+export function execvp(cmd: string[]): never {
   releaseLock(LIFECYCLE_LOCK);
+  if (!process.stdin.isTTY) {
+    console.error('[hermit] ERROR: interactive mode requires a terminal. Install tmux and retry.');
+    process.exit(1);
+  }
   const res = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
   process.exit(res.status ?? 1);
 }
@@ -1520,9 +1525,9 @@ export function bootstrapPrompt(opts: {
   if (custom) steps.push(`${opts.bootSkill} (if that skill does not exist, invoke ${DEFAULT_BOOT_SKILL} instead)`);
   else if (opts.autoSession) steps.push(opts.bootSkill);
   if (steps.length === 0) return null;
-  if (steps.length === 1) return custom ? `Always-on bootstrap. Invoke ${steps[0]}.` : steps[0];
+  if (steps.length === 1) return custom ? `${BOOTSTRAP_PREFIX}${steps[0]}.` : steps[0];
   const numbered = steps.map((s, i) => `(${i + 1}) ${s}`).join(', ');
-  return `Always-on bootstrap. Invoke these skills in order: ${numbered}.`;
+  return `${BOOTSTRAP_PREFIX}these skills in order: ${numbered}.`;
 }
 
 async function main(): Promise<void> {

@@ -508,6 +508,7 @@ describe('static settings policy', () => {
 
 for (const mode of ['bypassPermissions', 'auto', 'default']) {
   for (const [args, label] of [
+    ['pair discord ABC123 --restrict', 'pair discord code ABC123 (home chat if unset) + restrict access to allowed users'],
     ['pair discord ABC123', 'pair discord code ABC123 (home chat if unset)'],
     ['policy telegram allowlist', 'policy telegram allowlist'],
     ['group-add discord 123 --mention no --allow none --shared no --passive yes --ack-off', 'listen in discord chat 123: mention=no allow=anyone shared=no passive=yes + seen-emoji off (channel-wide)'],

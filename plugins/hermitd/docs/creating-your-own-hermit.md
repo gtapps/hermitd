@@ -6,7 +6,7 @@ Every Hermit is yours from the moment you run `/hermitd:hatch`. This guide cover
 
 ## Start Anywhere
 
-An existing codebase, an empty folder for a personal assistant, a research project — `/hermitd:hatch` adapts to whatever it finds. The wizard scans your folder, asks a few questions, and generates an `OPERATOR.md` that shapes how your hermit works for you.
+An existing codebase, an empty folder for a personal assistant, a research project — `/hermitd:hatch` adapts to whatever it finds. Plain hatch asks where to chat and starts your agent. Its first conversation confirms your time, sets up one real job and offers to save your standing purpose in `OPERATOR.md` with approval. `/hermitd:hatch advanced` scans your folder and runs the full purpose and deployment wizard.
 
 That's the first customization lever, and for most people it's the only one they need.
 

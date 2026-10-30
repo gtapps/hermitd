@@ -54,3 +54,21 @@ test('undefined before records one creation row and does not forgive missing key
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ actor: 'test', path: '*', new: 'config created' });
 });
+
+test('changed timezones canonicalize and invalid zones preserve config', () => {
+  const { hermitDir, before, file } = fixture();
+  const after = { ...before, timezone: 'europe/lisbon' };
+  expect(persistConfig({ hermitDir, before, after, actor: 'test' }).newErrors).toEqual([]);
+  expect(JSON.parse(fs.readFileSync(file, 'utf8')).timezone).toBe('Europe/Lisbon');
+  for (const timezone of ['+01:00', 'nowhere/invalid', '']) {
+    const bytes = fs.readFileSync(file);
+    expect(persistConfig({ hermitDir, before, after: { ...before, timezone }, actor: 'test' }).newErrors).toContain('timezone: expected an IANA timezone name');
+    expect(fs.readFileSync(file)).toEqual(bytes);
+  }
+});
+
+test('unchanged legacy timezone still saves', () => {
+  const { hermitDir, before } = fixture();
+  before.timezone = '+01:00';
+  expect(persistConfig({ hermitDir, before, after: { ...before, agent_name: 'Agent' }, actor: 'test' }).newErrors).toEqual([]);
+});

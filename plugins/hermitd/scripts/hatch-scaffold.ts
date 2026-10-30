@@ -30,6 +30,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { localISOStamp } from './lib/time';
+import { markGuest } from './lib/guest-marker';
+import { flagValue } from './lib/cli';
 import { exitError } from './lib/cli';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
@@ -79,6 +81,8 @@ function copy(src: string, dest: string): void {
 for (const d of ['proposals', 'templates', 'state', 'raw/.archive', 'compiled', 'bin']) {
   fs.mkdirSync(path.join(hermit, d), { recursive: true });
 }
+
+markGuest(path.join(hermit, 'state'), flagValue(process.argv.slice(3), '--session-id'));
 
 // --- REFRESH: hermit-owned pristine templates ---
 for (const name of ['PROPOSAL.md.template']) {

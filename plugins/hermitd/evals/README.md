@@ -147,3 +147,7 @@ channel-routing moved from hand-copied session context to the real SessionStart 
 ## Changing routing wording
 
 Change one rule at a time and keep it only when both `train` and `heldout` improve; revert when only `train` rises (overfitting) or either drops. A new misroute seen in the field becomes a `heldout` case first.
+
+## first-chat
+
+`first-chat/portuguese-time` seeds the real first-chat marker and OPERATOR.md template. `EVAL_HERMIT_RESIDENT=1` admits the evaluation session as the resident so the real prompt pipeline can inject the first-chat instructions. It checks Portuguese, time confirmation and the invitation to set up a job without writing a standing purpose before consent. Run with `--tag first-chat --scaffold --allow-tools Bash`; model evaluation and real-account onboarding remain separate from the deterministic test suite.

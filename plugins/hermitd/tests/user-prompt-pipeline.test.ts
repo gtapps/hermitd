@@ -910,3 +910,35 @@ describe('conversation commands', () => {
     }
   });
 });
+
+describe('first chat delivery', () => {
+  for (const scenario of ['terminal', 'owner', 'stranger', 'wrong_chat', 'guest', 'routine', 'boot', 'paused', 'absent', 'blocked']) {
+    test(scenario, async () => {
+      const { armFirstChat, readFirstChat } = await import('../scripts/lib/first-chat');
+      const wd = setupChannelWorkdir();
+      const dir = hermit(wd.dir);
+      if (scenario !== 'absent') armFirstChat(dir);
+      if (scenario === 'guest') markGuest(path.join(dir, 'state'), 'guest-first');
+      if (scenario === 'paused') fs.writeFileSync(path.join(dir, 'state/pause.json'), JSON.stringify({ paused: true }));
+      if (scenario === 'blocked') markGuest(path.join(dir, 'state'), 'guest-first');
+      const prompt = scenario === 'terminal' || scenario === 'guest' || scenario === 'paused' || scenario === 'absent' ? 'hello'
+        : scenario === 'routine' ? '[hermit-routine:heartbeat] wake'
+        : scenario === 'boot' ? 'Always-on bootstrap. Invoke these skills in order: (1) /hermitd:hermit-routines load, (2) /hermitd:resident-start.'
+        : envelope('hello', scenario === 'stranger' ? 'stranger' : 'u1', scenario === 'wrong_chat' ? 'other' : '12345');
+      const delivered = ['terminal', 'owner'].includes(scenario);
+      const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, stdin: JSON.stringify({ prompt, session_id: 'guest-first' }) });
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout.includes('<first-chat>')).toBe(delivered);
+      if (scenario !== 'absent') expect(readFirstChat(dir)?.attempts).toBe(delivered ? 1 : 0);
+    });
+  }
+  test('clears after three delivered injections', async () => {
+    const { armFirstChat, readFirstChat } = await import('../scripts/lib/first-chat');
+    const wd = trackedWorkdir(); const dir = hermit(wd.dir); armFirstChat(dir);
+    for (let i = 0; i < 4; i++) {
+      const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, stdin: JSON.stringify({ prompt: 'hello' }) });
+      expect(r.stdout.includes('<first-chat>')).toBe(i < 3);
+    }
+    expect(readFirstChat(dir)).toBeNull();
+  });
+});

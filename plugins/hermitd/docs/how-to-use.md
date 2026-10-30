@@ -23,7 +23,7 @@ To uninstall this folder's hermit later:
 curl -fsSL https://gtapps.github.io/hermitd/uninstall.sh | bash
 ```
 
-It installs anything missing, registers the marketplace, installs the plugin for this folder, then launches Claude Code with the `/hatch` setup wizard after a short countdown (Ctrl+C skips the launch and prints the command to run instead; so does running without a terminal, e.g. over plain ssh or in CI). It takes no arguments.
+It installs anything missing, registers the marketplace, installs the plugin for this folder, then launches Claude Code with `/hermitd:hatch` setup after a short countdown (Ctrl+C skips the launch and prints the command to run instead; so does running without a terminal, e.g. over plain ssh or in CI). It takes no arguments.
 
 To read it before running it:
 
@@ -42,7 +42,7 @@ cd /path/to/your/project
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
 ```
 
-`--scope local` keeps the hermit personal to this folder rather than committing it to the repo for everyone. `/hatch` asks the shared-vs-personal question separately.
+`--scope local` keeps the hermit personal to this folder rather than committing it to the repo for everyone. Plain hatch follows that scope; `/hermitd:hatch advanced` lets you override it.
 
 > **Upgrading is not a second `curl`.** Once installed, use `hermitd update` (local/tmux), `hermitd update` (Docker), or `claude plugin update hermitd@hermitd --scope local`. Re-running the installer is harmless but moves nothing.
 
@@ -54,7 +54,11 @@ claude plugin install hermitd --marketplace gtapps/hermitd --scope local
 /hermitd:hatch
 ```
 
-The wizard sets up your agent's identity (name, language, timezone, [autonomy level](config-reference.md#escalation-levels)) and operational preferences (channels, remote control, heartbeat, daily routines, budgets). Then it scans your folder and generates an `OPERATOR.md` — your rulebook. Starting fresh with an empty folder? It'll ask what the assistant is for.
+Plain hatch checks tmux, asks where you want to chat, sets up that channel, and starts your agent. Choose Telegram, Discord, iMessage on macOS, Claude app, or enter `plugin@marketplace` through Other. Telegram and Discord use private terminal token entry by default: `hermitd run channel-token-set <channel>` (or `.hermit/bin/hermitd-run channel-token-set <channel>`). Pasting in chat is optional and leaves the token in session history. Checks name missing or rejected tokens and Discord intent/invite issues; unsupported probes report `not_checked`.
+
+Once your agent is up, DM the bot for its code and approve pairing with restricted access. Then send your first message. Your agent replies in your language, confirms your time, and helps set up one job. If the time is wrong, give a city so it can save your timezone. `OPERATOR.md` stays a template until you accept the offer to save your standing purpose through its normal approval. Existing agents without a first-chat marker do not get this conversation.
+
+Use `/hermitd:hatch advanced` for the full identity, purpose and deployment wizard (including Docker or interactive mode). Re-initialization always uses that wizard.
 
 ### OPERATOR.md
 
@@ -196,7 +200,7 @@ hermitd start
 hermitd stop
 ```
 
-To activate a channel in tmux mode, run `/hermitd:channel-setup` — it adds the channel to `config.json` if you skipped that at hatch, installs the plugin, configures the token, and guides pairing. `hermitd-start` passes `--channels` automatically on boot.
+To add or repair a channel after hatch, run `/hermitd:channel-setup` — it adds the channel to `config.json` if you skipped that at hatch, installs the plugin, configures the token, and guides pairing. `hermitd-start` passes `--channels` automatically on boot.
 
 See [Always-On Operations](always-on-ops.md) for tmux setup and operational details.
 

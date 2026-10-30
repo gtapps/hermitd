@@ -184,6 +184,9 @@ if (Object.hasOwn(answers, 'channels')) {
     if (!Object.hasOwn(merged, 'default_chat_id')) merged.default_chat_id = null;
     if (Object.hasOwn(ans, 'state_dir')) merged.state_dir = ans.state_dir;
     else if (!Object.hasOwn(merged, 'state_dir')) merged.state_dir = `.claude.local/channels/${name}`;
+    for (const key of ['plugin', 'marketplace']) {
+      if (Object.hasOwn(ans, key)) merged[key] = ans[key];
+    }
     if (Object.hasOwn(ans, 'allowed_users')) merged.allowed_users = ans.allowed_users;
     if (Object.hasOwn(ans, 'passive_chats')) {
       merged.passive_chats = ans.passive_chats;

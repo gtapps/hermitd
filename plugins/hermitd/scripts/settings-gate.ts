@@ -474,7 +474,7 @@ function channelAccessAsks(command: string): string[] {
     const rest = command.replace(/['"\\]/g, '');
     return [...rest.matchAll(/(?:^|\s)(pair|policy|group-add)\s+(\S+)\s+(\S+)(.*)/g)].map(m => {
       const [, verb, channel, value, flags] = m;
-      if (verb === 'pair') return `pair ${channel} code ${value} (home chat if unset)`;
+      if (verb === 'pair') return `pair ${channel} code ${value} (home chat if unset)${/(?:^|\s)--restrict(?:\s|$)/.test(flags) ? ' + restrict access to allowed users' : ''}`;
       if (verb === 'policy') return `policy ${channel} ${value}`;
       const option = (name: string) => flags.match(new RegExp(`(?:^|\\s)--${name}\\s+(\\S+)`))?.[1] ?? '?';
       const allow = option('allow');

@@ -67,6 +67,16 @@ const test = bunTest.serial;
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 
+describe('interactive fallback', () => {
+  test('without a TTY refuses before launching Claude', () => {
+    const result = Bun.spawnSync([process.execPath, '-e', `import { execvp } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/hermitd-start.ts'))}; execvp(['claude']);`], {
+      stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain('interactive mode requires a terminal');
+  });
+});
+
 // Real container detection (mirror of isContainer()) — used to skip the
 // tests that require is_container() === false, which can't be faked.
 const IN_CONTAINER =

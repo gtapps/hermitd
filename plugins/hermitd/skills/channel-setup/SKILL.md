@@ -9,25 +9,17 @@ disable-model-invocation: true
 Activate a channel, adding the `config.json` entry first when there isn't one. Local/tmux pairing is this skill's own flow; a Docker hermit is routed by the check below.
 
 ## Commands
+- `channel-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-preflight.ts .hermit <channel>`
+- `channel-bot-id-write`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts .hermit <channel> --write`
+- `channel-pair-restrict`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code> --restrict`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
 
 ## Plan
 
 ### 1. Read config and detect channels
 
-**Runtime routing (first):** evaluate in this order.
+**Runtime routing (first):** detect container status and read project status. A resident (`HERMIT_RESIDENT=1`) or container must never run `hermitd restart`; give the separate host-terminal recovery command. When compose exists, run `docker-preflight.ts` from the plugin scripts: a non-null `live_owner` keeps a live host tmux agent on the local flow. Otherwise inspect `docker compose -f docker-compose.hermit.yml ps --status running --format '{{.Service}}'`; a failed inspection stops with its output. Record whether your agent is live for the shared restart stage. An offline Docker agent needs host `hermitd start`; diagnostics are `hermitd docker logs --tail=60`.
 
-1. **Inside the container.** Run `[ -f /.dockerenv ] || [ -f /run/.containerenv ] && echo container || echo host`. If `container`: read `.hermit/config.json`. For each enabled channel object, resolve `state_dir` as step 4 does (config `state_dir`, default `.claude.local/channels/<channel>`; if relative, make it absolute against the project root) and print that absolute path literally. Print and stop:
-   > DM the bot for a code, then run `/hermitd:channel-setup` from a normal host session at the project root.
-   If no enabled channel, print only the host-run sentence and stop. No `AskUserQuestion` on this path.
-
-2. **No compose file.** If `docker-compose.hermit.yml` is absent at the project root, continue with the local/tmux flow below.
-
-3. **Live tmux hermit.** Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/docker-preflight.ts "$(pwd)"`. If its `live_owner` is non-null, a host tmux hermit owns this project despite the compose file: continue with the local/tmux flow below.
-
-4. **Compose present.** Run `docker compose -f docker-compose.hermit.yml ps --status running --format '{{.Service}}'`. Non-zero exit → print its output, stop. If `hermit` is absent from the output: after channel selection, run steps 2 and 4, skip 3, then stop with `hermitd start` and "re-run this skill to pair". If `hermit` is present: docker-running.
-
-5. **docker-running.** After channel selection, skip step 3 (the container installs channel plugins at boot). Run step 4; a `channel-bot-id.ts` skip with `http_401` or `http_403` is reported as "token rejected by <platform>, fix it before restarting". If this run created the config entry or wrote the token → stop: "The bot is offline until the container restarts and loads it: `hermitd restart`, then DM the bot for a code and re-run this skill. Still no code after a restart: `hermitd docker logs --tail=60` shows the plugin's own error (wrong token, missing Message Content intent, install failure), and `/hermitd:hermit-doctor` checks the token." Otherwise run §5, §6, §6a, §6b, and §6c against the host-visible channel `<state_dir>`, passing the absolute project `.hermit` directory as `<hermit_state_dir>` to `channel-access.ts`. No restart prompt is needed for an already-running bot. Continue with §6d, §6e, then §7 for each paired channel. Add to the pairing question: "No code from the bot? It has not loaded the token: `hermitd restart`, then re-run this skill."
 
 Read `.hermit/config.json`. Collect all entries under `channels` that are valid objects, tracking which are disabled (`enabled: false`).
 
@@ -39,7 +31,7 @@ echo '{"channels":{"<name>":{"enabled":true}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scri
 
 The script fills `enabled`, `default_chat_id: null`, and `state_dir` (`.claude.local/channels/<name>`), validates the whole config, preserves every other key, and merges onto an existing entry rather than replacing it. It prints `OK`. On `error` nothing was written: report it and stop — never fall through into steps 2–6 against a channel that isn't in `config.json`.
 
-- If no channels configured: offer to add one — `AskUserQuestion` (header: "Channel") with options **Discord**, **Telegram**, **Cancel**. On **Cancel**, stop without writing. Otherwise create the entry and continue with that channel selected. Do not offer iMessage here: step 4 defines token vars for Discord and Telegram only.
+- If no channels configured: offer to add one — `AskUserQuestion` (header: "Channel") with options **Discord**, **Telegram**, **iMessage** on macOS, **Cancel**, plus Other for `plugin@marketplace`. On **Cancel**, stop without writing. Otherwise create the entry and continue with that channel selected. iMessage has no token or Hermit pairing. For Other persist `plugin` and `marketplace` in the channel entry and follow that plugin’s own setup.
 - If entries exist but all are disabled: name them, then ask with `AskUserQuestion` (header: "Channel") — the disabled channel names plus **Cancel** — which to re-enable. On **Cancel**, stop without writing. Otherwise create the entry for the chosen name (this flips `enabled` and leaves `default_chat_id`, `state_dir`, and `allowed_users` intact) and continue with it selected.
 - If exactly one enabled channel and nothing disabled: use it automatically.
 - Otherwise (several enabled, or enabled and disabled side by side): ask with `AskUserQuestion` (header: "Channel") — every channel name as an option, disabled ones labelled `<name> — disabled`, plus **All** (enabled channels only) — which to set up. If a disabled name is chosen, create the entry for it first (re-enabling it), then continue with it selected.
@@ -74,7 +66,7 @@ Resolve the expected marketplace for this channel:
 
 Then check whether the surviving set contains an entry where:
 
-- the plugin name (substring of `id` left of `@`) equals `<channel>`, AND
+- the plugin name (substring of `id` left of `@`) equals the configured `plugin` or, when absent, `<channel>`, AND
 - the marketplace name (substring of `id` right of `@`) equals the resolved marketplace.
 
 (Both clauses matter — `discord@some-other-marketplace` is a different plugin from a different source and must not satisfy this gate.)
@@ -82,138 +74,24 @@ Then check whether the surviving set contains an entry where:
 - **Found**: skip silently. The channel plugin is already installed and enabled at project or local scope for this project — the canonical filter guarantees `enabled == true`, and `*_STATE_DIR` (set by `hermitd-start` at boot) points at `.claude.local/channels/<channel>/`.
 - **Not found**: run, in order:
   ```bash
-  claude plugin install <channel>@<marketplace> --scope local
-  claude plugin enable  <channel>@<marketplace> --scope local
+  claude plugin install <plugin>@<marketplace> --scope local
+  claude plugin enable  <plugin>@<marketplace> --scope local
   ```
   Explicit `enable` covers the disabled-but-installed-at-project/local case — the filter excluded such entries (enabled-only), and `install` is a separate command from `enable` per the CLI surface, so it may no-op without re-enabling. A user-scope install elsewhere does not satisfy this gate; channel tokens and access policy are project-local.
 
-After any install (or if already present): tell the operator to run `/reload-plugins` in this session to activate the plugin's configure and access commands before pairing.
+Your agent loads the installed plugin at its next start; the shared access stage uses scripts without requiring a reload in this setup session.
 
-### 4. Token configuration (AskUserQuestion)
+### 4. Token configuration
 
-Before the token question, print the applicable platform prerequisite: Discord: Developer Portal, Bot tab: turn Message Content intent on; turn Public Bot off unless anyone may add it. Telegram: privacy mode only matters for respond-to-all; see §6c. No extra question.
+Read [channel connection stages](references/connection-stages.md) and run credentials and check. Offer private terminal entry with `hermitd run channel-token-set <channel>` and `.hermit/bin/hermitd-run channel-token-set <channel>` as specified there.
 
-Token env var names: `discord` → `DISCORD_BOT_TOKEN`, `telegram` → `TELEGRAM_BOT_TOKEN`.
+### 5. Restart + pairing
 
-Resolve `state_dir`:
-- Read `channels.<channel>.state_dir` from config.json.
-- If not set, default to `.claude.local/channels/<channel>`.
-- If relative, it is relative to the project root (current directory).
-
-Check if the token file already exists: `<state_dir>/.env` and contains the token var name.
-- If yes: "Token already configured at `<state_dir>/.env`." → proceed to step 5.
-- If no: display the official setup guide reference and ask for the token:
-
-> To create your bot and get a token, follow the official guide:
-> https://code.claude.com/docs/en/channels
-
-```
-questions: [
-  {
-    header: "Bot token",
-    question: "Paste your bot token (or skip to add it later):",
-    options: [
-      { label: "Skip", description: "I'll add the token to <state_dir>/.env manually" }
-    ]
-  }
-]
-```
-
-Operator pastes the token via Other, or selects Skip.
-
-**If token provided:**
-1. `mkdir -p <state_dir>`
-2. Write `<TOKEN_VAR>=<pasted-token>` to `<state_dir>/.env` (overwrite if exists)
-3. `chmod 600 <state_dir>/.env`
-4. Ensure `.claude.local/` is in `.gitignore`: check if `.gitignore` exists and contains `.claude.local/`; if missing, append `.claude.local/`.
-5. If `channels.<channel>.state_dir` was not set in config.json (a legacy entry, or one reached through the single-enabled-channel branch that never ran *Adding an entry*), run the same `hatch-config.ts … --reinit` one-liner for `<channel>` now, but with an **empty** entry — `echo '{"channels":{"<name>":{}}}' | …` — so an existing `enabled: false` is preserved (the `{"enabled":true}` payload would flip it). It fills the conventional `state_dir`, validates, and audits, leaving every other field intact. Never write the key with Edit/Write.
-6. Validate `<CHANNEL_UPPERCASE>_STATE_DIR` for the next resident start. Compute the absolute path of `state_dir`, then run:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json channel-env <CHANNEL_UPPERCASE> <absolute_state_dir>
-   ```
-   This validates and reports the state directory without writing settings. The configured state dir takes effect in the resident environment and launch overlay at the next start. Tokens stay in the channel's `.env`. Confirm: "Configured `<CHANNEL_UPPERCASE>_STATE_DIR` → `<absolute_state_dir>` (takes effect at the next start)."
-
-7. Capture the bot's own identity so the hermit recognizes mentions of itself:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts .hermit <channel> --write
-   ```
-   Writes `bot_user_id` (and `bot_username`) into the channel's `config.json` entry, overwriting a stale value from a previous bot. A `skip` status is a non-event — report it and continue; setup never fails on it.
-
-**If token already configured:** also run steps 6 and 7 before proceeding to step 5.
-
-**If Skip:** print the manual command:
-```
-echo '<TOKEN_VAR>=your-token' > <state_dir>/.env && chmod 600 <state_dir>/.env
-```
-Then proceed to step 5 without a token (pairing will be skipped in step 5).
-
-### 5. Restart + pairing (AskUserQuestion)
-
-**If no token is configured** (skipped in step 4): print restart instructions and stop:
-> Restart Claude Code with channels active once you've added your token:
-> - With hermit: `hermitd-start` (passes `--channels` automatically)
-> - Manual: `claude --channels plugin:<channel>@<marketplace>`
->   (use the same `<marketplace>` resolved in step 3 — `claude-plugins-official` for built-in channels, or `channels.<channel>.marketplace` for third-party plugins.)
-
-**If token is configured:** on docker-running go straight to the pairing question batch. Otherwise check whether the channel is already active in the current session by checking if the channel's reply tool is available. If active, skip the restart prompt and go straight to the pairing question batch.
-
-If not active, display:
-> Token saved. Restart Claude Code to activate the channel:
-> - With hermit: `hermitd-start` (passes `--channels` automatically)
-> - Manual: `claude --channels plugin:<channel>@<marketplace>`
->   (use the same `<marketplace>` resolved in step 3.)
->
-> After restarting, DM your bot: it will reply with a 6-character pairing code.
-> Only people who may approve tool use should be DM-paired, because every `allowFrom` DM receives and can answer native permission prompts; everyone else joins through a group whose admission is independent of `allowFrom`, and `allowed_users` narrows who can wake the hermit, never who can approve.
-
-Then ask:
-
-```
-questions: [
-  {
-    header: "Pairing",
-    question: "Channel state?",
-    options: [
-      { label: "Already paired", description: "Just verify access.json" },
-      { label: "Ready to pair", description: "Restarted, DM'd the bot, have the 6-char code" },
-      { label: "Skip", description: "I'll pair later" }
-    ]
-  }
-]
-```
-
-- **Already paired**: skip pairing, go to access.json verification in step 6.
-- **Ready to pair**: proceed with pairing flow below.
-- **Skip**: stop — "Run `/hermitd:channel-setup` again after restarting to complete pairing."
-
-**Pairing flow:**
-
-Ask with `AskUserQuestion`:
-
-```
-questions: [
-  {
-    header: "Pairing code",
-    question: "Paste the 6-character code your bot replied with:",
-    options: [
-      { label: "Skip", description: "Pair later" }
-    ]
-  }
-]
-```
-
-If code provided (via Other), use the absolute project `.hermit` directory as `<hermit_state_dir>` (distinct from the channel's `<state_dir>`):
-
-```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code>
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy <channel> allowlist
-```
-
-Run the policy command only after pairing succeeds. Relay the result, retaining pairing's `file` (`state`, `home` or `home+state`) for §6. `home: "set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
-
-If Skip: "DM the bot later, then run `/hermitd:channel-setup` from a normal host session." Stop.
+Continue the same reference through restart and access. Then verify the access location below.
 
 ### 6. Verify access.json location
+
+For iMessage and third-party plugins, follow their own access procedure and skip Hermit-specific access commands below.
 
 Check if `access.json` exists at `<state_dir>/access.json`.
 
@@ -323,20 +201,6 @@ Channel setup complete!
 
 If anything was skipped, list the remaining steps.
 
-### 7a. Send owner welcome (once, only when exactly one channel was newly paired)
+### 7a. Two-way proof
 
-Run this once, after step 7's summary, across the *whole* run — not per channel inside the steps 2–6 loop.
-
-Skip entirely if no channel selected "Ready to pair" in step 5 this run — an operator re-running setup against an already-paired channel ("Already paired") or one they skipped shouldn't get a repeat welcome.
-
-Also skip, with a note in the summary ("Welcome message skipped — more than one channel was newly paired this run; let the owner know directly"), if *more than one* channel selected "Ready to pair" this run (the "All" path pairing several channels at once). `channel-send.ts` has no per-channel target — it resolves one generic outbound channel (`primary`, else first eligible in config order) — so with several freshly-paired channels there's no reliable way to know which one it would reach.
-
-Otherwise (exactly one channel newly paired), compose a short welcome in the operator's configured `language` (`config.json`), in your own voice, so the owner has something the moment the bot can reach them. Not the full guide, just an orientation pointer covering: they can talk to you anytime in plain language; when you have a suggestion or need a decision you will ask, and yes, later, or no is enough; `!pause` stops you until `!resume` (both must start with `!`); you track AI spend and warn when it nears any configured limit; if you go quiet or something is confusing, they should reach whoever set you up (who also has the full written guide). No file paths or internal jargon: it's the owner's first message, and the only chat commands allowed are the five control commands `!pause`, `!stop`, `!resume`, `!snooze`, `!status`. Send it on stdin:
-
-```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit - <<'HERMIT_WELCOME'
-<the composed welcome>
-HERMIT_WELCOME
-```
-
-Use this send as the post-hatch delivery confirmation and report it explicitly in the summary. On success: "Test message sent — check <channel> and tell me if it didn't arrive." If the send fails, don't block setup: "Channel paired, but the test message didn't arrive (`<error>`) — check the pairing before relying on this channel."
+Run the Two-way proof stage in [channel connection stages](references/connection-stages.md). Include the actual verdict in the summary. If `.hermit/state/first-chat.json` exists, leave it armed so the operator's next message reaches the first chat.

@@ -3,6 +3,15 @@ import path from 'node:path';
 import { validate } from '../validate-config';
 import { auditConfigChange } from './config-audit';
 
+export function canonicalTimezone(value: string): string | null {
+  if (!value || /^[+-]/.test(value)) return null;
+  try {
+    return new Intl.DateTimeFormat('en', { timeZone: value }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
 export function persistConfig({ hermitDir, before, after, actor, priorErrors }: {
   hermitDir: string;
   before: any;
@@ -13,6 +22,11 @@ export function persistConfig({ hermitDir, before, after, actor, priorErrors }: 
   const prior = before === undefined ? { errors: [], warnings: [] } : validate(before);
   const acceptedErrors = priorErrors ?? prior.errors;
   const report = validate(after);
+  if (after?.timezone !== before?.timezone && after?.timezone != null) {
+    const zone = typeof after.timezone === 'string' ? canonicalTimezone(after.timezone) : null;
+    if (zone) after.timezone = zone;
+    else report.errors.push('timezone: expected an IANA timezone name');
+  }
   const result = {
     newErrors: report.errors.filter(e => !acceptedErrors.includes(e)),
     keptErrors: report.errors.filter(e => acceptedErrors.includes(e)),

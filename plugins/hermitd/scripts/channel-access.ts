@@ -97,7 +97,8 @@ function main(): void {
   const homeFile = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'channels', channel, 'access.json');
 
   if (verb === 'pair') {
-    if (!value || !CODE_RE.test(value) || args.length > 0) throw new Error('invalid_code');
+    const restrict = args.length === 1 && args[0] === '--restrict';
+    if (!value || !CODE_RE.test(value) || (args.length > 0 && !restrict)) throw new Error('invalid_code');
     let source: 'state' | 'home' = 'state';
     let pairFile = file;
     let access: Access | undefined;
@@ -119,6 +120,7 @@ function main(): void {
     const next = structuredClone(access);
     next.allowFrom = [...new Set([...(access.allowFrom ?? []), pending.senderId])];
     delete next.pending![value];
+    if (restrict) next.dmPolicy = 'allowlist';
     writeAccess(dir, channel, pairFile, access, next);
     const approve = (accessFile: string) => {
       const approved = path.join(path.dirname(accessFile), 'approved');
@@ -132,6 +134,7 @@ function main(): void {
     if (source === 'home' && fs.existsSync(file)) {
       const stateAccess = readAccess(file);
       const stateNext = structuredClone(stateAccess);
+      if (restrict) stateNext.dmPolicy = 'allowlist';
       stateNext.allowFrom = [...new Set([...(stateAccess.allowFrom ?? []), pending.senderId])];
       writeAccess(dir, channel, file, stateAccess, stateNext);
       approve(file);
@@ -141,17 +144,20 @@ function main(): void {
     // the home here lets unattended sends reach it before the first inbound message.
     const channelConfig = config.channels?.[channel];
     let home = 'kept';
-    if (channelConfig && homeSeedBlock(channelConfig, pending.chatId) === null) {
+    if (restrict && !channelConfig) throw new Error('access_config_write_failed');
+    if (channelConfig && (restrict || homeSeedBlock(channelConfig, pending.chatId) === null)) {
       const after = structuredClone(config);
-      after.channels[channel].default_chat_id = pending.chatId;
+      if (homeSeedBlock(channelConfig, pending.chatId) === null) after.channels[channel].default_chat_id = pending.chatId;
+      if (restrict) after.channels[channel].allowed_users = [...new Set([...(channelConfig.allowed_users ?? []), pending.senderId])];
       // The code is already consumed, so a failed seed must not fail the pairing;
       // channel-hook still seeds the home on the first inbound reply.
       try {
         const result = persistConfig({ hermitDir: dir, before: config, after, actor: 'channel-access' });
         if (result.newErrors.length > 0) throw new Error('invalid_config');
         for (const warning of result.newWarnings) console.error(`Warning: ${warning}`);
-        home = 'set';
+        home = homeSeedBlock(channelConfig, pending.chatId) === null ? 'set' : 'kept';
       } catch (error) {
+        if (restrict) throw new Error('access_config_write_failed');
         console.error(`Warning: home chat not set: ${(error as Error).message}`);
         home = 'failed';
       }

@@ -9,7 +9,7 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { observe, finalData, confirmData } from '../scripts/hatch-report';
+import { observe, finalData } from '../scripts/hatch-report';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 
@@ -189,66 +189,11 @@ describe('final next-steps keys off deployment', () => {
   });
 });
 
-describe('confirm previews intent, before anything is written', () => {
-  test('carries the operator choices verbatim', () => {
-    const { will_apply } = confirmData({
-      agent_name: 'Atlas', language: 'pt', timezone: 'Europe/Lisbon',
-      deployment: 'docker', channel: 'discord', hatch_target: 'local',
-    });
-    expect(will_apply).toMatchObject({
-      agent_name: 'Atlas', language: 'pt', timezone: 'Europe/Lisbon',
-      deployment: 'docker', channel: 'discord', hatch_target: 'local', safety_rules: 'standard',
-    });
-  });
-
-  test('consequential defaults come from the shipped template, tagged as defaults', () => {
-    const out = confirmData({ deployment: 'tmux' });
-    // "auto" is the template's permission_mode; a template change should change
-    // this test's fixture expectation only via the template itself.
-    expect(out.will_apply.permission_mode).toBe('auto');
-    expect(out.defaults).toEqual(expect.arrayContaining(['permission_mode', 'escalation', 'remote', 'budget']));
-    // Every will_apply key not taken from the answers is a default, and only those.
-    expect(out.defaults).not.toContain('deployment');
-    expect(out.defaults.every((k: string) => k in out.will_apply)).toBe(true);
-    expect(out.will_apply.budget.action).toBeDefined();
-  });
-
-  test('a non-default permission mode is not tagged as a default', () => {
-    const out = confirmData({ deployment: 'tmux', permission_mode: 'acceptEdits' });
-    expect(out.will_apply.permission_mode).toBe('acceptEdits');
-    expect(out.defaults).not.toContain('permission_mode');
-  });
-
-  test('heartbeat folds into routines, and hermitd:heartbeat-restart stays out', () => {
-    const { routines } = confirmData({ deployment: 'tmux' }).will_apply;
-    expect(routines.heartbeat).toEqual({ enabled: true, every: '30m', active_hours: { start: '08:00', end: '23:00' } });
-    expect(routines.briefs).toEqual({ morning: '08:30', evening: '22:30' });
-    expect(routines.others).not.toContain('hermitd:heartbeat-restart');
-  });
-
-  test('cosmetic defaults are left out of the preview', () => {
-    const { will_apply } = confirmData({ deployment: 'tmux' });
-    for (const k of ['model', 'effort', 'push_notifications', 'artifacts']) expect(will_apply).not.toHaveProperty(k);
-  });
-
-  test('a skipped agent name carries no agent_name and never "undefined"', () => {
-    const out = confirmData({ language: 'en', deployment: 'tmux' });
-    expect(out.will_apply).not.toHaveProperty('agent_name');
-    expect(JSON.stringify(out)).not.toContain('undefined');
-  });
-
-  test('CLI confirm reads the payload from stdin', async () => {
-    const r = await runScript('hatch-report.ts', {
-      args: ['confirm', '/tmp'],
-      stdin: JSON.stringify({ agent_name: 'Scout', deployment: 'interactive' }),
-    });
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout).will_apply.agent_name).toBe('Scout');
-  });
-
-  test('CLI confirm rejects a non-JSON payload rather than rendering nonsense', async () => {
-    const r = await runScript('hatch-report.ts', { args: ['confirm', '/tmp'], stdin: 'not json' });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_answers' });
-  });
+test('started summary has reach instructions and no typed next steps', async () => {
+  const root = hatched({ config: { remote: true } });
+  const r = await runScript('hatch-report.ts', { args: ['final', root, '--deployment', 'tmux', '--started'] });
+  expect(r.exitCode).toBe(0);
+  expect(JSON.parse(r.stdout)).toMatchObject({ status: 'started', next_steps: [], running_after_step: null, reach: expect.arrayContaining(['hermitd attach']) });
+  const removed = await runScript('hatch-report.ts', { args: ['confirm', root] });
+  expect(removed.exitCode).toBe(1);
 });

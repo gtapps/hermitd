@@ -42,7 +42,7 @@ Either way, the first launch needs one attended step to clear the trust gate, th
 
 ## Setup
 
-Run after `/hermitd:hatch`:
+For Docker, choose it in `/hermitd:hatch advanced`, then run:
 
 ```
 /hermitd:docker-setup
@@ -205,7 +205,7 @@ Channel tokens live in `.claude.local/channels/<name>/.env` (project-local scope
 
 ### Docker
 
-The docker-setup wizard pairs during first run. Afterwards `/hermitd:channel-setup` from the host pairs or re-pairs. A channel or token added later needs `hermitd-docker restart` first (the bot is offline until then). Inside the container, use the two native `/<channel>:access` commands in the attached REPL; pair carries the "save access.json to `<state_dir>/` not `~/.claude`" hint.
+The docker-setup wizard pairs during first run. Afterwards `/hermitd:channel-setup` from the host pairs or re-pairs. A new channel or token needs a restart from a separate host terminal (`hermitd restart`); restart refuses from the resident or inside a container. Preflight reports a named cause or `not_checked`, and setup asks for a message and reply to prove two-way reachability.
 
 The docker-compose file bind-mounts `.claude.local/channels/<plugin>/` into `~/.claude/channels/<plugin>/` inside the container — channel skill commands write to the right place automatically, and state persists across container restarts.
 
@@ -217,7 +217,7 @@ Run the guided activation wizard — it picks up the channel preference from `ha
 /hermitd:channel-setup
 ```
 
-It installs the plugin (requires [Bun](https://bun.sh)), writes the bot token to `.claude.local/channels/<plugin>/.env`, and walks through pairing. It can also re-enable a channel you previously turned off. `hermitd-start` passes `--channels` automatically — no manual flag needed. If bun is missing or the token file isn't present, `hermitd-start` prints a clear warning and skips the channel.
+Plain `/hermitd:hatch` starts your agent and guides pairing; its first conversation confirms time and sets up one job. For later channel setup, the flow installs the plugin (requires [Bun](https://bun.sh)), offers private terminal token entry with `hermitd run channel-token-set <channel>`, checks the token, offers a restart when needed, and guides pairing and two-way proof. The token is saved in the configured channel state directory with mode 600; paste-in-chat remains an option with a session-history warning. It can also re-enable a channel you previously turned off. `hermitd-start` passes `--channels` automatically — no manual flag needed. If bun is missing or the token file isn't present, `hermitd-start` prints a clear warning and skips the channel.
 
 ---
 

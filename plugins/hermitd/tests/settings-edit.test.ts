@@ -1019,3 +1019,18 @@ describe('plugin routine migrations', () => {
     }
   });
 });
+
+test('timezone set and apply-known validate and canonicalize', async () => {
+  const initial = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/config.json.template'), 'utf8'));
+  const file = seedConfig(freshDir(), initial);
+  for (const op of ['set', 'apply-known']) {
+    const bad = await runScript('settings-edit.ts', { args: [file, op, 'timezone', '+01:00'] });
+    expect(bad.exitCode).toBe(op === 'set' ? 1 : 0);
+    if (op === 'apply-known') expect(JSON.parse(bad.stdout)).toMatchObject({ status: 'refused', reason: 'invalid_value' });
+    expect(readConfig(file)).toEqual(initial);
+  }
+  expect(applyKnown(initial, 'timezone', 'europe/lisbon')).toMatchObject({ ok: true, value: 'Europe/Lisbon' });
+  const good = await runScript('settings-edit.ts', { args: [file, 'set', 'timezone', 'europe/lisbon'] });
+  expect(good.exitCode).toBe(0);
+  expect(readConfig(file).timezone).toBe('Europe/Lisbon');
+});

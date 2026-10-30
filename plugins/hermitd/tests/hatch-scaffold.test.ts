@@ -95,3 +95,13 @@ describe('hatch-scaffold.ts', () => {
     expect(fs.existsSync(path.join(hermit, 'state', 'pending-close.json'))).toBe(false);
   });
 });
+
+test('session-id marks hatch session guest on fresh and repeated scaffolds', async () => {
+  const { isGuest, clearGuest } = await import('../scripts/lib/guest-marker');
+  const dir = freshDir(); const state = path.join(dir, '.hermit/state');
+  for (let i = 0; i < 2; i++) {
+    const r = await runScript('hatch-scaffold.ts', { args: [dir, '--session-id', 'setup-session'] });
+    expect(r.exitCode).toBe(0); expect(isGuest(state, 'setup-session')).toBe(true);
+    clearGuest(state, 'setup-session');
+  }
+});
