@@ -313,8 +313,14 @@ function main(source: string | null, sessionId: string | null) {
   // (resume/compact reuse it; /clear mints a new one): this session is the resident now, so drop
   // the verdict rather than leave it silently muting its own liveness signal.
   clearGuest(stateDir, sessionId);
-  observeExecution(AGENT_DIR, 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
+  // A clear only runs between turns, so the new session starts idle.
+  observeExecution(AGENT_DIR, source === 'clear' ? 'idle' : 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
   if (source === 'clear') recordClear(stateDir);
+  // Only SessionStart writes this, so a prompt right after cannot erase it: the core mod
+  // confirms a queued clear or compaction from it when the classic events pass it over.
+  try {
+    writeFileAtomic(path.join(stateDir, 'session-start.json'), JSON.stringify({ source: source ?? 'startup', at: new Date().toISOString() }) + '\n');
+  } catch { /* fail-open: the mod falls back to the classic events and its deadline */ }
   seedOperatorActivity();
   if (source === 'compact') {
     emitCompactCapsule();

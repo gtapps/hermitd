@@ -67,6 +67,7 @@ let active: {
   evidence?: Leg;
   stdoutStarted: boolean;
   expectedModel: string | null;
+  startedAt: number;
   timer: { cancel(): void };
 } | undefined;
 let approval: string | null = null;
@@ -136,6 +137,7 @@ async function dispatch($: EngineInterface) {
   if (command.command === '/effort') return setEffort($, command.arg ?? '');
   const current = {
     command, resolved: false, stdoutStarted: false, expectedModel: null as string | null,
+    startedAt: Date.now(),
     evidence: undefined as Leg | undefined,
     timer: $.clock.after(deadlineFor(command), () => {
       if (active === current) return finish($, { command: command.command, status: 'unknown', text: 'deadline reached' });
@@ -279,6 +281,27 @@ async function hasPause($: EngineInterface, dir: string, names: string[]): Promi
   return false;
 }
 
+// classic.SessionStart and session.compact never reach the mod when a builtin plugin seats
+// ahead of it, so the SessionStart hook's own stamp confirms the clear or compaction too.
+const STAMPED: Record<string, { source: string; text: string }> = {
+  '/clear': { source: 'clear', text: 'Context cleared' },
+  '/compact': { source: 'compact', text: 'Context compacted' },
+};
+async function confirmFromStamp($: EngineInterface, dir: string) {
+  const current = active;
+  if (!current?.resolved || current.evidence) return;
+  const expected = STAMPED[current.command.command];
+  if (!expected) return;
+  try {
+    const stamp = JSON.parse(String(await $.fs.read(`${dir}/session-start.json`)));
+    if (stamp.source !== expected.source || !(Date.parse(stamp.at) >= current.startedAt)) return;
+    // The classic events may have landed during the read; their evidence is richer.
+    if (active !== current || current.evidence) return;
+    current.evidence = { command: current.command.command, status: 'ok', text: expected.text };
+    observe($);
+  } catch {}
+}
+
 async function tick($: EngineInterface) {
   if (ticking) return;
   ticking = true;
@@ -286,6 +309,7 @@ async function tick($: EngineInterface) {
     const id = await $.session.id();
     if (id !== lastId) await loadedFor($, id).catch(() => undefined);
     if (!stateDir) return;
+    await confirmFromStamp($, stateDir);
     const dir = `${stateDir}/harness-queue`;
     const names = (await $.fs.list(dir).catch(() => [])).filter(e => e.kind === 'file' && e.name.endsWith('.json')).map(e => e.name);
     if (names.length === 0) return;
@@ -363,7 +387,7 @@ export const register: Register = on => {
     if (command === '/compact' || SKILL_RE.test(command)) return result;
     const observed = stdout[1];
     const status = classifyStdout(command, observed);
-    // A cleared context is reported from classic.SessionStart, once the resident id is current.
+    // A cleared context is reported from classic.SessionStart or the SessionStart stamp, once the resident id is current.
     if (command === '/clear' && status === 'ok') return result;
     active.evidence = { command, status, text: observed };
     observe($);
@@ -392,7 +416,7 @@ export const register: Register = on => {
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e);
     if (e.source === 'clear' && active?.command.command === '/clear') {
-      active.evidence = { command: '/clear', status: 'ok', text: 'Context cleared' };
+      active.evidence = { command: '/clear', status: 'ok', text: STAMPED['/clear'].text };
       observe($);
     }
     $.clock.after(0, async () => loadedFor($, await $.session.id()).catch(() => undefined));

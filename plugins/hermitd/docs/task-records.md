@@ -30,7 +30,7 @@ The result mutation is not exposed by the pre-approved task CLI. The command run
 
 ## Execution and context boundary
 
-`state/execution.json` records `in_flight`, `idle` or `unknown`, with observation time and Claude session identity. Prompt admission marks a resident turn in flight; Stop and StopFailure mark idle; boot and compaction mark unknown. Stale in-flight observations become unknown. Guests do not write this state.
+`state/execution.json` records `in_flight`, `idle` or `unknown`, with observation time and Claude session identity. Prompt admission marks a resident turn in flight; Stop and StopFailure mark idle; boot and compaction mark unknown, while `/clear` marks idle because it runs only between turns. Stale in-flight observations become unknown. Guests do not write this state.
 
 The safe boundary requires idle for at least 60 seconds, an identity matching runtime `cc_session_id`, no running task worker, and an idle or shell registry entry when the resident PID has one. A configured token floor must also be met. Unknown never becomes idle through registry fallback. List and standup can display `execution: unknown (registry: <status>[, <waitingFor>], live process)` to explain an unknown observation.
 
