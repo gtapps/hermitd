@@ -282,6 +282,8 @@ You can run separate agents for different responsibilities, each with its own wo
 
 **Sign-in renewal from chat.** When your agent’s Claude sign-in needs renewing, use `/relogin` from your connected chat. Open the link in your browser, sign in, and send the code back in chat.
 
+**Tool sign-ins from chat.** When a connected tool or claude.ai connector needs you to sign in again, ask your agent in chat to log you in. Open each link it sends, approve access, and paste back the address your browser fails to load; the tool works again without a restart.
+
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
 ## Upgrading from claude-code-hermit

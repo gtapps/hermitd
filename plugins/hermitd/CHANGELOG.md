@@ -9,6 +9,7 @@
 ### Changed
 
 - Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
+- Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
 
 ### Fixed
 
