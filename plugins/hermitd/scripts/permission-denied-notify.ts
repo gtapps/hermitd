@@ -228,7 +228,7 @@ async function main(raw: string): Promise<void> {
   if (reason) maintainerText += ` — ${reason}`;
   if (claim.suppressed > 0) maintainerText += m.t('deny_suppressed', { count: claim.suppressed });
   const tail = m.t('deny_tail');
-  maintainerText = maintainerText.slice(0, MESSAGE_MAX_LEN - tail.length) + tail;
+  maintainerText = maintainerText.slice(0, Math.max(0, MESSAGE_MAX_LEN - tail.length)) + tail;
 
   // The diagnostic is recorded whatever the channel is doing. An absent or dead
   // channel is a reason not to POST, never a reason to lose the record: with no

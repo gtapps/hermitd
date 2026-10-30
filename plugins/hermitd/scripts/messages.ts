@@ -1,4 +1,4 @@
-// messages.ts — maintains state/messages.json, the operator-language copy of the
+// messages.ts maintains state/messages.json, the operator-language copy of the
 // script message catalog (lib/messages.ts). The model writes the language; these
 // verbs own the syntax: keys, hashes, placeholder checks, and the file itself.
 //
@@ -13,7 +13,9 @@
 //     Reads <hermit-dir>/state/messages-draft.json, {"language","locale","strings":{key:text}},
 //     merges every valid entry into messages.json (a new language replaces the old
 //     translations; overrides are never touched), then deletes the draft. Prints
-//     {"status":"ok","applied":N,"rejected":[keys],"missing":[keys]}.
+//     {"status":"ok","applied":N,"rejected":[keys],"missing":[keys]}, plus
+//     "locale_rejected":true when the draft's locale is not a BCP 47 tag Intl knows.
+//     A draft whose language is not config.language → {"status":"rejected","reason":"language_mismatch"}.
 //
 //   bun messages.ts clear <hermit-dir>
 //     Drops the translations (English operator); keeps overrides. Prints OK.
@@ -35,7 +37,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  EN, NOTES, enHash, isEnglish, isMessageKey, validText, expectedPlaceholders, sameLanguage, auditMessages,
+  EN, NOTES, enHash, isEnglish, isMessageKey, validLocale, validText, expectedPlaceholders, sameLanguage, auditMessages,
   readMessagesFile, messagesPath, type MessageKey,
 } from './lib/messages';
 import { readSettledConfig } from './lib/config-read';
@@ -92,10 +94,14 @@ function verbApply(dir: string): never {
     exitError('invalid_draft');
   }
   if (isEnglish(draft.language)) exitError('invalid_draft:english');
+  // A draft for any other spelling than config.language would be saved and then
+  // never match at send time, so it is turned away here instead.
+  if (!sameLanguage(draft.language, configLanguage(dir))) emitJson({ status: 'rejected', reason: 'language_mismatch' });
   const f = load(dir);
-  if (!sameLanguage(f.language, draft.language)) f.strings = {};
+  if (!sameLanguage(f.language, draft.language)) { f.strings = {}; f.locale = null; }
   f.language = draft.language;
-  if (typeof draft.locale === 'string' && draft.locale.trim()) f.locale = draft.locale.trim();
+  const locale = validLocale(draft.locale);
+  if (locale) f.locale = locale;
   let applied = 0;
   const rejected: string[] = [];
   for (const [key, text] of Object.entries(draft.strings)) {
@@ -106,7 +112,10 @@ function verbApply(dir: string): never {
   save(dir, f);
   fs.rmSync(draftPath(dir), { force: true });
   const audit = auditMessages(f, draft.language);
-  emitJson({ status: 'ok', applied, rejected, missing: [...audit.missing, ...audit.stale, ...audit.invalid] });
+  emitJson({
+    status: 'ok', applied, rejected, missing: [...audit.missing, ...audit.stale, ...audit.invalid],
+    ...(draft.locale != null && !locale ? { locale_rejected: true } : {}),
+  });
 }
 
 function verbClear(dir: string): never {

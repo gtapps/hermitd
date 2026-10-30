@@ -11,7 +11,7 @@
 // other injected surface gets.
 //
 // Catalog *selection* (whether state/messages.json applies) is a separate,
-// always-safe concern handled by loadMessages() in ./messages — that only
+// always-safe concern handled by loadMessages() in ./messages: that only
 // compares the value with the file's own `language`, so it needs no sanitization.
 
 import { scanInjected } from './sanitize';

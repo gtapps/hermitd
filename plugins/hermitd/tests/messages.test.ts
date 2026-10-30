@@ -177,6 +177,30 @@ describe('messages.ts CLI', () => {
     expect(run('scaffold', dir, 'es').json.todo.status_idle).toBeUndefined();
   });
 
+  test('a new language drops the previous language locale', () => {
+    writeDraft({ language: 'es', locale: 'es-ES', strings: { status_idle: 'Inactivo.' } });
+    run('apply', dir);
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ language: 'fr' }));
+    writeDraft({ language: 'fr', strings: { status_idle: 'Inactif.' } });
+    run('apply', dir);
+    expect(file().locale).toBeNull();
+    expect(loadMessages(dir, 'fr').locale).toBe('en-GB');
+  });
+
+  test('a draft in another spelling than config.language is turned away', () => {
+    writeDraft({ language: 'Spanish', locale: 'es-ES', strings: { status_idle: 'Inactivo.' } });
+    expect(run('apply', dir).json).toEqual({ status: 'rejected', reason: 'language_mismatch' });
+    expect(fs.existsSync(messagesPath(dir))).toBe(false);
+  });
+
+  test('an invalid locale tag is not saved and is reported', () => {
+    writeDraft({ language: 'es', locale: 'es_ES!', strings: { status_idle: 'Inactivo.' } });
+    const r = run('apply', dir).json;
+    expect(r.status).toBe('ok');
+    expect(r.locale_rejected).toBe(true);
+    expect(file().locale).toBeNull();
+  });
+
   test('a stale key reappears in scaffold and a corrupt file reads as English', () => {
     fs.writeFileSync(messagesPath(dir), JSON.stringify({ language: 'es', strings: {
       status_idle: { text: 'Inactivo.', en_hash: 'old000000000' },
@@ -192,6 +216,7 @@ describe('messages.ts CLI', () => {
       .toEqual({ status: 'rejected', reason: 'placeholder_mismatch', expected: ['{time}'] });
     expect(run('set', dir, 'no_such_key', 'x').json).toEqual({ status: 'rejected', reason: 'unknown_key' });
 
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ language: 'fr' }));
     writeDraft({ language: 'fr', locale: 'fr-FR', strings: { status_working: 'Au travail.' } });
     run('apply', dir);
     expect(file().overrides).toEqual({ status_idle: 'Descansando.' });

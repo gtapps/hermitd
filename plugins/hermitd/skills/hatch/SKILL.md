@@ -681,7 +681,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
 | Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
 | Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
-| Step 5b | fixed-text localization | run verbatim — generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
+| Step 5b | fixed-text localization | run verbatim: generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |

@@ -15,7 +15,6 @@
 // the exact English placeholder set, so a bad entry can't drop a value or a
 // locked token (`{keyword}` is the literal the mint ack matcher looks for).
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { sha256 } from './hash';
 import { readJson } from './cli';
@@ -205,7 +204,8 @@ export function sameLanguage(a: unknown, b: unknown): boolean {
   return na !== null && na === normLanguage(b);
 }
 
-function validLocale(v: unknown): string | null {
+/** A BCP 47 tag Intl can format dates in, trimmed; null otherwise. */
+export function validLocale(v: unknown): string | null {
   if (typeof v !== 'string' || !v.trim()) return null;
   try {
     return Intl.DateTimeFormat.supportedLocalesOf([v.trim()]).length > 0 ? v.trim() : null;

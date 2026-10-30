@@ -337,7 +337,7 @@ export function composeEnvAuthFailureMessage(
 
 /**
  * Focus argument for the watchdog-queued `/compact`. Never operator-facing (it is read
- * by Claude, not shown in a channel), so no catalog — unlike the compose*Message
+ * by Claude, not shown in a channel), so no catalog, unlike the compose*Message
  * functions above.
  */
 export function composeCompactSteeringMessage(): string {
@@ -2407,6 +2407,7 @@ async function cmdRestart(reason: string): Promise<void> {
   adoptSessionConfigDir(runtime);
   const sessionName = runtime.tmux_session || deriveSessionName(config);
   if (!sessionName) process.exit(0);
+  OPERATOR_MESSAGES = loadMessages(HERMIT_ROOT, config.language);
   await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', false);
 }
 
