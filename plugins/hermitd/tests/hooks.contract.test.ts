@@ -1471,6 +1471,11 @@ describe('doctor-check', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
     const names = Object.values(manifest.hooks).flatMap((entries: any) =>
       entries.flatMap((entry: any) => entry.hooks.map((hook: any) => path.basename(hook.args[0], '.ts'))));
+    const skillLintEntries = manifest.hooks.PostToolUse.filter((entry: any) => entry.matcher === 'Bash|Edit|Write'
+      && entry.hooks.some((hook: any) => path.basename(hook.args[0], '.ts') === 'skill-lint'));
+    expect(skillLintEntries).toHaveLength(1);
+    expect(manifest.hooks.PostToolUse.some((entry: any) => entry.matcher === 'Edit|Write'
+      && entry.hooks.some((hook: any) => path.basename(hook.args[0], '.ts') === 'skill-lint'))).toBe(false);
     expect(names.sort()).toEqual([
       'skill-guard', 'skill-lint', 'tool-counter',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',

@@ -21,6 +21,7 @@
 - The first artifact page republish after a restart or `/clear` runs in a subagent, keeping the live page's source out of the agent's context
 - Auto-mode denial notices suggest telling the agent in chat when the action was intended, instead of `/hermit-settings` or the terminal
 - `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next `hermitd update`
+- After the agent creates or edits a project skill, it is told the change loads on its own, so it can follow the file instead of advising a restart or new session.
 
 ### Upgrade Instructions
 

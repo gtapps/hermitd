@@ -64,3 +64,18 @@ test('history keeps five whole folders; ledger owns learned, pins and archive-on
     expect(lib.archive('operator')).toBe(false);
   } finally { fs.rmSync(temp, { recursive: true }); }
 });
+test('changedSince finds recent skills and ignores missing or incomplete roots', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'learned-'));
+  const lib = new LearnedSkills(path.join(temp, '.hermit'));
+  try {
+    expect(lib.changedSince(Date.now() - 60_000)).toBe(false);
+    fs.mkdirSync(lib.root, { recursive: true });
+    fs.mkdirSync(path.join(lib.root, 'incomplete'));
+    fs.writeFileSync(path.join(lib.root, 'stray'), 'not a skill folder');
+    expect(lib.changedSince(Date.now() + 60_000)).toBe(false);
+    fs.mkdirSync(path.join(lib.root, 'complete'));
+    fs.writeFileSync(path.join(lib.root, 'complete', 'SKILL.md'), '---\nname: complete\n---\nSteps');
+    expect(lib.changedSince(Date.now() - 60_000)).toBe(true);
+    expect(lib.changedSince(Date.now() + 60_000)).toBe(false);
+  } finally { fs.rmSync(temp, { recursive: true }); }
+});

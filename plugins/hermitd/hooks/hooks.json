@@ -96,7 +96,12 @@
             "command": "bun",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/validate-config.ts"],
             "timeout": 5
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
           {
             "type": "command",
             "command": "bun",
