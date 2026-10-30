@@ -8,10 +8,13 @@
 // Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer] <text|- >
 //   --tier     client (default) sends to the primary chat as today; maintainer
 //              routes through sendOperatorNotice to channels.<p>.maintainer_channel_id,
-//              falling back to the primary chat when none is configured.
+//              falling back to the primary chat when none is configured, or to
+//              Findings on a non-technical profile.
 //   <text|- >  literal text, or "-" to read the message from stdin (avoids
 //              argv length/newline edges — the form spawnSync callers use).
-//   Prints `OK` when delivered, else {"error":"<token>"} at exit 1.
+//   Prints `OK` when delivered, else {"error":"<token>"} at exit 1. That Findings
+//   home counts as delivered; Findings standing in for an unreachable configured
+//   maintainer chat does not.
 //
 // Usage: bun channel-send.ts <hermit-dir> --notice [--routine <id> | --watch <id>]
 //   Reads a JSON payload on stdin: { client?, maintainer?, sensitive?, fallback? }.

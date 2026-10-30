@@ -37,7 +37,7 @@ Send the operator the `url` from the second command, in your own voice — one l
 .hermit/bin/hermitd-run channel-send .hermit --notice
 ```
 
-Continue to Step 2 only if the result has `"status":"delivered"`. For any other result, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/setup-token-mint.ts abort`, tell the operator in the current chat that the link reached nobody, nothing changed, and the maintainer chat needs the bot present and permitted, then stop.
+Continue to Step 2 only if the result has `"status":"delivered"` and `result.maintainer.route` is `maintainer_channel`. For any other result, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/setup-token-mint.ts abort`, tell the operator in the current chat that the link did not reach the maintainer chat and nothing changed (unless `operator_profile` is `non-technical`, add that the maintainer chat needs the bot present and permitted), then stop.
 
 The operator still pastes the code back through the primary chat (Step 2 is unchanged). When no maintainer channel is configured, keep the current in-chat/terminal path above; that remains the documented owner-recipient contract.
 
