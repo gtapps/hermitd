@@ -126,6 +126,10 @@ Standard seeds these as approval prompts. Hardened writes them into `permissions
       "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
       "Bash(hermitd run *hermitd-update*)",
       "Bash(*/hermitd run *hermitd-update*)",
+      "Bash(bun */scripts/trust-workspace.ts apply *)",
+      "Bash(*.hermit/bin/hermitd-run trust-workspace apply*)",
+      "Bash(hermitd run trust-workspace apply*)",
+      "Bash(*/hermitd run trust-workspace apply*)",
       "Edit(*.claude/settings.json)",
       "Edit(*.claude/settings.local.json)",
       "Edit(*.hermit/config.json)",
@@ -140,6 +144,14 @@ Standard seeds these as approval prompts. Hardened writes them into `permissions
   }
 }
 ```
+
+For an untrusted helper repository, Yes to `trust-workspace apply` trusts the
+repository and approves its `.mcp.json` servers; its hooks, permission rules and
+environment settings then take effect. A repository subfolder is refused, because
+its configuration differs from the root's. Hardened denies these commands instead. The rule that this path runs only on a person's
+turn is skill policy, not a permission-engine boundary. To undo the trust,
+remove `projects["<key>"]` from Claude Code's `.claude.json` state file and run
+`claude mcp reset-project-choices` in the repository.
 
 **The `config.json` / settings / OPERATOR.md / voice-file guards are policy guards, not a filesystem boundary.** They keep an unattended session's *tool* writes (`Edit`, and Write via Edit coverage) on the `settings-edit` / `hatch-config` / `evolve-finalize` paths, which validate the whole config and record every change in the settings ledger. Redirects (`>`, `cp`, `tee`, `sed -i`) and a script writing through `fs` are not covered by these Edit rules; they are classifier-watched side channels, not a second permission engine. One deliberate exception: the redirect globs in the deny list above stay hard denies. There is no sanctioned shell-redirect path into those files, so nothing legitimate is lost by refusing outright. Every path glob needs its leading `*` so an absolute `file_path` matches.
 
