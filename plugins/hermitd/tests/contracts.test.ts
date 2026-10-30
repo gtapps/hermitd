@@ -2066,6 +2066,10 @@ describe('brief delegation contract', () => {
     expect(refFile).not.toContain('default-no-session');
     expect(skill).not.toContain('use the current task list');
     expect(skill).not.toContain('--limit 20');
+    expect(skill).toContain('task-report.ts .hermit --recent --limit 5');
+    expect(skill).toContain('task-report.ts .hermit --limit 1');
+    expect(skill).toContain('"brief today"/"daily summary"/"what happened today"');
+    expect(skill).toContain('duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`');
   });
 
   test('schema block is byte-identical in reference.md and SKILL.md', () => {

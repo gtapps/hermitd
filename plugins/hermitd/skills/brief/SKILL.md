@@ -21,10 +21,10 @@ If `config.always_on` is `true`, deliver all operator-facing output per `prompts
 
 Before composing any brief, determine the dispatch mode:
 
-1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`.
-2. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary", or no flag).
-3. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows.
-4. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the digests from steps 1 and 3 omit closed work. For a no-flag brief, compose in main and never dispatch.
+1. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary"/"what happened today", or no flag).
+2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows.
+3. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the duty digest holds no task records.
+4. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`, compose in main, and never dispatch.
 
 Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
@@ -94,9 +94,9 @@ Current behavior — general purpose summary as described below.
 
 ## Plan
 
-1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 5` when needed.
+1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 5` when needed.
 2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
-3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree.
+3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree. Before surfacing one, check it against the duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` § Inputs.
 
 ## Output Format
 
@@ -118,7 +118,7 @@ Next: description of next action (or "No next action" if all done)
 - Include tags in the header only if they exist
 - For "Done", list only records with outcome `done`. Label cancelled and unconfirmed outcomes explicitly.
 - For "Next", name an open record or its waiting reason; do not infer success from a result awaiting confirmation.
-- Open, waiting and queued items come only from records read this turn (runner JSON or the dispatch task list). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
+- Open, waiting and queued items come only from records read this turn (runner JSON, the dispatch task list, or `task-report` output). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
 - After composing the 5-line output: scan `.hermit/proposals/` for files with `source: auto-detected` and `status: proposed` (read `status:` and `source:` from the **leading `---` YAML frontmatter block only** — do not count files where those phrases appear in the proposal body text; skip files with no frontmatter block). If any exist, append a 6th line: `Proposals: N auto-detected proposal(s) pending review`
 
 ## Daily Summary Format
