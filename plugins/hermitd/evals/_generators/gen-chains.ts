@@ -225,7 +225,7 @@ const [CLOSE_PROMPT, CLOSE_RECORD] = withInstall({ '.hermit/config.json': config
   const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
     { stdin: 'PR #42 merged.\n', now: '2026-10-19T11:00:00.000Z' }));
   const stood = JSON.stringify({ ...digest, next: 'read .hermit/guides/learn.md' });
-  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n`
+  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n- task.ts learn ${id} --disposition <value>: {"id":"${id}","skill_review":"<value>"}\n</system-reminder>\n`
     + 'PR #42 merged, so the shop page task is finished. Thanks.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
 });
 chainCase('task-close-outside-skill-shop', 'heldout', 'A close digest flags a skill review in a turn without the task skill; the digest alone has to lead the resident to the review guide.',

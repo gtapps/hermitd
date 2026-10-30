@@ -402,8 +402,7 @@ function checkFlag(flags: TaskFlags): string | null {
   return !value || ['null', 'none', 'clear'].includes(value) ? null : value;
 }
 
-export function listTasks(dir: string, flags: TaskFlags = {}) {
-  const records = readTasks(dir);
+export function listTasks(dir: string, flags: TaskFlags = {}, records = readTasks(dir)) {
   const owner = flag(flags, 'owner');
   if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
@@ -545,12 +544,13 @@ export function taskStandup(dir: string, days = 7) {
   }
   return { by_person: [...people.values()].sort((a, b) => a.identity.localeCompare(b.identity)), closed: Object.fromEntries(['check', 'confirmed', 'cancelled'].map(by => [by, records.filter(r => r.closed_by === by && r.closed_at && todayYMD(timezone, new Date(r.closed_at)) >= from).map(r => ({ id: r.id, handle: r.handle, title: r.title, cost_usd: totals[r.id] ?? 0 }))])), pre_upgrade: preUpgrade, execution: readExecution(dir, { registryFallback: true }) };
 }
-export function startupTasks(dir: string): string[] {
-  const list = listTasks(dir);
-  const reviews = readTasks(dir).filter(r => r.skill_review === 'pending').length;
+export function startupTasks(dir: string, rows = 4): string[] {
+  const records = readTasks(dir);
+  const list = listTasks(dir, {}, records);
+  const reviews = records.filter(r => r.skill_review === 'pending').length;
   return [
     `Open tasks: ${list.total}`,
-    ...list.rows.slice(0, 4).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`),
+    ...list.rows.slice(0, rows).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`),
     ...(reviews ? [`Pending skill reviews: ${reviews}. Resume through /hermitd:task closure.`] : []),
   ];
 }

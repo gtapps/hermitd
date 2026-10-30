@@ -104,6 +104,8 @@ test('startup context counts pending reviews only when some exist', () => {
   const lines = startupTasks(dir);
   expect(lines[0]).toBe('Open tasks: 0');
   expect(lines).toContain('Pending skill reviews: 2. Resume through /hermitd:task closure.');
+  open(dir);
+  expect(startupTasks(dir, 0)).toEqual(['Open tasks: 1', 'Pending skill reviews: 2. Resume through /hermitd:task closure.']);
 });
 test('helper dedupe keys mark new resident records delegated but preserve reused records', () => {
   const dir = fixture();
