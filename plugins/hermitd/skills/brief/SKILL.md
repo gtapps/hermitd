@@ -26,7 +26,7 @@ Before composing any brief, determine the dispatch mode:
 3. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the duty digest holds no task records.
 4. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`, compose in main, and never dispatch.
 
-Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
+Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), and `today` (ISO date). For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 
@@ -62,7 +62,7 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 - **Operator priorities:** use `runner.operator_priorities`
 - **Queued work:** use `runner.queued_work`
 - **Waiting:** use `runner.waiting` (records awaiting a reply or confirmation); omit the line when the array is empty
-- **Context recovery:** if `runner.report_summary` is non-null, use it for task context
+- **Task context:** if `runner.report_summary` is non-null, include it as the latest record with its date; it can predate last night, so the framing below does not make it overnight activity
 - If `config.always_on` is `true`: frame as "what happened overnight (activity since evening routine)"
 - If `config.always_on` is `false`: frame as "here's where things stand"
 - **Decisions:** use `runner.decisions` for what changed and why; omit the line when the array is empty
@@ -95,7 +95,7 @@ Current behavior — general purpose summary as described below.
 ## Plan
 
 1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 5` when needed.
-2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
+2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `closed_at`, else `opened_at`, for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
 3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree. Before surfacing one, check it against the duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` § Inputs.
 
 ## Output Format

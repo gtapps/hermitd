@@ -112,6 +112,9 @@ runCase('run-default-no-session', ['brief-run'], 'No flag and no open records: a
   [present('status-completed', 'status\\W+completed'), present('newest-record', 'wholesale invoices'), WHOLE_REPORT],
   changes(busyInstall(KINDS.map(k => (k === 'done-today' || k === 'cancelled-today' ? k : 'done-earlier')))));
 
+runCase('run-morning-context', ['brief-morning'], 'A morning brief names the newest record with its close date, not its open date.', 'Invoke /hermitd:brief --morning',
+  [dispatchedRunner, present('newest-record', 'wholesale invoices'), absent('no-open-date', '2026-10-20|Oct(ober)?\\s+20'), WHOLE_REPORT]);
+
 const [firstPath, firstRecord] = record(0, KINDS[0]);
 runCase('run-contradicted-lesson', ['brief-run'], 'A lesson the final result disproved stays out of the evening findings.', EVENING,
   [absent('no-contradicted-lesson', 'does not work on the new spreadsheet'), present('finished-work', 'price list'), WHOLE_REPORT],

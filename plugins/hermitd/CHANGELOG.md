@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Morning briefs always carry the newest record's task context instead of varying between mornings
 - Scheduled briefs always read the full day's records, and plain briefs read only the records they need
 - Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
 - `hermitd update` and watchdog restarts no longer wait out the 15-minute quiet cap on an agent that was cleared and then left quiet

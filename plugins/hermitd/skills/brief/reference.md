@@ -4,7 +4,7 @@ Return structured JSON for the calling skill to compose and deliver. Read fresh 
 
 ## Inputs
 
-The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `daily`), `today` (ISO date), and morning `context_recovery`.
+The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `daily`), and `today` (ISO date).
 
 Run `task-report` (Commands) with arguments `--limit 20 --today` for normalized records and `task-list` (Commands) with arguments `--open --owner resident --json` for open resident work. Run `duties-summary` (Commands) for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` `last_event` is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy.
 
@@ -12,7 +12,7 @@ Open, waiting and queued items come only from the `task-list` and `task-report` 
 
 ## Per-mode instructions
 
-For morning, run `proposal-index` (Commands), then read `state/proposals-index.json`; put proposed auto-detected entries in `pending_proposals`. When the dispatch names `decision-refresh.md` and there is at least one `decision_items` or `pending_proposals` entry, read it and apply it to the `decision_items` followed by each `pending_proposals` entry as `proposal-pending:<PROP-NNN>`. Read `OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from runnable open resident records. If `context_recovery` is true, summarize the newest normalized record; otherwise `report_summary` is null.
+For morning, run `proposal-index` (Commands), then read `state/proposals-index.json`; put proposed auto-detected entries in `pending_proposals`. When the dispatch names `decision-refresh.md` and there is at least one `decision_items` or `pending_proposals` entry, read it and apply it to the `decision_items` followed by each `pending_proposals` entry as `proposal-pending:<PROP-NNN>`. Read `OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from runnable open resident records. Summarize the newest normalized record (the first `rows` entry) in `report_summary`.
 
 For evening and daily, use `closed_today` and the open records in `opened_today` returned by `task-report`, which selects the day in the configured timezone. Populate `sessions_today` with task source paths as the compatibility `session` identifier and one-line summaries from `closed_reason` for a cancelled record, otherwise from the record's `result` when set, otherwise from the title plus the check output after `check:exit-0:` in `closed_reason` for a record closed by `check`, otherwise from title and outcome. Populate `findings` from the selected records' lessons, skipping any lesson the record's `result` contradicts, without filtering lessons by date. Populate `tomorrow` from runnable open records, leaving waiting ones to `waiting`. Do not count `cancelled` or `unconfirmed` as done.
 
@@ -20,7 +20,7 @@ For morning, evening and daily, populate `waiting` from `task-list` rows with a 
 
 For morning, evening and daily, populate `decisions` from report rows' decision lines stamped within the last day as `<task title>: <what changed, why>`, dropping timestamp and actor; otherwise an empty array.
 
-For `report_summary`, map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for date, empty tags, title for working_on, and waiting reason or open work for next_start_point. No records means null summary, never an archive fallback.
+For the morning `report_summary`, map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `closed_at`, else `opened_at`, for date, empty tags, title for working_on, and waiting reason or open work for next_start_point. No records means null summary, never an archive fallback.
 
 ## Return value
 
