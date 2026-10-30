@@ -392,8 +392,13 @@ export function applyKnown(config: Json, arg: string, raw: string): ApplyResult 
   }
   const coerced = coerce(setting, raw);
   if (!coerced.ok) return { ok: false, reason: 'invalid_value', detail: coerced.message };
+  const enablesChrome = setting.path === 'chrome' && coerced.value === true && getPath(config, 'chrome') !== true;
   setPath(config, setting.path, coerced.value);
-  return { ok: true, path: setting.path, value: coerced.value, applies: setting.applies ?? 'immediately' };
+  const applies = setting.applies ?? 'immediately';
+  return { ok: true, path: setting.path, value: coerced.value, applies: enablesChrome
+    ? `${applies}. Warning: Claude in Chrome uses the operator's signed-in browser.`
+    : applies };
+
 }
 
 // --- CLI dispatch ---

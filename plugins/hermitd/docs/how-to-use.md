@@ -6,7 +6,7 @@ A paid Claude plan (Pro, Max, Teams, or Enterprise). Linux, macOS, or Windows vi
 
 Claude Code auto memory must stay enabled (the default): learning, preferences, and standing roles live there. Setting `autoMemoryEnabled: false` or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables them.
 
-The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.308+, **Bun** ≥1.4 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
+The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.314+, **Bun** ≥1.4 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
 
 ---
 
@@ -204,19 +204,15 @@ See [Always-On Operations](always-on-ops.md) for tmux setup and operational deta
 
 ## Browser Tasks
 
-Turn on `chrome: true` via `/hermitd:hermit-settings` to let your hermit browse sites, fill forms, and work in web apps you are signed into.
+New Docker hermits include their own browser by default. Ask for a public-page task or use `/hermitd:browser`; your laptop can stay closed. `/docker-setup` records `docker.browser: true` unless that setting is already false. Existing hermits receive no browser additions until an explicit setup rerun; host installs are outside this feature.
 
-Requirements:
+Anonymous tasks use up to three separate headless sessions. Signed-in work claims one shared persistent profile at a time; other tasks wait. The profile lives at `/home/claude/.claude/browser/profile` on the existing `claude-config` named volume and survives restart and recreate. After a browser restart, reopen the task URL from the blank page. A hard kill within about 30 seconds of login can lose the sign-in. The hermit stops at logins and CAPTCHAs and asks in the same chat; phone takeover is not available yet.
 
-- A claude.ai `/login` sign-in (`auth_mode: login`). Setup-tokens and env credentials keep Chrome off; boot and doctor warn when Chrome is requested with either.
-- The Claude in Chrome extension signed in to the same claude.ai account and organization as the hermit.
-- Chrome open on any machine on that account, including when the hermit runs on another host or in Docker.
+Full parallel use needs **4 GiB** of container memory. `/docker-security` defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory, shared by every container. On an 8 GiB host, raise that VM limit in Docker Desktop's Resources settings or `.wslconfig`.
 
-Enabling Chrome adds context cost because browser tools and their instructions are always loaded. See [Claude Code's Chrome documentation](https://code.claude.com/docs/en/chrome) for setup and context usage.
+Turn on `chrome: true` via `/hermitd:hermit-settings` for the operator's own signed-in account. Enabling it warns that Claude in Chrome uses the operator's signed-in browser. The hermit's own browser remains the default and it never silently switches after a failure. Hermit passes `--no-chrome` when Chrome is off or auth refuses it. See [Claude Code's Chrome documentation](https://code.claude.com/docs/en/chrome) for prerequisites and tool behavior.
 
-Docker hermits also need `auth_mode: login`. If netguard filters DNS, its allowlist needs `server=/claudeusercontent.com/1.1.1.1`; the shipped template includes it. Existing installs receive the entry through `/hermitd:hermit-evolve`, and it takes effect after `hermitd-docker down && hermitd-docker up` on the host.
-
-The hermit pauses at logins and CAPTCHAs for you to handle them. Overnight unattended browser runs are untested.
+With netguard in enforce mode, browser DNS is limited to the allowlist; add the domains the task needs. The allowlist does not contain the browser: pages can fetch a public IP directly, just as `curl` can. The managed browser runs with `--no-sandbox` beside the agent's credentials. There is no vault or new network filter; see [security limitations](security.md#known-limitations).
 
 ## Common Workflows
 

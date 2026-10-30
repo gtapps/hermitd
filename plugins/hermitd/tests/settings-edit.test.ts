@@ -1019,3 +1019,13 @@ describe('plugin routine migrations', () => {
     }
   });
 });
+
+test('chrome warns only when enabling it from off', async () => {
+  for (const [before, raw, warned] of [[false, 'yes', true], [true, 'yes', false], [true, 'no', false], [false, 'no', false]] as const) {
+    const file = seedConfig(freshDir(), { chrome: before });
+    const result = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'chrome', raw] });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).applies.includes('Warning: Claude in Chrome uses')).toBe(warned);
+    expect(readConfig(file).chrome).toBe(raw === 'yes');
+  }
+});

@@ -229,7 +229,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | Channel routing | `channels.primary` |
   | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
-  | Tools and credentials | `docker.packages`, `docker.recommended_plugins`, `docker.fleet_mesh`, `remote`, `chrome`, `auth_mode` |
+  | Tools and credentials | `docker.packages`, `docker.recommended_plugins`, `docker.fleet_mesh`, `docker.browser`, `remote`, `chrome`, `auth_mode` |
 
   Direct protected writes ask in either direction, including unset and redundant writes. A parent replacement asks only when protected content is added, changed, or removed. Replacing `voice` while keeping its prose unchanged, or replacing a channel while changing only `morning_brief`, is everyday. Creating a channel entry is the exception that needs no protected key of its own: absent `enabled` means enabled and absent `allowed_users` means accept-all, so a parent write that adds `channels.<name>` asks even for a bare `{}`; dropping one is de-escalation and names only the protected keys it removes. Comparison uses raw stored values: absent and null differ, object key order does not matter, and array order does. An opaque parent write or unreadable comparison baseline asks rather than assuming protected content is unchanged. A parent write after another shell command also asks because that command may change its working directory or baseline. So does an unquoted `{…,…}` value, which the shell brace-expands into argv the command text does not show.
 
@@ -323,6 +323,11 @@ The reactive recovery path runs entirely in the watchdog with no model involveme
 
 ## Container Hardening
 
+New Docker setups turn on `docker.browser` unless it is already false. An absent key stays off for existing hermits; only an explicit `/docker-setup` rerun opts them in. The image adds pinned agent-browser and Chrome for Testing, a local X display, and a profile on the `claude-config` named volume. It renders arbitrary web pages with `--no-sandbox` beside the agent's credentials. No password vault or new network filter is added.
+
+Full parallel use requires 4 GiB of container memory; `/docker-security` defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory, shared by all containers. An 8 GiB host needs that VM limit raised in Docker Desktop's Resources settings or `.wslconfig`.
+
+
 `/hermitd:docker-setup` (v1.0.26+) renders three kernel-enforced hardening stanzas into `docker-compose.hermit.yml`. These are defense in depth — they reduce the blast radius of a successful prompt injection or a compromised plugin. They are **not** a substitute for the upstream defenses (deny patterns, non-root user, named-volume isolation, no host secret mounts) and they don't make the container "safe against prompt injection." They make a successful injection less useful.
 
 Honest weighting:
@@ -372,6 +377,12 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 ---
 
 ### Known limitations
+
+- The browser follows the DNS allowlist in enforce mode, but DNS does not contain it: a page can fetch a public IP directly, the same limitation as `curl`.
+- Tailnet peers were not tested, and `100.64.0.0/10` is not in netguard's drop list.
+- A hard kill within about 30 seconds of login can lose the browser sign-in.
+- The browser wrapper coordinates supported commands. Calling the real npm binary by absolute path or using raw CDP bypasses its claim and session-cap policy; it is not a boundary against hostile code or between chats.
+
 
 - **`helper-report-relay`** reads exactly one derived path under the state directory's `helper-reports/`, resolved only when one open record owns the destination chat, and grants no permission. It guarantees exact text at the channel tool's input only while the hook runs. A timed-out hook lets the one-line placeholder through before the PostToolUse alarm.
 

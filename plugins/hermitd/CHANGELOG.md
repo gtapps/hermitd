@@ -4,6 +4,7 @@
 
 ### Added
 
+- A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions
 - Chat approval for `spawn-session` to trust a refused repository and its MCP servers
 - Script-sent channel notices (watchdog, status reply, budget, denial and login messages) follow any configured language: the agent translates them once into `.hermit/state/messages.json` when the language is set and after upgrades, and every send falls back to English per message
 - `/hermitd:hermit-settings messages` rewords any of those notices; custom wording survives upgrades and retranslation, and doctor's `message-catalog` check flags wording an upgrade made unusable
@@ -11,6 +12,8 @@
 
 ### Changed
 
+- Disabled or auth-refused Chrome launches pass `--no-chrome`, removing native Chrome tools even when the native default enabled them
+- Claude Code minimum version is 2.1.314
 - Skill reviews use each task's own open window
 - Reflect checks for enforcement, missed triggers and existing guidance before proposing learning changes
 - Close-time learning shapes lessons and patches learned skills using evidence of errors or general operator corrections
@@ -48,7 +51,7 @@ Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messa
 Delete `.hermit/state/skill-review-counter` if it exists.
 Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
 
-No `config.json` changes required.
+No `config.json` changes required. Existing Docker hermits receive no browser additions; an explicit `/docker-setup` rerun enables it unless `docker.browser` is already false.
 
 ## [1.4.23] - 2026-10-27
 

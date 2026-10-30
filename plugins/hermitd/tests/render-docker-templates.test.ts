@@ -220,6 +220,7 @@ describe('render-docker-templates.ts', () => {
       networkMode: 'host' as const,
       gitIdentityMount: false,
       fleetMesh: true,
+      browser: true,
     };
     await render(dir, input);
     const configPath = path.join(dir, 'config.json');
@@ -229,6 +230,7 @@ describe('render-docker-templates.ts', () => {
         packages: input.packages,
         network_mode: input.networkMode,
         fleet_mesh: input.fleetMesh,
+        browser: input.browser,
       },
     }));
 
@@ -366,4 +368,62 @@ test('official-only channel plugins need no managed approval drop-in', async () 
   const dir = freshDir();
   expect((await render(dir, { channelPlugins: [{ marketplace: 'claude-plugins-official', plugin: 'discord' }] })).exitCode).toBe(0);
   expect(dockerfile(dir)).not.toContain('hermitd-channels.json');
+});
+
+test('browser derives false when absent and rejects non-booleans', async () => {
+  const dir = freshDir();
+  await render(dir);
+  const configPath = path.join(dir, 'config.json');
+  for (const value of [undefined, false, true, null, 'true', 1]) {
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: value } }));
+    const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
+    if (value === undefined || typeof value === 'boolean') {
+      expect(derived?.browser).toBe(value ?? false);
+    } else {
+      expect(derived).toBeNull();
+    }
+  }
+});
+
+test('browser false is byte-identical to absent and has no browser lines', async () => {
+  const absent = freshDir();
+  const disabled = freshDir();
+  await render(absent);
+  await render(disabled, { browser: false });
+  expect(dockerfile(disabled)).toBe(dockerfile(absent));
+  expect(compose(disabled)).toBe(compose(absent));
+  expect(dockerfile(disabled)).not.toMatch(/browser|chrome|BROWSER/);
+});
+
+test('browser true pins and verifies both architectures above the root operator block', async () => {
+  const dir = freshDir();
+  expect((await render(dir, { browser: true })).exitCode).toBe(0);
+  const image = dockerfile(dir);
+  expect(image).toContain('agent-browser@0.41.0');
+  expect(image).toContain('156.0.8078.80');
+  expect(image).toContain('sha256sum -c -');
+  expect(image).toContain('amd64) platform=linux64');
+  expect(image).toContain('arm64) platform=linux-arm64');
+  expect(image).toContain('b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7');
+  expect(image).toContain('1f496a826c9ba4d6a5f5bf2de686145fe718528c2cc3dbeb96b5893b89653724');
+  expect(image).toContain('/etc/hermit/managed-browser');
+  expect(image).toContain('scripts/browser-agent.ts');
+  expect(image.indexOf('npm install -g --allow-scripts')).toBeLessThan(image.indexOf('# --- operator:'));
+  expect(image).not.toContain('ENV AGENT_BROWSER_PROFILE');
+  const baseline = freshDir();
+  await render(baseline);
+  expect(compose(dir).replace('      - HERMIT_PROJECT_DIR=${PWD}', '')).toBe(compose(baseline));
+});
+
+test('managed browser startup and cleanup actions are marker-gated', () => {
+  const source = fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/docker/docker-entrypoint.hermit.sh.template'), 'utf8');
+  const gates = [...source.matchAll(/if \[ -f \/etc\/hermit\/managed-browser \]; then([\s\S]*?)\n(?:  )?fi/g)].map(match => match[1]);
+  expect(gates).toHaveLength(2);
+  for (const action of ['mkdir -p /home/claude/.claude/browser/profile', 'chmod 700', 'Singleton*', '/tmp/.X1-lock', '/tmp/.X11-unix/X1', 'Xvnc :1', 'openbox &']) {
+    expect(gates[0]).toContain(action);
+    expect(source.replace(gates[0], '').replace(gates[1], '')).not.toContain(action);
+  }
+  expect(gates[0]).toContain('-rfbport -1');
+  expect(gates[0]).toContain('-SendCutText=0');
+  expect(gates[1]).toContain('agent-browser close');
 });
