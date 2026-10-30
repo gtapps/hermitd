@@ -112,10 +112,10 @@ export class LearnedSkills {
     this.root = path.join(path.dirname(hermit), '.claude', 'skills');
   }
   skillUsage(): SkillUsage {
+    // A launch with no CLAUDE_CONFIG_DIR stamps no config_dir; Claude Code's default file applies.
     try {
       const runtime = JSON.parse(fs.readFileSync(path.join(this.state, 'runtime.json'), 'utf8'));
-      if (typeof runtime?.config_dir !== 'string' || !runtime.config_dir) return {};
-      const usage = JSON.parse(fs.readFileSync(claudeStateFile(runtime.config_dir), 'utf8'))?.skillUsage;
+      const usage = JSON.parse(fs.readFileSync(claudeStateFile(runtime?.config_dir || undefined), 'utf8'))?.skillUsage;
       return usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : {};
     } catch { return {}; }
   }

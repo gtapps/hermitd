@@ -4,7 +4,7 @@ description: "Full-text search over the recorded past: session reports, compiled
 ---
 # Recall
 
-Retrieve relevant history from session reports, compiled artifacts, and proposals by keyword search.
+Retrieve relevant history from task records, session reports, compiled artifacts, and proposals by keyword search.
 
 **Not `/hermit-health`** — that synthesizes a snapshot of the hermit's current state (alerts, routines, fragile zones, stale proposals, recent learnings). This skill does full-text retrieval: you give it a query, it returns matching history with `file:line` snippets.
 

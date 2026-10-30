@@ -46,4 +46,9 @@ test('skill status reports the newest matching use and null for unknown use', as
   expect(JSON.parse((await run('status')).stdout)).not.toHaveProperty('last_used_at');
   fs.writeFileSync(path.join(configDir, '.claude.json'), '{');
   expect(JSON.parse((await run('status', '--skill', 'sample')).stdout).last_used_at).toBeNull();
+  // No CLAUDE_CONFIG_DIR at launch stamps no config_dir, leaving Claude Code's default file.
+  fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage: { sample: { lastUsedAt: newest } } }));
+  fs.writeFileSync(path.join(state, 'runtime.json'), '{}');
+  const fallback = await runScript('skills.ts', { args: ['status', '--skill', 'sample'], cwd: dir, env: { AGENT_DIR: hermit, CLAUDE_CONFIG_DIR: configDir } });
+  expect(JSON.parse(fallback.stdout).last_used_at).toBe(newest);
 });
