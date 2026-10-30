@@ -408,7 +408,8 @@ describe('static settings policy', () => {
         expectAsk(r.stdout, `Hermit setting: ${field}${rest.startsWith('set ') ? '=' + rest.split(' ').at(-1) : ''}`);
       }
     }
-  });
+    // 84 sequential gate subprocesses: the 5s default fails under parallel suite load.
+  }, 30_000);
 
   test('ordinary preferences and routine commands stay silent', async () => {
     const dir = fixture();
