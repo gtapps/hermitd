@@ -26,7 +26,7 @@ Before composing any brief, determine the dispatch mode:
 3. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the duty digest holds no task records.
 4. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`, compose in main, and never dispatch.
 
-Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
+Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), and `today` (ISO date). For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 
