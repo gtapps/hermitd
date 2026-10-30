@@ -4,7 +4,7 @@ Return structured JSON for the calling skill to compose and deliver. Read fresh 
 
 ## Inputs
 
-The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `daily`, `default-no-session`), `today` (ISO date), and morning `context_recovery`.
+The caller supplies `plugin_root` (absolute), `mode` (`morning`, `evening`, `daily`), `today` (ISO date), and morning `context_recovery`.
 
 Run `task-report` (Commands) with arguments `--limit 20 --today` for normalized records and `task-list` (Commands) with arguments `--open --owner resident --json` for open resident work. Run `duties-summary` (Commands) for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` `last_event` is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy.
 
@@ -20,7 +20,7 @@ For morning, evening and daily, populate `waiting` from `task-list` rows with a 
 
 For morning, evening and daily, populate `decisions` from report rows' decision lines stamped within the last day as `<task title>: <what changed, why>`, dropping timestamp and actor; otherwise an empty array.
 
-For default-no-session, summarize the most recent normalized record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for date, empty tags, title for working_on, and waiting reason or open work for next_start_point. No records means null summary, never an archive fallback. Return an empty `decisions` array.
+For `report_summary`, map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for date, empty tags, title for working_on, and waiting reason or open work for next_start_point. No records means null summary, never an archive fallback.
 
 ## Return value
 

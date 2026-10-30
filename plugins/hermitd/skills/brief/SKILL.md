@@ -24,12 +24,13 @@ Before composing any brief, determine the dispatch mode:
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`.
 2. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary", or no flag).
 3. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows.
+4. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the digests from steps 1 and 3 omit closed work. For a no-flag brief, compose in main and never dispatch.
 
-Read these bounded digests fresh each turn. With no flag and open resident records, summarize those records in main. Otherwise dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`, passing `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, `daily`, or `default-no-session`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
+Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), `today` (ISO date), and `context_recovery` for morning. For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 
-Readers use `task-report.ts` for normalized task outcomes. Never open frozen session archives. If the runner fails or returns malformed JSON, use the current task list and duty digest; do not fall back to archives.
+Readers use `task-report.ts` for normalized task outcomes. Never open frozen session archives. If the runner fails or returns malformed JSON, read `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` and follow it for the active mode.
 
 **Eval runner return schema** — the runner returns a JSON object conforming to this block. The schema is byte-identical in `reference.md` (producer) and here (consumer); a contract test asserts this.
 
@@ -93,8 +94,8 @@ Current behavior — general purpose summary as described below.
 
 ## Plan
 
-1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 20` when needed.
-2. Otherwise use `runner.report_summary`. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
+1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 5` when needed.
+2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `opened_at` for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
 3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree.
 
 ## Output Format
