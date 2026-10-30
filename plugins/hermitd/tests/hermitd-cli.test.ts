@@ -71,6 +71,17 @@ test('container restart refuses before transport dispatch', async () => {
   expect(r.stderr).toContain('restart_refused_container');
   expect(f.calls()).toBe('');
 });
+test('docker restart refuses from the resident and in a container', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const resident = await f.run(['docker', 'demo', 'restart'], f.root, { HERMIT_RESIDENT: '1' });
+  expect(resident.exitCode).toBe(1);
+  expect(resident.stderr).toContain('restart_refused_resident');
+  const container = await f.run(['docker', 'demo', 'restart'], f.root, { container: 'docker', HERMIT_RESIDENT: '' });
+  expect(container.exitCode).toBe(1);
+  expect(container.stderr).toContain('restart_refused_container');
+  expect(f.calls()).toBe('');
+});
 test('interactive status and attach', async () => {
   const f = fixture(); write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');
   expect(JSON.parse((await f.run(['status', 'demo', '--json'])).stdout).runtime).toBe('interactive');

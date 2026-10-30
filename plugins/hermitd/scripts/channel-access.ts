@@ -121,6 +121,25 @@ function main(): void {
     next.allowFrom = [...new Set([...(access.allowFrom ?? []), pending.senderId])];
     delete next.pending![value];
     if (restrict) next.dmPolicy = 'allowlist';
+    const channelConfig = config.channels?.[channel];
+    const seedHome = !!channelConfig && homeSeedBlock(channelConfig, pending.chatId) === null;
+    const saveConfig = () => {
+      const after = structuredClone(config);
+      if (seedHome) after.channels[channel].default_chat_id = pending.chatId;
+      // An absent allowed_users admits everyone in allowFrom, so a new list starts from them.
+      if (restrict) after.channels[channel].allowed_users = [...new Set([...(channelConfig.allowed_users ?? next.allowFrom ?? []), pending.senderId])];
+      const result = persistConfig({ hermitDir: dir, before: config, after, actor: 'channel-access' });
+      if (result.newErrors.length > 0) throw new Error('invalid_config');
+      for (const warning of result.newWarnings) console.error(`Warning: ${warning}`);
+    };
+    // Restricted pairing saves config first: a consumed code and a closed DM policy
+    // would leave the operator no way to retry a failed write.
+    if (restrict) {
+      try {
+        if (!channelConfig) throw new Error('no_channel_config');
+        saveConfig();
+      } catch { throw new Error('access_config_write_failed'); }
+    }
     writeAccess(dir, channel, pairFile, access, next);
     const approve = (accessFile: string) => {
       const approved = path.join(path.dirname(accessFile), 'approved');
@@ -142,22 +161,14 @@ function main(): void {
     }
     // Plugins issue codes only in DMs, so this is the operator's own chat. Seeding
     // the home here lets unattended sends reach it before the first inbound message.
-    const channelConfig = config.channels?.[channel];
-    let home = 'kept';
-    if (restrict && !channelConfig) throw new Error('access_config_write_failed');
-    if (channelConfig && (restrict || homeSeedBlock(channelConfig, pending.chatId) === null)) {
-      const after = structuredClone(config);
-      if (homeSeedBlock(channelConfig, pending.chatId) === null) after.channels[channel].default_chat_id = pending.chatId;
-      if (restrict) after.channels[channel].allowed_users = [...new Set([...(channelConfig.allowed_users ?? []), pending.senderId])];
+    let home = restrict && seedHome ? 'set' : 'kept';
+    if (!restrict && seedHome) {
       // The code is already consumed, so a failed seed must not fail the pairing;
       // channel-hook still seeds the home on the first inbound reply.
       try {
-        const result = persistConfig({ hermitDir: dir, before: config, after, actor: 'channel-access' });
-        if (result.newErrors.length > 0) throw new Error('invalid_config');
-        for (const warning of result.newWarnings) console.error(`Warning: ${warning}`);
-        home = homeSeedBlock(channelConfig, pending.chatId) === null ? 'set' : 'kept';
+        saveConfig();
+        home = 'set';
       } catch (error) {
-        if (restrict) throw new Error('access_config_write_failed');
         console.error(`Warning: home chat not set: ${(error as Error).message}`);
         home = 'failed';
       }

@@ -1,4 +1,4 @@
-// hatch-report.ts: the data behind hatch's two operator-facing summaries.
+// hatch-report.ts: the data behind hatch's operator-facing summary.
 //
 // The load-bearing tests are the "declined step" ones: a report written by the
 // model from its own memory of the run could claim a file was created that the

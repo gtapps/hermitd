@@ -456,7 +456,7 @@ The file contains a managed block bounded by marker comments (`# >>> hermitd ...
 If `git_init_eligible`:
 
 - **Advanced branch:** ask with `AskUserQuestion` (header: "Git init") — "Initialize a local git repo here? The hermit's build output will be tracked; its internal churn (sessions, proposals, state) stays gitignored." — options: **Yes** (default) / **No**. Run `git init` only on Yes.
-- **Quick branch:** announced in the Quick Turn 5 confirm bundle and run as part of the shared steps only after the operator confirms (see "Quick — silent defaults applied to shared steps" table — Step 7.5 row). Never auto-runs before confirmation.
+- **Fast path:** run `git init` without a question.
 
 When run, `git init` creates the repo at the project root. The `.gitignore` written in Step 7 is immediately in effect.
 

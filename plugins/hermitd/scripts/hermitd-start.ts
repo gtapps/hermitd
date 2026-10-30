@@ -1312,7 +1312,7 @@ function clearChannelFailureCache(cmd: string[]): void {
 export function execvp(cmd: string[]): never {
   releaseLock(LIFECYCLE_LOCK);
   if (!process.stdin.isTTY) {
-    console.error('[hermit] ERROR: interactive mode requires a terminal. Install tmux and retry.');
+    console.error('[hermit] ERROR: interactive mode requires a terminal. Run hermitd start from a terminal.');
     process.exit(1);
   }
   const res = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });

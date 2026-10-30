@@ -31,8 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { localISOStamp } from './lib/time';
 import { markGuest } from './lib/guest-marker';
-import { flagValue } from './lib/cli';
-import { exitError } from './lib/cli';
+import { flagValue, exitError } from './lib/cli';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 const TEMPLATES = path.join(PLUGIN_ROOT, 'state-templates');

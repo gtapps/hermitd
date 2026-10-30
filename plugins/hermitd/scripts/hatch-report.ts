@@ -1,3 +1,19 @@
+// hatch-report.ts: the data behind hatch's operator-facing summary, as one JSON
+// object; the hatch skill composes the summary from it.
+//
+// It carries what is actually on disk, by looking. It takes no file list from its
+// caller: a report composed from the model's memory of the run could claim a file
+// was written that the operator had declined. Everything below is a filesystem
+// observation, so it can only be wrong if the filesystem is.
+//
+// Usage:
+//   bun hatch-report.ts final <project-root> --deployment <docker|tmux|interactive> [--started]
+//
+// `--deployment` is passed explicitly because it is wizard-only state: nothing
+// persists it (neither config.json nor hatch-options.json carry it), and the
+// next-steps list keys off it. `--started` reports an agent hatch already started,
+// so there are no typed next steps. Anything else the report needs, it reads.
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, flagValue, exitError, printJson } from './lib/cli';

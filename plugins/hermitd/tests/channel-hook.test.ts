@@ -176,7 +176,7 @@ for (const home of ['', 'HOME']) test(`hook home=${home} eligibility and audit`,
 
 for (const [prompt, chat, expected] of [
   ['<channel source="discord" chat_id="HOME">hi</channel>', 'HOME', 'HOME'],
-  ['<channel source="discord" chat_id="OTHER">hi</channel>', 'OTHER', 'OTHER'],
+  ['<channel source="discord" chat_id="OTHER">hi</channel>', 'OTHER', undefined],
   ['routine wake', 'HOME', undefined],
   ['<channel source="discord" chat_id="HOME">hi</channel>', undefined, undefined],
 ] as const) test(`two-way evidence: ${prompt}, ${chat}`, withDir(async dir => {

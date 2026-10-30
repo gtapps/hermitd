@@ -22,9 +22,56 @@ export const CHANNEL_PROBES: Record<string, (token: string) => ChannelProbe> = {
     url: `${process.env.HERMIT_DOCTOR_TELEGRAM_API || 'https://api.telegram.org'}/bot${token}/getMe`,
   }),
   discord: (token) => ({
-    url: `${process.env.HERMIT_DOCTOR_DISCORD_API || 'https://discord.com/api/v10'}/users/@me`,
+    url: `${discordApi()}/users/@me`,
     headers: { Authorization: `Bot ${token}` },
   }),
+};
+
+function discordApi(): string {
+  return process.env.HERMIT_DOCTOR_DISCORD_API || 'https://discord.com/api/v10';
+}
+
+// View Channels, Send Messages, Send Messages in Threads, Read Message History,
+// Attach Files and Add Reactions: the set the official Discord plugin documents.
+const DISCORD_INVITE_PERMISSIONS = 274878008384;
+
+export type PreflightFindings = {
+  failure?: { reason: string; fix: string };
+  warnings?: string[];
+  invite?: string;
+};
+
+/**
+ * Platform → setup preflight, for channel-preflight.ts. `rejected` lists the
+ * statuses that mean the token is bad; `inspect` reads a successful response.
+ * A platform absent here reports `not_checked`.
+ */
+export const CHANNEL_PREFLIGHTS: Record<string, {
+  probe: (token: string) => ChannelProbe;
+  rejected: number[];
+  inspect: (body: any) => PreflightFindings;
+}> = {
+  telegram: {
+    probe: CHANNEL_PROBES.telegram,
+    // Telegram answers 404, not 401, to a token it cannot parse.
+    rejected: [401, 403, 404],
+    inspect: (body) => body.ok === true ? {} : { failure: { reason: 'token_rejected', fix: 'replace_token' } },
+  },
+  discord: {
+    probe: (token) => ({ url: `${discordApi()}/applications/@me`, headers: { Authorization: `Bot ${token}` } }),
+    rejected: [401, 403],
+    inspect: (body) => {
+      if (!body.id || !/^\d+$/.test(String(body.id))) return { failure: { reason: 'invalid_response', fix: 'retry_check' } };
+      const invite = `https://discord.com/oauth2/authorize?client_id=${body.id}&scope=bot&permissions=${DISCORD_INVITE_PERMISSIONS}`;
+      const warnings = [
+        ...(body.bot_public ? ['bot_public'] : []),
+        ...(body.approximate_guild_count > 0 ? [] : ['no_guilds']),
+      ];
+      const messageContent = (Number(body.flags) || 0) & ((1 << 18) | (1 << 19));
+      const failure = messageContent ? undefined : { reason: 'message_content_intent_off', fix: 'enable_message_content_intent' };
+      return { failure, warnings, invite };
+    },
+  },
 };
 
 /**
