@@ -22,16 +22,18 @@ export function main(payload: any): void {
     } }) + '\n');
     return;
   }
-  if (payload.hook_event_name !== 'PostToolUse' || origin.kind !== 'channel') return;
+  if (payload.hook_event_name !== 'PostToolUse' || origin.kind === 'terminal') return;
+  // An unproven origin may be a chat, so it gets the non-admin handling.
+  const admin = origin.kind === 'channel' && origin.canCompleteAuthentication;
   const maintainer = resolveMaintainerTarget(readConfigRaw(hermitDir())?.channels);
   let instruction: string;
   if (maintainer) {
     instruction = `Do not show the sign-in link in the asking chat. Send the link to the admin through ${NOTICE}, with JSON {"maintainer":<link message>,"sensitive":true} on stdin. ${DELIVERY} ${LINK_MESSAGE}`;
-    if (!origin.canCompleteAuthentication) instruction += ' Tell the asker an admin must reconnect the tool.';
-  } else if (origin.canCompleteAuthentication) {
+    if (!admin) instruction += ' Tell the asker an admin must reconnect the tool.';
+  } else if (admin) {
     instruction = `Show the sign-in link here. ${LINK_MESSAGE}`;
   } else {
-    instruction = `Do not show the sign-in link. Tell the asker an admin must reconnect the tool. Notify the admin through ${NOTICE} with JSON {"maintainer":<request to reconnect, without the link>,"sensitive":true} on stdin. ${DELIVERY} Make the reply reflect the send result.`;
+    instruction = `Do not show the sign-in link. Tell the asker an admin must reconnect the tool. Notify the admin through ${NOTICE} with JSON {"maintainer":<request to reconnect, without the link>,"sensitive":true} on stdin. Count it as sent only if status is delivered. Make the reply reflect the send result.`;
   }
   process.stdout.write(JSON.stringify({ hookSpecificOutput: {
     hookEventName: 'PostToolUse', additionalContext: instruction,

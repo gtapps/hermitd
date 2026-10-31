@@ -48,6 +48,8 @@ Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messa
 Delete `.hermit/state/skill-review-counter` if it exists.
 Use the `<resolved-settings-file>` Step 8 resolves from `hatch_target`. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` and `messages.ts set`/`reset` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)' 'Bash(bun */scripts/messages.ts set *)' 'Bash(*.hermit/bin/hermitd-run messages set*)' 'Bash(hermitd run messages set*)' 'Bash(*/hermitd run messages set*)' 'Bash(bun */scripts/messages.ts reset *)' 'Bash(*.hermit/bin/hermitd-run messages reset*)' 'Bash(hermitd run messages reset*)' 'Bash(*/hermitd run messages reset*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
 
+**Leftover check:** `task.ts learn` verb and `task.ts list --skill-review` flag removed; `skill_review` dropped from task records, `task.ts list` rows and close digests.
+
 No `config.json` changes required.
 
 ## [1.4.23] - 2026-10-27

@@ -74,36 +74,46 @@ function activationSummary(root: string): Activates {
       for (const rule of Array.isArray(settings.permissions?.allow) ? settings.permissions.allow : []) add(out.allow_rules, rule);
       for (const dir of Array.isArray(settings.permissions?.additionalDirectories) ? settings.permissions.additionalDirectories : []) add(out.additional_directories, dir);
       if (isDict(settings.env)) for (const key of Object.keys(settings.env)) add(out.env_keys, key);
-      for (const key of ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport']) {
+      for (const key of ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport', 'gcpAuthRefresh', 'otelHeadersHelper', 'enabledPlugins', 'extraKnownMarketplaces']) {
         if (settings[key] !== undefined) add(out.helper_commands, `${file}: ${key}: ${JSON.stringify(settings[key])}`);
       }
-      if (settings.statusLine?.command !== undefined) add(out.helper_commands, `${file}: statusLine: ${settings.statusLine.command}`);
+      for (const key of ['statusLine', 'subagentStatusLine', 'fileSuggestion']) {
+        if (settings[key]?.command !== undefined) add(out.helper_commands, `${file}: ${key}: ${settings[key].command}`);
+      }
     } catch { add(out.unreadable, file); }
   }
   const mcp = path.join(root, '.mcp.json');
   if (fs.existsSync(mcp)) {
     const servers = JSON.parse(fs.readFileSync(mcp, 'utf8')).mcpServers;
     for (const [name, server] of Object.entries(servers) as [string, any][]) {
-      if (server?.command !== undefined) add(out.mcp_commands, `${name}: ${JSON.stringify({ command: server.command, args: server.args })}`);
+      const { command, args, url, headersHelper } = server ?? {};
+      if (command !== undefined || url !== undefined || headersHelper !== undefined) {
+        add(out.mcp_commands, `${name}: ${JSON.stringify({ command, args, url, headersHelper })}`);
+      }
     }
   }
-  const agents = path.join(root, '.claude/agents');
-  if (fs.existsSync(agents)) {
-    const files = fs.readdirSync(agents).filter(file => file.endsWith('.md')).sort();
-    if (files.length > 20) out.truncated = true;
-    for (const name of files.slice(0, 20)) {
-      const file = `.claude/agents/${name}`;
-      const full = path.join(root, file);
-      const fm = readFrontmatter(full);
-      if (fm?.hooks === undefined) continue;
-      try {
-        // The shared reader identifies the field; YAML preserves its nested hook structure.
-        const content = fs.readFileSync(full, 'utf8');
-        const end = content.indexOf('\n---', 3);
-        const parsed = Bun.YAML.parse(content.slice(4, end)) as any;
-        hooks(parsed?.hooks, out.agent_hooks, file);
-      } catch { add(out.unreadable, file); }
-    }
+  // Claude Code scans these trees recursively, and both file kinds can carry hooks.
+  const under = (dir: string, match: (name: string) => boolean) => {
+    if (!fs.existsSync(path.join(root, dir))) return [];
+    const names = fs.readdirSync(path.join(root, dir), { recursive: true }) as string[];
+    return names.filter(match).sort().map(name => `${dir}/${name}`);
+  };
+  const files = [
+    ...under('.claude/agents', name => name.endsWith('.md')),
+    ...under('.claude/skills', name => path.basename(name) === 'SKILL.md'),
+  ];
+  if (files.length > 20) out.truncated = true;
+  for (const file of files.slice(0, 20)) {
+    const full = path.join(root, file);
+    const fm = readFrontmatter(full);
+    if (fm?.hooks === undefined) continue;
+    try {
+      // The shared reader identifies the field; YAML preserves its nested hook structure.
+      const content = fs.readFileSync(full, 'utf8');
+      const end = content.indexOf('\n---', 3);
+      const parsed = Bun.YAML.parse(content.slice(4, end)) as any;
+      hooks(parsed?.hooks, out.agent_hooks, file);
+    } catch { add(out.unreadable, file); }
   }
   return out;
 }

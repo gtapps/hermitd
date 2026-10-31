@@ -5,11 +5,12 @@
 // importing the lib directly the way async callers (cost-tracker.ts,
 // lib/prompt-stages/channel-status-responder.ts) do.
 //
-// Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer] <text|- >
+// Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer [--channel <id>]] <text|- >
 //   --tier     client (default) sends to the primary chat as today; maintainer
 //              routes through sendOperatorNotice to channels.<p>.maintainer_channel_id,
 //              falling back to the primary chat when none is configured, or to
 //              Findings on a non-technical profile.
+//   --channel  with --tier maintainer, tests that channel's maintainer chat with no fallback.
 //   <text|- >  literal text, or "-" to read the message from stdin (avoids
 //              argv length/newline edges — the form spawnSync callers use).
 //   Prints `OK` when delivered, else {"error":"<token>"} at exit 1. That Findings
@@ -209,7 +210,7 @@ async function main(): Promise<void> {
       const entry = config.channels?.[parsed.channel];
       if (!maintainerEligible(entry)) exitError('no_maintainer_channel');
       const result = await sendToChannel(stateDir, text, {
-        config, target: { id: parsed.channel, chat_id: entry.maintainer_channel_id },
+        config, target: { id: parsed.channel, chat_id: entry.maintainer_channel_id }, recordHealth: false,
       });
       if (result.ok) emit('OK');
       failJson(result.error, 'send_failed');

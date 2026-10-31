@@ -1592,6 +1592,8 @@ test('maintainer test sends target only the selected channel and fail without fa
     expect(failed.exitCode).toBe(1);
     expect(JSON.parse(failed.stdout)).toHaveProperty('error');
     expect(stub.requests).toHaveLength(0);
+    // A wrong maintainer id must not mark the client route down.
+    expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(false);
     const missing = await run(['--tier', 'maintainer', '--channel', 'missing', 'test']);
     expect(missing.exitCode).toBe(1);
     expect(stub.requests).toHaveLength(0);

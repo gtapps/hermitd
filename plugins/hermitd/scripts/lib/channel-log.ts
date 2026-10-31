@@ -158,7 +158,7 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
     try {
       ensureSchema(db);
       const text = String(input.text ?? '')
-        .replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1)(?::\d+)?\/\S*[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]')
+        .replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]')
         .slice(0, MAX_TEXT_LEN);
       if (!text) return { ok: false, error: 'empty text' };
 

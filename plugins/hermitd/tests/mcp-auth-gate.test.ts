@@ -41,7 +41,17 @@ test('link instructions resolve the destination and require successful maintaine
   expect(own).toContain('Show the sign-in link here');
   expect(own).toContain('every chat and routine');
   const member = (await gate('PostToolUse', channel('b'), { allowed_users: ['a', 'b'] })).additionalContext;
-  for (const phrase of ['Do not show', 'admin must reconnect', '--notice', 'without the link', 'reflect the send result']) expect(member).toContain(phrase);
+  for (const phrase of ['Do not show', 'admin must reconnect', '--notice', 'without the link', 'status is delivered', 'reflect the send result']) expect(member).toContain(phrase);
+  // With no maintainer chat that route cannot occur, so demanding it would report every send as failed.
+  expect(member).not.toContain('maintainer_channel');
   expect(await gate('PostToolUse', 'sign in')).toBeNull();
-  expect(await gate('PostToolUse', null)).toBeNull();
+});
+
+test('an unproven origin never shows the link', async () => {
+  const noMaintainer = (await gate('PostToolUse', null)).additionalContext;
+  expect(noMaintainer).toContain('Do not show the sign-in link');
+  expect(noMaintainer).not.toContain('Show the sign-in link here');
+  const maintainer = (await gate('PostToolUse', null, { maintainer_channel_id: 'admin' })).additionalContext;
+  expect(maintainer).toContain('Do not show the sign-in link in the asking chat');
+  expect(maintainer).toContain('admin must reconnect');
 });

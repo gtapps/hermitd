@@ -40,11 +40,11 @@ test('all message directions redact local sign-in callbacks and preserve other U
   const dir = freshDir();
   const ordinary = 'https://example.com/callback?code=public http://localhost:3000/health';
   for (const direction of ['in', 'out'] as const) {
-    for (const callback of ['http://localhost:1234/callback?code=secret', '127.0.0.1/callback?state=private', 'HTTPS://LOCALHOST/callback?x=1&code=secret']) {
+    for (const callback of ['http://localhost:1234/callback?code=secret', '127.0.0.1/callback?state=private', 'HTTPS://LOCALHOST/callback?x=1&code=secret', 'http://localhost:1234?code=secret', 'http://[::1]:1234/callback?code=secret']) {
       expect(logMessage(dir, { source: 'custom', chat_id: 'home', direction, text: `before ${callback} after ${ordinary}` }).ok).toBe(true);
     }
   }
   const rows = conversationHistory(dir, 'custom', 'home', { limit: 10 });
-  expect(rows).toHaveLength(6);
+  expect(rows).toHaveLength(10);
   for (const row of rows) expect(row.text).toBe(`before [sign-in callback omitted] after ${ordinary}`);
 });

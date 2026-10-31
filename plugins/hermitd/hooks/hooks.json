@@ -4,7 +4,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__.*__complete_authentication",
+        "matcher": "^mcp__.*__complete_authentication$",
         "hooks": [
           {
             "type": "command",
@@ -69,7 +69,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__.*__authenticate",
+        "matcher": "^mcp__.*__authenticate$",
         "hooks": [
           {
             "type": "command",

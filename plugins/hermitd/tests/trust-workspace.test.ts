@@ -298,21 +298,29 @@ describe('trust-workspace apply', () => {
 
 test('check discloses bounded settings and agent hooks without env values or execution', async () => {
   const { state, clone } = fixture();
-  fs.mkdirSync(path.join(clone, '.claude/agents'), { recursive: true });
+  fs.mkdirSync(path.join(clone, '.claude/agents/nested'), { recursive: true });
+  fs.mkdirSync(path.join(clone, '.claude/skills/tool'), { recursive: true });
   fs.writeFileSync(path.join(clone, '.claude/settings.json'), JSON.stringify({
     hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'echo hook' }] }] },
     permissions: { allow: ['Bash(echo *)'], additionalDirectories: ['/extra'] },
-    env: { SECRET: 'never-disclose' }, apiKeyHelper: 'echo helper',
+    env: { SECRET: 'never-disclose' }, apiKeyHelper: 'echo helper', otelHeadersHelper: 'echo otel',
+    fileSuggestion: { type: 'command', command: 'echo suggest' }, enabledPlugins: { 'tool@market': true },
   }));
   fs.writeFileSync(path.join(clone, '.claude/settings.local.json'), '{bad');
-  fs.writeFileSync(path.join(clone, '.mcp.json'), JSON.stringify({ mcpServers: { server: { command: 'echo', args: ['mcp'] } } }));
-  fs.writeFileSync(path.join(clone, '.claude/agents/helper.md'), '---\nname: helper\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: echo agent\n---\n');
+  fs.writeFileSync(path.join(clone, '.mcp.json'), JSON.stringify({ mcpServers: {
+    server: { command: 'echo', args: ['mcp'] },
+    remote: { type: 'http', url: 'https://mcp.example.test', headersHelper: 'echo headers' },
+  } }));
+  const hookFrontmatter = (name: string) => `---\nname: ${name}\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: echo ${name}\n---\n`;
+  fs.writeFileSync(path.join(clone, '.claude/agents/helper.md'), hookFrontmatter('agent'));
+  fs.writeFileSync(path.join(clone, '.claude/agents/nested/deep.md'), hookFrontmatter('nested-agent'));
+  fs.writeFileSync(path.join(clone, '.claude/skills/tool/SKILL.md'), hookFrontmatter('skill'));
   const result = await check(state, clone);
   expect(result.activates).toMatchObject({ allow_rules: ['Bash(echo *)'], additional_directories: ['/extra'], env_keys: ['SECRET'], unreadable: ['.claude/settings.local.json'], truncated: false });
   expect(result.activates.hooks.join()).toContain('echo hook');
-  expect(result.activates.helper_commands.join()).toContain('echo helper');
-  expect(result.activates.mcp_commands.join()).toContain('mcp');
-  expect(result.activates.agent_hooks.join()).toContain('echo agent');
+  for (const helper of ['echo helper', 'echo otel', 'echo suggest', 'tool@market']) expect(result.activates.helper_commands.join()).toContain(helper);
+  for (const server of ['mcp', 'https://mcp.example.test', 'echo headers']) expect(result.activates.mcp_commands.join()).toContain(server);
+  for (const hook of ['echo agent', 'echo nested-agent', 'echo skill']) expect(result.activates.agent_hooks.join()).toContain(hook);
   expect(JSON.stringify(result)).not.toContain('never-disclose');
   fs.writeFileSync(path.join(clone, '.claude/settings.json'), JSON.stringify({ permissions: { allow: Array(25).fill('x'.repeat(600)) } }));
   const capped = (await check(state, clone)).activates;
