@@ -101,7 +101,7 @@ jobs:
           const server = Bun.serve({
             port: 0,
             hostname: '127.0.0.1',
-            fetch: () => new Response('<title>Hermit browser CI</title><p>Local page</p>'),
+            fetch: () => new Response('<title>Hermit browser CI</title><p>Local page</p>', { headers: { 'content-type': 'text/html' } }),
           });
           try {
             for (const args of [
