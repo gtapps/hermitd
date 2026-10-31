@@ -269,7 +269,7 @@ If `channels.<channel>.maintainer_channel_id` is set in `config.json`, this chan
 When it's set, send **one** test message to the maintainer chat to confirm reachability:
 
 ```
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --tier maintainer -
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --tier maintainer --channel <channel> -
 ```
 
 with a short line on stdin (e.g. "Maintainer channel check: technical and spend alerts will arrive here."). Record the result in the §7 summary: **sent** confirms the id; a **failure** means the id is wrong or the chat isn't reachable, so surface it so the operator fixes it now. If `maintainer_channel_id` is absent, skip silently.

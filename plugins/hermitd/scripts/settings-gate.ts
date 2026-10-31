@@ -23,7 +23,7 @@ import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
-import { isAllowedSender, isPrimaryOperator } from './lib/channel-auth';
+import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
@@ -174,10 +174,10 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 const TURN_TAIL_BYTES = 512 * 1024;
 
 type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
-  | { kind: 'channel'; key: string; primary: boolean };
+  | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean };
 
 /** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
-function turnConversation(payload: Json): RoutineOrigin {
+export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return { kind: 'unknown' };
@@ -189,7 +189,8 @@ function turnConversation(payload: Json): RoutineOrigin {
     if (!env) return { kind: 'terminal' };
     if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
-      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId) };
+      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),
+      canCompleteAuthentication: canCompleteAuthentication(config, env.source, env.userId, env.chatId) };
   } catch {
     return { kind: 'unknown' };
   }

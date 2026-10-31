@@ -19,7 +19,7 @@ import { REVIEW_CALLS } from './learned-skills';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'review_not_pending', 'not_closed']);
+const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -29,7 +29,7 @@ const HOUR = 3600000;
 // Absolute, because a close outside the task skill has no plugin root to resolve against.
 const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'skill_review', 'last_worker'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker'] as const;
 const booleans = ['muted', 'delegated'] as const;
 export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[]; claims: string[]; result_rev: number; body: string };
 // A worker owner is `worker:<agentId>`; the id is the harness's, not a conversation key.
@@ -53,7 +53,6 @@ export function validateTask(record: Task): void {
   const fail = () => { throw new Error('invalid_record'); };
   for (const key of requiredStrings) if (typeof record[key] !== 'string' || !record[key]) fail();
   for (const key of nullableStrings) if (record[key] !== null && typeof record[key] !== 'string') fail();
-  if (![null, 'pending', 'saved', 'covered', 'nothing'].includes(record.skill_review)) fail();
   if (!TASK_ID.test(record.id) || record.type !== 'task' || !['open', 'closed'].includes(record.status)) fail();
   if (![null, 'check', 'confirmed', 'cancelled'].includes(record.closed_by)) fail();
   if (!Number.isInteger(record.result_rev) || record.result_rev < 0) fail();
@@ -85,7 +84,8 @@ export function decodeTask(text: string): Task {
       if (fm[key] !== undefined && fm[key] !== 'true' && fm[key] !== 'false') throw new Error();
       fm[key] = fm[key] === 'true';
     }
-    const record = { ...fm, body: text.slice(end + 4).replace(/^\n/, '') } as Task;
+    const fields = [...requiredStrings, ...nullableStrings, ...booleans, 'tags', 'claims', 'result_rev'];
+    const record = { ...Object.fromEntries(fields.filter(key => key in fm).map(key => [key, fm[key]])), body: text.slice(end + 4).replace(/^\n/, '') } as Task;
     for (const key of nullableStrings) if (!(key in record)) record[key] = null;
     validateTask(record);
     return record;
@@ -257,16 +257,6 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
-      if (verb === 'learn') {
-        const disposition = required(flags, 'disposition');
-        if (!['saved', 'covered', 'nothing'].includes(disposition)) throw new Error('invalid_disposition');
-        if (record.status !== 'closed') throw new Error('not_closed');
-        if (record.skill_review === disposition) return { id, skill_review: disposition };
-        if (record.skill_review !== 'pending') throw new Error('review_not_pending');
-        record.skill_review = disposition;
-        writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encodeTask(record));
-        return { id, skill_review: disposition };
-      }
       if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
@@ -360,10 +350,11 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
     }
-    if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled' && readSettledConfig(dir).skills.learning) {
-      if (record.delegated || reviewCallsReached(dir, record)) {
-        record.skill_review = 'pending';
-        digest = { ...(digest as object), skill_review: 'pending', next: `read ${LEARN_GUIDE}` };
+    if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled') {
+      const config = readSettledConfig(dir);
+      if (config.skills.learning && ['auto', 'bypassPermissions'].includes(config.permission_mode)
+        && (record.delegated || reviewCallsReached(dir, record))) {
+        digest = { ...(digest as object), next: `read ${LEARN_GUIDE}` };
       }
     }
     const encoded = encodeTask(record);
@@ -407,13 +398,11 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
   if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
   if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
-  const review = flag(flags, 'skill-review');
-  if (review !== undefined && review !== 'pending') throw new Error('invalid_skill_review');
-  const selected = records.filter(r => (review ? r.skill_review === review : !flags.all || flags.open ? r.status === 'open' : true)
+  const selected = records.filter(r => (!flags.all || flags.open ? r.status === 'open' : true)
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, skill_review: r.skill_review, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 
@@ -547,11 +536,9 @@ export function taskStandup(dir: string, days = 7) {
 export function startupTasks(dir: string, rows = 4): string[] {
   const records = readTasks(dir);
   const list = listTasks(dir, {}, records);
-  const reviews = records.filter(r => r.skill_review === 'pending').length;
   return [
     `Open tasks: ${list.total}`,
     ...list.rows.slice(0, rows).map(r => `${r.id} ${r.handle} ${r.listing.join(', ')} ${r.requester} ${r.due ?? '-'}`),
-    ...(reviews ? [`Pending skill reviews: ${reviews}. Resume through /hermitd:task closure.`] : []),
   ];
 }
 

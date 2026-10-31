@@ -157,7 +157,7 @@ describe('permission-denied-notify', () => {
       const r = await run({ ...DENIAL_PAYLOAD, tool_name: `mcp__${'a'.repeat(80)}`, reason: 'x'.repeat(400) }, wd.dir, stub.url);
       expect(r.exitCode).toBe(0);
       expect(stub.requests).toHaveLength(1);
-      expect(stub.requests[0].body.text).toEndWith('If it was intended, tell the agent in chat.');
+      expect(stub.requests[0].body.text).toEndWith('If it was intended, tell the agent in your usual chat.');
     } finally {
       stub.stop();
       wd.cleanup();

@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: task-close-outside-skill-shop
 description: 'A close digest flags a skill review in a turn without the task skill; the digest alone has to lead the resident to the review guide.'
 tags: [chains, heldout]
-expected_outcome: 'The review guide is read and the reply reports the outcome of the review'
+expected_outcome: 'The review guide is read and the reply mentions learning only when a skill changed'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -78,10 +78,9 @@ execution:
   prompt: |
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
-    - task.ts close T-20261019-090000, already run this turn: {"id":"T-20261019-090000","closed_by":"confirmed","result_rev":0,"next_queued":null,"skill_review":"pending","next":"read .hermit/guides/learn.md"}
-    - task.ts learn T-20261019-090000 --disposition <value>: {"id":"T-20261019-090000","skill_review":"<value>"}
+    - task.ts close T-20261019-090000, already run this turn: {"id":"T-20261019-090000","closed_by":"confirmed","result_rev":0,"next_queued":null,"next":"read .hermit/guides/learn.md"}
     </system-reminder>
     PR #42 merged, so the shop page task is finished. Thanks.
 graders:
   - {"name":"read-guide","type":"tool_used","tool":"Read","input_match":"learn\\.md","weight":3}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the final reply says the skill review of the closed task finished, with its outcome (saved, covered or nothing). FAIL if it only acknowledges the merge or the close.","weight":2}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the final reply acknowledges the finished task and states no learning outcome when no skill changed. FAIL if it claims a saved skill without a write or adds a nothing-found learning line.","weight":2}

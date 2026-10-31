@@ -225,14 +225,14 @@ const [CLOSE_PROMPT, CLOSE_RECORD] = withInstall({ '.hermit/config.json': config
   const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
     { stdin: 'PR #42 merged.\n', now: '2026-10-19T11:00:00.000Z' }));
   const stood = JSON.stringify({ ...digest, next: 'read .hermit/guides/learn.md' });
-  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n- task.ts learn ${id} --disposition <value>: {"id":"${id}","skill_review":"<value>"}\n</system-reminder>\n`
+  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n`
     + 'PR #42 merged, so the shop page task is finished. Thanks.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
 });
 chainCase('task-close-outside-skill-shop', 'heldout', 'A close digest flags a skill review in a turn without the task skill; the digest alone has to lead the resident to the review guide.',
-  'The review guide is read and the reply reports the outcome of the review',
+  'The review guide is read and the reply mentions learning only when a skill changed',
   CLOSE_PROMPT,
   [{ name: 'read-guide', type: 'tool_used', tool: 'Read', input_match: String.raw`learn\.md`, weight: 3 },
-    rubric('PASS if the final reply says the skill review of the closed task finished, with its outcome (saved, covered or nothing). FAIL if it only acknowledges the merge or the close.')],
+    rubric('PASS if the final reply acknowledges the finished task and states no learning outcome when no skill changed. FAIL if it claims a saved skill without a write or adds a nothing-found learning line.')],
   chainScaffold(CLOSE_RECORD, [['skills/task/learn.md', '.hermit/guides/learn.md']]), ['Read', 'Glob', 'Grep'], { resident: true });
 
 // --- proposal-create -> triage duplicate (case 8) -------------------------

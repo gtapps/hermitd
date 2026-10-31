@@ -61,7 +61,6 @@ stall_status: "Compared 6 of 9 teas against the September list"
 stall_next: "Which supplier price list should I use, the September or the October one?"
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: a1b2c3d4e5f6a7b8c
 muted: false
 delegated: true

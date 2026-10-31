@@ -919,14 +919,14 @@ Rota body.
     expect(r.stdout).toContain('outbound channel: discord (chat_id: 999888)');
   }));
 
-  test('startup-context (source=compact, pending skill review → count survives)', withDir(async (dir) => {
+  test('startup-context (source=compact, closed learning task → no recovery line)', withDir(async (dir) => {
     const task = (args: string[], stdin?: string) => runScript('task.ts', { cwd: dir, env: ENV, args: [args[0], '.hermit', ...args.slice(1)], stdin });
     const { id } = JSON.parse((await task(['open', '--title', 'Ship', '--requester', 'operator', '--done', 'Shipped', '--dedupe-key', 'helper:PROP-001'])).stdout);
     await task(['close', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'], 'done');
     const r = await runScript('startup-context.ts', {
       cwd: dir, env: ENV, stdin: JSON.stringify({ source: 'compact', session_id: 'x' }),
     });
-    expect(r.stdout).toContain('Open tasks: 0\nPending skill reviews: 1.');
+    expect(r.stdout).not.toContain('Pending skill reviews');
   }));
 
   test('startup-context (source=compact, malformed runtime/MP/config → fail-open per field)', withDir(async (dir) => {
@@ -1477,7 +1477,7 @@ describe('doctor-check', () => {
     expect(c.detail).toContain('does-not-exist.ts');
   }));
 
-  test('hooks: plugin manifest contains exactly the 17 shared scripts', () => {
+  test('hooks: plugin manifest contains exactly the registered shared scripts', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
     const names = Object.values(manifest.hooks).flatMap((entries: any) =>
       entries.flatMap((entry: any) => entry.hooks.map((hook: any) => path.basename(hook.args[0], '.ts'))));
@@ -1486,7 +1486,7 @@ describe('doctor-check', () => {
       .map((entry: any) => entry.matcher);
     expect(skillLintMatchers).toEqual(['Bash|Edit|Write']);
     expect(names.sort()).toEqual([
-      'skill-guard', 'skill-lint',
+      'skill-guard', 'skill-lint', 'mcp-auth-gate', 'mcp-auth-gate',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',
       'helper-report-relay', 'helper-report-relay', 'channel-responder-invoked',
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',

@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pinStateDirOrExit } from './lib/cc-compat';
+import { readFrontmatter } from './lib/frontmatter';
 import { isDict } from './lib/channel-config';
 import { emitJson, exitError, failJson } from './lib/cli';
 import { ClaudeStateError, markWorkspaceTrusted, readClaudeState, updateClaudeState, writeJsonKeepingMode } from './lib/claude-state';
 
 type CheckResult =
   | { status: 'refused'; reason: 'outside_launch_root' | 'not_a_repository' | 'not_repository_root' | 'local_settings_tracked' }
-  | { status: 'eligible'; key: string; repo_config: string[]; mcp_servers: string[] };
+  | { status: 'eligible'; key: string; repo_config: string[]; mcp_servers: string[]; activates: Activates };
 
 // An unreviewed repository's config can name a core.fsmonitor command, which any
 // index read would run before the operator has approved anything.
@@ -29,6 +30,82 @@ function mcpServers(root: string): string[] {
     throw new Error('invalid_mcp_config');
   }
   return Object.keys((config as { mcpServers: object }).mcpServers);
+}
+
+interface Activates {
+  hooks: string[];
+  allow_rules: string[];
+  additional_directories: string[];
+  env_keys: string[];
+  helper_commands: string[];
+  mcp_commands: string[];
+  agent_hooks: string[];
+  unreadable: string[];
+  truncated: boolean;
+}
+
+/** Disclosure data only: values are never evaluated or executed. */
+function activationSummary(root: string): Activates {
+  const out: Activates = { hooks: [], allow_rules: [], additional_directories: [], env_keys: [],
+    helper_commands: [], mcp_commands: [], agent_hooks: [], unreadable: [], truncated: false };
+  const add = (list: string[], value: unknown) => {
+    if (value === undefined) return;
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    if (list.length >= 20) { out.truncated = true; return; }
+    if (text.length > 500) out.truncated = true;
+    list.push(text.slice(0, 500));
+  };
+  const hooks = (value: unknown, list: string[], file: string) => {
+    if (!isDict(value)) return;
+    for (const [event, entries] of Object.entries(value as Record<string, any>)) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        if (!Array.isArray(entry?.hooks)) continue;
+        for (const hook of entry.hooks) add(list, `${file}: ${event} ${JSON.stringify(hook)}`);
+      }
+    }
+  };
+  for (const file of ['.claude/settings.json', '.claude/settings.local.json']) {
+    if (!fs.existsSync(path.join(root, file))) continue;
+    try {
+      const settings = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+      if (!isDict(settings)) throw new Error('invalid_settings');
+      hooks(settings.hooks, out.hooks, file);
+      for (const rule of Array.isArray(settings.permissions?.allow) ? settings.permissions.allow : []) add(out.allow_rules, rule);
+      for (const dir of Array.isArray(settings.permissions?.additionalDirectories) ? settings.permissions.additionalDirectories : []) add(out.additional_directories, dir);
+      if (isDict(settings.env)) for (const key of Object.keys(settings.env)) add(out.env_keys, key);
+      for (const key of ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport']) {
+        if (settings[key] !== undefined) add(out.helper_commands, `${file}: ${key}: ${JSON.stringify(settings[key])}`);
+      }
+      if (settings.statusLine?.command !== undefined) add(out.helper_commands, `${file}: statusLine: ${settings.statusLine.command}`);
+    } catch { add(out.unreadable, file); }
+  }
+  const mcp = path.join(root, '.mcp.json');
+  if (fs.existsSync(mcp)) {
+    const servers = JSON.parse(fs.readFileSync(mcp, 'utf8')).mcpServers;
+    for (const [name, server] of Object.entries(servers) as [string, any][]) {
+      if (server?.command !== undefined) add(out.mcp_commands, `${name}: ${JSON.stringify({ command: server.command, args: server.args })}`);
+    }
+  }
+  const agents = path.join(root, '.claude/agents');
+  if (fs.existsSync(agents)) {
+    const files = fs.readdirSync(agents).filter(file => file.endsWith('.md')).sort();
+    if (files.length > 20) out.truncated = true;
+    for (const name of files.slice(0, 20)) {
+      const file = `.claude/agents/${name}`;
+      const full = path.join(root, file);
+      const fm = readFrontmatter(full);
+      if (fm?.hooks === undefined) continue;
+      try {
+        // The shared reader identifies the field; YAML preserves its nested hook structure.
+        const content = fs.readFileSync(full, 'utf8');
+        const end = content.indexOf('\n---', 3);
+        const parsed = Bun.YAML.parse(content.slice(4, end)) as any;
+        hooks(parsed?.hooks, out.agent_hooks, file);
+      } catch { add(out.unreadable, file); }
+    }
+  }
+  return out;
 }
 
 function checkWorkspace(stateDir: string, dir: string): CheckResult {
@@ -64,7 +141,7 @@ function checkWorkspace(stateDir: string, dir: string): CheckResult {
   }
   const repo_config = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json']
     .filter((name) => fs.existsSync(path.join(target, name)));
-  return { status: 'eligible', key, repo_config, mcp_servers };
+  return { status: 'eligible', key, repo_config, mcp_servers, activates: activationSummary(target) };
 }
 
 function guardState<T>(action: () => T): T {

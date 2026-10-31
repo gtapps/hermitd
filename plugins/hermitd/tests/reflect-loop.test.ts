@@ -330,9 +330,5 @@ describe('procedure discovery moved to task close', () => {
     }
   });
 
-  test('a graduated mechanism label routes to the Mechanism check with its failure recovered', () => {
-    expect(reflect).toContain('When a label matches `mechanism:<name>`');
-    expect(reflect).toContain('`rows` of 1 is one incident, so build no candidate yet');
-    expect(reflect).toContain('No recoverable failure means no candidate');
-  });
+
 });

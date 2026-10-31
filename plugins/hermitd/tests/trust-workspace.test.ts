@@ -70,6 +70,9 @@ async function withStateFile(
   }
 }
 
+const emptyActivates = { hooks: [], allow_rules: [], additional_directories: [], env_keys: [],
+  helper_commands: [], mcp_commands: [], agent_hooks: [], unreadable: [], truncated: false };
+
 describe('Claude state writer', () => {
   test('waits for a held lock, writes, and leaves the lock in place', () => {
     const file = path.join(freshDir(), '.claude.json');
@@ -104,7 +107,7 @@ describe('trust-workspace check', () => {
     fs.writeFileSync(path.join(clone, '.mcp.json'), JSON.stringify({ mcpServers: { alpha: {}, beta: {} } }));
     const before = git(clone, 'status', '--short');
     expect(await check(state, clone)).toEqual({
-      status: 'eligible', key: clone,
+      status: 'eligible', activates: emptyActivates, key: clone,
       repo_config: ['.claude/settings.json', '.mcp.json'], mcp_servers: ['alpha', 'beta'],
     });
     expect(git(clone, 'status', '--short')).toBe(before);
@@ -163,7 +166,7 @@ describe('trust-workspace check', () => {
     const { root, state, clone } = fixture();
     const worktree = path.join(root, 'worktree');
     git(clone, 'worktree', 'add', '-q', '--detach', worktree);
-    expect(await check(state, worktree)).toEqual({ status: 'eligible', key: clone, repo_config: [], mcp_servers: [] });
+    expect(await check(state, worktree)).toEqual({ status: 'eligible', activates: emptyActivates, key: clone, repo_config: [], mcp_servers: [] });
     const outside = path.join(freshDir(), 'outside');
     repo(outside);
     const foreignWorktree = path.join(root, 'foreign-worktree');
@@ -177,7 +180,7 @@ describe('trust-workspace check', () => {
     repo(source);
     git(clone, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', source, 'sub');
     expect(await check(state, path.join(clone, 'sub'))).toEqual({
-      status: 'eligible', key: path.join(clone, 'sub'), repo_config: [], mcp_servers: [],
+      status: 'eligible', activates: emptyActivates, key: path.join(clone, 'sub'), repo_config: [], mcp_servers: [],
     });
   });
 
@@ -253,7 +256,7 @@ describe('trust-workspace apply', () => {
     fs.writeFileSync(path.join(clone, '.mcp.json'), '{"mcpServers":{"main-server":{}}}');
     fs.writeFileSync(path.join(worktree, '.mcp.json'), '{"mcpServers":{"worktree-server":{}}}');
     expect(await check(state, worktree)).toEqual({
-      status: 'eligible', key: clone, repo_config: ['.mcp.json'], mcp_servers: ['worktree-server'],
+      status: 'eligible', activates: emptyActivates, key: clone, repo_config: ['.mcp.json'], mcp_servers: ['worktree-server'],
     });
     const applied = await apply(state, worktree, config);
     expect(applied.verdict).toEqual({ status: 'recorded', key: clone, writes: 1, mcp_approved: ['worktree-server'] });
@@ -290,4 +293,30 @@ describe('trust-workspace apply', () => {
     expect(fs.readFileSync(stateFile, 'utf8')).toBe('{broken-state');
     expect(fs.readFileSync(local, 'utf8')).toBe('{"keep":true}');
   });
+});
+
+
+test('check discloses bounded settings and agent hooks without env values or execution', async () => {
+  const { state, clone } = fixture();
+  fs.mkdirSync(path.join(clone, '.claude/agents'), { recursive: true });
+  fs.writeFileSync(path.join(clone, '.claude/settings.json'), JSON.stringify({
+    hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'echo hook' }] }] },
+    permissions: { allow: ['Bash(echo *)'], additionalDirectories: ['/extra'] },
+    env: { SECRET: 'never-disclose' }, apiKeyHelper: 'echo helper',
+  }));
+  fs.writeFileSync(path.join(clone, '.claude/settings.local.json'), '{bad');
+  fs.writeFileSync(path.join(clone, '.mcp.json'), JSON.stringify({ mcpServers: { server: { command: 'echo', args: ['mcp'] } } }));
+  fs.writeFileSync(path.join(clone, '.claude/agents/helper.md'), '---\nname: helper\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: echo agent\n---\n');
+  const result = await check(state, clone);
+  expect(result.activates).toMatchObject({ allow_rules: ['Bash(echo *)'], additional_directories: ['/extra'], env_keys: ['SECRET'], unreadable: ['.claude/settings.local.json'], truncated: false });
+  expect(result.activates.hooks.join()).toContain('echo hook');
+  expect(result.activates.helper_commands.join()).toContain('echo helper');
+  expect(result.activates.mcp_commands.join()).toContain('mcp');
+  expect(result.activates.agent_hooks.join()).toContain('echo agent');
+  expect(JSON.stringify(result)).not.toContain('never-disclose');
+  fs.writeFileSync(path.join(clone, '.claude/settings.json'), JSON.stringify({ permissions: { allow: Array(25).fill('x'.repeat(600)) } }));
+  const capped = (await check(state, clone)).activates;
+  expect(capped.truncated).toBe(true);
+  expect(capped.allow_rules).toHaveLength(20);
+  expect(capped.allow_rules.every((rule: string) => rule.length <= 500)).toBe(true);
 });
