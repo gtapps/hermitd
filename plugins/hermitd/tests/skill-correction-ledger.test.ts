@@ -2,8 +2,7 @@
 //
 // Guards observation capture and
 // the graduation routing (reflect step 3b `skill-correction:*` branch),
-// the proposal-act anchor parse (## Skill Improvement source_artifact),
-// and the graceful-degrade path (no brief → moderate proposal, no REJECT).
+// and the single moderate-signal Skill Improvement route.
 //
 // Usage: bun test tests/skill-correction-ledger.test.ts   (from the plugin root)
 
@@ -23,7 +22,7 @@ const reflect        = read('skills', 'reflect', 'SKILL.md') + '\n' + read('skil
 const proposalAct    = read('skills', 'proposal-act', 'SKILL.md') + '\n' + read('skills', 'proposal-act', 'branches.md');
 const channelResponder = read('skills', 'channel-responder', 'reference.md');
 const noBriefRouting = reflect.slice(
-  reflect.indexOf('**No brief found (human/plugin or brief fully gone, moderate signal):**'),
+  reflect.indexOf('## `skill-correction:*` routing'),
   reflect.indexOf('## `skill-preference:*` routing'),
 );
 
@@ -109,25 +108,9 @@ describe('reflect: skill-correction:* graduation routing', () => {
     expect(reflect).toContain('skill-correction:*` routing');
   });
 
-  test('reflect: brief search covers compiled/ and compiled/.archive/', () => {
-    expect(reflect).toContain('compiled/.archive/procedure-brief-');
-  });
-
-  test('reflect: brief selection prefers live compiled/ over archived', () => {
-    expect(reflect).toContain('prefer a live `compiled/` match over an archived one');
-  });
-
-  test('reflect: brief tiebreak uses newest created: frontmatter', () => {
-    expect(reflect).toContain("newest `created:` frontmatter date");
-  });
-
-  test('reflect: brief found path routes to ## Skill Improvement with source_artifact', () => {
-    expect(reflect).toContain('## Skill Improvement');
-    expect(reflect).toContain('source_artifact: <brief path>');
-  });
-
-  test('reflect: brief found path reads cited sessions Lessons for corrected behaviors', () => {
-    expect(reflect).toContain("each session listed in the graduated ledger rows' `session_id` fields");
+  test('reflect: corrections recover cited session lessons without brief lookup', () => {
+    expect(noBriefRouting).toContain("each session listed in the graduated ledger rows' `session_id` fields");
+    expect(noBriefRouting).not.toContain('procedure-brief');
   });
 
   test('reflect: no brief path always produces a moderate Skill Improvement without an anchor', () => {
@@ -146,10 +129,8 @@ describe('reflect: skill-correction:* graduation routing', () => {
     expect(noBriefRouting).not.toContain('Neither applies');
   });
 
-  test('reflect: both paths carry Artifact: state/observations.jsonl for judge §1.4', () => {
-    // The routing block mentions the Artifact line in both branches — count occurrences
-    const count = (reflect.match(/Artifact: state\/observations\.jsonl/g) ?? []).length;
-    expect(count).toBeGreaterThanOrEqual(2);
+  test('reflect: correction carries the observations artifact for judge validation', () => {
+    expect(noBriefRouting).toContain('Artifact: state/observations.jsonl');
   });
 
   test('reflect: Component Health Skills bullet references ledger graduation as backing', () => {
@@ -186,27 +167,7 @@ describe('channel-responder: resolved correction routes to ledger row', () => {
   });
 });
 
-// ── 4. proposal-act: ## Skill Improvement source_artifact parse ─────────────
-
-describe('proposal-act: ## Skill Improvement anchor handling', () => {
-  test('proposal-act: parses source_artifact from ## Skill Improvement body', () => {
-    expect(proposalAct).toContain('Parse the `source_artifact:` line from the `## Skill Improvement` body');
-  });
-
-  test('proposal-act: anchor lookup searches compiled/ then compiled/.archive/', () => {
-    // The Skill Improvement branch description references the archive search
-    expect(proposalAct).toContain("search `compiled/` then `compiled/.archive/`");
-  });
-
-  test('proposal-act: missing anchor degrades gracefully (no REJECT)', () => {
-    expect(proposalAct).toContain('Missing or unreadable anchor: proceed without it (no REJECT');
-  });
-
-  test('proposal-act: anchor absence contrast with ## Skill Draft (which hard-rejects stale paths)', () => {
-    expect(proposalAct).toContain('unlike `## Skill Draft` which hard-rejects stale paths');
-  });
-
-  test('proposal-act: brief content used as input context for the in-main revision', () => {
-    expect(proposalAct).toContain('use its content as input context for the revision');
-  });
+test('proposal-act: Skill Improvement reads no procedure brief', () => {
+  expect(proposalAct).not.toContain('Parse the `source_artifact:` line from the `## Skill Improvement` body');
+  expect(proposalAct).not.toContain('read the brief');
 });

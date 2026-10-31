@@ -56,7 +56,7 @@ export const EN = {
   // Auto-mode denial (permission-denied-notify.ts), joined in code
   deny_base: 'Auto-mode denied: {tool}',
   deny_suppressed: ' (+{count} more in the previous 30 min)',
-  deny_tail: '. Session continues; the agent will try another way. If it was intended, tell the agent in chat.',
+  deny_tail: '. Session continues; the agent will try another way. If it was intended, tell the agent in your usual chat.',
 
   // Token mint (setup-token-mint.ts)
   mint_ack_prompt:

@@ -43,7 +43,7 @@ function record(i: number, kind: Kind): [string, string] {
     'requester_name: null', 'origin_message_id: null', 'approver: null', 'due: null', `conversation: discord:${USER}`, 'card_chat_id: null', 'card_message_id: null',
     `waiting_on: ${waiting ?? 'null'}`, `waiting_since: ${waiting ? '2026-10-21T10:00:00.000Z' : 'null'}`, `result: ${result ? JSON.stringify(result) : 'null'}`,
     `result_at: ${result ? '2026-10-21T10:00:00.000Z' : 'null'}`, 'stall_at: null', 'stall_status: null', 'stall_next: null', 'dedupe_key: null', 'check: null',
-    'skill_review: null', 'last_worker: null', 'muted: false', 'delegated: false', 'tags: ["task"]', 'claims: []', 'result_rev: 0'];
+    'last_worker: null', 'muted: false', 'delegated: false', 'tags: ["task"]', 'claims: []', 'result_rev: 0'];
   const lessons = [0, 1, 2].map(n => `- ${LESSON(w, i + n)}`).join('\n');
   const decisions = [0, 1].map(n => `- ${DECISION(w, i + n)}`).join('\n');
   return [`.hermit/tasks/${id}.md`, `---\n${front.join('\n')}\n---\n## Progress\n- 2026-10-20T09:00:00.000Z hermit: Opened\n\n## Lessons\n${lessons}\n\n## Decisions\n${decisions}\n`];

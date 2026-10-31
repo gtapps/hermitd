@@ -1,7 +1,7 @@
 import { test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { mutateTask, listTasks, readTasks, decodeTask, encodeTask, startupTasks } from '../scripts/lib/tasks';
+import { mutateTask, readTasks, decodeTask, encodeTask, startupTasks } from '../scripts/lib/tasks';
 import { collectToolUseIds, transcriptDirFor } from '../scripts/lib/cc-compat';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('task-learning-');
@@ -63,18 +63,26 @@ function costRows(dir: string, rows: object[]) {
 function execution(dir: string, session: string) {
   fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'idle', at: new Date().toISOString(), cc_session_id: session }));
 }
-test('threshold, pending recovery, defaults and disposition idempotency', () => {
-  const dir = fixture(); const first = open(dir); transcript(dir, 'current', 9, openedAt(dir, first)); close(dir, first);
-  expect(readTasks(dir)[0].skill_review).toBeNull();
-  const id = open(dir); transcript(dir, 'current', 10, openedAt(dir, id)); expect(close(dir, id).skill_review).toBe('pending');
-  expect(listTasks(dir, { 'skill-review': 'pending' }).rows.map(row => row.id)).toEqual([id]);
-  const before = readTasks(dir).find(row => row.id === id)!;
-  const result = mutateTask(dir, 'learn', id, { disposition: 'saved' }, '');
-  expect(mutateTask(dir, 'learn', id, { disposition: 'saved' }, '')).toEqual(result);
-  expect(() => mutateTask(dir, 'learn', id, { disposition: 'nothing' }, '')).toThrow('review_not_pending');
-  expect(readTasks(dir).find(row => row.id === id)).toEqual({ ...before, skill_review: 'saved' });
-  const old = encodeTask(before).replace(/^delegated:.*\n/m, '').replace(/^skill_review:.*\n/m, '');
-  expect(decodeTask(old).delegated).toBe(false); expect(decodeTask(old).skill_review).toBeNull();
+test('threshold flags only the digest; old review fields are ignored and dropped', () => {
+  const dir = fixture(); const first = open(dir); transcript(dir, 'current', 9, openedAt(dir, first));
+  expect(close(dir, first)).not.toHaveProperty('next');
+  const id = open(dir); transcript(dir, 'current', 10, openedAt(dir, id));
+  expect(close(dir, id).next).toEndWith('skills/task/learn.md');
+  const record = readTasks(dir).find(row => row.id === id)!;
+  expect(record).not.toHaveProperty('skill_review');
+  const old = encodeTask(record).replace(/^delegated:.*\n/m, '').replace('---\n', '---\nskill_review: "pending"\n');
+  const decoded = decodeTask(old);
+  expect(decoded.delegated).toBe(false);
+  expect(decoded).not.toHaveProperty('skill_review');
+  expect(encodeTask(decoded)).not.toContain('skill_review');
+});
+test('reviews run only in modes where learning can write', () => {
+  for (const permission_mode of ['default', 'acceptEdits', 'plan', 'dontAsk', 'auto', 'bypassPermissions']) {
+    const dir = fixture();
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ permission_mode }));
+    const digest = close(dir, open(dir, { owner: 'helper:review' }));
+    expect(!!digest.next).toBe(['auto', 'bypassPermissions'].includes(permission_mode));
+  }
 });
 test('worker and helper ownership persist delegation; both close paths schedule learning', () => {
   for (const owner of ['worker:abcdef123456', 'helper:research']) {
@@ -82,37 +90,29 @@ test('worker and helper ownership persist delegation; both close paths schedule 
     mutateTask(dir, 'note', id, { owner }, ''); mutateTask(dir, 'note', id, { owner: 'resident' }, '');
     expect(readTasks(dir)[0].delegated).toBe(true);
     const digest = mutateTask(dir, 'check-result', id, { 'result-rev': '0', exit: '0', 'output-stdin': true }, 'passed') as any;
-    expect(digest.skill_review).toBe('pending');
     expect(digest.next).toEndWith('skills/task/learn.md');
   }
 });
-test('a pending close names the review guide by absolute path; other closes stay silent', () => {
+test('a qualifying close names the review guide by absolute path; other closes stay silent', () => {
   const dir = fixture();
   const quiet = close(dir, open(dir));
-  expect(quiet.skill_review).toBeUndefined(); expect(quiet).not.toHaveProperty('next');
+  expect(quiet).not.toHaveProperty('next');
   const { next } = close(dir, open(dir, { 'dedupe-key': 'helper:PROP-001' }));
   const guide = next.replace(/^read /, '');
   expect(path.isAbsolute(guide)).toBe(true);
   expect(fs.readFileSync(guide, 'utf8')).toContain('# Close-time skill learning');
 });
-test('startup context counts pending reviews only when some exist', () => {
+test('startup context carries no review recovery line', () => {
   const dir = fixture();
-  close(dir, open(dir));
-  expect(startupTasks(dir).join('\n')).not.toContain('Pending skill reviews');
-  close(dir, open(dir, { 'dedupe-key': 'helper:PROP-001' }));
-  close(dir, open(dir, { 'dedupe-key': 'helper:PROP-002' }));
-  const lines = startupTasks(dir);
-  expect(lines[0]).toBe('Open tasks: 0');
-  expect(lines).toContain('Pending skill reviews: 2. Resume through /hermitd:task closure.');
-  open(dir);
-  expect(startupTasks(dir, 0)).toEqual(['Open tasks: 1', 'Pending skill reviews: 2. Resume through /hermitd:task closure.']);
+  close(dir, open(dir, { owner: 'helper:review' }));
+  expect(startupTasks(dir, 0)).toEqual(['Open tasks: 0']);
 });
 test('helper dedupe keys mark new resident records delegated but preserve reused records', () => {
   const dir = fixture();
   const id = open(dir, { 'dedupe-key': 'helper:PROP-001' });
   const record = readTasks(dir)[0];
   expect(record).toMatchObject({ owner: 'resident', delegated: true });
-  expect(close(dir, id).skill_review).toBe('pending');
+  expect(close(dir, id).next).toEndWith('skills/task/learn.md');
 
   const legacy = fixture();
   const legacyId = open(legacy, { 'dedupe-key': 'helper:PROP-001' });
@@ -122,7 +122,7 @@ test('helper dedupe keys mark new resident records delegated but preserve reused
   const reused = mutateTask(legacy, 'open', undefined, { requester: 'operator', 'dedupe-key': 'helper:PROP-001' }, '') as any;
   expect(reused).toMatchObject({ id: legacyId, created: false });
   expect(readTasks(legacy)[0]).toMatchObject({ owner: 'resident', delegated: false });
-  expect(close(legacy, legacyId).skill_review).toBeUndefined();
+  expect(close(legacy, legacyId).next).toBeUndefined();
 });
 test('cancel and learning off never schedule a review', () => {
   for (const cancelled of [true, false]) {
@@ -130,45 +130,45 @@ test('cancel and learning off never schedule a review', () => {
     transcript(dir, 'current', 10, openedAt(dir, id));
     if (cancelled) mutateTask(dir, 'cancel', id, { actor: 'operator', 'reason-stdin': true }, 'Cancelled');
     else close(dir, id);
-    expect(readTasks(dir)[0].skill_review).toBeNull();
+    expect(readTasks(dir)[0]).not.toHaveProperty('skill_review');
   }
 });
 
 test('only calls in the open window qualify; missing transcripts are harmless', () => {
   const dir = fixture(); const id = open(dir);
   transcript(dir, 'current', 10, new Date(Date.parse(openedAt(dir, id)) - 1).toISOString());
-  expect(close(dir, id).skill_review).toBeUndefined();
+  expect(close(dir, id).next).toBeUndefined();
   const missing = fixture(); const missingId = open(missing);
   expect(close(missing, missingId).closed_by).toBe('confirmed');
-  expect(readTasks(missing)[0].skill_review).toBeNull();
+  expect(readTasks(missing)[0]).not.toHaveProperty('skill_review');
 });
 
 test('overlapping closes each count their own window, including after a delegated close', () => {
   const dir = fixture(); const first = open(dir); const second = open(dir);
   transcript(dir, 'current', 10, openedAt(dir, second));
-  expect(close(dir, first).skill_review).toBe('pending');
-  expect(close(dir, second).skill_review).toBe('pending');
+  expect(close(dir, first).next).toEndWith('skills/task/learn.md');
+  expect(close(dir, second).next).toEndWith('skills/task/learn.md');
 
   const other = fixture(); const delegated = open(other, { owner: 'helper:review' }); const ordinary = open(other);
   transcript(other, 'current', 10, openedAt(other, ordinary));
-  expect(close(other, delegated).skill_review).toBe('pending');
-  expect(close(other, ordinary).skill_review).toBe('pending');
+  expect(close(other, delegated).next).toEndWith('skills/task/learn.md');
+  expect(close(other, ordinary).next).toEndWith('skills/task/learn.md');
 });
 
 test('resident session sources include old cost rows, runtime and execution', () => {
   const dir = fixture(); const id = open(dir); const at = openedAt(dir, id);
   transcript(dir, 'old', 10, at);
   costRows(dir, [{ cc_session_id: 'old', timestamp: at }]);
-  expect(close(dir, id).skill_review).toBe('pending');
+  expect(close(dir, id).next).toEndWith('skills/task/learn.md');
 
   const runtime = fixture(); const runtimeId = open(runtime);
   transcript(runtime, 'current', 10, openedAt(runtime, runtimeId));
-  expect(close(runtime, runtimeId).skill_review).toBe('pending');
+  expect(close(runtime, runtimeId).next).toEndWith('skills/task/learn.md');
 
   const exec = fixture(); const execId = open(exec);
   execution(exec, 'execution-only');
   transcript(exec, 'execution-only', 10, openedAt(exec, execId));
-  expect(close(exec, execId).skill_review).toBe('pending');
+  expect(close(exec, execId).next).toEndWith('skills/task/learn.md');
 });
 
 test('guest and subagent rows, sidechain entries, and old observations do not qualify', () => {
@@ -180,8 +180,8 @@ test('guest and subagent rows, sidechain entries, and old observations do not qu
     { cc_session_id: 'agent', subagent: true, observed_at: at },
     { cc_session_id: 'old', timestamp: at, observed_at: new Date(Date.parse(at) - 1).toISOString() },
   ]);
-  expect(close(dir, id).skill_review).toBeUndefined();
-  expect(readTasks(dir)[0].skill_review).toBeNull();
+  expect(close(dir, id).next).toBeUndefined();
+  expect(readTasks(dir)[0]).not.toHaveProperty('skill_review');
 });
 
 test('successful checks schedule, failed and approver-blocked checks do not', () => {
@@ -189,22 +189,22 @@ test('successful checks schedule, failed and approver-blocked checks do not', ()
     const dir = fixture(); const id = open(dir, { check: 'true', ...(scenario === 'approver' ? { approver: 'discord:u2' } : {}) });
     transcript(dir, 'current', 10, openedAt(dir, id));
     const digest = mutateTask(dir, 'check-result', id, { 'result-rev': '0', exit: scenario === 'failed' ? '1' : '0', 'output-stdin': true }, 'proof') as any;
-    expect(digest.skill_review).toBe(scenario === 'passed' ? 'pending' : undefined);
+    expect(!!digest.next).toBe(scenario === 'passed');
     const record = readTasks(dir)[0];
     expect(record.status).toBe(scenario === 'passed' ? 'closed' : 'open');
-    expect(record.skill_review).toBe(scenario === 'passed' ? 'pending' : null);
+    expect(record).not.toHaveProperty('skill_review');
   }
 });
 test('missing config settles learning on for delegated tasks', () => {
   const dir = fixture(); fs.unlinkSync(path.join(dir, 'config.json'));
   const id = open(dir); mutateTask(dir, 'note', id, { owner: 'helper:review' }, '');
-  expect(close(dir, id).skill_review).toBe('pending');
+  expect(close(dir, id).next).toEndWith('skills/task/learn.md');
 });
 
-test('muting a closed delegated task preserves its completed review', () => {
-  const dir = fixture(); const id = open(dir);
-  mutateTask(dir, 'note', id, { owner: 'helper:review' }, '');
-  close(dir, id); mutateTask(dir, 'learn', id, { disposition: 'covered' }, '');
+test('muting a closed delegated task preserves closure without review state', () => {
+  const dir = fixture(); const id = open(dir, { owner: 'helper:review' });
+  close(dir, id);
   mutateTask(dir, 'note', id, { muted: 'true' }, '');
-  expect(readTasks(dir)[0].skill_review).toBe('covered');
+  expect(readTasks(dir)[0]).toMatchObject({ status: 'closed', muted: true });
+  expect(readTasks(dir)[0]).not.toHaveProperty('skill_review');
 });

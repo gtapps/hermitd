@@ -86,7 +86,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 muted: false
 delegated: false
 tags: ["task","discord:100000000000000001"]

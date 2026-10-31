@@ -4,49 +4,51 @@
 
 ### Added
 
-- Chat approval for `spawn-session` to trust a refused repository and its MCP servers
+- Chat approval on channels that relay permission prompts for `spawn-session` to trust a refused repository and its MCP servers, with parsed activation facts in the prompt
 - Script-sent channel notices (watchdog, status reply, budget, denial and login messages) follow any configured language: the agent translates them once into `.hermit/state/messages.json` when the language is set and after upgrades, and every send falls back to English per message
 - `/hermitd:hermit-settings messages` rewords any of those notices; custom wording survives upgrades and retranslation, and doctor's `message-catalog` check flags wording an upgrade made unusable
 - `hermitd agents [name]` opens Claude Code's `claude agents` view where the agent runs, inside the container for Docker agents
 
 ### Changed
 
-- Skill reviews use each task's own open window
+- Skill reviews run after a task closes using its own open window, best effort and only where learning can write
 - Reflect checks for enforcement, missed triggers and existing guidance before proposing learning changes
-- Close-time learning shapes lessons and patches learned skills using evidence of errors or general operator corrections
+- Close-time learning reviews once in the main session after closure, best effort and only where learning can write, patching learned skills from reusable procedures or general primary-operator corrections
 - Accepted skill improvements apply requested rewording, moves and description changes to existing text
 - Recall answers distinguish stated evidence from inference and report search limits
 - `skills status --skill` reports the latest recorded use
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
-- Channel replies keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
-- Sign-in links for MCP tools go to the maintainer chat as sensitive notices when one is configured, and pasted callback addresses are never repeated
+- Channel reply rules keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
+- Tool sign-in requires an admin to finish, with a gate on account binding, sensitive links routed to the maintainer chat when configured, failed delivery reported, and local callback addresses redacted from the channel log
 - `proposal-triage` no longer reads frozen session reports, and its unused `prior_discussion` metadata line is gone
 
 ### Fixed
 
-- Skill reviews run when a task closes outside the task skill, and pending ones surface after `/clear` or compaction
-- Closing one task no longer uses up the next task's skill review
-- Morning briefs always carry the newest record's task context instead of varying between mornings
-- Scheduled briefs always read the full day's records, and plain briefs read only the records they need
+- Best-effort skill reviews run after closure outside the task skill too, only where learning can write; lost reviews are not resumed
+- Closing one task no longer uses up the next task's best-effort review after closure; reviews run only where learning can write
+- Morning briefs carry the newest record's task context instead of varying between mornings
+- Scheduled briefs read the full day's records, and plain briefs read only the records they need
 - Learned-skill retirement counts use recorded under worktree and plugin keys
 - Proposal `gate` accepts `SUPPRESS` and `DUPLICATE` verdicts whose reason was dropped, so a shortened line records the verdict instead of a false `gate-failed`
 - `hermitd update` and watchdog restarts no longer wait out the 15-minute quiet cap on an agent that was cleared and then left quiet
 - Chat `!clear` and `!compact` report success on Claude Team and Enterprise accounts instead of "outcome unknown"
 - The first artifact page republish after a restart or `/clear` runs in a subagent, keeping the live page's source out of the agent's context
-- Auto-mode denial notices suggest telling the agent in chat when the action was intended, instead of `/hermit-settings` or the terminal
+- Auto-mode denial notices suggest telling the agent in your usual chat when the action was intended, instead of `/hermit-settings` or the terminal
 - `hermitd attach` forces UTF-8 output (`tmux -u`), so Claude Code's bullets, arrows and status symbols render when attaching, including inside Docker; the Docker image sets `LANG=C.UTF-8` after the next `hermitd update`
 - After the agent creates or edits a project skill, it is told the change loads on its own, so it can follow the file instead of advising a restart or new session.
 - Chat `!` commands keep working after the agent's shell changes directory, and doctor run from a worktree or child checkout reports on the real `.hermit/` instead of creating `state/` in its copy
-- Channel setup flags an unreachable maintainer chat instead of confirming it, and watchdog notices that only reached `state/watchdog-events.jsonl` record a failed push
+- Channel setup tests the selected channel's maintainer chat without falling back to another channel, and watchdog notices that only reached `state/watchdog-events.jsonl` record a failed push
 - Relogin cancels and reports a sign-in link that can't reach the maintainer chat, and keeps that link out of the searchable channel log
 - A boot after `/clear` no longer counts as a context refresh, which could skip `/hermitd:watch start` and the online ping
 
 ### Upgrade Instructions
 
-Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` and `hermitd-run task learn` permission entries.
+Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entries and seals `Bash(.hermit/bin/hermitd-run trust-workspace check *)` and `Bash(bun */scripts/trust-workspace.ts check*)`.
 
 Delete `.hermit/state/skill-review-counter` if it exists.
-Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
+Use the `<resolved-settings-file>` Step 8 resolves from `hatch_target`. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` and `messages.ts set`/`reset` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)' 'Bash(bun */scripts/messages.ts set *)' 'Bash(*.hermit/bin/hermitd-run messages set*)' 'Bash(hermitd run messages set*)' 'Bash(*/hermitd run messages set*)' 'Bash(bun */scripts/messages.ts reset *)' 'Bash(*.hermit/bin/hermitd-run messages reset*)' 'Bash(hermitd run messages reset*)' 'Bash(*/hermitd run messages reset*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
+
+**Leftover check:** `task.ts learn` verb and `task.ts list --skill-review` flag removed; `skill_review` dropped from task records, `task.ts list` rows and close digests.
 
 No `config.json` changes required.
 

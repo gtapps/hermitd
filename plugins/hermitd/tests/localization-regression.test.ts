@@ -49,7 +49,7 @@ describe('en catalog byte-identity', () => {
   test('deny maintainer frame', () => {
     expect(m.t('deny_base', { tool: 'Bash' })).toBe('Auto-mode denied: Bash');
     expect(m.t('deny_suppressed', { count: 4 })).toBe(' (+4 more in the previous 30 min)');
-    expect(m.t('deny_tail')).toBe('. Session continues; the agent will try another way. If it was intended, tell the agent in chat.');
+    expect(m.t('deny_tail')).toBe('. Session continues; the agent will try another way. If it was intended, tell the agent in your usual chat.');
   });
 
   test('mint prompts', () => {

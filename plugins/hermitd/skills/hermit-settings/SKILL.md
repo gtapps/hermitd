@@ -136,6 +136,7 @@ Then re-sync the two fixed-text tables: the dashboard/proposals chrome (`.hermit
 - Custom wordings are written in the language they were set in. When `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts status .hermit` lists any under `overrides`, ask whether to keep them or drop them (`messages.ts reset .hermit --all`).
 
 **If argument is "messages":**
+Every `set` or `reset` change needs an approver's Yes in the native permission prompt. On No, stop; never retry or route around it.
 The fixed notices scripts send to the channel (watchdog, status reply, budget, denial and login messages) can be reworded per message. `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts list .hermit` gives every key with its English text and any custom wording. Pick the key the operator means, write the new wording in their language, and run `messages.ts set .hermit <key> "<text>"`. A `placeholder_mismatch` reply names the `{placeholder}` tokens the text must keep (they carry times, commands and the `reauth` word the login flow listens for); rewrite and set again. `messages.ts reset .hermit <key>` restores the default. Custom wordings survive upgrades and retranslation; doctor's `message-catalog` check names any an upgrade made unusable.
 
 **If argument is "voice":**

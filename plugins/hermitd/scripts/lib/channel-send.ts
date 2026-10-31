@@ -391,7 +391,8 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     // intended home (non-technical / fallback:'findings'). Only the intended
     // case counts as delivered.
     const toFindings = (degraded: boolean): SendResult => {
-      const err = appendMaintainerFindings(hermitDir, m.text);
+      const err = appendMaintainerFindings(hermitDir, m.sensitive && degraded
+        ? 'Sensitive maintainer notice could not reach its destination; content omitted.' : m.text);
       return err
         ? { ok: false, error: `findings_append_failed: ${err}`, route: 'findings', suppressed: true, delivered: false }
         : { ok: true, route: 'findings', suppressed: true, delivered: !degraded };
