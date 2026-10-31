@@ -78,7 +78,7 @@ execution:
   prompt: |
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
-    - task.ts close T-20261019-090000, already run this turn: {"id":"T-20261019-090000","closed_by":"confirmed","result_rev":0,"next_queued":null,"next":"read .hermit/guides/learn.md"}
+    - task.ts close T-20261019-090000, already run this turn: {"id":"T-20261019-090000","closed_by":"confirmed","result_rev":0,"next_queued":null,"next":"before the close reply, read .hermit/guides/learn.md"}
     </system-reminder>
     PR #42 merged, so the shop page task is finished. Thanks.
 graders:

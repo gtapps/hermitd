@@ -354,7 +354,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const config = readSettledConfig(dir);
       if (config.skills.learning && ['auto', 'bypassPermissions'].includes(config.permission_mode)
         && (record.delegated || reviewCallsReached(dir, record))) {
-        digest = { ...(digest as object), next: `read ${LEARN_GUIDE}` };
+        digest = { ...(digest as object), next: `before the close reply, read ${LEARN_GUIDE}` };
       }
     }
     const encoded = encodeTask(record);

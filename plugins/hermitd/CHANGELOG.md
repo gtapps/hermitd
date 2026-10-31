@@ -19,7 +19,7 @@
 - `skills status --skill` reports the latest recorded use
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel reply rules keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
-- Tool sign-in requires an admin to finish, with a gate on account binding, sensitive links routed to the maintainer chat when configured, failed delivery reported, and local callback addresses redacted from the channel log
+- Tool sign-in requires an admin to finish, with a gate on account binding that raises the native permission prompt on a turn nobody typed or another prompt joined, sensitive links routed to the maintainer chat when configured, failed delivery reported, and local callback addresses redacted from the channel log
 - `proposal-triage` no longer reads frozen session reports, and its unused `prior_discussion` metadata line is gone
 
 ### Fixed
@@ -43,7 +43,7 @@
 
 ### Upgrade Instructions
 
-Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts` permission entries and seals `Bash(.hermit/bin/hermitd-run trust-workspace check *)` and `Bash(bun */scripts/trust-workspace.ts check*)`.
+Run `/hermitd:hermit-evolve`. Its retranslation step writes `.hermit/state/messages.json` for an agent whose `language` is set and not `en`, so its script notices keep speaking that language; English agents get no file. Step 8 adds the `messages.ts set` and `reset` permission entries and seals `Bash(.hermit/bin/hermitd-run trust-workspace check *)` and `Bash(bun */scripts/trust-workspace.ts check*)`.
 
 Delete `.hermit/state/skill-review-counter` if it exists.
 Use the `<resolved-settings-file>` Step 8 resolves from `hatch_target`. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-only` to merge the `trust-workspace` and `messages.ts set`/`reset` ask entries. Unless it reports `{"status":"skipped","reason":"not_seeded"}`, and only when the same file's `permissions.deny` already holds `Edit(*.hermit/state/resident-system-prompt.md)` (Hardened), run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny-add 'Bash(bun */scripts/trust-workspace.ts apply *)' 'Bash(*.hermit/bin/hermitd-run trust-workspace apply*)' 'Bash(hermitd run trust-workspace apply*)' 'Bash(*/hermitd run trust-workspace apply*)' 'Bash(bun */scripts/messages.ts set *)' 'Bash(*.hermit/bin/hermitd-run messages set*)' 'Bash(hermitd run messages set*)' 'Bash(*/hermitd run messages set*)' 'Bash(bun */scripts/messages.ts reset *)' 'Bash(*.hermit/bin/hermitd-run messages reset*)' 'Bash(hermitd run messages reset*)' 'Bash(*/hermitd run messages reset*)'`. These operations are additive and idempotent; report the added entries or the unseeded skip.
