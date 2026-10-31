@@ -173,10 +173,10 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 
 const TURN_TAIL_BYTES = 512 * 1024;
 
-type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
+type RoutineOrigin = { kind: 'terminal'; typed: boolean } | { kind: 'unknown' }
   | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean };
 
-/** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
+/** A terminal requires a readable turn boundary without a channel envelope, which a wake also has; all unproven origins ask. */
 export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
@@ -186,7 +186,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
     if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
-    if (!env) return { kind: 'terminal' };
+    if (!env) return { kind: 'terminal', typed: prompt.typed };
     if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
       primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),

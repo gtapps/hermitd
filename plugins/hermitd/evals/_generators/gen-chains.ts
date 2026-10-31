@@ -224,7 +224,7 @@ const [CLOSE_PROMPT, CLOSE_RECORD] = withInstall({ '.hermit/config.json': config
   run('task.ts', ['note', '.hermit', id], { stdin: '[guest:shop-page] Added the nine autumn teas and opened PR #42.\n', now: '2026-10-19T10:00:00.000Z' });
   const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
     { stdin: 'PR #42 merged.\n', now: '2026-10-19T11:00:00.000Z' }));
-  const stood = JSON.stringify({ ...digest, next: 'read .hermit/guides/learn.md' });
+  const stood = JSON.stringify({ ...digest, next: 'before the close reply, read .hermit/guides/learn.md' });
   return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n`
     + 'PR #42 merged, so the shop page task is finished. Thanks.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
 });

@@ -22,7 +22,7 @@ The hermit's `isTrustedController` rule owns pause, resume, snooze, and full sta
 
 ## Connections
 
-Each tool uses one account for every chat and routine in the resident. Anyone admitted may ask to reconnect it, but only an admin may finish sign-in. A primary operator has this authority; when neither `operators` nor `allowed_users` names people, the trusted pinned home chat can finish. Explicit empty lists grant nobody authority. Prefer a dedicated account and forward the sign-in link if someone else owns the tool account. Different access requires separately configured residents.
+Each tool uses one account for every chat and routine in the resident. Anyone admitted may ask to reconnect it, but only an admin may finish sign-in. A primary operator has this authority; when neither `operators` nor `allowed_users` names people, the trusted pinned home chat can finish. Explicit empty lists grant nobody authority. Someone typing at the terminal can also finish it; a turn nobody typed, such as a routine or peer wake, raises the native permission prompt. Prefer a dedicated account and forward the sign-in link if someone else owns the tool account. Different access requires separately configured residents.
 
 Native settings own project MCP enrollment through `enabledMcpjsonServers`, `enableAllProjectMcpServers`, and `disabledMcpjsonServers`. Without approval, a project server stays pending without blocking boot. Remove approvals in every applicable native scope, including blanket approval, or explicitly disable the server to exclude it at restart. Removing enrollment does not delete its declaration or credentials. A temporary `/mcp` toggle does not remove the saved approval.
 

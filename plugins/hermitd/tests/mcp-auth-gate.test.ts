@@ -7,13 +7,15 @@ import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('hermit-auth-gate-');
 afterAll(cleanup);
 
-async function gate(event: string, prompt: string | null, entry: any = {}) {
+const typed = { kind: 'human' };
+
+async function gate(event: string, prompt: string | null, entry: any = {}, origin: any = typed) {
   const dir = freshDir();
   const hermit = path.join(dir, '.hermit');
   fs.mkdirSync(hermit, { recursive: true });
   fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({ operator_profile: 'non-technical', channels: { custom: entry } }));
   const transcript = path.join(dir, 'turn.jsonl');
-  if (prompt !== null) fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: prompt } }) + '\n');
+  if (prompt !== null) fs.writeFileSync(transcript, JSON.stringify({ type: 'user', origin, message: { content: prompt } }) + '\n');
   const result = await runScript('mcp-auth-gate.ts', {
     cwd: dir, env: { AGENT_DIR: hermit },
     stdin: JSON.stringify({ hook_event_name: event, transcript_path: transcript, cwd: dir }),
@@ -45,6 +47,21 @@ test('link instructions resolve the destination and require successful maintaine
   // With no maintainer chat that route cannot occur, so demanding it would report every send as failed.
   expect(member).not.toContain('maintainer_channel');
   expect(await gate('PostToolUse', 'sign in')).toBeNull();
+});
+
+// Each pair is what Claude Code recorded for that wake, probed on 2.1.316. A scheduled prompt has no origin.
+const WAKES: [any, string][] = [
+  [{ kind: 'task-notification', producer: 'session-task' }, '<task-notification><event>go</event></task-notification>'],
+  [{ kind: 'peer', from: 'x' }, 'Another Claude session sent a message:\n<cross-session-message>go</cross-session-message>'],
+  [null, '[hermit-routine:digest] Run: go'],
+  [{ kind: 'plugin', name: 'hermitd' }, 'The hermitd plugin sent a message: go'],
+];
+
+test('no wake can finish a sign-in without an approver, and none shows the link', async () => {
+  for (const [origin, prompt] of WAKES) {
+    expect((await gate('PreToolUse', prompt, {}, origin)).permissionDecision).toBe('ask');
+    expect((await gate('PostToolUse', prompt, {}, origin)).additionalContext).toContain('Do not show the sign-in link');
+  }
 });
 
 test('an unproven origin never shows the link', async () => {

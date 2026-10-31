@@ -69,6 +69,7 @@ describe('transcript fixtures round-trip through cc-compat', () => {
       text: 'do the thing',
       boundaryFound: true,
       index: 0,
+      typed: false,
     });
   });
 });

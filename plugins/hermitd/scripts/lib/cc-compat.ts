@@ -549,20 +549,22 @@ function isTurnBoundary(entry: Json): boolean {
  * finding a prompt — the caller uses that to detect a truncated tail window that
  * doesn't cover the real turn start. `index` is the boundary entry's position, so a
  * caller can resume the walk from an earlier turn (see cost-tracker's dispatch hop).
+ * `typed` is true only when CC stamped the boundary as human input: wakes carry
+ * `task-notification`, `peer`, `plugin` or no origin at all.
  * @param {string[]} lines
  * @param {number} billedIndex
- * @returns {{ text: string, boundaryFound: boolean, index: number }}
+ * @returns {{ text: string, boundaryFound: boolean, index: number, typed: boolean }}
  */
-function turnPromptText(lines: string[], billedIndex: number): { text: string; boundaryFound: boolean; index: number } {
+function turnPromptText(lines: string[], billedIndex: number): { text: string; boundaryFound: boolean; index: number; typed: boolean } {
   for (let j = billedIndex - 1; j >= 0; j--) {
     try {
       const prev = JSON.parse(lines[j]);
       if (isTurnBoundary(prev)) {
-        return { text: entryText(prev), boundaryFound: true, index: j };
+        return { text: entryText(prev), boundaryFound: true, index: j, typed: prev.origin?.kind === 'human' };
       }
     } catch {}
   }
-  return { text: '', boundaryFound: false, index: -1 };
+  return { text: '', boundaryFound: false, index: -1, typed: false };
 }
 
 /**
