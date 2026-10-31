@@ -25,11 +25,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        shape: [current, converged-legacy]
+        include:
+          - shape: current
+            runner: ubuntu-latest
+          - shape: converged-legacy
+            runner: ubuntu-latest
+          - shape: browser
+            runner: ubuntu-latest
+          - shape: browser-arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -39,7 +47,7 @@ jobs:
       # The current template, rendered exactly as /docker-setup renders it with
       # no operator packages.
       - name: Render the current template
-        if: matrix.shape == 'current'
+        if: matrix.shape != 'converged-legacy'
         run: |
           mkdir -p build
           echo '{
@@ -47,7 +55,8 @@ jobs:
             "auth": "oauth-token",
             "channels": { "envLines": [], "volumeLines": [] },
             "networkMode": "bridge",
-            "gitIdentityMount": true
+            "gitIdentityMount": true,
+            "browser": ${{ startsWith(matrix.shape, 'browser') }}
           }' | bun plugins/hermitd/scripts/render-docker-templates.ts "$PWD/build"
 
       # A pre-1.2.0 deployed Dockerfile put through the real migration script.
@@ -75,3 +84,39 @@ jobs:
           echo "bun in image: $got"
           test "$got" = "1.4.2"
           docker run --rm --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'claude --version'
+
+      - name: Verify the managed browser
+        if: startsWith(matrix.shape, 'browser')
+        run: |
+          docker run --rm -i --entrypoint bash \
+            -v "$PWD/plugins/hermitd:/plugin:ro" \
+            -e HERMIT_PLUGIN_ROOT=/plugin \
+            hermit-ci:${{ matrix.shape }} -s <<'BROWSER_CHECK'
+          set -e
+          test -f /etc/hermit/managed-browser
+          test "$(command -v agent-browser)" = /usr/local/bin/agent-browser
+          test "$(agent-browser --session ci --version)" = "agent-browser 0.41.0"
+          /opt/chrome-linux64/chrome --version | grep -F "156.0.8078.80"
+          bun - <<'BROWSER_SMOKE'
+          const server = Bun.serve({
+            port: 0,
+            hostname: '127.0.0.1',
+            fetch: () => new Response('<title>Hermit browser CI</title><p>Local page</p>', { headers: { 'content-type': 'text/html' } }),
+          });
+          try {
+            for (const args of [
+              ['open', server.url.href],
+              ['get', 'title'],
+              ['close'],
+            ]) {
+              const child = Bun.spawn(['agent-browser', '--session', 'ci', ...args], { stdout: 'pipe', stderr: 'inherit' });
+              const output = await new Response(child.stdout).text();
+              console.log(output);
+              if (await child.exited !== 0) throw new Error('Browser command failed');
+              if (args[0] === 'get' && !output.includes('Hermit browser CI')) throw new Error('Wrong page title');
+            }
+          } finally {
+            server.stop();
+          }
+          BROWSER_SMOKE
+          BROWSER_CHECK

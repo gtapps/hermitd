@@ -36,7 +36,7 @@ Either way, the first launch needs one attended step to clear the trust gate, th
 | **Docker**               | Container    | `docker compose` v2 (Docker Desktop or modern Docker Engine) — see [Install Docker Compose](https://docs.docker.com/compose/install/) |
 | **Node.js 22+**          | Hooks        | Inside the container — handled by the Dockerfile |
 | **Bun**                  | Plugins      | Inside the container — always included          |
-| **Claude Code v2.1.308+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.314+** | Channels, sandbox | Minimum supported version |
 
 ---
 
@@ -56,12 +56,17 @@ The wizard scans your project for dependencies, asks about auth, and generates f
 
 | File                          | Purpose                                               |
 | ----------------------------- | ----------------------------------------------------- |
-| `Dockerfile.hermit`           | Ubuntu 26.04, Node 24, Bun, Claude Code, project packages, host UID matching |
+| `Dockerfile.hermit`           | Ubuntu 26.04, Node 24, Bun, Claude Code, managed browser unless disabled, project packages, host UID matching |
 | `docker-entrypoint.hermit.sh` | Onboarding bypass, workspace trust seed, channel MCP enable, permission patch, channel symlinks, graceful SIGTERM handling, PID 1 keepalive |
 | `docker-compose.hermit.yml`   | Named volume, bind mounts, env vars, healthcheck, restart policy, kernel-enforced hardening (`no-new-privileges`, `cap_drop: ALL`, `pids_limit`) |
 | `.env`                        | Auth token (appended if file already exists)           |
 
+New Docker setups include the managed browser unless `docker.browser` is false. Existing deployments get no browser additions until an explicit `/docker-setup` rerun. The image grows by about 1.4 GB. The browser profile uses the existing `claude-config` named volume, keeping it on a Linux filesystem on Linux, WSL2 and macOS hosts. Full parallel use needs 4 GiB; see [Browser Tasks](how-to-use.md#browser-tasks).
+
 ### Customizing the container
+
+Set `docker.browser` to false before rerunning `/docker-setup` to opt out. Changing config alone does not rebuild the image. The managed display starts only when the image carries `/etc/hermit/managed-browser`; an existing custom agent-browser install is not adopted.
+
 
 | Need | Where it lives | How it takes effect | Upgrade guarantee |
 | ---- | -------------- | ------------------- | ----------------- |

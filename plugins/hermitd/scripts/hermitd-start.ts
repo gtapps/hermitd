@@ -826,9 +826,12 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
     const note = chromeAuthNote(config);
     if (note) {
       console.log(`[hermit] WARNING: ${note}`);
+      cmd.push('--no-chrome');
     } else {
       cmd.push('--chrome');
     }
+  } else {
+    cmd.push('--no-chrome');
   }
 
   // The launch overlay carries resident safety gates as well as classifier policy.

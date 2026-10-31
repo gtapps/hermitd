@@ -31,7 +31,7 @@ https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.308+ and Bun 1.4+ installed:
+With Claude Code 2.1.314+ and Bun 1.4+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
@@ -218,7 +218,7 @@ Reflection runs at eligible task or session pauses, daily, and after routines co
 | `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
 | “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
-| “Download last month's invoices from the supplier portal.” | Works in web apps through [Claude in Chrome](plugins/hermitd/docs/how-to-use.md#browser-tasks) on any machine signed in to the same claude.ai account as the agent, Docker agents included. |
+| “Download last month's invoices from the supplier portal.” | Uses its [own Docker browser](plugins/hermitd/docs/how-to-use.md#browser-tasks) by default and stops at login. The operator's Chrome is opt-in for their account. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
 | “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
 

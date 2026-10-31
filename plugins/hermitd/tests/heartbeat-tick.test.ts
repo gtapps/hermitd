@@ -80,6 +80,13 @@ async function run(verb: string, args: string[], env: Record<string, string> = {
 const tick = async (hermit: string) => JSON.parse((await run('tick', [hermit])).trim());
 
 describe('heartbeat tick', () => {
+  test('expires an idle browser claim nobody released', async () => {
+    const hermit = fixture();
+    write(hermit, 'state/browser-lease.json', { holder: 'dead-task', expires_at: 1, waiters: [] });
+    await tick(hermit);
+    expect(read(path.join(hermit, 'state/browser-lease.json')).holder).toBeNull();
+  });
+
   // The whole verb is a wrapper around the precheck, so a verdict it does not
   // agree with is the one bug that would silently change what wakes the model.
   test('verdict parity with precheck across the fixture matrix', async () => {
