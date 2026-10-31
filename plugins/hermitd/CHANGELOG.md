@@ -19,7 +19,7 @@
 - `skills status --skill` reports the latest recorded use
 - Portuguese script notices come from the agent's own translation instead of shipped hand-written text, so their wording changes after the upgrade
 - Channel reply rules keep each chat's content in that chat and resolve a bare go-ahead against the chat it arrived in before looking at other chats
-- Tool sign-in requires an admin to finish, with a gate on account binding that raises the native permission prompt on a turn nobody typed, sensitive links routed to the maintainer chat when configured, failed delivery reported, and local callback addresses redacted from the channel log
+- Tool sign-in requires an admin to finish, with a gate on account binding that raises the native permission prompt on a turn nobody typed or another prompt joined, sensitive links routed to the maintainer chat when configured, failed delivery reported, and local callback addresses redacted from the channel log
 - `proposal-triage` no longer reads frozen session reports, and its unused `prior_discussion` metadata line is gone
 
 ### Fixed

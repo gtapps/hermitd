@@ -98,7 +98,7 @@ test('a qualifying close names the review guide by absolute path; other closes s
   const quiet = close(dir, open(dir));
   expect(quiet).not.toHaveProperty('next');
   const { next } = close(dir, open(dir, { 'dedupe-key': 'helper:PROP-001' }));
-  const guide = next.slice(next.indexOf('/'));
+  const guide = next.replace(/^before the close reply, read /, '');
   expect(path.isAbsolute(guide)).toBe(true);
   expect(fs.readFileSync(guide, 'utf8')).toContain('# Close-time skill learning');
 });

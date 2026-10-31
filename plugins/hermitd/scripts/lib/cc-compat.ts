@@ -550,21 +550,26 @@ function isTurnBoundary(entry: Json): boolean {
  * doesn't cover the real turn start. `index` is the boundary entry's position, so a
  * caller can resume the walk from an earlier turn (see cost-tracker's dispatch hop).
  * `typed` is true only when CC stamped the boundary as human input: wakes carry
- * `task-notification`, `peer`, `plugin` or no origin at all.
+ * `task-notification`, `peer`, `plugin` or no origin at all, and a background
+ * session's launch prompt is stamped human with `sessionKind: 'bg'`. `joined` is true when
+ * a prompt other than human input arrived after the boundary: CC records a prompt
+ * queued mid-turn as an attachment, so the model acts on it with no new boundary.
  * @param {string[]} lines
  * @param {number} billedIndex
- * @returns {{ text: string, boundaryFound: boolean, index: number, typed: boolean }}
+ * @returns {{ text: string, boundaryFound: boolean, index: number, typed: boolean, joined: boolean }}
  */
-function turnPromptText(lines: string[], billedIndex: number): { text: string; boundaryFound: boolean; index: number; typed: boolean } {
+function turnPromptText(lines: string[], billedIndex: number): { text: string; boundaryFound: boolean; index: number; typed: boolean; joined: boolean } {
+  let joined = false;
   for (let j = billedIndex - 1; j >= 0; j--) {
     try {
       const prev = JSON.parse(lines[j]);
       if (isTurnBoundary(prev)) {
-        return { text: entryText(prev), boundaryFound: true, index: j, typed: prev.origin?.kind === 'human' };
+        return { text: entryText(prev), boundaryFound: true, index: j, typed: prev.origin?.kind === 'human' && prev.sessionKind !== 'bg', joined };
       }
+      if (prev.attachment?.type === 'queued_command' && prev.attachment.origin?.kind !== 'human') joined = true;
     } catch {}
   }
-  return { text: '', boundaryFound: false, index: -1, typed: false };
+  return { text: '', boundaryFound: false, index: -1, typed: false, joined };
 }
 
 /**

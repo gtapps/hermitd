@@ -11,8 +11,8 @@ const DELIVERY = 'Count it as sent only if status is delivered and result.mainta
 
 export function main(payload: any): void {
   const turn = turnConversation(payload);
-  // A wake has no sender and no person at the keyboard, so it proves nothing about authority.
-  const origin = turn.kind === 'terminal' && !turn.typed ? { kind: 'unknown' as const } : turn;
+  // A wake has no sender and no person at the keyboard, so it proves nothing about authority, and neither does a turn it joined.
+  const origin = turn.kind !== 'unknown' && !turn.proven ? { kind: 'unknown' as const } : turn;
   if (payload.hook_event_name === 'PreToolUse') {
     if (origin.kind === 'terminal' || (origin.kind === 'channel' && origin.canCompleteAuthentication)) return;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: {

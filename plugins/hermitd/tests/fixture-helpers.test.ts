@@ -70,6 +70,7 @@ describe('transcript fixtures round-trip through cc-compat', () => {
       boundaryFound: true,
       index: 0,
       typed: false,
+      joined: false,
     });
   });
 });

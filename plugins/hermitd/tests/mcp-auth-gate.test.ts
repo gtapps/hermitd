@@ -9,13 +9,13 @@ afterAll(cleanup);
 
 const typed = { kind: 'human' };
 
-async function gate(event: string, prompt: string | null, entry: any = {}, origin: any = typed) {
+async function gate(event: string, prompt: string | null, entry: any = {}, origin: any = typed, joined: any = null, opener: any = {}) {
   const dir = freshDir();
   const hermit = path.join(dir, '.hermit');
   fs.mkdirSync(hermit, { recursive: true });
   fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({ operator_profile: 'non-technical', channels: { custom: entry } }));
   const transcript = path.join(dir, 'turn.jsonl');
-  if (prompt !== null) fs.writeFileSync(transcript, JSON.stringify({ type: 'user', origin, message: { content: prompt } }) + '\n');
+  if (prompt !== null) fs.writeFileSync(transcript, [{ type: 'user', origin, ...opener, message: { content: prompt } }, ...(joined ? [joined] : [])].map(row => JSON.stringify(row)).join('\n') + '\n');
   const result = await runScript('mcp-auth-gate.ts', {
     cwd: dir, env: { AGENT_DIR: hermit },
     stdin: JSON.stringify({ hook_event_name: event, transcript_path: transcript, cwd: dir }),
@@ -62,6 +62,34 @@ test('no wake can finish a sign-in without an approver, and none shows the link'
     expect((await gate('PreToolUse', prompt, {}, origin)).permissionDecision).toBe('ask');
     expect((await gate('PostToolUse', prompt, {}, origin)).additionalContext).toContain('Do not show the sign-in link');
   }
+});
+
+// Claude Code records a prompt queued during a turn as an attachment, not a new user entry.
+const queued = (origin: any, prompt: string) => ({ type: 'attachment', attachment: { type: 'queued_command', commandMode: 'prompt', origin, prompt } });
+
+test('a wake or member joining a turn takes away what the turn proved', async () => {
+  const admins = { allowed_users: ['a', 'b'] };
+  const member: [any, string] = [{ kind: 'channel', server: 'custom' }, channel('b')];
+  for (const [origin, prompt] of [...WAKES, member]) {
+    const wake = queued(origin, prompt);
+    expect((await gate('PreToolUse', 'sign in', admins, typed, wake)).permissionDecision).toBe('ask');
+    expect((await gate('PostToolUse', 'sign in', admins, typed, wake)).additionalContext).toContain('Do not show the sign-in link');
+    expect((await gate('PreToolUse', channel(), admins, typed, wake)).permissionDecision).toBe('ask');
+    expect((await gate('PostToolUse', channel(), admins, typed, wake)).additionalContext).toContain('Do not show the sign-in link');
+  }
+});
+
+test('a background session proves nobody typed, whatever its launch prompt is stamped', async () => {
+  const bg = { sessionKind: 'bg', promptSource: 'typed' };
+  expect((await gate('PreToolUse', 'sign in', {}, typed, null, bg)).permissionDecision).toBe('ask');
+  expect((await gate('PostToolUse', 'sign in', {}, typed, null, bg)).additionalContext).toContain('Do not show the sign-in link');
+});
+
+test('a person typing during the turn keeps it proven', async () => {
+  const more = queued(typed, 'and the other tool');
+  expect(await gate('PreToolUse', 'sign in', {}, typed, more)).toBeNull();
+  expect(await gate('PostToolUse', 'sign in', {}, typed, more)).toBeNull();
+  expect(await gate('PreToolUse', channel(), { allowed_users: ['a', 'b'] }, typed, more)).toBeNull();
 });
 
 test('an unproven origin never shows the link', async () => {
