@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Channel setup summary points third-party channels to the channel plugins guide
+
 ## [1.4.24] - 2026-10-31
 
 ### Added

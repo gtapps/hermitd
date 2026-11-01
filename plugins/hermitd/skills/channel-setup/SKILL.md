@@ -321,6 +321,12 @@ Channel setup complete!
   Later changes: /hermitd:hermit-settings channels (recall, record, operators)
 ```
 
+When `channels.<channel>.marketplace` is set in `config.json` (third-party channel), also print this line after the block; never for built-in channels:
+
+```
+For additional custom channel integration, see the channel plugins guide: https://github.com/gtapps/hermitd/blob/main/plugins/hermitd/docs/channel-plugins.md#threads-and-notices
+```
+
 If anything was skipped, list the remaining steps.
 
 ### 7a. Send owner welcome (once, only when exactly one channel was newly paired)
