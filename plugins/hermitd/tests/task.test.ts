@@ -12,13 +12,13 @@ it('clears only the matching wait and leaves stale notes byte-identical', async 
     const lib = await taskLib();
     const since = lib.decodeTask(before).waiting_since!;
     const stale = await f.run('note', [id, '--clear-waiting', '--if-waiting-since', 'old'], 'Must not append');
-    expect(stale.exitCode).toBe(1);
-    expect(stale.stdout).toContain('stale_wait');
+    expect(stale.exitCode).toBe(0);
+    expect(JSON.parse(stale.stdout)).toEqual({ status: 'refused', reason: 'stale_wait' });
     expect(f.text(id)).toBe(before);
     await f.ok('note', [id, '--clear-waiting', '--if-waiting-since', since], 'Handed back');
     expect(lib.decodeTask(f.text(id)).waiting_since).toBeNull();
     const cleared = f.text(id);
-    expect((await f.run('note', [id, '--clear-waiting', '--if-waiting-since', since], 'Replay')).exitCode).toBe(1);
+    expect(JSON.parse((await f.run('note', [id, '--clear-waiting', '--if-waiting-since', since], 'Replay')).stdout).reason).toBe('stale_wait');
     expect(f.text(id)).toBe(cleared);
   } finally { f.cleanup(); }
 });

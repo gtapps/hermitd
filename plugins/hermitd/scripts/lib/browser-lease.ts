@@ -75,6 +75,11 @@ function readLease(file: string): BrowserLease {
   }
 }
 
+/** Lock-free for the viewer's per-frame input path: lease writes are atomic renames. */
+export function humanGeneration(dir: string): number | null {
+  return readLease(path.join(dir, 'state/browser-lease.json')).human?.generation ?? null;
+}
+
 /** The folder shares the lease; the lock covers only the short transaction. */
 type LeaseAction = 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
@@ -119,9 +124,11 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     if (action === 'takeover') {
       if (!options.login) throw new Error('login_required');
       const waiting = task && readTasks(dir).find(record => record.id === task && record.status === 'open' && record.waiting_since && record.waiting_on);
+      // The replaced wait still needs its wake: inherit it, or release it for a different task.
+      if (waiting && lease.human?.task && lease.human.task !== waiting.id) clearHuman('released');
       lease.epoch++;
-      lease.human = { login: options.login, generation: lease.epoch, task: waiting ? waiting.id : null,
-        waiting_since: waiting ? waiting.waiting_since : null, since: now, disconnected_at: null };
+      lease.human = { login: options.login, generation: lease.epoch, task: waiting ? waiting.id : lease.human?.task ?? null,
+        waiting_since: waiting ? waiting.waiting_since : lease.human?.waiting_since ?? null, since: now, disconnected_at: null };
       save();
       return { status: 'human', human: lease.human, epoch: lease.epoch };
     }
@@ -146,7 +153,16 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       return { status: lease.human ? 'human' : 'available', human: lease.human, epoch: lease.epoch };
     }
     if (action === 'inspect') return { ...lease, status: recovery ? 'recovery' : lease.human ? 'human' : 'available' };
-    if (lease.human) return { status: 'human', human: lease.human, epoch: lease.epoch };
+    const queue = (waitingOn: string) => {
+      const waiter = lease.waiters.find(waiter => waiter.task === task);
+      if (waiter) waiter.waiting_on = waitingOn;
+      else lease.waiters.push({ task: task!, waiting_on: waitingOn });
+      save();
+    };
+    if (lease.human) {
+      if (action === 'claim' && task?.trim()) queue(lease.human.login);
+      return { status: 'human', human: lease.human, epoch: lease.epoch };
+    }
     if (!lease.holder && lease.waiters.length && (action === 'status' || claimExpired)) {
       // Recovers a waiter that blocked after the release meant to wake it.
       clearNextWaiter(dir, lease);
@@ -165,10 +181,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     }
     if (action === 'claim' && !task?.trim()) throw new Error('task_required');
     if (action === 'claim' && lease.holder && lease.holder !== task) {
-      const waiter = lease.waiters.find(waiter => waiter.task === task);
-      if (waiter) waiter.waiting_on = lease.holder;
-      else lease.waiters.push({ task: task!, waiting_on: lease.holder });
-      save();
+      queue(lease.holder);
       return { status: 'busy', holder: lease.holder };
     }
     if (action === 'renew' && !lease.holder) return { status: 'unclaimed' };

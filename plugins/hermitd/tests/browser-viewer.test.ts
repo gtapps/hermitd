@@ -79,8 +79,18 @@ test('only the current generation connects and bridges binary; takeover closes o
     expect((await f.request(`/hand-back?generation=${next.epoch}`, { method: 'POST', headers: { 'Tailscale-User-Login': 'other' } })).status).toBe(200);
     expect(readTasks(f.dir)[0].waiting_since).toBe(before);
     const state = browserLease('inspect', undefined, f.dir);
-    expect(state.pending![0].reason).toBe('hand_back');
+    expect(state.pending![0]).toMatchObject({ reason: 'hand_back', task: task.id, waiting_since: before });
     expect(fs.existsSync(path.join(f.dir, 'vnc.sock'))).toBe(true);
+  } finally { f.stop(); }
+});
+
+test('removing an admin closes their open socket', async () => {
+  const f = fixture(); try {
+    const take: any = await (await f.request('/takeover', { method: 'POST' })).json();
+    const ws = openSocket(f, take.epoch); await opened(ws);
+    const done = closed(ws);
+    fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify({ docker: { browser_admins: [{ login: 'other' }] } }));
+    await done;
   } finally { f.stop(); }
 });
 
@@ -105,6 +115,19 @@ test('browser loss refuses a new takeover as recovery rather than sign-in succes
     const result = await f.request('/takeover', { method: 'POST' });
     expect(result.status).toBe(409);
     expect(await result.json()).toEqual({ status: 'recovery', error: 'browser_lost' });
+    expect(browserLease('inspect', undefined, f.dir, Date.now(), { chromeAlive: () => false }).pending).toEqual([]);
+  } finally { f.stop(); }
+});
+
+test('browser loss at a task link still wakes the waiting task', async () => {
+  const f = fixture(); try {
+    const task = mutateTask(f.dir, 'open', undefined, { title: 'Login', requester: 'discord:user', done: 'signed in' }, '') as { id: string };
+    mutateTask(f.dir, 'block', task.id, { 'waiting-on': 'admin', 'status-line': 'Login', next: 'Hand back' }, '');
+    f.loseBrowser();
+    expect((await f.request(`/takeover?task=${task.id}`, { method: 'POST' })).status).toBe(409);
+    const state = browserLease('inspect', undefined, f.dir, Date.now(), { chromeAlive: () => false });
+    expect(state.human).toBeNull();
+    expect(state.pending![0]).toMatchObject({ reason: 'browser_lost', task: task.id, waiting_since: readTasks(f.dir)[0].waiting_since });
   } finally { f.stop(); }
 });
 

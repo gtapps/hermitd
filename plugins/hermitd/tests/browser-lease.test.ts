@@ -150,6 +150,45 @@ test('restart records a dropped viewer and hand back records the exact task wait
   expect(readTasks(dir)[0].waiting_since).toBe(taken.human!.waiting_since);
 });
 
+test('a replaced takeover keeps its wait or releases it for a different task', () => {
+  const dir = freshDir();
+  const first = openTask(dir, 'First login');
+  const second = openTask(dir, 'Second login');
+  blockOn(dir, first.id, 'admin');
+  blockOn(dir, second.id, 'admin');
+  const opts = { login: 'admin', chromeAlive: () => true };
+  browserLease('takeover', first.id, dir, 100, opts);
+  const bare = browserLease('takeover', undefined, dir, 200, opts);
+  expect(bare.human!.task).toBe(first.id);
+  const other = browserLease('takeover', second.id, dir, 300, opts);
+  expect(other.human!.task).toBe(second.id);
+  expect(browserLease('inspect', undefined, dir, 300, opts).pending!.map(event => [event.reason, event.task])).toEqual([['released', first.id]]);
+  browserLease('hand-back', undefined, dir, 400, { ...opts, generation: other.epoch });
+  expect(browserLease('inspect', undefined, dir, 400, opts).pending!.map(event => event.task)).toEqual([first.id, second.id]);
+});
+
+test('a claim during human control queues, and its wait clears after control returns', () => {
+  const dir = freshDir();
+  const { id } = openTask(dir, 'Signed-in work');
+  const opts = { login: 'admin', chromeAlive: () => true };
+  const taken = browserLease('takeover', undefined, dir, 100, opts);
+  expect(browserLease('claim', id, dir, 200, opts).status).toBe('human');
+  blockOn(dir, id, 'admin');
+  browserLease('hand-back', undefined, dir, 300, { ...opts, generation: taken.epoch });
+  expect(readTasks(dir)[0].waiting_since).not.toBeNull();
+  browserLease('status', undefined, dir, 400, opts);
+  expect(readTasks(dir)[0].waiting_since).toBeNull();
+});
+
+test('the human-release verb frees control for the shutdown close', async () => {
+  const { PLUGIN_ROOT } = await import('./helpers/run');
+  const dir = freshDir();
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin', chromeAlive: () => true });
+  const child = Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/browser.ts'), 'human-release'], { env: { ...process.env, AGENT_DIR: dir }, stdout: 'pipe' });
+  expect(JSON.parse(await new Response(child.stdout).text()).status).toBe('released');
+  expect(browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => true }).pending![0].reason).toBe('released');
+});
+
 test('event delivery advances after print, skips replayed ids across restarts and prunes on the next transaction', async () => {
   const { deliverBrowserEvents } = await import('../scripts/browser');
   const dir = freshDir();

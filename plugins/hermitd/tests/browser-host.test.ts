@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setupBrowserHost, securityRenderInput, tailscaleCLI } from '../scripts/browser-host';
+import { publishViewer, setupBrowserHost, securityRenderInput, tailscaleCLI } from '../scripts/browser-host';
 import { render } from '../scripts/render-docker-templates';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('browser-host-');
@@ -48,7 +48,7 @@ function fixture(lan = false) {
     throw new Error('Fixture refused: Tailscale lookup escaped fake-bin');
   }
   const messages: string[] = [];
-  const opts = { container: () => false, log: (message: string) => messages.push(message), fetch: (async () => Response.json({ error: 'browser_identity_refused' }, { status: 403 })) };
+  const opts = { container: () => false, log: (message: string) => messages.push(message), verifyWaitMs: 0, fetch: (async () => Response.json({ error: 'browser_identity_refused' }, { status: 403 })) };
   return { project, dir, config, opts, messages, versionFile, routesFile, deniedFile, logFile, bin, stop() { process.env.PATH = oldPath; } };
 }
 
@@ -101,8 +101,50 @@ test.serial('Serve denial prints sudo, and an unreachable host-mode viewer is un
     const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
     config.docker.network_mode = 'host';
     fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify(config));
+    fs.writeFileSync(path.join(f.project, 'docker-compose.hermit.yml'), render({ auth: 'oauth-token', networkMode: 'host', gitIdentityMount: false, browser: true }).compose);
     await expect(setupBrowserHost(f.project, { ...f.opts, fetch: (async () => { throw new Error('unreachable'); }) })).rejects.toThrow('unverified');
   } finally { f.stop(); }
+});
+
+test.serial('verification waits for a recreated container to reach the viewer', async () => {
+  const f = fixture(); try {
+    let attempts = 0;
+    const fetch = async () => {
+      if (++attempts === 1) throw new Error('booting');
+      return Response.json({ error: 'browser_identity_refused' }, { status: 403 });
+    };
+    await setupBrowserHost(f.project, { ...f.opts, verifyWaitMs: 60_000, fetch });
+    expect(attempts).toBe(2);
+  } finally { f.stop(); }
+});
+
+test.serial('setup leaves operator edits to the Docker files alone', async () => {
+  const f = fixture(); try {
+    const composeFile = path.join(f.project, 'docker-compose.hermit.yml');
+    const dockerfile = path.join(f.project, 'Dockerfile.hermit');
+    fs.writeFileSync(dockerfile, fs.readFileSync(dockerfile, 'utf8') + 'RUN operator-tool\n');
+    fs.writeFileSync(composeFile, fs.readFileSync(composeFile, 'utf8').replace('    cap_drop:\n', '    labels:\n      - operator=edit\n    cap_drop:\n'));
+    const operatorDockerfile = fs.readFileSync(dockerfile, 'utf8');
+    await setupBrowserHost(f.project, f.opts);
+    expect(fs.readFileSync(dockerfile, 'utf8')).toBe(operatorDockerfile);
+    expect(fs.existsSync(path.join(f.project, 'docker-entrypoint.hermit.sh'))).toBe(false);
+    const compose = fs.readFileSync(composeFile, 'utf8');
+    expect(compose).toContain('- operator=edit');
+    expect(compose).toContain(':6080"');
+  } finally { f.stop(); }
+});
+
+test('the viewer compose edit matches the renderer and stops at an existing ports block', () => {
+  const file = path.join(freshDir(), 'compose.yml');
+  for (const fleetMesh of [false, true]) for (const networkMode of ['bridge', 'host'] as const) {
+    const inputs = { auth: 'oauth-token', networkMode, gitIdentityMount: false, browser: true, fleetMesh } as const;
+    fs.writeFileSync(file, render(inputs).compose);
+    publishViewer(file, 6090, networkMode === 'host');
+    publishViewer(file, 6090, networkMode === 'host');
+    expect(fs.readFileSync(file, 'utf8')).toBe(render({ ...inputs, browserPort: 6090 }).compose);
+  }
+  fs.writeFileSync(file, '    ports:\n      - "3000:3000"\n    cap_drop:\n');
+  expect(() => publishViewer(file, 6090, false)).toThrow('by hand');
 });
 
 test.serial('missing CLI reports clearly and Windows interop is the final PATH choice', () => {

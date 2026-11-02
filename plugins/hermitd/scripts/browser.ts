@@ -54,10 +54,10 @@ if (import.meta.main) {
   try {
     if (action === 'events' && task === undefined) { await events(); }
     else {
-      if (!['claim', 'release', 'status'].includes(action) || extra.length || (action === 'status' && task !== undefined)) {
-        throw new Error('usage: browser claim <task> | release [task] | status | events');
+      if (!['claim', 'release', 'status', 'human-release'].includes(action) || extra.length || (['status', 'human-release'].includes(action) && task !== undefined)) {
+        throw new Error('usage: browser claim <task> | release [task] | status | human-release | events');
       }
-      emitJson(browserLease(action as 'claim' | 'release' | 'status', task));
+      emitJson(browserLease(action as 'claim' | 'release' | 'status' | 'human-release', task));
     }
   } catch (error) {
     failJson(error);

@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ServerWebSocket, Socket } from 'bun';
 import { hermitDir } from './lib/cc-compat';
-import { browserLease, persistentChromeAlive } from './lib/browser-lease';
+import { browserLease, humanGeneration, persistentChromeAlive } from './lib/browser-lease';
 import { readSettledConfig } from './lib/config-read';
 
-interface ViewerSocket { generation: number; bridge?: Socket; closed: boolean }
+interface ViewerSocket { generation: number; login: string; bridge?: Socket; closed: boolean }
 interface ViewerOptions {
   dir?: string; port?: number; hostname?: string; novncRoot?: string; vncSocket?: string;
   chromeAlive?: () => boolean;
@@ -20,20 +20,20 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
   const lease = (action: Parameters<typeof browserLease>[0], task?: string, extra = {}) =>
     browserLease(action, task, dir, Date.now(), { chromeAlive, ...extra });
   lease('restart');
+  const isAdmin = (login: string | null): login is string => !!login
+    && readSettledConfig(dir).docker.browser_admins.some((admin: { login: string } | null) => admin?.login === login);
   const closeStale = () => {
     const current = lease('inspect');
-    for (const ws of clients) if (current.human?.generation !== ws.data.generation) ws.close(1000, 'Control changed');
+    for (const ws of clients) if (current.human?.generation !== ws.data.generation || !isAdmin(ws.data.login)) ws.close(1000, 'Control changed');
     return current;
   };
   const server = Bun.serve<ViewerSocket>({
     port: options.port ?? 6080, hostname: options.hostname ?? '0.0.0.0',
     async fetch(req, server) {
       const login = req.headers.get('Tailscale-User-Login');
-      const config = readSettledConfig(dir);
-      const allowed = login && config.docker.browser_admins.some((admin: { login: string } | null) => admin?.login === login);
       const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
       const reply = (body: unknown, status = 200) => Response.json(body, { status, headers });
-      if (!allowed) return reply({ error: 'browser_identity_refused' }, 403);
+      if (!isAdmin(login)) return reply({ error: 'browser_identity_refused' }, 403);
       const url = new URL(req.url);
       const upgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
       if (req.method === 'POST' || upgrade) {
@@ -46,12 +46,18 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
         const generation = Number(url.searchParams.get('generation'));
         if (!current.human || current.human.login !== login || current.human.generation !== generation) return reply({ error: 'stale_generation' }, 409);
         if (!req.headers.get('sec-websocket-protocol')?.split(',').map(value => value.trim()).includes('binary')) return reply({ error: 'binary_required' }, 400);
-        if (server.upgrade(req, { data: { generation, closed: false }, headers: { ...headers, 'Sec-WebSocket-Protocol': 'binary' } })) return;
+        if (server.upgrade(req, { data: { generation, login, closed: false }, headers: { ...headers, 'Sec-WebSocket-Protocol': 'binary' } })) return;
         return reply({ error: 'upgrade_failed' }, 400);
       }
       if (req.method === 'POST' && url.pathname === '/takeover') {
-        if (!chromeAlive()) { closeStale(); return reply({ status: 'recovery', error: 'browser_lost' }, 409); }
-        const result = lease('takeover', url.searchParams.get('task') ?? undefined, { login });
+        const task = url.searchParams.get('task') ?? undefined;
+        if (!chromeAlive()) {
+          // The refused attempt records the loss, so a task waiting on this link still wakes.
+          if (task) lease('takeover', task, { login });
+          closeStale();
+          return reply({ status: 'recovery', error: 'browser_lost' }, 409);
+        }
+        const result = lease('takeover', task, { login });
         // A lost HTTP response must also start the no-viewer expiry clock.
         lease('disconnect', undefined, { generation: result.epoch });
         closeStale();
@@ -101,7 +107,8 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
         } catch { ws.close(1011, 'Display connection failed'); }
       },
       message(ws, message) {
-        if (closeStale().human?.generation !== ws.data.generation || typeof message === 'string') { ws.close(1008, 'Control refused'); return; }
+        // Runs on every input frame; the timer below owns expiry, browser loss and revoked admins.
+        if (humanGeneration(dir) !== ws.data.generation || typeof message === 'string') { ws.close(1008, 'Control refused'); return; }
         ws.data.bridge?.write(message);
       },
       close(ws) {
@@ -112,7 +119,8 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
       },
     },
   });
-  const timer = setInterval(closeStale, 2000);
+  // A contended lock retries on the next tick; an uncaught throw would drop every socket.
+  const timer = setInterval(() => { try { closeStale(); } catch {} }, 2000);
   return { server, stop() { clearInterval(timer); for (const client of clients) client.close(); server.stop(true); } };
 }
 

@@ -29,10 +29,10 @@ take.onclick = async () => {
     rfb?.disconnect();
     const result = await post('/takeover', task ? { task } : {});
     generation = result.human.generation;
-    rfb = new RFB(document.querySelector('#screen'), `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
-    rfb.scaleViewport = true; rfb.resizeSession = false;
-    rfb.addEventListener('connect', () => { back.disabled = type.disabled = false; status.textContent = 'You have control. Sign in, then Hand back.'; });
-    rfb.addEventListener('disconnect', event => { back.disabled = type.disabled = true; status.textContent = event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Browser connection failed. Take over to retry.'; });
+    const session = rfb = new RFB(document.querySelector('#screen'), `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
+    session.scaleViewport = true; session.resizeSession = false;
+    session.addEventListener('connect', () => { back.disabled = type.disabled = false; status.textContent = 'You have control. Sign in, then Hand back.'; });
+    session.addEventListener('disconnect', event => { if (session !== rfb) return; back.disabled = type.disabled = true; status.textContent = event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Browser connection failed. Take over to retry.'; });
   } catch (error) { status.textContent = error.message; }
 };
 back.onclick = async () => {

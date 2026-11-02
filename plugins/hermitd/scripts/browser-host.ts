@@ -3,13 +3,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isContainer } from './lib/container';
 import { readConfigRaw } from './lib/config-read';
-import { deriveRenderInputs } from './lib/derive-render-inputs';
 import type { RenderInput } from './render-security-overlay';
 
 interface HostOptions {
   container?: () => boolean;
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
   log?: (line: string) => void;
+  verifyWaitMs?: number;
+}
+
+/** Adds only the viewer's compose lines, where the renderer puts them: operator edits to the Docker files stay. */
+export function publishViewer(file: string, port: number, hostNetwork: boolean): void {
+  const compose = fs.readFileSync(file, 'utf8');
+  const entry = hostNetwork ? `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:${port}` : `"127.0.0.1:${port}:6080"`;
+  if (compose.includes(entry)) return;
+  const anchor = new RegExp(`^\\n?(?=(?:    #.*\\n)?    ${hostNetwork ? 'network_mode: host' : 'cap_drop:'}$)`, 'm');
+  if ((!hostNetwork && /^    ports:$/m.test(compose)) || !anchor.test(compose)) {
+    throw new Error(`Add ${entry} to the hermit service in docker-compose.hermit.yml by hand, then run this again.`);
+  }
+  fs.writeFileSync(file, compose.replace(anchor, hostNetwork ? `      - ${entry}\n` : `    ports:\n      - ${entry}\n`));
 }
 
 export function tailscaleCLI(): string {
@@ -87,11 +99,17 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   const configured = routes.TCP?.[String(port)]?.HTTPS === true && route?.Handlers?.['/']?.Proxy === target;
   if (usedRoute(port) && !configured) throw new Error(`Tailscale port ${port} already has another route; it was left unchanged.`);
   const verifyRoute = async () => {
-    try {
-      const response = await (options.fetch ?? fetch)(target, { signal: AbortSignal.timeout(5000), redirect: 'error' });
-      const body = await response.json() as { error?: unknown };
-      if (response.status === 403 && body?.error === 'browser_identity_refused') return;
-    } catch {}
+    // A recreated container answers only once its entrypoint reaches the viewer.
+    const deadline = Date.now() + (options.verifyWaitMs ?? 180_000);
+    while (true) {
+      try {
+        const response = await (options.fetch ?? fetch)(target, { signal: AbortSignal.timeout(5000), redirect: 'error' });
+        const body = await response.json() as { error?: unknown };
+        if (response.status === 403 && body?.error === 'browser_identity_refused') return;
+      } catch {}
+      if (Date.now() >= deadline) break;
+      await Bun.sleep(2000);
+    }
     throw new Error(config.docker.network_mode === 'host'
       ? 'Viewer loopback route failed. Docker Desktop host networking with loopback binding is unverified; setup is not verified.'
       : 'Viewer loopback route failed: expected browser_identity_refused without a Tailscale login header.');
@@ -111,11 +129,8 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     if (!ports.some((entry: any) => Number(entry.target) === 6080 && String(entry.published) === String(port) && entry.host_ip === '127.0.0.1' && (entry.protocol ?? 'tcp') === 'tcp')) ports.push(mapping);
     await set('docker.security.network.publish_ports', ports);
     security.network.publish_ports = ports;
-  }
-  const inputs = deriveRenderInputs(path.join(dir, 'config.json'), path.join(project, 'docker-compose.hermit.yml'));
-  if (!inputs) throw new Error('Cannot derive Docker template inputs from this project.');
-  await required([process.execPath, script('render-docker-templates'), project], inputs);
-  if (security) await required([process.execPath, script('render-security-overlay'), 'render', project], securityRenderInput(security));
+    await required([process.execPath, script('render-security-overlay'), 'render', project], securityRenderInput(security));
+  } else publishViewer(path.join(project, 'docker-compose.hermit.yml'), port, config.docker.network_mode === 'host');
   log('Recreating the hermit container to enable the viewer; the image will not be rebuilt.');
   await required(['bash', path.join(dir, 'bin/hermitd-docker'), 'up', '--force-recreate', '--no-build']);
   if (!configured) {
