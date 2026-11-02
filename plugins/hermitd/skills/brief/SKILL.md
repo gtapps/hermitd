@@ -8,8 +8,7 @@ Provide a concise executive summary of recent task activity. Designed for mornin
 
 ## Commands
 - `duties-summary`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit`
-- `proposal-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts list .hermit`
-- `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
+- `brief-digest`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit`
 - `task-report`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit`
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 
@@ -22,15 +21,14 @@ If `config.always_on` is `true`, deliver all operator-facing output per `prompts
 Before composing any brief, determine the dispatch mode:
 
 1. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary"/"what happened today", or no flag).
-2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows.
-3. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns: the duty digest holds no task records.
-4. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json`, compose in main, and never dispatch.
+2. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns. Run nothing before dispatch except morning micro-queue aging.
+3. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows, compose in main, and never dispatch.
 
-Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`), and `today` (ISO date). For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
+Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`). For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 
-Readers use `task-report.ts` for normalized task outcomes. Never open frozen session archives. If the runner fails or returns malformed JSON, read `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` and follow it for the active mode.
+Scheduled readers use `brief-digest` for bounded task, duty and proposal data. Keep the project root as the working directory, including in the runner; do not change into `plugin_root`. Never open frozen session archives. If the runner fails or returns malformed JSON, read `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` and follow it for the active mode.
 
 **Eval runner return schema** — the runner returns a JSON object conforming to this block. The schema is byte-identical in `reference.md` (producer) and here (consumer); a contract test asserts this.
 
@@ -39,17 +37,21 @@ Readers use `task-report.ts` for normalized task outcomes. Never open frozen ses
 {
   "report_summary": { "date": "<ISO>", "tags": ["<tag>"], "working_on": "<one-line>",
                        "status": "<completed|partial|blocked>", "next_start_point": "<text>" }|null,
-  "sessions_today": [ { "session": "T-...", "summary": "<one-line>" } ],
+  "tasks_today": [ { "task": "T-...", "summary": "<one-line>" } ],
   "findings": ["<text>"],
   "decisions": ["<text>"],
   "tomorrow": ["<text>"],
   "pending_proposals": ["<PROP-NNN: title>"],
   "operator_priorities": ["<text>"],
   "queued_work": ["<text>"],
-  "waiting": ["<text>"]
+  "waiting": [ { "title": "<text>", "state": "<finishing|unconfirmed|waiting>", "waiting_on": "<key>"|null } ],
+  "duties": ["<one line: name, requested, observed>"],
+  "omitted": { "clipped": 0, "lessons": 0, "records": 0, "decisions": 0, "open": 0, "proposals": 0, "duties": 0 }
 }
 ```
 <!-- brief-eval-schema:end -->
+
+Compose `runner.waiting` entries in the operator's language from `title`, `state` and `waiting_on`: `finishing` means nothing is needed from the operator; `unconfirmed` means a result awaits confirmation, from `waiting_on` when set; `waiting` means work needs the named party. For every routine brief, say plainly when `runner.omitted` has non-zero counts, including clipped text and items left out.
 
 ## Flags
 
@@ -62,6 +64,7 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 - **Operator priorities:** use `runner.operator_priorities`
 - **Queued work:** use `runner.queued_work`
 - **Waiting:** use `runner.waiting` (records awaiting a reply or confirmation); omit the line when the array is empty
+- **Duties:** use `runner.duties` for requested and observed duties
 - **Task context:** if `runner.report_summary` is non-null, include it as the latest record with its date; it can predate last night, so the framing below does not make it overnight activity
 - If `config.always_on` is `true`: frame as "what happened overnight (activity since evening routine)"
 - If `config.always_on` is `false`: frame as "here's where things stand"
@@ -81,12 +84,12 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 **Delivery:** Write the full composed brief text (before any push-fallback single-line condensing) to `.hermit/state/last-brief.json` as `{"kind":"evening","text":"<brief text>","generated_at":"<now, ISO>"}`, so the dashboard's "latest brief" section can pick it up. Then refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, append a final line `📎 <url>`. Then deliver the brief to the operator (see Always-On Delivery Rule above).
 
 Emphasize backward-looking content. Compose from runner JSON (see Dispatch above) and live main-session data:
-- **Tasks today:** use `runner.sessions_today` (the compatibility key contains task IDs and outcomes).
-- **Key findings:** use `runner.findings` from record lessons.
+- **Tasks today:** use `runner.tasks_today`.
+- **Key findings:** use `runner.findings` from record lessons. Keep every distinct finding, and merge only findings that say the same thing.
 - **Decisions:** use `runner.decisions` for what changed and why; omit the line when the array is empty.
 - **Tomorrow:** use `runner.tomorrow` from runnable open records.
 - **Waiting:** use `runner.waiting`; omit the line when the array is empty.
-- **Duties:** append the requested and observed duty digest. Unconfirmed results remain open until checked, confirmed, or cancelled; report them without prompting for a session close.
+- **Duties:** use `runner.duties` for the requested and observed duty digest. Unconfirmed results remain open until checked, confirmed, or cancelled; report them without prompting for a session close.
 
 ### No flag (default)
 
@@ -125,4 +128,4 @@ Next: description of next action (or "No next action" if all done)
 
 When invoked with "brief today", "daily summary", or "what happened today":
 
-Compose from runner JSON (mode: `daily`). Use `runner.sessions_today`, `runner.findings`, `runner.decisions`, `runner.tomorrow`, and `runner.waiting` for the day narrative. Format as a day-level summary covering: work done, decisions (what changed and why; omit the line when the array is empty), and proposals created/resolved.
+Compose from runner JSON (mode: `daily`). Use `runner.tasks_today`, `runner.findings`, `runner.decisions`, `runner.tomorrow`, `runner.waiting`, and `runner.duties` for the day narrative. Keep every distinct finding, and merge only findings that say the same thing. Say plainly when `runner.omitted` reports clipped text or items left out. Format as a day-level summary covering: work done, decisions (what changed and why; omit the line when the array is empty), and proposals created/resolved.

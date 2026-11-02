@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { readConfigRaw } from './config-read';
+import { readConfigRaw, readSettledConfig } from './config-read';
 import { readJson } from './cli';
 import { deriveDuties } from './tasks';
 import { lastRoutineEventWithTimestamp } from './routines/history';
@@ -10,11 +10,12 @@ export interface DutyRow { name: string; enabled?: boolean; every?: string; sche
 /** Each duty's requested schedule and mode beside its observed liveness; `null` is unknown. */
 export function dutyRows(dir: string): DutyRow[] {
   const config = readConfigRaw(dir) ?? {};
+  const configuredRoutines = readSettledConfig(dir).routines;
   const mode = effectiveHeartbeatMode(dir);
   const routines = readJson(path.join(dir, 'state/routine-monitor.runtime.json'));
   return deriveDuties(dir).map(duty => {
     const heartbeat = duty.name === 'heartbeat';
-    const routine = config.routines?.find((entry: any) => `routine:${entry.id}` === duty.name);
+    const routine = configuredRoutines.find((entry: any) => typeof entry?.id === 'string' && `routine:${entry.id}` === duty.name);
     const requested = heartbeat
       ? { enabled: config.heartbeat?.enabled !== false, every: config.heartbeat?.every ?? '30m', mode }
       : routine ? { enabled: routine.enabled !== false, schedule: routine.schedule ?? null, mode: routines?.mode ?? null } : {};

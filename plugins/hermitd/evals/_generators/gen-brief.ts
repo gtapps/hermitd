@@ -116,15 +116,31 @@ runCase('run-morning-context', ['brief-morning'], 'A morning brief names the new
   [dispatchedRunner, present('newest-record', 'wholesale invoices'), absent('no-open-date', '2026-10-20|Oct(ober)?\\s+20'), WHOLE_REPORT]);
 
 const [firstPath, firstRecord] = record(0, KINDS[0]);
-runCase('run-contradicted-lesson', ['brief-run'], 'A lesson the final result disproved stays out of the evening findings.', EVENING,
-  [absent('no-contradicted-lesson', 'does not work on the new spreadsheet'), present('finished-work', 'price list'), WHOLE_REPORT],
-  { [firstPath]: firstRecord
-    .replace('## Lessons\n', '## Lessons\n- 2026-10-20T11:00:00.000Z: The price list import does not work on the new spreadsheet.\n')
-    .replace(/result: "[^\n]*"/, 'result: "The price list import worked on the new spreadsheet, every row imported and verified."') });
+const supportedLesson = 'Keep source row identifiers when exporting the price list.';
+const contradictedRecord = firstRecord
+  .replace('## Lessons\n', `## Lessons\n- 2026-10-20T11:00:00.000Z: The price list import does not work on the new spreadsheet.\n- 2026-10-20T11:10:00.000Z: ${supportedLesson}\n`)
+  .replace(/result: "[^\n]*"/, 'result: "The price list import worked on the new spreadsheet, every row imported and verified."');
+const supportedFinding: Grader = { name: 'supported-lesson-survives', type: 'llm', focus: 'last_message', criteria:
+  'The findings retain the useful lesson about preserving source row identifiers when exporting the price list. Judge the meaning, in any language or phrasing; do not require particular wording.' };
+runCase('run-contradicted-lesson', ['brief-run'], 'A contradicted lesson is excluded while an independent useful lesson survives.', EVENING,
+  [absent('no-contradicted-lesson', 'does not work on the new spreadsheet'), present('finished-work', 'price list'), supportedFinding, WHOLE_REPORT],
+  { [firstPath]: contradictedRecord });
+
+const longResult = 'The initial price list import failed on the new spreadsheet. ' + 'Intermediate verification is still being recorded. '.repeat(90)
+  + ' The final price list import worked on the new spreadsheet, every row imported and verified.';
+runCase('run-contradicted-lesson-long', ['brief-run'], 'A result with its contradiction beyond the digest excerpt contributes no lessons.', EVENING,
+  [absent('no-excerpt-claim', 'import failed|failed import|failed on the new spreadsheet'), absent('no-excluded-lesson', 'row identifiers'), present('finished-work', 'price list')],
+  { [firstPath]: contradictedRecord.replace(/result: "[^\n]*"/, `result: ${JSON.stringify(longResult)}`) });
+
+const portugueseInstall = Object.fromEntries(Object.entries(BUSY).map(([file, body]) => [file, body.replaceAll('discord:', 'telegram:')]));
+runCase('run-evening-pt', ['brief-run'], 'An evening brief uses the same task states for a Portuguese operator on Telegram.',
+  'Invoca /hermitd:brief --evening. Quero o resumo do dia.',
+  [absent('operator-language', 'waiting on you|tomorrow|done today'), present('waiting-task', 'estafeta|courier|transportador'), present('unconfirmed-state', 'confirm'), present('upcoming-task', 'matcha'), present('finished-task', 'caixas')],
+  { '.hermit/OPERATOR.md': '# Operador\n\nGere sozinho uma pequena loja de chá online. Prefere mensagens curtas em português.\n', ...changes(portugueseInstall) });
 
 const STALE = ACTION('gift box stock');
 runCase('run-stale-context', ['brief-run'], 'Earlier conversation says closed work is waiting; the brief follows the records.', EVENING,
-  [absent('no-stale-waiting', 'waiting[^\\n]*gift box|gift box stock\\W+(result\\s+)?(still\\s+|stays\\s+|is\\s+)*a?waiting'),
+  [absent('no-stale-waiting', '(?:^|\\n)(?![^\\n]*\\b(?:told|said|earlier)\\b)[^\\n]*(?:waiting[^\\n]*gift box|gift box stock\\W+(result\\s+)?(still\\s+|stays\\s+|is\\s+)*a?waiting)'),
     absent('no-denied-record', 'no gift box|gift box stock\\W+(it\\s+)?(isn.t|is not)\\s+in\\b'), present('finished-work', 'gift box stock'), WHOLE_REPORT],
   {}, history([['Where do things stand?', `Waiting on you: ${STALE}, I need your decision on the gift box count before I can finish it.`],
     ['I will get back to you on the gift box stock.', `Understood. ${STALE} stays waiting on your reply.`]]));

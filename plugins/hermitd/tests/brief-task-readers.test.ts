@@ -18,7 +18,7 @@ describe('task-based reader instructions', () => {
   test('brief builds waiting items from this turn\'s records, never from an earlier brief', () => {
     const skill = read('skills/brief/SKILL.md');
     const ref = read('skills/brief/reference.md');
-    expect(ref).toContain('populate `waiting` from `task-list` rows');
+    expect(ref).toContain("populate `waiting` from the digest's `open` rows");
     expect(skill).toContain('use `runner.waiting`');
     for (const text of [skill, ref]) {
       expect(text).toContain('`state/last-brief.json`, `compiled/brief-*`');
@@ -27,9 +27,9 @@ describe('task-based reader instructions', () => {
 
   test('brief uses final results to judge lessons and distinguishes session wakes from prechecks', () => {
     const ref = read('skills/brief/reference.md');
-    expect(ref).toContain('closed_today');
-    expect(ref).toContain('opened_today');
-    expect(ref).toContain('--limit 20 --today');
+    expect(ref).toContain('`records`');
+    expect(ref).toContain('result_truncated');
+    expect(ref).toContain('Run `brief-digest` (Commands) once');
     expect(ref).toContain('contradict');
     expect(ref).toContain('last_woke');
   });

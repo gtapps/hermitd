@@ -70,7 +70,7 @@ function placeholderRow(id: string, file: string): ProposalRow {
   };
 }
 
-export function rebuildIndex(stateDir: string, bodyOut?: Map<string, string>): ProposalsIndex | null {
+export function scanProposals(stateDir: string, bodyOut?: Map<string, string>): ProposalsIndex | null {
   const proposalsDir = path.join(stateDir, 'proposals');
   if (!fs.existsSync(proposalsDir)) return null;
 
@@ -119,13 +119,17 @@ export function rebuildIndex(stateDir: string, bodyOut?: Map<string, string>): P
     counts[k] = (counts[k] ?? 0) + 1;
   }
 
-  const index: ProposalsIndex = {
+  return {
     updated: new Date().toISOString(),
     count: proposals.length,
     counts,
     proposals,
   };
+}
 
+export function rebuildIndex(stateDir: string, bodyOut?: Map<string, string>): ProposalsIndex | null {
+  const index = scanProposals(stateDir, bodyOut);
+  if (!index) return null;
   try {
     const stateSubdir = path.join(stateDir, 'state');
     fs.mkdirSync(stateSubdir, { recursive: true }); // state/ may be absent on a partial layout

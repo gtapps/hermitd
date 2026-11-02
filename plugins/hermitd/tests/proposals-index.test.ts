@@ -8,7 +8,7 @@ import { afterAll, describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { rebuildIndex } from '../scripts/lib/proposals/index-rebuild';
+import { rebuildIndex, scanProposals } from '../scripts/lib/proposals/index-rebuild';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 
@@ -245,4 +245,16 @@ describe('generate-summary CLI mode: state-dir pin', () => {
     expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
     expect(fs.readFileSync(summaryPath, 'utf-8')).toBe(before);
   });
+});
+
+test('scan returns proposals without touching the index', () => {
+  const dir = makeDir();
+  writeProposal(dir, 'PROP-001.md', fm({ status: 'proposed', source: 'auto-detected', title: 'Useful' }));
+  const target = hermit(dir, 'state/proposals-index.json');
+  fs.writeFileSync(target, 'sentinel');
+  expect(scanProposals(hermit(dir))?.count).toBe(1);
+  expect(fs.readFileSync(target, 'utf8')).toBe('sentinel');
+  fs.unlinkSync(target);
+  scanProposals(hermit(dir));
+  expect(fs.existsSync(target)).toBe(false);
 });
