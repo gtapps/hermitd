@@ -2075,7 +2075,7 @@ describe('brief delegation contract', () => {
   test('morning task context has no caller-chosen switch', () => {
     expect(skill).not.toContain('context_recovery');
     expect(refFile).not.toContain('context_recovery');
-    expect(refFile).toContain('Summarize the newest normalized record (the first `rows` entry)');
+    expect(refFile).toContain('Summarize `latest` in `report_summary`');
     expect(skill).toContain('does not make it overnight activity');
     expect(refFile).toContain('Use `closed_at`, else `opened_at`, for date');
     expect(skill).toContain('Use `closed_at`, else `opened_at`, for the date');

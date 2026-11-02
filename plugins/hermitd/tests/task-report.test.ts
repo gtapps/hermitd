@@ -61,7 +61,7 @@ test('selects all closed outcomes and opened records on the configured local day
   expect(selectTodayReports(records, 'UTC', new Date('2026-10-19T12:00:00Z')).closed_today.map(row => row.title)).toEqual(['first']);
 });
 
-test('CLI adds uncapped today selections only with --today, defaulting to UTC', async () => {
+test('CLI rejects --today and preserves default report keys', async () => {
   const f = taskFixture();
   try {
     for (let i = 0; i < 2; i++) {
@@ -76,16 +76,7 @@ test('CLI adds uncapped today selections only with --today, defaulting to UTC', 
     const report = JSON.parse(plain.stdout);
     expect(Object.keys(report)).toEqual(['rows', 'total', 'omitted']);
     const selected = await call(['--today']);
-    expect(selected.exitCode).toBe(0);
-    const today = JSON.parse(selected.stdout);
-    expect(today.rows).toEqual(report.rows);
-    expect(today.total).toBe(2);
-    expect(today.omitted).toBe(1);
-    // Derive the expected day from the records so a run across UTC midnight stays green.
-    const onDay = (stamp: string | null) => stamp?.slice(0, 10) === today.today;
-    const all = readTaskReports(f.dir);
-    expect(today.closed_today).toHaveLength(all.filter(row => onDay(row.closed_at)).length);
-    expect(today.opened_today).toHaveLength(all.filter(row => onDay(row.opened_at)).length);
-    expect([new Date(Date.now() - 60000), new Date()].map(d => d.toISOString().slice(0, 10))).toContain(today.today);
+    expect(selected.exitCode).toBe(1);
+    expect(JSON.parse(selected.stdout)).toEqual({ error: 'invalid_arguments' });
   } finally { f.cleanup(); }
 });

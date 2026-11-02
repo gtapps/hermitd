@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: run-contradicted-lesson
-description: 'A lesson the final result disproved stays out of the evening findings.'
+description: 'A contradicted lesson is excluded while an independent useful lesson survives.'
 tags: [brief-run]
 context:
   scaffold_script: scaffold.sh
@@ -90,6 +90,11 @@ graders:
     pattern: 'price list'
     flags: 'i'
     weight: 2
+  - name: supported-lesson-survives
+    type: 'llm'
+    focus: 'last_message'
+    criteria: |
+      The findings retain the useful lesson about preserving source row identifiers when exporting the price list. Judge the meaning, in any language or phrasing; do not require particular wording.
   - name: whole-report-read
     type: 'regex'
     target: 'last_message'

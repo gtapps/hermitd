@@ -49,6 +49,7 @@ result_rev: 0
 
 ## Lessons
 - 2026-10-20T11:00:00.000Z: The price list import does not work on the new spreadsheet.
+- 2026-10-20T11:10:00.000Z: Keep source row identifiers when exporting the price list.
 - 2026-10-20T11:00:00.000Z: The supplier price list takes longer when the source spreadsheet is exported as text, so export it as a table first and compare row counts before editing anything.
 - 2026-10-21T11:00:00.000Z: The supplier price list takes longer when the source spreadsheet is exported as text, so export it as a table first and compare row counts before editing anything.
 - 2026-10-22T11:00:00.000Z: The supplier price list takes longer when the source spreadsheet is exported as text, so export it as a table first and compare row counts before editing anything.
