@@ -132,6 +132,8 @@ const HERMIT_ALLOW = [
   'Bash(bun */scripts/role-review.ts*)',
   'Bash(bun */scripts/task.ts*)',
   'Bash(bun */scripts/duties.ts*)',
+  'Bash(bun */scripts/brief-digest.ts*)',
+  'Bash(bun */scripts/task-report.ts*)',
   'Bash(bun */scripts/channel-access.ts*)',
   'Bash(bun */scripts/routines.ts precheck*)',
   'Bash(bun */scripts/routines.ts finish*)',
@@ -189,6 +191,7 @@ const HERMIT_ALLOW = [
   // pins its own state dir: the grant confers exactly what the existing
   // `Bash(bun */scripts/channel-send.ts*)` entry already confers, and no more.
   'Bash(.hermit/bin/hermitd-run channel-send *)',
+  'Bash(.hermit/bin/hermitd-run brief-digest .hermit *)',
   'Bash(.hermit/bin/hermitd-run observations observe *)',
   // The rc-gate skill's four verbs. The skill is operator-invoked, but the Bash
   // calls it then makes still face the classifier, and their wildcarded twins

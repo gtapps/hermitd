@@ -547,7 +547,7 @@ export function deriveDuties(dir: string): { name: string; last_run: string | nu
   const metrics = path.join(dir, 'state/routine-metrics.jsonl');
   const names = new Set<string>();
   const config = readConfigRaw(dir);
-  for (const routine of config?.routines ?? []) if (typeof routine.id === 'string') names.add(routine.id);
+  for (const routine of readSettledConfig(dir).routines) if (routine && typeof routine === 'object' && typeof routine.id === 'string') names.add(routine.id);
   const rows: ReturnType<typeof deriveDuties> = [...names].sort().map(name => ({ name: `routine:${name}`, last_run: lastRoutineFire(metrics, name), last_verdict: lastRoutineEvent(metrics, name) }));
   const alert = readAlertState(path.join(dir, 'state/alert-state.json'));
   const value = alert.kind === 'ok' ? alert.value : null;

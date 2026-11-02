@@ -7,6 +7,7 @@ import { afterAll, test, expect, describe } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { taskFixture } from './helpers/tasks';
 import { PLUGIN_ROOT, RunResult } from './helpers/run';
 
 const HERMIT_RUN = path.join(PLUGIN_ROOT, 'state-templates', 'bin', 'hermitd-run');
@@ -204,4 +205,17 @@ describe('hermitd-exec bun resolution', () => {
     expect(r.exitCode).toBe(127);
     expect(r.stderr).toContain('bun not found');
   });
+});
+
+test('hermitd-run brief-digest reaches the shipped reader', async () => {
+  const f = taskFixture();
+  try {
+    const runPath = mkProject(path.dirname(f.dir));
+    const proc = Bun.spawn({ cmd: ['bash', runPath, 'brief-digest', f.dir, 'morning'], cwd: path.dirname(f.dir),
+      env: { ...process.env, AGENT_DIR: f.dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT }, stdout: 'pipe', stderr: 'pipe' });
+    const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe('');
+    expect(JSON.parse(stdout).mode).toBe('morning');
+  } finally { f.cleanup(); }
 });

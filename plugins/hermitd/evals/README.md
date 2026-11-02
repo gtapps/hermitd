@@ -58,7 +58,22 @@ Claude Code 2.1.314, `--model sonnet`, low effort, `--runs 3`, $5.19 total. The 
 - The failure was `run-stale-context`: 2 turns, $0.163, repeating the stale "waiting" claim from resumed history.
 - `run-default-no-session` passed 3 of 3, with no dispatch by design: 4 turns, $0.102.
 
-The runner stays; the script digest remains deferred.
+The runner stays.
+
+### Bounded digest, 2026-11-02
+
+Claude Code 2.1.316, `--model sonnet`, low effort (`effort: medium` on `skill-eval-runner`), `--runs 3`, same busy install, with `--keep-temp` traces. `brief-digest` replaced the four runner reads.
+
+| Measure | Before | After |
+|---|---|---|
+| `run-*`, existing cases | 16 of 18 | 17 of 18 |
+| Scheduled runs that skipped dispatch | 0 of 21 | 0 of 21 |
+| Cost, existing cases | $5.06 | $4.16 |
+
+- Before, both failures were `run-contradicted-lesson`: the runner changed into the plugin root and read an empty `.hermit`.
+- After, the failure was `run-stale-context`: its regex matched a correct brief correcting an earlier claim. The regex now skips such a line.
+- `run-contradicted-lesson-long` and `run-evening-pt` passed 3 of 3 in a later run of those two cases alone, the second after widening one regex and re-grading the saved briefs. An LLM grader failed correct Portuguese briefs on haiku, so both use regexes.
+- The full suite ran before the `result_truncated` summary rule in `reference.md` and the new regexes, so those were measured only on the two new cases.
 
 ## proposal-triage
 

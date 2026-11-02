@@ -81,7 +81,7 @@ graders:
   - name: no-stale-waiting
     type: 'regex'
     target: 'last_message'
-    pattern: 'waiting[^\n]*gift box|gift box stock\W+(result\s+)?(still\s+|stays\s+|is\s+)*a?waiting'
+    pattern: '(?:^|\n)(?![^\n]*\b(?:told|said|earlier)\b)[^\n]*(?:waiting[^\n]*gift box|gift box stock\W+(result\s+)?(still\s+|stays\s+|is\s+)*a?waiting)'
     flags: 'i'
     weight: 2
     match: 'not_contains'

@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { taskFixture } from './helpers/tasks';
+import { runScript } from './helpers/run';
 import { dutySummary } from '../scripts/lib/duty-summary';
 
 test('requested mode and schedule remain separate from observed liveness', () => {
@@ -38,3 +39,16 @@ test('routine summary pairs the newest event with its own timestamp', () => {
     expect(lines.find(line => line.startsWith('watch:watch-1:'))).toContain('last_woke=2026-09-20T12:00:00Z, last_event=ok');
   } finally { f.cleanup(); }
 });
+
+for (const routines of [{}, 'broken', [null, 7, 'bad', { id: 'valid' }]]) {
+  test(`malformed routines settle safely: ${JSON.stringify(routines)}`, async () => {
+    const f = taskFixture();
+    try {
+      f.put('config.json', { routines });
+      const lines = dutySummary(f.dir);
+      expect(lines.filter(line => line.startsWith('routine:')).length).toBe(Array.isArray(routines) ? 1 : 0);
+      const result = await runScript('duties.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: ['summary', f.dir] });
+      expect(result.exitCode).toBe(0);
+    } finally { f.cleanup(); }
+  });
+}

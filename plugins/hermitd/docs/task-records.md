@@ -42,6 +42,8 @@ Progress-bearing writes bind task ids to the current turn. Matching cost rows ca
 
 `scripts/lib/task-report.ts` normalizes records for brief, reflect, weekly review, cost report, health, MCP, export and dashboard. `done` means check or confirmed, `cancelled` remains distinct, and a result on an open record is `unconfirmed`. Lessons and decisions come from the record body. Readers use task records only. Recall also searches retained historical archives.
 
+`brief-digest` is the supported bounded input for custom briefs. Local skills call `.hermit/bin/hermitd-run brief-digest .hermit <mode>` from the project root, with `morning`, `evening` or `daily` as the mode. It returns data only: task outcomes, open resident work, recent decisions, duties and morning proposals, with `omitted` counts for clipped text or excluded items. Its JSON stdout, including the newline, stays at or under 25,000 bytes. Treat `result_truncated` as an excerpt, never complete evidence, and tell the operator when anything was left out. Other views remain available through `task-report` and `task.ts`.
+
 SessionStart injects TASKS.md beside operator policy, with a pointer after compaction. Duty summaries combine requested schedules and effective heartbeat mode with observed liveness and verdicts. Effective forced mode applies only to the boot that issued it.
 
 ## Channel workflow
