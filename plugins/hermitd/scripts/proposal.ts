@@ -461,13 +461,14 @@ export function verbRoutine(stateDir: string, stdin: string): Verdict {
 // -------------------------------------------------------------------- list --
 
 export function verbList(stateDir: string, args: string[]): Verdict {
-  const limitValue = flagEq(args, 'limit') ?? '50';
+  const option = (name: string) => flagEq(args, name) ?? flagValue(args, `--${name}`);
+  const limitValue = option('limit') ?? '50';
   if (!/^\d+$/.test(limitValue) || !Number.isSafeInteger(Number(limitValue))) {
     return { error: 'invalid_limit' };
   }
   const limit = Number(limitValue);
-  const statuses = flagEq(args, 'status')?.split(',');
-  const source = flagEq(args, 'source');
+  const statuses = option('status')?.split(',');
+  const source = option('source');
   const rows = (rebuildIndex(stateDir)?.proposals ?? []).filter(row => {
     const status = row.status ?? 'unknown';
     return (args.includes('--all') || !['dismissed', 'resolved'].includes(status))
@@ -483,8 +484,7 @@ export function verbList(stateDir: string, args: string[]): Verdict {
   const proposals = rows.slice(0, limit).map(row => ({
     id: row.id, file: row.file, status: row.status ?? 'unknown', source: row.source,
     category: row.category, title: row.title, created: row.created,
-    age_days: row.created && Number.isFinite(Date.parse(row.created))
-      ? Math.floor((now - Date.parse(row.created)) / 86_400_000) : null,
+    age_days: createdTime(row) ? Math.floor((now - createdTime(row)) / 86_400_000) : null,
   }));
   return { total: rows.length, shown: proposals.length, proposals };
 }
@@ -563,7 +563,7 @@ async function main(): Promise<void> {
     case 'queue-micro': return runQueueMicro(stateDir);
     case 'micro': return runMicro(stateDir, rest);
     case 'index': return runIndex(stateDir);
-    case 'list': return emitJson(verbList(stateDir, rest));
+    case 'list': return emitJson(verbList(pinnedDir, rest));
     case 'anchor': return runAnchor(pinnedDir);
     // `event` is the writer; `metrics` above is the reader. Deliberately not named
     // `metric`: one character from `metrics` would make a typo easy to miss.

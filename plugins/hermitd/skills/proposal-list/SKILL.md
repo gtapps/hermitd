@@ -18,9 +18,9 @@ Run the bounded list verb fresh:
 ```
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts list .hermit
 ```
-Use `--all` when the operator asks to show all or include dismissed/resolved proposals; otherwise those statuses are hidden. Optional `--status=<csv>` and `--source=<value>` narrow the results; `--limit=<n>` changes the default limit of 50.
+Use `--all` when the operator asks to show all or include dismissed/resolved proposals; otherwise those statuses are hidden, even with `--status`. Optional `--status=<csv>` and `--source=<value>` narrow the results; `--limit=<n>` changes the default limit of 50.
 
-The JSON object contains `total`, `shown`, and `proposals`, sorted with auto-detected first, then proposed, accepted, deferred and other statuses, newest first within each group. Use the returned `age_days` for age. Unparseable proposals have status `unknown` and null metadata. When `total` is 0, respond "No proposals found." and stop. When `shown` is below `total`, state how many are shown and offer a larger limit or narrower filter.
+The JSON object contains `total`, `shown`, and `proposals`, sorted with auto-detected first, then proposed, accepted, deferred and other statuses, newest first within each group. Display the returned `age_days` as "N days ago". Unparseable proposals have status `unknown` and null metadata. When `total` is 0, respond "No proposals found." and stop. When `shown` is below `total`, state how many are shown and offer a larger limit or narrower filter.
 
 Do not read proposal bodies unless the operator asks for a specific proposal's detail.
 

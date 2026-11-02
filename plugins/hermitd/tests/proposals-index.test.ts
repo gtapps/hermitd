@@ -178,6 +178,23 @@ describe('proposal.ts list', () => {
     expect(await list(dir)).toMatchObject({ total: 51, shown: 50 });
   });
 
+  test('a worktree projection lists the main root, not its own empty dir', async () => {
+    const dir = seedList();
+    fs.writeFileSync(hermit(dir, 'config.json'), '{}');
+    const projection = path.join(dir, 'wt', '.hermit');
+    fs.mkdirSync(projection, { recursive: true });
+    fs.writeFileSync(path.join(projection, 'config.json'), '{}');
+    const result = await runScript('proposal.ts', { args: ['list', projection], env: { AGENT_DIR: hermit(dir) } });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).total).toBe(6);
+  });
+
+  test('accepts the space-separated flag form', async () => {
+    const dir = seedList();
+    expect((await list(dir, ['--status', 'proposed', '--source', 'auto-detected', '--limit', '1'])))
+      .toMatchObject({ total: 2, shown: 1 });
+  });
+
   test('missing proposals directory is an empty success', async () => {
     const dir = freshNoProp();
     fs.mkdirSync(hermit(dir, 'state'), { recursive: true });
