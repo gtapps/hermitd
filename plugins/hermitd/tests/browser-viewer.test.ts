@@ -104,7 +104,7 @@ test('only a sign-in wait is woken, and a stale link falls through to the holder
     const confirm = open('confirmation', 'operator');
     expect(((await (await f.request(`/takeover?task=${confirm.id}`, { method: 'POST' })).json()) as any).human.task).toBeNull();
     const signIn = open('sign-in', 'admin');
-    browserLease('hand-back', undefined, f.dir, Date.now(), { generation: 1 });
+    browserLease('hand-back', undefined, f.dir, Date.now(), { generation: 1, chromeAlive: () => true });
     browserLease('claim', signIn.id, f.dir);
     const take: any = await (await f.request(`/takeover?task=${confirm.id}`, { method: 'POST' })).json();
     expect(take.human).toMatchObject({ task: signIn.id, waiting_since: signIn.waiting_since });
