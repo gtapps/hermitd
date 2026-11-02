@@ -15,6 +15,12 @@
 - You use `docker.network_mode: "host"` and need host-bound services to remain reachable. The wizard will hard-skip the LAN containment prompt; the other toggles still apply.
 - You run an arbitrary dev workflow that hits many third-party domains (e.g. multiple package ecosystems beyond npm/pypi/github). The strict DNS allowlist will break things until you tune it. Use **log-only mode** instead and tune over a few days before flipping to enforce.
 
+## Managed browser
+
+New Docker setups include a browser unless `docker.browser` is false. Full parallel use needs 4 GiB; the resource wizard defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory shared by all containers, so an 8 GiB host needs that limit raised in Docker Desktop's Resources settings or `.wslconfig`.
+
+DNS enforce mode limits browser name lookups to the allowlist. It does not contain the browser: a page can fetch a public IP directly, the same limitation as `curl`. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. This adds no vault or network filter. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
+
 ## What each toggle does
 
 | Toggle | What it does | Real teeth? |

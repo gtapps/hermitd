@@ -30,6 +30,8 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
   // deploy predating it; the renderer and /docker-security both treat absent as
   // "bridge", so rejecting it here would strand those hermits on report-only.
   const networkMode = config.docker.network_mode ?? 'bridge';
+  const browser = config.docker.browser === undefined ? false : config.docker.browser;
+  if (typeof browser !== 'boolean') return null;
   const fleetMesh = config.docker.fleet_mesh ?? false;
   if (!Array.isArray(packages) || packages.some((pkg: unknown) => typeof pkg !== 'string')) return null;
   if (networkMode !== 'bridge' && networkMode !== 'host') return null;
@@ -82,5 +84,6 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     networkMode,
     gitIdentityMount,
     fleetMesh,
+    browser,
   };
 }

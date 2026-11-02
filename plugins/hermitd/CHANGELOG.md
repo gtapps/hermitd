@@ -2,9 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions; it stays off for existing hermits because it adds about 1.4 GB to the image and needs 4 GiB of memory, until an explicit `/docker-setup` rerun
+
 ### Changed
 
 - Channel setup summary points third-party channels to the channel plugins guide
+- Disabled or auth-refused Chrome launches pass `--no-chrome`, removing native Chrome tools even when the native default enabled them
+- Claude Code minimum version is 2.1.314
+
+### Upgrade Instructions
+
+No `config.json` changes required. Existing Docker hermits receive no browser additions; an explicit `/docker-setup` rerun enables it unless `docker.browser` is already false.
 
 ## [1.4.24] - 2026-10-31
 

@@ -2485,6 +2485,20 @@ test('host registry failure is non-fatal at startup', () => {
 });
 
 describe('chrome command', () => {
+  for (const chrome of [false, undefined]) {
+    test(`chrome ${chrome} explicitly disables native Chrome`, async () => {
+      const { cmd } = await runBuildClaudeCommand({ chrome }, CLAUDE_FETCH_FAILS);
+      expect(cmd.filter((arg: string) => arg === '--chrome' || arg === '--no-chrome')).toEqual(['--no-chrome']);
+    });
+  }
+  test('env auth refuses Chrome with exactly one negative flag', async () => {
+    const { cmd, out } = await runBuildClaudeCommand({ chrome: true, auth_mode: 'login' }, CLAUDE_FETCH_FAILS, undefined, {
+      ANTHROPIC_API_KEY: 'test-key',
+    });
+    expect(cmd.filter((arg: string) => arg === '--chrome' || arg === '--no-chrome')).toEqual(['--no-chrome']);
+    expect(out).toContain('Chrome stays off with an env credential');
+  });
+
   for (const container of ['', 'docker']) {
     for (const auth_mode of ['login', 'token']) {
       test(`chrome with ${auth_mode} in ${container || 'host'}`, async () => {
@@ -2493,6 +2507,7 @@ describe('chrome command', () => {
           CLAUDE_CODE_USE_BEDROCK: '', CLAUDE_CODE_USE_VERTEX: '', CLAUDE_CODE_USE_FOUNDRY: '',
         });
         expect(cmd.includes('--chrome')).toBe(auth_mode === 'login');
+        expect(cmd.includes('--no-chrome')).toBe(auth_mode !== 'login');
         expect(out).not.toContain('ignored');
         if (auth_mode === 'token') expect(out).toContain('[hermit] WARNING: Chrome stays off with a setup-token');
         else expect(out).not.toContain('Chrome stays off');

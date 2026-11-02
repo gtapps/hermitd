@@ -19,8 +19,10 @@ From `<dir>`, the launch folder (`<abs>`, the hermit project root, unless
 `--cwd` names another), that composes:
 
 ```
-claude --bg --name <n> [--worktree <n>] [--permission-mode <p>] [--remote-control <n>] [--model <m>] [--effort <e>] [--mcp-config <dir>/.mcp.json] [--strict-mcp-config] --append-system-prompt-file <abs>/.hermit/state/helper-system-prompt.md '<prompt>'
+claude --bg --name <n> [--worktree <n>] [--permission-mode <p>] [--no-chrome] [--remote-control <n>] [--model <m>] [--effort <e>] [--mcp-config <dir>/.mcp.json] [--strict-mcp-config] --append-system-prompt-file <abs>/.hermit/state/helper-system-prompt.md '<prompt>'
 ```
+
+`--no-chrome` is present on fresh launches when `config.chrome` is false (absent means false). Never add it to `claude --bg --resume`: resume must remain flagless to retain saved options.
 
 `--worktree <n>` is present only when the operator passed `--worktree`, and
 gives the helper its own worktree of `<dir>` from the start.

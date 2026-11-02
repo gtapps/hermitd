@@ -5,6 +5,7 @@
 import { runPrecheck } from './precheck';
 import { pendingQueue, type QueueNotice } from './queue';
 export { acknowledgeQueue } from './queue';
+import { sweepBrowserLease } from '../browser-lease';
 import { readSettledConfig } from '../config-read';
 import { readMergedAlerts, readAlertState, alertStatePath, activeSuppressedEntries, isStructuredKey } from '../alert-state';
 import { isPaused } from '../pause';
@@ -110,6 +111,8 @@ export async function run(args: string[]): Promise<void> {
     model: config.heartbeat.model,
     effort: config.heartbeat.effort,
   };
+
+  try { sweepBrowserLease(hermitDir); } catch { /* fail-open: the next tick retries */ }
 
   try {
     const nowMs = resolveHermitNowMs();

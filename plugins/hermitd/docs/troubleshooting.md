@@ -141,6 +141,10 @@ Open tasks do not need closing to permit a safe clear. Their progress and lesson
 
 ## Docker Build Fails
 
+The managed browser adds about 1.4 GB to the image. Check free disk space and network access to npm and Chrome for Testing storage. Browser downloads are pinned and checksum-verified for amd64 and arm64; a mismatch fails the build.
+
+Full parallel browser use needs 4 GiB. If tabs wedge or Chrome is OOM-killed, raise the container memory limit and check the Docker Desktop or WSL 2 VM memory cap. After restarting Chrome, reopen the URL from the blank page; the volume-backed profile keeps sign-ins, except a hard kill within about 30 seconds of login can lose them.
+
 Common causes:
 
 - **UID mismatch:** The Dockerfile matches your host UID. If you're not UID 1000, rebuild after checking `id -u`. The generated Dockerfile should handle this, but manual edits may break it.

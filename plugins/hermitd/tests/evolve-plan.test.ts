@@ -549,6 +549,14 @@ function classifyRealDockerTemplates(proj: string, composeHash: string) {
   );
 }
 
+test('docker templates: absent browser leaves real rendered Docker files unchanged', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const rendered = render(DOCKER_INPUTS);
+  deployDocker(proj, { compose: rendered.compose, dockerfile: rendered.dockerfile });
+  const entries = classifyRealDockerTemplates(proj, sha256(Buffer.from(realDockerSources().compose)));
+  expect(entries).toEqual([]);
+}));
+
 test('docker templates: verified pristine bytes expose a rendered base_path', withProj((proj) => {
   writeDerivableDockerConfig(proj);
   const current = realDockerSources();

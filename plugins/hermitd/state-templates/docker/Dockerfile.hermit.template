@@ -40,7 +40,7 @@ USER claude
 
 # Pre-create the config dirs so named volumes inherit claude ownership on first mount
 RUN mkdir -p /home/claude/.claude/sessions
-
+{{BROWSER_ENV}}
 # Install npm globals as claude user so Claude Code can self-update without sudo
 ENV NPM_CONFIG_PREFIX=/home/claude/.npm-global
 ENV PATH=/home/claude/.npm-global/bin:$PATH

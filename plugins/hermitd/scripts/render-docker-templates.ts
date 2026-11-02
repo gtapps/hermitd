@@ -61,6 +61,7 @@ export interface Inputs {
   networkMode: 'bridge' | 'host';
   gitIdentityMount: boolean;
   fleetMesh?: boolean;
+  browser?: boolean;
 }
 
 export interface TemplateSources {
@@ -77,6 +78,28 @@ function packagesBlock(packages: string[]): string {
     'RUN apt-get update && apt-get install -y --no-install-recommends \\',
     `      ${packages.join(' ')} && \\`,
     '    rm -rf /var/lib/apt/lists/*',
+  ].join('\n');
+}
+
+function browserBlock(): string {
+  return [
+    '# Managed browser (pins move with core releases)',
+    'RUN apt-get update && apt-get install -y --no-install-recommends \\',
+    '      tigervnc-standalone-server openbox procps libxcb-shm0 libx11-xcb1 libx11-6 libxcb1 libxext6 libxrandr2 libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxi6 libgtk-3-0 libpangocairo-1.0-0 libpango-1.0-0 libatk1.0-0t64 libcairo-gobject2 libcairo2 libgdk-pixbuf-2.0-0 libxrender1 libasound2t64 libfreetype6 libfontconfig1 libdbus-1-3 libnss3 libnss3-tools libnspr4 libatk-bridge2.0-0t64 libdrm2 libxkbcommon0 libatspi2.0-0t64 libcups2t64 libxshmfence1 libgbm1 fonts-liberation && \\',
+    '    rm -r /var/lib/apt/lists/* && \\',
+    '    npm install -g --allow-scripts=agent-browser agent-browser@0.41.0 && \\',
+    '    case "$(dpkg --print-architecture)" in \\',
+    '      amd64) platform=linux64; checksum=b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7 ;; \\',
+    '      arm64) platform=linux-arm64; checksum=1f496a826c9ba4d6a5f5bf2de686145fe718528c2cc3dbeb96b5893b89653724 ;; \\',
+    '      *) exit 1 ;; esac && \\',
+    '    curl -fsSL "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/${platform}/chrome-${platform}.zip" -o /tmp/chrome.zip && \\',
+    '    printf "%s  /tmp/chrome.zip\\n" "$checksum" | sha256sum -c - && \\',
+    '    unzip -q /tmp/chrome.zip -d /opt && \\',
+    '    if [ "$platform" != linux64 ]; then mv "/opt/chrome-${platform}" /opt/chrome-linux64; fi && \\',
+    '    rm /tmp/chrome.zip && \\',
+    "    printf '%s\\n' '#!/bin/sh' 'if [ ! -f \"${HERMIT_PLUGIN_ROOT:-}/scripts/browser-agent.ts\" ]; then echo \"agent-browser: hermit plugin unavailable\" >&2; exit 1; fi' 'exec bun \"${HERMIT_PLUGIN_ROOT}/scripts/browser-agent.ts\" \"$@\"' > /usr/local/bin/agent-browser && \\",
+    '    chmod 755 /usr/local/bin/agent-browser && \\',
+    '    mkdir -p /etc/hermit && touch /etc/hermit/managed-browser',
   ].join('\n');
 }
 
@@ -126,7 +149,10 @@ export function renderSources(
   }
 
   const dockerfile = renderTemplate(dockerfileTemplate, {
-    PACKAGES_BLOCK: packagesBlock(packages),
+    PACKAGES_BLOCK: [packagesBlock(packages), ...(inputs.browser ? [browserBlock()] : [])].filter(Boolean).join('\n\n'),
+    BROWSER_ENV: inputs.browser
+      ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\n'
+      : '',
     CHANNEL_ALLOWLIST_BLOCK: channelAllowlistBlock(inputs.channelPlugins ?? []),
   });
 
