@@ -2,28 +2,49 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11161c">
 <title>Hermit browser</title>
 <style>
-  html, body { position: fixed; inset: 0; margin: 0; overflow: hidden; font: 16px system-ui; background: #101820; color: #fff; }
+  :root { --bg: #0a0d11; --bar: #11161c; --line: #232b35; --text: #eef1f5; --muted: #98a3b1; --live: #ef5350; --live-soft: rgba(239, 83, 80, .16); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body { position: fixed; inset: 0; margin: 0; overflow: hidden; background: var(--bar); color: var(--text); font: 15px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
   #app { position: fixed; top: 0; left: 0; right: 0; height: 100%; display: flex; flex-direction: column; }
-  header { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; align-items: center; }
-  button { font: inherit; padding: 8px 10px; }
-  #status { flex-basis: 100%; margin: 0; font-size: 13px; } .typing #status { display: none; }
-  #view { flex: 1; min-height: 0; overflow: hidden; } #screen { margin: 0 auto; touch-action: none; }
+  header { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left)); background: var(--bar); border-bottom: 1px solid var(--line); }
+  #chip { display: inline-flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; padding: 6px 11px; border-radius: 999px; background: #1b222b; color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #chip::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  #chip.mine { background: var(--live-soft); color: #ff8a87; }
+  button { height: 38px; border: 0; border-radius: 10px; font: 600 15px/1 inherit; font-family: inherit; color: #0c1116; background: var(--text); cursor: pointer; transition: opacity .15s, transform .05s; }
+  button:active { transform: scale(.97); } button:disabled { opacity: .55; }
+  #main { flex: none; padding: 0 16px; }
+  #type { flex: none; display: grid; place-items: center; width: 38px; padding: 0; color: var(--text); background: #232b35; }
+  #stage { position: relative; flex: 1; min-height: 0; background: var(--bg); padding-bottom: env(safe-area-inset-bottom); }
+  .typing #stage { padding-bottom: 0; }
+  /* A ring above the canvas: it costs no layout, so the remote picture never rescales. */
+  #stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px var(--live); opacity: 0; transition: opacity .2s; }
+  #stage.live::after { opacity: 1; }
+  #view { height: 100%; overflow: hidden; } #screen { margin: 0 auto; touch-action: none; }
+  #notice { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(17, 22, 28, .92); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--text); font-size: 14px; text-align: center; pointer-events: none; }
   /* 16px stops iOS zooming on focus; inside the pinned frame it never scrolls the page. */
   #keyboard { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; }
 </style>
 <div id="app">
-<header><button id="take">Take over</button><button id="back" disabled>Hand back</button><button id="type" disabled>Keyboard</button><p id="status">Take over to sign in. Hand back when finished.</p></header>
-<div id="view"><div id="screen"></div></div><textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
+<header>
+  <span id="chip" role="status">Agent has control</span>
+  <button id="type" aria-label="Keyboard" hidden><svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="1" y="1" width="20" height="14" rx="2.5"/><path d="M5 5.5h.01M9 5.5h.01M13 5.5h.01M17 5.5h.01M5 8.5h.01M9 8.5h.01M13 8.5h.01M17 8.5h.01M7 11.5h8"/></svg></button>
+  <button id="main">Take over</button>
+</header>
+<div id="stage"><div id="view"><div id="screen"></div></div><div id="notice">Take over to sign in, then Hand back.</div></div>
+<textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
 </div>
 <script type="module">
 import RFB from './core/rfb.js';
-const take = document.querySelector('#take'), back = document.querySelector('#back'), type = document.querySelector('#type');
-const status = document.querySelector('#status'), keyboard = document.querySelector('#keyboard');
-const app = document.querySelector('#app'), view = document.querySelector('#view'), screen = document.querySelector('#screen');
+const main = document.querySelector('#main'), type = document.querySelector('#type'), chip = document.querySelector('#chip');
+const notice = document.querySelector('#notice'), keyboard = document.querySelector('#keyboard');
+const app = document.querySelector('#app'), stage = document.querySelector('#stage'), view = document.querySelector('#view'), screen = document.querySelector('#screen');
 const DISPLAY = { width: 500, height: 1082 }, viewport = window.visualViewport;
-let rfb, generation, tapY = 0, fullHeight = 0;
+const MESSAGES = { browser_lost: 'The browser stopped. Ask your agent to reopen the page.' };
+let rfb, generation, holding = false, tapY = 0, fullHeight = 0;
 // The frame follows the visible area, so an open keyboard shrinks it and the tapped field stays in view.
 function fit() {
   app.style.top = viewport.offsetTop + 'px';
@@ -43,34 +64,53 @@ viewport.addEventListener('scroll', fit);
 fit();
 view.addEventListener('pointerdown', event => { tapY = event.clientY - view.getBoundingClientRect().top + view.scrollTop; }, true);
 const task = new URL(location.href).searchParams.get('task');
+function say(text) { notice.textContent = text; notice.hidden = !text; }
+function setControl(mine, label = 'Agent has control') {
+  holding = mine;
+  main.textContent = mine ? 'Hand back' : 'Take over';
+  chip.textContent = mine ? 'You have control' : label;
+  chip.classList.toggle('mine', mine);
+  stage.classList.toggle('live', mine);
+  type.hidden = !mine;
+}
 async function post(path, values) {
   const response = await fetch(path + '?' + new URLSearchParams(values), { method: 'POST', cache: 'no-store' });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Connection failed');
+  if (!response.ok) throw new Error(MESSAGES[result.error] || result.error || 'Connection failed');
   return result;
 }
-take.onclick = async () => {
-  try {
-    rfb?.disconnect();
-    const result = await post('/takeover', task ? { task } : {});
-    generation = result.human.generation;
-    const session = rfb = new RFB(screen, `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
-    session.scaleViewport = true; session.resizeSession = false; session.focusOnClick = false;
-    session.addEventListener('connect', () => { back.disabled = type.disabled = false; status.textContent = 'You have control. Sign in, then Hand back.'; });
-    session.addEventListener('disconnect', event => { if (session !== rfb) return; back.disabled = type.disabled = true; status.textContent = event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Browser connection failed. Take over to retry.'; });
-  } catch (error) { status.textContent = error.message; }
-};
-back.onclick = async () => {
-  try {
-    await post('/hand-back', { generation });
-    rfb?.disconnect(); back.disabled = type.disabled = true;
-    status.textContent = 'Handed back. Hermit will check the page and continue.';
-  } catch (error) { status.textContent = error.message; }
+async function takeOver() {
+  rfb?.disconnect();
+  const result = await post('/takeover', task ? { task } : {});
+  generation = result.human.generation;
+  const session = rfb = new RFB(screen, `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
+  session.scaleViewport = true; session.resizeSession = false; session.focusOnClick = false;
+  session.addEventListener('connect', () => { setControl(true); say(''); });
+  session.addEventListener('disconnect', event => {
+    if (session !== rfb) return;
+    setControl(false, 'Not connected');
+    say(event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Connection lost. Take over to retry.');
+  });
+}
+async function handBack() {
+  await post('/hand-back', { generation });
+  const session = rfb;
+  rfb = undefined;
+  session?.disconnect();
+  setControl(false);
+  say('Handed back. Your agent will check the page and continue.');
+}
+main.onclick = async () => {
+  main.disabled = true;
+  try { await (holding ? handBack() : takeOver()); }
+  catch (error) { say(error.message); }
+  main.disabled = false;
 };
 type.onclick = () => keyboard.focus();
 keyboard.addEventListener('input', () => { if (rfb) for (const char of keyboard.value) { const code = char.codePointAt(0); rfb.sendKey(code <= 255 ? code : 0x01000000 + code); } keyboard.value = ''; });
 keyboard.addEventListener('keydown', event => {
   if (event.key === 'Enter' || event.key === 'Backspace') { rfb?.sendKey(event.key === 'Enter' ? 0xff0d : 0xff08); event.preventDefault(); }
 });
+fetch('/status', { cache: 'no-store' }).then(response => response.json()).then(state => { if (state.human && !holding) setControl(false, 'A person has control'); }, () => {});
 </script>
 </html>
