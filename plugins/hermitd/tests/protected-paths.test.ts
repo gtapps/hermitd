@@ -36,7 +36,7 @@ const EXPECTED_PATHS = [
   'artifacts.backend',
   'docker.packages',
   'docker.recommended_plugins',
-  'docker.fleet_mesh', 'docker.browser', 'docker.browser_admins', 'docker.browser_port',
+  'docker.fleet_mesh', 'browser',
   'routines.<n>.precheck',
   'routines.<n>.precheck_timeout_s',
 ];

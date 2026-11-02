@@ -119,10 +119,19 @@ if (reinit) {
 // --- scalar overlay (present-by-hasOwn, both modes) ---
 const SCALAR_KEYS = [
   'agent_name', 'language', 'timezone',
-  'escalation', 'remote', 'permission_mode',
+  'escalation', 'remote', 'permission_mode', 'chrome',
 ];
 for (const key of SCALAR_KEYS) {
   if (Object.hasOwn(answers, key)) config[key] = answers[key];
+}
+
+// Overlay browser choices without replacing configured admins or takeover routing.
+if (Object.hasOwn(answers, 'browser')) {
+  const choice = answers.browser;
+  if (!choice || typeof choice !== 'object' || Array.isArray(choice)) exitError('invalid_answers:browser');
+  config.browser = { ...(config.browser ?? {}) };
+  for (const key of ['enabled', 'default']) if (Object.hasOwn(choice, key)) config.browser[key] = choice[key];
+  if (choice.default === 'chrome') config.chrome = true;
 }
 
 // --- routines: upsert/remove morning + evening by id, never touch other routines ---

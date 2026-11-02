@@ -402,7 +402,7 @@ describe('static settings policy', () => {
       'telemetry_export.enabled',
       'telemetry_export.destination.url', 'telemetry_export.destination.bearer_env',
       'telemetry_export.redact_operator_text', 'artifacts.publish_authorized', 'artifacts.backend',
-      'docker.packages', 'docker.recommended_plugins.0.enabled', 'docker.fleet_mesh', 'docker.browser', 'docker.browser_admins', 'docker.browser_port', 'remote', 'chrome', 'auth_mode']) {
+      'docker.packages', 'docker.recommended_plugins.0.enabled', 'docker.fleet_mesh', 'browser', 'remote', 'chrome', 'auth_mode']) {
       for (const rest of [`set ${field} true`, `set ${field} false`, `unset ${field}`, `toggle ${field}`]) {
         const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }), dir);
         expectAsk(r.stdout, `Hermit setting: ${field}${rest.startsWith('set ') ? '=' + rest.split(' ').at(-1) : ''}`);
@@ -670,4 +670,9 @@ test('routine writes ask for non-primary, empty operators and unreadable origins
     const r = await runGate(JSON.stringify({ ...input, transcript_path: path.join(dir, 'missing') }), dir);
     expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
   }
+});
+
+test('browser-default-on migration requests permission for the protected browser object', async () => {
+  const dir = fixture();
+  expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command: cmd('migrate browser-default-on') } }), dir)).stdout, 'Hermit setting: browser');
 });

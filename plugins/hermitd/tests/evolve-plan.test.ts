@@ -514,6 +514,7 @@ const DOCKER_INPUTS = {
 function writeDerivableDockerConfig(proj: string): void {
   writeConfig(proj, JSON.stringify({
     _hermit_versions: { 'hermitd': '1.1.6' },
+    browser: { enabled: false },
     channels: {},
     docker: {
       packages: DOCKER_INPUTS.packages,
@@ -549,7 +550,7 @@ function classifyRealDockerTemplates(proj: string, composeHash: string) {
   );
 }
 
-test('docker templates: absent browser leaves real rendered Docker files unchanged', withProj((proj) => {
+test('docker templates: explicit browser opt-out leaves rendered Docker files unchanged', withProj((proj) => {
   writeDerivableDockerConfig(proj);
   const rendered = render(DOCKER_INPUTS);
   deployDocker(proj, { compose: rendered.compose, dockerfile: rendered.dockerfile });
@@ -939,5 +940,31 @@ test('changelog root tokens resolve to each owning plugin install', withProj(asy
     expect(slice).not.toContain(otherRoot);
     expect(slice).not.toContain('${CLAUDE_PLUGIN_ROOT}');
     expect(slice).not.toContain('<plugin_root>');
+  }
+}));
+
+test('Docker browser off to on to off merges in both directions while preserving operator edits', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const source = realDockerSources();
+  const pristine = path.join(hermitDir(proj), 'state/pristine/docker/Dockerfile.hermit.template');
+  fs.mkdirSync(path.dirname(pristine), { recursive: true });
+  fs.writeFileSync(pristine, source.dockerfile);
+  const manifest = { 'docker/Dockerfile.hermit.template': { sha256: sha256(Buffer.from(source.dockerfile)) } };
+  const rendered = render(DOCKER_INPUTS);
+  deployDocker(proj, { compose: rendered.compose, dockerfile: rendered.dockerfile + '\nRUN echo operator-customization\n' });
+  for (const enabled of [true, false]) {
+    const configFile = path.join(hermitDir(proj), 'config.json');
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    config.browser.enabled = enabled;
+    fs.writeFileSync(configFile, JSON.stringify(config));
+    const entries = classifyDockerTemplates(path.join(PLUGIN_ROOT, 'state-templates'), proj, manifest);
+    const entry = entries.find((row: any) => row.name === 'Dockerfile.hermit');
+    expect(entry.class).toBe('conflict');
+    const ours = path.join(proj, 'Dockerfile.hermit');
+    const merged = Bun.spawnSync(['git', 'merge-file', ours, entry.base_path, entry.theirs_path]);
+    expect(merged.exitCode).toBe(0);
+    const result = fs.readFileSync(ours, 'utf8');
+    expect(result).toContain('RUN echo operator-customization');
+    expect(result.includes('/etc/hermit/managed-browser')).toBe(enabled);
   }
 }));

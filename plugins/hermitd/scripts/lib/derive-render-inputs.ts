@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { dockerfileHasOwnBrowser } from './browser-runtime';
 import type { Inputs } from '../render-docker-templates';
 import { channelStateDirKey, getEnabledChannels, isDict } from './channel-config';
 
@@ -30,9 +32,9 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
   // deploy predating it; the renderer and /docker-security both treat absent as
   // "bridge", so rejecting it here would strand those hermits on report-only.
   const networkMode = config.docker.network_mode ?? 'bridge';
-  const browser = config.docker.browser === undefined ? false : config.docker.browser;
+  const browser = config.browser?.enabled === undefined ? !dockerfileHasOwnBrowser(path.join(path.dirname(composePath), 'Dockerfile.hermit')) : config.browser.enabled;
   if (typeof browser !== 'boolean') return null;
-  const browserPort = config.docker.browser_port;
+  const browserPort = config.browser?.port ?? undefined;
   if (browserPort !== undefined && (!Number.isInteger(browserPort) || browserPort < 1 || browserPort > 65535)) return null;
   const fleetMesh = config.docker.fleet_mesh ?? false;
   if (!Array.isArray(packages) || packages.some((pkg: unknown) => typeof pkg !== 'string')) return null;

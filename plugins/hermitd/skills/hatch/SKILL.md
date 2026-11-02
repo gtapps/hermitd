@@ -211,6 +211,12 @@ Substitute `<scope>` with the actual `core_install_scope` value.
 
 Record the operator's Visibility choice as `hatch_target` (overrides scope-derived default if different).
 
+After Phase 5's four questions, make a second `AskUserQuestion` call with these two questions:
+
+- **Browser:** "Enable the hermit's own managed browser?" Options: "On (recommended)" (public pages without your laptop) / "Off" (decline the managed browser). Record `browser.enabled`.
+- **Default browser:** "Which browser should tasks use by default?" Options: "Managed browser (recommended)" (`browser.default: agent-browser`) / "Claude in Chrome" (`browser.default: chrome`, also set `chrome: true`, requires Claude login). Do not switch after a failure.
+
+
 Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive` as Quick Turn 3 does.
 
 Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` and `dontAsk` (denies every tool not in `permissions.allow`, so it needs a curated allowlist) can be typed via Other.
@@ -227,7 +233,7 @@ For routines — if Yes: use the config defaults (`active_hours.start = 08:00`, 
 
 ### 5. Write config.json
 
-**Source of truth: `${CLAUDE_SKILL_DIR}/../../state-templates/config.json.template`.** `hatch-config.ts` reads it as the base — it encodes every default field shipped by the current plugin version (including `model`, `always_on`, `chrome`, `monitors`, `compact`, `knowledge`, etc.). Do NOT maintain a parallel inline default object here — anything written inline in this skill drifts the moment a field is added to the template.
+**Source of truth: `${CLAUDE_SKILL_DIR}/../../state-templates/config.json.template`.** `hatch-config.ts` reads it as the base — it encodes every default field shipped by the current plugin version (including `model`, `always_on`, `monitors`, `compact`, `knowledge`, etc.). Do NOT maintain a parallel inline default object here — anything written inline in this skill drifts the moment a field is added to the template.
 
 Build an **answers payload** from the wizard's collected answers, then run:
 
@@ -254,7 +260,7 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
 - **Phase 2** → `agent_name`, `language`, `timezone`.
 - **Phase 3** → `escalation`, `remote`.
 - **Phase 4** → `channels.<name>`: `enabled`, `allowed_users` (omit if the operator skipped access control), `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
-- **Phase 5** → `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
+- **Phase 5** → `browser.enabled`, `browser.default`, `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
 - **Never in a hatch payload** → `auth_mode`. It records which credential the hermit already runs on, and hatch has not established one yet; it stays at the template default (`null`, resolved from the credential volume at read time) and is written later by `/docker-setup`, `hermitd-docker login`, or a completed renewal.
 - **Step 3 hermit activation** → `activated_hermit`. `slug` is `activated_hermit.plugin`. Hatch never writes the operator’s startup skill.
 
@@ -262,9 +268,17 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
 
 Periodic plugin checks are registered as ordinary routines by domain hatches, for example `skill: "hermitd:reflect --check-id my-check --check my-plugin:my-audit-skill"` with a cron schedule. `scheduled_checks` holds only task-completion checks.
 
-**Template-only fields** (the wizard never asks about these; they come straight from `config.json.template`, and `hatch-config.ts` never touches them; the operator can tune them via `/hermit-settings` later): `model`, `effort`, `auto_session`, `always_on`, `chrome`, `monitors`, `compact`, `heartbeat`, `knowledge`, `env`, `quality_gate`, `watchdog`, `budget`, `telemetry_export`, `artifacts`, `context_hygiene`, `reflection`, `routine_wake_lint`, `routine_max_lateness_minutes`, `doctor`, `storage_drift`, `backup`, `ask_gate`, `operator_profile`, `skills`. Defaults and semantics for each: [`docs/config-reference.md`](../../docs/config-reference.md). Publish authorization for unattended sessions is Step 9c below. `voice` is the one exception in the other direction: the template ships it unset and **§5a Phase 4b** writes it through `settings-edit`, not through this payload; the questionnaire that asks for it runs after this step.
+**Template-only fields** (the wizard never asks about these; they come straight from `config.json.template`, and `hatch-config.ts` never touches them; the operator can tune them via `/hermit-settings` later): `model`, `effort`, `auto_session`, `always_on`, `monitors`, `compact`, `heartbeat`, `knowledge`, `env`, `quality_gate`, `watchdog`, `budget`, `telemetry_export`, `artifacts`, `context_hygiene`, `reflection`, `routine_wake_lint`, `routine_max_lateness_minutes`, `doctor`, `storage_drift`, `backup`, `ask_gate`, `operator_profile`, `skills`. Defaults and semantics for each: [`docs/config-reference.md`](../../docs/config-reference.md). Publish authorization for unattended sessions is Step 9c below. `voice` is the one exception in the other direction: the template ships it unset and **§5a Phase 4b** writes it through `settings-edit`, not through this payload; the questionnaire that asks for it runs after this step.
 
 `tmux_session_name` is derived from `project_name` on fresh hatch only (`hermit-<project_name>`) — re-init never re-substitutes it.
+
+**Start the host browser install.** After config is written, for `deployment: tmux` or `interactive` and `browser.enabled` not false, launch once in the background:
+
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-install.ts >/dev/null 2>&1 &
+```
+
+Do not wait for downloads or run `sudo`. The final report names `hermitd run browser-host` when prerequisites are missing. For Docker, `/docker-setup` builds the browser into the image.
 
 **Persist hatch options.** After config.json is written, before any settings or CLAUDE write, run:
 
@@ -538,7 +552,7 @@ Claude Code ships its own native bash sandbox (`sandbox.*` settings, `bwrap`/`sa
    **If `deployment == docker`**: print a one-line informational note (never a recommendation — recommending an in-container sandbox would push operators toward the Ubuntu 24.04+ AppArmor path where `bwrap` can't start in-container): "In Docker the container is your isolation boundary — one of the approaches Anthropic lists for unattended runs (https://code.claude.com/docs/en/sandbox-environments). Claude Code's bash sandbox is off by default; `bubblewrap`/`socat` are installed, so `/sandbox` is available if you want in-container defense-in-depth." No settings write.
 
    For non-Docker deployments (`tmux` or `interactive`), check the target settings file for an already-declared `sandbox.enabled` key (either value):
-   - **Not declared**: print a one-time recommendation — "Bash sandboxing isn't set up. Claude Code can isolate Bash calls at the OS level — recommended. Run `/sandbox` to enable it (its Dependencies tab checks bubblewrap/socat for you); docs: https://code.claude.com/docs/en/sandboxing."
+   - **Not declared**: print a one-time recommendation — "Bash sandboxing isn't set up. Claude Code can isolate Bash calls at the OS level — recommended. Run `/sandbox` to enable it (its Dependencies tab checks bubblewrap/socat for you); docs: https://code.claude.com/docs/en/sandboxing. For the managed browser, add `bun */scripts/browser-agent.ts *` to `sandbox.excludedCommands` so Chrome can use its own sandbox."
    - **Already declared**: stay silent — the operator already made the call.
 
 No `AskUserQuestion` — enabling or disabling `sandbox.*` is entirely the operator's call via `/sandbox` or by editing their settings file directly.
@@ -672,6 +686,8 @@ questions: [
 - **Customize**: jump to Step 3 of the Advanced branch (no prefill — Advanced restarts from scratch). Discard all Quick answers.
 - **Yes**: continue to the shared steps below.
 
+The confirm bundle includes one line for `will_apply.browser` (enabled and default browser); Quick asks no browser question.
+
 ### Quick — silent defaults applied to shared steps
 
 Quick replaces Step 4 entirely and applies these defaults silently at the shared Steps 5-9c (no prompts):
@@ -684,6 +700,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Step 5b | fixed-text localization | run verbatim: generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
 | Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
+| Advanced Phase 5 browser equivalent | `browser` | template defaults: enabled, default `agent-browser`; ask no browser question, preserve an existing re-init choice |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
 | Step 7 | .gitignore append | apply silently (per-line idempotent) |
 | Step 7a | .worktreeinclude managed block | apply silently (marker-block idempotent — skip if marker already present) |
@@ -707,7 +724,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deploym
 Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
 
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
-- Otherwise: `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
+- Otherwise: show one browser line from `browser.enabled` and `browser.default`; when `browser.host_command` is present, print it as a terminal prerequisite. `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
 
 `--deployment` is the one thing it cannot read: Quick Turn 3 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
 

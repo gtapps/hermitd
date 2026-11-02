@@ -2189,7 +2189,7 @@ describe('reflect routine gating contract (token efficiency)', () => {
 const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age',
-  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'model-pricing-known',
+  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'model-pricing-known',
   'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
   'backup',
 ];
@@ -3709,3 +3709,16 @@ describe('chat instructions validation', () => {
     }
   });
 });
+
+test('browser doctor is warning-only and names the next command', withTmpdir(async (dir) => {
+  const { checkBrowser, resolvePaths } = await import('../scripts/doctor-check');
+  const p = resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT);
+  writeConfig(dir, {});
+  const options = { deployment: 'host' as const, data: path.join(dir, 'isolated-browser') };
+  expect(checkBrowser(p, options)).toMatchObject({ id: 'browser', status: 'warn' });
+  expect(checkBrowser(p, options).detail).toContain('hermitd run browser-host');
+  expect(checkBrowser(p, { deployment: 'docker_host', marker: () => false }).detail).toContain('hermitd update');
+  expect(checkBrowser(p, { deployment: 'container', marker: () => true }).status).toBe('ok');
+  writeConfig(dir, { browser: { enabled: false } });
+  expect(checkBrowser(p, options).status).toBe('ok');
+}));

@@ -102,6 +102,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `escalation` | `escalation` | enum | conservative / balanced / autonomous; how much it acts without asking | immediately |
 | `remote` | `remote` | boolean | yes / no; connect from claude.ai/code or phone | next hermitd-start |
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
+| `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | immediately |
+| `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |

@@ -1029,3 +1029,44 @@ test('chrome warns only when enabling it from off', async () => {
     expect(readConfig(file).chrome).toBe(raw === 'yes');
   }
 });
+
+
+test('browser settings preserve Chrome prerequisites and refuse disabling its selected default', async () => {
+  const file = seedConfig(freshDir(), { chrome: false });
+  const set = (arg: string, value: string) => runScript('settings-edit.ts', { args: [file, 'apply-known', arg, value] });
+  expect((await set('browser-default', 'chrome')).exitCode).toBe(1);
+  expect((await set('chrome', 'true')).exitCode).toBe(0);
+  expect((await set('browser-default', 'chrome')).exitCode).toBe(0);
+  const refused = await set('chrome', 'false');
+  expect(refused.exitCode).toBe(1);
+  expect(readConfig(file).chrome).toBe(true);
+  expect((await set('browser-default', 'agent-browser')).exitCode).toBe(0);
+  expect((await set('browser', 'false')).exitCode).toBe(0);
+  expect(readConfig(file).browser).toEqual({ default: 'agent-browser', enabled: false });
+});
+
+test('browser migration defaults on, preserves existing decisions, and declines an operator browser', async () => {
+  const root = freshDir(), file = seedConfig(root, { chrome: false, custom: 'kept' });
+  const migrate = () => runScript('settings-edit.ts', { args: [file, 'migrate', 'browser-default-on'] });
+  const first = await migrate();
+  expect(first.exitCode).toBe(0);
+  expect(JSON.parse(first.stdout).note).toContain('default browser: agent-browser');
+  expect(readConfig(file)).toMatchObject({ custom: 'kept', browser: { enabled: true, default: 'agent-browser', admins: [], port: null, host: null } });
+  const bytes = fs.readFileSync(file, 'utf8');
+  expect((await migrate()).exitCode).toBe(0); expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+  fs.writeFileSync(file, '{"custom":"kept"}');
+  fs.writeFileSync(path.join(root, 'Dockerfile.hermit'), 'RUN npm install -g agent-browser\n');
+  const declined = await migrate();
+  expect(declined.exitCode).toBe(0); expect(JSON.parse(declined.stdout).note).toContain('left off');
+  expect(readConfig(file).browser.enabled).toBe(false);
+});
+test('browser migration retains Chrome only when its auth permits it', async () => {
+  for (const auth_mode of ['login', 'token']) {
+    const root = freshDir(), file = seedConfig(root, { chrome: true, auth_mode });
+    const result = await runScript('settings-edit.ts', { args: [file, 'migrate', 'browser-default-on'], env: {
+      CLAUDE_CONFIG_DIR: path.join(root, 'isolated-config'), ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_OAUTH_TOKEN: '',
+    } });
+    expect(result.exitCode).toBe(0);
+    expect(readConfig(file).browser.default).toBe(auth_mode === 'login' ? 'chrome' : 'agent-browser');
+  }
+});

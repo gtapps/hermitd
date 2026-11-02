@@ -379,7 +379,9 @@ function classifyDockerTemplates(
           ...currentSources,
           [f.field]: pristine.toString('utf8').replaceAll('{{AGENT_HOOK_PROFILE}}', 'strict'),
         };
-        baseRendered = renderSources(inputs, baseSources)[f.field];
+        // Deployed presence owns the browser baseline, so both enable and disable are ordinary upstream changes.
+        const baseInputs = f.field === 'dockerfile' ? { ...inputs, browser: ours.toString('utf8').includes('/etc/hermit/managed-browser') } : inputs;
+        baseRendered = renderSources(baseInputs, baseSources)[f.field];
       }
     }
 

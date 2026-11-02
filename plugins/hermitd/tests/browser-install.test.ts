@@ -1,0 +1,68 @@
+import { afterAll, expect, test } from 'bun:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { installBrowser, browserPlatform } from '../scripts/browser-install';
+import { installedBrowser } from '../scripts/lib/browser-runtime';
+import { BROWSER_PINS } from '../scripts/lib/browser-pins';
+import { acquireLock, releaseLock } from '../scripts/lib/lockfile';
+import { freshDirFactory } from './helpers/workdir';
+const { freshDir, cleanup } = freshDirFactory('browser-install-');
+afterAll(cleanup);
+function fixture() {
+  const root = freshDir(), data = path.join(root, 'data');
+  const src = path.join(root, 'src');
+  fs.mkdirSync(path.join(src, 'package/bin'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'package/bin/agent-browser-linux-x64'), '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+  fs.mkdirSync(path.join(src, 'package/core'));
+  fs.writeFileSync(path.join(src, 'package/core/rfb.js'), '// fixture');
+  fs.mkdirSync(path.join(src, 'chrome-linux64'));
+  fs.writeFileSync(path.join(src, 'chrome-linux64/chrome'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const tar = path.join(root, 'fixture.tgz'), zip = path.join(root, 'fixture.zip');
+  expect(Bun.spawnSync(['tar', 'czf', tar, '-C', src, 'package']).exitCode).toBe(0);
+  expect(Bun.spawnSync(['zip', '-qr', zip, 'chrome-linux64'], { cwd: src }).exitCode).toBe(0);
+  const tgz = fs.readFileSync(tar), zipped = fs.readFileSync(zip);
+  const pins = structuredClone(BROWSER_PINS) as any;
+  pins.agent.integrity = 'sha512-' + createHash('sha512').update(tgz).digest('base64');
+  pins.chrome.checksums.linux64 = createHash('sha256').update(zipped).digest('hex');
+  pins.novnc.checksum = createHash('sha256').update(tgz).digest('hex');
+  let downloads = 0;
+  const fake = (async (url: string | URL | Request) => { downloads++; return new Response(String(url).endsWith('.zip') ? zipped : tgz); }) as typeof fetch;
+  return { data, pins, fetch: fake, platform: 'linux' as const, arch: 'x64', musl: false, downloads: () => downloads };
+}
+test('publishes a complete executable install, no-ops, and keeps the prior folder on failure', async () => {
+  const f = fixture();
+  expect(await installBrowser(f)).toMatchObject({ status: 'ready' });
+  const current = installedBrowser(f.data)!;
+  expect(fs.statSync(current.binary).mode & 0o111).toBe(0o111);
+  expect(fs.readFileSync(current.config, 'utf8').trim()).toBe('{}');
+  expect(await installBrowser(f)).toMatchObject({ status: 'ready' });
+  expect(f.downloads()).toBe(3);
+  f.pins.chrome.version = 'next';
+  f.pins.agent.integrity = 'sha512-bad';
+  expect(await installBrowser(f)).toMatchObject({ error: 'checksum_mismatch:agent.tgz' });
+  expect(installedBrowser(f.data)?.dir).toBe(current.dir);
+  expect(fs.existsSync(path.join(f.data, 'install-error.json'))).toBe(true);
+  expect(fs.readdirSync(f.data).some(name => name.startsWith('.install-'))).toBe(false);
+});
+test('a killed installer\'s temp folder is collected by the next install', async () => {
+  const f = fixture();
+  const left = path.join(f.data, '.install-killed');
+  fs.mkdirSync(left, { recursive: true });
+  expect((await installBrowser(f)).status).toBe('ready');
+  expect(fs.existsSync(left)).toBe(false);
+});
+
+test('concurrent callers publish one folder and report contention', async () => {
+  const f = fixture();
+  const results = await Promise.all([installBrowser(f), installBrowser(f)]);
+  expect(results.map(result => 'status' in result ? result.status : result.error).sort()).toEqual(['installing', 'ready']);
+  expect(f.downloads()).toBe(3);
+});
+test('unsupported platforms return precise blockers and never fetch', async () => {
+  const f = fixture();
+  expect(await installBrowser({ ...f, platform: 'win32' })).toMatchObject({ error: 'unsupported_platform:win32-x64' });
+  expect(f.downloads()).toBe(0);
+  expect(browserPlatform('linux', 'arm64', true).binary).toBe('agent-browser-linux-musl-arm64');
+  expect(browserPlatform('darwin', 'arm64', false).chrome).toBe('mac-arm64');
+});

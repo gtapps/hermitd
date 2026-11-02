@@ -82,6 +82,7 @@ let origProfile: string | undefined;
 let origContainer: string | undefined;
 let origPath: string | undefined;
 let origConfigDir: string | undefined;
+let origPluginCache: string | undefined;
 // writeSettingsEnv hydrates <CHANNEL>_STATE_DIR into process.env, so any test
 // that configures a channel state_dir leaks it into the next one without this.
 // Swept generically: the hydration is per-channel, not a fixed set of names.
@@ -93,6 +94,7 @@ beforeEach(() => {
   origContainer = process.env.container;
   origPath = process.env.PATH;
   origConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  origPluginCache = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
   origStateDirs = Object.fromEntries(
     Object.keys(process.env)
       .filter((k) => k.endsWith('_STATE_DIR'))
@@ -111,6 +113,7 @@ beforeEach(() => {
   // machine's own user scope never reaches a test. Boot repair ignores user
   // scope by design; the test that asserts that writes into this dir itself.
   process.env.CLAUDE_CONFIG_DIR = path.join(tmpdir, '.claude-user-config');
+  process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = path.join(tmpdir, 'test-plugin-cache');
 });
 
 afterEach(() => {
@@ -124,6 +127,7 @@ afterEach(() => {
   restore('container', origContainer);
   restore('PATH', origPath);
   restore('CLAUDE_CONFIG_DIR', origConfigDir);
+  restore('CLAUDE_CODE_PLUGIN_CACHE_DIR', origPluginCache);
   const stateDirKeys = new Set([
     ...Object.keys(process.env).filter((k) => k.endsWith('_STATE_DIR')),
     ...Object.keys(origStateDirs),
@@ -643,6 +647,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
   // their own missing-key logic (not part of loadConfig merge).
   const TEMPLATE_ONLY_KEYS = new Set([
     'routines', 'monitors',
+    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host',
     'docker.recommended_plugins',
     // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
     'routine_wake_lint', 'routine_wake_lint.max_windows',

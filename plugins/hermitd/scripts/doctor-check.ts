@@ -22,6 +22,7 @@ import { claudeStateFile } from './lib/setup-token';
 import { readRuntimeJson } from './lib/runtime';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { getEnabledChannels, isDict } from './lib/channel-config';
+import { browserDeployment, browserEnabled, browserHostPlatform, browserHostPrerequisite, browserImageProbe, browserRuntimeMode, type BrowserPrerequisiteOptions } from './lib/browser-runtime';
 import { isContainer } from './lib/container';
 import { readChannelToken, channelStateDir } from './lib/channel-token';
 import { CHANNEL_PROBES, extractBotIdentity } from './lib/channel-probe';
@@ -1591,6 +1592,28 @@ function checkChromeAuth(p: DoctorPaths = PATHS) {
   }
 }
 
+function checkBrowser(p: DoctorPaths = PATHS, options: BrowserPrerequisiteOptions & { deployment?: 'container' | 'docker_host' | 'host'; marker?: () => boolean } = {}) {
+  const id = 'browser';
+  try {
+    if (!browserEnabled(p.hermitDir)) return { id, status: 'ok', detail: 'managed browser disabled' };
+    const deployment = options.deployment ?? browserDeployment(p.hermitDir);
+    if (deployment !== 'host') {
+      const marker = options.marker ?? (() => deployment === 'container' ? fs.existsSync('/etc/hermit/managed-browser')
+        : Bun.spawnSync(browserImageProbe(path.join(p.hermitDir, '../docker-compose.hermit.yml')), { timeout: 5000, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0);
+      return marker() ? { id, status: 'ok', detail: 'managed browser image present' }
+        : { id, status: 'warn', detail: 'managed browser image missing; run hermitd update on the host' };
+    }
+    const missing = browserHostPrerequisite(options);
+    if (missing) return { id, status: 'warn', detail: `${missing}; run hermitd run browser-host in the host terminal` };
+    const runtimeMode = browserRuntimeMode(p.hermitDir);
+    if (runtimeMode === 'tmux' && (options.platform ?? browserHostPlatform()) === 'linux') {
+      const display = readJson(path.join(p.stateDir, 'browser-display.json'));
+      if (!display?.display || !display.vncSocket || !fs.existsSync(display.vncSocket)) return { id, status: 'warn', detail: 'browser display missing; run hermitd run browser-host in the host terminal' };
+    }
+    return { id, status: 'ok', detail: 'managed browser ready' };
+  } catch (error: any) { return { id, status: 'warn', detail: `browser check: ${error.message}; run hermitd run browser-host in the host terminal` }; }
+}
+
 // ----------------- Model pricing known -----------------
 
 // Shared by the two config-reading checks below: config.json's own validity is
@@ -2394,6 +2417,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkRawSize(p),
     checkCredentialExpiry(p),
     checkChromeAuth(p),
+    checkBrowser(p),
     checkModelPricingKnown(p),
     checkMemorySize(p),
     checkPassiveChats(p),
@@ -2612,7 +2636,7 @@ export {
   checkDockerSecurity, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
-  checkCredentialExpiry, checkChromeAuth, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
+  checkCredentialExpiry, checkChromeAuth, checkBrowser, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
   satisfiesRange, cidrOverlap,
   // Tests build their own paths for a scratch dir; the CLI runs on the argv-derived default.
   resolvePaths,

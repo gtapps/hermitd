@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { BROWSER_PINS } from './lib/browser-pins';
 /**
  * Renders the base Docker scaffolding for /docker-setup Step 7b.6.
  *
@@ -88,18 +89,18 @@ function browserBlock(): string {
     'RUN apt-get update && apt-get install -y --no-install-recommends \\',
     '      tigervnc-standalone-server openbox procps libxcb-shm0 libx11-xcb1 libx11-6 libxcb1 libxext6 libxrandr2 libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxi6 libgtk-3-0 libpangocairo-1.0-0 libpango-1.0-0 libatk1.0-0t64 libcairo-gobject2 libcairo2 libgdk-pixbuf-2.0-0 libxrender1 libasound2t64 libfreetype6 libfontconfig1 libdbus-1-3 libnss3 libnss3-tools libnspr4 libatk-bridge2.0-0t64 libdrm2 libxkbcommon0 libatspi2.0-0t64 libcups2t64 libxshmfence1 libgbm1 fonts-liberation && \\',
     '    rm -r /var/lib/apt/lists/* && \\',
-    '    npm install -g --allow-scripts=agent-browser agent-browser@0.41.0 && \\',
+    `    npm install -g --allow-scripts=agent-browser agent-browser@${BROWSER_PINS.agent.version} && \\`,
     '    case "$(dpkg --print-architecture)" in \\',
-    '      amd64) platform=linux64; checksum=b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7 ;; \\',
-    '      arm64) platform=linux-arm64; checksum=1f496a826c9ba4d6a5f5bf2de686145fe718528c2cc3dbeb96b5893b89653724 ;; \\',
+    `      amd64) platform=linux64; checksum=${BROWSER_PINS.chrome.checksums.linux64} ;; \\`,
+    `      arm64) platform=linux-arm64; checksum=${BROWSER_PINS.chrome.checksums['linux-arm64']} ;; \\`,
     '      *) exit 1 ;; esac && \\',
-    '    curl -fsSL "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/${platform}/chrome-${platform}.zip" -o /tmp/chrome.zip && \\',
+    `    curl -fsSL "https://storage.googleapis.com/chrome-for-testing-public/${BROWSER_PINS.chrome.version}/\${platform}/chrome-\${platform}.zip" -o /tmp/chrome.zip && \\`,
     '    printf "%s  /tmp/chrome.zip\\n" "$checksum" | sha256sum -c - && \\',
     '    unzip -q /tmp/chrome.zip -d /opt && \\',
     '    if [ "$platform" != linux64 ]; then mv "/opt/chrome-${platform}" /opt/chrome-linux64; fi && \\',
     '    rm /tmp/chrome.zip && \\',
-    '    curl -fsSL https://registry.npmjs.org/@novnc/novnc/-/novnc-1.7.0.tgz -o /tmp/novnc.tgz && \\',
-    '    echo "32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903  /tmp/novnc.tgz" | sha256sum -c - && \\',
+    `    curl -fsSL ${BROWSER_PINS.novnc.url} -o /tmp/novnc.tgz && \\`,
+    `    echo "${BROWSER_PINS.novnc.checksum}  /tmp/novnc.tgz" | sha256sum -c - && \\`,
     '    mkdir -p /opt/novnc && tar xzf /tmp/novnc.tgz -C /opt/novnc --strip-components=1 && rm /tmp/novnc.tgz && \\',
     "    printf '%s\\n' '#!/bin/sh' 'if [ ! -f \"${HERMIT_PLUGIN_ROOT:-}/scripts/browser-agent.ts\" ]; then echo \"agent-browser: hermit plugin unavailable\" >&2; exit 1; fi' 'exec bun \"${HERMIT_PLUGIN_ROOT}/scripts/browser-agent.ts\" \"$@\"' > /usr/local/bin/agent-browser && \\",
     '    chmod 755 /usr/local/bin/agent-browser && \\',
@@ -123,7 +124,7 @@ export function renderSources(
   inputs: Inputs,
   templates: TemplateSources,
 ): { dockerfile: string; compose: string } {
-  if (inputs.browserPort !== undefined && (!Number.isInteger(inputs.browserPort) || inputs.browserPort < 1 || inputs.browserPort > 65535)) throw new Error('invalid_browser_port');
+  if (inputs.browserPort !== undefined && (!Number.isInteger(inputs.browserPort) || inputs.browserPort < 1 || inputs.browserPort > 65535)) throw new Error('invalid_viewer_port');
   const packages = inputs.packages ?? [];
   const channels = inputs.channels ?? {};
   // envLines/volumeLines feed the CHANNEL_ENV_LINES and CHANNEL_VOLUME_LINES
