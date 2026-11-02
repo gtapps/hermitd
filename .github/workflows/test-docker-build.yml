@@ -93,6 +93,7 @@ jobs:
             -e HERMIT_PLUGIN_ROOT=/plugin \
             hermit-ci:${{ matrix.shape }} -s <<'BROWSER_CHECK'
           set -e
+          test -f /opt/novnc/core/rfb.js
           test -f /etc/hermit/managed-browser
           test "$(command -v agent-browser)" = /usr/local/bin/agent-browser
           test "$(agent-browser --session ci --version)" = "agent-browser 0.41.0"

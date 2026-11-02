@@ -261,6 +261,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
+        if ('if-waiting-since' in flags && (!flags['clear-waiting'] || record.waiting_since !== flag(flags, 'if-waiting-since'))) throw new Error('stale_wait');
         const metadata = ['due', 'card', 'check', 'decision', 'approval', 'done', 'clear-waiting', 'owner', 'muted'].some(key => key in flags);
         if (!line && !metadata) throw new Error('empty');
         progress = !!line || 'owner' in flags;

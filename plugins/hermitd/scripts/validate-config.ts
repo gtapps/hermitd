@@ -167,6 +167,13 @@ function validateTable(config: Json, rows: Record<string, Spec>, errors: string[
 
 function validate(config: Json): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  if (config?.docker?.browser_port !== undefined && (!Number.isInteger(config.docker.browser_port) || config.docker.browser_port < 1 || config.docker.browser_port > 65535)) errors.push('docker.browser_port must be an integer port (1-65535)');
+  const admins = config?.docker?.browser_admins;
+  if (admins !== undefined && (!Array.isArray(admins) || admins.some((admin: Json) => !isDict(admin)
+    || typeof admin.login !== 'string' || !admin.login.trim() || !isDict(admin.mentions)
+    || Object.entries(admin.mentions).some(([channel, mention]) => !channel.trim() || typeof mention !== 'string' || !mention.trim())))) {
+    errors.push('docker.browser_admins must contain login and a channel-to-mention map');
+  }
   const warnings: string[] = [];
   function validateChat(chat: Json, location: string, owner: 'routine' | 'watch', rearm = false): void {
     if (chat === undefined || chat === null) return;

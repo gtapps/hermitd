@@ -213,3 +213,15 @@ describe('config reference coverage', () => {
   });
 });
 
+
+
+test('browser takeover config settles containers and validates admin entries and integer ports', () => {
+  const admins = [{ login: 'person@example.com', mentions: { custom: '@person' } }];
+  expect(settleConfig({ docker: { browser_admins: admins, browser_port: 6081 } }).docker).toMatchObject({ browser_admins: admins, browser_port: 6081 });
+  expect(settleConfig({ docker: { browser_admins: 'bad' } }).docker.browser_admins).toEqual([]);
+  for (const browser_port of [null, '6080', 1.5, 0, 65536]) expect(validate({ ...template, docker: { browser_port } }).errors.join(' ')).toContain('docker.browser_port');
+  for (const browser_admins of [null, {}, [null], [{ login: '', mentions: {} }], [{ login: 'a' }], [{ login: 'a', mentions: { custom: 1 } }]]) expect(validate({ ...template, docker: { browser_admins } }).errors.join(' ')).toContain('docker.browser_admins');
+  expect(validate({ ...template, docker: { browser_admins: admins, browser_port: 6080 } }).errors).toEqual([]);
+  expect(template.docker.browser_admins).toBeUndefined();
+  expect(template.docker.browser_port).toBeUndefined();
+});

@@ -220,6 +220,8 @@ Persist `docker.security.audit.plugin_installs` accordingly.
 
 ### 6. Render overlay
 
+**Browser viewer publishing:** When `docker.browser_port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. Re-render the base with `browserPort` omitted to remove its browser mapping before recreating. Never publish the same viewer in both services. With containment off, base rendering owns it; host networking uses the loopback bind environment instead of a mapping.
+
 **Before rendering — preserve `publish_ports` across reruns:**
 Read `docker.security.network.publish_ports` from the existing config.json (if present). Keep this as `persisted_publish_ports`. In the current wizard run:
 - If the operator chose "Move ports to netguard": replace `persisted_publish_ports` with the newly detected ports from step 5 (prerequisites).

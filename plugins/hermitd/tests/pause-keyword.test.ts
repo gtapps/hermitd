@@ -22,6 +22,7 @@ import path from 'node:path';
 
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
+import { browserLease } from '../scripts/lib/browser-lease';
 import { isPaused } from '../scripts/lib/pause';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -363,3 +364,26 @@ describe('pause-keyword', () => {
     }));
   });
 });
+
+
+test('release uses controller authority, preserves the claim and is inert without a lease', withDir(async (dir) => {
+  const file = hermit(dir, 'state/browser-lease.json');
+  const empty = await run('<channel source="discord" chat_id="1" user="U1">!release</channel>', dir);
+  expect(empty.stdout).toContain('No human browser control');
+  expect(fs.existsSync(file)).toBe(false);
+  browserLease('claim', 'task', hermit(dir));
+  browserLease('takeover', undefined, hermit(dir), Date.now(), { login: 'admin' });
+  const before = fs.readFileSync(file, 'utf8');
+  const refused = await run('<channel source="discord" chat_id="99" user="other">!release</channel>', dir);
+  expect(refused.stdout).not.toContain('[browser]');
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  const released = await run('<channel source="discord" chat_id="1" user="U1">!release</channel>', dir);
+  expect(released.stdout).toContain('Human control released');
+  const lease = JSON.parse(fs.readFileSync(file, 'utf8'));
+  expect(lease.holder).toBe('task');
+  expect(lease.human).toBeNull();
+  expect(lease.pending[0].reason).toBe('released');
+  const after = fs.readFileSync(file, 'utf8');
+  await run('<channel source="discord" chat_id="1" user="U1">!release</channel>', dir);
+  expect(fs.readFileSync(file, 'utf8')).toBe(after);
+}));

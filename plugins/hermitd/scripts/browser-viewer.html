@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hermit browser</title>
+<style>
+  body { margin: 0; font: 16px system-ui; background: #101820; color: #fff; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; align-items: center; }
+  button { font: inherit; padding: 10px; } #screen { height: calc(100dvh - 110px); }
+  #status { padding: 0 10px; } #keyboard { position: fixed; left: -10000px; }
+</style>
+<header><button id="take">Take over</button><button id="back" disabled>Hand back</button><button id="type" disabled>Keyboard</button></header>
+<p id="status">Take over to sign in. Hand back when finished.</p>
+<div id="screen"></div><textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
+<script type="module">
+import RFB from './core/rfb.js';
+const take = document.querySelector('#take'), back = document.querySelector('#back'), type = document.querySelector('#type');
+const status = document.querySelector('#status'), keyboard = document.querySelector('#keyboard');
+let rfb, generation;
+const task = new URL(location.href).searchParams.get('task');
+async function post(path, values) {
+  const response = await fetch(path + '?' + new URLSearchParams(values), { method: 'POST', cache: 'no-store' });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Connection failed');
+  return result;
+}
+take.onclick = async () => {
+  try {
+    rfb?.disconnect();
+    const result = await post('/takeover', task ? { task } : {});
+    generation = result.human.generation;
+    rfb = new RFB(document.querySelector('#screen'), `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
+    rfb.scaleViewport = true; rfb.resizeSession = false;
+    rfb.addEventListener('connect', () => { back.disabled = type.disabled = false; status.textContent = 'You have control. Sign in, then Hand back.'; });
+    rfb.addEventListener('disconnect', event => { back.disabled = type.disabled = true; status.textContent = event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Browser connection failed. Take over to retry.'; });
+  } catch (error) { status.textContent = error.message; }
+};
+back.onclick = async () => {
+  try {
+    await post('/hand-back', { generation });
+    rfb?.disconnect(); back.disabled = type.disabled = true;
+    status.textContent = 'Handed back. Hermit will check the page and continue.';
+  } catch (error) { status.textContent = error.message; }
+};
+type.onclick = () => keyboard.focus();
+keyboard.addEventListener('input', () => { if (rfb) for (const char of keyboard.value) { const code = char.codePointAt(0); rfb.sendKey(code <= 255 ? code : 0x01000000 + code); } keyboard.value = ''; });
+keyboard.addEventListener('keydown', event => {
+  if (event.key === 'Enter' || event.key === 'Backspace') { rfb?.sendKey(event.key === 'Enter' ? 0xff0d : 0xff08); event.preventDefault(); }
+});
+</script>
+</html>
