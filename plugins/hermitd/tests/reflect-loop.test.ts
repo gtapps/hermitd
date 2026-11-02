@@ -309,6 +309,25 @@ describe('artifact-cited evidence path', () => {
   });
 });
 
+describe('skill-output corrections', () => {
+  test('channel-responder keeps a correction as a lesson and writes no observation row', () => {
+    const responder = read('skills', 'channel-responder', 'SKILL.md') + '\n' + read('skills', 'channel-responder', 'reference.md');
+    expect(responder).toContain('**Corrections stay lessons.**');
+    expect(responder).not.toContain('observations-observe');
+  });
+
+  test('Component Health subject reflection-judge is not a candidate', () => {
+    expect(reflect).toContain('This flag is audit-only');
+    expect(reflect).toContain('to the Progress Log line and nothing else');
+  });
+
+  test('proposal-act: Skill Improvement reads no procedure brief', () => {
+    const proposalAct = read('skills', 'proposal-act', 'SKILL.md') + '\n' + read('skills', 'proposal-act', 'branches.md');
+    expect(proposalAct).not.toContain('Parse the `source_artifact:` line from the `## Skill Improvement` body');
+    expect(proposalAct).not.toContain('read the brief');
+  });
+});
+
 describe('procedure discovery moved to task close', () => {
   test('reflect no longer discovers procedures or carries an ephemerality exception', () => {
     expect(reflect).not.toContain('Ephemerality exception');
