@@ -16,19 +16,15 @@ execution:
     <system-reminder>
     Hermit state for this evaluation. This session has no shell and the hermit state directory is not on disk: each block below is that command's output right now. Use it as the output; do not try to read state files or run commands for them, directly or through subagents.
     Mode: evening. Today: 2026-10-16. Now: 2026-10-16T19:00:00+01:00.
-    --- task-report --limit 20 ---
-    [{"source_path":".hermit/tasks/T-20261014-100000.md","outcome":"done","result":"The integration test worked on all three targets: Linux, macOS and Windows. All three targets passed the final verification.","result_at":"2026-10-16T17:00:00+01:00","closed_reason":"All three targets verified","title":"Verify the integration test across three targets","opened_at":"2026-10-14T10:00:00+01:00","closed_at":"2026-10-16T17:10:00+01:00","requester":"operator","due":null,"waiting_on":null,"cost":0.25,"lessons":["2026-10-14T11:00:00+01:00: The integration test does not work on macOS."],"decisions":[]}]
-    --- task-list --open --owner resident --json ---
-    []
-    --- duties-summary ---
-    routine:doctor: requested enabled=true, schedule=0 9 * * *, mode=monitor; observed pid=1234, last_woke=2026-10-11T09:00:00+01:00, last_event=skipped-precheck@2026-10-16T09:00:00+01:00
+    --- brief-digest evening ---
+    {"mode":"evening","today":"2026-10-16","records":[{"id":"T-20261014-100000","outcome":"done","result":"The integration test worked on all three targets: Linux, macOS and Windows. All three targets passed the final verification.","result_truncated":false,"closed_reason":"All three targets verified","title":"Verify the integration test across three targets","opened_at":"2026-10-14T10:00:00+01:00","closed_at":"2026-10-16T17:10:00+01:00","waiting_on":null,"lessons":["2026-10-14T11:00:00+01:00: The integration test does not work on macOS.","2026-10-14T11:10:00+01:00: Keep a separate test log for each target."]}],"open":[],"decisions":[],"duties":[{"name":"routine:doctor","enabled":true,"schedule":"0 9 * * *","mode":"monitor","pid":1234,"last_woke":"2026-10-11T09:00:00+01:00","last_event":"skipped-precheck@2026-10-16T09:00:00+01:00"}],"omitted":{"clipped":0,"lessons":0,"records":0,"decisions":0,"open":0,"proposals":0,"duties":0}}
     </system-reminder>
-    Read `spec/brief-reference.md` for the complete evaluation instructions. Execute the evening evaluation against the supplied task-report, task-list and duties-summary outputs, with today set to 2026-10-16. Return exactly the JSON object specified by the reference, without prose. The calling session handles delivery.
+    Read `spec/brief-reference.md` for the complete evaluation instructions. Execute the evening evaluation against the supplied brief-digest output. Return exactly the JSON object specified by the reference, without prose. The calling session handles delivery.
 graders:
   - name: json-only
     type: 'regex'
     target: 'last_message'
-    pattern: '^\s*(?:```(?:json)?\s*)?\{[\s\S]*"sessions_today"[\s\S]*"findings"[\s\S]*\}\s*(?:```\s*)?$'
+    pattern: '^\s*(?:```(?:json)?\s*)?\{[\s\S]*"tasks_today"[\s\S]*"findings"[\s\S]*\}\s*(?:```\s*)?$'
   - name: no-contradicted-finding
     type: 'regex'
     target: 'last_message'
@@ -41,3 +37,8 @@ graders:
     pattern: 'missed|not\s+(?:been\s+)?run|hasn.t\s+(?:been\s+)?run|has\s+not\s+(?:been\s+)?run|did\s+not\s+run|didn.t\s+run'
     flags: 'i'
     match: 'not_contains'
+  - name: supported-lesson-survives
+    type: 'llm'
+    focus: 'last_message'
+    criteria: |
+      The findings retain the supported lesson about keeping a separate test log for each target. Judge meaning in any language or phrasing, without requiring particular wording.

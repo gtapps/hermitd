@@ -9,15 +9,23 @@
 
 ### Changed
 
+- Scheduled briefs use one bounded read of task, duty and proposal data and report omissions on busy days
 - Channel setup summary points third-party channels to the channel plugins guide
 - Disabled or auth-refused Chrome launches pass `--no-chrome`, removing native Chrome tools even when the native default enabled them
 - Claude Code minimum version is 2.1.314
 - Chat corrections stay task lessons, including complaints about a named skill; the `skill-correction` ledger source and its reflect route are gone
 
+### Fixed
+
+- Malformed `routines` or `monitors` config entries no longer break duty summaries or watch duty records
+
 ### Upgrade Instructions
 
 No `config.json` changes required. Existing Docker hermits receive no browser additions; an explicit `/docker-setup` rerun enables it unless `docker.browser` is already false.
 
+**Leftover check:** `task-report.ts --today` flag and its `today`, `closed_today` and `opened_today` output keys removed, replaced by `brief-digest.ts <state-dir> morning|evening|daily`.
+
+**Leftover check:** brief runner key `sessions_today` renamed `tasks_today`, its `session` field `task`; `runner.waiting` entries changed from strings to `{title, state, waiting_on}`.
 Remove lines whose `source` is `skill-correction` from `.hermit/state/observations.jsonl` when the file exists; keep every other line unchanged.
 
 **Leftover check:** observation source `skill-correction` and its `skill-correction:<name>` labels removed; corrections go to `task.ts lesson`.
