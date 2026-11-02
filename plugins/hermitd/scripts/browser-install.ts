@@ -39,6 +39,8 @@ export async function installBrowser(options: InstallOptions = {}) {
     const current = installedBrowser(data);
     if (current?.dir === target) return { status: 'ready', dir: target };
     if (!Bun.which('unzip')) throw new Error('unzip_missing:run hermitd run browser-host');
+    // The lock is ours, so any temp folder here belongs to a killed installer.
+    for (const name of fs.readdirSync(data)) if (name.startsWith('.install-')) fs.rmSync(path.join(data, name), { recursive: true });
     temp = fs.mkdtempSync(path.join(data, '.install-'));
     const command = (argv: string[]) => {
       const result = Bun.spawnSync(argv, { stdout: 'pipe', stderr: 'pipe' });

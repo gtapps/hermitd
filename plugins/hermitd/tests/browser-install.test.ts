@@ -45,6 +45,14 @@ test('publishes a complete executable install, no-ops, and keeps the prior folde
   expect(fs.existsSync(path.join(f.data, 'install-error.json'))).toBe(true);
   expect(fs.readdirSync(f.data).some(name => name.startsWith('.install-'))).toBe(false);
 });
+test('a killed installer\'s temp folder is collected by the next install', async () => {
+  const f = fixture();
+  const left = path.join(f.data, '.install-killed');
+  fs.mkdirSync(left, { recursive: true });
+  expect((await installBrowser(f)).status).toBe('ready');
+  expect(fs.existsSync(left)).toBe(false);
+});
+
 test('concurrent callers publish one folder and report contention', async () => {
   const f = fixture();
   const results = await Promise.all([installBrowser(f), installBrowser(f)]);

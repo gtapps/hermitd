@@ -1,13 +1,12 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, type BrowserDeployment } from './lib/browser-runtime';
+import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
-import { installedBrowser } from './lib/browser-runtime';
 import { failJson, printJson, readJson } from './lib/cli';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
@@ -53,7 +52,9 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     const data = options.data ?? browserDataDir();
     const lock = path.join(data, 'install.lock');
     const installError = () => readJson(path.join(data, 'install-error.json'))?.error;
-    if (fs.existsSync(lock)) { printJson({ status: 'installing' }); return 0; }
+    // A killed installer leaves its lock behind; only a live holder is still downloading.
+    const holder = readJson(lock);
+    if (Number.isInteger(holder) && alive(holder)) { printJson({ status: 'installing' }); return 0; }
     const error = installError();
     if (error) { printJson({ error: `browser_install_failed:${error}` }); return 1; }
     const child = Bun.spawn([process.execPath, path.join(import.meta.dir, 'browser-install.ts')], { cwd: path.dirname(dir), env: process.env, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore', detached: true });
@@ -120,10 +121,10 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     }
     args.push(argv[i]);
   }
-  const open = args.indexOf('open');
-  if (open >= 0) {
+  // Every token: navigation has aliases, URLs may be schemeless and a session may be named open.
+  for (const arg of args) {
     try {
-      const hostname = new URL(args[open + 1]).hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
+      const hostname = new URL(arg.includes('://') ? arg : `https://${arg}`).hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
       if (['169.254.169.254', 'metadata.google.internal', 'metadata.goog', '100.100.100.200', 'fd00:ec2::254'].includes(hostname)) {
         printJson({ error: 'metadata_url_refused' }); return 1;
       }

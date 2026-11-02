@@ -145,12 +145,12 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   if (!config.browser.enabled) throw new Error('Managed browser is off. Enable browser.enabled through /hermitd:hermit-settings.');
   const deployment = browserDeployment(dir, false);
   const startDisplay = () => (options.startDisplay ?? maybeStartBrowserDisplay)(browserRuntimeMode(dir), dir);
-  if ((options.platform ?? browserHostPlatform()) === 'darwin' && config.browser.admins.length) throw new Error('takeover_unsupported: use Claude in Chrome on macOS');
+  if (deployment === 'host' && (options.platform ?? browserHostPlatform()) === 'darwin' && config.browser.admins.length) throw new Error('takeover_unsupported: use Claude in Chrome on macOS');
   if (deployment === 'host') {
     await installHostPrerequisites(project, options);
     if (!config.browser.admins.length) { startDisplay(); return { status: 'ready' }; }
+    if (browserRuntimeMode(dir) !== 'tmux') throw new Error('takeover_needs_tmux: phone takeover runs only for always-on tmux hermits. Start the hermit with hermitd start, then rerun hermitd run browser-host.');
   }
-  const tailscale = tailscaleCLI();
   if (deployment === 'docker_host') {
     const version = (await required(['docker', 'version', '--format', '{{.Server.Version}}'])).trim();
     if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version) || Number(version.split('.')[0]) < 28) throw new Error('Docker server 28.0.0 or newer is required for safe localhost publishing.');
@@ -158,6 +158,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     if (marker.code) throw new Error('Managed browser missing from the image: run hermitd update to rebuild first.');
   }
   if (!config.browser.admins.length) return { status: 'ready' };
+  const tailscale = tailscaleCLI();
   const status = JSON.parse(await required([tailscale, 'status', '--json']));
   const host = status.Self?.DNSName?.replace(/\.$/, '');
   if (!host) throw new Error('Tailscale is not connected or has no DNS name.');

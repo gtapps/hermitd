@@ -17,7 +17,9 @@ export function maybeStartBrowserDisplay(runtimeMode: string, dir = hermitDir(),
   try {
     const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
     if (sessionAlive(session)) return;
-    spawn('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir), process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
+    // A tmux server keeps the environment of whoever started it, possibly another hermit.
+    const inherited = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_PLUGIN_CACHE_DIR'].flatMap(name => process.env[name] ? [`${name}=${process.env[name]}`] : []);
+    spawn('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir), 'env', `AGENT_DIR=${dir}`, ...inherited, process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
   } catch (error) { console.error(`[hermit] Browser display: ${error instanceof Error ? error.message : error}`); }
 }
 export function reserveDisplay(data: string, socketBusy: (number: number) => boolean = number => fs.existsSync(`/tmp/.X11-unix/X${number}`) || fs.existsSync(`/tmp/.X${number}-lock`)): { display: string; reservation: string } {
@@ -74,16 +76,19 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
     writeFileAtomic(file, JSON.stringify({ pid: process.pid, xvncPid: xvnc.pid, display: owned.display, vncSocket, profile }) + '\n', 0o600);
     const env = { ...process.env, DISPLAY: owned.display, AGENT_DIR: dir };
     children.push(Bun.spawn(['openbox'], { env, stdin: 'ignore', stdout: 'ignore', stderr: 'inherit' }));
-    process.on('SIGTERM', stop); process.on('SIGINT', stop);
+    // tmux kill-session delivers SIGHUP, the signal this display normally stops on.
+    process.on('SIGHUP', stop); process.on('SIGTERM', stop); process.on('SIGINT', stop);
     const done = new Promise<void>(resolve => { finish = resolve; });
     const viewer = async () => {
-      const config = readSettledConfig(dir);
-      if (!config.browser.port) return;
       while (!stopping) {
-        const child = Bun.spawn([process.execPath, path.join(import.meta.dir, 'browser-viewer.ts')], { env: { ...env, HERMIT_BROWSER_VIEWER_BIND: `127.0.0.1:${config.browser.port}` }, stdin: 'ignore', stdout: 'ignore', stderr: 'inherit' });
-        children.push(child);
-        await child.exited;
-        children.splice(children.indexOf(child), 1);
+        // Takeover setup can save the port while this display is already running.
+        const { port } = readSettledConfig(dir).browser;
+        if (port) {
+          const child = Bun.spawn([process.execPath, path.join(import.meta.dir, 'browser-viewer.ts')], { env: { ...env, HERMIT_BROWSER_VIEWER_BIND: `127.0.0.1:${port}` }, stdin: 'ignore', stdout: 'ignore', stderr: 'inherit' });
+          children.push(child);
+          await child.exited;
+          children.splice(children.indexOf(child), 1);
+        }
         if (!stopping) await Promise.race([Bun.sleep(1000), done]);
       }
     };
@@ -101,20 +106,23 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
       fs.rmSync(file, { force: true });
       fs.rmSync(path.join(browserSocketDir(dir), 'vnc.sock'), { force: true });
     }
-    process.off('SIGTERM', stop); process.off('SIGINT', stop);
+    process.off('SIGHUP', stop); process.off('SIGTERM', stop); process.off('SIGINT', stop);
     releaseLock(lock);
   }
 }
 export function stopBrowserDisplay(dir = hermitDir(), spawn = spawnSync, sessionAlive = tmuxSessionAlive): void {
-  const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
-  if (!sessionAlive(session)) return;
-  browserLease('human-release', undefined, dir);
-  browserLease('teardown', 'shutdown', dir);
-  spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', 'shutdown', 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout: 5000, killSignal: 'SIGKILL' });
-  browserLease('teardown', undefined, dir);
-  spawn('tmux', ['kill-session', '-t', `=${session}`], { stdio: 'ignore' });
+  // A wedged lease must not keep the display alive or abort the hermit's own shutdown.
+  try {
+    const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
+    if (!sessionAlive(session)) return;
+    try {
+      browserLease('human-release', undefined, dir);
+      browserLease('teardown', 'shutdown', dir);
+      spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', 'shutdown', 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout: 5000, killSignal: 'SIGKILL' });
+      browserLease('teardown', undefined, dir);
+    } finally { spawn('tmux', ['kill-session', '-t', `=${session}`], { stdio: 'ignore' }); }
+  } catch (error) { console.error(`[hermit] Browser display: ${error instanceof Error ? error.message : error}`); }
 }
 if (import.meta.main) {
-  if (process.argv[2] === 'run') await runBrowserDisplay();
-  else maybeStartBrowserDisplay('tmux');
+  await runBrowserDisplay();
 }

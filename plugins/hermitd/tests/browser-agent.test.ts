@@ -116,8 +116,28 @@ test('disabled config wins on every command and metadata URLs are refused', asyn
   for (const host of ['169.254.169.254', 'metadata.google.internal', 'metadata.goog', '100.100.100.200', '[fd00:ec2::254]']) {
     expect(await run(['--session', 'public', 'open', `http://${host}/latest`])).toMatchObject({ code: 1, data: { error: 'metadata_url_refused' } });
   }
+  for (const argv of [['--session', 'public', 'goto', 'http://169.254.169.254/latest'], ['--session', 'open', 'open', 'http://169.254.169.254/'], ['--session', 'public', 'open', '169.254.169.254/latest']]) {
+    expect(await run(argv)).toMatchObject({ code: 1, data: { error: 'metadata_url_refused' } });
+  }
   fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"enabled":false}}');
   expect(await run(['--session', 'public', 'snapshot'])).toMatchObject({ code: 0, data: { status: 'disabled' } });
+});
+
+test('only a live install lock reports installing', async () => {
+  const root = freshDir(), dir = path.join(root, '.hermit'), data = path.join(root, 'browser-data');
+  fs.mkdirSync(dir); fs.mkdirSync(data);
+  const run = async () => {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(['--session', 'public', 'snapshot'], undefined, () => false, { deployment: 'host', data: ${JSON.stringify(data)}, waitMs: 1 });`], {
+      cwd: root, env: { ...process.env, AGENT_DIR: dir, CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'cache') }, stdout: 'pipe', stderr: 'pipe',
+    });
+    return new Response(child.stdout).json();
+  };
+  fs.writeFileSync(path.join(data, 'install.lock'), String(process.pid));
+  expect(await run()).toEqual({ status: 'installing' });
+  // The recorded error stands in for the retry, so this test never starts a real download.
+  fs.writeFileSync(path.join(data, 'install.lock'), '99999999');
+  fs.writeFileSync(path.join(data, 'install-error.json'), '{"error":"prior failure"}');
+  expect(await run()).toEqual({ error: 'browser_install_failed:prior failure' });
 });
 
 

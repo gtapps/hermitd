@@ -221,6 +221,26 @@ test('macOS takeover refuses before any installation', async () => {
   await expect(setupBrowserHost(f.project, { ...f.options, platform: 'darwin' })).rejects.toThrow('takeover_unsupported');
   expect(f.calls).toEqual([]);
 });
+test('interactive hermits refuse takeover before touching Tailscale', async () => {
+  const f = hostFixture();
+  fs.writeFileSync(path.join(f.project, '.hermit/config.json'), '{"browser":{"admins":[{"login":"a"}]}}');
+  fs.writeFileSync(path.join(f.project, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');
+  await expect(setupBrowserHost(f.project, f.options)).rejects.toThrow('takeover_needs_tmux');
+  expect(JSON.parse(fs.readFileSync(path.join(f.project, '.hermit/config.json'), 'utf8')).browser.port).toBeUndefined();
+});
+test.serial('Docker takeover stays available on macOS hosts', async () => {
+  const f = fixture(); try {
+    expect(await setupBrowserHost(f.project, { ...f.opts, platform: 'darwin' })).toMatchObject({ status: 'ready' });
+  } finally { f.stop(); }
+});
+test.serial('Docker without admins needs no Tailscale', async () => {
+  const f = fixture(); const oldPath = process.env.PATH; try {
+    fs.writeFileSync(path.join(f.dir, 'config.json'), '{"browser":{"enabled":true}}');
+    fs.unlinkSync(path.join(f.bin, 'tailscale'));
+    process.env.PATH = f.bin;
+    expect(await setupBrowserHost(f.project, f.opts)).toEqual({ status: 'ready' });
+  } finally { process.env.PATH = oldPath; f.stop(); }
+});
 test.serial('Docker missing marker asks for a rebuild before publishing', async () => {
   const f = fixture(); try {
     fs.writeFileSync(path.join(f.bin, 'docker'), `#!${process.execPath}\nconsole.log('29.0.0');\nprocess.exit(process.argv.includes('exec') ? 1 : 0);`, { mode: 0o755 });
