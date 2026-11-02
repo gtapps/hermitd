@@ -16,7 +16,7 @@ execution:
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
-    - proposal-index (proposals-index.json): [{"id":"PROP-014","n":14,"status":"proposed","title":"Shorter morning brief"}]
+    - proposal-resolve-id PROP-14: {"status":"match","file":"PROP-014.md"}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:

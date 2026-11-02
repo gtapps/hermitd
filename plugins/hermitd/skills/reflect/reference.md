@@ -1,5 +1,7 @@
 # Reflect — Evaluation Reference
 
+Contents: Inputs (read fresh — do not reuse cached values); Step 1 — Resolution Check; Step 2 — Routine Check; Step 3 — Settled-memory placement; Return Value.
+
 This file is the instruction spec for the isolated-context subagent dispatched by SKILL.md step 6.
 The subagent reads only files (no inherited session context); writes and notifications are handled by the
 calling main session after it receives the subagent's structured JSON return value. Where an instruction
@@ -16,7 +18,7 @@ without erroring. `memory_dir` is the auto-memory directory this file calls `mem
 
 - `.hermit/state/reflection-state.json` — for `last_resolution_check`, `last_sparse_nudge`
 - `.hermit/proposals/PROP-*.md` — for accepted proposals (Resolution Check)
-- Normalized records from `task-report` (Commands): the three most recent outcomes `done`, `cancelled`, or `unconfirmed`. Never open frozen session archives.
+- Normalized records from `task-report` (Commands): the three most recent outcomes `done`, `cancelled`, or `unconfirmed`. Never read `.hermit/sessions/`.
 - routine fires, failures and cost — via `routines.ts health` in Step 2, never by reading
   `routine-metrics.jsonl` or `cost-log.jsonl` directly
 - `MEMORY.md` — operator's auto-memory index (procedure detection)
@@ -67,8 +69,7 @@ Run this step only if `resolution_check` is listed in `phases_json`.
    observation, not proof of completion.
 
    **Same-area guard:** establish overlap using proposal-title or Evidence keywords in record
-   titles or lessons. If no record overlaps, skip the proposal. Do not open legacy `related_sessions`
-   reports for tags or cadence. Resolve task IDs in that compatibility field against normalized
+   titles or lessons. If no record overlaps, skip the proposal. Resolve `related_sessions` task IDs against normalized
    records and use their `opened_at` dates for `original_cadence_days`; missing task references
    mean sparse evidence. A single matching record has cadence 0 days.
 
@@ -169,7 +170,7 @@ nothing:
 
 Run this step only if `compute` is listed in `phases_json`. Read the operator's MEMORY.md index in the auto-memory directory named in your dispatch (`memory-dir`). Do not discover recurring procedures from task lessons or memory workflow patterns. Close-time learning owns procedure creation.
 
-The compatibility field `procedure_candidates` carries only the ownership signal below. Emit `procedure_candidates: []` when no unplaced settled-memory preference exists. Each entry has `slug`, `title`, `tier`, `evidence_source`, `evidence_origin`, `evidence`, `sessions`, and `artifact`; use `evidence_source: "settled-memory"`, `tier: 2`, `evidence_origin: "own-work"`, `sessions: "none"`, and `artifact: null`.
+The field `procedure_candidates` carries only the ownership signal below. Emit `procedure_candidates: []` when no unplaced settled-memory preference exists. Each entry has `slug`, `title`, `tier`, `evidence_source`, `evidence_origin`, `evidence`, `sessions`, and `artifact`; use `evidence_source: "settled-memory"`, `tier: 2`, `evidence_origin: "own-work"`, `sessions: "none"`, and `artifact: null`.
 
 **Ownership signal:** emit one entry per MEMORY.md preference that records an explicit
 operator endpoint for a task-scoped output ("from now on, always X" — a settled voice, template,
@@ -188,7 +189,6 @@ evidence is the memory entry alone.
 Return a single JSON object — no prose, no markdown wrapping. Every field is required; use `[]` / `null`
 / `{}` for empty values, never omit a key.
 
-<!-- reflect-eval-schema:start -->
 ```json
 {
   "resolution_actions": [ { "proposal_id": "PROP-NNN", "action": "auto-resolve|nudge|skip",
@@ -206,6 +206,5 @@ Return a single JSON object — no prose, no markdown wrapping. Every field is r
   "last_sparse_nudge": { "PROP-NNN": "<ISO>" }
 }
 ```
-<!-- reflect-eval-schema:end -->
 
 `resolution_actions` and the two cursor fields are applied directly by the calling session. `routine_candidates` and `procedure_candidates` carry cross-session evidence and go through `reflection-judge` then `proposal-triage` before any proposal is created. Applied fields carry the exact string the main session writes — no recomputation needed.

@@ -19,6 +19,7 @@ const read = (...p: string[]) => fs.readFileSync(path.join(PLUGIN_ROOT, ...p), '
 // reflect's candidate-processing detail lives in branches.md (the
 // rare-branch procedures file); assert against the combined surface.
 const reflect = read('skills', 'reflect', 'SKILL.md') + '\n' + read('skills', 'reflect', 'branches.md');
+const reflectQuick = read('skills', 'reflect', 'quick.md');
 const reflectRef = read('skills', 'reflect', 'reference.md');
 const judge = read('agents', 'reflection-judge.md');
 const triage = read('agents', 'proposal-triage.md');
@@ -131,11 +132,11 @@ describe('observations ledger phrases', () => {
   });
 
   test('reflect: quick-mode deferrals append to ledger', () => {
-    expect(reflect).toContain('observations.ts observe .hermit quick-deferral');
+    expect(reflectQuick).toContain('`observations-observe` (Commands) with arguments `quick-deferral`');
   });
 
   test('reflect: quick-mode Progress Log carries suppressed suffix', () => {
-    expect(reflect).toContain('when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry).');
+    expect(reflectQuick).toContain('when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry).');
   });
 
   // The row is written by reflect-precheck.ts, which computes the spike — the skill
@@ -146,7 +147,7 @@ describe('observations ledger phrases', () => {
   });
 
   test('reflect: sub-threshold outcomes append to ledger not memory', () => {
-    expect(reflect).toContain('"source":"reflect-noticed"');
+    expect(reflect).toContain('`reflect-noticed --origin=own-work`');
   });
 
   test('judge: artifact verification section present', () => {

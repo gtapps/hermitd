@@ -80,8 +80,8 @@ skills use this bucket to coordinate across invocations.
   `dismissed`, `deferred`, `reverted`).
 - **Required frontmatter:** `title:`, `status:`, `tier:`, `category:`, `source:`,
   `created:`. See `state-templates/PROPOSAL.md.template` for the full shape.
-- **Creation rules:** see `skills/proposal-create/SKILL.md` — the three-condition rule
-  gates what is and isn't proposal-worthy.
+- **Creation rules:** see `skills/proposal-create/SKILL.md`. Its `proposal-triage` gate
+  applies the three-condition rule to what is and isn't proposal-worthy.
 
 ## Adding a new domain — checklist
 

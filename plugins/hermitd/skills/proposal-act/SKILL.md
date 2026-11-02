@@ -36,6 +36,8 @@ The `--answer` form is not typed by an operator — it's how a channel-safe reso
 
 The accept options and channel re-entry live in `${CLAUDE_PLUGIN_ROOT}/skills/proposal-act/branches.md`. "Read branches.md § X" means: read that section now and follow it exactly. It is normative.
 
+Helper reuse is described in `${CLAUDE_PLUGIN_ROOT}/skills/proposal-act/reuse-spawned-helper.md`.
+
 If no action or ID is provided, ask the operator which proposal and action.
 
 ## Resolving a Proposal ID
@@ -73,11 +75,6 @@ When the operator accepts a proposal:
 1. Resolve the proposal file using the resolution algorithm above, then read it.
 
 2. **Determine what to set.** Use the current task record id when this turn belongs to an open record. From the file already read in step 1:
-   - `responded`: if currently `false`, plan `--set responded=true` for the patch call below and fire the first-response event now, **before** that patch call, so its summary regen already reflects it:
-     ```
-     bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts event .hermit responded --id=PROP-NNN --action=accept
-     ```
-     If `responded` is already `true`, skip both (prevents double-counting).
    - `accepted_in_session`: this retained provenance field takes the current task record id, when one exists, via `--set accepted_in_session=<task_id>`. Without a current record, leave it unset.
    - `success_signal` (optional): check whether the body has a `## Success Signal` section with a non-empty predicate line (ignore comment lines starting with `<!--`). If found, validate it:
      ```
@@ -88,8 +85,8 @@ When the operator accepts a proposal:
 3. **Patch.** One call applies the frontmatter flip, session tracking, success signal, and the Operator Decision timestamp — assembled from what step 2 determined:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> \
-       --set status=accepted --set accepted_date=@now \
-       [--set responded=true] [--set accepted_in_session=<task_id>] --stdin <<'HERMIT_PATCH'
+       --respond accept --set status=accepted --set accepted_date=@now \
+       [--set accepted_in_session=<task_id>] --stdin <<'HERMIT_PATCH'
    Decision: Accepted on @now.
    [Set: success_signal=<predicate line>]
    HERMIT_PATCH
@@ -133,43 +130,33 @@ When the operator accepts a proposal:
 ## Defer Flow
 
 1. Resolve the proposal file using the resolution algorithm above, then read it.
-2. **First-response tracking:** check the `responded` field. If `false`, fire the event now — before the patch call below, so its summary regen reflects it:
-   ```
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts event .hermit responded --id=PROP-NNN --action=defer
-   ```
-   Skip if already `true`.
-3. Ask: "Any note on why it's deferred or when to revisit?" (optional — operator can skip)
-4. Patch:
+2. Ask: "Any note on why it's deferred or when to revisit?" (optional — operator can skip)
+3. Patch:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> \
-       --set status=deferred --set deferred_date=@now [--set responded=true] --stdin <<'HERMIT_PATCH'
+       --respond defer --set status=deferred --set deferred_date=@now --stdin <<'HERMIT_PATCH'
    Decision: Deferred on @now. Reason: [operator's note]
    HERMIT_PATCH
    ```
    Do NOT set `resolved_date`: deferral is not a terminal state. Omit the `Decision:` line entirely if no note was given. `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
-5. Respond: "PROP-NNN deferred." On a channel-tagged turn (Step 0), use plain voice instead: "Held Suggestion #N for later."
+4. Respond: "PROP-NNN deferred." On a channel-tagged turn (Step 0), use plain voice instead: "Held Suggestion #N for later."
 
 Deferred proposals still appear in `/proposal-list` but are sorted below open proposals.
 
 ## Dismiss Flow
 
 1. Resolve the proposal file using the resolution algorithm above, then read it.
-2. **First-response tracking:** check the `responded` field. If `false`, fire the event now — before the patch call below, so its summary regen reflects it:
-   ```
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts event .hermit responded --id=PROP-NNN --action=dismiss
-   ```
-   Skip if already `true`.
-3. Ask: "Reason for dismissal?" (optional — operator can skip)
-4. Patch:
+2. Ask: "Reason for dismissal?" (optional — operator can skip)
+3. Patch:
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> \
-       --set status=dismissed --set dismissed_date=@now --set resolved_date=@now [--set responded=true] --stdin <<'HERMIT_PATCH'
+       --respond dismiss --set status=dismissed --set dismissed_date=@now --set resolved_date=@now --stdin <<'HERMIT_PATCH'
    Decision: Dismissed on @now. Reason: [operator's reason]
    HERMIT_PATCH
    ```
    Omit the `Decision:` line entirely if no reason was given. `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
-4b. **Dismissal learning** — only when a reason was provided in step 3. Judge whether the reason states a durable preference, rule, or taste that applies to a *family* of future proposals (e.g. "don't propose process changes for things I do twice a year", "stop suggesting test-coverage proposals on docs-only changes") versus a one-off or proposal-specific response ("not now", "already did this manually", "the analysis is wrong", "duplicate of last week"). If generalizable, save it through the normal auto-memory flow as a `feedback` entry: the rule, a brief `Why:`, and `How to apply:` so proposal-triage and reflection-judge can match it in their memory cross-check. One-off or sub-threshold: save nothing.
-5. Respond: "PROP-NNN dismissed." If step 4b saved a preference, add: "Remembered that as a standing preference (future similar proposals may be filtered)." On a channel-tagged turn (Step 0), use plain voice instead: "Dropped Suggestion #N." (same preference-remembered addendum, in plain voice, if step 4b saved one).
+3b. **Dismissal learning** — only when a reason was provided in step 2. Judge whether the reason states a durable preference, rule, or taste that applies to a *family* of future proposals (e.g. "don't propose process changes for things I do twice a year", "stop suggesting test-coverage proposals on docs-only changes") versus a one-off or proposal-specific response ("not now", "already did this manually", "the analysis is wrong", "duplicate of last week"). If generalizable, save it through the normal auto-memory flow as a `feedback` entry: the rule, a brief `Why:`, and `How to apply:` so proposal-triage and reflection-judge can match it in their memory cross-check. One-off or sub-threshold: save nothing.
+4. Respond: "PROP-NNN dismissed." If step 3b saved a preference, add: "Remembered that as a standing preference (future similar proposals may be filtered)." On a channel-tagged turn (Step 0), use plain voice instead: "Dropped Suggestion #N." (same preference-remembered addendum, in plain voice, if step 3b saved one).
 
 Dismissed proposals are hidden from the default `/proposal-list` view. Use "show all" with `/proposal-list` to see them.
 
@@ -187,8 +174,6 @@ Used when reflect has surfaced a sparse-cadence proposal as a resolution candida
    When reflect's auto-resolve flow triggered this (pattern absent from recent sessions), the caller may append "Pattern confirmed absent." to the Decision line.
 
    A proposal still `proposed` was never accepted, so the verb records that accept first (`accepted_date`, plus the first-response `accept` event when `responded` is false). Any other status gets only the `resolved` event.
-
-   The verb writes `state/compact-requested.json` (`{"requested_at": <now>, "reason": "proposal-resolve"}`, singleton, overwritten unconditionally). A resolved proposal's implementation is fully committed, so this is a safe moment for the watchdog's routine-hygiene compactor (`maybeContextCompact`) to waive its interval cooldown on the next tick. Both the dispatched-path post-return handling and the in-main path (f) route through this Resolve Flow, so one call here covers both; batched overwrites of the same singleton coalesce into a single compaction (existing operator-silence and execution-boundary guards).
 
    `{"id":…}` confirms; `{"error":…}` means nothing was patched; report it and stop.
 3. Respond: "PROP-NNN resolved."
