@@ -4,23 +4,28 @@ import path from 'node:path';
 import type { ServerWebSocket, Socket } from 'bun';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, humanGeneration, persistentChromeAlive } from './lib/browser-lease';
+import { isContainer } from './lib/container';
+import { browserViewerPaths } from './lib/browser-runtime';
 import { readSettledConfig } from './lib/config-read';
 
 interface ViewerSocket { generation: number; login: string; bridge?: Socket; closed: boolean }
 interface ViewerOptions {
   dir?: string; port?: number; hostname?: string; novncRoot?: string; vncSocket?: string;
   chromeAlive?: () => boolean;
+  container?: () => boolean;
 }
 
 export function startBrowserViewer(options: ViewerOptions = {}) {
   const dir = options.dir ?? hermitDir();
-  const chromeAlive = options.chromeAlive ?? persistentChromeAlive;
+  const bind = process.env.HERMIT_BROWSER_VIEWER_BIND;
+  if (!(options.container ?? isContainer)() && !bind) throw new Error('browser_viewer_bind_required');
+  const chromeAlive = options.chromeAlive ?? (() => persistentChromeAlive(dir));
   const novncRoot = options.novncRoot ?? '/opt/novnc';
   const clients = new Set<ServerWebSocket<ViewerSocket>>();
   const lease = (action: Parameters<typeof browserLease>[0], task?: string, extra = {}) =>
     browserLease(action, task, dir, Date.now(), { chromeAlive, ...extra });
   lease('restart');
-  const admins = (): string[] => readSettledConfig(dir).docker.browser_admins.map((admin: { login: string } | null) => admin?.login);
+  const admins = (): string[] => readSettledConfig(dir).browser.admins.map((admin: { login: string } | null) => admin?.login);
   const isAdmin = (login: string | null): login is string => !!login && admins().includes(login);
   const closeStale = () => {
     const current = lease('inspect');
@@ -28,12 +33,14 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
     return current;
   };
   const server = Bun.serve<ViewerSocket>({
-    port: options.port ?? 6080, hostname: options.hostname ?? '0.0.0.0',
+    port: options.port ?? (bind ? Number(bind.split(':')[1]) : 6080), hostname: options.hostname ?? bind?.split(':')[0] ?? '0.0.0.0',
     async fetch(req, server) {
       const login = req.headers.get('Tailscale-User-Login');
       const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
       const reply = (body: unknown, status = 200) => Response.json(body, { status, headers });
       if (!isAdmin(login)) return reply({ error: 'browser_identity_refused' }, 403);
+      const browser = readSettledConfig(dir).browser;
+      if (!browser.host || req.headers.get('host') !== `${browser.host}:${browser.port}`) return reply({ error: 'browser_host_refused' }, 403);
       const url = new URL(req.url);
       const upgrade = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
       if (req.method === 'POST' || upgrade) {
@@ -126,7 +133,7 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
 
 if (import.meta.main) {
   const bind = process.env.HERMIT_BROWSER_VIEWER_BIND;
-  const viewer = startBrowserViewer(bind ? { hostname: bind.split(':')[0], port: Number(bind.split(':')[1]) } : {});
+  const viewer = startBrowserViewer({ ...browserViewerPaths(), ...(bind ? { hostname: bind.split(':')[0], port: Number(bind.split(':')[1]) } : {}) });
   const stop = () => { viewer.stop(); process.exit(0); };
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);

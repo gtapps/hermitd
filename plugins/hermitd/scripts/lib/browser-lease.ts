@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { hermitDir } from './cc-compat';
+import { browserDeployment, browserProfile } from './browser-runtime';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
 import { mutateTask, readTasks } from './tasks';
@@ -40,12 +41,14 @@ export function browserEventCursor(dir: string): number {
 }
 
 /** Chrome for Testing's managed persistent profile, never a named headless session. */
-export function persistentChromeAlive(): boolean {
+export function persistentChromeAlive(dir = hermitDir()): boolean {
+  if (browserDeployment(dir) === 'docker_host') return true;
+  const profile = browserProfile(dir);
   return fs.readdirSync('/proc').some(pid => {
     if (!/^\d+$/.test(pid)) return false;
     try {
       const args = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0');
-      return args.some(arg => arg === '--user-data-dir=/home/claude/.claude/browser/profile')
+      return args.some(arg => arg === `--user-data-dir=${profile}`)
         && !args.some(arg => arg.startsWith('--type='));
     } catch { return false; }
   });
@@ -81,7 +84,7 @@ export function humanGeneration(dir: string): number | null {
 }
 
 /** The folder shares the lease; the lock covers only the short transaction. */
-type LeaseAction = 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
+type LeaseAction = 'teardown' | 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
   login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
 }
@@ -107,11 +110,17 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       if (lease.holder) lease.expires_at = now + BROWSER_IDLE_MS;
       save();
     };
-    if (lease.human && action !== 'human-release' && !(options.chromeAlive ?? persistentChromeAlive)()) {
+    if (lease.human && action !== 'human-release' && !(options.chromeAlive ?? (() => persistentChromeAlive(dir)))()) {
       clearHuman('browser_lost');
       recovery = true;
     } else if (lease.human && lease.human.disconnected_at !== null && now - lease.human.disconnected_at >= HUMAN_IDLE_MS) {
       clearHuman('expired');
+    }
+    if (action === 'teardown') {
+      lease.holder = task ?? null;
+      lease.expires_at = task ? now + BROWSER_IDLE_MS : 0;
+      save();
+      return { status: task ? 'claimed' : 'released', holder: lease.holder };
     }
     const claimExpired = action !== 'inspect' && !lease.human && !!lease.holder && lease.expires_at <= now;
     if (claimExpired) {

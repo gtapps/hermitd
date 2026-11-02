@@ -61,11 +61,11 @@ The wizard scans your project for dependencies, asks about auth, and generates f
 | `docker-compose.hermit.yml`   | Named volume, bind mounts, env vars, healthcheck, restart policy, kernel-enforced hardening (`no-new-privileges`, `cap_drop: ALL`, `pids_limit`) |
 | `.env`                        | Auth token (appended if file already exists)           |
 
-New Docker setups include the managed browser unless `docker.browser` is false. Existing deployments get no browser additions until an explicit `/docker-setup` rerun. The image grows by about 1.4 GB. The browser profile uses the existing `claude-config` named volume, keeping it on a Linux filesystem on Linux, WSL2 and macOS hosts. Full parallel use needs 4 GiB; see [Browser Tasks](how-to-use.md#browser-tasks).
+New and existing Docker hermits get the managed browser by default through hatch or upgrade, unless `browser.enabled` is false or the operator’s Dockerfile already installs `agent-browser`. The image grows by about 1.4 GB. The browser profile uses the existing `claude-config` named volume, keeping it on a Linux filesystem on Linux, WSL2 and macOS hosts. Full parallel use needs 4 GiB; see [Browser Tasks](how-to-use.md#browser-tasks).
 
 ### Customizing the container
 
-Set `docker.browser` to false before rerunning `/docker-setup` to opt out. Changing config alone does not rebuild the image. The managed display starts only when the image carries `/etc/hermit/managed-browser`; an existing custom agent-browser install is not adopted.
+Turn `browser.enabled` off through `/hermitd:hermit-settings` and run `hermitd update` to remove the browser through the normal Dockerfile merge. Changing config alone does not rebuild the image. The managed display starts only when the image carries `/etc/hermit/managed-browser`; an existing custom agent-browser install is not adopted.
 
 
 | Need | Where it lives | How it takes effect | Upgrade guarantee |
@@ -320,3 +320,10 @@ See [How do I move my hermit to another machine?](faq.md#how-do-i-move-my-hermit
 3. **Rebuild the image on the destination:** run `/hermitd:docker-setup` (or bring up the existing compose file if the host environment is identical)
 
 The named volume is the main Docker-specific gotcha — it holds OAuth credentials and Claude Code's internal config. There's no way to transfer it cleanly across hosts. Plan to re-authenticate on the destination.
+
+
+### Browser on tmux hosts
+
+The managed browser defaults on here too. Hatch starts its download in the background; existing hermits download on first use. Run `hermitd run browser-host` in the terminal for missing packages, libraries or the AppArmor sandbox prerequisite. On Linux/WSL2 always-on tmux hermits, boot starts a separate `browser-<resident>` tmux session with Xvnc and openbox once packages exist. Each hermit owns its display, socket and project-local profile; a watchdog restart leaves takeover running. Shutdown closes without installing anything and preserves queued waits for the next boot.
+
+Interactive hosts have anonymous public browsing but no takeover display. macOS uses Claude in Chrome for signed-in work. See [host setup](../skills/browser/host-setup.md).

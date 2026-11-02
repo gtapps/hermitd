@@ -19,6 +19,13 @@
   "auto_session": true,
   "always_on": false,
   "chrome": false,
+  "browser": {
+    "enabled": true,
+    "default": "agent-browser",
+    "admins": [],
+    "port": null,
+    "host": null
+  },
   "push_notifications": true,
   "ask_gate": true,
   "routine_max_lateness_minutes": 60,

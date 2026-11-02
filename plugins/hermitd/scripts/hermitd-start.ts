@@ -11,6 +11,7 @@
  */
 
 import fs from 'node:fs';
+import { maybeStartBrowserDisplay } from './browser-display';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -1820,6 +1821,7 @@ async function main(): Promise<void> {
     execvp(cmd);
   }
 
+  maybeStartBrowserDisplay(runtimeMode);
   maybeInstallWatchdogScheduler(
     runtimeMode,
     config.watchdog?.scheduler_enabled,

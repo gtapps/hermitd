@@ -10,7 +10,7 @@ afterAll(cleanup);
 
 function fixture() {
   const dir = freshDir();
-  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ docker: { browser_admins: [{ login: 'admin' }, { login: 'other' }] } }));
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { admins: [{ login: 'admin' }, { login: 'other' }] } }));
   const novncRoot = path.join(dir, 'novnc');
   fs.mkdirSync(path.join(novncRoot, 'core'), { recursive: true });
   fs.mkdirSync(path.join(novncRoot, 'vendor'), { recursive: true });
@@ -21,8 +21,11 @@ function fixture() {
   const vncSocket = path.join(dir, 'vnc.sock');
   const vnc = Bun.listen({ unix: vncSocket, socket: { data(socket, data) { socket.write(data); } } });
   let alive = true;
-  const viewer = startBrowserViewer({ dir, port: 0, hostname: '127.0.0.1', novncRoot, vncSocket, chromeAlive: () => alive });
+  const viewer = startBrowserViewer({ dir, port: 0, hostname: '127.0.0.1', novncRoot, vncSocket, chromeAlive: () => alive, container: () => true });
   const base = viewer.server.url.origin;
+  const config = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
+  config.browser.host = '127.0.0.1'; config.browser.port = viewer.server.port;
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
   const headers = { 'Tailscale-User-Login': 'admin', Origin: base };
   const request = (route: string, init: RequestInit = {}) => fetch(base + route, { ...init, headers: { ...headers, ...init.headers } });
   return { dir, base, headers, request, viewer, vnc, vncSocket, novncRoot, loseBrowser() { alive = false; }, stop() { viewer.stop(); vnc.stop(true); } };
@@ -89,7 +92,7 @@ test('removing an admin closes their open socket', async () => {
     const take: any = await (await f.request('/takeover', { method: 'POST' })).json();
     const ws = openSocket(f, take.epoch); await opened(ws);
     const done = closed(ws);
-    fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify({ docker: { browser_admins: [{ login: 'other' }] } }));
+    fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify({ browser: { admins: [{ login: 'other' }] } }));
     await done;
   } finally { f.stop(); }
 });
@@ -158,8 +161,11 @@ test('Hand back after a viewer restart preserves the display and records one dur
     const done = closed(ws);
     // Restart only the viewer, keeping the fake display and its Unix listener alive.
     f.viewer.stop(); await done;
-    restarted = startBrowserViewer({ dir: f.dir, port: 0, hostname: '127.0.0.1', novncRoot: f.novncRoot, vncSocket: f.vncSocket, chromeAlive: () => true });
+    restarted = startBrowserViewer({ dir: f.dir, port: 0, hostname: '127.0.0.1', novncRoot: f.novncRoot, vncSocket: f.vncSocket, chromeAlive: () => true, container: () => true });
     const base = restarted.server.url.origin;
+    const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
+    config.browser.port = restarted.server.port;
+    fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify(config));
     const response = await fetch(`${base}/hand-back?generation=${take.epoch}`, { method: 'POST', headers: { ...f.headers, Origin: base } });
     expect(response.status).toBe(200);
     const state = browserLease('inspect', undefined, f.dir);
@@ -168,4 +174,23 @@ test('Hand back after a viewer restart preserves the display and records one dur
     expect(f.vnc.unix).toBe(f.vncSocket);
     expect(fs.existsSync(f.vncSocket)).toBe(true);
   } finally { restarted?.stop(); f.stop(); }
+});
+
+
+test('Host check follows identity refusal and protects HTTP and websocket requests', async () => {
+  const f = fixture(); try {
+    const noIdentity = await fetch(f.base, { headers: { Host: 'wrong.example:123' } });
+    expect(await noIdentity.json()).toEqual({ error: 'browser_identity_refused' });
+    for (const headers of [{ Host: 'wrong.example:123' }, { Host: 'wrong.example:123', Upgrade: 'websocket' }] as Record<string, string>[]) {
+      expect((await f.request('/status', { headers })).status).toBe(403);
+    }
+    fs.writeFileSync(path.join(f.dir, 'config.json'), '{"browser":{"admins":[{"login":"admin"}],"host":null}}');
+    expect((await f.request('/')).status).toBe(403);
+  } finally { f.stop(); }
+});
+test.serial('host viewer refuses implicit binding', () => {
+  const saved = process.env.HERMIT_BROWSER_VIEWER_BIND;
+  delete process.env.HERMIT_BROWSER_VIEWER_BIND;
+  try { expect(() => startBrowserViewer({ dir: freshDir(), container: () => false, chromeAlive: () => false })).toThrow('browser_viewer_bind_required'); }
+  finally { if (saved === undefined) delete process.env.HERMIT_BROWSER_VIEWER_BIND; else process.env.HERMIT_BROWSER_VIEWER_BIND = saved; }
 });

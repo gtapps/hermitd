@@ -11,6 +11,7 @@
  */
 
 import fs from 'node:fs';
+import { stopBrowserDisplay } from './browser-display';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { gracefulShutdown } from './lib/shutdown';
@@ -114,6 +115,7 @@ async function main(): Promise<void> {
       return;
     }
 
+    stopBrowserDisplay();
     console.log(`[hermit] No running session: ${sessionName}`);
     config.always_on = false;
     saveConfig(config, raw);
@@ -128,6 +130,7 @@ async function main(): Promise<void> {
   }
 
   if (force) {
+    stopBrowserDisplay();
     console.log(`[hermit] Force-killing session: ${sessionName}`);
     config.always_on = false;
     saveConfig(config, raw);
@@ -185,6 +188,8 @@ async function main(): Promise<void> {
   // Reset always_on flag
   config.always_on = false;
   saveConfig(config, raw);
+
+  stopBrowserDisplay();
 
   // Kill tmux session
   if (tmuxSessionAlive(sessionName)) {

@@ -17,9 +17,9 @@
 
 ## Managed browser
 
-New Docker setups include a browser unless `docker.browser` is false. Full parallel use needs 4 GiB; the resource wizard defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory shared by all containers, so an 8 GiB host needs that limit raised in Docker Desktop's Resources settings or `.wslconfig`.
+New and existing Docker hermits include a browser through hatch or upgrade unless `browser.enabled` is false or the Dockerfile already installs `agent-browser`. Decline through `/hermitd:hermit-settings`, then run `hermitd update` to remove it. Full parallel use needs 4 GiB; the resource wizard defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory shared by all containers, so an 8 GiB host needs that limit raised in Docker Desktop's Resources settings or `.wslconfig`.
 
-DNS enforce mode limits browser name lookups to the allowlist. It does not contain the browser: a page can fetch a public IP directly, the same limitation as `curl`. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. This adds no vault or network filter. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
+DNS enforce mode limits browser name lookups to the allowlist. It does not contain the browser: a page can fetch a public IP directly, the same limitation as `curl`. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. Metadata URL refusal is a guard, not containment. This adds no vault or network filter. Host Chrome separately keeps its own sandbox; avoid shared hosts because local users can reach debugging ports and forge loopback viewer headers. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
 
 ## What each toggle does
 

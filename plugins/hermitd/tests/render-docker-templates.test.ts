@@ -226,11 +226,12 @@ describe('render-docker-templates.ts', () => {
     const configPath = path.join(dir, 'config.json');
     fs.writeFileSync(configPath, JSON.stringify({
       channels: { discord: { enabled: true } },
+      browser: { enabled: input.browser },
       docker: {
         packages: input.packages,
         network_mode: input.networkMode,
         fleet_mesh: input.fleetMesh,
-        browser: input.browser,
+
       },
     }));
 
@@ -370,15 +371,15 @@ test('official-only channel plugins need no managed approval drop-in', async () 
   expect(dockerfile(dir)).not.toContain('hermitd-channels.json');
 });
 
-test('browser derives false when absent and rejects non-booleans', async () => {
+test('browser derives true when absent and rejects non-booleans', async () => {
   const dir = freshDir();
   await render(dir);
   const configPath = path.join(dir, 'config.json');
   for (const value of [undefined, false, true, null, 'true', 1]) {
-    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: value } }));
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: value }, docker: { packages: [] } }));
     const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
     if (value === undefined || typeof value === 'boolean') {
-      expect(derived?.browser).toBe(value ?? false);
+      expect(derived?.browser).toBe(value ?? true);
     } else {
       expect(derived).toBeNull();
     }
@@ -436,13 +437,24 @@ test('viewer port has one bridge publish site, survives derivation, and binds di
     expect(source.includes('127.0.0.1:6090:6080')).toBe(networkMode === 'bridge');
     expect(source.includes('HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:6090')).toBe(networkMode === 'host');
     const configPath = path.join(dir, 'config.json');
-    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: true, browser_port: 6090, network_mode: networkMode } }));
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true, port: 6090 }, docker: { packages: [], network_mode: networkMode } }));
     expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBe(6090);
-    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: true, browser_port: 6090, security: { network: { enabled: true } } } }));
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true, port: 6090 }, docker: { packages: [], security: { network: { enabled: true } } } }));
     expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBeUndefined();
     await render(dir, { browser: true });
     expect(compose(dir)).not.toContain('ports:');
     expect(dockerfile(dir)).toContain('novnc-1.7.0.tgz');
     expect(dockerfile(dir)).toContain('32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903');
   }
+});
+
+test('operator-installed agent-browser defaults off and an explicit browser choice wins', async () => {
+  const dir = freshDir(); await render(dir);
+  const file = path.join(dir, 'Dockerfile.hermit');
+  fs.appendFileSync(file, '\nRUN npm install -g agent-browser\n');
+  const configPath = path.join(dir, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [] } }));
+  expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(false);
+  fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true }, docker: { packages: [] } }));
+  expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(true);
 });
