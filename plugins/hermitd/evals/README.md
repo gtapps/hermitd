@@ -73,7 +73,8 @@ Claude Code 2.1.316, `--model sonnet`, low effort (`effort: medium` on `skill-ev
 - Before, both failures were `run-contradicted-lesson`: the runner changed into the plugin root and read an empty `.hermit`.
 - After, the failure was `run-stale-context`: its regex matched a correct brief correcting an earlier claim. The regex now skips such a line.
 - `run-contradicted-lesson-long` and `run-evening-pt` passed 3 of 3 in a later run of those two cases alone, the second after widening one regex and re-grading the saved briefs. An LLM grader failed correct Portuguese briefs on haiku, so both use regexes.
-- The full suite ran before the `result_truncated` summary rule in `reference.md` and the new regexes, so those were measured only on the two new cases.
+- The Sonnet full suite ran before the review fixes, the `result_truncated` summary rule in `reference.md` and the new regexes.
+- Opus on the final tree, same effort and `--runs 3`, `--tag brief-run`: 21 of 21 runs and 7 of 7 cases, $7.59. All 18 scheduled runs dispatched the runner, and `run-default-no-session` composed in main by design. `run-morning-context` is not in that tag.
 
 ## proposal-triage
 
