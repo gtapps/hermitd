@@ -4,19 +4,44 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hermit browser</title>
 <style>
-  body { margin: 0; font: 16px system-ui; background: #101820; color: #fff; }
-  header { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; align-items: center; }
-  button { font: inherit; padding: 10px; } #screen { height: calc(100dvh - 110px); }
-  #status { padding: 0 10px; } #keyboard { position: fixed; left: -10000px; }
+  html, body { position: fixed; inset: 0; margin: 0; overflow: hidden; font: 16px system-ui; background: #101820; color: #fff; }
+  #app { position: fixed; top: 0; left: 0; right: 0; height: 100%; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; align-items: center; }
+  button { font: inherit; padding: 8px 10px; }
+  #status { flex-basis: 100%; margin: 0; font-size: 13px; } .typing #status { display: none; }
+  #view { flex: 1; min-height: 0; overflow: hidden; } #screen { margin: 0 auto; touch-action: none; }
+  /* 16px stops iOS zooming on focus; inside the pinned frame it never scrolls the page. */
+  #keyboard { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; }
 </style>
-<header><button id="take">Take over</button><button id="back" disabled>Hand back</button><button id="type" disabled>Keyboard</button></header>
-<p id="status">Take over to sign in. Hand back when finished.</p>
-<div id="screen"></div><textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
+<div id="app">
+<header><button id="take">Take over</button><button id="back" disabled>Hand back</button><button id="type" disabled>Keyboard</button><p id="status">Take over to sign in. Hand back when finished.</p></header>
+<div id="view"><div id="screen"></div></div><textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
+</div>
 <script type="module">
 import RFB from './core/rfb.js';
 const take = document.querySelector('#take'), back = document.querySelector('#back'), type = document.querySelector('#type');
 const status = document.querySelector('#status'), keyboard = document.querySelector('#keyboard');
-let rfb, generation;
+const app = document.querySelector('#app'), view = document.querySelector('#view'), screen = document.querySelector('#screen');
+const DISPLAY = { width: 500, height: 1082 }, viewport = window.visualViewport;
+let rfb, generation, tapY = 0, fullHeight = 0;
+// The frame follows the visible area, so an open keyboard shrinks it and the tapped field stays in view.
+function fit() {
+  app.style.top = viewport.offsetTop + 'px';
+  app.style.height = viewport.height + 'px';
+  window.scrollTo(0, 0);
+  fullHeight = Math.max(fullHeight, viewport.height);
+  const typing = viewport.height < fullHeight * 0.8;
+  app.classList.toggle('typing', typing);
+  if (typing) { view.scrollTop = Math.max(0, tapY - view.clientHeight / 3); return; }
+  view.scrollTop = 0;
+  const scale = Math.min(view.clientWidth / DISPLAY.width, view.clientHeight / DISPLAY.height);
+  screen.style.width = DISPLAY.width * scale + 'px';
+  screen.style.height = DISPLAY.height * scale + 'px';
+}
+viewport.addEventListener('resize', fit);
+viewport.addEventListener('scroll', fit);
+fit();
+view.addEventListener('pointerdown', event => { tapY = event.clientY - view.getBoundingClientRect().top + view.scrollTop; }, true);
 const task = new URL(location.href).searchParams.get('task');
 async function post(path, values) {
   const response = await fetch(path + '?' + new URLSearchParams(values), { method: 'POST', cache: 'no-store' });
@@ -29,8 +54,8 @@ take.onclick = async () => {
     rfb?.disconnect();
     const result = await post('/takeover', task ? { task } : {});
     generation = result.human.generation;
-    const session = rfb = new RFB(document.querySelector('#screen'), `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
-    session.scaleViewport = true; session.resizeSession = false;
+    const session = rfb = new RFB(screen, `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
+    session.scaleViewport = true; session.resizeSession = false; session.focusOnClick = false;
     session.addEventListener('connect', () => { back.disabled = type.disabled = false; status.textContent = 'You have control. Sign in, then Hand back.'; });
     session.addEventListener('disconnect', event => { if (session !== rfb) return; back.disabled = type.disabled = true; status.textContent = event.detail.clean ? 'Disconnected. Take over to reconnect.' : 'Browser connection failed. Take over to retry.'; });
   } catch (error) { status.textContent = error.message; }

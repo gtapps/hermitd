@@ -20,8 +20,8 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
   const lease = (action: Parameters<typeof browserLease>[0], task?: string, extra = {}) =>
     browserLease(action, task, dir, Date.now(), { chromeAlive, ...extra });
   lease('restart');
-  const isAdmin = (login: string | null): login is string => !!login
-    && readSettledConfig(dir).docker.browser_admins.some((admin: { login: string } | null) => admin?.login === login);
+  const admins = (): string[] => readSettledConfig(dir).docker.browser_admins.map((admin: { login: string } | null) => admin?.login);
+  const isAdmin = (login: string | null): login is string => !!login && admins().includes(login);
   const closeStale = () => {
     const current = lease('inspect');
     for (const ws of clients) if (current.human?.generation !== ws.data.generation || !isAdmin(ws.data.login)) ws.close(1000, 'Control changed');
@@ -53,11 +53,11 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
         const task = url.searchParams.get('task') ?? undefined;
         if (!chromeAlive()) {
           // The refused attempt records the loss, so a task waiting on this link still wakes.
-          if (task) lease('takeover', task, { login });
+          if (task) lease('takeover', task, { login, admins: admins() });
           closeStale();
           return reply({ status: 'recovery', error: 'browser_lost' }, 409);
         }
-        const result = lease('takeover', task, { login });
+        const result = lease('takeover', task, { login, admins: admins() });
         // A lost HTTP response must also start the no-viewer expiry clock.
         lease('disconnect', undefined, { generation: result.epoch });
         closeStale();

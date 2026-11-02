@@ -113,7 +113,7 @@ test('concurrent claimers grant a single holder', async () => {
 
 test('human generations, disconnect expiry, forced release and browser loss preserve the claim', () => {
   const dir = freshDir();
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   browserLease('claim', 'holder', dir, 0);
   const first = browserLease('takeover', undefined, dir, 10, opts);
   expect(browserLease('renew', 'holder', dir, BROWSER_IDLE_MS, opts).status).toBe('human');
@@ -139,7 +139,7 @@ test('restart records a dropped viewer and hand back records the exact task wait
   const dir = freshDir();
   const { id } = openTask(dir, 'Login');
   blockOn(dir, id, 'admin');
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   const taken = browserLease('takeover', id, dir, 100, opts);
   expect(taken.human!.task).toBe(id);
   expect(taken.human!.waiting_since).toBe(readTasks(dir)[0].waiting_since);
@@ -156,7 +156,7 @@ test('a replaced takeover keeps its wait or releases it for a different task', (
   const second = openTask(dir, 'Second login');
   blockOn(dir, first.id, 'admin');
   blockOn(dir, second.id, 'admin');
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   browserLease('takeover', first.id, dir, 100, opts);
   const bare = browserLease('takeover', undefined, dir, 200, opts);
   expect(bare.human!.task).toBe(first.id);
@@ -170,7 +170,7 @@ test('a replaced takeover keeps its wait or releases it for a different task', (
 test('a claim during human control queues, and its wait clears after control returns', () => {
   const dir = freshDir();
   const { id } = openTask(dir, 'Signed-in work');
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   const taken = browserLease('takeover', undefined, dir, 100, opts);
   expect(browserLease('claim', id, dir, 200, opts).status).toBe('human');
   blockOn(dir, id, 'admin');
@@ -183,7 +183,7 @@ test('a claim during human control queues, and its wait clears after control ret
 test('the human-release verb frees control for the shutdown close', async () => {
   const { PLUGIN_ROOT } = await import('./helpers/run');
   const dir = freshDir();
-  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin', chromeAlive: () => true });
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin', admins: ['admin'], chromeAlive: () => true });
   const child = Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/browser.ts'), 'human-release'], { env: { ...process.env, AGENT_DIR: dir }, stdout: 'pipe' });
   expect(JSON.parse(await new Response(child.stdout).text()).status).toBe('released');
   expect(browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => true }).pending![0].reason).toBe('released');
@@ -192,7 +192,7 @@ test('the human-release verb frees control for the shutdown close', async () => 
 test('event delivery advances after print, skips replayed ids across restarts and prunes on the next transaction', async () => {
   const { deliverBrowserEvents } = await import('../scripts/browser');
   const dir = freshDir();
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   for (let i = 0; i < 2; i++) {
     browserLease('takeover', undefined, dir, Date.now(), opts);
     browserLease('human-release', undefined, dir);
@@ -254,7 +254,7 @@ test('viewer expiry never writes tasks and a link still names the waiting task a
   blockOn(dir, task.id, 'admin');
   const file = path.join(dir, 'tasks', task.id + '.md');
   const before = fs.readFileSync(file, 'utf8');
-  const opts = { login: 'admin', chromeAlive: () => true };
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
   const takeover = browserLease('takeover', task.id, dir, BROWSER_IDLE_MS + 1, opts);
   expect(browserLease('inspect', undefined, dir, BROWSER_IDLE_MS + 2, opts).holder).toBeNull();
   expect(takeover.human!.task).toBe(task.id);

@@ -83,7 +83,7 @@ export function humanGeneration(dir: string): number | null {
 /** The folder shares the lease; the lock covers only the short transaction. */
 type LeaseAction = 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
-  login?: string; generation?: number; chromeAlive?: () => boolean;
+  login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
 }
 interface LeaseResult extends Partial<BrowserLease> { status: string }
 export function browserLease(action: LeaseAction, task?: string, dir = hermitDir(), now = Date.now(), options: LeaseOptions = {}): LeaseResult {
@@ -123,7 +123,10 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     }
     if (action === 'takeover') {
       if (!options.login) throw new Error('login_required');
-      const waiting = task && readTasks(dir).find(record => record.id === task && record.status === 'open' && record.waiting_since && record.waiting_on);
+      // Only a sign-in wait counts: a confirmation wait on the same task must survive, and a stale
+      // link falls through to the task holding the browser.
+      const open = readTasks(dir).filter(record => record.status === 'open' && record.waiting_since && options.admins?.includes(record.waiting_on!));
+      const waiting = open.find(record => record.id === task) ?? open.find(record => record.id === lease.holder);
       // The replaced wait still needs its wake: inherit it, or release it for a different task.
       if (waiting && lease.human?.task && lease.human.task !== waiting.id) clearHuman('released');
       lease.epoch++;

@@ -94,6 +94,24 @@ test('removing an admin closes their open socket', async () => {
   } finally { f.stop(); }
 });
 
+test('only a sign-in wait is woken, and a stale link falls through to the holder', async () => {
+  const f = fixture(); try {
+    const open = (title: string, waitingOn: string) => {
+      const { id } = mutateTask(f.dir, 'open', undefined, { title, requester: 'discord:user', done: 'signed in' }, '') as { id: string };
+      mutateTask(f.dir, 'block', id, { 'waiting-on': waitingOn, 'status-line': 'Login', next: 'Hand back' }, '');
+      return readTasks(f.dir).find(record => record.id === id)!;
+    };
+    const confirm = open('confirmation', 'operator');
+    expect(((await (await f.request(`/takeover?task=${confirm.id}`, { method: 'POST' })).json()) as any).human.task).toBeNull();
+    const signIn = open('sign-in', 'admin');
+    browserLease('hand-back', undefined, f.dir, Date.now(), { generation: 1 });
+    browserLease('claim', signIn.id, f.dir);
+    const take: any = await (await f.request(`/takeover?task=${confirm.id}`, { method: 'POST' })).json();
+    expect(take.human).toMatchObject({ task: signIn.id, waiting_since: signIn.waiting_since });
+    expect(readTasks(f.dir).find(record => record.id === confirm.id)!.waiting_since).toBe(confirm.waiting_since);
+  } finally { f.stop(); }
+});
+
 test('dropped socket keeps the lease, browser loss reports recovery', async () => {
   const f = fixture(); try {
     const take: any = await (await f.request('/takeover?task=missing', { method: 'POST' })).json();
