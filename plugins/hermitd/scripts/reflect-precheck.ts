@@ -341,7 +341,7 @@ try {
 // Only precheck-written rows (startup-drift, cost-spike) self-trigger, because they are
 // written above, before this gate runs — each at most once per pattern, so a standing
 // drift or a spike day forces exactly one RUN, not one per tick. Rows written *during* a
-// run (reflect-noticed, quick-deferral, skill-correction, behavior-digest) have
+// run (reflect-noticed, quick-deferral, behavior-digest) have
 // ts ≤ last_run_at on the next tick and do NOT self-trigger — they surface opportunistically.
 // skill-preference-applied rows are written mid-conversation (settlement telemetry, never a
 // candidate), so they're excluded explicitly — a run they trigger would have nothing to do.

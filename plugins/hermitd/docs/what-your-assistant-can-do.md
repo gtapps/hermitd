@@ -20,6 +20,7 @@ These are the assistant's everyday habits — real, and followed consistently, b
 - Before making a significant or risky change, it shows you a draft and waits for your OK rather than just doing it (see [Approve](owners-guide.md#approve)).
 - It tracks what it spends on AI usage and can warn you or pause itself against a spending limit you set.
 - It generally stays scoped to the project it's working in, rather than roaming freely across your whole computer.
+- To make a change stick, say "from now on". A complaint on its own is remembered, but it doesn't change how a task is done.
 - Ask what it is keeping an eye on and it answers in one place: its scheduled routines, anything it is watching right now, and the standing rules you gave it. Ask it to pause or disable one by name and it uses that item's own control, telling you whether the change lasts past a restart.
 
 ---

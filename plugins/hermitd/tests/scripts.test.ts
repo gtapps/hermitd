@@ -2330,8 +2330,14 @@ describe('observations.ts observe', () => {
     expect(r.exitCode).toBe(1);
   }));
 
+  test('observations rejects the retired correction source', withDir(async (dir) => {
+    const r = await observe(hermit(dir), 'skill-correction', 'skill-correction:reflect', '--origin=own-work');
+    expect(r.exitCode).toBe(1);
+    expect(fs.existsSync(ledgerOf(dir))).toBe(false);
+  }));
+
   test('observations (invalid origin value rejected)', withDir(async (dir) => {
-    const r = await observe(hermit(dir), 'skill-correction', 'skill-correction:reflect', '--origin=elsewhere');
+    const r = await observe(hermit(dir), 'reflect-noticed', 'reflect-label', '--origin=elsewhere');
     expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_origin:elsewhere' });
     expect(fs.existsSync(ledgerOf(dir))).toBe(false);
   }));
