@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { hermitDir } from './lib/cc-compat';
-import { browserLease } from './lib/browser-lease';
+import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { failJson, printJson, readJson } from './lib/cli';
@@ -40,7 +40,7 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   } finally { releaseLock(lock); }
 }
 
-export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY): Promise<number> {
+export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY, chromeAlive = persistentChromeAlive): Promise<number> {
   const pluginRoot = process.env.HERMIT_PLUGIN_ROOT;
   if (!pluginRoot || !fs.existsSync(path.join(pluginRoot, 'scripts/browser-agent.ts'))) {
     printJson({ error: 'plugin_unavailable', detail: 'Managed browser requires the hermit plugin.' });
@@ -84,6 +84,7 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
     }
     args.push(argv[i]);
   }
+  let epoch: number | undefined;
   if (session) {
     env.AGENT_BROWSER_ARGS = '--no-sandbox';
     if (!sessionAdmission(socketDir, session)) {
@@ -92,7 +93,11 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
     }
   } else {
     // A task whose claim expired must not drive the page the next holder opened.
-    const renewed = browserLease('renew', task, dir);
+    const before = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive });
+    epoch = before.epoch;
+    if (before.human) { printJson({ error: 'human_has_control' }); return 1; }
+    const renewed = browserLease('renew', task, dir, Date.now(), { chromeAlive });
+    if (renewed.status === 'human') { printJson({ error: 'human_has_control' }); return 1; }
     if (renewed.status !== 'claimed') {
       printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
       return 1;
@@ -104,8 +109,16 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY):
     env.AGENT_BROWSER_ARGS = '--no-sandbox,--window-size=500,1082,--window-position=0,0';
   }
   try {
-    const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' });
-    return await child.exited;
+    const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: session ? 'inherit' : 'pipe', stderr: session ? 'inherit' : 'pipe' });
+    if (session) return await child.exited;
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
+    ]);
+    const after = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive });
+    if (after.epoch !== epoch || after.human) { printJson({ error: 'human_has_control' }); return 1; }
+    await Bun.write(Bun.stdout, stdout);
+    await Bun.write(Bun.stderr, stderr);
+    return code;
   } finally {
     // A reservation left behind ends with this pid; it must not replace the child's exit code.
     if (session) try { sessionAdmission(socketDir, session, true); } catch {}

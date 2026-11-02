@@ -30,6 +30,8 @@ hermitd stop        # graceful resident shutdown
 hermitd stop --force # immediate kill
 ```
 
+The trusted-controller `!release` chat command hands human browser control back without dropping the task claim.
+
 To pause/resume the running session without stopping it (also triggerable from a channel via the `!pause`/`!resume`/`!snooze <dur>` message commands):
 
 ```bash

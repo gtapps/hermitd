@@ -4,6 +4,25 @@ import path from 'node:path';
 import { taskFixture, taskLib } from './helpers/tasks';
 import { runScript } from './helpers/run';
 
+it('clears only the matching wait and leaves stale notes byte-identical', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open();
+    await f.ok('block', [id, '--waiting-on', 'admin', '--status-line', 'Login', '--next', 'Hand back']);
+    const before = f.text(id);
+    const lib = await taskLib();
+    const since = lib.decodeTask(before).waiting_since!;
+    const stale = await f.run('note', [id, '--clear-waiting', '--if-waiting-since', 'old'], 'Must not append');
+    expect(stale.exitCode).toBe(0);
+    expect(JSON.parse(stale.stdout)).toEqual({ status: 'refused', reason: 'stale_wait' });
+    expect(f.text(id)).toBe(before);
+    await f.ok('note', [id, '--clear-waiting', '--if-waiting-since', since], 'Handed back');
+    expect(lib.decodeTask(f.text(id)).waiting_since).toBeNull();
+    const cleared = f.text(id);
+    expect(JSON.parse((await f.run('note', [id, '--clear-waiting', '--if-waiting-since', since], 'Replay')).stdout).reason).toBe('stale_wait');
+    expect(f.text(id)).toBe(cleared);
+  } finally { f.cleanup(); }
+});
+
 it('round-trips every key including a title with double quotes and a backslash', async () => {
   const f = taskFixture(); try {
     const title = 'Review "ready" at C:\\work';

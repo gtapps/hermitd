@@ -19,7 +19,7 @@ import { REVIEW_CALLS } from './learned-skills';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
+const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -261,6 +261,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
+        if ('if-waiting-since' in flags && (!flags['clear-waiting'] || record.waiting_since !== flag(flags, 'if-waiting-since'))) throw new Error('stale_wait');
         const metadata = ['due', 'card', 'check', 'decision', 'approval', 'done', 'clear-waiting', 'owner', 'muted'].some(key => key in flags);
         if (!line && !metadata) throw new Error('empty');
         progress = !!line || 'owner' in flags;

@@ -18,6 +18,8 @@ Groups own admission independently of the DM `allowFrom` list. Other participant
 
 ## Control commands
 
+Bare `!release` uses the same trusted-controller gate as pause. It releases human browser control, keeps the task claim, and reports whether anything was held. Other senders cause no state change or response.
+
 The hermit's `isTrustedController` rule owns pause, resume, snooze, and full status authority. With `allowed_users` set, it checks the sender against that list. Without it, the rule trusts the pinned `default_chat_id`; without a matching home chat there is no trusted controller. A shared home matches every member, so use an explicit list to narrow control there. Removing a sender from a configured list removes their control authority, but removing the whole list restores the home-chat fallback. The saved list and home pin survive restart; a new inbound DM does not move the pin. This rule does not own native approval delivery. Separately, adding a listening chat through `hermit-settings channels` asks for native approval and is refused under bypass permissions. See [security limitations](security.md#known-limitations).
 
 ## Connections
@@ -27,6 +29,18 @@ Each tool uses one account for every chat and routine in the resident. Anyone ad
 Native settings own project MCP enrollment through `enabledMcpjsonServers`, `enableAllProjectMcpServers`, and `disabledMcpjsonServers`. Without approval, a project server stays pending without blocking boot. Remove approvals in every applicable native scope, including blanket approval, or explicitly disable the server to exclude it at restart. Removing enrollment does not delete its declaration or credentials. A temporary `/mcp` toggle does not remove the saved approval.
 
 Native `disableClaudeAiConnectors` owns account connector loading. When unset, a login-authenticated hermit loads account connectors; setting it to `true` disables them for the project without deleting account connections. Removing the setting restores default loading at restart. Setup-token authentication fetches no account connectors. See [MCP servers](always-on.md#mcp-servers).
+
+## Browser phone takeover
+
+Managed Docker browsers work without takeover setup for public pages. Phone sign-in is opt-in: `/hermitd:browser` collects a short `docker.browser_admins` list in chat through the native-prompt settings route, asks for one host `hermitd run browser-host` command, verifies it, and declares one `browser-handback` stream monitor. Existing hermits receive no browser additions or viewer configuration without an explicit setup rerun.
+
+The host command needs Docker server 28.0.0 or newer and Tailscale. It publishes one loopback port and uses tailnet-only Serve, never Funnel. The same command supports Linux, WSL2 and macOS CLI installations; Docker Desktop host-networking loopback reachability remains unverified and a failed route check is reported. No image rebuild is needed for takeover on an image already carrying the managed browser.
+
+Only an exact allowlisted Tailscale user login may load the viewer or its WebSocket. A tagged phone has no user identity and is refused. The page checks the request Origin against Host for Take over, Hand back and the socket upgrade. There is no watch mode: the newest Take over wins and closes older sockets. A dropped connection keeps control until Hand back, trusted-controller `!release`, browser loss, or 30 minutes without a viewer. Anonymous headless tasks can continue during human control; signed-in tasks share one claimed profile and queue.
+
+The login request stays in its original conversation and mentions the admin using the configured handle for that channel. Its `?task=<id>` link names the waiting task. Hand back leaves Chrome and its page running. A durable event wakes the resident; the task writer conditionally clears only the matching `waiting_since`, then the agent checks the expected page and account before continuing once. Forced release, expiry and browser loss wake it too, without claiming sign-in succeeded. The viewer never writes task records.
+
+This checks tailnet identity, not the agent's honesty: the agent inside the container, a host process reaching loopback, or another container reaching port 6080 on the same Docker network can forge the identity header. See [known limitations](security.md#known-limitations).
 
 ## Unattended settings writes
 

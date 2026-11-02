@@ -17,6 +17,9 @@ import { senderLabel } from '../channel-envelope';
 import { setPause, clearPause, parseSnoozeDuration } from '../pause';
 import { isTrustedController, channelBotIdentity } from '../channel-auth';
 import { resolveSlashCommand } from '../channel-slash-address';
+import fs from 'node:fs';
+import path from 'node:path';
+import { browserLease } from '../browser-lease';
 import type { StageContext, StageResult } from './types';
 
 const MAX_BY_LEN = 64;
@@ -54,11 +57,12 @@ export function run(ctx: StageContext): StageResult | void {
   // back byte-for-byte precisely so it survives).
   const snoozeMatch = /^\s+(\S+)$/.exec(addressed.rest);
 
-  let action: 'pause' | 'resume' | 'snooze' | null = null;
+  let action: 'pause' | 'resume' | 'snooze' | 'release' | null = null;
   let durationRaw: string | null = null;
   const bare = addressed.rest.length === 0;
   if (bare && (addressed.command === '/pause' || addressed.command === '/stop')) action = 'pause';
   else if (bare && addressed.command === '/resume') action = 'resume';
+  else if (bare && addressed.command === '/release') action = 'release';
   else if (addressed.command === '/snooze' && snoozeMatch) { action = 'snooze'; durationRaw = snoozeMatch[1]; }
   if (!action) return;
 
@@ -67,6 +71,14 @@ export function run(ctx: StageContext): StageResult | void {
   if (!isTrustedController(config, sourceRaw, userId, env.chatId)) return; // unauthorized — silent no-op
 
   const by = safeForLLM(senderLabel(env).slice(0, MAX_BY_LEN));
+
+  if (action === 'release') {
+    const result = fs.existsSync(path.join(dir, 'state/browser-lease.json'))
+      ? browserLease('human-release', undefined, dir) : { status: 'nothing_held' };
+    return { context: result.status === 'released'
+      ? '[browser] Human control released. Tell the operator; re-check the page before continuing.\n'
+      : '[browser] No human browser control was held. Tell the operator.\n' };
+  }
 
   if (action === 'pause') {
     setPause(dir, { reason: 'operator', by });

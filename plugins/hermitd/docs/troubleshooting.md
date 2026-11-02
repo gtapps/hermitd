@@ -223,3 +223,16 @@ Usually a UID mismatch between the host and the container user. The generated Do
 **Local/tmux:**
 - Type `/hermitd:channel-setup` in a terminal or the Claude app to verify and repair the full setup (bun, plugin, token, pairing, access.json location).
 - Check `hermitd-start` output for bun or token warnings — the channel is skipped if either is missing.
+
+
+## Browser phone sign-in
+
+- **No Take over link:** takeover is inactive until setup. Ask for `/hermitd:browser` setup in the same conversation. The agent collects Tailscale logins and each channel's admin mentions, asks for one host command, verifies it, and registers the durable `browser-handback` monitor through the native settings prompt. A missing managed browser requires an explicit `/docker-setup` rerun; existing hermits are not migrated automatically.
+- **Identity refused:** open the verified HTTPS Serve address from an allowlisted Tailscale user's phone. A direct loopback request lacks the identity header and is intentionally refused. Tagged devices, including a tagged phone, have no user login and cannot take over. Check exact `docker.browser_admins` logins through the settings route.
+- **Origin refused:** use the viewer at its own verified host and port. POSTs and WebSocket upgrades from a different origin are refused even when Serve attaches an admin login.
+- **Host setup refused:** run it outside the container, with Docker server 28.0.0 or newer and the host Tailscale CLI. A Serve permission failure prints the sudo form. Existing unrelated routes are preserved; a conflicting route is refused. A failed loopback check on Docker Desktop host networking reports the unverified combination rather than declaring setup ready.
+- **Connection dropped or another admin took over:** the most recent Take over wins. Tap Take over again to reconnect. There is no watch mode. Control is retained after disconnect, then auto-released after 30 minutes with no viewer. A trusted chat controller can send `!release` to hand control back while keeping the task claim.
+- **Hand back did not resume:** check `/hermitd:watch status` for the enabled `browser-handback` declared monitor. It runs `.hermit/bin/hermitd-run browser events`, stays silent when idle, and stores its cursor in `state/browser-events.cursor.json`. Do not delete the cursor to retry a login; replayed events cannot clear a newer task wait. The agent clears only the event's matching wait, reclaims if necessary, and checks the page and account before continuing.
+- **Browser lost:** recovery does not mean sign-in succeeded. The agent reopens the task URL if the browser restarted to a blank page and checks before asking again. Hand back itself never restarts Chrome or closes the page. An image already carrying the managed browser needs a recreate, not an image rebuild, to publish takeover.
+
+Before rollout, the manual phone gate still needs three demo-account real-site logins, Take over and Hand back on iOS, macOS Docker Desktop, and WSL2. Automated fake-socket and fake-CLI tests do not replace it.

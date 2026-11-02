@@ -32,6 +32,8 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
   const networkMode = config.docker.network_mode ?? 'bridge';
   const browser = config.docker.browser === undefined ? false : config.docker.browser;
   if (typeof browser !== 'boolean') return null;
+  const browserPort = config.docker.browser_port;
+  if (browserPort !== undefined && (!Number.isInteger(browserPort) || browserPort < 1 || browserPort > 65535)) return null;
   const fleetMesh = config.docker.fleet_mesh ?? false;
   if (!Array.isArray(packages) || packages.some((pkg: unknown) => typeof pkg !== 'string')) return null;
   if (networkMode !== 'bridge' && networkMode !== 'host') return null;
@@ -85,5 +87,6 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     gitIdentityMount,
     fleetMesh,
     browser,
+    ...(browserPort !== undefined && config.docker.security?.network?.enabled !== true ? { browserPort } : {}),
   };
 }

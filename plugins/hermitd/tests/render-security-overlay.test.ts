@@ -239,3 +239,14 @@ describe('render subcommand — partial toggles', () => {
     expect(fs.readFileSync(overlayPath(dir), 'utf8')).toContain('- DNS_LOG_ONLY=1');
   });
 });
+
+test('viewer publishes on netguard loopback only', async () => {
+  const { renderOverlay } = await import('../scripts/render-security-overlay');
+  const overlay = Bun.YAML.parse(renderOverlay({
+    network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' },
+    toggles: { lan: { enabled: true } },
+    publishPorts: [{ target: 6080, published: '6090', host_ip: '127.0.0.1', protocol: 'tcp' }],
+  })) as any;
+  expect(overlay.services['hermit-netguard'].ports).toEqual([{ target: 6080, published: '6090', host_ip: '127.0.0.1', protocol: 'tcp' }]);
+  expect(overlay.services.hermit.ports).toBeUndefined();
+});

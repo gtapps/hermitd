@@ -82,7 +82,7 @@ const tick = async (hermit: string) => JSON.parse((await run('tick', [hermit])).
 describe('heartbeat tick', () => {
   test('expires an idle browser claim nobody released', async () => {
     const hermit = fixture();
-    write(hermit, 'state/browser-lease.json', { holder: 'dead-task', expires_at: 1, waiters: [] });
+    write(hermit, 'state/browser-lease.json', { holder: 'dead-task', expires_at: 1, waiters: [], epoch: 0, human: null, pending: [] });
     await tick(hermit);
     expect(read(path.join(hermit, 'state/browser-lease.json')).holder).toBeNull();
   });

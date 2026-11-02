@@ -31,7 +31,7 @@ services:
       - HERMIT_FORCE_BOOT=${HERMIT_FORCE_BOOT:-0}
       - HERMIT_RESUME=${HERMIT_RESUME:-0}
 {{AUTH_ENV_LINE}}{{CHANNEL_ENV_LINES}}
-{{NETWORK_MODE_LINE}}{{FLEET_MESH_PID_LINE}}
+{{NETWORK_MODE_LINE}}{{FLEET_MESH_PID_LINE}}{{BROWSER_PORT_LINE}}
     # Defense in depth — rationale and override path: run /hermitd:docker-security.
     cap_drop:
       - ALL

@@ -110,3 +110,167 @@ test('concurrent claimers grant a single holder', async () => {
   const grants = results.map(result => JSON.parse(result.stdout)).filter(result => result.status === 'claimed');
   expect(grants).toHaveLength(1);
 });
+
+test('human generations, disconnect expiry, forced release and browser loss preserve the claim', () => {
+  const dir = freshDir();
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  browserLease('claim', 'holder', dir, 0);
+  const first = browserLease('takeover', undefined, dir, 10, opts);
+  expect(browserLease('renew', 'holder', dir, BROWSER_IDLE_MS, opts).status).toBe('human');
+  const second = browserLease('takeover', undefined, dir, BROWSER_IDLE_MS, opts);
+  expect(second.epoch!).toBeGreaterThan(first.epoch!);
+  expect(browserLease('hand-back', undefined, dir, BROWSER_IDLE_MS, { ...opts, generation: first.epoch }).status).toBe('stale_generation');
+  browserLease('disconnect', undefined, dir, BROWSER_IDLE_MS, { ...opts, generation: second.epoch });
+  const expired = browserLease('inspect', undefined, dir, BROWSER_IDLE_MS + 30 * 60 * 1000, opts);
+  expect(expired.human).toBeNull();
+  expect(expired.pending![0].reason).toBe('expired');
+  expect(expired.expires_at).toBe(BROWSER_IDLE_MS * 2 + 30 * 60 * 1000);
+  expect(expired.holder).toBe('holder');
+  browserLease('takeover', undefined, dir, Date.now(), opts);
+  expect(browserLease('human-release', undefined, dir, Date.now(), opts).status).toBe('released');
+  browserLease('takeover', undefined, dir, Date.now(), opts);
+  const lost = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => false });
+  expect(lost.status).toBe('recovery');
+  expect(lost.pending!.map(event => event.reason)).toEqual(['expired', 'released', 'browser_lost']);
+  expect(new Set(lost.pending!.map(event => event.id)).size).toBe(3);
+});
+
+test('restart records a dropped viewer and hand back records the exact task wait', () => {
+  const dir = freshDir();
+  const { id } = openTask(dir, 'Login');
+  blockOn(dir, id, 'admin');
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  const taken = browserLease('takeover', id, dir, 100, opts);
+  expect(taken.human!.task).toBe(id);
+  expect(taken.human!.waiting_since).toBe(readTasks(dir)[0].waiting_since);
+  browserLease('restart', undefined, dir, 200, opts);
+  expect(browserLease('inspect', undefined, dir, 300, opts).human!.disconnected_at).toBe(200);
+  browserLease('hand-back', undefined, dir, 400, { ...opts, generation: taken.epoch });
+  expect(browserLease('inspect', undefined, dir, 400, opts).pending![0]).toMatchObject({ reason: 'hand_back', task: id, waiting_since: taken.human!.waiting_since });
+  expect(readTasks(dir)[0].waiting_since).toBe(taken.human!.waiting_since);
+});
+
+test('a replaced takeover keeps its wait or releases it for a different task', () => {
+  const dir = freshDir();
+  const first = openTask(dir, 'First login');
+  const second = openTask(dir, 'Second login');
+  blockOn(dir, first.id, 'admin');
+  blockOn(dir, second.id, 'admin');
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  browserLease('takeover', first.id, dir, 100, opts);
+  const bare = browserLease('takeover', undefined, dir, 200, opts);
+  expect(bare.human!.task).toBe(first.id);
+  const other = browserLease('takeover', second.id, dir, 300, opts);
+  expect(other.human!.task).toBe(second.id);
+  expect(browserLease('inspect', undefined, dir, 300, opts).pending!.map(event => [event.reason, event.task])).toEqual([['released', first.id]]);
+  browserLease('hand-back', undefined, dir, 400, { ...opts, generation: other.epoch });
+  expect(browserLease('inspect', undefined, dir, 400, opts).pending!.map(event => event.task)).toEqual([first.id, second.id]);
+});
+
+test('a claim during human control queues, and its wait clears after control returns', () => {
+  const dir = freshDir();
+  const { id } = openTask(dir, 'Signed-in work');
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  const taken = browserLease('takeover', undefined, dir, 100, opts);
+  expect(browserLease('claim', id, dir, 200, opts).status).toBe('human');
+  blockOn(dir, id, 'admin');
+  browserLease('hand-back', undefined, dir, 300, { ...opts, generation: taken.epoch });
+  expect(readTasks(dir)[0].waiting_since).not.toBeNull();
+  browserLease('status', undefined, dir, 400, opts);
+  expect(readTasks(dir)[0].waiting_since).toBeNull();
+});
+
+test('the human-release verb frees control for the shutdown close', async () => {
+  const { PLUGIN_ROOT } = await import('./helpers/run');
+  const dir = freshDir();
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin', admins: ['admin'], chromeAlive: () => true });
+  const child = Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/browser.ts'), 'human-release'], { env: { ...process.env, AGENT_DIR: dir }, stdout: 'pipe' });
+  expect(JSON.parse(await new Response(child.stdout).text()).status).toBe('released');
+  expect(browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => true }).pending![0].reason).toBe('released');
+});
+
+test('event delivery advances after print, skips replayed ids across restarts and prunes on the next transaction', async () => {
+  const { deliverBrowserEvents } = await import('../scripts/browser');
+  const dir = freshDir();
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  for (let i = 0; i < 2; i++) {
+    browserLease('takeover', undefined, dir, Date.now(), opts);
+    browserLease('human-release', undefined, dir);
+  }
+  const original = browserLease('inspect', undefined, dir).pending!;
+  const printed: string[] = [];
+  const print = async (event: { id: string }) => { printed.push(event.id); };
+  await deliverBrowserEvents(dir, print);
+  expect(printed).toEqual(original.map(event => event.id));
+  await deliverBrowserEvents(dir, print);
+  expect(printed).toHaveLength(2);
+  expect(browserLease('inspect', undefined, dir).pending).toEqual([]);
+  const file = path.join(dir, 'state/browser-lease.json');
+  const replay = JSON.parse(fs.readFileSync(file, 'utf8'));
+  replay.pending = original;
+  fs.writeFileSync(file, JSON.stringify(replay));
+  await deliverBrowserEvents(dir, print);
+  expect(printed).toHaveLength(2);
+  browserLease('takeover', undefined, dir, Date.now(), opts);
+  browserLease('human-release', undefined, dir);
+  await expect(deliverBrowserEvents(dir, async () => { throw new Error('interrupted print'); })).rejects.toThrow('interrupted print');
+  await deliverBrowserEvents(dir, print);
+  expect(printed).toHaveLength(3);
+});
+
+test('events subprocess emits one line and stays alive until signalled, restart remains silent', async () => {
+  const { PLUGIN_ROOT } = await import('./helpers/run');
+  const dir = freshDir();
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin' });
+  browserLease('human-release', undefined, dir);
+  const start = () => Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/browser.ts'), 'events'], {
+    env: { ...process.env, AGENT_DIR: dir }, stdout: 'pipe', stderr: 'pipe',
+  });
+  const first = start();
+  const reader = first.stdout.getReader();
+  const result = await reader.read();
+  expect(new TextDecoder().decode(result.value).trim().split('\n')).toHaveLength(1);
+  expect(first.exitCode).toBeNull();
+  // Exit via signal only after the cursor has been durably advanced.
+  await reader.cancel();
+  first.kill('SIGTERM');
+  expect(await first.exited).toBe(0);
+  const second = start();
+  // A second pending event gives an explicit readiness signal without idle sleeps.
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin' });
+  browserLease('human-release', undefined, dir);
+  const nextReader = second.stdout.getReader();
+  const next = await nextReader.read();
+  expect(new TextDecoder().decode(next.value).trim().split('\n')).toHaveLength(1);
+  second.kill('SIGTERM');
+  expect(await second.exited).toBe(0);
+  await nextReader.cancel();
+});
+
+test('viewer expiry never writes tasks and a link still names the waiting task after its claim expires', () => {
+  const dir = freshDir();
+  const task = openTask(dir, 'Login after expiry');
+  browserLease('claim', task.id, dir, 0);
+  blockOn(dir, task.id, 'admin');
+  const file = path.join(dir, 'tasks', task.id + '.md');
+  const before = fs.readFileSync(file, 'utf8');
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  const takeover = browserLease('takeover', task.id, dir, BROWSER_IDLE_MS + 1, opts);
+  expect(browserLease('inspect', undefined, dir, BROWSER_IDLE_MS + 2, opts).holder).toBeNull();
+  expect(takeover.human!.task).toBe(task.id);
+  browserLease('hand-back', undefined, dir, BROWSER_IDLE_MS + 3, { ...opts, generation: takeover.epoch });
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  expect(browserLease('claim', task.id, dir, BROWSER_IDLE_MS + 4).status).toBe('claimed');
+});
+
+test('forced release with no human writes nothing, even with a delivered event awaiting pruning', async () => {
+  const { deliverBrowserEvents } = await import('../scripts/browser');
+  const dir = freshDir();
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin' });
+  browserLease('human-release', undefined, dir);
+  await deliverBrowserEvents(dir, async () => {});
+  const file = path.join(dir, 'state/browser-lease.json');
+  const before = fs.readFileSync(file, 'utf8');
+  expect(browserLease('human-release', undefined, dir).status).toBe('nothing_held');
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+});

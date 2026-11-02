@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const dir = pinStateDirOrExit(dirArg);
   const allowed: Record<string, string[]> = {
     open: ['note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
-    note: ['actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'check', 'owner', 'muted'],
+    note: ['actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['waiting-on', 'result-stdin', 'status-line', 'next'],
     close: ['by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['actor', 'reason-stdin'],

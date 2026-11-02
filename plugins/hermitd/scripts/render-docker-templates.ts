@@ -62,6 +62,7 @@ export interface Inputs {
   gitIdentityMount: boolean;
   fleetMesh?: boolean;
   browser?: boolean;
+  browserPort?: number;
 }
 
 export interface TemplateSources {
@@ -97,6 +98,9 @@ function browserBlock(): string {
     '    unzip -q /tmp/chrome.zip -d /opt && \\',
     '    if [ "$platform" != linux64 ]; then mv "/opt/chrome-${platform}" /opt/chrome-linux64; fi && \\',
     '    rm /tmp/chrome.zip && \\',
+    '    curl -fsSL https://registry.npmjs.org/@novnc/novnc/-/novnc-1.7.0.tgz -o /tmp/novnc.tgz && \\',
+    '    echo "32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903  /tmp/novnc.tgz" | sha256sum -c - && \\',
+    '    mkdir -p /opt/novnc && tar xzf /tmp/novnc.tgz -C /opt/novnc --strip-components=1 && rm /tmp/novnc.tgz && \\',
     "    printf '%s\\n' '#!/bin/sh' 'if [ ! -f \"${HERMIT_PLUGIN_ROOT:-}/scripts/browser-agent.ts\" ]; then echo \"agent-browser: hermit plugin unavailable\" >&2; exit 1; fi' 'exec bun \"${HERMIT_PLUGIN_ROOT}/scripts/browser-agent.ts\" \"$@\"' > /usr/local/bin/agent-browser && \\",
     '    chmod 755 /usr/local/bin/agent-browser && \\',
     '    mkdir -p /etc/hermit && touch /etc/hermit/managed-browser',
@@ -119,6 +123,7 @@ export function renderSources(
   inputs: Inputs,
   templates: TemplateSources,
 ): { dockerfile: string; compose: string } {
+  if (inputs.browserPort !== undefined && (!Number.isInteger(inputs.browserPort) || inputs.browserPort < 1 || inputs.browserPort > 65535)) throw new Error('invalid_browser_port');
   const packages = inputs.packages ?? [];
   const channels = inputs.channels ?? {};
   // envLines/volumeLines feed the CHANNEL_ENV_LINES and CHANNEL_VOLUME_LINES
@@ -127,6 +132,7 @@ export function renderSources(
   const envLines = [
     ...(channels.envLines ?? []),
     ...(inputs.fleetMesh ? ['XDG_RUNTIME_DIR=/run/hermit-fleet'] : []),
+    ...(inputs.browserPort && inputs.networkMode === 'host' ? [`HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:${inputs.browserPort}`] : []),
   ];
   const volumeLines = [
     ...(channels.volumeLines ?? []),
@@ -188,6 +194,8 @@ export function renderSources(
     CHANNEL_VOLUME_LINES: indentedLines(volumeLines),
     NETWORK_MODE_LINE: networkModeLine,
     FLEET_MESH_PID_LINE: fleetMeshPidLine,
+    BROWSER_PORT_LINE: inputs.browserPort && inputs.networkMode !== 'host'
+      ? `${networkModeLine || fleetMeshPidLine ? '\n' : ''}    ports:\n      - "127.0.0.1:${inputs.browserPort}:6080"` : '', 
     FLEET_MESH_VOLUME_DECLARATIONS: fleetMeshVolumeDeclarations,
   });
 

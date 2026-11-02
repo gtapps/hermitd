@@ -142,6 +142,7 @@ The render script derives every `{{PLACEHOLDER}}` internally and fails loud (wri
 - `networkMode` — `docker.network_mode` (`"bridge"` or `"host"`, Step 2).
 - `gitIdentityMount` — the Step 1 preflight `gitconfig_exists`. When **false**, the `.gitconfig` bind-mount is dropped and you must add to the summary: "No ~/.gitconfig found — git commits inside the container will have no author identity. Create one on the host and re-run docker-setup, or set git config manually inside the container."
 - `browser` — the Step 2 browser choice, true or false.
+- `browserPort` - pass `docker.browser_port` when set, except with `docker.security.network.enabled: true`, where the mapping belongs to netguard through `publish_ports`. Omit when absent. Preserve it on reruns. Host networking uses `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:<port>` with no mapping.
 - `fleetMesh` - read `docker.fleet_mesh` from the project's `.hermit/config.json`; absent means `false`. Never ask interactively. When true, tell the operator that the two external volumes and the `hermit-fleet-pidns` holder in `docs/always-on.md` must exist before `hermitd-docker up`.
 
 ### 5. Auto-memory seed
@@ -320,6 +321,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts <PROJECT_ROOT> <<'H
   "networkMode": "bridge" | "host",
   "gitIdentityMount": true | false,
   "fleetMesh": true | false,
+  "browserPort": <docker.browser_port when set and LAN containment is off>,
   "browser": true | false
 }
 HERMIT_RENDER_JSON

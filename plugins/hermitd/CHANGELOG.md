@@ -4,6 +4,7 @@
 
 ### Added
 
+- Phone takeover for the managed Docker browser, inactive until set up, with admin mentions in the requesting chat, Take over and Hand back, and trusted-controller `!release`
 - A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions; it stays off for existing hermits because it adds about 1.4 GB to the image and needs 4 GiB of memory, until an explicit `/docker-setup` rerun
 
 ### Changed

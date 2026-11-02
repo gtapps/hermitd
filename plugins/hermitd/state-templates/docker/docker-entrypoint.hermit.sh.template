@@ -556,6 +556,21 @@ if [ -f /etc/hermit/managed-browser ]; then
   for _ in $(seq 1 50); do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.1; done
   DISPLAY=:1 openbox &
   HERMIT_OPENBOX_PID=$!
+  HERMIT_BROWSER_PORT=$(bun -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).docker?.browser_port ?? "")' "${AGENT_DIR}/config.json" 2>/dev/null || true)
+  if [ -n "$HERMIT_BROWSER_PORT" ]; then
+    (
+      trap 'kill "$HERMIT_VIEWER_CHILD" 2>/dev/null || true; exit 0' TERM INT
+      while true; do
+        bun "${HERMIT_PLUGIN_ROOT}/scripts/browser-viewer.ts" &
+        HERMIT_VIEWER_CHILD=$!
+        wait "$HERMIT_VIEWER_CHILD" || true
+        sleep 2 &
+        HERMIT_VIEWER_CHILD=$!
+        wait "$HERMIT_VIEWER_CHILD" || true
+      done
+    ) &
+    HERMIT_VIEWER_LOOP_PID=$!
+  fi
 fi
 
 # --- 5. Launch hermitd-start ---
@@ -601,9 +616,15 @@ cleanup() {
     } catch {}
   ' "${AGENT_DIR}/state/runtime.json" 2>/dev/null || true
   if [ -f /etc/hermit/managed-browser ]; then
+    if [ -n "${HERMIT_VIEWER_LOOP_PID:-}" ]; then
+      kill "$HERMIT_VIEWER_LOOP_PID" 2>/dev/null || true
+      wait "$HERMIT_VIEWER_LOOP_PID" 2>/dev/null || true
+    fi
+    # A held takeover would refuse the close and lose a fresh sign-in; its event wakes the task after boot.
+    bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" human-release >/dev/null 2>&1 || true
     # Closing is still a claimed command, including after release or idle expiry.
     bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" claim shutdown >/dev/null 2>&1 || true
-    agent-browser close >/dev/null 2>&1 || true
+    agent-browser --task shutdown close >/dev/null 2>&1 || true
     bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" release >/dev/null 2>&1 || true
     kill "$HERMIT_OPENBOX_PID" "$HERMIT_XVNC_PID" 2>/dev/null || true
   fi

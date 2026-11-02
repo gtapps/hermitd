@@ -19,7 +19,7 @@ function fixture() {
   const binary = path.join(root, 'real-browser');
   fs.writeFileSync(binary, `#!${process.execPath}\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
   const run = async (argv: string[], env: Record<string, string> = {}) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)});`], {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true);`], {
       cwd: root, env: { ...process.env, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...env }, stdout: 'pipe', stderr: 'pipe',
     });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
@@ -88,4 +88,24 @@ test('explicit launch flags cannot override the managed profile or anonymous iso
   const anonymous = await run(['--session', 'public', ...flags, 'open', 'https://example.com']);
   expect(anonymous.data.argv).toEqual(['--session', 'public', 'open', 'https://example.com']);
   expect(anonymous.data.env.AGENT_BROWSER_PROFILE).toBeUndefined();
+});
+
+
+test('human control refuses persistent commands without renewing and keeps anonymous sessions usable', async () => {
+  const { dir, run } = fixture();
+  browserLease('claim', 'task', dir);
+  browserLease('takeover', undefined, dir, Date.now(), { login: 'admin' });
+  const file = path.join(dir, 'state/browser-lease.json');
+  const before = fs.readFileSync(file, 'utf8');
+  expect(await run(['--task', 'task', 'snapshot'])).toMatchObject({ code: 1, data: { error: 'human_has_control' } });
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  expect((await run(['--session', 'public', 'snapshot'])).code).toBe(0);
+});
+
+test('takeover during a command discards stdout and stderr and the child exit code', async () => {
+  const { dir, run } = fixture();
+  browserLease('claim', 'task', dir);
+  const binary = path.join(dir, '../real-browser');
+  fs.writeFileSync(binary, `#!${process.execPath}\nimport { browserLease } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/lib/browser-lease.ts'))};\nbrowserLease('takeover', undefined, process.env.AGENT_DIR, Date.now(), { login: 'admin' });\nconsole.log('stale page'); console.error('stale error'); process.exit(7);\n`, { mode: 0o755 });
+  expect(await run(['--task', 'task', 'snapshot'])).toEqual({ code: 1, stderr: '', data: { error: 'human_has_control' } });
 });

@@ -425,5 +425,24 @@ test('managed browser startup and cleanup actions are marker-gated', () => {
   }
   expect(gates[0]).toContain('-rfbport -1');
   expect(gates[0]).toContain('-SendCutText=0');
-  expect(gates[1]).toContain('agent-browser close');
+  expect(gates[1]).toContain('agent-browser --task shutdown close');
+});
+
+test('viewer port has one bridge publish site, survives derivation, and binds directly on host networking', async () => {
+  for (const networkMode of ['bridge', 'host'] as const) {
+    const dir = freshDir();
+    await render(dir, { browser: true, browserPort: 6090, networkMode });
+    const source = compose(dir);
+    expect(source.includes('127.0.0.1:6090:6080')).toBe(networkMode === 'bridge');
+    expect(source.includes('HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:6090')).toBe(networkMode === 'host');
+    const configPath = path.join(dir, 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: true, browser_port: 6090, network_mode: networkMode } }));
+    expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBe(6090);
+    fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [], browser: true, browser_port: 6090, security: { network: { enabled: true } } } }));
+    expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBeUndefined();
+    await render(dir, { browser: true });
+    expect(compose(dir)).not.toContain('ports:');
+    expect(dockerfile(dir)).toContain('novnc-1.7.0.tgz');
+    expect(dockerfile(dir)).toContain('32689f18d6abe96bc6530828a6bd0b9ae33bda07c083a6575ed255b5a8f2e903');
+  }
 });

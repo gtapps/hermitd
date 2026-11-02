@@ -237,7 +237,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | Channel routing | `channels.primary` |
   | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
-  | Tools and credentials | `docker.packages`, `docker.recommended_plugins`, `docker.fleet_mesh`, `docker.browser`, `remote`, `chrome`, `auth_mode` |
+  | Tools and credentials | `docker.packages`, `docker.recommended_plugins`, `docker.fleet_mesh`, `docker.browser`, `docker.browser_admins`, `docker.browser_port`, `remote`, `chrome`, `auth_mode` |
 
   Direct protected writes ask in either direction, including unset and redundant writes. A parent replacement asks only when protected content is added, changed, or removed. Replacing `voice` while keeping its prose unchanged, or replacing a channel while changing only `morning_brief`, is everyday. Creating a channel entry is the exception that needs no protected key of its own: absent `enabled` means enabled and absent `allowed_users` means accept-all, so a parent write that adds `channels.<name>` asks even for a bare `{}`; dropping one is de-escalation and names only the protected keys it removes. Comparison uses raw stored values: absent and null differ, object key order does not matter, and array order does. An opaque parent write or unreadable comparison baseline asks rather than assuming protected content is unchanged. A parent write after another shell command also asks because that command may change its working directory or baseline. So does an unquoted `{…,…}` value, which the shell brace-expands into argv the command text does not show.
 
@@ -385,6 +385,11 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 ---
 
 ### Known limitations
+
+- Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `docker.browser_admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. State-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.
+- The agent in the container can forge `Tailscale-User-Login`. A host process reaching the loopback viewer port and another container on the same Docker network reaching port 6080 can forge it too. Serve identity is not a security boundary against any of these three. No public/Funnel route is created. Docker server 28.0.0 is a hard floor because older localhost publishing could be reached by peers on the same L2 network.
+- A disconnected viewer retains human control for 30 minutes; `!release` uses the existing trusted-controller authority and keeps the task claim. Browser loss and forced/expired control produce recovery events, never login success. The epoch guard drops in-flight command output after a takeover; it cannot undo actions already sent to the browser.
+- The portrait viewer and real-site logins still require the phone rollout gate, including iOS browsers, Docker Desktop on macOS, and WSL2. Automated fakes do not establish those results.
 
 - The browser follows the DNS allowlist in enforce mode, but DNS does not contain it: a page can fetch a public IP directly, the same limitation as `curl`.
 - Tailnet peers were not tested, and `100.64.0.0/10` is not in netguard's drop list.
