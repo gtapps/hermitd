@@ -77,7 +77,7 @@ Without an acceptance, leave the proposal pending and the target unchanged. Dire
   - Reply in channel voice: "Saved for this channel: when X, do Y. Say 'forget the <short name> rule' to remove it." For a hermit-wide role, say "Saved for everywhere" instead.
   - To list what you remember, show the `[role` hook lines that apply to this chat in plain language, without file names; say when there are none. Do not include routines; a broader question about what you are keeping an eye on is **Standing work** above.
   - To forget or update a hermit-wide role, require a primary operator (§1c). Otherwise say it is the operator's rule and write nothing. Any admitted sender may change this chat's pinned roles. Delete or rewrite the authorized topic file and index line, then echo the result. For unclear "forget" requests, name candidates and await the answer.
-  - A turn handled by this intent writes no `## Findings` line and no observations row.
+  - A turn handled by this intent writes no `## Findings` line.
 
 ## Harness command details
 
@@ -91,7 +91,7 @@ Without an acceptance, leave the proposal pending and the target unchanged. Dire
 
 ## Capture Interactive Patterns
 
-A durable chat-behavior rule follows **Standing role**, not `task.ts lesson`, Findings or observations. One-off corrections remain lessons under the rules below. Task-thread steering and preferences owned by an editable skill keep their existing routes.
+A durable chat-behavior rule follows **Standing role**, not `task.ts lesson` or Findings. One-off corrections remain lessons under the rules below. Task-thread steering and preferences owned by an editable skill keep their existing routes.
 
 **Do not write a finding** for: one-off questions, research turns with no preference signal, task assignments, status checks, or micro-approval responses. When in doubt, write nothing — the next scheduled reflect catches genuine recurrence via task-record evidence.
 
@@ -109,13 +109,4 @@ If the sender's user ID (verified in §1c) is not a primary operator (§1c), app
 
 Do not classify tier, tag Evidence Source, or decide memory-vs-proposal. Reflect reads this line as `current-session` evidence (`Evidence Source: current-session`, `Sessions: current`) and uses the `[origin: external]` marker (if present) to set `Evidence Origin: external-content` when passing to the judge.
 
-**Resolved corrections → observations ledger, not Findings.** For a correction or emergency implying a durable preference that clearly names an installed skill/component (e.g. "the brief is too verbose", not a vague "you"), append a ledger row **instead of** a `## Findings` line:
-
-Run `observations-observe` (Commands) with arguments `skill-correction --origin=<own-work|external-content>` and the following stdin payload:
-```text
-skill-correction:<canonical-name>
-```
-
-`<canonical-name>` is the skill's lowercase bare `name:` frontmatter, without `hermitd:`/`<plugin>:`. Set `origin` to `external-content` for non-primary senders, else `own-work`. A rejected row or mis-invocation exits 1: fix the call, never retry blindly or block the reply. At most one row per turn.
-
-Without a clearly named skill, write the eligible `## Findings` line; do not guess a `<name>` or ask for disambiguation mid-reply.
+**Corrections stay lessons.** A correction or emergency implying a durable preference gets the line above, including a complaint with no stated fix ("the brief is too verbose"). Name the skill or component only when the operator's words identify it; do not guess a name or ask for disambiguation mid-reply. A declared standing rule follows the settled-knowledge rule instead.
