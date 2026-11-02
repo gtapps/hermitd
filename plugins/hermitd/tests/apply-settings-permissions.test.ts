@@ -373,7 +373,6 @@ describe('literal-path hermitd-run grants', () => {
     'Bash(.hermit/bin/hermitd-run task note *)',
     'Bash(.hermit/bin/hermitd-run task block *)',
     'Bash(.hermit/bin/hermitd-run task close *)',
-    'Bash(.hermit/bin/hermitd-run task learn *)',
     'Bash(.hermit/bin/hermitd-run rc-server start)',
     'Bash(.hermit/bin/hermitd-run rc-server stop)',
     'Bash(.hermit/bin/hermitd-run rc-server status)',
@@ -391,12 +390,11 @@ describe('literal-path hermitd-run grants', () => {
     });
   }
 
-  test('task resolver grants expose only the annotation verbs and the review finish', () => {
+  test('task resolver grants expose only the annotation verbs', () => {
     expect(HERMIT_ALLOW.filter((entry: string) => entry.includes('hermitd-run task '))).toEqual([
       'Bash(.hermit/bin/hermitd-run task note *)',
       'Bash(.hermit/bin/hermitd-run task block *)',
       'Bash(.hermit/bin/hermitd-run task close *)',
-      'Bash(.hermit/bin/hermitd-run task learn *)',
     ]);
     expect(HERMIT_ALLOW.some((entry: string) => entry.includes('task-check.ts'))).toBe(false);
   });
@@ -607,4 +605,13 @@ test('role-review grants pin resolver verbs and include the state-pinned script'
     'Bash(.hermit/bin/hermitd-run role-review .hermit resolve *)',
   ]);
   expect(HERMIT_ALLOW).not.toContain('Bash(.hermit/bin/hermitd-run role-review *)');
+});
+
+
+test('trust checks are sealed without allowing apply', () => {
+  for (const entry of ['Bash(.hermit/bin/hermitd-run trust-workspace check *)', 'Bash(bun */scripts/trust-workspace.ts check*)']) {
+    expect(HERMIT_ALLOW).toContain(entry);
+    expect(entry).not.toContain(' apply ');
+  }
+  expect(HERMIT_ALLOW.some((entry: string) => entry.includes('trust-workspace') && entry.includes('apply'))).toBe(false);
 });

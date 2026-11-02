@@ -22,6 +22,8 @@ The hermit's `isTrustedController` rule owns pause, resume, snooze, and full sta
 
 ## Connections
 
+Each tool uses one account for every chat and routine in the resident. Anyone admitted may ask to reconnect it, but only an admin may finish sign-in. A primary operator has this authority; when neither `operators` nor `allowed_users` names people, the trusted pinned home chat can finish. Explicit empty lists grant nobody authority. Someone typing at the terminal can also finish it; a turn nobody typed, such as a routine, a peer wake or a background helper, raises the native permission prompt, and so does any turn such a wake or another sender joins midway. Prefer a dedicated account and forward the sign-in link if someone else owns the tool account. Different access requires separately configured residents.
+
 Native settings own project MCP enrollment through `enabledMcpjsonServers`, `enableAllProjectMcpServers`, and `disabledMcpjsonServers`. Without approval, a project server stays pending without blocking boot. Remove approvals in every applicable native scope, including blanket approval, or explicitly disable the server to exclude it at restart. Removing enrollment does not delete its declaration or credentials. A temporary `/mcp` toggle does not remove the saved approval.
 
 Native `disableClaudeAiConnectors` owns account connector loading. When unset, a login-authenticated hermit loads account connectors; setting it to `true` disables them for the project without deleting account connections. Removing the setting restores default loading at restart. Setup-token authentication fetches no account connectors. See [MCP servers](always-on.md#mcp-servers).

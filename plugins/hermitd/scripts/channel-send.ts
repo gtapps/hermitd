@@ -5,11 +5,12 @@
 // importing the lib directly the way async callers (cost-tracker.ts,
 // lib/prompt-stages/channel-status-responder.ts) do.
 //
-// Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer] <text|- >
+// Usage: bun channel-send.ts <hermit-dir> [--tier client|maintainer [--channel <id>]] <text|- >
 //   --tier     client (default) sends to the primary chat as today; maintainer
 //              routes through sendOperatorNotice to channels.<p>.maintainer_channel_id,
 //              falling back to the primary chat when none is configured, or to
 //              Findings on a non-technical profile.
+//   --channel  with --tier maintainer, tests that channel's maintainer chat with no fallback.
 //   <text|- >  literal text, or "-" to read the message from stdin (avoids
 //              argv length/newline edges — the form spawnSync callers use).
 //   Prints `OK` when delivered, else {"error":"<token>"} at exit 1. That Findings
@@ -37,6 +38,8 @@
 
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { sendToChannel, sendOperatorNotice, type SendResult } from './lib/channel-send';
+import { readSettledConfig } from './lib/config-read';
+import { maintainerEligible } from './resolve-outbound-channel';
 import { emit, emitJson, exitError, failJson } from './lib/cli';
 
 async function readStdin(): Promise<string> {
@@ -49,12 +52,13 @@ async function readStdin(): Promise<string> {
 // leaving the hermit-dir (and text, for --tier mode) positionals in order.
 function parseArgs(
   argv: string[],
-): { mode: 'tier'; tier: 'client' | 'maintainer'; positionals: string[] }
+): { mode: 'tier'; tier: 'client' | 'maintainer'; channel?: string; positionals: string[] }
   | { mode: 'notice'; routine?: string; watch?: string; positionals: string[] }
   | { error: string } {
   const positionals: string[] = [];
   let tier: 'client' | 'maintainer' | null = null;
   let notice = false;
+  let channel: string | undefined;
   let routine: string | undefined;
   let watch: string | undefined;
   for (let i = 0; i < argv.length; i++) {
@@ -63,6 +67,9 @@ function parseArgs(
       if (v !== 'client' && v !== 'maintainer') return { error: `invalid --tier value: ${v ?? '(missing)'}` };
       tier = v;
       i++;
+    } else if (argv[i] === '--channel') {
+      channel = argv[++i];
+      if (!channel || channel.startsWith('--')) return { error: 'missing --channel value' };
     } else if (argv[i] === '--notice') {
       notice = true;
     } else if (argv[i] === '--routine') {
@@ -77,12 +84,13 @@ function parseArgs(
       positionals.push(argv[i]);
     }
   }
+  if (channel !== undefined && (notice || tier !== 'maintainer')) return { error: '--channel requires --tier maintainer' };
   if (notice && tier !== null) return { error: '--notice and --tier are mutually exclusive' };
   if (routine !== undefined && watch !== undefined) return { error: '--routine and --watch are mutually exclusive' };
   if (watch !== undefined && !notice) return { error: '--watch requires --notice' };
   if (routine !== undefined && !notice) return { error: '--routine requires --notice' };
   if (notice) return { mode: 'notice', routine, watch, positionals };
-  return { mode: 'tier', tier: tier ?? 'client', positionals };
+  return { mode: 'tier', tier: tier ?? 'client', channel, positionals };
 }
 
 interface NoticePayload {
@@ -197,6 +205,17 @@ async function main(): Promise<void> {
   if (!text) exitError('empty_text');
 
   if (parsed.tier === 'maintainer') {
+    if (parsed.channel !== undefined) {
+      const config = readSettledConfig(stateDir);
+      const entry = config.channels?.[parsed.channel];
+      if (!maintainerEligible(entry)) exitError('no_maintainer_channel');
+      const result = await sendToChannel(stateDir, text, {
+        config, target: { id: parsed.channel, chat_id: entry.maintainer_channel_id }, recordHealth: false,
+      });
+      if (result.ok) emit('OK');
+      failJson(result.error, 'send_failed');
+      return;
+    }
     const res = await sendOperatorNotice(stateDir, { maintainer: { text, fallback: 'client' } });
     const m = res.maintainer;
     if (m?.delivered) emit('OK');

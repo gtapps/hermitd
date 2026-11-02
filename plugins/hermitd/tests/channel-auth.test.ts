@@ -12,7 +12,7 @@ import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
 import { normalizeChannelSource, parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import {
-  isAllowedSender, isTrustedController, isPrimaryOperator, recallScope, audienceVisible,
+  isAllowedSender, isTrustedController, isPrimaryOperator, canCompleteAuthentication, recallScope, audienceVisible,
 } from '../scripts/lib/channel-auth';
 
 const scopeWorkdir = setupWorkdir();
@@ -314,5 +314,22 @@ describe('isPrimaryOperator', () => {
     expect(primary({ default_chat_id: 'home' })).toBe(true);
     expect(primary({ default_chat_id: 'home' }, 'u1', 'home', 'non-technical')).toBe(false);
     expect(primary({})).toBe(false);
+  });
+});
+
+
+describe('canCompleteAuthentication', () => {
+  const authority = (entry: any, user = 'a') => canCompleteAuthentication(
+    { operator_profile: 'non-technical', channels: { custom: entry } }, 'custom', user, 'home');
+  test('unnamed operators fall back to the trusted home', () => {
+    expect(authority({ default_chat_id: 'home' })).toBe(true);
+    expect(authority({ default_chat_id: 'elsewhere' })).toBe(false);
+  });
+  test('explicit lists preserve administrator precedence and lockdown', () => {
+    expect(authority({ operators: [], default_chat_id: 'home' })).toBe(false);
+    expect(authority({ allowed_users: [], default_chat_id: 'home' })).toBe(false);
+    expect(authority({ allowed_users: ['a', 'b'] })).toBe(true);
+    expect(authority({ allowed_users: ['a', 'b'] }, 'b')).toBe(false);
+    expect(authority({ operators: ['b'], allowed_users: ['a', 'b'] }, 'b')).toBe(true);
   });
 });

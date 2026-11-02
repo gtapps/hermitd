@@ -49,6 +49,17 @@ Runs and Passed include the resumed runs below; the cost column does not. On a r
 - No case scored lower on arm B. Inline saved about $0.10 per brief but took one more main turn and carried about 4k more tokens, so the fold was not shipped for evening and daily: the saving depends on the turns until the next compaction, which was not measured. No-flag briefs compose in main with smaller reads.
 - Failed default briefs on both arms said the `task-report` output was cut off, so `--limit 20` can exceed what a main turn reads whole.
 
+### Runner follow-up, 2026-10-31
+
+Claude Code 2.1.314, `--model sonnet`, low effort, `--runs 3`, $5.19 total. The 2026-10-30 baseline above used default effort. This run passed 23 of 24 runs and 7 of 8 cases.
+
+- `run-*` passed 17 of 18, meeting the gate of at least 17.
+- Scheduled runs skipped dispatch once in 21, meeting the gate of at most one. `dispatch-*` passed its grader 6 of 6. Dispatch in `run-*` is inferred from turns and cost because traces were not kept.
+- The failure was `run-stale-context`: 2 turns, $0.163, repeating the stale "waiting" claim from resumed history.
+- `run-default-no-session` passed 3 of 3, with no dispatch by design: 4 turns, $0.102.
+
+The runner stays; the script digest remains deferred.
+
 ## proposal-triage
 
 Each case's `scaffold.sh` seeds `.hermit/` (config, proposals, `state/proposals-index.json`, `OPERATOR.md`, `compiled/`) and a `memory/` auto-memory dir. It uses one of two generic installs, a home-automation hermit or a small online shop. A Sonnet caller resolves the absolute `Anchor:` line, dispatches the real `hermitd:proposal-triage` agent, and relays its output, which the graders read. The agent's frontmatter pins `model: haiku`, so set the arm's model with `CLAUDE_CODE_SUBAGENT_MODEL=<model> CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`.
@@ -65,7 +76,7 @@ One case per agent chain that runs together in production, plus the rules a chai
 | `reflect-tier3-chain-shop` | reflect quick → proposal-triage → reflection-judge → proposal-create → proposal-triage | gate dispatch count and order for an external-content candidate |
 | `task-worker-needs-input-shop` | task → background task-worker | real background dispatch, the worker's report file, the chat placeholder |
 | `task-answer-waiting-record-shop` | task answer path → last worker → fresh task-worker on refusal | the answer reaches the last worker; the fallback receives the record notes and answer |
-| `task-close-outside-skill-shop` | close digest → review guide | a pending close leads to the guide with the task skill out of reach |
+| `task-close-outside-skill-shop` | close digest → review guide | a qualifying close leads to the guide with the task skill out of reach |
 | `proposal-create-duplicate-shop` | proposal-create → proposal-triage | an open duplicate is named, nothing is created |
 | `watch-relay-live-entry-shop`, `watch-relay-unknown-sender-shop` | helper `GUEST_REPORT` → watch | verbatim relay to the operator; no reply for an unknown sender |
 | `evolve-runner-template-conflict-home` | evolve-runner (standalone body) | a template conflict is parked as `.new` and reported |

@@ -110,6 +110,14 @@ export function isPrimaryOperator(config: Json, source: string, userId: string |
     || (chatId === ch?.default_chat_id && config?.operator_profile !== 'non-technical'));
 }
 
+/** Tool accounts serve the whole resident, so only an administrator may bind them. */
+export function canCompleteAuthentication(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
+  if (isPrimaryOperator(config, source, userId, chatId)) return true;
+  const ch = channelEntry(config, source);
+  return ch?.operators === undefined && ch?.allowed_users === undefined
+    && isTrustedController(config, source, userId, chatId);
+}
+
 // Home/maintainer rule has its prose twin in channel-responder §1c.
 export function recallScope(config: Json, key: string, chatId: string, hermitDir: string): Json | null {
   const ch = channelEntry(config, key);

@@ -23,7 +23,7 @@ import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
-import { isAllowedSender, isPrimaryOperator } from './lib/channel-auth';
+import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
@@ -173,11 +173,14 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 
 const TURN_TAIL_BYTES = 512 * 1024;
 
-type RoutineOrigin = { kind: 'terminal' } | { kind: 'unknown' }
-  | { kind: 'channel'; key: string; primary: boolean };
+type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
+  | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };
 
-/** A terminal requires a readable turn boundary without a channel envelope; all unproven origins ask. */
-function turnConversation(payload: Json): RoutineOrigin {
+/**
+ * A terminal requires a readable turn boundary without a channel envelope, which a wake also has; all unproven origins ask.
+ * `proven` says the reading holds for the whole turn: a person typed a terminal turn, and no wake or other sender joined either kind.
+ */
+export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return { kind: 'unknown' };
@@ -186,10 +189,12 @@ function turnConversation(payload: Json): RoutineOrigin {
     if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
-    if (!env) return { kind: 'terminal' };
+    if (!env) return { kind: 'terminal', proven: prompt.typed && !prompt.joined };
     if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
-      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId) };
+      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),
+      canCompleteAuthentication: canCompleteAuthentication(config, env.source, env.userId, env.chatId),
+      proven: !prompt.joined };
   } catch {
     return { kind: 'unknown' };
   }

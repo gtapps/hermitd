@@ -63,7 +63,6 @@ stall_status: null
 stall_next: null
 dedupe_key: helper:PROP-044
 check: null
-skill_review: pending
 last_worker: null
 muted: false
 delegated: true

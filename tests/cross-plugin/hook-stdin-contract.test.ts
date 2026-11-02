@@ -94,6 +94,13 @@ const SPECS: Spec[] = [
     failExit: 0,
   },
   {
+    name: 'core/mcp-auth-gate',
+    script: 'plugins/hermitd/scripts/mcp-auth-gate.ts',
+    benign: { hook_event_name: 'PreToolUse', tool_name: 'mcp__tool__complete_authentication', tool_input: {} },
+    // 0: oversized stdin raises a native ask (exit 0 + JSON) rather than a deny.
+    failExit: 0,
+  },
+  {
     name: 'core/stop-failure-stamp',
     script: 'plugins/hermitd/scripts/stop-failure-stamp.ts',
     // A StopFailure payload, not a tool call: this hook fires at turn end. The

@@ -37,7 +37,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false
@@ -91,7 +90,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false
@@ -145,7 +143,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false
@@ -199,7 +196,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false
@@ -253,7 +249,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false
@@ -307,7 +302,6 @@ stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-skill_review: null
 last_worker: null
 muted: false
 delegated: false

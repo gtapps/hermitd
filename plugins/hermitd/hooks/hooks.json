@@ -4,6 +4,19 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "^mcp__.*__complete_authentication$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/mcp-auth-gate.ts"
+            ],
+            "timeout": 3
+          }
+        ]
+      },
+      {
         "matcher": ".*reply$",
         "hooks": [
           {
@@ -55,6 +68,19 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "^mcp__.*__authenticate$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/mcp-auth-gate.ts"
+            ],
+            "timeout": 3
+          }
+        ]
+      },
       {
         "matcher": "Skill",
         "hooks": [

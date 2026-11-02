@@ -1555,3 +1555,66 @@ describe('owned Discord thread delivery', () => {
     });
   }
 });
+
+
+test('failed sensitive notice records failure without the sign-in link', async () => {
+  const stub = startHttpStub();
+  stub.setStatus(500);
+  const wd = setupChannelWorkdir({ maintainer_channel_id: '99999' });
+  const link = 'https://example.com/sign-in?secret=private';
+  try {
+    const result = await withApi(stub.url, () => sendOperatorNotice(hermit(wd.dir), {
+      maintainer: { text: link, sensitive: true, fallback: 'primary' },
+    }));
+    expect(result.maintainer).toMatchObject({ route: 'findings', delivered: false });
+    expect(findings(wd)).toContain('Sensitive maintainer notice could not reach');
+    expect(findings(wd)).not.toContain(link);
+    expect(findings(wd)).not.toContain('private');
+  } finally { stub.stop(); wd.cleanup(); }
+});
+
+
+test('maintainer test sends target only the selected channel and fail without fallback', async () => {
+  const wd = setupChannelWorkdir({ maintainer_channel_id: 'good' });
+  const stub = startHttpStub();
+  try {
+    const configFile = hermit(wd.dir, 'config.json');
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    config.channels.second = { ...config.channels.telegram, maintainer_channel_id: 'wrong' };
+    fs.writeFileSync(configFile, JSON.stringify(config));
+    const run = (args: string[]) => runChannelSend({ args: [hermit(wd.dir), ...args], env: { HERMIT_TELEGRAM_API_URL: stub.url } });
+    // The selected channel uses a project-owned send script so both channel keys are eligible.
+    const sender = path.join(wd.dir, 'second-send.sh');
+    fs.writeFileSync(sender, '#!/bin/sh\ncat >/dev/null\nexit 1\n', { mode: 0o755 });
+    config.channels.second.send_script = 'second-send.sh';
+    fs.writeFileSync(configFile, JSON.stringify(config));
+    const failed = await run(['--tier', 'maintainer', '--channel', 'second', 'test']);
+    expect(failed.exitCode).toBe(1);
+    expect(JSON.parse(failed.stdout)).toHaveProperty('error');
+    expect(stub.requests).toHaveLength(0);
+    // A wrong maintainer id must not mark the client route down.
+    expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(false);
+    const missing = await run(['--tier', 'maintainer', '--channel', 'missing', 'test']);
+    expect(missing.exitCode).toBe(1);
+    expect(stub.requests).toHaveLength(0);
+    const ok = await run(['--tier', 'maintainer', '--channel', 'telegram', 'test']);
+    expect(ok.exitCode).toBe(0);
+    expect(ok.stdout.trim()).toBe('OK');
+    expect(stub.requests[0].body.chat_id).toBe('good');
+    for (const flags of [['--channel', 'telegram'], ['--notice', '--channel', 'telegram'], ['--tier', 'client', '--channel', 'telegram']]) {
+      expect((await run([...flags, 'test'])).exitCode).toBe(1);
+    }
+  } finally { stub.stop(); wd.cleanup(); }
+});
+
+
+test('intended Findings destination preserves sensitive diagnostic text', async () => {
+  const wd = setupChannelWorkdir({}, { operator_profile: 'non-technical' });
+  try {
+    const result = await sendOperatorNotice(hermit(wd.dir), {
+      maintainer: { text: 'Diagnostic detail for the maintainer', sensitive: true, fallback: 'client' },
+    });
+    expect(result.maintainer).toMatchObject({ route: 'findings', delivered: true });
+    expect(findings(wd)).toContain('Diagnostic detail for the maintainer');
+  } finally { wd.cleanup(); }
+});

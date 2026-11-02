@@ -149,3 +149,21 @@ describe('apply-settings.ts deny', () => {
     expect(r.exitCode).toBe(1);
   });
 });
+
+
+test('message rewording asks for every spelling, leaving maintenance and reads alone', () => {
+  const spellings = [
+    'bun /plugin/scripts/messages.ts', '/root/.hermit/bin/hermitd-run messages',
+    'hermitd run messages', '/usr/bin/hermitd run messages',
+  ];
+  const patterns = ASK.filter(pattern => pattern.includes('messages'));
+  expect(patterns).toHaveLength(8);
+  const matches = (command: string) => patterns.some(pattern => {
+    const glob = pattern.slice(5, -1).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*');
+    return new RegExp(`^${glob}$`).test(command);
+  });
+  for (const spelling of spellings) {
+    for (const verb of ['set', 'reset']) expect(matches(`${spelling} ${verb} .hermit deny_tail text`)).toBe(true);
+    for (const verb of ['scaffold', 'apply', 'clear', 'list', 'status']) expect(matches(`${spelling} ${verb} .hermit`)).toBe(false);
+  }
+});

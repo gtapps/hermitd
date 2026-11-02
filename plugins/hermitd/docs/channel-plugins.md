@@ -75,6 +75,8 @@ A configured channel without a send script returns `no_send_path`. Routing stays
 
 ## Approval and installation
 
+A channel needs the optional `claude/channel/permission` capability to relay native permission prompts to chat. Without it, a prompt waits at the terminal until the watchdog notice; chat replies cannot answer that prompt. See [permission relay](https://code.claude.com/docs/en/channels-reference#relay-permission-prompts).
+
 Claude Code applies its own [channel controls](https://code.claude.com/docs/en/channels#enterprise-controls). For a personal installation, an administrator can create `/etc/claude-code/managed-settings.d/hermitd-channels.json` as root on Linux (use the platform's managed-settings directory elsewhere):
 
 ```json

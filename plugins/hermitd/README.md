@@ -2,7 +2,7 @@
 <p align="center">
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.23-green.svg" alt="Version 1.4.23" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.24-green.svg" alt="Version 1.4.24" /></a>
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/hermitd/_gh_traffic_stats/.github/badges/clones.json" alt="Downloads" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
   <a href="https://discord.gg/54sJqAxhUh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Join" /></a>
@@ -284,7 +284,7 @@ You can run separate agents for different responsibilities, each with its own wo
 
 **Sign-in renewal from chat.** When your agent’s Claude sign-in needs renewing, use `/relogin` from your connected chat. Open the link in your browser, sign in, and send the code back in chat.
 
-**Tool sign-ins from chat.** When a connected tool or claude.ai connector needs you to sign in again, ask your agent in chat to log you in. Open each link it sends, approve access, and paste back the address your browser fails to load; the tool works again without a restart.
+**Tool sign-ins from chat.** Anyone admitted may ask to reconnect a tool or claude.ai connector; an admin finishes the sign-in. The account used serves every chat and routine, so prefer a dedicated account over a personal login. Paste the callback address in a chat that reaches the agent; forward the sign-in link if the tool belongs to someone else's account.
 
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
