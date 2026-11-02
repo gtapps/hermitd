@@ -4,6 +4,7 @@ import path from 'node:path';
 import { taskFixture } from './helpers/tasks';
 import { runScript } from './helpers/run';
 import { dutySummary } from '../scripts/lib/duty-summary';
+import { recordWatchDuty } from '../scripts/lib/tasks';
 
 test('requested mode and schedule remain separate from observed liveness', () => {
   const f = taskFixture();
@@ -49,6 +50,19 @@ for (const routines of [{}, 'broken', [null, 7, 'bad', { id: 'valid' }]]) {
       expect(lines.filter(line => line.startsWith('routine:')).length).toBe(Array.isArray(routines) ? 1 : 0);
       const result = await runScript('duties.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: ['summary', f.dir] });
       expect(result.exitCode).toBe(0);
+    } finally { f.cleanup(); }
+  });
+}
+
+for (const monitors of [{}, 'broken', [null, 7, 'bad', { id: 'valid', enabled: true }]]) {
+  test(`malformed monitors settle safely: ${JSON.stringify(monitors)}`, () => {
+    const f = taskFixture();
+    try {
+      f.put('config.json', { monitors });
+      expect(dutySummary(f.dir).filter(line => line.startsWith('watch:')).length).toBe(Array.isArray(monitors) ? 1 : 0);
+      const record = () => recordWatchDuty(f.dir, 'valid', 'ok');
+      if (Array.isArray(monitors)) record();
+      else expect(record).toThrow('watch_not_found');
     } finally { f.cleanup(); }
   });
 }

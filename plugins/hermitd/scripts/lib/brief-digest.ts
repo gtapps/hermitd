@@ -23,11 +23,11 @@ export function briefDigest(dir: string, mode: BriefMode, reference = new Date()
   const recordRow = (report: TaskReport, latest = false) => {
     const result = clip(report.result ?? '', !latest && report.lessons.length ? 4000 : 400);
     const result_truncated = result !== (report.result ?? '');
-    const lessons = report.lessons.filter(lesson => {
-      if (latest || result_truncated || lesson.length > 400) { omitted.lessons++; return false; }
+    const lessons = latest ? [] : report.lessons.filter(lesson => {
+      if (result_truncated || lesson.length > 400) { omitted.lessons++; return false; }
       return true;
     });
-    return { id: path.basename(report.source_path), outcome: report.outcome, title: clip(report.title), result,
+    return { id: path.basename(report.source_path, '.md'), outcome: report.outcome, title: clip(report.title), result,
       result_truncated, closed_reason: clip(report.closed_reason ?? ''), opened_at: report.opened_at,
       closed_at: report.closed_at, waiting_on: nullable(report.waiting_on), lessons };
   };
@@ -53,7 +53,15 @@ export function briefDigest(dir: string, mode: BriefMode, reference = new Date()
   const bytes = () => Buffer.byteLength(JSON.stringify(digest) + '\n');
   while (bytes() > 25000) {
     const withLessons = records.findLast(row => row.lessons.length);
-    if (withLessons) { withLessons.lessons.pop(); omitted.lessons++; }
+    if (withLessons) {
+      withLessons.lessons.pop();
+      omitted.lessons++;
+      // The long excerpt exists only to judge lessons.
+      if (!withLessons.lessons.length && withLessons.result.length > 400) {
+        withLessons.result = clip(withLessons.result, 400);
+        withLessons.result_truncated = true;
+      }
+    }
     else if (records.length) { records.pop(); omitted.records++; }
     else if (decisions.length) { decisions.pop(); omitted.decisions++; }
     else {

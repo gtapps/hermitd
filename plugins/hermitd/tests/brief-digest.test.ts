@@ -49,7 +49,7 @@ test('local day selection, newest latest, all owners in records and recent decis
     const local = briefDigest(f.dir, 'evening', reference);
     if (!('records' in local)) throw new Error('Expected evening records');
     expect(local.records).toHaveLength(1);
-    expect(local.records![0].id).toBe(base.id + '.md');
+    expect(local.records![0].id).toBe(base.id);
     expect(local.records![0]).not.toHaveProperty('decisions');
     expect(local.open).toEqual([]);
     f.put('config.json', { timezone: 'UTC' });
@@ -59,7 +59,7 @@ test('local day selection, newest latest, all owners in records and recent decis
     expect(local.decisions).toEqual([{ task_title: base.title, text: 'telegram:actor: Keep this' }]);
     const morning = briefDigest(f.dir, 'morning', reference);
     if (!('latest' in morning)) throw new Error('Expected morning latest');
-    expect(morning.latest?.id).toBe(base.id + '.md');
+    expect(morning.latest?.id).toBe(base.id);
   } finally { f.cleanup(); }
 });
 
@@ -134,5 +134,35 @@ test('all oversized sections pack below exact stdout ceiling including escaped c
       else { expect(row.omitted.records).toBeGreaterThan(0); expect(row.omitted.decisions).toBeGreaterThan(0); }
     }
     expect(fs.readFileSync(path.join(f.dir, 'state/proposals-index.json'))).toEqual(before);
+  } finally { f.cleanup(); }
+});
+
+test('morning latest omits lessons without reporting them as left out', async () => {
+  const f = taskFixture();
+  try {
+    const row = await seed(f);
+    row.body = '## Lessons\n- useful\n';
+    save(f.dir, row);
+    const digest = briefDigest(f.dir, 'morning', reference);
+    if (!('latest' in digest)) throw new Error('Expected morning latest');
+    expect(digest.latest?.lessons).toEqual([]);
+    expect(digest.omitted.lessons).toBe(0);
+  } finally { f.cleanup(); }
+});
+
+test('packing shortens a result whose lessons are gone before dropping its record', async () => {
+  const f = taskFixture();
+  try {
+    const base = await seed(f);
+    for (let i = 0; i < 8; i++) {
+      save(f.dir, { ...base, id: `T-20261020-${String(100001 + i).padStart(6, '0')}`, result: 'r'.repeat(3900), body: '## Lessons\n- useful\n' });
+    }
+    const digest = briefDigest(f.dir, 'evening', reference);
+    if (!('records' in digest)) throw new Error('Expected evening records');
+    expect(digest.omitted.records).toBe(0);
+    expect(digest.records).toHaveLength(9);
+    const shortened = digest.records!.filter(row => row.result_truncated);
+    expect(shortened.length).toBeGreaterThan(0);
+    for (const row of shortened) expect(row.result).toHaveLength(400);
   } finally { f.cleanup(); }
 });

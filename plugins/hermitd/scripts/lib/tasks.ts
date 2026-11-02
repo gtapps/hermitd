@@ -546,8 +546,8 @@ export function startupTasks(dir: string, rows = 4): string[] {
 export function deriveDuties(dir: string): { name: string; last_run: string | null; last_verdict: string | null; scope?: string }[] {
   const metrics = path.join(dir, 'state/routine-metrics.jsonl');
   const names = new Set<string>();
-  const config = readConfigRaw(dir);
-  for (const routine of readSettledConfig(dir).routines) if (routine && typeof routine === 'object' && typeof routine.id === 'string') names.add(routine.id);
+  const config = readSettledConfig(dir);
+  for (const routine of config.routines) if (typeof routine?.id === 'string') names.add(routine.id);
   const rows: ReturnType<typeof deriveDuties> = [...names].sort().map(name => ({ name: `routine:${name}`, last_run: lastRoutineFire(metrics, name), last_verdict: lastRoutineEvent(metrics, name) }));
   const alert = readAlertState(path.join(dir, 'state/alert-state.json'));
   const value = alert.kind === 'ok' ? alert.value : null;
@@ -555,8 +555,8 @@ export function deriveDuties(dir: string): { name: string; last_run: string | nu
   const active = valid ? Object.values(value.alerts).filter((entry: any) => !entry.suppressed && !entry.resolved_at).length : 0;
   rows.push({ name: 'heartbeat', last_run: valid ? value.last_clean_eval_at ?? null : null, last_verdict: !valid || value.last_clean_eval_at === null ? 'frozen' : active ? `findings:${active}` : 'ok' });
   const watchDuties = readJson(path.join(dir, 'state/watch-duties.json'));
-  for (const watch of config?.monitors ?? []) {
-    if (watch.enabled !== true) continue;
+  for (const watch of config.monitors) {
+    if (watch?.enabled !== true) continue;
     const duty = watchDuties?.watches?.[watch.id];
     rows.push({ name: `watch:${watch.id}`, last_run: duty?.last_event_at ?? null, last_verdict: duty?.last_verdict ?? null, scope: 'since session start' });
   }
@@ -565,7 +565,7 @@ export function deriveDuties(dir: string): { name: string; last_run: string | nu
   return rows;
 }
 export function recordWatchDuty(dir: string, id: string, verdict: string): void {
-  const configured = (readConfigRaw(dir)?.monitors ?? []).some((watch: any) => watch.id === id);
+  const configured = readSettledConfig(dir).monitors.some((watch: any) => watch?.id === id);
   const file = path.join(dir, configured ? 'state/watch-duties.json' : 'state/monitors.runtime.json');
   const lock = file + '.lock';
   if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');

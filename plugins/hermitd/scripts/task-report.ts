@@ -18,6 +18,5 @@ try {
   const records = readTaskReports(dir)
     .filter(record => !recent || record.outcome !== 'open')
     .sort((a, b) => (b.closed_at ?? b.opened_at).localeCompare(a.closed_at ?? a.opened_at));
-  console.log(JSON.stringify({ rows: records.slice(0, limit), total: records.length, omitted: Math.max(0, records.length - limit),
-  }));
+  console.log(JSON.stringify({ rows: records.slice(0, limit), total: records.length, omitted: Math.max(0, records.length - limit) }));
 } catch (error) { failJson(error); }

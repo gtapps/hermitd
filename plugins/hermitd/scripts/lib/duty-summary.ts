@@ -15,7 +15,7 @@ export function dutyRows(dir: string): DutyRow[] {
   const routines = readJson(path.join(dir, 'state/routine-monitor.runtime.json'));
   return deriveDuties(dir).map(duty => {
     const heartbeat = duty.name === 'heartbeat';
-    const routine = configuredRoutines.find((entry: any) => entry && typeof entry === 'object' && `routine:${entry.id}` === duty.name);
+    const routine = configuredRoutines.find((entry: any) => typeof entry?.id === 'string' && `routine:${entry.id}` === duty.name);
     const requested = heartbeat
       ? { enabled: config.heartbeat?.enabled !== false, every: config.heartbeat?.every ?? '30m', mode }
       : routine ? { enabled: routine.enabled !== false, schedule: routine.schedule ?? null, mode: routines?.mode ?? null } : {};
