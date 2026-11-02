@@ -111,6 +111,80 @@ describe('CLI verdict', () => {
   });
 });
 
+describe('proposal.ts list', () => {
+  function seedList(): string {
+    const dir = makeDir();
+    const entries = [
+      ['001', 'proposed', 'manual', '2026-01-03'],
+      ['002', 'accepted', 'auto-detected', '2026-01-04'],
+      ['003', 'deferred', 'auto-detected', '2026-01-05'],
+      ['004', 'proposed', 'auto-detected', '2026-01-01'],
+      ['005', 'proposed', 'auto-detected', '2026-01-02'],
+      ['006', 'dismissed', 'manual', '2026-01-06'],
+      ['007', 'resolved', 'manual', '2026-01-07'],
+    ];
+    for (const [id, status, source, created] of entries) {
+      writeProposal(dir, `PROP-${id}.md`, fm({ id: `PROP-${id}`, status, source, created, title: `Title ${id}`, category: 'improvement' }));
+    }
+    writeProposal(dir, 'PROP-008.md', '# No frontmatter');
+    return dir;
+  }
+
+  async function list(dir: string, args: string[] = []) {
+    const result = await runScript('proposal.ts', { args: ['list', '.hermit', ...args], cwd: dir });
+    expect(result.exitCode).toBe(0);
+    return JSON.parse(result.stdout);
+  }
+
+  test('default filter and order retain unknown rows and compute age', async () => {
+    const dir = seedList();
+    const result = await list(dir);
+    expect(result.total).toBe(6);
+    expect(result.shown).toBe(6);
+    expect(result.proposals.map((row: any) => row.id)).toEqual(['PROP-005', 'PROP-004', 'PROP-002', 'PROP-003', 'PROP-001', 'PROP-008']);
+    expect(result.proposals[0]).toEqual({
+      id: 'PROP-005', file: 'PROP-005.md', status: 'proposed', source: 'auto-detected',
+      category: 'improvement', title: 'Title 005', created: '2026-01-02',
+      age_days: Math.floor((Date.now() - Date.parse('2026-01-02')) / 86_400_000),
+    });
+    expect(result.proposals[5]).toMatchObject({ status: 'unknown', age_days: null });
+    expect(fs.existsSync(hermit(dir, 'state', 'proposals-index.json'))).toBe(true);
+  });
+
+  test('--all includes terminal rows; status and source narrow results', async () => {
+    const dir = seedList();
+    expect((await list(dir, ['--all'])).total).toBe(8);
+    expect((await list(dir, ['--all', '--status=dismissed,resolved'])).total).toBe(2);
+    expect((await list(dir, ['--status=proposed', '--source=auto-detected'])).proposals.map((row: any) => row.id))
+      .toEqual(['PROP-005', 'PROP-004']);
+    expect((await list(dir, ['--status=resolved'])).total).toBe(0);
+    expect((await list(dir, ['--source=manual'])).total).toBe(1);
+  });
+
+  test('limit bounds shown without changing total', async () => {
+    const dir = seedList();
+    const result = await list(dir, ['--limit=2']);
+    expect(result.total).toBe(6);
+    expect(result.shown).toBe(2);
+    expect(result.proposals.map((row: any) => row.id)).toEqual(['PROP-005', 'PROP-004']);
+    expect((await list(dir, ['--limit=0'])).shown).toBe(0);
+  });
+
+  test('default limit is 50 and every call rebuilds', async () => {
+    const dir = makeDir();
+    for (let i = 0; i < 52; i++) writeProposal(dir, `PROP-${i}.md`, fm({ status: 'proposed' }));
+    expect(await list(dir)).toMatchObject({ total: 52, shown: 50 });
+    fs.unlinkSync(hermit(dir, 'proposals', 'PROP-0.md'));
+    expect(await list(dir)).toMatchObject({ total: 51, shown: 50 });
+  });
+
+  test('missing proposals directory is an empty success', async () => {
+    const dir = freshNoProp();
+    fs.mkdirSync(hermit(dir, 'state'), { recursive: true });
+    expect(await list(dir)).toEqual({ total: 0, shown: 0, proposals: [] });
+  });
+});
+
 describe('generate-summary hook regenerates the index on a proposal write', () => {
   test('proposal-path payload builds the index', async () => {
     const dir = makeDir();

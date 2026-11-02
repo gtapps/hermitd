@@ -1,0 +1,17 @@
+# Quick reflect
+
+If `$ARGUMENTS` contains `--quick`:
+
+- **Obtain the quick-hash verdict.** With `--precheck-verdict '<verdict>'`: the `reflect_after` routine already ran the hash-gate precheck; `<verdict>` is always a run verdict (the routine stops on `empty` without loading this skill). Take its `hash`; do **not** re-run the precheck. Otherwise (manual invocation) run it in force mode (no gate to skip once this skill is loaded; always returns a `hash`):
+  Run `reflect-precheck` (Commands) with arguments `--quick --force`.
+- **Skip** the cadence precheck (the hash-gate is separate and narrower), cost_spike read, Resolution Check, and Component Health. Bind `$PHASE = adult`. Only the fresh task-record digest + judge + outcomes path runs.
+- Run `task-report` (Commands); use titles, lessons and waiting reasons for actionable patterns. **Only Tier-1 + `Evidence Source: current-session` candidates are eligible.** Candidates needing archived-session evidence or Tier 2/3 defer to the next scheduled reflect; choose each label using `observations-patterns` as above and append one ledger row each so the signal survives archival and can graduate:
+  Run `observations-observe` (Commands) with arguments `quick-deferral` and the candidate-title slug on stdin.
+  **Exception:** a `current-session` candidate with `Evidence Origin: external-content` is **not** deferred — send it to the judge; Tier-3 escalation routes it to `proposal-create`.
+- If any eligible candidate remains: Read branches.md § Candidate processing. Triage all candidates passing the evidence integrity rule in one `hermitd:proposal-triage` batch call, judge the `create` survivors in one `hermitd:reflection-judge` call, route ACCEPT/DOWNGRADE through branches.md § Outcomes; unrecognized gate output fails closed per branches.md § Gate failure handling. **Track whether anything hit the gate_failed/suppress path**: it gates the cursor write.
+- Append one Progress Log line: `[HH:MM] reflect (quick, post-routine) — N candidates; verdicts: accept=A downgrade=D suppress=S; outcomes: <list or "none">`; when suppress>0 add the `; suppressed:` suffix (§ Progress Log Entry).
+- **Advance the quick-hash cursor only on a clean run** (no gate_failed/suppress); otherwise skip this call: an unchanged `last_quick_hash` makes the next `reflect_after` fire re-read the same Findings/Blockers (the "re-surfaces next cycle" contract; deferred candidates are already durable in the ledger):
+  Run `update-reflection-state` (Commands) with arguments `--quick-hash '<hash>'`.
+- **Never call the counter-incrementing `update-reflection-state.ts <path> '<json-payload>'` form here** — quick runs are event-driven; mutating `last_run_at` would suppress the next scheduled reflect (`--quick-hash` is an isolated write).
+- Stop. Do not continue below.
+

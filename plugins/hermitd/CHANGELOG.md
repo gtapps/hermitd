@@ -5,6 +5,8 @@
 ### Added
 
 - Phone takeover for the managed Docker browser, inactive until set up, with admin mentions in the requesting chat, Take over and Hand back, and trusted-controller `!release`
+- `proposal.ts list`, a bounded sorted and filtered proposal listing used by `/proposal-list`, the morning brief and chat approvals
+- `proposal.ts patch --respond`, which records the first response and the status change in one call
 - A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions; it stays off for existing hermits because it adds about 1.4 GB to the image and needs 4 GiB of memory, until an explicit `/docker-setup` rerun
 
 ### Changed
@@ -13,6 +15,7 @@
 - Disabled or auth-refused Chrome launches pass `--no-chrome`, removing native Chrome tools even when the native default enabled them
 - Claude Code minimum version is 2.1.314
 - Chat corrections stay task lessons, including complaints about a named skill; the `skill-correction` ledger source and its reflect route are gone
+- `/reflect` loads about 30% less text: quick mode moved to its own file and the proposals index is no longer read into context
 
 ### Upgrade Instructions
 

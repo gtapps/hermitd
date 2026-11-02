@@ -20,16 +20,6 @@ A routine invoking `reflect --check-id <id> --check <namespaced skill>` supplies
 ## Commands
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 
-## Three-Condition Rule
-
-Only create a proposal if all three are true:
-1. **Repeated pattern** — observed more than once, across sessions. Recurrence is already verified upstream for every evidence source except `archived-session` (by the routine-invoked check's own analysis, the `reflection-judge`, the brainstorm pass, a cited `state/observations.jsonl` graduation, or a cited machine-written state file with the measured values), so re-establish it here only for `archived-session` candidates.
-2. **Meaningful consequence** — something goes wrong without fixing it
-3. **Operator-actionable change** — something the operator can concretely approve
-
-If any applicable condition cannot be stated concretely, do not create the proposal.
-Respond: "Not enough evidence yet. Note it in open record notes and revisit after more sessions."
-
 ## Pre-Creation Gate
 
 Pin the hermit root before dispatching:
@@ -152,22 +142,6 @@ If the proposal affects security boundaries — permissions, network access, cre
 
 When your operational scope changes (new API, new local service, new publishing channel), create a PROP recommending permission-rule additions or networking changes. Never modify `deny-patterns.json` or Docker config directly. The operator implements security changes.
 
-When the proposed solution involves creating a new agent, skill, heartbeat item, or OPERATOR.md change, make the Suggested Plan self-contained:
-
-**For a new sub-agent:**
-1. Create `.claude/agents/<name>.md` with:
-   - Frontmatter: name, description, model (the cheapest tier that handles the task), maxTurns, tools, disallowedTools, memory (project for shared team knowledge, user for personal cross-project knowledge)
-   - System prompt: role, constraints from OPERATOR.md, output format
-2. Test by delegating a representative task to the agent
-3. Verify it produces correct output and respects constraints
-
-**For a new skill:**
-1. Create `.claude/skills/<name>/SKILL.md` with:
-   - Frontmatter: name, description
-   - Goal, constraints, and how to verify; numbered steps only where order is load-bearing
-2. Test by invoking the skill with a representative input
-3. Verify it completes correctly
-
 **For a procedure needing a routine or agent:**
 Close-time learning routes authority-widening work here. For a routine, include `## Config` with its routine JSON and a `## Skill Draft` block carrying the procedure input path, and set `category: routine`. For a new agent include `## Agent Draft`. Do not create standalone plain-skill drafts: close-time learning owns those. Do not write the files here; the accepted proposal installs them through the existing routine/agent branches.
 ```markdown
@@ -193,11 +167,3 @@ When the brief carries `proposed_routine` (Lane B), include a `## Config` block 
 ## Config
 {"id":"<slug>","schedule":"<cron>","skill":"<invocation>","enabled":true}
 ```
-
-**For a heartbeat check:**
-1. Add the check to `.hermit/HEARTBEAT.md` under the appropriate group
-2. Run `/hermitd:heartbeat run` to verify it evaluates correctly
-
-**For an OPERATOR.md refinement:**
-1. Present the suggested addition to the operator
-2. The operator decides where and how to add it — the agent never modifies OPERATOR.md on its own; when the operator asks it to apply the change, it edits behind the native approval prompt

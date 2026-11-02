@@ -29,7 +29,7 @@
 //     plus `"warnings":[<token>,...]` when a tail step failed, or
 //     `{"error":"<token>"}` (exit 1) with zero writes.
 //
-//   patch <stateDir> <filename> [--set key=value]... [--request-compact] [--stdin]
+//   patch <stateDir> <filename> [--set key=value]... [--respond <accept|defer|dismiss>] [--request-compact] [--stdin]
 //     <filename> must be a direct-child basename of the proposals dir (no `/`,
 //     no leading `.`) — it is joined onto that dir, so a `../` prefix would
 //     otherwise reach any frontmatter-bearing .md on disk. Rejected the same
@@ -41,7 +41,8 @@
 //     to one in-memory copy, then a single atomic write — validation failures
 //     touch nothing. The Decision append is idempotent (skipped if the section
 //     already ends with the identical line). `--request-compact` writes
-//     state/compact-requested.json. Output: `{"id":"<id>"}` (plus `warnings`, as
+//     state/compact-requested.json. `--respond` records the first response and
+//     sets responded=true after validation, just before the atomic write. Output: `{"id":"<id>"}` (plus `warnings`, as
 //     for create) or `{"error":"<reason>"}`.
 //
 //   resolve <stateDir> <filename> [--stdin]
@@ -64,6 +65,9 @@
 //   queue-micro     lib/proposals/queue-micro.ts
 //   micro           lib/proposals/micro.ts
 //   index           lib/proposals/index-rebuild.ts
+//   list <stateDir> [--status=<csv>] [--source=<value>] [--all] [--limit=<n>]
+//     Rebuilds the index and returns {total,shown,proposals} with at most 50 rows
+//     by default, including age_days. Hides dismissed/resolved unless --all.
 //   event           lib/proposals/event.ts
 //   anchor          runAnchor below
 //   metrics         lib/proposals/metrics.ts
@@ -78,7 +82,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emit, emitJson, exitError, readStdin, readStdinIfFlagged, readJson, flagValue } from './lib/cli';
+import { emit, emitJson, exitError, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq } from './lib/cli';
 import { pinStateDirOrExit, memoryDirFor } from './lib/cc-compat';
 import { appendJsonlLine } from './lib/append-jsonl';
 import { auditConfigChange } from './lib/config-audit';
@@ -86,14 +90,14 @@ import { writeFileAtomic, patchFrontmatter, appendToSection, findSection, escape
 import { computeBase, shortProposalId, SUFFIX_LETTERS } from './lib/prop-id';
 import { readSettledConfig } from './lib/config-read';
 import { zonedISOStamp, utcISOStamp } from './lib/time';
-import { rebuildIndex, run as runIndex } from './lib/proposals/index-rebuild';
+import { rebuildIndex, type ProposalRow, run as runIndex } from './lib/proposals/index-rebuild';
 import { run as regenerateSummary } from './generate-summary';
 import { run as runResolveId } from './lib/proposals/resolve';
 import { run as runGate } from './lib/proposals/gate';
 import { run as runQueueMicro } from './lib/proposals/queue-micro';
 import { run as runMicro, sweepMoot, MOOT_STATUSES } from './lib/proposals/micro';
 import { run as runMetrics } from './lib/proposals/metrics';
-import { run as runEvent, appendEvent, respondedEvent, resolvedEvent } from './lib/proposals/event';
+import { run as runEvent, appendEvent, respondedEvent, resolvedEvent, RESPONDED_ACTIONS } from './lib/proposals/event';
 import { parseFrontmatter } from './lib/frontmatter';
 import { run as runSuccessSignal } from './lib/proposals/success-signal';
 import { run as runQualityGate } from './lib/proposals/quality-gate';
@@ -240,15 +244,17 @@ function parseSetValue(raw: string): Json {
   return raw;
 }
 
-function parsePatchArgs(args: string[]): { filename: string | undefined; sets: string[]; requestCompact: boolean } {
+function parsePatchArgs(args: string[]): { filename: string | undefined; sets: string[]; requestCompact: boolean; respond: string | undefined } {
   const filename = args[0];
   const sets: string[] = [];
   let requestCompact = false;
+  let respond: string | undefined;
   for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--respond') { respond = args[i + 1] ?? ''; i++; continue; }
     if (args[i] === '--set') { sets.push(args[i + 1] ?? ''); i++; continue; }
     if (args[i] === '--request-compact') { requestCompact = true; continue; }
   }
-  return { filename, sets, requestCompact };
+  return { filename, sets, requestCompact, respond };
 }
 
 const TIMESTAMP_RE_SRC = '\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:[+-]\\d{2}:\\d{2}|Z)';
@@ -284,7 +290,10 @@ function proposalPath(stateDir: string, filename: string | undefined): string | 
 }
 
 export function verbPatch(stateDir: string, stdin: string, args: string[]): Verdict {
-  const { filename, sets: rawSets, requestCompact } = parsePatchArgs(args);
+  const { filename, sets: rawSets, requestCompact, respond } = parsePatchArgs(args);
+  if (respond !== undefined && !(RESPONDED_ACTIONS as readonly string[]).includes(respond)) {
+    return { error: `invalid_action:${respond}` };
+  }
 
   const sets: Record<string, string> = {};
   for (const kv of rawSets) {
@@ -324,6 +333,14 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
   for (const [k, v] of Object.entries(sets)) patch[k] = parseSetValue(expand(v));
   for (const [k, v] of Object.entries(stdinSets)) patch[k] = expand(v);
 
+  let recordResponse = false;
+  if (respond !== undefined) {
+    const fm = parseFrontmatter(content) as Record<string, unknown> | null;
+    if (!fm) return { error: 'frontmatter_terminator_missing' };
+    recordResponse = String(fm.responded) !== 'true';
+    patch.responded = true;
+  }
+
   let patched = content;
   if (Object.keys(patch).length > 0) {
     try { patched = patchFrontmatter(content, patch); }
@@ -334,6 +351,16 @@ export function verbPatch(stateDir: string, stdin: string, args: string[]): Verd
     if (!sectionEndsWithLine(patched, 'Operator Decision', decisionLine)) {
       try { patched = appendToSection(patched, 'Operator Decision', expand(decisionLine)); }
       catch { return { error: 'no_operator_decision_section' }; }
+    }
+  }
+
+  if (recordResponse) {
+    try {
+      if (appendEvent(stateDir, respondedEvent(shortProposalId(path.basename(targetPath)), respond!))) {
+        return { error: 'proposal_responded_event_failed' };
+      }
+    } catch {
+      return { error: 'proposal_responded_event_failed' };
     }
   }
 
@@ -431,6 +458,37 @@ export function verbRoutine(stateDir: string, stdin: string): Verdict {
   return { status: verdict, id: entry.id };
 }
 
+// -------------------------------------------------------------------- list --
+
+export function verbList(stateDir: string, args: string[]): Verdict {
+  const limitValue = flagEq(args, 'limit') ?? '50';
+  if (!/^\d+$/.test(limitValue) || !Number.isSafeInteger(Number(limitValue))) {
+    return { error: 'invalid_limit' };
+  }
+  const limit = Number(limitValue);
+  const statuses = flagEq(args, 'status')?.split(',');
+  const source = flagEq(args, 'source');
+  const rows = (rebuildIndex(stateDir)?.proposals ?? []).filter(row => {
+    const status = row.status ?? 'unknown';
+    return (args.includes('--all') || !['dismissed', 'resolved'].includes(status))
+      && (!statuses || statuses.includes(status))
+      && (source === undefined || row.source === source);
+  });
+  const statusOrder: Record<string, number> = { proposed: 0, accepted: 1, deferred: 2 };
+  const createdTime = (row: ProposalRow): number => Date.parse(row.created ?? '') || 0;
+  rows.sort((a, b) => Number(b.source === 'auto-detected') - Number(a.source === 'auto-detected')
+    || (statusOrder[a.status ?? 'unknown'] ?? 3) - (statusOrder[b.status ?? 'unknown'] ?? 3)
+    || createdTime(b) - createdTime(a));
+  const now = Date.now();
+  const proposals = rows.slice(0, limit).map(row => ({
+    id: row.id, file: row.file, status: row.status ?? 'unknown', source: row.source,
+    category: row.category, title: row.title, created: row.created,
+    age_days: row.created && Number.isFinite(Date.parse(row.created))
+      ? Math.floor((now - Date.parse(row.created)) / 86_400_000) : null,
+  }));
+  return { total: rows.length, shown: proposals.length, proposals };
+}
+
 // ------------------------------------------------------------------- main --
 
 // The state dir is not caller-chosen. Every production call passes the literal
@@ -505,6 +563,7 @@ async function main(): Promise<void> {
     case 'queue-micro': return runQueueMicro(stateDir);
     case 'micro': return runMicro(stateDir, rest);
     case 'index': return runIndex(stateDir);
+    case 'list': return emitJson(verbList(stateDir, rest));
     case 'anchor': return runAnchor(pinnedDir);
     // `event` is the writer; `metrics` above is the reader. Deliberately not named
     // `metric`: one character from `metrics` would make a typo easy to miss.

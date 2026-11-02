@@ -2,6 +2,8 @@ Record notes only inside an open record's turn, using `task-note` (Commands) wit
 
 # Reflect — Branch Procedures
 
+Contents: Scheduled checks; `skill-preference:*` routing; Candidate processing; Config.
+
 Main-session procedures for reflect branches that fire rarely. `SKILL.md` names the section to read at each branch point — read that section and follow it exactly; each section is self-contained. (This file is for the main session. The eval-runner subagent's spec is `reference.md` — do not dispatch this file to it.)
 
 ## Scheduled checks
@@ -97,17 +99,17 @@ Tier: <1|2|3>
 Evidence Source: archived-session | current-session | scheduled-check/<id> | operator-request
 Evidence Origin: own-work | external-content
 Evidence: <summary>
-Sessions: <S-001, S-002, ...> (or "none")
+Sessions: <T-001, T-002, ...> (or "none")
 Artifact: <machine-written state file> — <cited value/pattern>   (optional)
 ```
 
-`Artifact:` is optional. A valid artifact is a **machine-written state file** only (`.claude/cost-log.jsonl`, `state/proposal-metrics.jsonl`, `state/observations.jsonl`); the open task record, session reports, and `compiled/` prose are never artifacts. Ledger-graduated candidates always carry it.
+`Artifact:` is optional. A valid artifact is a **machine-written state file** only (`.claude/cost-log.jsonl`, `state/proposal-metrics.jsonl`, `state/observations.jsonl`); task records and `compiled/` prose are never artifacts. Ledger-graduated candidates always carry it.
 
 `Evidence Source:` defaults to `archived-session` if omitted. Plugin-check candidates use `scheduled-check/<id>` with `Sessions: none`. Tier-1 candidates with the open task record evidence use `current-session` with `Sessions: current`. Efficiency/cost artifact candidates use the default `archived-session` with `Sessions: none` plus an `Artifact:` line; judge §0.5 routes them to §1.4 artifact verification instead of suppressing `no-sessions`.
 
 `Evidence Origin:` defaults to `own-work` if omitted. Set to `external-content` when the evidence derives from web fetches, `raw/` third-party captures, or a channel finding with an `[origin: external]` marker. The two fields are orthogonal: a candidate can be `archived-session` + `external-content`.
 
-`scheduled-check/<id>` and `operator-request` share the same bypass policy at every gate (skip recurrence, enforce consequence + actionability). They are **kept distinct on purpose**: `scheduled-check/<id>` carries the check identifier for telemetry and debugging; `operator-request` marks human-initiated flows (a proposal the operator asked for directly).
+`scheduled-check/<id>` and `operator-request` share the same bypass policy at every gate (skip recurrence, enforce consequence + actionability).
 
 The judge returns one verdict line per candidate, matched by `<title>`. For each candidate, record its line:
 Run `proposal-gate` (Commands) with arguments `--gate judge --caller reflect` and the following stdin payload:
@@ -193,7 +195,7 @@ Run `proposal-queue-micro` (Commands) and the following stdin payload:
 {"tier":<1|2>,"question":"<full question text>","options":["<label>", ...],"on_resolve":"<full skill invocation with an {answer} placeholder>","chat":"<sourceKey>:<chat_id>","key":"<stable ask name>"}
 ```
 `key` is optional: a stable name for an ask that may be queued again in new words.
-Set `chat` to the normalized key of the chat the question is sent to: the current chat on a channel-tagged turn, or `<sourceKey>:<maintainer_channel_id>` for a maintainer-only notice that reaches a maintainer chat. Only a reply there can answer the entry. Omit it when the question goes to the home chat: the script records the home chat. `options` and `on_resolve` are optional — used by channel-bridged asks from other skills (see `channel-responder` § Channel-safe ask bridge) as well as reflect's own future N-way candidates. When `on_resolve` is present, the script forces `tier: 1` regardless of the caller-supplied tier (so tier-1 readers like heartbeat keep working unchanged) and tags the metrics event `"kind":"ask"` (a bounded ask is not a yes/no approval, so `generate-summary.ts`/`weekly-review.ts` exclude it from approval-rate calculations).
+Set `chat` to the normalized key of the chat the question is sent to: the current chat on a channel-tagged turn, or `<sourceKey>:<maintainer_channel_id>` for a maintainer-only notice that reaches a maintainer chat. Only a reply there can answer the entry. Omit it when the question goes to the home chat: the script records the home chat. `options` and `on_resolve` are optional.
 
 - `queued`: the script generates the day-scoped `id` (`MP-YYYYMMDD-N`), appends the `pending` entry to `state/micro-proposals.json`, and logs the `micro-queued` metric event.
 - `duplicate`: a pending entry with the same `question`, `key` or linked proposal already exists (its `id` is returned); the script keeps that entry and gives it the new `question`.

@@ -456,40 +456,25 @@ describe('reflect SKILL.md: step 3b origin aggregation', () => {
   });
 });
 
-// ── Section 6: triage and proposal-create artifact exception ────────────────
+// ── Section 6: triage artifact exception ───────────────────────────────────
 
-describe('triage + proposal-create: observations.jsonl artifact exception', () => {
+describe('proposal-triage: observations.jsonl artifact exception', () => {
   const triage = fs.readFileSync(path.join(PLUGIN_ROOT, 'agents', 'proposal-triage.md'), 'utf-8');
-  const proposalCreate = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'proposal-create', 'SKILL.md'), 'utf-8');
 
   test('proposal-triage: observations.jsonl artifact satisfies condition 1', () => {
     expect(triage).toContain('state/observations.jsonl');
     // Should not require efficiency/cost-class only
     expect(triage).toContain('any artifact-cited candidate, had recurrence established upstream');
   });
-
-  test('proposal-create: observations.jsonl artifact satisfies condition 1', () => {
-    expect(proposalCreate).toContain('state/observations.jsonl');
-    // The judge verifies the ledger; do not re-check here
-    expect(proposalCreate).toContain('re-establish it here only for `archived-session` candidates');
-  });
 });
 
 // ── Section 7: reflect-noticed origin field ──────────────────────────────────
 
-describe('reflect SKILL.md: reflect-noticed with origin field', () => {
-  const reflectSkill = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'reflect', 'SKILL.md'), 'utf-8');
-
-  test('SKILL.md documents reflect-noticed source value with origin field', () => {
-    expect(reflectSkill).toContain('"source":"reflect-noticed"');
-  });
-
-  test('SKILL.md documents external-content origin for reflect-noticed', () => {
-    expect(reflectSkill).toContain('"origin":"external-content"');
-  });
-
-  test('SKILL.md documents own-work origin for reflect-noticed', () => {
-    expect(reflectSkill).toContain('"origin":"own-work"');
+describe('reflect branches: reflect-noticed origin field', () => {
+  test('documents both observation origins', () => {
+    const branches = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'reflect', 'branches.md'), 'utf-8');
+    expect(branches).toContain('`reflect-noticed --origin=own-work`');
+    expect(branches).toContain('`--origin=external-content`');
   });
 });
 

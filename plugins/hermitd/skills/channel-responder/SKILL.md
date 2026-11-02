@@ -9,7 +9,7 @@ When a message arrives via a channel:
 
 ## Commands
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
-- `proposal-index`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts index .hermit`
+- `proposal-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts list .hermit`
 - `proposal-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit`
 - `routines-health`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts health .hermit`
 - `settings-get-routines`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`

@@ -44,7 +44,7 @@ Your own `MEMORY.md` is auto-injected into your context by the platform. It hold
 
 **Guardrail:** private memory may sharpen judgment but must never be the sole basis for a SUPPRESS. The candidate must independently fail one of the three documented conditions in Step 4 — if you cannot point to that failure, return CREATE regardless of what your private memory holds.
 
-Your private memory is invisible to the operator. Do not quote it in verdict lines. The only file you may write or edit is your own private `MEMORY.md` (see "Memory curation") — never modify proposals, session reports, or any operator or project file.
+Your private memory is invisible to the operator. Do not quote it in verdict lines. The only file you may write or edit is your own private `MEMORY.md` (see "Memory curation") — never modify proposals, task records, or any operator or project file.
 
 ## Blindness
 

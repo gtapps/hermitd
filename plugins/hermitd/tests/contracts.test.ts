@@ -1799,11 +1799,6 @@ describe('reflect delegation contract', () => {
     expect(head).not.toContain('model:');
   });
 
-  test('schema block is byte-identical in reference.md and SKILL.md', () => {
-    const block = (text: string) => extractBlock(text, '<!-- reflect-eval-schema:start -->', '<!-- reflect-eval-schema:end -->');
-    expect(block(refFile)).toBe(block(skill));
-  });
-
   test('nudge write-back uses top-level last_sparse_nudge, not a per-entry field', () => {
     // Producer and consumer must agree on the nudge-debounce write-back field.
     // The runner returns nudge timestamps in the top-level `last_sparse_nudge` map;

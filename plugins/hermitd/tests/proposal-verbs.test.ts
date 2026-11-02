@@ -132,6 +132,46 @@ describe('verbPatch grammar', () => {
     return { base, id };
   }
 
+  test.each(['accept', 'defer', 'dismiss'])('--respond %s records only the first response', (action) => withDir(async (dir) => {
+    const { base, id } = seedProposal(dir);
+    const args = [id, '--respond', action, '--set', 'status=accepted'];
+    expect(verbPatch(base, 'Decision: Answered on @now.', args)).toEqual({ id });
+    expect(verbPatch(base, 'Decision: Answered on @now.', args)).toEqual({ id });
+    const rows = fs.readFileSync(path.join(base, 'state', 'proposal-metrics.jsonl'), 'utf-8')
+      .trim().split('\n').map(line => JSON.parse(line)).filter(row => row.type === 'responded');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ proposal_id: 'PROP-001', action });
+    expect(fs.readFileSync(path.join(base, 'proposals', `${id}.md`), 'utf-8')).toContain('responded: true');
+  })());
+
+  test.each([
+    [['--respond', 'unknown'], '', 'invalid_action:unknown'],
+    [['--respond', 'accept', '--set', 'broken'], '', 'invalid_set'],
+    [['--respond', 'accept'], 'Decision: Answered.', 'no_operator_decision_section'],
+  ])('failed response validation leaves no event or write: %s', (args, stdin, error) => withDir(async (dir) => {
+    const { base, id } = seedProposal(dir);
+    const file = path.join(base, 'proposals', `${id}.md`);
+    if (error === 'no_operator_decision_section') fs.writeFileSync(file, fs.readFileSync(file, 'utf-8').replace('## Operator Decision', '## Other'));
+    const before = fs.readFileSync(file, 'utf-8');
+    const ledger = path.join(base, 'state', 'proposal-metrics.jsonl');
+    const events = fs.readFileSync(ledger, 'utf-8');
+    expect(verbPatch(base, stdin, [id, ...args])).toEqual({ error });
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+    expect(fs.readFileSync(ledger, 'utf-8')).toBe(events);
+  })());
+
+  test('failed response append leaves the proposal unchanged', withDir(async (dir) => {
+    const { base, id } = seedProposal(dir);
+    const file = path.join(base, 'proposals', `${id}.md`);
+    const before = fs.readFileSync(file, 'utf-8');
+    const ledger = path.join(base, 'state', 'proposal-metrics.jsonl');
+    fs.unlinkSync(ledger);
+    fs.mkdirSync(ledger);
+    expect(verbPatch(base, '', [id, '--respond', 'accept', '--set', 'status=accepted']))
+      .toEqual({ error: 'proposal_responded_event_failed' });
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+  }));
+
   test('frontmatter set and Operator Decision append land in one write', withDir(async (dir) => {
     const { base, id } = seedProposal(dir);
     const verdict = verbPatch(base, 'Decision: Accepted on @now.', [id, '--set', 'status=accepted']);

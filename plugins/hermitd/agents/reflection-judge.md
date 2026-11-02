@@ -28,7 +28,7 @@ Tier: <1|2|3>
 Evidence Source: archived-session | current-session | scheduled-check/<id> | operator-request
 Evidence Origin: own-work | external-content
 Evidence: <summary>
-Sessions: <S-001, S-002, ...> (or "none" if no sessions cited)
+Sessions: <T-001, T-002, ...> (or "none" if no sessions cited)
 Artifact: <machine-written state file> — <cited value/pattern>   (optional)
 ```
 
@@ -88,14 +88,13 @@ and do not proceed to evidence verification or tier check.
 The caller supplies `Task records:` containing the fresh normalized rows from
 `task-report.ts`, including each `source_path`, title, outcome, waiting reason and lessons.
 Use those adapter rows only; missing rows are missing evidence, not permission to search archives.
-For each cited task ID in the compatibility `Sessions:` field, match its normalized `source_path`.
-Verify the claimed pattern in `title`, `lessons`, `waiting_on`, and `outcome`. Missing citations
-are missing evidence; never fall back to frozen session archives or the old live shell document.
+For each cited task ID in the `Sessions:` field, match its normalized `source_path`.
+Verify the claimed pattern in `title`, `lessons`, `waiting_on`, and `outcome`.
 A confirming record must describe the same observation independently of the candidate summary.
 
 ### 1.4 Artifact verification
 
-**Observations ledger.** When an `Artifact:` line cites `state/observations.jsonl` (the path reflect's ledger graduation uses), verify the ledger instead of requiring each session report to restate the pattern — sub-threshold patterns live only in the ledger by design:
+**Observations ledger.** When an `Artifact:` line cites `state/observations.jsonl` (the path reflect's ledger graduation uses), verify the ledger instead of requiring each task record to restate the pattern — sub-threshold patterns live only in the ledger by design:
 
 - Never `Read` the ledger whole — it grows without bound (the 30-day pruner keeps a pattern's full history while any row is fresh). Use the Grep tool on `<root>/state/observations.jsonl` (content mode, `head_limit: 200`), searching for the **quoted JSON field**: `"pattern":"<label>"`. Two reasons it is spelled that way, both of which otherwise produce a false `no-evidence`: labels are free text and may contain regex metacharacters (`(`, `[`, `+`, `?`) that make a bare search error or miss, so escape them; and a bare substring lets `foo` match a sibling `foo-v2` row. From those matches only, confirm every `session_id` in the candidate's cited `Sessions:` list appears on at least one matching line. (The graduation threshold is operator-configured; the judge stays config-agnostic by verifying the cited evidence exists, not by re-counting the threshold.)
 - **Verified** → this substitutes for the per-report pattern confirmation in §1; proceed to § 2.
@@ -115,8 +114,7 @@ Preserve provenance supplied with a candidate: `closed_via: auto` identifies aut
 historical evidence and `closed_via: operator` identifies supervised evidence. For Tier 2
 or Tier 3 recurrence supported entirely by auto-closed evidence, use the downgrade reason
 `auto-closed-evidence`; mixed or supervised evidence carries full weight. Tier 1 is not
-downgraded for provenance. This metadata never authorizes opening frozen session reports,
-and provenance alone is never a suppression reason.
+downgraded for provenance; provenance alone is never a suppression reason.
 
 ### 2. Tier check
 
@@ -174,4 +172,4 @@ Your final message is read verbatim into the caller's long-lived main-session co
 
 Before your final response: if you suppressed a candidate and the evidence shape generalizes (a citation pattern that consistently fails to resolve, or a class of candidates whose sessions never describe the claimed problem), record or update one terse heuristic in your private `MEMORY.md`. Keep entries short and tied to canonical suppress codes. Prune stale entries.
 
-Do not record operator-specific context here — that belongs in the operator's MEMORY.md. Heuristics here describe structural evidence shapes, for example: "session IDs of the form S-0NNN often cite the finding log rather than an actual observed pattern".
+Do not record operator-specific context here — that belongs in the operator's MEMORY.md. Heuristics here describe structural evidence shapes, for example: "task IDs of the form T-... often cite the finding log rather than an actual observed pattern".

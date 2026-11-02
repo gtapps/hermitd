@@ -8,7 +8,7 @@ Provide a concise executive summary of recent task activity. Designed for mornin
 
 ## Commands
 - `duties-summary`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit`
-- `proposal-index`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts index .hermit`
+- `proposal-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts list .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
 - `task-report`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit`
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
