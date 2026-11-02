@@ -110,12 +110,16 @@ export async function runPinnedScript(
 }
 
 export async function runScript(script: string, opts: RunOptions = {}): Promise<RunResult> {
+  // Browser health reads in CLI tests must never consult the operator's install.
+  const browserEnv = ['doctor-check.ts', 'hatch-report.ts'].includes(script)
+    ? { CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(opts.cwd ?? path.resolve(opts.args?.[1] ?? opts.args?.[0] ?? '/tmp'), '.test-browser-cache') }
+    : {};
   const proc = Bun.spawn({
     cmd: [process.execPath, path.join(SCRIPTS_DIR, script), ...(opts.args ?? [])],
     cwd: opts.cwd,
     // Pin the plugin root to the tree under test: a Claude Code session exports
     // CLAUDE_PLUGIN_ROOT for the installed plugin, whose templates may differ.
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...opts.env },
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...browserEnv, ...opts.env },
     stdin: opts.openStdin ? 'pipe' : Buffer.from(opts.stdin ?? ''),
     stdout: 'pipe',
     stderr: 'pipe',

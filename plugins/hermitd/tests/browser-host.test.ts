@@ -1,7 +1,8 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { publishViewer, setupBrowserHost, securityRenderInput, tailscaleCLI } from '../scripts/browser-host';
+import { publishViewer, setupBrowserHost, securityRenderInput, tailscaleCLI, installHostPrerequisites } from '../scripts/browser-host';
+import { browserAppArmorProfile } from '../scripts/lib/browser-runtime';
 import { render } from '../scripts/render-docker-templates';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('browser-host-');
@@ -12,7 +13,7 @@ function fixture(lan = false) {
   const dir = path.join(project, '.hermit');
   fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
   const logFile = path.join(project, 'calls');
-  const config: any = { channels: {}, docker: { packages: [], browser: true, browser_admins: [{ login: 'admin', mentions: {} }] } };
+  const config: any = { channels: {}, browser: { enabled: true, admins: [{ login: 'admin', mentions: {} }] }, docker: { packages: [] } };
   if (lan) config.docker.security = {
     network: { enabled: true, subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2',
       publish_ports: [{ target: 3000, published: '3000' }], lan_allowlist: ['192.168.1.1'], additional_domains: ['example.com'], dns_mode: 'enforce' },
@@ -43,7 +44,7 @@ function fixture(lan = false) {
   fs.writeFileSync(path.join(dir, 'bin/hermitd-docker'), `#!/bin/bash\nprintf '%s\\n' "$@" >> '${logFile}'\n`, { mode: 0o755 });
   const oldPath = process.env.PATH;
   process.env.PATH = bin + ':' + oldPath;
-  if (tailscaleCLI() !== path.join(bin, 'tailscale')) {
+  if (tailscaleCLI() !== path.join(bin, 'tailscale') || Bun.which('docker', { PATH: process.env.PATH }) !== path.join(bin, 'docker')) {
     process.env.PATH = oldPath;
     throw new Error('Fixture refused: Tailscale lookup escaped fake-bin');
   }
@@ -69,7 +70,7 @@ for (const lan of [false, true]) test.serial(`host setup recreates without build
     fs.writeFileSync(f.routesFile, JSON.stringify({ Web: { 'hermit.tail.test:443': { Handlers: { '/': { Proxy: 'http://127.0.0.1:9999' } } } } }));
     const result = await setupBrowserHost(f.project, f.opts);
     const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
-    expect(config.docker.browser_port).toBe(result.port);
+    expect(config.browser.port).toBe(result.port);
     expect(result.port).toBeGreaterThanOrEqual(6080);
     const compose: any = Bun.YAML.parse(fs.readFileSync(path.join(f.project, 'docker-compose.hermit.yml'), 'utf8'));
     expect(!!compose.services.hermit.ports).toBe(!lan);
@@ -160,4 +161,69 @@ test.serial('missing CLI reports clearly and Windows interop is the final PATH c
 
 test.serial('security inputs use the configured domains, network and toggles', () => {
   expect(securityRenderInput({ network: { enabled: true, subnet: 'subnet', gateway: 'gw', netguard_ip: 'ip', additional_domains: ['one'] }, resources: { sysctls_enabled: true } })).toMatchObject({ network: { subnet: 'subnet', gateway: 'gw', netguard_ip: 'ip' }, fleetDomains: [], additionalDomains: ['one'], toggles: { resources: { sysctlsEnabled: true } } });
+});
+
+function hostFixture() {
+  const project = freshDir(), data = path.join(project, 'data'), folder = path.join(data, '1-2');
+  fs.mkdirSync(path.join(project, '.hermit/state'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.hermit/config.json'), '{"browser":{"enabled":true}}');
+  fs.mkdirSync(path.join(folder, 'chrome'), { recursive: true });
+  for (const file of ['agent-browser', 'chrome/chrome']) fs.writeFileSync(path.join(folder, file), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(folder, 'config.json'), '{}');
+  fs.writeFileSync(path.join(folder, 'complete.json'), '{"binary":"agent-browser","chrome":"chrome/chrome"}');
+  const calls: string[][] = [];
+  const profileFile = path.join(project, 'apparmor-profile');
+  const options = {
+    container: () => false, platform: 'linux' as const, data, profileFile,
+    which: (name: string) => '/fake/' + name,
+    install: (async () => ({ status: 'ready', dir: folder })) as typeof import('../scripts/browser-install').installBrowser,
+    capture: async (args: string[]) => { calls.push(args); return { stdout: '', stderr: '', code: 0 }; },
+    interactive: async (args: string[], extra?: { env?: NodeJS.ProcessEnv; input?: string }) => {
+      calls.push(args);
+      if (args[1] === 'tee') fs.writeFileSync(profileFile, extra!.input!);
+      return 0;
+    },
+    restriction: () => '1', startDisplay: (() => { calls.push(['display']); }) as any,
+  };
+  return { project, data, folder, calls, profileFile, options };
+}
+test('host prerequisites need no Tailscale or admins and matching AppArmor is idempotent', async () => {
+  const f = hostFixture();
+  expect(await setupBrowserHost(f.project, f.options)).toEqual({ status: 'ready' });
+  expect(fs.readFileSync(f.profileFile, 'utf8')).toBe(browserAppArmorProfile(f.data));
+  expect(f.calls).toContainEqual(['sudo', 'systemctl', 'reload', 'apparmor']);
+  f.calls.length = 0;
+  await setupBrowserHost(f.project, f.options);
+  expect(f.calls).toEqual([['ldd', path.join(f.folder, 'chrome/chrome')], ['display']]);
+});
+for (const manager of ['apt-get', 'dnf', 'pacman']) test(`host package setup selects ${manager} with inherited execution`, async () => {
+  const f = hostFixture();
+  await installHostPrerequisites(f.project, { ...f.options, restriction: () => '0', which: name => [manager, 'sudo'].includes(name) ? '/fake/' + name : null });
+  expect(f.calls.some(args => args[0] === 'sudo' && args[1] === manager && args.includes('unzip'))).toBe(true);
+});
+test('missing sudo prints the exact command and stops before installation', async () => {
+  const f = hostFixture(), messages: string[] = [];
+  await expect(installHostPrerequisites(f.project, { ...f.options, which: name => name === 'apt-get' ? '/fake/apt-get' : null, log: line => messages.push(line) })).rejects.toThrow('sudo_missing');
+  expect(messages.join('\n')).toContain("'apt-get' 'update'");
+  expect(f.calls).toEqual([]);
+});
+test('Chrome dependency install uses a throwaway HOME and rechecks ldd', async () => {
+  const f = hostFixture(); let probes = 0, home = '';
+  await installHostPrerequisites(f.project, { ...f.options, restriction: () => '', which: name => name === 'pacman' ? null : '/fake/' + name,
+    capture: async () => ({ code: 0, stderr: '', stdout: ++probes === 1 ? 'libmissing.so => not found' : '' }),
+    interactive: async (args, extra) => { expect(args).toEqual([path.join(f.folder, 'agent-browser'), 'install', '--with-deps']); home = extra!.env!.HOME!; expect(fs.existsSync(home)).toBe(true); return 0; },
+  });
+  expect(probes).toBe(2); expect(fs.existsSync(home)).toBe(false);
+});
+test('macOS takeover refuses before any installation', async () => {
+  const f = hostFixture();
+  fs.writeFileSync(path.join(f.project, '.hermit/config.json'), '{"browser":{"admins":[{"login":"a"}]}}');
+  await expect(setupBrowserHost(f.project, { ...f.options, platform: 'darwin' })).rejects.toThrow('takeover_unsupported');
+  expect(f.calls).toEqual([]);
+});
+test.serial('Docker missing marker asks for a rebuild before publishing', async () => {
+  const f = fixture(); try {
+    fs.writeFileSync(path.join(f.bin, 'docker'), `#!${process.execPath}\nconsole.log('29.0.0');\nprocess.exit(process.argv.includes('exec') ? 1 : 0);`, { mode: 0o755 });
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('rebuild first');
+  } finally { f.stop(); }
 });

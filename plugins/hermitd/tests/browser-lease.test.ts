@@ -274,3 +274,12 @@ test('forced release with no human writes nothing, even with a delivered event a
   expect(browserLease('human-release', undefined, dir).status).toBe('nothing_held');
   expect(fs.readFileSync(file, 'utf8')).toBe(before);
 });
+
+test('teardown takes and drops the claim without sweeping queued tasks', () => {
+  const dir = freshDir();
+  browserLease('claim', 'holder', dir);
+  browserLease('claim', 'queued', dir);
+  expect(browserLease('teardown', 'shutdown', dir)).toMatchObject({ status: 'claimed', holder: 'shutdown' });
+  browserLease('teardown', undefined, dir);
+  expect(browserLease('inspect', undefined, dir).waiters).toEqual([{ task: 'queued', waiting_on: 'holder' }]);
+});

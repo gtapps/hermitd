@@ -9,9 +9,12 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { observe, finalData, confirmData } from '../scripts/hatch-report';
-import { runScript } from './helpers/run';
+import { observe as observeDisk, finalData, confirmData } from '../scripts/hatch-report';
+import { runScript as runScriptDisk } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
+
+const observe = (root: string) => observeDisk(root, () => false);
+const runScript: typeof runScriptDisk = (name, options = {}) => runScriptDisk(name, { ...options, env: { ...options.env, CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(freshDir(), 'cache') } });
 
 const { freshDir, cleanup } = freshDirFactory('hermit-hatchreport-');
 afterAll(cleanup);
@@ -251,4 +254,11 @@ describe('confirm previews intent, before anything is written', () => {
     expect(r.exitCode).toBe(1);
     expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_answers' });
   });
+});
+
+test('browser preview carries the default and host report names the prerequisite command', () => {
+  expect(confirmData({}).will_apply.browser).toMatchObject({ enabled: true, default: 'agent-browser' });
+  const root = hatched();
+  expect(finalData(observe(root), 'tmux').browser.host_command).toBe('hermitd run browser-host');
+  expect(finalData(observe(root), 'docker').browser.host_command).toBeUndefined();
 });

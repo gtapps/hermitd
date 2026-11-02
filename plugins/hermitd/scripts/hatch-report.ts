@@ -23,6 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readStdin, readJson, flagValue, exitError, printJson } from './lib/cli';
+import { browserHostPrerequisite } from './lib/browser-runtime';
 import { readConfigRaw } from './lib/config-read';
 
 type Json = any;
@@ -54,27 +55,31 @@ export interface Observed {
   gitRepo: boolean;
   binScripts: string[];
   dockerSetUp: boolean;
+  browserSetupNeeded?: boolean;
 }
 
-export function observe(root: string): Observed {
+export function observe(root: string, browserReady = () => browserHostPrerequisite() === null): Observed {
   const hermit = path.join(root, '.hermit');
   const settingsCandidates = ['.claude/settings.local.json', '.claude/settings.json'];
   const settingsFile = settingsCandidates.find(f => has(path.join(root, f), 'hermitd') || has(path.join(root, f), '.hermit/')) ?? null;
 
   let binScripts: string[] = [];
   try { binScripts = fs.readdirSync(path.join(hermit, 'bin')).sort(); } catch { /* not scaffolded */ }
+  // Raw, not settled: a null config here IS the "hatch did not complete" signal.
+  const config = readConfigRaw(hermit);
+  const dockerSetUp = exists(path.join(root, 'docker-compose.hermit.yml'));
 
   return {
     stateDir: exists(hermit),
-    // Raw, not settled: a null config here IS the "hatch did not complete" signal.
-    config: readConfigRaw(hermit),
+    config,
     hatchOptions: readJson(path.join(hermit, 'state', 'hatch-options.json')),
     gitignore: has(path.join(root, '.gitignore'), '.hermit'),
     worktreeinclude: has(path.join(root, '.worktreeinclude'), WORKTREE_MARKER),
     settingsFile,
     gitRepo: exists(path.join(root, '.git')),
     binScripts,
-    dockerSetUp: exists(path.join(root, 'docker-compose.hermit.yml')),
+    dockerSetUp,
+    browserSetupNeeded: config?.browser?.enabled !== false && !dockerSetUp && !browserReady(),
   };
 }
 
@@ -114,6 +119,8 @@ export function confirmData(answers: Json): Json {
     will.escalation = t.escalation;
     will.remote = !!t.remote;
   }
+  will.browser = { ...(t.browser ?? {}), ...(answers.browser ?? {}) };
+  if (answers.browser) chosen.add('browser');
   // hermitd:heartbeat-restart is plumbing, not something the operator would recognize as
   // "a routine that wakes the agent".
   will.routines = {
@@ -193,6 +200,8 @@ export function finalData(o: Observed, deployment: string): Json {
     },
     // Nothing chains from here: the operator runs each step in order, and nothing
     // is running before step running_after_step finishes.
+    browser: { enabled: c.browser?.enabled !== false, default: c.browser?.default ?? 'agent-browser',
+      ...(deployment !== 'docker' && c.browser?.enabled !== false && o.browserSetupNeeded ? { host_command: 'hermitd run browser-host' } : {}) },
     next_steps: steps,
     running_after_step: runningAfter,
     anytime: [

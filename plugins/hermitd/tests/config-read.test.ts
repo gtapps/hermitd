@@ -144,6 +144,8 @@ describe('read-path gate', () => {
     'docker-preflight.ts', // existence check, never parses
     'lib/config-audit.ts', // audit ledger: the literal is a row's target label, never a path it reads
     'settings-gate.ts', // PreToolUse gate: the literal is a path suffix it matches tool calls against, never a file it reads
+    'browser-agent.ts', // agent-browser's own empty config, never the hermit's
+    'browser-install.ts', // agent-browser's own empty config, never the hermit's
   ]);
 
   test('no config.json literal outside config-read importers and the allowlist', () => {
@@ -215,13 +217,14 @@ describe('config reference coverage', () => {
 
 
 
-test('browser takeover config settles containers and validates admin entries and integer ports', () => {
+test('browser config settles defaults and validates admin entries and nullable integer ports', () => {
   const admins = [{ login: 'person@example.com', mentions: { custom: '@person' } }];
-  expect(settleConfig({ docker: { browser_admins: admins, browser_port: 6081 } }).docker).toMatchObject({ browser_admins: admins, browser_port: 6081 });
-  expect(settleConfig({ docker: { browser_admins: 'bad' } }).docker.browser_admins).toEqual([]);
-  for (const browser_port of [null, '6080', 1.5, 0, 65536]) expect(validate({ ...template, docker: { browser_port } }).errors.join(' ')).toContain('docker.browser_port');
-  for (const browser_admins of [null, {}, [null], [{ login: '', mentions: {} }], [{ login: 'a' }], [{ login: 'a', mentions: { custom: 1 } }]]) expect(validate({ ...template, docker: { browser_admins } }).errors.join(' ')).toContain('docker.browser_admins');
-  expect(validate({ ...template, docker: { browser_admins: admins, browser_port: 6080 } }).errors).toEqual([]);
-  expect(template.docker.browser_admins).toBeUndefined();
-  expect(template.docker.browser_port).toBeUndefined();
+  expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', admins: [], port: null, host: null });
+  expect(settleConfig({ browser: { admins, port: 6081 } }).browser).toMatchObject({ admins, port: 6081 });
+  expect(settleConfig({ browser: { admins: 'bad' } }).browser.admins).toEqual([]);
+  for (const port of ['6080', 1.5, 0, 65536]) expect(validate({ ...template, browser: { port } }).errors.join(' ')).toContain('browser.port');
+  for (const admins of [null, {}, [null], [{ login: '', mentions: {} }], [{ login: 'a' }], [{ login: 'a', mentions: { custom: 1 } }]]) expect(validate({ ...template, browser: { admins } }).errors.join(' ')).toContain('browser.admins');
+  expect(validate({ ...template, browser: { admins, port: null } }).errors).toEqual([]);
+  expect(validate({ ...template, browser: { default: 'chrome' } }).errors.join(' ')).toContain('chrome: true');
+  expect(validate({ ...template, chrome: true, browser: { default: 'chrome' } }).errors).toEqual([]);
 });

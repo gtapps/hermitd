@@ -39,6 +39,8 @@ import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cl
 import { safeForLLM } from './lib/sanitize';
 import { resolveGate, projectRootOf } from './lib/routines/gate';
 import { renameCursors } from './lib/routines/schedule';
+import { chromeAuthNote } from './lib/credential-probe';
+import { dockerfileHasOwnBrowser } from './lib/browser-runtime';
 
 type Json = any;
 
@@ -58,6 +60,17 @@ const SIBLING_SKILL_RE = new RegExp(`^/${PLUGIN_ID}:[^\\s:]+$`);
 type Rename = { from: string; to: string };
 
 const migrations: Record<string, Migration> = {
+  'browser-default-on': {
+    run: (config, ctx) => {
+      if (Object.hasOwn(config, 'browser')) return;
+      const ownBrowser = dockerfileHasOwnBrowser(path.join(path.dirname(ctx.hermitDir), 'Dockerfile.hermit'));
+      const useChrome = config.chrome === true && chromeAuthNote(config) === null;
+      config.browser = { enabled: !ownBrowser, default: useChrome ? 'chrome' : 'agent-browser', admins: [], port: null, host: null };
+      return { browser: config.browser, note: ownBrowser
+        ? 'Managed browser left off because Dockerfile.hermit installs agent-browser. Enable browser.enabled through /hermitd:hermit-settings, then run hermitd update to use it.'
+        : `Managed browser enabled; default browser: ${config.browser.default}.` };
+    },
+  },
   'plugin-routine-ids': {
     takesArgs: true,
     run: (config, ctx) => {

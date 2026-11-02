@@ -1,19 +1,16 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, type BrowserDeployment } from './lib/browser-runtime';
+export { browserSocketDir } from './lib/browser-runtime';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
+import { installedBrowser } from './lib/browser-runtime';
 import { failJson, printJson, readJson } from './lib/cli';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
-
-// Runtime sockets must not be shared with other hermits on the fleet mesh.
-export function browserSocketDir(dir: string): string {
-  return `/tmp/hermit-browser-${createHash('sha256').update(dir).digest('hex').slice(0, 16)}`;
-}
 
 /** Reserve admission while the CLI starts a daemon, without holding a long lock. */
 function sessionAdmission(socketDir: string, session: string, remove = false): boolean {
@@ -40,13 +37,40 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   } finally { releaseLock(lock); }
 }
 
-export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY, chromeAlive = persistentChromeAlive): Promise<number> {
-  const pluginRoot = process.env.HERMIT_PLUGIN_ROOT;
-  if (!pluginRoot || !fs.existsSync(path.join(pluginRoot, 'scripts/browser-agent.ts'))) {
-    printJson({ error: 'plugin_unavailable', detail: 'Managed browser requires the hermit plugin.' });
-    return 1;
-  }
+interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number }
+export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
+  if (!browserEnabled(dir)) { printJson({ status: 'disabled' }); return 0; }
+  const deployment = options.deployment ?? browserDeployment(dir);
+  if (deployment === 'docker_host') { printJson({ error: 'docker_host_session' }); return 1; }
+  const host = deployment === 'host';
+  let install = host ? installedBrowser(options.data) : null;
+  // Shutdown must never download a browser or wait for an installer.
+  if (host && !install && !realBinary && argv.at(-1) === 'close') {
+    printJson({ status: 'closed' }); return 0;
+  }
+  if (host && !install && !realBinary) {
+    const data = options.data ?? browserDataDir();
+    const lock = path.join(data, 'install.lock');
+    const installError = () => readJson(path.join(data, 'install-error.json'))?.error;
+    if (fs.existsSync(lock)) { printJson({ status: 'installing' }); return 0; }
+    const error = installError();
+    if (error) { printJson({ error: `browser_install_failed:${error}` }); return 1; }
+    const child = Bun.spawn([process.execPath, path.join(import.meta.dir, 'browser-install.ts')], { cwd: path.dirname(dir), env: process.env, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore', detached: true });
+    child.unref();
+    const deadline = Date.now() + (options.waitMs ?? 90_000);
+    do {
+      await Bun.sleep(100);
+      install = installedBrowser(data);
+      if (install || installError()) break;
+    } while (Date.now() < deadline);
+    if (!install) {
+      const error = installError();
+      printJson(error ? { error: `browser_install_failed:${error}` } : { status: 'installing' });
+      return error ? 1 : 0;
+    }
+  }
+  realBinary ??= host ? install!.binary : REAL_BINARY;
   const env = { ...process.env };
   // Ambient session/profile switches must not silently change the supported path.
   delete env.AGENT_BROWSER_SESSION;
@@ -73,6 +97,18 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY, 
   const task = taskIndex >= 0 ? argv[taskIndex + 1] : argv.find(arg => arg.startsWith('--task='))?.slice('--task='.length);
   // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy or headed
   // mode. --task is the wrapper's own, so it never reaches the real binary.
+  if (task && host && (options.platform ?? browserHostPlatform()) === 'darwin') {
+    printJson({ error: 'takeover_unsupported' }); return 1;
+  }
+  const display = host ? readJson(path.join(dir, 'state/browser-display.json')) : { display: ':1' };
+  if (task && host && (!display?.display || !fs.existsSync(path.join(socketDir, 'vnc.sock')))) {
+    printJson({ error: 'browser_display_missing', detail: 'The display runs only for always-on tmux hermits. Run hermitd run browser-host for those hermits.' }); return 1;
+  }
+  env.AGENT_BROWSER_CONFIG = install?.config ?? path.join(socketDir, 'config.json');
+  if (!install) writeFileAtomic(env.AGENT_BROWSER_CONFIG, '{}\n', 0o600);
+  if (host && install) env.AGENT_BROWSER_EXECUTABLE_PATH = install.chrome;
+  else if (host) delete env.AGENT_BROWSER_EXECUTABLE_PATH;
+  const resolver = '--host-resolver-rules=MAP 169.254.* ^NOTFOUND';
   const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task']);
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -84,38 +120,49 @@ export async function runBrowserAgent(argv: string[], realBinary = REAL_BINARY, 
     }
     args.push(argv[i]);
   }
+  const open = args.indexOf('open');
+  if (open >= 0) {
+    try {
+      const hostname = new URL(args[open + 1]).hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
+      if (['169.254.169.254', 'metadata.google.internal', 'metadata.goog', '100.100.100.200', 'fd00:ec2::254'].includes(hostname)) {
+        printJson({ error: 'metadata_url_refused' }); return 1;
+      }
+    } catch {}
+  }
   let epoch: number | undefined;
   if (session) {
-    env.AGENT_BROWSER_ARGS = '--no-sandbox';
+    env.AGENT_BROWSER_ARGS = host ? resolver : `--no-sandbox,${resolver}`;
     if (!sessionAdmission(socketDir, session)) {
       printJson({ error: 'session_cap' });
       return 1;
     }
   } else {
     // A task whose claim expired must not drive the page the next holder opened.
-    const before = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive });
+    const before = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => chromeAlive(dir) });
     epoch = before.epoch;
     if (before.human) { printJson({ error: 'human_has_control' }); return 1; }
-    const renewed = browserLease('renew', task, dir, Date.now(), { chromeAlive });
+    const renewed = browserLease('renew', task, dir, Date.now(), { chromeAlive: () => chromeAlive(dir) });
     if (renewed.status === 'human') { printJson({ error: 'human_has_control' }); return 1; }
     if (renewed.status !== 'claimed') {
       printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
       return 1;
     }
-    env.DISPLAY = ':1';
+    env.DISPLAY = display?.display;
     env.AGENT_BROWSER_IDLE_TIMEOUT_MS = '0';
     env.AGENT_BROWSER_HEADED = '1';
-    env.AGENT_BROWSER_PROFILE = '/home/claude/.claude/browser/profile';
-    env.AGENT_BROWSER_ARGS = '--no-sandbox,--window-size=500,1082,--window-position=0,0';
+    env.AGENT_BROWSER_PROFILE = browserProfile(dir, deployment);
+    env.AGENT_BROWSER_ARGS = `${host ? '' : '--no-sandbox,'}${resolver},--window-size=500,1082,--window-position=0,0`;
   }
   try {
-    const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: session ? 'inherit' : 'pipe', stderr: session ? 'inherit' : 'pipe' });
-    if (session) return await child.exited;
+    const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' });
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
     ]);
-    const after = browserLease('inspect', undefined, dir, Date.now(), { chromeAlive });
-    if (after.epoch !== epoch || after.human) { printJson({ error: 'human_has_control' }); return 1; }
+    if (host && new TextDecoder().decode(stderr).includes('No usable sandbox')) {
+      printJson({ error: 'browser_sandbox_blocked', detail: 'Run hermitd run browser-host. For Claude Code /sandbox set sandbox.excludedCommands to include: bun */scripts/browser-agent.ts *' }); return 1;
+    }
+    const after = session ? null : browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => chromeAlive(dir) });
+    if (after && (after.epoch !== epoch || after.human)) { printJson({ error: 'human_has_control' }); return 1; }
     await Bun.write(Bun.stdout, stdout);
     await Bun.write(Bun.stderr, stderr);
     return code;

@@ -4,10 +4,13 @@
 
 ### Added
 
-- Phone takeover for the managed Docker browser, inactive until set up, with admin mentions in the requesting chat, Take over and Hand back, and trusted-controller `!release`
-- A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions; it stays off for existing hermits because it adds about 1.4 GB to the image and needs 4 GiB of memory, until an explicit `/docker-setup` rerun
+- Phone takeover for Docker and Linux/WSL2 tmux browsers, with admin mentions, Take over and Hand back, and trusted-controller `!release`
+- A managed browser by default for new and existing hermits, with private host installs, a persistent profile and up to three anonymous sessions
 
 ### Changed
+
+- Browser settings live in the protected top-level `browser` object, with an opt-out and a default browser choice
+- Docker browser enablement and removal merge through `hermitd update` while preserving operator Dockerfile edits
 
 - Channel setup summary points third-party channels to the channel plugins guide
 - Disabled or auth-refused Chrome launches pass `--no-chrome`, removing native Chrome tools even when the native default enabled them
@@ -16,7 +19,9 @@
 
 ### Upgrade Instructions
 
-No `config.json` changes required. Existing Docker hermits receive no browser additions; an explicit `/docker-setup` rerun enables it unless `docker.browser` is already false.
+Run `bun <plugin_root>/scripts/settings-edit.ts <project_root>/.hermit/config.json migrate browser-default-on` before refreshing Docker templates. It preserves an existing `browser` object, keeps authenticated Chrome as the default, and leaves the managed browser off when the operator’s Dockerfile already installs `agent-browser`. Report its decision.
+
+**Operator action required:** On Docker, the managed browser adds about 1.4 GB to the image and full parallel use needs 4 GiB of memory. To remove it, turn `browser.enabled` off through `/hermitd:hermit-settings`, then run `hermitd update`. On tmux, run `hermitd run browser-host` in the host terminal when browser packages, libraries or the sandbox prerequisite are missing.
 
 Remove lines whose `source` is `skill-correction` from `.hermit/state/observations.jsonl` when the file exists; keep every other line unchanged.
 

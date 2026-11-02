@@ -167,12 +167,13 @@ function validateTable(config: Json, rows: Record<string, Spec>, errors: string[
 
 function validate(config: Json): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
-  if (config?.docker?.browser_port !== undefined && (!Number.isInteger(config.docker.browser_port) || config.docker.browser_port < 1 || config.docker.browser_port > 65535)) errors.push('docker.browser_port must be an integer port (1-65535)');
-  const admins = config?.docker?.browser_admins;
+  if (config?.browser?.port != null && (!Number.isInteger(config.browser.port) || config.browser.port < 1 || config.browser.port > 65535)) errors.push('browser.port must be an integer port (1-65535)');
+  if (config?.browser?.default === 'chrome' && config.chrome !== true) errors.push('browser.default: chrome requires chrome: true; enable chrome or set browser.default to agent-browser');
+  const admins = config?.browser?.admins;
   if (admins !== undefined && (!Array.isArray(admins) || admins.some((admin: Json) => !isDict(admin)
     || typeof admin.login !== 'string' || !admin.login.trim() || !isDict(admin.mentions)
     || Object.entries(admin.mentions).some(([channel, mention]) => !channel.trim() || typeof mention !== 'string' || !mention.trim())))) {
-    errors.push('docker.browser_admins must contain login and a channel-to-mention map');
+    errors.push('browser.admins must contain login and a channel-to-mention map');
   }
   const warnings: string[] = [];
   function validateChat(chat: Json, location: string, owner: 'routine' | 'watch', rearm = false): void {

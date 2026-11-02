@@ -535,3 +535,16 @@ test('re-hatch with briefs on re-enables a disabled core brief', async () => {
   const out = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
   expect(out.routines).toEqual([{ ...brief, schedule: '30 9 * * *', enabled: true }]);
 });
+
+test('fresh browser defaults on and Advanced Chrome selection enables Chrome', async () => {
+  const root = freshDir();
+  expect((await runHatchConfig(root, { project_name: 'test' })).exitCode).toBe(0);
+  let config = JSON.parse(fs.readFileSync(configPathFor(root), 'utf8'));
+  expect(config.browser).toMatchObject({ enabled: true, default: 'agent-browser' });
+  config.browser.admins = [{ login: 'admin', mentions: {} }];
+  seedConfig(root, config);
+  expect((await runHatchConfig(root, { browser: { enabled: false, default: 'chrome' } }, true)).exitCode).toBe(0);
+  config = JSON.parse(fs.readFileSync(configPathFor(root), 'utf8'));
+  expect(config.chrome).toBe(true);
+  expect(config.browser).toMatchObject({ enabled: false, default: 'chrome', admins: [{ login: 'admin', mentions: {} }] });
+});

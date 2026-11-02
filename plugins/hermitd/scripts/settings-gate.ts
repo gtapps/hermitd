@@ -31,7 +31,7 @@ import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/
 type Json = any;
 
 /** settings-edit verbs that mutate config.json. */
-const WRITE_VERBS = new Set(['set', 'unset', 'toggle', 'apply-known']);
+const WRITE_VERBS = new Set(['set', 'unset', 'toggle', 'apply-known', 'migrate']);
 
 /** Write verbs that take a value after the target; see settings-edit.ts's dispatch. */
 const TAKES_VALUE = new Set(['set', 'apply-known']);
@@ -277,6 +277,7 @@ function chatLeafChanged(dotted: string, value: string, turn: () => string | nul
  * other verb's target is already dotted and passes through so ASK_PATH matches.
  */
 function resolveTarget(verb: string, target: string): string {
+  if (verb === 'migrate' && target === 'browser-default-on') return 'browser';
   return verb === 'apply-known' ? (byArg(target)?.path ?? target) : target;
 }
 

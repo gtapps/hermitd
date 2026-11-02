@@ -41,7 +41,7 @@ function readJson(dir: string, rel: string) {
 // the session "exit" mid-run; every invocation is logged for assertions.
 function installFakeTmux(
   dir: string,
-  opts: { hasSession?: boolean; panePid?: number } = {}
+  opts: { hasSession?: boolean; browserSession?: boolean; panePid?: number } = {}
 ) {
   const bin = path.join(dir, 'fake-bin');
   fs.mkdirSync(bin, { recursive: true });
@@ -57,6 +57,9 @@ function installFakeTmux(
     path.join(bin, 'tmux'),
     `#!/usr/bin/env bash
 echo "$@" >> '${log}'
+case "$*" in
+  *browser-*) ${opts.browserSession ? 'true' : 'exit 1'} ;;
+esac
 case "$1" in
   has-session) [ -f '${aliveMarker}' ] && exit 0 || exit 1 ;;
   kill-session) rm -f '${aliveMarker}'; exit 0 ;;
@@ -95,6 +98,8 @@ async function runQueuedSkill(dir: string) {
 async function runStop(dir: string, args: string[], fakeBin?: string, extraEnv?: Record<string, string>) {
   const env: Record<string, string> = { ...process.env, ...(extraEnv ?? {}) } as any;
   if (fakeBin) env.PATH = `${fakeBin}:${env.PATH}`;
+  env.CLAUDE_CONFIG_DIR = path.join(dir, 'test-claude-config');
+  env.CLAUDE_CODE_PLUGIN_CACHE_DIR = path.join(dir, 'test-plugin-cache');
   const proc = Bun.spawn([...STOP_CMD, ...args], {
     cwd: dir,
     env,
@@ -372,4 +377,24 @@ test('cleanly stopped with fresh liveness exits successfully', async () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test('opted-in browser shutdown releases the human, closes under teardown, then kills the sidecar', async () => {
+  const dir = makeDir();
+  try {
+    writeConfig(dir); writeRuntime(dir, { runtime_mode: 'tmux' });
+    const { bin, log } = installFakeTmux(dir, { hasSession: true, browserSession: true });
+    const { browserLease } = await import('../scripts/lib/browser-lease');
+    const hermit = path.join(dir, '.hermit');
+    browserLease('claim', 'task', hermit);
+    browserLease('claim', 'queued', hermit);
+    browserLease('takeover', undefined, hermit, Date.now(), { login: 'admin' });
+    expect((await runStop(dir, ['--force'], bin)).exitCode).toBe(0);
+    const after = browserLease('inspect', undefined, hermit);
+    expect(after.holder).toBeNull(); expect(after.waiters).toHaveLength(1);
+    const calls = fs.readFileSync(log, 'utf8');
+    expect(calls.indexOf('kill-session -t =browser-hermit-test')).toBeLessThan(calls.indexOf('kill-session -t hermit-test'));
+    expect(fs.existsSync(path.join(dir, 'test-plugin-cache/data/hermitd-inline/browser'))).toBe(false);
+  } finally { fs.rmSync(dir, { recursive: true }); }
 });

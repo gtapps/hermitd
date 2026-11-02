@@ -72,7 +72,7 @@ Branch on the choice for the rest of the skill:
 
 ### 2. Ask operator and analyze project
 
-**Browser choice:** read `docker.browser` from config now. Default to on unless it is already exactly false. Every setup run records this choice; an existing deployment reaches here only after the Step 1 backup choice.
+**Browser choice:** read `browser.enabled` from config now. Default to on unless it is already exactly false. Every setup run records this choice; upgrades also add or remove the managed block through the normal Dockerfile merge.
 
 **Quick:** silently keep that browser choice and apply `auth = oauth-token`, `docker.network_mode = "bridge"`. Skip the `AskUserQuestion` below. Continue at the project-dependencies scan below.
 
@@ -107,7 +107,7 @@ questions: [
 ]
 ```
 
-Record the browser answer as `docker.browser` (true or false). Record auth choice as `auth = oauth-token` for Subscription, `auth = api-key` for API Key. Record networking choice as `docker.network_mode` (`"bridge"` or `"host"`).
+Record the browser answer as `browser.enabled` (true or false). Record auth choice as `auth = oauth-token` for Subscription, `auth = api-key` for API Key. Record networking choice as `docker.network_mode` (`"bridge"` or `"host"`).
 
 **Project dependencies scan:** Scan for signals that suggest extra system packages:
    - `package.json` native addons (sqlite3, sharp, canvas, bcrypt, etc.)
@@ -142,7 +142,7 @@ The render script derives every `{{PLACEHOLDER}}` internally and fails loud (wri
 - `networkMode` — `docker.network_mode` (`"bridge"` or `"host"`, Step 2).
 - `gitIdentityMount` — the Step 1 preflight `gitconfig_exists`. When **false**, the `.gitconfig` bind-mount is dropped and you must add to the summary: "No ~/.gitconfig found — git commits inside the container will have no author identity. Create one on the host and re-run docker-setup, or set git config manually inside the container."
 - `browser` — the Step 2 browser choice, true or false.
-- `browserPort` - pass `docker.browser_port` when set, except with `docker.security.network.enabled: true`, where the mapping belongs to netguard through `publish_ports`. Omit when absent. Preserve it on reruns. Host networking uses `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:<port>` with no mapping.
+- `browserPort` - pass `browser.port` when set, except with `docker.security.network.enabled: true`, where the mapping belongs to netguard through `publish_ports`. Omit when absent. Preserve it on reruns. Host networking uses `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:<port>` with no mapping.
 - `fleetMesh` - read `docker.fleet_mesh` from the project's `.hermit/config.json`; absent means `false`. Never ask interactively. When true, tell the operator that the two external volumes and the `hermit-fleet-pidns` holder in `docs/always-on.md` must exist before `hermitd-docker up`.
 
 ### 5. Auto-memory seed
@@ -308,7 +308,7 @@ After plugin selection is finalized, union the two sources of apt package candid
 
 ### 7b.6. Render templates (deferred from Step 4)
 
-Before rendering, persist the resolved `docker.browser` choice with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set docker.browser true|false`. Complete its native permission request. This write precedes the render so interrupted setup retries keep the choice.
+Before rendering, persist the resolved `browser.enabled` choice with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set browser.enabled true|false`. Complete its native permission request. This write precedes the render so interrupted setup retries keep the choice.
 
 Now that `docker.packages` (Step 7b.packages), channel state dirs (Step 7), and the auth/network choices (Step 2) are finalized, render the three base files in **one** call. `render-docker-templates.ts` derives every `{{PLACEHOLDER}}`, renders `Dockerfile.hermit` + `docker-compose.hermit.yml`, `cp`-copies the entrypoint verbatim, and fails loud (exit 1, nothing written) if any placeholder survives. Anchor the argv to the **absolute** `<PROJECT_ROOT>` (Step 1) — cwd can drift after earlier `docker compose` / `tmux` calls. Pipe the Step 4 input object on stdin:
 
@@ -321,7 +321,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts <PROJECT_ROOT> <<'H
   "networkMode": "bridge" | "host",
   "gitIdentityMount": true | false,
   "fleetMesh": true | false,
-  "browserPort": <docker.browser_port when set and LAN containment is off>,
+  "browserPort": <browser.port when set and LAN containment is off>,
   "browser": true | false
 }
 HERMIT_RENDER_JSON
@@ -344,7 +344,7 @@ The `manifest_seed` payload deliberately hashes the **on-disk rendered** entrypo
 **Pre-write gate for `docker.recommended_plugins`:** Re-run the step 7b.10 assertion on every entry. If any fails, do **not** write — return to step 7b.3 to re-resolve.
 
 Write all collected Docker settings to config.json in a single update:
-- `docker.browser` (already persisted before Step 7b.6; keep that choice)
+- `browser.enabled` (already persisted before Step 7b.6; keep that choice)
 - `docker.network_mode` (from Step 2)
 - `docker.packages` (from Step 7b.packages)
 - `docker.recommended_plugins` (from Step 7b, post-gate)
@@ -533,7 +533,7 @@ Why this step exists: mid-setup, claude REPL starts before plugins are fully ena
 
 Why `down` + `up` rather than `hermitd-docker restart`: a recreated container clears ephemeral container-layer state and re-runs the entrypoint from a clean slate.
 
-If `docker.browser` is true, finish with one public-page check inside the container: `docker compose -f docker-compose.hermit.yml exec -T -e HERMIT_PLUGIN_ROOT=/home/claude/.claude/plugins/marketplaces/hermitd/plugins/hermitd hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. The `-e` is required because `exec` does not inherit the entrypoint's environment. Report whether the page loaded; surface a failure rather than switching browsers.
+If `browser.enabled` is true, finish with one public-page check inside the container: `docker compose -f docker-compose.hermit.yml exec -T -e HERMIT_PLUGIN_ROOT=/home/claude/.claude/plugins/marketplaces/hermitd/plugins/hermitd hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. The `-e` is required because `exec` does not inherit the entrypoint's environment. Report whether the page loaded; surface a failure rather than switching browsers.
 
 ### 8c. Seed permission rules
 
