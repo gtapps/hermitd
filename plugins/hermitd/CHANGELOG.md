@@ -20,8 +20,6 @@
 
 Step 5 runs `evolve-apply` once; do not run it again here. Resolve only the `remaining` entries of that Step 5 receipt through the evolve reference, preserving operator edits and entrypoint sidecar content.
 
-**Operator action required:** For Docker hermits whose `Dockerfile.hermit` was parked, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize`, adopt the checked merge, then run `hermitd update` on the host.
-
 ## [1.4.25] - 2026-11-03
 
 ### Added
