@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { browserLease, browserEventCursor, browserEventSequence, type BrowserEvent } from './lib/browser-lease';
+import { browserDisplayStatus } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
 import { acquireLockWithWait, releaseLock } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
@@ -57,7 +58,8 @@ if (import.meta.main) {
       if (!['claim', 'release', 'status', 'human-release', 'teardown'].includes(action) || extra.length || (['status', 'human-release'].includes(action) && task !== undefined)) {
         throw new Error('usage: browser claim <task> | release [task] | status | human-release | events');
       }
-      emitJson(browserLease(action as 'teardown' | 'claim' | 'release' | 'status' | 'human-release', task));
+      const lease = browserLease(action as 'teardown' | 'claim' | 'release' | 'status' | 'human-release', task);
+      emitJson(action === 'status' ? { ...lease, ...browserDisplayStatus() } : lease);
     }
   } catch (error) {
     failJson(error);

@@ -67,8 +67,8 @@ const migrations: Record<string, Migration> = {
       const useChrome = config.chrome === true && chromeAuthNote(config) === null;
       config.browser = { enabled: !ownBrowser, default: useChrome ? 'chrome' : 'agent-browser', admins: [], port: null, host: null };
       return { browser: config.browser, note: ownBrowser
-        ? 'Managed browser left off because Dockerfile.hermit installs agent-browser. Enable browser.enabled through /hermitd:hermit-settings, then run hermitd update to use it.'
-        : `Managed browser enabled; default browser: ${config.browser.default}.` };
+        ? 'Managed browser left off because Dockerfile.hermit installs agent-browser. Enable browser.enabled through /hermitd:hermit-settings, on Docker the toggle takes effect at the next hermitd update.'
+        : `Managed browser enabled; default browser: ${config.browser.default}. On Docker the toggle takes effect at the next hermitd update.` };
     },
   },
   'plugin-routine-ids': {

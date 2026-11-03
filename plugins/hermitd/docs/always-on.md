@@ -65,7 +65,7 @@ New and existing Docker hermits get the managed browser by default through hatch
 
 ### Customizing the container
 
-Turn `browser.enabled` off through `/hermitd:hermit-settings` and run `hermitd update` to remove the browser through the normal Dockerfile merge. Changing config alone does not rebuild the image. The managed display starts only when the image carries `/etc/hermit/managed-browser`; an existing custom agent-browser install is not adopted.
+Turn `browser.enabled` on or off through `/hermitd:hermit-settings`; the next `hermitd update` exports `HERMIT_BROWSER` for the build. The Dockerfile must contain the delimited managed-browser block; if evolve parked it, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize` first. Changing config alone does not rebuild the image. The plugin starts the display on demand in its own tmux session when `/etc/hermit/managed-browser` contains `display=plugin`; a bare marker returns `image_rebuild_pending` until the rebuild. An existing custom agent-browser install is not adopted.
 
 
 | Need | Where it lives | How it takes effect | Upgrade guarantee |

@@ -117,3 +117,82 @@ test('tmux display startup is idempotent with an injected tmux runner', () => {
   maybeStartBrowserDisplay('tmux', dir, spawn, true, () => true);
   expect(calls).toBe(browserHostPlatform() === 'linux' ? 1 : 0);
 });
+
+test('container display requires a plugin-owned marker and leaves legacy displays alone', async () => {
+  const { ensureDisplay } = await import('../scripts/browser-display');
+  const dir = freshDir(), marker = path.join(dir, 'marker');
+  let calls = 0;
+  const options = { deployment: 'container' as const, platform: 'linux' as const, marker, available: true, spawn: (() => { calls++; return { status: 1 }; }) as any };
+  expect(await ensureDisplay(dir, options)).toEqual({ blocker: 'image_missing' });
+  fs.writeFileSync(marker, '');
+  expect(await ensureDisplay(dir, options)).toEqual({ blocker: 'image_rebuild_pending' });
+  expect(calls).toBe(0);
+  fs.writeFileSync(marker, 'display=plugin\n');
+  expect(await ensureDisplay(dir, { ...options, sessionAlive: () => false })).toEqual({ blocker: 'display_start_failed' });
+  expect(calls).toBe(1);
+});
+
+test('concurrent display requests share one owner and wait for its socket', async () => {
+  const { ensureDisplay } = await import('../scripts/browser-display');
+  const dir = freshDir(), marker = path.join(dir, 'marker'), socket = path.join(dir, 'vnc.sock');
+  fs.writeFileSync(marker, 'display=plugin\n');
+  let calls = 0, running = false;
+  const options = {
+    deployment: 'container' as const, platform: 'linux' as const, marker, available: true, waitMs: 1000,
+    sessionAlive: () => running,
+    spawn: (() => {
+      calls++; running = true;
+      fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ pid: process.pid, display: ':13', vncSocket: socket }));
+      setTimeout(() => fs.writeFileSync(socket, ''), 50);
+      return { status: 0 };
+    }) as any,
+  };
+  const results = await Promise.all([ensureDisplay(dir, options), ensureDisplay(dir, options)]);
+  expect(results).toEqual([{ display: ':13', vncSocket: socket }, { display: ':13', vncSocket: socket }]);
+  expect(calls).toBe(1);
+});
+
+test('status and stop verbs are bounded and report readiness', async () => {
+  const { browserDisplayStatus } = await import('../scripts/browser-display');
+  const dir = freshDir(), socket = path.join(dir, 'vnc.sock');
+  const options = { deployment: 'container' as const, platform: 'linux' as const };
+  expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'off' });
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"port":6090}}');
+  expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'down' });
+  fs.mkdirSync(path.join(dir, 'state'));
+  fs.writeFileSync(socket, '');
+  fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ pid: process.pid, display: ':14', vncSocket: socket, viewer: 'up' }));
+  expect(browserDisplayStatus(dir, options)).toEqual({ display: 'up', viewer: 'up' });
+  for (const verb of ['status', 'stop']) {
+    const child = Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/browser-display.ts'), verb], {
+      env: { ...process.env, AGENT_DIR: dir }, stdout: 'pipe', stderr: 'pipe',
+    });
+    const output = await new Response(child.stdout).text();
+    expect(await child.exited).toBe(0);
+    if (verb === 'status') expect(JSON.parse(output)).toHaveProperty('viewer');
+  }
+});
+
+test('display profile, socket, reservations and viewer bind follow deployment', async () => {
+  const { browserDisplaySettings } = await import('../scripts/browser-display');
+  const root = freshDir(), dir = path.join(root, '.hermit');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"port":6090}}');
+  const previous = process.env.HERMIT_BROWSER_VIEWER_BIND;
+  try {
+    delete process.env.HERMIT_BROWSER_VIEWER_BIND;
+    const host = browserDisplaySettings(dir, 'host'), container = browserDisplaySettings(dir, 'container');
+    expect(host.profile).toBe(path.join(fs.realpathSync(root), '.claude.local/browser/profile'));
+    expect(container.profile).toBe('/home/claude/.claude/browser/profile');
+    expect(host.vncSocket).toBe(path.join(browserSocketDir(dir), 'vnc.sock'));
+    expect(container.vncSocket).toBe(host.vncSocket);
+    expect(container.reservations).toBe(browserSocketDir(dir));
+    expect(host.viewerBind).toBe('127.0.0.1:6090');
+    expect(container.viewerBind).toBeUndefined();
+    process.env.HERMIT_BROWSER_VIEWER_BIND = '127.0.0.1:6099';
+    expect(browserDisplaySettings(dir, 'container').viewerBind).toBe('127.0.0.1:6099');
+  } finally {
+    if (previous === undefined) delete process.env.HERMIT_BROWSER_VIEWER_BIND;
+    else process.env.HERMIT_BROWSER_VIEWER_BIND = previous;
+  }
+});

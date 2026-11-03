@@ -83,8 +83,8 @@ function packagesBlock(packages: string[]): string {
   ].join('\n');
 }
 
-function browserBlock(): string {
-  return [
+function browserBlock(legacy = false): string {
+  const block = [
     '# Managed browser (pins move with core releases)',
     'RUN apt-get update && apt-get install -y --no-install-recommends \\',
     '      tigervnc-standalone-server openbox procps libxcb-shm0 libx11-xcb1 libx11-6 libxcb1 libxext6 libxrandr2 libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxi6 libgtk-3-0 libpangocairo-1.0-0 libpango-1.0-0 libatk1.0-0t64 libcairo-gobject2 libcairo2 libgdk-pixbuf-2.0-0 libxrender1 libasound2t64 libfreetype6 libfontconfig1 libdbus-1-3 libnss3 libnss3-tools libnspr4 libatk-bridge2.0-0t64 libdrm2 libxkbcommon0 libatspi2.0-0t64 libcups2t64 libxshmfence1 libgbm1 fonts-liberation && \\',
@@ -106,6 +106,11 @@ function browserBlock(): string {
     '    chmod 755 /usr/local/bin/agent-browser && \\',
     '    mkdir -p /etc/hermit && touch /etc/hermit/managed-browser',
   ].join('\n');
+  if (legacy) return block;
+  return block
+    .replace('# Managed browser (pins move with core releases)', '# --- managed browser ---\nARG HERMIT_BROWSER=1')
+    .replace('RUN apt-get', 'RUN if [ "$HERMIT_BROWSER" = 1 ]; then apt-get')
+    .replace('touch /etc/hermit/managed-browser', "printf 'display=plugin\\n' > /etc/hermit/managed-browser; " + '\\' + '\n    fi\n# --- end managed browser ---');
 }
 
 function indentedLines(bodies: string[]): string {
@@ -156,7 +161,7 @@ export function renderSources(
   }
 
   const dockerfile = renderTemplate(dockerfileTemplate, {
-    PACKAGES_BLOCK: [packagesBlock(packages), ...(inputs.browser ? [browserBlock()] : [])].filter(Boolean).join('\n\n'),
+    PACKAGES_BLOCK: [packagesBlock(packages), dockerfileTemplate.includes('{{BROWSER_ENV}}') ? (inputs.browser ? browserBlock(true) : '') : browserBlock()].filter(Boolean).join('\n\n'),
     BROWSER_ENV: inputs.browser
       ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\n'
       : '',

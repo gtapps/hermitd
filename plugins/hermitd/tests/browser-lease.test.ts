@@ -98,6 +98,10 @@ test('CLI uses resolved state, prints one object and returns zero for busy', asy
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim().split('\n')).toHaveLength(1);
     expect(JSON.parse(result.stdout).status).toBe(status);
+    if (args[0] === 'status') {
+      expect(['up', 'down', 'unsupported']).toContain(JSON.parse(result.stdout).display);
+      expect(['up', 'down', 'off']).toContain(JSON.parse(result.stdout).viewer);
+    }
   }
   expect(fs.existsSync(path.join(env.AGENT_DIR, 'state/browser-lease.json'))).toBe(true);
 });

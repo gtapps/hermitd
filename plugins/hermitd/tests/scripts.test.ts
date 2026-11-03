@@ -602,6 +602,7 @@ describe('hermitd-docker update plugin loop', () => {
       write(path.join(stub, 'list.json'), JSON.stringify(list));
       write(path.join(stub, 'docker'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
+echo "HERMIT_BROWSER=$HERMIT_BROWSER" >> "$DOCKER_STUB_CALLS"
 if [[ " $* " == *" up -d "* ]]; then echo "HERMIT_RESUME=$HERMIT_RESUME" >> "$DOCKER_STUB_CALLS"; fi
 if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
@@ -655,6 +656,7 @@ exit 0
       const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
       const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
       expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
+      expect(calls).toContain('HERMIT_BROWSER=1');
       const idx = (text: string) => calls.findIndex(l => l.includes(text));
       const timeout = scenario.includes('timeout');
       const blocked = scenario === 'below-floor-plugins-only';
@@ -6218,5 +6220,34 @@ describe('proposal micro match is read-only', () => {
       expect(JSON.parse(result.stdout)).toEqual({ error: 'usage' });
       expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
     }));
+  }
+});
+
+describe('hermitd-docker restart browser build argument', () => {
+  for (const enabled of [false, true]) {
+    test(`restart --build exports browser=${enabled}`, async () => {
+      const wd = setupWorkdir();
+      const proj = wd.dir;
+      try {
+        fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
+        write(hermit(proj, 'config.json'), JSON.stringify({ browser: { enabled } }));
+        write(path.join(proj, 'docker-compose.hermit.yml'), 'services: {}');
+        const stub = path.join(proj, '.stub');
+        fs.mkdirSync(stub);
+        const callsFile = path.join(stub, 'docker-calls.txt');
+        write(path.join(stub, 'docker'), '#!/bin/sh\necho "$HERMIT_BROWSER $*" >> "$DOCKER_STUB_CALLS"\ncase "$*" in *"claude --version"*) echo "2.1.301";; *"ps --status running"*) echo hermit;; esac\n');
+        fs.chmodSync(path.join(stub, 'docker'), 0o755);
+        write(hermit(proj, 'bin', 'hermitd-run'), '#!/bin/sh\necho OK\n');
+        fs.chmodSync(hermit(proj, 'bin', 'hermitd-run'), 0o755);
+        const result = await runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
+          args: ['restart', '--build'], cwd: proj,
+          env: { PATH: `${stub}:${process.env.PATH}`, DOCKER_STUB_CALLS: callsFile },
+        });
+        expect(result.exitCode).toBe(0);
+        const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
+        expect(calls.some(line => line.includes(' build '))).toBe(true);
+        expect(calls.every(line => line.startsWith(enabled ? '1 ' : '0 '))).toBe(true);
+      } finally { wd.cleanup(); }
+    });
   }
 });

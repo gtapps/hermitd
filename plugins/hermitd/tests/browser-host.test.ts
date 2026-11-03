@@ -28,7 +28,16 @@ function fixture(lan = false) {
   const routesFile = path.join(project, 'routes'); fs.writeFileSync(routesFile, '{}');
   const deniedFile = path.join(project, 'denied');
   const exe = (file: string, code: string) => fs.writeFileSync(file, `#!${process.execPath}\n${code}`, { mode: 0o755 });
-  exe(path.join(bin, 'docker'), `console.log(await Bun.file(${JSON.stringify(versionFile)}).text());`);
+  exe(path.join(bin, 'docker'), `
+    import fs from 'node:fs';
+    const args = process.argv.slice(2);
+    fs.appendFileSync(${JSON.stringify(logFile)}, JSON.stringify(args) + '\\n');
+    if (args[0] === 'version') console.log(await Bun.file(${JSON.stringify(versionFile)}).text());
+    else if (args.includes('browser-display')) console.log(JSON.stringify(args.at(-1) === 'ensure'
+      ? { display: ':12', vncSocket: '/tmp/vnc.sock' }
+      : { display: fs.existsSync(${JSON.stringify(path.join(project, 'display-down'))}) ? 'down' : 'up', viewer: 'up' }));
+    else if (fs.existsSync(${JSON.stringify(path.join(project, 'image-missing'))})) process.exit(1);
+  `);
   exe(path.join(bin, 'tailscale'), `
     import fs from 'node:fs';
     const args = process.argv.slice(2);
@@ -244,6 +253,32 @@ test.serial('Docker without admins needs no Tailscale', async () => {
 test.serial('Docker missing marker asks for a rebuild before publishing', async () => {
   const f = fixture(); try {
     fs.writeFileSync(path.join(f.bin, 'docker'), `#!${process.execPath}\nconsole.log('29.0.0');\nprocess.exit(process.argv.includes('exec') ? 1 : 0);`, { mode: 0o755 });
-    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('rebuild first');
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('run hermitd update to rebuild');
+  } finally { f.stop(); }
+});
+
+test.serial('image probe identifies the parked merge or rebuild blocker', async () => {
+  const f = fixture(); try {
+    fs.writeFileSync(path.join(f.project, 'image-missing'), '');
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('run hermitd update to rebuild');
+    fs.writeFileSync(path.join(f.project, 'Dockerfile.hermit'), 'FROM ubuntu');
+    fs.mkdirSync(path.join(f.dir, 'state'), { recursive: true });
+    const parked = path.join(f.dir, 'state/Dockerfile.hermit.20261103.upstream');
+    fs.writeFileSync(parked, 'upstream');
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow(parked);
+  } finally { f.stop(); }
+});
+
+test.serial('Docker display is ensured after recreate and before route readiness', async () => {
+  const f = fixture(true); try {
+    const fetch = async () => {
+      const calls = fs.readFileSync(f.logFile, 'utf8');
+      expect(calls.indexOf('--no-build')).toBeLessThan(calls.indexOf('"browser-display","ensure"'));
+      expect(calls).toContain('docker-compose.security.yml');
+      return Response.json({ error: 'browser_identity_refused' }, { status: 403 });
+    };
+    await setupBrowserHost(f.project, { ...f.opts, fetch });
+    fs.writeFileSync(path.join(f.project, 'display-down'), '');
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('Viewer loopback route failed');
   } finally { f.stop(); }
 });

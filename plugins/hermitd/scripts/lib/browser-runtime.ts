@@ -32,7 +32,11 @@ export function browserEnabled(dir = hermitDir()): boolean {
 export function dockerfileHasOwnBrowser(file: string): boolean {
   try {
     let managed = false;
+    let delimited = false;
     return fs.readFileSync(file, 'utf8').split('\n').some(line => {
+      if (line === '# --- managed browser ---') { delimited = true; return false; }
+      if (line === '# --- end managed browser ---') { delimited = false; return false; }
+      if (delimited) return false;
       if (line.startsWith('# Managed browser')) { managed = true; return false; }
       if (managed) {
         if (line.trim() && !line.endsWith('\\')) managed = false;
@@ -44,6 +48,16 @@ export function dockerfileHasOwnBrowser(file: string): boolean {
 }
 
 export function browserHostPlatform(): NodeJS.Platform { return process.platform; }
+
+/** Null when Dockerfile.hermit carries the delimited managed-browser block; otherwise the newest parked upstream copy, if any. */
+export function managedBrowserMergePending(dir: string): { parked: string | null } | null {
+  let source = '';
+  try { source = fs.readFileSync(path.join(dir, '../Dockerfile.hermit'), 'utf8'); } catch {}
+  if (source.includes('# --- managed browser ---') && source.includes('# --- end managed browser ---')) return null;
+  const state = path.join(dir, 'state');
+  const parked = fs.existsSync(state) ? fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1) : undefined;
+  return { parked: parked ? path.join(state, parked) : null };
+}
 
 export function installedBrowser(data = browserDataDir()) {
   if (!fs.existsSync(data)) return null;
@@ -64,7 +78,7 @@ export function installedBrowser(data = browserDataDir()) {
 }
 
 export function browserViewerPaths(dir = hermitDir()) {
-  if (browserDeployment(dir) === 'container') return { novncRoot: '/opt/novnc', vncSocket: '/tmp/hermit-browser/vnc.sock' };
+  if (browserDeployment(dir) === 'container') return { novncRoot: '/opt/novnc', vncSocket: path.join(browserSocketDir(dir), 'vnc.sock') };
   const browser = installedBrowser();
   if (!browser) throw new Error('browser_install_missing: run hermitd run browser-host');
   return { novncRoot: browser.novnc, vncSocket: path.join(browserSocketDir(dir), 'vnc.sock') };
@@ -83,7 +97,7 @@ profile hermit-browser "${data}/*/chrome/chrome" flags=(unconfined) {
 export const BROWSER_PACKAGE_COMMANDS = ['Xvnc', 'openbox', 'unzip'];
 export const APPARMOR_PROFILE_FILE = '/etc/apparmor.d/hermit-browser';
 export function browserImageProbe(compose: string): string[] {
-  return ['docker', 'compose', '-f', compose, 'exec', '-T', 'hermit', 'test', '-f', '/etc/hermit/managed-browser'];
+  return ['docker', 'compose', '-f', compose, 'exec', '-T', 'hermit', 'grep', '-qx', 'display=plugin', '/etc/hermit/managed-browser'];
 }
 interface AppArmorOptions { restriction?: () => string; profileFile?: string }
 export function appArmorProfileMissing(data: string, options: AppArmorOptions = {}): boolean {

@@ -121,24 +121,18 @@ Special-default keys — the **only** keys this step writes, because their value
 
 ### 5. Update templates
 
-`templates_changed` is a list of classified file objects `{ name, class }`. Each entry represents a file that differs from upstream or is absent. Resolve by class:
+Run `evolve-apply` (Commands) **first**, once for Steps 5 through 5d. Parse its JSON receipt: `applied`, `remaining`, `parked`, and `own_browser`. On an error, report the error and stop this upgrade rather than claiming files were refreshed.
 
-- **`missing`**: `templates/<name>` was absent. Copy `state-templates/<name>` under the plugin root → `.hermit/templates/<name>`. Report: "Restored missing template: `<name>`."
-- **`unmodified`**: operator never customized it (baseline == on-disk, or no manifest entry). Copy upstream over it silently.
-- **`customized-kept`**: operator edited it and the template hasn't moved. **Keep the operator's copy unchanged.** Collect in a summary line at the end: "Kept N operator-customized template(s): `<name>`, ..."
-- **`conflict`**: both the operator and the template changed since hatch.
-  - **Delegated mode** (always — non-boot templates): write upstream as `<name>.new` beside the operator's copy, keep the operator's copy live (lossless; conflict resolution needs a prompt the subagent can't issue). Collect for the step-10 report: "N template conflict(s) parked as .new — review when convenient: `<name>`, ..."
+The script recomputes classifications, copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, parks Docker bootstrap renders, installs structurally valid clean 3-way Docker merges, and seeds the corresponding pristine baselines. It preserves operator content wherever a merge or sidecar migration remains necessary. Do not repeat these mechanical operations yourself.
 
-If `templates_changed` is empty, skip.
-
-After all template resolutions (see manifest-write note at end of Step 5b).
+Resolve **only** entries in `remaining` in Steps 5b–5d below. Each has `file`, `class`, `base_path`, `theirs_path`, and `bak`; null paths mean no verified input was available. For these procedures, use `file` as the prior plan entry's `name`. Keep the receipt for Step 10:
+- Templates: `restored`/`refreshed` from `applied`; `parked-new` counts as `conflicts-parked-N`; untouched `remaining` templates count as kept.
+- Bin wrappers: `restored`/`refreshed` from `applied`, with `<name>.bak` for replaced conflicts; untouched `remaining` wrappers count as kept.
+- Docker entrypoint: `refreshed` from `applied`, plus only the sidecar/conflict outcomes actually completed in Step 5c.
+- Docker templates: `merged(3-way)` from `applied`; each `parked` path is `kept(bootstrap, upstream not merged: <path>)` unless also listed as a conflict in `remaining`; add Step 5d's actual remaining outcomes. Never report a parked or kept file as merged.
+- `baseline-seeded` reports baseline recovery only, not a file refresh. `own_browser` flags an operator-owned browser installation.
 
 **Never refresh from templates:** sessions, proposals, OPERATOR.md, HEARTBEAT.md, resident-prompt.md and helper-prompt.md (operator-editable), or config.json (handled separately).
-
-Only update files in `templates/`:
-
-- `SESSION-REPORT.md.template`
-- `PROPOSAL.md.template`
 
 ### 5a. Migrate obsidian/ surface
 
@@ -150,25 +144,15 @@ If `<project-root>/obsidian/` exists in the target project:
 
 ### 5b. Update boot script wrappers
 
-`bin_changed` entries carry `boot_critical: true` (all bin/ wrappers are boot wrappers — a stale one can dead-end the hermit). Resolution by class:
-
-- **`missing`**: wrapper was absent. Copy `state-templates/bin/<name>` under the plugin root → `.hermit/bin/<name>`. `chmod +x`. Report: "**Restored missing boot wrapper: `<name>`.**"
-- **`unmodified`**: operator never customized it. Copy upstream over it silently.
-- **`customized-kept`**: operator edited it; template hasn't moved. Keep the operator's copy. Summary line: "Kept N operator-customized wrapper(s): `<name>`, ..."
-- **`conflict`** (any context — **no `.new` parking for boot-critical files**): replace with the upstream version (`chmod +x`) and save the operator's copy as `<name>.bak`. Report loudly in the run report and channel (if applicable): "**Boot wrapper `<name>` had local changes — replaced with new version; your copy saved as `<name>.bak`.**"
-
-If `bin_changed` is empty, skip the copy (still confirm executability for all files in `bin/`).
-
-**Bootstrap safety net** (`manifest_bootstrap: true` in the plan): on the first evolve after this feature ships (no manifest yet), any template or bin file that gets overwritten or restored also gets a one-time `<name>.bak` alongside it. This makes the quiet bootstrap recoverable: if an existing customization was already present before the manifest was seeded, it survives in the `.bak`. One noisy set of `.bak` files, once, then quiet thereafter.
+The Step 5 `evolve-apply` receipt already covers copies, executable modes, conflict backups and the bootstrap safety net. Do not copy or back up these files again. Keep any `remaining` `bin/` entry with `class: "customized-kept"` unchanged and count it as kept in the report.
 
 ### 5c. Update the Docker entrypoint (boot-critical, manifest-managed)
 
-`docker_entrypoint` in the plan is a single classified object `{ name, class, boot_critical }`, or `null` when the project has no deployed `docker-entrypoint.hermit.sh` (non-Docker project — skip this step). The entrypoint is placeholder-free, so it is managed exactly like a boot-critical `bin/` wrapper. On-disk file: `<project-root>/docker-entrypoint.hermit.sh`; upstream: `state-templates/docker/docker-entrypoint.hermit.sh.template` under the plugin root. Resolve by class:
+Use only the `docker-entrypoint.hermit.sh` entry in the `evolve-apply` receipt's `remaining`. If absent, the script already handled it or there is no deployed entrypoint; use the receipt's outcome and skip the manual procedure. Upstream is `state-templates/docker/docker-entrypoint.hermit.sh.template` under the plugin root.
 
-- **`unmodified`**: operator never customized it. Copy upstream over it silently.
-- **`customized-kept`**: operator edited it; template hasn't moved. Keep the operator's copy. Summary line: "Kept operator-customized docker-entrypoint.hermit.sh." **Unless the entry carries `base_path`** — then the sidecar migration below supersedes this action and the file is replaced with upstream, exactly as for `conflict`.
-- **`conflict`** (any context — no `.new` parking for boot-critical files): replace with the upstream version, and save the operator's copy to a **gitignore-safe backup inside the state tree**: `.hermit/state/docker-entrypoint.hermit.sh.<UTC-timestamp>.bak`. Do NOT write the backup next to the project-root entrypoint — that path is not gitignored and would surface as an untracked file in the operator's repo. Report loudly (run report + channel): "**docker-entrypoint.hermit.sh had local changes — replaced with the new version; your copy saved as `<backup path>`.** The update that launched evolve builds and restarts with this file; when evolve runs separately, rebuild to apply with `hermitd update`."
-- (`missing` is never emitted for the entrypoint — the plan returns `null` when it is absent — so there is no restore branch.)
+- **`customized-kept` without `base_path`**: keep the operator's copy unchanged.
+- **`conflict` without `base_path`**: save the operator's copy to `.hermit/state/docker-entrypoint.hermit.sh.<UTC-timestamp>.bak`, replace with upstream and `chmod +x`. Report `conflict-replaced(<backup path>)`.
+- **`conflict` or `customized-kept` with `base_path`**: perform the sidecar migration below. The script deliberately leaves these entries untouched so replacement cannot get ahead of the sidecar move.
 
 **Sidecar migration (`base_path` present on the entry).** `manifest-seed.ts` keeps the baseline *content* at `state/pristine/docker/docker-entrypoint.hermit.sh`; the plan surfaces it as `base_path` when it exists. With a base you can see which lines are the operator's, so a `conflict` (and a `customized-kept`, which otherwise keeps a copy that drifts further from upstream every release) also moves those lines to the operator sidecar, `<project-root>/docker-entrypoint.hermit-local.sh`, which upstream never touches. Without `base_path`, do exactly the class actions above and nothing here.
 
@@ -181,13 +165,15 @@ If `bin_changed` is empty, skip the copy (still confirm executability for all fi
 
 After a migration the operator's next upgrade sees `unmodified` and Step 5c is a plain overwrite. The sidecar is never classified, never backed up, and never read by the plan.
 
-**Per-file bootstrap (`bootstrap: true` on the entry).** The plan sets this when no docker entrypoint baseline was recorded yet (e.g. a Docker deploy from before this version, where the manifest exists for `templates/`/`bin/` but `/docker-setup` never recorded the entrypoint hash). In that state the class falls back to `unmodified`, but a silent overwrite would destroy an operator customization that can't be distinguished from an old upstream copy. So: **whenever `bootstrap` is true and you are about to overwrite, FIRST write the operator's current copy to the gitignore-safe `.hermit/state/docker-entrypoint.hermit.sh.<UTC-timestamp>.bak`**, then apply the class action, and report the backup path. This is a one-time net — the manifest records the baseline below, so it won't recur. (The global `manifest_bootstrap: true` net does NOT cover this case: the manifest is present, just missing the docker key.)
+The script already saves the bootstrap recovery backup before refreshing an unmodified entrypoint. Do not repeat that backup.
 
 The replaced entrypoint takes effect after a rebuild. An update-launched evolve leaves that build and restart to the waiting update; Step 10 requests `hermitd update` only when evolve runs separately.
 
 ### 5d. Merge compose and Dockerfile template changes in place
 
-Each `docker_templates` entry is a classified `{ name, class, base_path?, theirs_path, bootstrap }`. It names either `<project-root>/docker-compose.hermit.yml` or `<project-root>/Dockerfile.hermit`. `theirs_path` is a fresh render from the current upstream template. A `base_path` is present only when the prior pristine template passed its recorded-hash check and was re-rendered with the same live inputs. These files have no phase sidecar: reconcile the operator's changes into the managed file itself.
+Use only Dockerfile/compose entries in the Step 5 `evolve-apply` receipt's `remaining`. The script has already installed clean 3-way merges and parked `bootstrap: true` files (no verified `base_path`); report these from `applied` and `parked` without copying again. For a bootstrap park report `kept(bootstrap, upstream not merged: <path>)`; an operator-approved later merge follows `/hermitd:docker-customize` and `adopt`.
+
+A remaining entry's `base_path` and `theirs_path` are the verified rendered merge inputs. Preserve its project file until the existing conflict-region procedure below succeeds.
 
 **Entries that are not merged at all — check these first, before touching any file:**
 
@@ -195,9 +181,7 @@ Each `docker_templates` entry is a classified `{ name, class, base_path?, theirs
 - **`class: "customized-kept"`** means the operator edited the file and the upstream template did **not** move since the recorded baseline. There is no upstream change to merge — keep the operator's file untouched, write no `.bak`, no patch, and no new baseline. Summary line: "Kept operator-customized `<name>`." Do not report it as merged, and do not emit a rebuild notice for it.
 - **`Docker rebuild: base-patched`** (set by a surgical migration such as the bun pin) already refreshed `Dockerfile.hermit` and re-recorded its baseline. Skip the `Dockerfile.hermit` entry entirely in this step.
 
-**`class: "unmodified"` without `bootstrap`** means the operator never touched the file and upstream moved: copy `theirs_path` over the project file, record the new baseline, and report `merged(3-way)`. No `.bak`, no patch, no hunk re-application — there is no operator delta to preserve.
-
-Everything below applies only to `class: "conflict"`, and to `bootstrap: true` entries (whose class always reads `unmodified` because no baseline was recordable).
+Everything below applies only to a remaining `class: "conflict"` with `base_path` and `theirs_path`. If either input is absent, keep the project file and report it as unresolved. A remaining structural-check failure stays unresolved; never install unchecked bytes.
 
 Use one UTC timestamp for every path created while handling an entry. First copy the operator's file to `.hermit/state/<name>.<UTC-timestamp>.bak`. Never place the backup beside the project file.
 
@@ -210,8 +194,6 @@ Use one UTC timestamp for every path created while handling an entry. First copy
 - Exit 128 or higher: the merge itself failed and `<tmp>` still holds the operator's bytes with no markers to resolve. Never install it → unsettled, with `n` unknown.
 - **Unsettled**: project file untouched, `cp <theirs_path> .hermit/state/<name>.<UTC-timestamp>.upstream`, report `<name> conflict(<n>): upstream copy at <path>`.
 
-**Bootstrap (`bootstrap: true`, no `base_path`).** Never write the project file. Park `theirs_path` at `.hermit/state/<name>.<UTC-timestamp>.upstream`. Record no baseline. Report `<name> kept(bootstrap, upstream not merged: <path>)`.
-
 Validate `<tmp>` before installing it. Bootstrap never reaches these checks.
 
 1. Scan for conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and required structure. Compose must still parse as one document with top-level `services` and `volumes`, plus `services.hermit`; Dockerfile must retain its `FROM`, build arguments, entrypoint copy, and final non-root `USER`. On failure, leave the project file untouched (do not install `<tmp>`).
@@ -221,11 +203,7 @@ After a successful merge, record the new baseline through `manifest-seed.ts` wit
 
 Report the per-entry outcome (`merged(3-way)`, `merged(3-way; <n> conflicts resolved)`, `kept(bootstrap, upstream not merged: <path>)`, `conflict(<n>): upstream copy at <path>`) semicolon-separated across entries — an outcome can itself contain a comma; Step 10 matches on `merged(...)` to emit the rebuild notice.
 
-**After resolving Steps 5 (templates), 5b (bin/), and 5c (docker entrypoint)**, record the new pristine-baselines in `state/template-manifest.json` via `manifest-seed.ts` — **do not hand-compute the hashes** (the script makes them correct by construction; an LLM cannot sha256 reliably). Decide *which* files to record, then hand them to the script:
-- **Which files:** every file that was copied, replaced, or restored in Steps 5/5b/5c. Build one `{ "key": "<prefix>/<name>", "file": "<on-disk path of the new content>" }` entry per such file. Prefixes: `templates/` (file `.hermit/templates/<name>`), `bin/` (file `.hermit/bin/<name>`), and for the entrypoint the literal key `docker/docker-entrypoint.hermit.sh` (file: the project-root `docker-entrypoint.hermit.sh`).
-- **`customized-kept` files:** do NOT include them — the script preserves their existing manifest entry unchanged via foreign-key preservation.
-- **If `manifest_bootstrap` was true:** include the full managed set — every `templates/` and `bin/` file (and the entrypoint, if deployed), hashing whatever is now on-disk after any overwrites. This is the one-time baseline seeding.
-- **Run** `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [ ... ] }` on stdin. The script hashes each on-disk file, merges into the existing `files` map — preserving untouched prefixes, sibling-hermit keys, and the `docker/docker-compose.hermit.yml.template` / `docker/Dockerfile.hermit.template` baselines `/docker-setup` records (Step 10 reads them) — and writes `{ "version": 1, "files": { ... } }`. It refuses to overwrite a present-but-corrupt manifest. - **Ordering:** run this *after* Step 8 has ensured the plugin permissions, so `bun */scripts/manifest-seed.ts*` is allowed. The files resolved in Steps 5/5b/5c are stable on disk, so deferring the manifest write to after Step 8 does not change the recorded hashes.
+**Baselines after manual resolutions.** `evolve-apply` seeds its own successful mechanical operations immediately; do not run a second manifest pass for them. After manually replacing/migrating a remaining entrypoint, run `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [{ "key": "docker/docker-entrypoint.hermit.sh", "file": "<project-root>/docker-entrypoint.hermit.sh" }] }` on stdin. Successful manual Docker merges use the upstream-template baseline entries described above. Never seed an unresolved or kept file, and never hand-compute hashes.
 
 ### 6. Clean up session settings
 

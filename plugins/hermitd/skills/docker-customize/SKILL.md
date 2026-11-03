@@ -64,4 +64,15 @@ fi
 
 If only `docker-compose.hermit.yml` or `Dockerfile.hermit` can carry it (volumes, ports, capabilities, base image), edit as one contiguous block with a leading comment — in `Dockerfile.hermit` that block is the operator block from § 1. Validate a compose edit on the host with `docker compose -f docker-compose.hermit.yml config -q`, adding `-f docker-compose.security.yml` when that file exists so the check covers what the wrapper actually builds: the host wrapper refuses every `up` and `build` on a file that does not parse.
 
-`hermit-evolve` reconciles the file against the baseline `docker-setup` recorded: with a baseline and an upstream move the merge is mechanical and only overlapping lines are resolved by the hermit; with no baseline the file is kept, the upstream copy parked under `.hermit/state/`, and the operator told; with no upstream move the file is left alone. Re-check the block after every evolve.
+`hermit-evolve` reconciles the file against the baseline `docker-setup` recorded: with a baseline and an upstream move `evolve-apply` script-applies clean merges and only overlapping lines are resolved by the hermit; with no baseline the file is kept, the upstream copy parked under `.hermit/state/`, and the operator told; with no upstream move the file is left alone. Re-check the block after every evolve.
+
+
+### Merge a parked upstream copy
+
+When the operator asks to merge a parked `Dockerfile.hermit` or `docker-compose.hermit.yml`:
+
+1. Select that file's newest `.hermit/state/<name>.<timestamp>.upstream` and keep its adjacent `.upstream.json` receipt. Read [hermit-evolve reference §5d](../hermit-evolve/reference.md#5d-merge-compose-and-dockerfile-template-changes-in-place) for the merge procedure and structural checks.
+2. Save the current project file to a timestamped `.bak` under `.hermit/state/`. With a verified `base_path`, follow §5d's `git merge-file` procedure and resolve only conflict regions. Without a verified base, merge the parked upstream changes into a scratch copy while preserving operator edits, including the Dockerfile operator block and custom git identity mount. Never treat the whole parked file as a replacement for a customized project file.
+3. Run §5d's checks on the scratch copy: no conflict markers; compose parses as one document with `services.hermit` and `volumes`; Dockerfile retains `FROM`, build arguments, entrypoint copy and a final non-root `USER`. Install only a checked merge. On the host, validate compose with the security overlay when present.
+4. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt <file>`, where `<file>` is exactly `Dockerfile.hermit` or `docker-compose.hermit.yml`. It validates the parked candidate and project merge, then records the current upstream baseline and removes the parked copies. If refused, report the reason; never bypass it by seeding a baseline manually.
+5. After `status: "adopted"`, ask the host operator to run `hermitd update`. Later upgrades can merge against the recorded baseline.

@@ -1599,6 +1599,7 @@ function checkBrowser(p: DoctorPaths = PATHS, options: BrowserPrerequisiteOption
     const deployment = options.deployment ?? browserDeployment(p.hermitDir);
     if (deployment !== 'host') {
       const marker = options.marker ?? (() => deployment === 'container' ? fs.existsSync('/etc/hermit/managed-browser')
+        && fs.readFileSync('/etc/hermit/managed-browser', 'utf8').split('\n').includes('display=plugin')
         : Bun.spawnSync(browserImageProbe(path.join(p.hermitDir, '../docker-compose.hermit.yml')), { timeout: 5000, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0);
       return marker() ? { id, status: 'ok', detail: 'managed browser image present' }
         : { id, status: 'warn', detail: 'managed browser image missing; run hermitd update on the host' };

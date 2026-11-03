@@ -8,6 +8,7 @@ description: Evolves hermit configuration and templates after a plugin update. D
 Upgrade the project's hermit configuration after a plugin update.
 
 ## Commands
+- `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 - `proposal-queue-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit`
 
@@ -42,6 +43,8 @@ Steps 0–9 (in `reference.md`, read only by the `evolve-runner` subagent) are e
 After a successful upgrade, arm `/hermitd:later add 1d "doctor has no new failures after upgrading to <version>" | .hermit/bin/hermitd-run doctor-check .hermit --verdict --since <now>` (hermit origin, `--timeout-s 120`: the doctor run probes credentials and docker and gets the same budget as its routine). `<now>` is the time recorded before dispatch, so a failure that already existed before the upgrade does not count against it while one first seen during the runner's steps still does. The resolver form survives the next plugin update; a baked plugin path points at a cache directory that may be gone by the time the claim is checked.
 
 **Step 10 runs in the main loop** (not the subagent), consuming the `evolve-runner`'s returned report. The subagent's report is the single source for what follows.
+
+Build the Templates, Bin wrappers, Docker entrypoint and Docker templates lines from the runner's `evolve-apply` JSON receipt plus its completed `remaining` resolutions. A parked file is not a merged file.
 
 **Report contract** — the subagent's final message is exactly this; non-deferred runs carry no deferred block, so the common payload is tiny:
 
@@ -101,7 +104,7 @@ conversation. Stop.
 - `Docker entrypoint: migrated(...)` → "Your entrypoint customizations moved to `docker-entrypoint.hermit-local.sh`, where upgrades no longer touch them (`<N>` moved). Rebuild to apply the new entrypoint: `hermitd update`." Add, only when `<M>` is non-zero: "`<M>` change(s) could not be moved automatically — they are in `<patch path>` for you to re-apply."
 - `Docker rebuild: base-patched` → "Docker base image updated. Rebuild to apply: `hermitd update`. Do **not** re-run `/docker-setup` — your Dockerfile customizations are preserved." When this value is present, **suppress** the `Docker templates:` bullet below for `Dockerfile.hermit` (the migration already handled it).
 - `Docker templates: <name> merged(...)` → rebuild notice (this is the only `Docker templates:` outcome that fires one): "Merged upstream changes into `<name>` while preserving the operator customizations. Rebuild to apply: `hermitd update`." Name every merged file. Use the same wording in the channel notice.
-- `Docker templates: kept(...)` or `conflict(...)` → not a rebuild. Client voice (inline, direct-channel, and any `client` leg), one next step, no path: "I kept your customised `<name>` and set the new upstream version aside. Ask me to merge it when you want this release's changes." Name every kept or conflicted file. The archived path may go in the maintainer leg.
+- `Docker templates: kept(...)` or `conflict(...)` → not a rebuild. Client voice (inline, direct-channel, and any `client` leg), one next step, no path: "I kept your customised `<name>` and set the new upstream version aside. Ask me to merge it when you want this release's changes." Name every kept or conflicted file. The archived path may go in the maintainer leg. “Ask me to merge it” routes to `/hermitd:docker-customize` → “Merge a parked upstream copy”, including `adopt` after its checks.
 - `Docker templates: report-only(...)` → "Docker template inputs could not be derived safely. Evolve left `<names>` unchanged for operator review on the host."
 - Never auto-rebuild.
 

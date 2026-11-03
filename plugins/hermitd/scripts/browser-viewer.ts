@@ -5,7 +5,7 @@ import type { ServerWebSocket, Socket } from 'bun';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, humanGeneration, persistentChromeAlive } from './lib/browser-lease';
 import { isContainer } from './lib/container';
-import { browserViewerPaths } from './lib/browser-runtime';
+import { browserSocketDir, browserViewerPaths } from './lib/browser-runtime';
 import { readSettledConfig } from './lib/config-read';
 
 interface ViewerSocket { generation: number; login: string; bridge?: Socket; closed: boolean }
@@ -102,7 +102,7 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
         lease('connect', undefined, { generation: ws.data.generation });
         try {
           const bridge = await Bun.connect({
-            unix: options.vncSocket ?? '/tmp/hermit-browser/vnc.sock',
+            unix: options.vncSocket ?? path.join(browserSocketDir(dir), 'vnc.sock'),
             socket: {
               data(_socket, data) { if (!ws.data.closed) ws.sendBinary(data); },
               close() { ws.close(1000, 'Display disconnected'); },
@@ -134,6 +134,7 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
 if (import.meta.main) {
   const bind = process.env.HERMIT_BROWSER_VIEWER_BIND;
   const viewer = startBrowserViewer({ ...browserViewerPaths(), ...(bind ? { hostname: bind.split(':')[0], port: Number(bind.split(':')[1]) } : {}) });
+  console.log(JSON.stringify({ status: 'viewer_ready' }));
   const stop = () => { viewer.stop(); process.exit(0); };
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);

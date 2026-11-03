@@ -30,14 +30,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { sha256 } from './lib/hash';
 import { pinStateDirOrExit } from './lib/cc-compat';
-import { writePristineBaselines } from './lib/pristine-baseline';
+import { seedTemplateManifest } from './lib/pristine-baseline';
 import { emitJson, exitError } from './lib/cli';
-
-function isPlainObject(v: any): boolean {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
-}
 
 const stateDirArg = process.argv[2];
 if (!stateDirArg) exitError();
@@ -86,7 +81,6 @@ function apply(raw: string): void {
     }
   }
 
-  const seeded: Record<string, { sha256: string; plugin_version: string }> = {};
   const pristine: { key: string; buf: Buffer }[] = [];
   for (const { key, file } of toHash) {
     let buf: Buffer;
@@ -95,61 +89,11 @@ function apply(raw: string): void {
     } catch {
       exitError(`unreadable_file:${key}`);
     }
-    seeded[key] = { sha256: sha256(buf), plugin_version: pluginVersion };
     pristine.push({ key, buf });
   }
 
-  // A present-but-invalid existing manifest is fatal, matching how evolve-plan.ts
-  // treats a corrupt manifest; absent is a fresh base.
-  const manifestPath = path.join(stateDir, 'state', 'template-manifest.json');
-  let baseFiles: Record<string, any> = {};
-  if (fs.existsSync(manifestPath)) {
-    let existing: any;
-    try {
-      existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    } catch {
-      exitError('corrupt_manifest:invalid_json');
-    }
-    if (!isPlainObject(existing) || !isPlainObject(existing.files)) exitError('corrupt_manifest:invalid_files');
-    const bad = Object.entries(existing.files)
-      .filter(
-        ([, v]: [string, any]) =>
-          !isPlainObject(v) || typeof v.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(v.sha256),
-      )
-      .map(([k]) => k);
-    if (bad.length) {
-      exitError(`corrupt_manifest:invalid_sha256:${bad.join(',')}`);
-    }
-    baseFiles = existing.files;
-  }
-
-  // Merge: foreign keys preserved, re-seeded keys overwritten.
-  for (const key of ['templates/SHELL.md.template', 'templates/SESSION-REPORT.md.template']) {
-    delete baseFiles[key];
-    delete seeded[key];
-  }
-  const preserved = Object.keys(baseFiles).filter((k) => !(k in seeded)).length;
-  const out = { version: 1, files: { ...baseFiles, ...seeded } };
-
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  const tmp = manifestPath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, manifestPath);
-
-  // Keep the baseline CONTENT next to its hash. The hash tells hermit-evolve
-  // *that* a file diverged; only the bytes tell it *how*, which is what the
-  // Step 5c sidecar migration diffs against. Written after the manifest rename
-  // so a crash mid-write can only leave a missing pristine copy (evolve falls
-  // back to today's replace + .bak), never one that disagrees with the hash —
-  // tmp + rename per file, since a truncated baseline would silently feed a
-  // wrong diff to the migration, which never re-checks the hash.
-  try {
-    writePristineBaselines(stateDir, pristine);
-  } catch {
-    exitError('pristine_write_failed');
-  }
-
-  emitJson({ seeded: Object.keys(seeded).length, preserved });
+  try { emitJson(seedTemplateManifest(stateDir, pluginVersion, pristine)); }
+  catch (error) { exitError(error instanceof Error ? error.message : String(error)); }
 }
 
 let buf = '';

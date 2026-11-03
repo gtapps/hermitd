@@ -2,6 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { browserDeployment, browserDataDir, browserProfile, browserEnabled, browserSocketDir, dockerfileHasOwnBrowser } from '../scripts/lib/browser-runtime';
+import { render } from '../scripts/render-docker-templates';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('browser-runtime-');
 afterAll(cleanup);
@@ -32,5 +33,16 @@ test('only operator browser installations count as a conflict', () => {
   fs.writeFileSync(file, '# Managed browser (pins)\nRUN npm install agent-browser \\\n  && touch /etc/hermit/managed-browser\n');
   expect(dockerfileHasOwnBrowser(file)).toBe(false);
   fs.appendFileSync(file, 'RUN npm install agent-browser\n');
+  expect(dockerfileHasOwnBrowser(file)).toBe(true);
+});
+
+test('delimited managed browser is excluded while operator installs remain visible', () => {
+  const file = path.join(freshDir(), 'Dockerfile.hermit');
+  const { dockerfile } = render({ auth: 'oauth-token', networkMode: 'bridge', gitIdentityMount: true });
+  fs.writeFileSync(file, dockerfile);
+  expect(dockerfileHasOwnBrowser(file)).toBe(false);
+  fs.appendFileSync(file, '\nRUN npm install agent-browser\n');
+  expect(dockerfileHasOwnBrowser(file)).toBe(true);
+  fs.writeFileSync(file, 'RUN npm install agent-browser\n' + dockerfile);
   expect(dockerfileHasOwnBrowser(file)).toBe(true);
 });

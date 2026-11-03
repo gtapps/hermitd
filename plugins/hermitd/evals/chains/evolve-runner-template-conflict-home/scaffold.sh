@@ -25,6 +25,8 @@ mkdir -p "spec/plugin/skills/hermit-evolve"
 cp "$here/../../../skills/hermit-evolve/reference.md" "spec/plugin/skills/hermit-evolve/reference.md"
 mkdir -p "spec/plugin/state-templates"
 cp "$here/../../../state-templates/PROPOSAL.md.template" "spec/plugin/state-templates/PROPOSAL.md.template"
+mkdir -p ".hermit/templates"
+cp "$here/../../../state-templates/PROPOSAL.md.template" ".hermit/templates/PROPOSAL.md.template.new"
 mkdir -p ".hermit"
 cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
