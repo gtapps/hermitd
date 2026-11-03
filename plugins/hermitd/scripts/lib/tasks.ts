@@ -334,7 +334,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (by === 'confirmed') {
           if (record.approver && closer !== record.approver) throw new Error('approver_required');
           if ((record.result || 'result-rev' in flags) && (!/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_result');
-          if (!flags['reason-stdin'] || !reason) throw new Error('empty_reason');
+          if (!flags['reason-stdin']) throw new Error('missing_reason_stdin');
+          if (!reason) throw new Error('empty_reason');
         } else {
           if (record.approver) throw new Error('approver_required');
           const claim = (flags.claim as string[] | undefined)?.[0];
@@ -346,7 +347,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id, closed_by: by, result_rev: record.result_rev, next_queued: nextQueued(records) };
       } else if (verb === 'cancel') {
         const closer = required(flags, 'actor');
-        if (!flags['reason-stdin'] || !line) throw new Error('empty_reason');
+        if (!flags['reason-stdin']) throw new Error('missing_reason_stdin');
+        if (!line) throw new Error('empty_reason');
         finish(record, 'cancelled', closer, line, now);
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
@@ -436,7 +438,10 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
   if (resident && !['idle', 'shell'].includes(resident.status)) return { ok: false, reason: 'registry-busy' };
   if (options.minTokens !== undefined) {
     const entry = readTaskCostRows(dir).findLast(row => isOwnTurn(row, execution.cc_session_id!));
-    if (!entry || compactibleTokens(entry, readContextSurface(dir)?.surface_upper_bound_tokens ?? null) < options.minTokens) return { ok: false, reason: 'under-token-floor' };
+    // A row observed before the last reset describes a context compaction or a clear already shrank.
+    const observedAt: string = entry?.observed_at ?? entry?.timestamp ?? '';
+    const stale = !!observedAt && !!runtime?.last_context_reset_at && observedAt < runtime.last_context_reset_at;
+    if (!entry || stale || compactibleTokens(entry, readContextSurface(dir)?.surface_upper_bound_tokens ?? null) < options.minTokens) return { ok: false, reason: 'under-token-floor' };
   }
   return { ok: true };
 }

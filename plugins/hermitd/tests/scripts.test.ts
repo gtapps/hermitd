@@ -678,6 +678,10 @@ exit 0
       }
       if (scenario === 'timeout-first' || scenario === 'cc-only') {
         expect(idx('claude plugin update ')).toBe(-1);
+        if (scenario === 'timeout-first') {
+          expect(r.stdout).toContain('Update paused');
+          expect(r.stdout).not.toContain('/reload-plugins not sent');
+        }
       } else {
       expect(calls.filter(l => l.includes('claude plugin update ')).map(l => l.slice(l.indexOf('claude plugin update ')))).toEqual([
         'claude plugin update hermitd@hermitd --scope local',
