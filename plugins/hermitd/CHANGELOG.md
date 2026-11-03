@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Upgrades merge and adopt a `Dockerfile.hermit` or `docker-compose.hermit.yml` parked without a baseline instead of asking the operator to request the merge
+
+### Upgrade Instructions
+
+After Step 5's `evolve-apply`, merge each `Dockerfile.hermit` or `docker-compose.hermit.yml` whose upstream copy its receipt lists under `parked` with no `remaining` entry for that file (a bootstrap park: no verified baseline). Read `<plugin_root>/skills/docker-customize/SKILL.md` and follow steps 1 to 4 of "Merge a parked upstream copy", keeping the operator block, the git identity mount and every other operator edit; for its step 4 run `evolve-adopt` (Commands) with the file name. When adopt prints `adopted`, report the file under `Docker templates:` as `<name> merged(parked; reviewed)` in place of its `kept(bootstrap, ...)` outcome. When you cannot tell whether an upstream change is safe for this agent, leave the project file untouched and report `<name> conflict(review): upstream copy at <path>`. When adopt refuses, restore the `.bak`, keep the parked copy and report `<name> conflict(<reason>): upstream copy at <path>`. A file without such a park needs nothing.
+
 ## [1.4.26] - 2026-11-03
 
 ### Fixed
@@ -19,8 +29,6 @@
 ### Upgrade Instructions
 
 Step 5 runs `evolve-apply` once; do not run it again here. Resolve only the `remaining` entries of that Step 5 receipt through the evolve reference, preserving operator edits and entrypoint sidecar content.
-
-**Operator action required:** For Docker hermits whose `Dockerfile.hermit` was parked, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize`, adopt the checked merge, then run `hermitd update` on the host.
 
 ## [1.4.25] - 2026-11-03
 
