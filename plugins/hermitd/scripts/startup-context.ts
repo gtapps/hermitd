@@ -1,5 +1,5 @@
 import { readTaskReports } from './lib/task-report';
-import { observeExecution, startupTasks } from './lib/tasks';
+import { observeExecution, readExecution, startupTasks } from './lib/tasks';
 // Suppress EPIPE errors (e.g. when stdout pipe closes early in tests)
 process.stdout.on('error', () => {});
 
@@ -313,8 +313,10 @@ function main(source: string | null, sessionId: string | null) {
   // (resume/compact reuse it; /clear mints a new one): this session is the resident now, so drop
   // the verdict rather than leave it silently muting its own liveness signal.
   clearGuest(stateDir, sessionId);
-  // A clear only runs between turns; compaction keeps the PreCompact observation.
+  // A clear only runs between turns; compaction keeps the PreCompact state, and a manual
+  // compaction's idle restarts its clock here, once the compaction itself has finished.
   if (source !== 'compact') observeExecution(AGENT_DIR, source === 'clear' ? 'idle' : 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
+  else if (readExecution(AGENT_DIR).state === 'idle') observeExecution(AGENT_DIR, 'idle', sessionId, null, 'resident-start:compact');
   if (source === 'clear') recordClear(stateDir);
   // Only SessionStart writes this, so a prompt right after cannot erase it: the core mod
   // confirms a queued clear or compaction from it when the classic events pass it over.

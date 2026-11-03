@@ -882,7 +882,7 @@ JSEOF
         echo "  /reload-plugins sent — plugin updates active in the running session."
       elif [ "$BELOW_FLOOR" = true ]; then
         echo "  Plugin updates load at boot on the rebuilt image, and hermit-evolve runs there."
-      elif [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
+      elif [ "$RESTARTED" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
         echo "  /reload-plugins not sent — attach and run it manually: hermitd attach"
       fi
       if [ "$EVOLVE_SENT" = true ]; then

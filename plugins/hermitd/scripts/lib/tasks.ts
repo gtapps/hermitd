@@ -438,7 +438,10 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
   if (resident && !['idle', 'shell'].includes(resident.status)) return { ok: false, reason: 'registry-busy' };
   if (options.minTokens !== undefined) {
     const entry = readTaskCostRows(dir).findLast(row => isOwnTurn(row, execution.cc_session_id!));
-    if (!entry || compactibleTokens(entry, readContextSurface(dir)?.surface_upper_bound_tokens ?? null) < options.minTokens) return { ok: false, reason: 'under-token-floor' };
+    // A row observed before the last reset describes a context compaction or a clear already shrank.
+    const observedAt: string = entry?.observed_at ?? entry?.timestamp ?? '';
+    const stale = !!observedAt && !!runtime?.last_context_reset_at && observedAt < runtime.last_context_reset_at;
+    if (!entry || stale || compactibleTokens(entry, readContextSurface(dir)?.surface_upper_bound_tokens ?? null) < options.minTokens) return { ok: false, reason: 'under-token-floor' };
   }
   return { ok: true };
 }

@@ -34,7 +34,7 @@ for (const [script, event, state, extra] of [
     expect(fs.existsSync(path.join(f.dir, 'state/session-start.json'))).toBe(false);
   } finally { f.cleanup(); } });
 }
-for (const [trigger, state] of [['manual', 'idle'], ['auto', 'unknown']]) it(`SessionStart compact preserves ${trigger} PreCompact observation`, async () => {
+for (const [trigger, state] of [['manual', 'idle'], ['auto', 'unknown']]) it(`SessionStart compact keeps the ${trigger} PreCompact state`, async () => {
   const f = taskFixture(); try {
     const env = { AGENT_DIR: f.dir, HERMIT_RESIDENT: '1' };
     const precompact = await runScript('precompact-stamp.ts', { cwd: f.dir, env, stdin: JSON.stringify({ hook_event_name: 'PreCompact', session_id: 'resident', trigger }) });
@@ -44,7 +44,9 @@ for (const [trigger, state] of [['manual', 'idle'], ['auto', 'unknown']]) it(`Se
     expect(JSON.parse(before).state).toBe(state);
     const start = await runScript('startup-context.ts', { cwd: f.dir, env, stdin: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'resident', source: 'compact' }) });
     expect(start.exitCode).toBe(0);
-    expect(fs.readFileSync(executionPath, 'utf8')).toBe(before);
+    const after = fs.readFileSync(executionPath, 'utf8');
+    if (state === 'unknown') expect(after).toBe(before);
+    else expect(JSON.parse(after)).toMatchObject({ state: 'idle', cc_session_id: 'resident', reason: 'resident-start:compact' });
   } finally { f.cleanup(); }
 });
 it('guest SessionStart compact writes no execution observation', async () => {
