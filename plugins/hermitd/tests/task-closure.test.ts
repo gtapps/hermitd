@@ -3,6 +3,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { taskFixture, taskLib } from './helpers/tasks';
 
+it('names rejected flags and accepted flags', async () => {
+  const f = taskFixture();
+  try {
+    const { id } = await f.open();
+    for (const token of ['--reason', 'stray']) {
+      const r = await f.run('cancel', [id, '--actor', 'discord:u1', token, 'x']);
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ error: `invalid_flag:${token} (accepts --actor --reason-stdin)` });
+    }
+  } finally { f.cleanup(); }
+});
+
+for (const verb of ['cancel', 'close']) it(`${verb} requires the reason stdin flag`, async () => {
+  const f = taskFixture();
+  try {
+    const { id } = await f.open();
+    const r = await f.run(verb, [id, ...(verb === 'close' ? ['--by', 'confirmed'] : []), '--actor', 'discord:u1']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'missing_reason_stdin' });
+  } finally { f.cleanup(); }
+});
+
 for (const revision of [undefined, '0']) it(`confirmed rejects stale revision with result=true, revision=${revision}`, async () => { const f = taskFixture(); try { const { id } = await f.open(); await f.ok('block', [id, '--result-stdin'], 'Ready'); const r = await f.run('close', [id, '--by', 'confirmed', '--actor', 'discord:u1', ...(revision === undefined ? [] : ['--result-rev', revision]), '--reason-stdin'], 'ok'); expect(r.exitCode).toBe(0); expect(JSON.parse(r.stdout)).toEqual({ status: 'refused', reason: 'stale_result' }); } finally { f.cleanup(); } });
 it('confirms a record with no posted result', async () => { const f = taskFixture(); try { const { id } = await f.open(); await f.ok('block', [id, '--waiting-on', 'discord:u1', '--status-line', 'Waiting for purchase', '--next', 'Confirm purchase']); expect(await f.ok('close', [id, '--by', 'confirmed', '--actor', 'discord:u1', '--reason-stdin'], 'I bought them myself')).toMatchObject({ closed_by: 'confirmed' }); const lib = await taskLib(); const record = lib.decodeTask(f.text(id)); expect(record.closed_by).toBe('confirmed'); expect(record.closed_reason).toContain('I bought them myself'); } finally { f.cleanup(); } });
 it('confirmed rejects a stale revision after the definition of done cleared the result', async () => { const f = taskFixture(); try { const { id } = await f.open(); await f.ok('block', [id, '--result-stdin'], 'Ready'); await f.ok('note', [id, '--done', 'New definition', '--actor', 'discord:u1']); const r = await f.run('close', [id, '--by', 'confirmed', '--actor', 'discord:u1', '--result-rev', '1', '--reason-stdin'], 'ok'); expect(r.exitCode).toBe(0); expect(JSON.parse(r.stdout)).toEqual({ status: 'refused', reason: 'stale_result' }); expect(await f.ok('close', [id, '--by', 'confirmed', '--actor', 'discord:u1', '--result-rev', '2', '--reason-stdin'], 'I did it myself')).toMatchObject({ closed_by: 'confirmed' }); } finally { f.cleanup(); } });

@@ -1,7 +1,7 @@
 import { observeExecution } from './lib/tasks';
 process.stdout.on('error', () => {});
 
-// PreCompact marks the resident execution unknown and stamps its context reset.
+// PreCompact records resident execution and stamps its context reset.
 import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
 import { stampContextReset } from './lib/context-reset';
@@ -30,7 +30,7 @@ function main(raw: string): void {
   // longer exists. The guest's own compaction says nothing about the resident's context.
   if (!guest) {
     stampContextReset(agentDir);
-    observeExecution(agentDir, 'unknown', payload.session_id ?? null, null, 'precompact');
+    observeExecution(agentDir, trigger === 'manual' ? 'idle' : 'unknown', payload.session_id ?? null, null, 'precompact');
   }
 }
 

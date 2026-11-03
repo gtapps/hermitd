@@ -18,6 +18,9 @@
 Step 5 runs `evolve-apply` once; do not run it again here. Resolve only the `remaining` entries of that Step 5 receipt through the evolve reference, preserving operator edits and entrypoint sidecar content.
 
 **Operator action required:** For Docker hermits whose `Dockerfile.hermit` was parked, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize`, adopt the checked merge, then run `hermitd update` on the host.
+- Task flag errors name the rejected flag and accepted flags, and missing reason stdin is distinguished from an empty reason
+- Manual compaction preserves idle execution state so quiet updates can proceed
+- Update summaries omit reload advice when no plugin update succeeded
 
 ## [1.4.25] - 2026-11-03
 
