@@ -4,12 +4,9 @@
 
 ### Added
 
-- Phone takeover for the managed Docker browser, inactive until set up, with admin mentions in the requesting chat, Take over and Hand back, and trusted-controller `!release`
-- `proposal.ts list`, a bounded sorted and filtered proposal listing used by `/proposal-list` and chat approvals
-- `proposal.ts patch --respond`, which records the first response and the status change in one call
-- A managed browser for new Docker setups, with a persistent signed-in profile and up to three anonymous sessions; it stays off for existing hermits because it adds about 1.4 GB to the image and needs 4 GiB of memory, until an explicit `/docker-setup` rerun
-- Phone takeover for Docker and Linux/WSL2 tmux browsers, with admin mentions, Take over and Hand back, and trusted-controller `!release`
-- A managed browser by default for new and existing hermits, with private host installs, a persistent profile and up to three anonymous sessions
+- A managed browser by default for new and existing hermits, with a persistent signed-in profile and up to three anonymous sessions; Docker builds it into the image, tmux uses a private host install
+- Phone takeover for Docker and Linux/WSL2 tmux browsers, with admin mentions in the requesting chat, Take over and Hand back, and trusted-controller `!release`
+- `proposal.ts list` for bounded, sorted and filtered listings, and `proposal.ts patch --respond` to record the first response and status change in one call
 
 ### Changed
 
@@ -37,6 +34,7 @@ Run `bun <plugin_root>/scripts/settings-edit.ts <project_root>/.hermit/config.js
 **Leftover check:** `task-report.ts --today` flag and its `today`, `closed_today` and `opened_today` output keys removed, replaced by `brief-digest.ts <state-dir> morning|evening|daily`.
 
 **Leftover check:** brief runner key `sessions_today` renamed `tasks_today`, its `session` field `task`; `runner.waiting` entries changed from strings to `{title, state, waiting_on}`.
+
 Remove lines whose `source` is `skill-correction` from `.hermit/state/observations.jsonl` when the file exists; keep every other line unchanged.
 
 **Leftover check:** observation source `skill-correction` and its `skill-correction:<name>` labels removed; corrections go to `task.ts lesson`.
