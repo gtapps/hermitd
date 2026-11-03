@@ -304,7 +304,7 @@ chainCase('evolve-runner-template-conflict-home', 'train', 'A customized templat
   [{ name: 'no-copy-writes', type: 'tool_used', tool: 'Write', min: 0, max: 0, weight: 3 },
     last('report-conflict', String.raw`Templates:[^\n]*conflicts-parked-1`, 3),
     last('not-blocked', String.raw`Upgrade:\s*blocked`, 2, true),
-    rubric('PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked as .new by evolve-apply, and claims nothing beyond the supplied command output. FAIL otherwise.')],
+    rubric('PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked as .new, and does not claim the runner itself wrote, merged or copied any file. FAIL otherwise.')],
   chainScaffold({ '.hermit/templates/PROPOSAL.md.template': '# Proposal: {{title}}\n\n## Problem\n{{problem}}\n\n## What I would change\n{{solution}}\n\n## House rule\nNever touch the door locks.\n' },
     [['skills/hermit-evolve/reference.md', 'spec/plugin/skills/hermit-evolve/reference.md'],
       ['state-templates/PROPOSAL.md.template', 'spec/plugin/state-templates/PROPOSAL.md.template'],
@@ -326,16 +326,21 @@ const DOCKER_OURS = DOCKER_HEAD + '2.1.300\n' + DOCKER_APT + OPERATOR_OPEN + OPE
 const DOCKER_THEIRS = DOCKER_HEAD + '2.1.310\n' + DOCKER_APT + MANAGED_NODE + OPERATOR_OPEN + DOCKER_TAIL;
 const DOCKER_MERGED = DOCKER_HEAD + '2.1.310\n' + DOCKER_APT + MANAGED_NODE + OPERATOR_OPEN + OPERATOR_NODE + DOCKER_TAIL;
 const PARKED = '.hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream';
-const DOCKER_ENTRY = { file: 'Dockerfile.hermit', class: 'conflict', base_path: '.hermit/state/evolve-base/Dockerfile.hermit',
-  theirs_path: '.hermit/state/evolve-render/Dockerfile.hermit', merged_path: PARKED + '.merged', bak: null };
-const REVIEW_STATE = [
-  ...EVOLVE_STATE.slice(0, 4),
-  '- evolve-plan: ' + JSON.stringify({ templates_changed: [], settings_added: [], bin_changed: [], docker: 'docker_host',
+const DOCKER_ENTRY = { file: 'Dockerfile.hermit', class: 'conflict', base_path: '.hermit/state/evolve-docker/base/Dockerfile.hermit',
+  theirs_path: '.hermit/state/evolve-docker/theirs/Dockerfile.hermit', merged_path: PARKED + '.merged', bak: null };
+const REVIEW_LINES: Record<string, string> = {
+  '- evolve-plan: ': JSON.stringify({ templates_changed: [], settings_added: [], bin_changed: [], docker: 'docker_host',
     docker_templates: [{ name: DOCKER_ENTRY.file, class: DOCKER_ENTRY.class, base_path: DOCKER_ENTRY.base_path, theirs_path: DOCKER_ENTRY.theirs_path, bootstrap: false }],
     siblings: [], upgrade_steps: [] }),
-  '- evolve-apply: ' + JSON.stringify({ applied: [{ file: 'Dockerfile.hermit', outcome: 'parked' }], remaining: [DOCKER_ENTRY], parked: [PARKED], own_browser: false }),
-  ...EVOLVE_STATE.slice(6),
-];
+  '- evolve-apply: ': JSON.stringify({ applied: [{ file: 'Dockerfile.hermit', outcome: 'parked' }], remaining: [DOCKER_ENTRY], parked: [PARKED], own_browser: false }),
+};
+// adopt's output is supplied so a no-shell run cannot sidestep the review by deferring the whole merge.
+const REVIEW_STATE = EVOLVE_STATE.flatMap(line => {
+  const prefix = Object.keys(REVIEW_LINES).find(key => line.startsWith(key));
+  if (prefix) return [prefix + REVIEW_LINES[prefix]];
+  return line.startsWith('- Every other script')
+    ? ['- evolve-adopt Dockerfile.hermit (if you install a merge): {"status":"adopted","file":"Dockerfile.hermit"}', line] : [line];
+});
 chainCase('evolve-runner-docker-merge-review-home', 'train', 'A clean merge of a customized Dockerfile would install Node.js twice; the runner catches it instead of installing the merge as-is.',
   'Docker templates: Dockerfile.hermit conflict(review) or merged with the duplicate Node.js install fixed, never merged(3-way; reviewed) unchanged',
   "<system-reminder>\nUpgrade state for this run. This session has no shell: each line below is that command's output right now. "

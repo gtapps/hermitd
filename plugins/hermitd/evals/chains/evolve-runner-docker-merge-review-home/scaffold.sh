@@ -65,8 +65,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install
 COPY docker-entrypoint.hermit.sh /usr/local/bin/docker-entrypoint.sh
 USER claude
 HERMIT_FIXTURE
-mkdir -p ".hermit/state/evolve-base"
-cat > '.hermit/state/evolve-base/Dockerfile.hermit' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/state/evolve-docker/base"
+cat > '.hermit/state/evolve-docker/base/Dockerfile.hermit' <<'HERMIT_FIXTURE'
 FROM ubuntu:24.04
 ARG HOST_UID=1000
 ARG CLAUDE_CODE_VERSION=2.1.300
@@ -77,8 +77,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-cer
 COPY docker-entrypoint.hermit.sh /usr/local/bin/docker-entrypoint.sh
 USER claude
 HERMIT_FIXTURE
-mkdir -p ".hermit/state/evolve-render"
-cat > '.hermit/state/evolve-render/Dockerfile.hermit' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/state/evolve-docker/theirs"
+cat > '.hermit/state/evolve-docker/theirs/Dockerfile.hermit' <<'HERMIT_FIXTURE'
 FROM ubuntu:24.04
 ARG HOST_UID=1000
 ARG CLAUDE_CODE_VERSION=2.1.310

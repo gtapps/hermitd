@@ -102,7 +102,7 @@ execution:
     Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
     Bin wrappers: <restored/replaced(.bak) | none>
     Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
-    Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
+    Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
     Docker rebuild: <needed + order | base-patched | no>
     Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
       <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
@@ -141,9 +141,10 @@ execution:
     - claude --version: 2.1.310 (Claude Code)
     - bun --version: 1.4.2
     - evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}
-    - evolve-plan: {"templates_changed":[],"settings_added":[],"bin_changed":[],"docker":"docker_host","docker_templates":[{"name":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-render/Dockerfile.hermit","bootstrap":false}],"siblings":[],"upgrade_steps":[]}
-    - evolve-apply: {"applied":[{"file":"Dockerfile.hermit","outcome":"parked"}],"remaining":[{"file":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-render/Dockerfile.hermit","merged_path":".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream.merged","bak":null}],"parked":[".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream"],"own_browser":false}
+    - evolve-plan: {"templates_changed":[],"settings_added":[],"bin_changed":[],"docker":"docker_host","docker_templates":[{"name":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-docker/base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-docker/theirs/Dockerfile.hermit","bootstrap":false}],"siblings":[],"upgrade_steps":[]}
+    - evolve-apply: {"applied":[{"file":"Dockerfile.hermit","outcome":"parked"}],"remaining":[{"file":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-docker/base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-docker/theirs/Dockerfile.hermit","merged_path":".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream.merged","bak":null}],"parked":[".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream"],"own_browser":false}
     - evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}
+    - evolve-adopt Dockerfile.hermit (if you install a merge): {"status":"adopted","file":"Dockerfile.hermit"}
     - Every other script the procedure names: OK with no changes.
     </system-reminder>
     Run the upgrade for this hermit now and return your report.

@@ -757,9 +757,10 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
     if (!candidate || !fs.readFileSync(candidate).equals(theirs)) {
       candidate = path.join(dir, 'state', name + '.' + stamp + '.upstream');
       writeChanged(candidate, theirs);
-      writeChanged(candidate + '.json', Buffer.from(JSON.stringify({ project_sha: sha256(fs.readFileSync(path.join(project, name))) }) + '\n'));
       note(name, 'parked');
     }
+    // Refreshed on every run so adopt's unmerged check compares against the file as it stood before this merge.
+    writeChanged(candidate + '.json', Buffer.from(JSON.stringify({ project_sha: sha256(fs.readFileSync(path.join(project, name))) }) + '\n'));
     pruneParked(dir, name, candidate);
     receipt.parked.push(candidate);
     return candidate;
@@ -812,7 +813,7 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
         continue;
       }
       const candidate = park(name, theirs);
-      if (!clean) { remain(entry, name); continue; }
+      if (!clean) { fs.rmSync(candidate + '.merged', { force: true }); remain(entry, name); continue; }
       writeChanged(candidate + '.merged', result.stdout);
       remain(entry, name, candidate + '.merged');
       continue;

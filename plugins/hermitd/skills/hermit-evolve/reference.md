@@ -123,9 +123,9 @@ Special-default keys — the **only** keys this step writes, because their value
 
 Run `evolve-apply` (Commands) **first**, once for Steps 5 through 5d. Parse its JSON receipt: `applied`, `remaining`, `parked`, and `own_browser`. On an error, report the error and stop this upgrade rather than claiming files were refreshed.
 
-The script recomputes classifications, copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, parks Docker bootstrap renders, installs structurally valid clean 3-way Docker merges, and seeds the corresponding pristine baselines. It preserves operator content wherever a merge or sidecar migration remains necessary. Do not repeat these mechanical operations yourself.
+The script recomputes classifications, copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, parks Docker bootstrap renders, copies Docker files the operator never edited, parks a customized Docker file's clean 3-way merge as `merged_path` for review, and seeds the corresponding pristine baselines. It preserves operator content wherever a merge or sidecar migration remains necessary. Do not repeat these mechanical operations yourself.
 
-Resolve **only** entries in `remaining` in Steps 5b–5d below. Each has `file`, `class`, `base_path`, `theirs_path`, and `bak`; null paths mean no verified input was available. For these procedures, use `file` as the prior plan entry's `name`. Keep the receipt for Step 10:
+Resolve **only** entries in `remaining` in Steps 5b–5d below. Each has `file`, `class`, `base_path`, `theirs_path`, `merged_path`, and `bak`; null paths mean no verified input was available. For these procedures, use `file` as the prior plan entry's `name`. Keep the receipt for Step 10:
 - Templates: `restored`/`refreshed` from `applied`; `parked-new` counts as `conflicts-parked-N`; untouched `remaining` templates count as kept.
 - Bin wrappers: `restored`/`refreshed` from `applied`, with `<name>.bak` for replaced conflicts; untouched `remaining` wrappers count as kept.
 - Docker entrypoint: `refreshed` from `applied`, plus only the sidecar/conflict outcomes actually completed in Step 5c.
@@ -195,7 +195,7 @@ Use one UTC timestamp for every path created while handling an entry. First copy
 
 `git merge-file` returns the conflict count on a merge (capped at 127) and 128 or higher on its own failure, so read the status against those bands — a status of 128+ is an error, never a conflict count. The checks below run on `<tmp>` before anything is installed, in each of the three status branches that follow.
 
-- Exit 0: `evolve-apply` already found this merge failing the structural checks → unsettled.
+- Exit 0: run the checks. Red → unsettled. Green → review `<tmp>` as the clean-merge review above reviews `merged_path`.
 - Exit 1-127: edit `<tmp>` only between `<<<<<<<` and `>>>>>>>` markers, in interactive and unattended runs alike. In a region holding the `/home/claude/.gitconfig` volume line, keep the operator's mount source when it differs from the one in `<base_path>`. Every region settled and the checks green → install `<tmp>` over the project file, report `<name> merged(3-way; <n> conflicts resolved)`. Any region unsettled or a check red → unsettled.
 - Exit 128 or higher: the merge itself failed and `<tmp>` still holds the operator's bytes with no markers to resolve. Never install it → unsettled, with `n` unknown.
 - **Unsettled**: project file untouched, report `<name> conflict(<n>): upstream copy at <the parked .upstream path>`.

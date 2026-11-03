@@ -1115,6 +1115,26 @@ test('apply hands a clean customized merge to review and adopt finishes it', wit
   expect(fs.existsSync(receipt.parked[0])).toBe(false);
 }));
 
+test('apply drops a stale review candidate once the merge stops being clean', withProj((proj) => {
+  const { dir } = legacyDockerFixture(proj, 'legacy');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const merged = apply().remaining.find(item => item.file === 'Dockerfile.hermit')!.merged_path!;
+  fs.appendFileSync(path.join(proj, 'Dockerfile.hermit'), '<<<<<<< operator\n');
+  expect(apply().remaining.find(item => item.file === 'Dockerfile.hermit')?.merged_path).toBeNull();
+  expect(fs.existsSync(merged)).toBe(false);
+}));
+
+test('apply refreshes the parked receipt so adopt still refuses an unmerged edited file', withProj((proj) => {
+  const { dir } = legacyDockerFixture(proj, 'legacy');
+  const project = path.join(proj, 'Dockerfile.hermit');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const candidate = apply().parked[0];
+  fs.appendFileSync(project, 'RUN echo later edit\n');
+  expect(apply().parked).toEqual([candidate]);
+  expect(JSON.parse(fs.readFileSync(candidate + '.json', 'utf8')).project_sha).toBe(sha256(fs.readFileSync(project)));
+  expect(adoptDocker(dir, PLUGIN_ROOT, 'Dockerfile.hermit')).toEqual({ status: 'refused', reason: 'unmerged' });
+}));
+
 test('apply seeds the baseline when the operator file already carries the upstream change', withProj((proj) => {
   const { dir, sources } = legacyDockerFixture(proj, 'current');
   const receipt = applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);

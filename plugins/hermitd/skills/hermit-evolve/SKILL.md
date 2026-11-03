@@ -55,7 +55,7 @@ Settings added: <keys | none>
 Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
 Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
-Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
+Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
