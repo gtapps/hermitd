@@ -122,7 +122,7 @@ test('container display requires a plugin-owned marker and leaves legacy display
   const { ensureDisplay } = await import('../scripts/browser-display');
   const dir = freshDir(), marker = path.join(dir, 'marker');
   let calls = 0;
-  const options = { deployment: 'container' as const, marker, available: true, spawn: (() => { calls++; return { status: 1 }; }) as any };
+  const options = { deployment: 'container' as const, platform: 'linux' as const, marker, available: true, spawn: (() => { calls++; return { status: 1 }; }) as any };
   expect(await ensureDisplay(dir, options)).toEqual({ blocker: 'image_missing' });
   fs.writeFileSync(marker, '');
   expect(await ensureDisplay(dir, options)).toEqual({ blocker: 'image_rebuild_pending' });
@@ -138,7 +138,7 @@ test('concurrent display requests share one owner and wait for its socket', asyn
   fs.writeFileSync(marker, 'display=plugin\n');
   let calls = 0, running = false;
   const options = {
-    deployment: 'container' as const, marker, available: true, waitMs: 1000,
+    deployment: 'container' as const, platform: 'linux' as const, marker, available: true, waitMs: 1000,
     sessionAlive: () => running,
     spawn: (() => {
       calls++; running = true;
@@ -155,7 +155,7 @@ test('concurrent display requests share one owner and wait for its socket', asyn
 test('status and stop verbs are bounded and report readiness', async () => {
   const { browserDisplayStatus } = await import('../scripts/browser-display');
   const dir = freshDir(), socket = path.join(dir, 'vnc.sock');
-  const options = { deployment: 'container' as const };
+  const options = { deployment: 'container' as const, platform: 'linux' as const };
   expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'off' });
   fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"port":6090}}');
   expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'down' });
