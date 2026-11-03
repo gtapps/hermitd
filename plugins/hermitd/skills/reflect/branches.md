@@ -50,7 +50,7 @@ It prints `{"root","memory_dir"}`. Compose `Anchor: root=<root> memory_dir=<memo
 
 Only create a proposal if all three are true:
 1. **Repeated pattern** — tier-aware recurrence:
-   - **Tier 1 + `Evidence Source: current-session`**: 1+ session acceptable. Cite `Sessions: current` when the pattern is present in the open task record's Progress or Lessons (judge returns `ACCEPT (current-session)`). Phase is irrelevant for this path.
+   - **Tier 1 + `Evidence Source: current-session`**: 1+ session acceptable. Cite the task ID of the record this session worked that shows the pattern, from the `task-report` rows (judge returns `ACCEPT (current-session)`). Phase is irrelevant for this path.
    - **Tier 1 + `Evidence Source: archived-session`**: requires 2+ archived sessions, identical to Tier 2/3. The loosening above is specific to the `current-session` path, not to Tier 1 generally.
    - **Tier 2 / Tier 3**: 2+ archived sessions required at every phase (baseline: observed more than once, across archived sessions). A `current-session` candidate that is Tier 3 only through the external-origin override keeps the Tier-1 `current-session` path above. Ledger-graduated candidates (step 3b's mechanical promotion at `graduation_min_sessions`) satisfy recurrence via the `Artifact: state/observations.jsonl` rule (triage's condition-1 ledger clause; judge §1.4) regardless of this baseline.
    - **Artifact-cited efficiency/cost candidates**: recurrence is satisfied by the cited measurements themselves — the same waste measured ≥2 times in a machine-written state file (`Sessions: none` + `Artifact:` line; the judge verifies the file contains the cited values).
@@ -105,7 +105,7 @@ Artifact: <machine-written state file> — <cited value/pattern>   (optional)
 
 `Artifact:` is optional. A valid artifact is a **machine-written state file** only (`.claude/cost-log.jsonl`, `state/proposal-metrics.jsonl`, `state/observations.jsonl`); task records and `compiled/` prose are never artifacts. Ledger-graduated candidates always carry it.
 
-`Evidence Source:` defaults to `archived-session` if omitted. Plugin-check candidates use `scheduled-check/<id>` with `Sessions: none`. Tier-1 candidates with the open task record evidence use `current-session` with `Sessions: current`. Efficiency/cost artifact candidates use the default `archived-session` with `Sessions: none` plus an `Artifact:` line; judge §0.5 routes them to §1.4 artifact verification instead of suppressing `no-sessions`.
+`Evidence Source:` defaults to `archived-session` if omitted. Plugin-check candidates use `scheduled-check/<id>` with `Sessions: none`. Tier-1 candidates with evidence in a record this session worked use `current-session` with that record's task ID. Efficiency/cost artifact candidates use the default `archived-session` with `Sessions: none` plus an `Artifact:` line; judge §0.5 routes them to §1.4 artifact verification instead of suppressing `no-sessions`.
 
 `Evidence Origin:` defaults to `own-work` if omitted. Set to `external-content` when the evidence derives from web fetches, `raw/` third-party captures, or a channel finding with an `[origin: external]` marker. The two fields are orthogonal: a candidate can be `archived-session` + `external-content`.
 

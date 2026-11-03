@@ -107,6 +107,6 @@ If the sender's user ID (verified in §1c) is not a primary operator (§1c), app
 [HH:MM] Channel pattern: <description> [origin: external]
 ```
 
-Do not classify tier, tag Evidence Source, or decide memory-vs-proposal. Reflect reads this line as `current-session` evidence (`Evidence Source: current-session`, `Sessions: current`) and uses the `[origin: external]` marker (if present) to set `Evidence Origin: external-content` when passing to the judge.
+Do not classify tier, tag Evidence Source, or decide memory-vs-proposal. Reflect reads this line as `current-session` evidence (`Evidence Source: current-session`, `Sessions:` that record's task ID) and uses the `[origin: external]` marker (if present) to set `Evidence Origin: external-content` when passing to the judge.
 
 **Corrections stay lessons.** A correction or emergency implying a durable preference gets the line above, including a complaint with no stated fix ("the brief is too verbose"). With no open record, a primary operator's correction goes to auto-memory instead. Name the skill or component only when the operator's words identify it; do not guess a name or ask for disambiguation mid-reply. A declared standing rule follows the resident's Knowledge Discipline rule instead.
