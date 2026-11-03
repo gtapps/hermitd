@@ -15,7 +15,7 @@
 
 ### Upgrade Instructions
 
-Run `bun <plugin_root>/scripts/evolve-plan.ts .hermit apply` (`evolve-apply`) before resolving Docker conflicts. Resolve only its `remaining` entries through the evolve reference, preserving operator edits and entrypoint sidecar content.
+Step 5 runs `evolve-apply` once; do not run it again here. Resolve only the `remaining` entries of that Step 5 receipt through the evolve reference, preserving operator edits and entrypoint sidecar content.
 
 **Operator action required:** For Docker hermits whose `Dockerfile.hermit` was parked, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize`, adopt the checked merge, then run `hermitd update` on the host.
 

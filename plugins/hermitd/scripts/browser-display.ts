@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { hermitDir } from './lib/cc-compat';
-import { printJson, readJson } from './lib/cli';
+import { printJson, readJson, writeStdout } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
 import { browserDataDir, browserDeployment, browserRuntimeMode, browserEnabled, browserHostPlatform, browserProfile, browserSocketDir, type BrowserDeployment } from './lib/browser-runtime';
 import { acquireLock, acquireLockWithWait, releaseLock, pidAlive } from './lib/lockfile';
@@ -12,14 +12,19 @@ import { getSessionName, tmuxSessionAlive } from './lib/tmux';
 import { browserLease } from './lib/browser-lease';
 
 export function browserDisplaySession(resident: string): string { return `browser-${resident}`; }
+function spawnDisplaySession(dir: string, session: string, spawn: typeof spawnSync) {
+  // A tmux server keeps the environment of whoever started it, possibly another hermit.
+  const inherited = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_PLUGIN_CACHE_DIR', 'HERMIT_BROWSER_VIEWER_BIND']
+    .flatMap(name => process.env[name] ? [`${name}=${process.env[name]}`] : []);
+  return spawn('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir),
+    'env', `AGENT_DIR=${dir}`, ...inherited, process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
+}
 export function maybeStartBrowserDisplay(runtimeMode: string, dir = hermitDir(), spawn = spawnSync, available?: boolean, sessionAlive = tmuxSessionAlive): void {
   if (runtimeMode !== 'tmux' || browserHostPlatform() !== 'linux' || !(available ?? Bun.which('Xvnc')) || !browserEnabled(dir)) return;
   try {
     const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
     if (sessionAlive(session)) return;
-    // A tmux server keeps the environment of whoever started it, possibly another hermit.
-    const inherited = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_PLUGIN_CACHE_DIR'].flatMap(name => process.env[name] ? [`${name}=${process.env[name]}`] : []);
-    spawn('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir), 'env', `AGENT_DIR=${dir}`, ...inherited, process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
+    spawnDisplaySession(dir, session, spawn);
   } catch (error) { console.error(`[hermit] Browser display: ${error instanceof Error ? error.message : error}`); }
 }
 export type DisplayResult = { display: string; vncSocket: string } | { blocker: 'image_rebuild_pending' | 'image_missing' | 'display_start_failed' | 'unsupported' };
@@ -38,7 +43,7 @@ export function browserDisplayStatus(dir = hermitDir(), options: DisplayOptions 
   const supported = (options.platform ?? browserHostPlatform()) === 'linux'
     && (deployment === 'container' || (deployment === 'host' && browserRuntimeMode(dir) === 'tmux'));
   const record = supported ? displayRecord(dir) : null;
-  const viewerOn = deployment === 'container' || !!readSettledConfig(dir).browser.port;
+  const viewerOn = !!readSettledConfig(dir).browser.port;
   return { display: supported ? record ? 'up' : 'down' : 'unsupported',
     viewer: viewerOn ? record?.viewer === 'up' ? 'up' : 'down' : 'off' };
 }
@@ -66,13 +71,7 @@ export async function ensureDisplay(dir = hermitDir(), options: DisplayOptions =
     if (record) return { display: record.display, vncSocket: record.vncSocket };
     const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
     const sessionAlive = options.sessionAlive ?? tmuxSessionAlive;
-    if (!sessionAlive(session)) {
-      const inherited = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_PLUGIN_CACHE_DIR', 'HERMIT_BROWSER_VIEWER_BIND']
-        .flatMap(name => process.env[name] ? [`${name}=${process.env[name]}`] : []);
-      const result = (options.spawn ?? spawnSync)('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir),
-        'env', `AGENT_DIR=${dir}`, ...inherited, process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
-      if (result.status !== 0) return { blocker: 'display_start_failed' };
-    }
+    if (!sessionAlive(session) && spawnDisplaySession(dir, session, options.spawn ?? spawnSync).status !== 0) return { blocker: 'display_start_failed' };
     do {
       record = displayRecord(dir);
       if (record) return { display: record.display, vncSocket: record.vncSocket };
@@ -147,7 +146,7 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
     if (!fs.existsSync(vncSocket)) throw new Error('browser_display_start_failed');
     const display = owned.display;
     const publish = (viewer: 'up' | 'down' | 'off') => writeFileAtomic(file, JSON.stringify({ viewer, pid: process.pid, xvncPid: xvnc.pid, display, vncSocket, profile }) + '\n', 0o600);
-    publish(deployment === 'container' || readSettledConfig(dir).browser.port ? 'down' : 'off');
+    publish(readSettledConfig(dir).browser.port ? 'down' : 'off');
     const env = { ...process.env, DISPLAY: owned.display, AGENT_DIR: dir };
     children.push(Bun.spawn(['openbox'], { env, stdin: 'ignore', stdout: 'ignore', stderr: 'inherit' }));
     // tmux kill-session delivers SIGHUP, the signal this display normally stops on.
@@ -157,7 +156,7 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
       while (!stopping) {
         // Takeover setup can save the port while this display is already running.
         const { port } = readSettledConfig(dir).browser;
-        if (deployment === 'container' || port) {
+        if (port) {
           const child = Bun.spawn([process.execPath, path.join(import.meta.dir, 'browser-viewer.ts')], { env: { ...env, HERMIT_BROWSER_VIEWER_BIND: browserDisplaySettings(dir, deployment).viewerBind }, stdin: 'ignore', stdout: 'pipe', stderr: 'inherit' });
           children.push(child);
           // The child publishes readiness only after Bun.serve has bound its listener.
@@ -205,8 +204,11 @@ export function stopBrowserDisplay(dir = hermitDir(), spawn = spawnSync, session
 if (import.meta.main) {
   const verb = process.argv[2] ?? 'run';
   if (verb === 'status') printJson(browserDisplayStatus());
-  else if (verb === 'stop') stopBrowserDisplay();
-  else if (verb === 'ensure') printJson(await ensureDisplay());
+  else if (verb === 'stop') { stopBrowserDisplay(); writeStdout('OK\n'); }
+  else if (verb === 'ensure') {
+    const result = await ensureDisplay();
+    printJson('blocker' in result ? { status: 'blocked', reason: result.blocker } : result);
+  }
   else if (verb === 'run') await runBrowserDisplay();
   else { printJson({ error: 'unknown_verb' }); process.exitCode = 1; }
 }

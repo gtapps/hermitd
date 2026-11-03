@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isContainer } from './lib/container';
 import { readSettledConfig } from './lib/config-read';
-import { APPARMOR_PROFILE_FILE, BROWSER_PACKAGE_COMMANDS, appArmorProfileMissing, browserAppArmorProfile, browserDataDir, browserDeployment, browserHostPlatform, browserImageProbe, browserRuntimeMode, installedBrowser } from './lib/browser-runtime';
+import { APPARMOR_PROFILE_FILE, BROWSER_PACKAGE_COMMANDS, appArmorProfileMissing, browserAppArmorProfile, browserDataDir, browserDeployment, browserHostPlatform, browserImageProbe, browserRuntimeMode, installedBrowser, managedBrowserMergePending } from './lib/browser-runtime';
 import { installBrowser } from './browser-install';
 import { maybeStartBrowserDisplay } from './browser-display';
 import os from 'node:os';
@@ -156,13 +156,10 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version) || Number(version.split('.')[0]) < 28) throw new Error('Docker server 28.0.0 or newer is required for safe localhost publishing.');
     const marker = await run(browserImageProbe(path.join(project, 'docker-compose.hermit.yml')));
     if (marker.code) {
-      const dockerfile = path.join(project, 'Dockerfile.hermit');
-      const source = fs.existsSync(dockerfile) ? fs.readFileSync(dockerfile, 'utf8') : '';
-      if (!source.includes('# --- managed browser ---') || !source.includes('# --- end managed browser ---')) {
-        const state = path.join(dir, 'state');
-        const parked = fs.existsSync(state) ? fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1) : undefined;
+      const pending = managedBrowserMergePending(dir);
+      if (pending) {
         throw new Error('Dockerfile.hermit has no managed-browser block: ask the hermit to merge it'
-          + (parked ? ` (parked copy: ${path.join(state, parked)})` : ' (parked copy: none)'));
+          + ` (parked copy: ${pending.parked ?? 'none'})`);
       }
       throw new Error('Managed browser missing from the image: run hermitd update to rebuild');
     }
@@ -176,7 +173,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   };
   const ensureDockerDisplay = async () => {
     const result = await containerDisplay('ensure');
-    if (result.blocker) throw new Error(`Browser display unavailable: ${result.blocker}; run hermitd update on the Docker host.`);
+    if (result.status === 'blocked') throw new Error(`Browser display unavailable: ${result.reason}; run hermitd update on the Docker host.`);
   };
   if (!config.browser.admins.length) {
     if (deployment === 'docker_host') await ensureDockerDisplay();

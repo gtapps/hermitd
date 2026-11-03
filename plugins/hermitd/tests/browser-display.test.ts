@@ -156,6 +156,8 @@ test('status and stop verbs are bounded and report readiness', async () => {
   const { browserDisplayStatus } = await import('../scripts/browser-display');
   const dir = freshDir(), socket = path.join(dir, 'vnc.sock');
   const options = { deployment: 'container' as const };
+  expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'off' });
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"port":6090}}');
   expect(browserDisplayStatus(dir, options)).toEqual({ display: 'down', viewer: 'down' });
   fs.mkdirSync(path.join(dir, 'state'));
   fs.writeFileSync(socket, '');

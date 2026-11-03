@@ -545,6 +545,10 @@ if [ -f "${PROJECT_DIR}/docker-entrypoint.hermit-local.sh" ]; then . "${PROJECT_
 # Clear stale browser daemon admissions after a container restart.
 if [ -f /etc/hermit/managed-browser ]; then
   rm -f /tmp/hermit-browser-*/*.pid /tmp/hermit-browser-*/admissions.json
+  # /tmp and state survive a restart, and the new pid namespace can reuse a recorded display pid.
+  rm -f "${AGENT_DIR}/state/browser-display.json" "${AGENT_DIR}/state/browser-display.json.lock" \
+    "${AGENT_DIR}/state/browser-display-start.lock" /tmp/hermit-browser-*/display-*.json \
+    /tmp/.X*-lock /tmp/.X11-unix/X* /home/claude/.claude/browser/profile/Singleton*
 fi
 
 # --- 5. Launch hermitd-start ---
@@ -596,7 +600,7 @@ cleanup() {
     bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" teardown shutdown >/dev/null 2>&1 || true
     agent-browser --task shutdown close >/dev/null 2>&1 || true
     bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser.ts" teardown >/dev/null 2>&1 || true
-    bun "${HERMIT_PLUGIN_ROOT}/scripts/browser-display.ts" stop >/dev/null 2>&1 || true
+    bun "${HERMIT_PLUGIN_ROOT:-}/scripts/browser-display.ts" stop >/dev/null 2>&1 || true
   fi
   echo "[docker-entrypoint] Shutting down."
   exit 0

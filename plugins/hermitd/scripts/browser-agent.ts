@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
+import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, installedBrowser, managedBrowserMergePending, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
 import { ensureDisplay, type DisplayResult } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
@@ -153,13 +153,10 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
         let detail = 'Run hermitd run browser-host for the always-on tmux display.';
         if (!host) {
           detail = 'Managed browser display unavailable: run `hermitd update` on the Docker host.';
-          let dockerfile = '';
-          try { dockerfile = fs.readFileSync(path.join(dir, '../Dockerfile.hermit'), 'utf8'); } catch {}
-          if (!dockerfile.includes('# --- managed browser ---') || !dockerfile.includes('# --- end managed browser ---')) {
-            const state = path.join(dir, 'state');
-            const parked = fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1);
+          const pending = managedBrowserMergePending(dir);
+          if (pending) {
             detail = 'Dockerfile.hermit needs the managed-browser merge; ask the hermit to merge Dockerfile.hermit'
-              + (parked ? ` (parked copy: ${path.join(state, parked)})` : '') + ', then run `hermitd update`.';
+              + (pending.parked ? ` (parked copy: ${pending.parked})` : '') + ', then run `hermitd update`.';
           }
         }
         printJson({ error: 'browser_display_missing', reason: display.blocker, detail }); return 1;

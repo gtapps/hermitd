@@ -1822,7 +1822,7 @@ async function main(): Promise<void> {
   }
 
   const display = await ensureDisplay();
-  if ('blocker' in display) console.log(`[hermit] Browser display: ${display.blocker}`);
+  if ('blocker' in display && display.blocker !== 'unsupported') console.log(`[hermit] Browser display: ${display.blocker}`);
   maybeInstallWatchdogScheduler(
     runtimeMode,
     config.watchdog?.scheduler_enabled,

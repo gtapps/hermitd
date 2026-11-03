@@ -49,6 +49,16 @@ export function dockerfileHasOwnBrowser(file: string): boolean {
 
 export function browserHostPlatform(): NodeJS.Platform { return process.platform; }
 
+/** Null when Dockerfile.hermit carries the delimited managed-browser block; otherwise the newest parked upstream copy, if any. */
+export function managedBrowserMergePending(dir: string): { parked: string | null } | null {
+  let source = '';
+  try { source = fs.readFileSync(path.join(dir, '../Dockerfile.hermit'), 'utf8'); } catch {}
+  if (source.includes('# --- managed browser ---') && source.includes('# --- end managed browser ---')) return null;
+  const state = path.join(dir, 'state');
+  const parked = fs.existsSync(state) ? fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1) : undefined;
+  return { parked: parked ? path.join(state, parked) : null };
+}
+
 export function installedBrowser(data = browserDataDir()) {
   if (!fs.existsSync(data)) return null;
   const dirs = fs.readdirSync(data).filter(name => /^\d[^/]*$/.test(name)).map(name => path.join(data, name))
@@ -87,7 +97,7 @@ profile hermit-browser "${data}/*/chrome/chrome" flags=(unconfined) {
 export const BROWSER_PACKAGE_COMMANDS = ['Xvnc', 'openbox', 'unzip'];
 export const APPARMOR_PROFILE_FILE = '/etc/apparmor.d/hermit-browser';
 export function browserImageProbe(compose: string): string[] {
-  return ['docker', 'compose', '-f', compose, 'exec', '-T', 'hermit', 'test', '-f', '/etc/hermit/managed-browser'];
+  return ['docker', 'compose', '-f', compose, 'exec', '-T', 'hermit', 'grep', '-qx', 'display=plugin', '/etc/hermit/managed-browser'];
 }
 interface AppArmorOptions { restriction?: () => string; profileFile?: string }
 export function appArmorProfileMissing(data: string, options: AppArmorOptions = {}): boolean {
