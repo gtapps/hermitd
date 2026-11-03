@@ -172,6 +172,23 @@ channel-routing moved from hand-copied session context to the real SessionStart 
 
 `settings-model-change` asks for sonnet while the run model is sonnet; as a resident the model answers that it is already on sonnet instead of routing to hermit-settings. The request should name a model other than the run model.
 
+### Bare replies and external lessons, 2026-11-03
+
+Claude Code 2.1.316, `--model sonnet`, low effort, `--runs 3` over three rounds, `--keep-temp` traces. Before is two trees from 2026-11-02 at five rounds; after is the fix.
+
+| Measure | Before | After |
+|---|---|---|
+| `proposal-act` skipped, three single-open cases | 13 of 54 | 0 of 27 |
+| `names-both-numbers`, `proposal-no-two-open` | 4 of 15 | 5 of 9 |
+| `names-both-numbers`, `proposal-later-two-open` | 14 of 15 | 9 of 9 |
+| `reflect-tier3-chain-shop` | 0 on every run | 0.8 on 8 of 9 runs, 0 on 1 |
+
+- A skipped `proposal-act` run asked whether the bare reply meant the one open suggestion, through the channel, instead of applying it. None acknowledged an approval and dropped it. The responder line now says to apply it "even with no question open". A shorter "unasked" skipped 6 of 27 again, so that phrase carries the fix; the line sits at the retention budget.
+- The two-open misses named the suggestions by title only. The line now says "by number, not title".
+- The old reflect fixture was a newsletter instruction with no `[origin: external]` marker and no consequence, so quick reflect dropped it before the gates. It now uses the `Channel pattern: … [origin: external]` lesson the responder writes, with the full-price order as own-work consequence. Quick mode states that this candidate meets recurrence on the Tier-1 `current-session` path.
+- The 0.8 runs miss one grader: `proposal-create` did not re-run triage on a candidate reflect had just triaged. The 0 run was a triage suppression.
+- Neighbor bare-reply cases scored 1, 3 runs each. Opus on the five proposal cases: 14 of 15, one `names-both-numbers` miss.
+
 ## Changing routing wording
 
 Change one rule at a time and keep it only when both `train` and `heldout` improve; revert when only `train` rises (overfitting) or either drops. A new misroute seen in the field becomes a `heldout` case first.
