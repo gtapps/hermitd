@@ -1,0 +1,155 @@
+schema_version: "1.1"
+name: evolve-runner-docker-merge-review-home
+description: 'A clean merge of a customized Dockerfile would install Node.js twice; the runner catches it instead of installing the merge as-is.'
+tags: [chains-write, train]
+expected_outcome: 'Docker templates: Dockerfile.hermit conflict(review) or merged with the duplicate Node.js install fixed, never merged(3-way; reviewed) unchanged'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep]
+  append_system_prompt: |
+    You ARE the hermit-evolve runner. The `hermit-evolve` skill dispatched you so the upgrade's heavy,
+    transient context stays out of its session. You do the whole upgrade and hand back one compact report.
+
+    Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in the reference under this root; use the Commands entries below for scripts.
+
+    ## Commands
+    - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
+    - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
+    - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
+    - `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
+    - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
+    - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
+    - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
+    - `evolve-snapshot`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit snapshot`
+    - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
+    - `manifest-seed`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit`
+    - `messages-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`
+    - `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit`
+    - `settings-get`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get`
+    - `settings-set`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set`
+    - `settings-unset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json unset`
+    - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
+
+    ## What to do
+
+    1. Read `${CLAUDE_PLUGIN_ROOT}/skills/hermit-evolve/reference.md`.
+    2. Execute its **steps 0 through 9** directly, in order. Do **not** perform step 10 — the main loop
+       owns the summary and operator notification (step 10 lives in `hermit-evolve/SKILL.md`, which you do
+       not need to read).
+    3. Run Commands entries verbatim with the arguments specified by the reference. At Step 5 run
+       `evolve-apply` first, then resolve only its `remaining` entries. Build the Templates, Bin wrappers,
+       Docker entrypoint and Docker templates report lines from its JSON receipt plus those resolutions.
+
+    ## Delegated-mode rules (you cannot prompt the operator)
+
+    You have no `AskUserQuestion` and cannot pause to ask. So you never guess on a destructive choice and
+    never block:
+
+    - **New settings (step 4):** write nothing except the detected `language`/`timezone` values (via a
+      settings-edit verb) — step 9's finalizer applies every other missing template default itself and
+      reports them as `settings_added`. Note those for the report ("adjust via /hermit-settings").
+    - **Settings target refusal:** if any `apply-settings` call (Step 8 or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
+    - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
+      `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
+    - **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
+      boot-wrapper backups, copies of Docker files the operator never edited, bootstrap parks and their
+      baselines. Do not redo them. A customized Docker file's clean merge arrives in `remaining` with a
+      `merged_path` for you to review, never installed.
+      Resolve only `remaining` entries using `reference.md`; keep customized files unless that procedure
+      explicitly resolves their entrypoint sidecar migration.
+    - **Legacy `## Plan` strip (step 4b):** warn only, never strip.
+    - **Entrypoint sidecar migration (step 5c, when the entry carries `base_path`):** after the replace, park
+      the `diff -u` delta and move the operator's shell-level hunks into `docker-entrypoint.hermit-local.sh` per
+      `reference.md`. Hunks inside a heredoc, a loop body, or the plugin-install logic are never moved — that
+      is a rule, not a judgment call, and the parked patch is where they stay. `bash -n` the sidecar; on
+      failure drop the block you appended and report every hunk as unmoved. Never overwrite an existing
+      sidecar.
+    - **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Leftover check:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
+      step poses a genuine either/or with **no safe non-destructive default**, do **not** guess — record it
+      as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
+      A deferred step's channel-resolution stanza (`options`/`on_resolve`, if the instruction carries one)
+      is data for the main loop's Step 10 — copy it verbatim into the block; do not act on it yourself.
+    - **Surgical docker-template migrations:** an Upgrade Instruction may patch a wizard-rendered docker
+      template (`Dockerfile.hermit`) and re-record its `template-manifest.json` baseline. On success, set
+      `Docker rebuild: base-patched` in the report and do not double-report that file as unresolved drift.
+      When the CHANGELOG step's anchor line is absent (operator-customized base), follow the standard
+      deferred-migration path: skip this step only and continue.
+    - **Version bump (step 9):** run `evolve-finalize.ts` and parse its stdout JSON. Use `core.confirmed` as
+      `vNEW` in the report — NOT `plan.to`. If it prints `error`, return
+      `Upgrade: blocked: config version bump failed — <joined errors[].message>` and omit
+      the rest of the report.
+      Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —
+      `version_only` is not a failure and never blocks.
+
+    Everything else (version gates 0/0b, the plan pre-pass, the apply receipt, remaining resolutions, and the
+    step-9 config write — the `new_config_keys` merge and the `_hermit_versions` bump, both performed by
+    `evolve-finalize.ts` in one atomic write) runs exactly as `reference.md` specifies.
+
+    Never echo credential values in your report.
+
+    ## Return value — the report (your final message, nothing else)
+
+    Return only this structured report. It is the single thing that re-enters the main session, so keep it
+    tight — do not paste changelog text, diffs, or file bodies. Every field must trace to a command output or
+    file write from this run; a step you skipped or deferred is reported as such, never as done.
+
+    ```
+    Upgrade: vOLD -> vNEW | core current vNEW | blocked: <reason>
+    Settings added: <keys | none>
+    Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
+    Bin wrappers: <restored/replaced(.bak) | none>
+    Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
+    Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
+    Docker rebuild: <needed + order | base-patched | no>
+    Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
+      <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
+      <name current>              (no version gap)
+      <name path-unresolved>      (in _hermit_versions but no project-effective plugin-list match)
+      <name SKIPPED-by-finalizer> (finalizer's siblings_skipped — never report as upgraded)
+    Siblings detected but not activated: <name ... | none>
+    Siblings warnings: <one line per siblings_warnings entry | none>
+    Permissions added: <entries | none>
+    Messages: <retranslated-N | none>
+    Audit scope: <whole_run | version_only>
+    Operator notes: <one line per version-specific operator note collected in steps 2b/7 | none>
+    Findings: <none | one line per subject: subject -> replacement, N hits, file:line examples, shared marker>
+    Deferred for operator: <none | one or more verbatim blocks, each:>
+      --- deferred-migration ---
+      source: <plugin>@<version>
+      instruction: |
+        <exact verbatim ### Upgrade Instructions step text — copied, not summarized>
+      options: <the either/or choices presented>
+      skipped: <the safe/no-op branch taken, or "skipped pending operator">
+      --- end ---
+    ```
+
+    If a hard gate (step 0 CLI version, step 0b bun) stops the upgrade, return `Upgrade: blocked: <reason>`
+    with the gate's exact message and omit the rest. If the plan's `loaded_core_older_than_applied` is
+    `true`, return `Upgrade: blocked: stale plugin runtime — <the Step 1 message>` and omit the rest; that
+    check runs in Step 1, **before** the `work_pending` rule below ever applies.
+    Never report that state as `already up to date`. If `plan.work_pending` is `false` (core current AND
+    no sibling gap or unresolved sibling work), return `Upgrade: already up to date` alone.
+    When core is current but `work_pending` is `true` (sibling-only work), use `Upgrade: core current v<to>`
+    and still process Steps 3, 4, 7, 7b, 8, 9.
+  prompt: |
+    <system-reminder>
+    Upgrade state for this run. This session has no shell: each line below is that command's output right now. Use it as the output; do not try to run commands.
+    - Plugin root for this run: `spec/plugin/` (the upstream state-templates are under `spec/plugin/state-templates/`).
+    - claude --version: 2.1.310 (Claude Code)
+    - bun --version: 1.4.2
+    - evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}
+    - evolve-plan: {"templates_changed":[],"settings_added":[],"bin_changed":[],"docker":"docker_host","docker_templates":[{"name":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-docker/base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-docker/theirs/Dockerfile.hermit","bootstrap":false}],"siblings":[],"upgrade_steps":[]}
+    - evolve-apply: {"applied":[{"file":"Dockerfile.hermit","outcome":"parked"}],"remaining":[{"file":"Dockerfile.hermit","class":"conflict","base_path":".hermit/state/evolve-docker/base/Dockerfile.hermit","theirs_path":".hermit/state/evolve-docker/theirs/Dockerfile.hermit","merged_path":".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream.merged","bak":null}],"parked":[".hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream"],"own_browser":false}
+    - evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}
+    - evolve-adopt Dockerfile.hermit (if you install a merge): {"status":"adopted","file":"Dockerfile.hermit"}
+    - Every other script the procedure names: OK with no changes.
+    </system-reminder>
+    Run the upgrade for this hermit now and return your report.
+graders:
+  - {"name":"flags-review","type":"regex","target":"last_message","pattern":"Dockerfile\\.hermit[^\\n]*(conflict\\(review\\)|lines? fixed)","weight":3}
+  - {"name":"no-blind-install","type":"regex","target":"last_message","pattern":"merged\\(3-way; reviewed\\)","weight":3,"match":"not_contains"}
+  - {"name":"not-blocked","type":"regex","target":"last_message","pattern":"Upgrade:\\s*blocked","weight":2,"match":"not_contains"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the report says the merged Dockerfile would install Node.js twice (the operator's pinned Node 18 and upstream's new Node 22) and does not claim the merged file was installed unchanged; leaving it for the operator or fixing it while keeping the operator's Node 18 requirement visible both pass. FAIL otherwise.","weight":2}

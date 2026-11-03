@@ -64,7 +64,7 @@ fi
 
 If only `docker-compose.hermit.yml` or `Dockerfile.hermit` can carry it (volumes, ports, capabilities, base image), edit as one contiguous block with a leading comment — in `Dockerfile.hermit` that block is the operator block from § 1. Validate a compose edit on the host with `docker compose -f docker-compose.hermit.yml config -q`, adding `-f docker-compose.security.yml` when that file exists so the check covers what the wrapper actually builds: the host wrapper refuses every `up` and `build` on a file that does not parse.
 
-`hermit-evolve` reconciles the file against the baseline `docker-setup` recorded: with a baseline and an upstream move `evolve-apply` script-applies clean merges and only overlapping lines are resolved by the hermit; with no baseline the file is kept, the upstream copy parked under `.hermit/state/`, and the operator told; with no upstream move the file is left alone. Re-check the block after every evolve.
+`hermit-evolve` reconciles the file against the baseline `docker-setup` recorded: with a baseline and an upstream move `evolve-apply` prepares the 3-way merge and the hermit reviews a clean merge or resolves overlapping lines before installing it; with no baseline the file is kept, the upstream copy parked under `.hermit/state/`, and the operator told; with no upstream move the file is left alone. Re-check the block after every evolve.
 
 
 ### Merge a parked upstream copy

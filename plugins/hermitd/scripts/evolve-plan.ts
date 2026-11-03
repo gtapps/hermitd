@@ -722,11 +722,12 @@ function pruneParked(dir: string, name: string, keep?: string): void {
     if (file === keep) continue;
     fs.rmSync(file);
     fs.rmSync(file + '.json', { force: true });
+    fs.rmSync(file + '.merged', { force: true });
   }
 }
 interface ApplyReceipt {
   applied: { file: string; outcome: string }[];
-  remaining: { file: string; class: string; base_path: string | null; theirs_path: string | null; bak: string | null }[];
+  remaining: { file: string; class: string; base_path: string | null; theirs_path: string | null; merged_path: string | null; bak: string | null }[];
   parked: string[]; own_browser: boolean;
 }
 export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?: string): ApplyReceipt {
@@ -747,20 +748,22 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
     writeChanged(dest, fs.readFileSync(source));
     return dest;
   };
-  const remain = (entry: Json, file: string) => receipt.remaining.push({
+  const remain = (entry: Json, file: string, mergedPath: string | null = null) => receipt.remaining.push({
     file, class: entry.class ?? entry.status, base_path: entry.base_path ?? null,
-    theirs_path: entry.theirs_path ?? null, bak: null,
+    theirs_path: entry.theirs_path ?? null, merged_path: mergedPath, bak: null,
   });
   const park = (name: string, theirs: Buffer) => {
     let candidate = parkedCopies(dir, name).at(-1);
     if (!candidate || !fs.readFileSync(candidate).equals(theirs)) {
       candidate = path.join(dir, 'state', name + '.' + stamp + '.upstream');
       writeChanged(candidate, theirs);
-      writeChanged(candidate + '.json', Buffer.from(JSON.stringify({ project_sha: sha256(fs.readFileSync(path.join(project, name))) }) + '\n'));
       note(name, 'parked');
     }
+    // Refreshed on every run so adopt's unmerged check compares against the file as it stood before this merge.
+    writeChanged(candidate + '.json', Buffer.from(JSON.stringify({ project_sha: sha256(fs.readFileSync(path.join(project, name))) }) + '\n'));
     pruneParked(dir, name, candidate);
     receipt.parked.push(candidate);
+    return candidate;
   };
   for (const [prefix, entries] of [['templates', plan.templates_changed], ['bin', plan.bin_changed]] as const) {
     for (const entry of entries) {
@@ -789,26 +792,35 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
       seed('docker/' + name, upstream);
     }
   }
+  const seedDockerBaseline = (name: string) => {
+    seed('docker/' + name + '.template', fs.readFileSync(path.join(stDir, 'docker', name + '.template')));
+    pruneParked(dir, name);
+  };
   for (const entry of plan.docker_templates) {
     const name = entry.name, dest = path.join(project, name);
     if (!entry.class || entry.class === 'customized-kept') { remain(entry, name); continue; }
     const theirs = fs.readFileSync(entry.theirs_path);
     if (entry.bootstrap) { park(name, theirs); continue; }
-    let merged: Buffer = theirs;
     if (entry.class === 'conflict') {
+      // A customized file is never installed unreviewed: a clean textual merge can still be
+      // semantically wrong, so the runner reviews the candidate and finishes through adopt.
       const result = Bun.spawnSync(['git', 'merge-file', '-p', dest, entry.base_path, entry.theirs_path], { stdout: 'pipe', stderr: 'pipe' });
-      if (result.exitCode !== 0 || !dockerMergeChecks(name, result.stdout.toString())) {
-        park(name, theirs);
-        remain(entry, name);
+      const clean = result.exitCode === 0 && dockerMergeChecks(name, result.stdout.toString());
+      if (clean && result.stdout.equals(fs.readFileSync(dest))) {
+        // The operator's file already carries the upstream change: nothing to review or install.
+        seedDockerBaseline(name);
+        note(name, 'baseline-seeded');
         continue;
       }
-      merged = result.stdout;
-      backup(name, dest);
+      const candidate = park(name, theirs);
+      if (!clean) { fs.rmSync(candidate + '.merged', { force: true }); remain(entry, name); continue; }
+      writeChanged(candidate + '.merged', result.stdout);
+      remain(entry, name, candidate + '.merged');
+      continue;
     }
-    if (!dockerMergeChecks(name, merged.toString())) { remain(entry, name); continue; }
-    if (writeChanged(dest, merged)) note(name, 'merged(3-way)');
-    seed('docker/' + name + '.template', fs.readFileSync(path.join(stDir, 'docker', name + '.template')));
-    pruneParked(dir, name);
+    if (!dockerMergeChecks(name, theirs.toString())) { remain(entry, name); continue; }
+    if (writeChanged(dest, theirs)) note(name, 'merged(3-way)');
+    seedDockerBaseline(name);
   }
   // Raw copies can already equal upstream after an interrupted seed; rendered Docker files cannot.
   const raw = [

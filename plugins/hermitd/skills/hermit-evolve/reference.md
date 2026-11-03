@@ -123,9 +123,9 @@ Special-default keys — the **only** keys this step writes, because their value
 
 Run `evolve-apply` (Commands) **first**, once for Steps 5 through 5d. Parse its JSON receipt: `applied`, `remaining`, `parked`, and `own_browser`. On an error, report the error and stop this upgrade rather than claiming files were refreshed.
 
-The script recomputes classifications, copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, parks Docker bootstrap renders, installs structurally valid clean 3-way Docker merges, and seeds the corresponding pristine baselines. It preserves operator content wherever a merge or sidecar migration remains necessary. Do not repeat these mechanical operations yourself.
+The script recomputes classifications, copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, parks Docker bootstrap renders, copies Docker files the operator never edited, parks a customized Docker file's clean 3-way merge as `merged_path` for review, and seeds the corresponding pristine baselines. It preserves operator content wherever a merge or sidecar migration remains necessary. Do not repeat these mechanical operations yourself.
 
-Resolve **only** entries in `remaining` in Steps 5b–5d below. Each has `file`, `class`, `base_path`, `theirs_path`, and `bak`; null paths mean no verified input was available. For these procedures, use `file` as the prior plan entry's `name`. Keep the receipt for Step 10:
+Resolve **only** entries in `remaining` in Steps 5b–5d below. Each has `file`, `class`, `base_path`, `theirs_path`, `merged_path`, and `bak`; null paths mean no verified input was available. For these procedures, use `file` as the prior plan entry's `name`. Keep the receipt for Step 10:
 - Templates: `restored`/`refreshed` from `applied`; `parked-new` counts as `conflicts-parked-N`; untouched `remaining` templates count as kept.
 - Bin wrappers: `restored`/`refreshed` from `applied`, with `<name>.bak` for replaced conflicts; untouched `remaining` wrappers count as kept.
 - Docker entrypoint: `refreshed` from `applied`, plus only the sidecar/conflict outcomes actually completed in Step 5c.
@@ -171,9 +171,9 @@ The replaced entrypoint takes effect after a rebuild. An update-launched evolve 
 
 ### 5d. Merge compose and Dockerfile template changes in place
 
-Use only Dockerfile/compose entries in the Step 5 `evolve-apply` receipt's `remaining`. The script has already installed clean 3-way merges and parked `bootstrap: true` files (no verified `base_path`); report these from `applied` and `parked` without copying again. For a bootstrap park report `kept(bootstrap, upstream not merged: <path>)`; an operator-approved later merge follows `/hermitd:docker-customize` and `adopt`.
+Use only Dockerfile/compose entries in the Step 5 `evolve-apply` receipt's `remaining`. The script has already copied files the operator never edited and parked `bootstrap: true` files (no verified `base_path`); report these from `applied` and `parked` without copying again. For a bootstrap park report `kept(bootstrap, upstream not merged: <path>)`; an operator-approved later merge follows `/hermitd:docker-customize` and `adopt`.
 
-A remaining entry's `base_path` and `theirs_path` are the verified rendered merge inputs. Preserve its project file until the existing conflict-region procedure below succeeds.
+A remaining entry's `base_path` and `theirs_path` are the verified rendered merge inputs, and the script has parked `theirs_path` as the file's `.upstream` candidate. Preserve its project file until the review or conflict-region procedure below succeeds.
 
 **Entries that are not merged at all — check these first, before touching any file:**
 
@@ -185,25 +185,31 @@ Everything below applies only to a remaining `class: "conflict"` with `base_path
 
 Use one UTC timestamp for every path created while handling an entry. First copy the operator's file to `.hermit/state/<name>.<UTC-timestamp>.bak`. Never place the backup beside the project file.
 
-**Verified 3-way branch (`base_path` present).** `cp <the .bak> <tmp>` then `git merge-file <tmp> <base_path> <theirs_path>`. The bun-pin migration runs before this step, so a bun install-block change is not an operator hunk and must not be re-applied.
+**Clean-merge review (`merged_path` present).** `git merge-file` merged this customized file with no conflicts and the structural checks passed, but a textually clean merge can still be wrong for this hermit. Read `base_path` (what upstream shipped last time), the project file (the operator's version), `theirs_path` (what upstream ships now) and `merged_path`, then decide:
+
+- The operator's changes and upstream's changes both survive, and nothing duplicates or contradicts (the same package installed twice, a line the operator removed that upstream now relies on, a stage moved out of order): copy `merged_path` over the project file and report `<name> merged(3-way; reviewed)`.
+- A specific line is wrong: edit a copy of `merged_path` on exactly those lines, run the checks below on it, install it, and report `<name> merged(3-way; reviewed, <n> lines fixed)`.
+- You cannot tell whether a change is safe: leave the project file untouched and report `<name> conflict(review): upstream copy at <the parked .upstream path>`.
+
+**Verified 3-way branch (`base_path` present, no `merged_path`).** `cp <the .bak> <tmp>` then `git merge-file <tmp> <base_path> <theirs_path>`. The bun-pin migration runs before this step, so a bun install-block change is not an operator hunk and must not be re-applied.
 
 `git merge-file` returns the conflict count on a merge (capped at 127) and 128 or higher on its own failure, so read the status against those bands — a status of 128+ is an error, never a conflict count. The checks below run on `<tmp>` before anything is installed, in each of the three status branches that follow.
 
-- Exit 0: run the checks. Green → install `<tmp>` over the project file, report `<name> merged(3-way)`. Red → unsettled.
+- Exit 0: run the checks. Red → unsettled. Green → review `<tmp>` as the clean-merge review above reviews `merged_path`.
 - Exit 1-127: edit `<tmp>` only between `<<<<<<<` and `>>>>>>>` markers, in interactive and unattended runs alike. In a region holding the `/home/claude/.gitconfig` volume line, keep the operator's mount source when it differs from the one in `<base_path>`. Every region settled and the checks green → install `<tmp>` over the project file, report `<name> merged(3-way; <n> conflicts resolved)`. Any region unsettled or a check red → unsettled.
 - Exit 128 or higher: the merge itself failed and `<tmp>` still holds the operator's bytes with no markers to resolve. Never install it → unsettled, with `n` unknown.
-- **Unsettled**: project file untouched, `cp <theirs_path> .hermit/state/<name>.<UTC-timestamp>.upstream`, report `<name> conflict(<n>): upstream copy at <path>`.
+- **Unsettled**: project file untouched, report `<name> conflict(<n>): upstream copy at <the parked .upstream path>`.
 
-Validate `<tmp>` before installing it. Bootstrap never reaches these checks.
+Validate `<tmp>` (or the edited review copy) before installing it. Bootstrap never reaches these checks.
 
 1. Scan for conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and required structure. Compose must still parse as one document with top-level `services` and `volumes`, plus `services.hermit`; Dockerfile must retain its `FROM`, build arguments, entrypoint copy, and final non-root `USER`. On failure, leave the project file untouched (do not install `<tmp>`).
 2. The host wrapper runs `docker compose config -q` before every `up` or `build`. It refuses the action on failure, prints Compose's error, and names the state-tree `.bak` the operator can restore.
 
-After a successful merge, record the new baseline through `manifest-seed.ts` with the source set to the corresponding rendered-from-upstream template in `state-templates/docker/` under the plugin root, never the merged project file. Entry shape: `{ "key": "docker/Dockerfile.hermit.template", "file": "<absolute path to state-templates/docker/Dockerfile.hermit.template under the plugin root>" }` (and `{ "key": "docker/docker-compose.hermit.yml.template", "file": "<absolute path to state-templates/docker/docker-compose.hermit.yml.template under the plugin root>" }` for compose). This keeps `state/pristine/docker/<template>` and the manifest hash on upstream bytes, so the next change has a verified 3-way base. Record no baseline on `conflict(...)` or `kept(bootstrap, ...)`: the project file still holds the operator's bytes, and a baseline the file never contained would make the next merge read this release's changes as operator deletions and revert them silently.
+After installing a merge, run `evolve-adopt` (Commands) with the file name (`Dockerfile.hermit` or `docker-compose.hermit.yml`). It re-checks the installed file against the parked candidate, records the upstream template as the new baseline, and removes the parked copies. If it prints `{"status":"refused",...}`, restore the `.bak`, report `<name> conflict(<reason>): upstream copy at <the parked .upstream path>`, and never seed a baseline another way. Record no baseline on `conflict(...)` or `kept(bootstrap, ...)`: the project file still holds the operator's bytes, and a baseline the file never contained would make the next merge read this release's changes as operator deletions and revert them silently.
 
-Report the per-entry outcome (`merged(3-way)`, `merged(3-way; <n> conflicts resolved)`, `kept(bootstrap, upstream not merged: <path>)`, `conflict(<n>): upstream copy at <path>`) semicolon-separated across entries — an outcome can itself contain a comma; Step 10 matches on `merged(...)` to emit the rebuild notice.
+Report the per-entry outcome (`merged(3-way)`, `merged(3-way; reviewed)`, `merged(3-way; reviewed, <n> lines fixed)`, `merged(3-way; <n> conflicts resolved)`, `kept(bootstrap, upstream not merged: <path>)`, `conflict(<reason or n>): upstream copy at <path>`) semicolon-separated across entries — an outcome can itself contain a comma; Step 10 matches on `merged(...)` to emit the rebuild notice.
 
-**Baselines after manual resolutions.** `evolve-apply` seeds its own successful mechanical operations immediately; do not run a second manifest pass for them. After manually replacing/migrating a remaining entrypoint, run `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [{ "key": "docker/docker-entrypoint.hermit.sh", "file": "<project-root>/docker-entrypoint.hermit.sh" }] }` on stdin. Successful manual Docker merges use the upstream-template baseline entries described above. Never seed an unresolved or kept file, and never hand-compute hashes.
+**Baselines after manual resolutions.** `evolve-apply` seeds its own successful mechanical operations immediately; do not run a second manifest pass for them. After manually replacing/migrating a remaining entrypoint, run `manifest-seed` (Commands) with `{ "plugin_version": "<plan.to>", "entries": [{ "key": "docker/docker-entrypoint.hermit.sh", "file": "<project-root>/docker-entrypoint.hermit.sh" }] }` on stdin. Successful Docker merges record their baseline through `evolve-adopt` as described above. Never seed an unresolved or kept file, and never hand-compute hashes.
 
 ### 6. Clean up session settings
 

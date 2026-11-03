@@ -24,6 +24,7 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
 - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
 - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
+- `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
 - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
 - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
 - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
@@ -59,7 +60,9 @@ never block:
 - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
   `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
 - **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
-  boot-wrapper backups, clean Docker merges, bootstrap parks and their baselines. Do not redo them.
+  boot-wrapper backups, copies of Docker files the operator never edited, bootstrap parks and their
+  baselines. Do not redo them. A customized Docker file's clean merge arrives in `remaining` with a
+  `merged_path` for you to review, never installed.
   Resolve only `remaining` entries using `reference.md`; keep customized files unless that procedure
   explicitly resolves their entrypoint sidecar migration.
 - **Legacy `## Plan` strip (step 4b):** warn only, never strip.
@@ -104,7 +107,7 @@ Settings added: <keys | none>
 Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
 Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
-Docker templates: <name merged(3-way[; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(n): upstream copy at <path>; ... | report-only(<names>) | none>
+Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
 Docker rebuild: <needed + order | base-patched | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)

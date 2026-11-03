@@ -1013,7 +1013,7 @@ test('apply handles unmodified, template conflict, boot conflict and customized-
   expect(apply().applied).toEqual([]);
   // Upstream equals baseline, so an operator-only change remains live.
   fs.writeFileSync(bin, 'new operator wrapper');
-  expect(apply().remaining).toContainEqual({ file: 'bin/hermitd-run', class: 'customized-kept', base_path: null, theirs_path: null, bak: null });
+  expect(apply().remaining).toContainEqual({ file: 'bin/hermitd-run', class: 'customized-kept', base_path: null, theirs_path: null, merged_path: null, bak: null });
   // A baseline-identical project copy is safe to refresh.
   data.files['bin/hermitd-run'].sha256 = sha256(Buffer.from('new operator wrapper'));
   fs.writeFileSync(manifest, JSON.stringify(data));
@@ -1077,22 +1077,72 @@ test('apply parks bootstrap Docker renders once and prunes only old candidates',
   expect(diskSnapshot(proj)).toEqual(before);
 }));
 
-test('apply installs a clean gated-browser merge from a legacy pristine', withProj((proj) => {
+/** A customized Dockerfile whose recorded baseline is the 1.4.25 template; `deployed` picks the operator's base render. */
+function legacyDockerFixture(proj: string, deployed: 'legacy' | 'current') {
   writeDerivableDockerConfig(proj);
   const sources = realDockerSources();
   const legacy = sources.dockerfile.replace('RUN mkdir -p /home/claude/.claude/sessions\n', 'RUN mkdir -p /home/claude/.claude/sessions\n{{BROWSER_ENV}}\n');
-  const old = renderSources({ ...DOCKER_INPUTS, browser: true }, { ...sources, dockerfile: legacy });
-  deployDocker(proj, { compose: old.compose, dockerfile: old.dockerfile + '\nRUN echo operator\n' });
+  const base = renderSources({ ...DOCKER_INPUTS, browser: true }, deployed === 'legacy' ? { ...sources, dockerfile: legacy } : sources);
+  const operator = base.dockerfile + '\nRUN echo operator\n';
+  deployDocker(proj, { compose: base.compose, dockerfile: operator });
   const dir = hermitDir(proj);
   const pristine = path.join(dir, 'state/pristine/docker/Dockerfile.hermit.template');
   fs.mkdirSync(path.dirname(pristine), { recursive: true }); fs.writeFileSync(pristine, legacy);
   dockerManifest(proj, { 'docker/Dockerfile.hermit.template': sha256(Buffer.from(legacy)) });
+  return { dir, sources, operator };
+}
+
+test('apply hands a clean customized merge to review and adopt finishes it', withProj((proj) => {
+  const { dir, operator } = legacyDockerFixture(proj, 'legacy');
+  const project = path.join(proj, 'Dockerfile.hermit');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const receipt = apply();
+  expect(fs.readFileSync(project, 'utf8')).toBe(operator);
+  expect(receipt.applied.some(entry => entry.outcome.startsWith('merged'))).toBe(false);
+  const entry = receipt.remaining.find(item => item.file === 'Dockerfile.hermit')!;
+  expect(entry.class).toBe('conflict');
+  expect(entry.merged_path).toBe(receipt.parked[0] + '.merged');
+  const merged = fs.readFileSync(entry.merged_path!, 'utf8');
+  expect(merged).toContain('ARG HERMIT_BROWSER=1');
+  expect(merged).toContain('RUN echo operator');
+  expect(merged).not.toContain('ENV AGENT_BROWSER_');
+  const before = diskSnapshot(proj);
+  expect(apply().remaining.find(item => item.file === 'Dockerfile.hermit')?.merged_path).toBe(entry.merged_path);
+  expect(diskSnapshot(proj)).toEqual(before);
+  fs.copyFileSync(entry.merged_path!, project);
+  expect(adoptDocker(dir, PLUGIN_ROOT, 'Dockerfile.hermit')).toEqual({ status: 'adopted', file: 'Dockerfile.hermit' });
+  expect(fs.existsSync(entry.merged_path!)).toBe(false);
+  expect(fs.existsSync(receipt.parked[0])).toBe(false);
+}));
+
+test('apply drops a stale review candidate once the merge stops being clean', withProj((proj) => {
+  const { dir } = legacyDockerFixture(proj, 'legacy');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const merged = apply().remaining.find(item => item.file === 'Dockerfile.hermit')!.merged_path!;
+  fs.appendFileSync(path.join(proj, 'Dockerfile.hermit'), '<<<<<<< operator\n');
+  expect(apply().remaining.find(item => item.file === 'Dockerfile.hermit')?.merged_path).toBeNull();
+  expect(fs.existsSync(merged)).toBe(false);
+}));
+
+test('apply refreshes the parked receipt so adopt still refuses an unmerged edited file', withProj((proj) => {
+  const { dir } = legacyDockerFixture(proj, 'legacy');
+  const project = path.join(proj, 'Dockerfile.hermit');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const candidate = apply().parked[0];
+  fs.appendFileSync(project, 'RUN echo later edit\n');
+  expect(apply().parked).toEqual([candidate]);
+  expect(JSON.parse(fs.readFileSync(candidate + '.json', 'utf8')).project_sha).toBe(sha256(fs.readFileSync(project)));
+  expect(adoptDocker(dir, PLUGIN_ROOT, 'Dockerfile.hermit')).toEqual({ status: 'refused', reason: 'unmerged' });
+}));
+
+test('apply seeds the baseline when the operator file already carries the upstream change', withProj((proj) => {
+  const { dir, sources } = legacyDockerFixture(proj, 'current');
   const receipt = applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
-  expect(receipt.applied).toContainEqual({ file: 'Dockerfile.hermit', outcome: 'merged(3-way)' });
-  const result = fs.readFileSync(path.join(proj, 'Dockerfile.hermit'), 'utf8');
-  expect(result).toContain('ARG HERMIT_BROWSER=1');
-  expect(result).toContain('RUN echo operator');
-  expect(result).not.toContain('ENV AGENT_BROWSER_');
+  expect(receipt.applied).toContainEqual({ file: 'Dockerfile.hermit', outcome: 'baseline-seeded' });
+  expect(receipt.remaining.some(item => item.file === 'Dockerfile.hermit')).toBe(false);
+  expect(receipt.parked).toEqual([]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'state/template-manifest.json'), 'utf8'));
+  expect(manifest.files['docker/Dockerfile.hermit.template'].sha256).toBe(sha256(Buffer.from(sources.dockerfile)));
 }));
 
 test('apply CLI rejects additional arguments and keeps the state pin', withProj(async (proj) => {
