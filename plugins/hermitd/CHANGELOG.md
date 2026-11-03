@@ -25,6 +25,8 @@
 ### Fixed
 
 - Malformed `routines` or `monitors` config entries no longer break duty summaries or watch duty records
+- A bare yes, later or no in chat with one open suggestion acts on it instead of asking which one is meant; with several open, the reply asks by suggestion number
+- Quick reflect states how an outside-sourced chat pattern from the current session meets recurrence, so it reaches both review gates instead of being dropped before them
 
 ### Upgrade Instructions
 
