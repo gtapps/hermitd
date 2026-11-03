@@ -188,6 +188,7 @@ Claude Code 2.1.316, `--model sonnet`, low effort, `--runs 3` over three rounds,
 - The old reflect fixture was a newsletter instruction with no `[origin: external]` marker and no consequence, so quick reflect dropped it before the gates. It now uses the `Channel pattern: … [origin: external]` lesson the responder writes, with the full-price order as own-work consequence. Quick mode states that this candidate meets recurrence on the Tier-1 `current-session` path.
 - The 0.8 runs miss one grader: `proposal-create` did not re-run triage on a candidate reflect had just triaged. The 0 run was a triage suppression.
 - `branches.md` then gained the same carve-out: a `current-session` candidate that is Tier 3 only through the external-origin override keeps the Tier-1 recurrence path. Over 9 runs, 7 reached both gates (five 0.8, two 0.4 where the rubric failed a narrower "ask before applying" proposal 2 to 1), and 2 declined in main, calling a customer's instruction unfit for a standing rule. `judge-external-quarantine-home` and `judge-suppress-no-evidence-shop` stayed at 1.
+- Current-session candidates then cited the record's task ID instead of `Sessions: current`, which matched no `task-report` row the judge is handed. Reflect scored 0.8 on 3 of 3, every run judged against `T-20261020-090000`; `judge-accept-shop` and `judge-external-quarantine-home` stayed at 1.
 - Neighbor bare-reply cases scored 1, 3 runs each. Opus on the five proposal cases: 14 of 15, one `names-both-numbers` miss.
 
 ## Changing routing wording
