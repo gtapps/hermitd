@@ -311,4 +311,43 @@ chainCase('evolve-runner-template-conflict-home', 'train', 'A customized templat
       ['state-templates/PROPOSAL.md.template', '.hermit/templates/PROPOSAL.md.template.new']]),
   ['Read', 'Glob', 'Grep'], { write: true, append: agentBody('evolve-runner'), maxTurns: 30, timeout: 900 });
 
+// --- evolve-runner clean-merge review (case 12, Write granted) ------------
+// git merge-file merges this customized Dockerfile cleanly and the structural checks pass, but the
+// result installs Node.js twice: upstream's new managed Node 22 block and the operator's pinned Node 18.
+
+const DOCKER_HEAD = 'FROM ubuntu:24.04\nARG HOST_UID=1000\nARG CLAUDE_CODE_VERSION=';
+const DOCKER_APT = 'ARG BUN_VERSION=1.4.2\nRUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates tmux && rm -rf /var/lib/apt/lists/*\n';
+const DOCKER_TAIL = '# --- end operator ---\nCOPY docker-entrypoint.hermit.sh /usr/local/bin/docker-entrypoint.sh\nUSER claude\n';
+const OPERATOR_OPEN = '# --- operator: add your own packages below ---\n';
+const OPERATOR_NODE = '# The invoicing tool only works on Node 18.\nRUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs\n';
+const MANAGED_NODE = '# --- managed node ---\nRUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs\n# --- end managed node ---\n';
+const DOCKER_BASE = DOCKER_HEAD + '2.1.300\n' + DOCKER_APT + OPERATOR_OPEN + DOCKER_TAIL;
+const DOCKER_OURS = DOCKER_HEAD + '2.1.300\n' + DOCKER_APT + OPERATOR_OPEN + OPERATOR_NODE + DOCKER_TAIL;
+const DOCKER_THEIRS = DOCKER_HEAD + '2.1.310\n' + DOCKER_APT + MANAGED_NODE + OPERATOR_OPEN + DOCKER_TAIL;
+const DOCKER_MERGED = DOCKER_HEAD + '2.1.310\n' + DOCKER_APT + MANAGED_NODE + OPERATOR_OPEN + OPERATOR_NODE + DOCKER_TAIL;
+const PARKED = '.hermit/state/Dockerfile.hermit.2026-11-03T21-00-00-000Z.upstream';
+const DOCKER_ENTRY = { file: 'Dockerfile.hermit', class: 'conflict', base_path: '.hermit/state/evolve-base/Dockerfile.hermit',
+  theirs_path: '.hermit/state/evolve-render/Dockerfile.hermit', merged_path: PARKED + '.merged', bak: null };
+const REVIEW_STATE = [
+  ...EVOLVE_STATE.slice(0, 4),
+  '- evolve-plan: ' + JSON.stringify({ templates_changed: [], settings_added: [], bin_changed: [], docker: 'docker_host',
+    docker_templates: [{ name: DOCKER_ENTRY.file, class: DOCKER_ENTRY.class, base_path: DOCKER_ENTRY.base_path, theirs_path: DOCKER_ENTRY.theirs_path, bootstrap: false }],
+    siblings: [], upgrade_steps: [] }),
+  '- evolve-apply: ' + JSON.stringify({ applied: [{ file: 'Dockerfile.hermit', outcome: 'parked' }], remaining: [DOCKER_ENTRY], parked: [PARKED], own_browser: false }),
+  ...EVOLVE_STATE.slice(6),
+];
+chainCase('evolve-runner-docker-merge-review-home', 'train', 'A clean merge of a customized Dockerfile would install Node.js twice; the runner catches it instead of installing the merge as-is.',
+  'Docker templates: Dockerfile.hermit conflict(review) or merged with the duplicate Node.js install fixed, never merged(3-way; reviewed) unchanged',
+  "<system-reminder>\nUpgrade state for this run. This session has no shell: each line below is that command's output right now. "
+  + 'Use it as the output; do not try to run commands.\n' + REVIEW_STATE.join('\n') + '\n</system-reminder>\n'
+  + 'Run the upgrade for this hermit now and return your report.',
+  [last('flags-review', String.raw`Dockerfile\.hermit[^\n]*(conflict\(review\)|lines? fixed)`, 3),
+    last('no-blind-install', String.raw`merged\(3-way; reviewed\)`, 3, true),
+    last('not-blocked', String.raw`Upgrade:\s*blocked`, 2, true),
+    rubric('PASS if the report says the merged Dockerfile would install Node.js twice (the operator\'s pinned Node 18 and upstream\'s new Node 22) and does not claim the merged file was installed unchanged; leaving it for the operator or fixing it while keeping the operator\'s Node 18 requirement visible both pass. FAIL otherwise.')],
+  chainScaffold({ 'Dockerfile.hermit': DOCKER_OURS, [DOCKER_ENTRY.base_path]: DOCKER_BASE, [DOCKER_ENTRY.theirs_path]: DOCKER_THEIRS,
+    [PARKED]: DOCKER_THEIRS, [PARKED + '.json']: '{"project_sha":"recorded"}\n', [PARKED + '.merged']: DOCKER_MERGED },
+    [['skills/hermit-evolve/reference.md', 'spec/plugin/skills/hermit-evolve/reference.md']]),
+  ['Read', 'Glob', 'Grep'], { write: true, append: agentBody('evolve-runner'), maxTurns: 30, timeout: 900 });
+
 report('chains');

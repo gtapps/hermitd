@@ -8,6 +8,7 @@ description: Evolves hermit configuration and templates after a plugin update. D
 Upgrade the project's hermit configuration after a plugin update.
 
 ## Commands
+- `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
 - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 - `proposal-queue-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit`

@@ -13,7 +13,7 @@
 
 ### Changed
 
-- Evolve applies mechanical template, wrapper and Docker file steps itself and reports the remaining conflicts
+- Evolve applies mechanical template, wrapper and Docker file steps itself and reports the remaining conflicts; a clean merge of a customized Dockerfile or compose file is reviewed by the evolve model before it is installed
 - Parked Docker files can be merged and adopted as baselines for later upgrades
 
 ### Upgrade Instructions
