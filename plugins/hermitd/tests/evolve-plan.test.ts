@@ -14,7 +14,7 @@ import path from 'node:path';
 
 import { runPinnedScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { classifyDockerTemplates } from '../scripts/evolve-plan';
+import { adoptDocker, applyEvolve, classifyDockerTemplates, dockerMergeChecks } from '../scripts/evolve-plan';
 import { render, renderSources } from '../scripts/render-docker-templates';
 
 const MARKER = '<!-- hermitd: Session Discipline -->';
@@ -943,7 +943,7 @@ test('changelog root tokens resolve to each owning plugin install', withProj(asy
   }
 }));
 
-test('Docker browser off to on to off merges in both directions while preserving operator edits', withProj((proj) => {
+test('Docker browser toggles leave the gated Dockerfile and operator edits unchanged', withProj((proj) => {
   writeDerivableDockerConfig(proj);
   const source = realDockerSources();
   const pristine = path.join(hermitDir(proj), 'state/pristine/docker/Dockerfile.hermit.template');
@@ -959,12 +959,197 @@ test('Docker browser off to on to off merges in both directions while preserving
     fs.writeFileSync(configFile, JSON.stringify(config));
     const entries = classifyDockerTemplates(path.join(PLUGIN_ROOT, 'state-templates'), proj, manifest);
     const entry = entries.find((row: any) => row.name === 'Dockerfile.hermit');
-    expect(entry.class).toBe('conflict');
+    expect(entry.class).toBe('customized-kept');
     const ours = path.join(proj, 'Dockerfile.hermit');
-    const merged = Bun.spawnSync(['git', 'merge-file', ours, entry.base_path, entry.theirs_path]);
-    expect(merged.exitCode).toBe(0);
     const result = fs.readFileSync(ours, 'utf8');
     expect(result).toContain('RUN echo operator-customization');
-    expect(result.includes('/etc/hermit/managed-browser')).toBe(enabled);
+    expect(result).toContain('ARG HERMIT_BROWSER=1');
   }
 }));
+
+function applyFixture(proj: string, pluginRoot = PR) {
+  writeConfig(proj, '{"_hermit_versions":{"hermitd":"1.1.6"}}');
+  return () => applyEvolve(hermitDir(proj), pluginRoot, EMPTY_PLUGIN_LIST);
+}
+function diskSnapshot(root: string): Record<string, number> {
+  const result: Record<string, number> = {};
+  const walk = (dir: string) => {
+    for (const file of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, file.name);
+      if (file.isDirectory()) walk(full);
+      else result[path.relative(root, full)] = fs.statSync(full).mtimeMs;
+    }
+  };
+  walk(root);
+  return result;
+}
+
+test('apply restores missing raw files, seeds upstream and repeats without writes', withProj((proj) => {
+  const apply = applyFixture(proj);
+  const receipt = apply();
+  expect(receipt.applied).toContainEqual({ file: 'bin/hermitd-run', outcome: 'restored' });
+  expect(receipt.applied).toContainEqual({ file: 'templates/PROPOSAL.md.template', outcome: 'restored' });
+  expect(fs.statSync(path.join(hermitDir(proj), 'bin/hermitd-run')).mode & 0o111).toBe(0o111);
+  const before = diskSnapshot(proj);
+  expect(apply().applied).toEqual([]);
+  expect(diskSnapshot(proj)).toEqual(before);
+}));
+
+test('apply handles unmodified, template conflict, boot conflict and customized-kept', withProj((proj) => {
+  const apply = applyFixture(proj); apply();
+  const dir = hermitDir(proj), template = path.join(dir, 'templates/PROPOSAL.md.template'), bin = path.join(dir, 'bin/hermitd-run');
+  fs.writeFileSync(template, 'operator template');
+  fs.writeFileSync(bin, 'operator wrapper');
+  const manifest = path.join(dir, 'state/template-manifest.json');
+  const data = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  data.files['templates/PROPOSAL.md.template'].sha256 = sha256(Buffer.from('old template'));
+  data.files['bin/hermitd-run'].sha256 = sha256(Buffer.from('old wrapper'));
+  fs.writeFileSync(manifest, JSON.stringify(data));
+  const receipt = apply();
+  expect(fs.readFileSync(template, 'utf8')).toBe('operator template');
+  expect(fs.readFileSync(template + '.new', 'utf8')).toBe('PROPOSAL TEMPLATE\n');
+  expect(fs.readFileSync(bin + '.bak', 'utf8')).toBe('operator wrapper');
+  expect(receipt.applied).toContainEqual({ file: 'bin/hermitd-run', outcome: 'refreshed' });
+  expect(apply().applied).toEqual([]);
+  // Upstream equals baseline, so an operator-only change remains live.
+  fs.writeFileSync(bin, 'new operator wrapper');
+  expect(apply().remaining).toContainEqual({ file: 'bin/hermitd-run', class: 'customized-kept', base_path: null, theirs_path: null, bak: null });
+  // A baseline-identical project copy is safe to refresh.
+  data.files['bin/hermitd-run'].sha256 = sha256(Buffer.from('new operator wrapper'));
+  fs.writeFileSync(manifest, JSON.stringify(data));
+  expect(apply().applied).toContainEqual({ file: 'bin/hermitd-run', outcome: 'refreshed' });
+}));
+
+test('apply bootstrap backups preserve existing raw content', withProj((proj) => {
+  const apply = applyFixture(proj), dir = hermitDir(proj);
+  fs.mkdirSync(path.join(dir, 'templates'));
+  fs.writeFileSync(path.join(dir, 'templates/PROPOSAL.md.template'), 'operator original');
+  deployDocker(proj, { entrypoint: 'old entrypoint' });
+  apply();
+  expect(fs.readFileSync(path.join(dir, 'templates/PROPOSAL.md.template.bak'), 'utf8')).toBe('operator original');
+  const backups = fs.readdirSync(path.join(dir, 'state')).filter(name => name.startsWith('docker-entrypoint.hermit.sh.') && name.endsWith('.bak'));
+  expect(backups).toHaveLength(1);
+  expect(fs.readFileSync(path.join(dir, 'state', backups[0]), 'utf8')).toBe('old entrypoint');
+}));
+
+test('apply never changes entrypoint conflicts or customized-kept with a base', withProj((proj) => {
+  const apply = applyFixture(proj); apply();
+  const dir = hermitDir(proj), file = path.join(proj, 'docker-entrypoint.hermit.sh');
+  fs.writeFileSync(file, 'operator');
+  for (const base of ['old entrypoint', 'ENTRYPOINT UPSTREAM\n']) {
+    const manifest = path.join(dir, 'state/template-manifest.json');
+    const data = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+    data.files['docker/docker-entrypoint.hermit.sh'] = { sha256: sha256(Buffer.from(base)) };
+    fs.writeFileSync(manifest, JSON.stringify(data));
+    const pristine = path.join(dir, 'state/pristine/docker/docker-entrypoint.hermit.sh');
+    fs.mkdirSync(path.dirname(pristine), { recursive: true }); fs.writeFileSync(pristine, base);
+    const receipt = apply();
+    expect(receipt.remaining.find(entry => entry.file === 'docker-entrypoint.hermit.sh')?.base_path).toBe(pristine);
+    expect(fs.readFileSync(file, 'utf8')).toBe('operator');
+  }
+}));
+
+test('apply re-seeds raw identical copies without seeding rendered Docker copies', withProj((proj) => {
+  const apply = applyFixture(proj); apply();
+  const dir = hermitDir(proj), manifest = path.join(dir, 'state/template-manifest.json');
+  const data = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  data.files['bin/hermitd-run'].sha256 = sha256(Buffer.from('stale'));
+  fs.writeFileSync(manifest, JSON.stringify(data));
+  expect(apply().applied).toContainEqual({ file: 'bin/hermitd-run', outcome: 'baseline-seeded' });
+  expect(JSON.parse(fs.readFileSync(manifest, 'utf8')).files['docker/Dockerfile.hermit.template']).toBeUndefined();
+}));
+
+test('apply parks bootstrap Docker renders once and prunes only old candidates', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const rendered = render(DOCKER_INPUTS);
+  deployDocker(proj, { compose: rendered.compose, dockerfile: rendered.dockerfile + '\nRUN echo operator\n' });
+  const dir = hermitDir(proj), state = path.join(dir, 'state');
+  fs.mkdirSync(state, { recursive: true });
+  for (const name of ['Dockerfile.hermit.2000.upstream', 'Dockerfile.hermit.2001.upstream', 'Dockerfile.hermit.2000.bak']) fs.writeFileSync(path.join(state, name), 'old');
+  const apply = () => applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const receipt = apply();
+  expect(receipt.parked).toHaveLength(1);
+  expect(JSON.parse(fs.readFileSync(receipt.parked[0] + '.json', 'utf8')).project_sha).toBe(sha256(fs.readFileSync(path.join(proj, 'Dockerfile.hermit'))));
+  expect(fs.existsSync(path.join(state, 'Dockerfile.hermit.2000.upstream'))).toBe(false);
+  expect(fs.existsSync(path.join(state, 'Dockerfile.hermit.2000.bak'))).toBe(true);
+  const before = diskSnapshot(proj);
+  expect(apply().applied).toEqual([]);
+  expect(diskSnapshot(proj)).toEqual(before);
+}));
+
+test('apply installs a clean gated-browser merge from a legacy pristine', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const sources = realDockerSources();
+  const legacy = sources.dockerfile.replace('RUN mkdir -p /home/claude/.claude/sessions\n', 'RUN mkdir -p /home/claude/.claude/sessions\n{{BROWSER_ENV}}\n');
+  const old = renderSources({ ...DOCKER_INPUTS, browser: true }, { ...sources, dockerfile: legacy });
+  deployDocker(proj, { compose: old.compose, dockerfile: old.dockerfile + '\nRUN echo operator\n' });
+  const dir = hermitDir(proj);
+  const pristine = path.join(dir, 'state/pristine/docker/Dockerfile.hermit.template');
+  fs.mkdirSync(path.dirname(pristine), { recursive: true }); fs.writeFileSync(pristine, legacy);
+  dockerManifest(proj, { 'docker/Dockerfile.hermit.template': sha256(Buffer.from(legacy)) });
+  const receipt = applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  expect(receipt.applied).toContainEqual({ file: 'Dockerfile.hermit', outcome: 'merged(3-way)' });
+  const result = fs.readFileSync(path.join(proj, 'Dockerfile.hermit'), 'utf8');
+  expect(result).toContain('ARG HERMIT_BROWSER=1');
+  expect(result).toContain('RUN echo operator');
+  expect(result).not.toContain('ENV AGENT_BROWSER_');
+}));
+
+test('apply CLI rejects additional arguments and keeps the state pin', withProj(async (proj) => {
+  writeConfig(proj, '{}');
+  const result = await runPinnedScript('evolve-plan.ts', hermitDir(proj), [hermitDir(proj), 'apply', 'extra']);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout).error).toBe('unexpected_args');
+}));
+
+test('adopt refuses absent, unmerged, stale and structurally invalid candidates', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const rendered = render(DOCKER_INPUTS), dir = hermitDir(proj);
+  deployDocker(proj, { compose: rendered.compose, dockerfile: rendered.dockerfile + '\nRUN echo operator\n' });
+  const adopt = () => adoptDocker(dir, PLUGIN_ROOT, 'Dockerfile.hermit');
+  expect(adopt()).toEqual({ status: 'refused', reason: 'no_candidate' });
+  const receipt = applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  expect(adopt()).toEqual({ status: 'refused', reason: 'unmerged' });
+  const candidate = receipt.parked[0], bytes = fs.readFileSync(candidate);
+  fs.writeFileSync(candidate, 'stale');
+  expect(adopt()).toEqual({ status: 'refused', reason: 'stale_candidate' });
+  fs.writeFileSync(candidate, bytes);
+  fs.writeFileSync(path.join(proj, 'Dockerfile.hermit'), 'FROM ubuntu\nUSER root\n');
+  expect(adopt()).toEqual({ status: 'refused', reason: 'checks_failed' });
+  fs.writeFileSync(path.join(proj, 'Dockerfile.hermit'), rendered.dockerfile + '\nRUN echo merged\n');
+  expect(adopt()).toEqual({ status: 'adopted', file: 'Dockerfile.hermit' });
+  expect(adopt()).toEqual({ status: 'refused', reason: 'no_candidate' });
+  expect(fs.existsSync(candidate + '.json')).toBe(false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'state/template-manifest.json'), 'utf8'));
+  expect(manifest.files['docker/Dockerfile.hermit.template'].sha256).toBe(sha256(Buffer.from(realDockerSources().dockerfile)));
+}));
+
+test('adopt accepts a merged compose and keeps unrelated backups', withProj((proj) => {
+  writeDerivableDockerConfig(proj);
+  const rendered = render(DOCKER_INPUTS), dir = hermitDir(proj);
+  deployDocker(proj, { compose: rendered.compose + '\nx-operator: original\n', dockerfile: rendered.dockerfile });
+  const receipt = applyEvolve(dir, PLUGIN_ROOT, EMPTY_PLUGIN_LIST);
+  const backup = path.join(dir, 'state/docker-compose.hermit.yml.original.bak');
+  fs.writeFileSync(backup, 'recovery');
+  fs.writeFileSync(path.join(proj, 'docker-compose.hermit.yml'), rendered.compose + '\nx-operator: merged\n');
+  expect(adoptDocker(dir, PLUGIN_ROOT, 'docker-compose.hermit.yml').status).toBe('adopted');
+  expect(receipt.parked.every(file => !fs.existsSync(file))).toBe(true);
+  expect(fs.readFileSync(backup, 'utf8')).toBe('recovery');
+}));
+
+test('adopt CLI rejects arbitrary file paths and extra arguments', withProj(async (proj) => {
+  writeConfig(proj, '{}');
+  for (const args of [['../Dockerfile.hermit'], ['Dockerfile.hermit', 'extra'], []]) {
+    const result = await runPinnedScript('evolve-plan.ts', hermitDir(proj), [hermitDir(proj), 'adopt', ...args]);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).error).toBe('unexpected_args');
+  }
+}));
+
+test('Docker merge checks reject a root final user with any group', () => {
+  const source = render(DOCKER_INPUTS).dockerfile;
+  for (const user of ['root', 'root:1000', '0:claude', '00:1000']) {
+    expect(dockerMergeChecks('Dockerfile.hermit', source + `\nUSER ${user}\n`)).toBe(false);
+  }
+  expect(dockerMergeChecks('Dockerfile.hermit', source + '\nUSER claude:root\n')).toBe(true);
+});

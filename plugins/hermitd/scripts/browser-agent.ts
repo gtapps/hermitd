@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
+import { ensureDisplay, type DisplayResult } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
@@ -36,7 +37,7 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   } finally { releaseLock(lock); }
 }
 
-interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number }
+interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
 export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
   if (!browserEnabled(dir)) { printJson({ status: 'disabled' }); return 0; }
@@ -101,14 +102,12 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   if (task && host && (options.platform ?? browserHostPlatform()) === 'darwin') {
     printJson({ error: 'takeover_unsupported' }); return 1;
   }
-  const display = host ? readJson(path.join(dir, 'state/browser-display.json')) : { display: ':1' };
-  if (task && host && (!display?.display || !fs.existsSync(path.join(socketDir, 'vnc.sock')))) {
-    printJson({ error: 'browser_display_missing', detail: 'The display runs only for always-on tmux hermits. Run hermitd run browser-host for those hermits.' }); return 1;
-  }
   env.AGENT_BROWSER_CONFIG = install?.config ?? path.join(socketDir, 'config.json');
   if (!install) writeFileAtomic(env.AGENT_BROWSER_CONFIG, '{}\n', 0o600);
   if (host && install) env.AGENT_BROWSER_EXECUTABLE_PATH = install.chrome;
   else if (host) delete env.AGENT_BROWSER_EXECUTABLE_PATH;
+  else if (fs.existsSync(options.marker ?? '/etc/hermit/managed-browser')) env.AGENT_BROWSER_EXECUTABLE_PATH = '/opt/chrome-linux64/chrome';
+  else delete env.AGENT_BROWSER_EXECUTABLE_PATH;
   const resolver = '--host-resolver-rules=MAP 169.254.* ^NOTFOUND';
   const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task']);
   const args: string[] = [];
@@ -148,7 +147,25 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
       printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
       return 1;
     }
-    env.DISPLAY = display?.display;
+    if (argv.at(-1) !== 'close') {
+      const display = await (options.ensureDisplay ?? (target => ensureDisplay(target, { deployment, marker: options.marker })))(dir);
+      if ('blocker' in display) {
+        let detail = 'Run hermitd run browser-host for the always-on tmux display.';
+        if (!host) {
+          detail = 'Managed browser display unavailable: run `hermitd update` on the Docker host.';
+          let dockerfile = '';
+          try { dockerfile = fs.readFileSync(path.join(dir, '../Dockerfile.hermit'), 'utf8'); } catch {}
+          if (!dockerfile.includes('# --- managed browser ---') || !dockerfile.includes('# --- end managed browser ---')) {
+            const state = path.join(dir, 'state');
+            const parked = fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1);
+            detail = 'Dockerfile.hermit needs the managed-browser merge; ask the hermit to merge Dockerfile.hermit'
+              + (parked ? ` (parked copy: ${path.join(state, parked)})` : '') + ', then run `hermitd update`.';
+          }
+        }
+        printJson({ error: 'browser_display_missing', reason: display.blocker, detail }); return 1;
+      }
+      env.DISPLAY = display.display;
+    }
     env.AGENT_BROWSER_IDLE_TIMEOUT_MS = '0';
     env.AGENT_BROWSER_HEADED = '1';
     env.AGENT_BROWSER_PROFILE = browserProfile(dir, deployment);

@@ -26,6 +26,13 @@ if [ ! -f "$COMPOSE" ]; then
   exit 1
 fi
 
+# Export for explicit builds and Compose's implicit builds alike.
+HERMIT_BROWSER=$(bun -e "
+const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+console.log(config.browser?.enabled === false ? '0' : '1');
+" "$CONFIG")
+export HERMIT_BROWSER
+
 # Resolve tmux session name from config
 TMUX_SESSION=$(bun -e "
 const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));

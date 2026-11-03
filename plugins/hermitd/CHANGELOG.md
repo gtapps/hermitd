@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Browser enablement and removal take effect on the next Docker build through the managed build argument
+- Container displays start from plugin code and follow the published display record
+- Docker browser errors name the image rebuild or managed-browser merge blocker
+
+### Changed
+
+- Evolve applies mechanical template, wrapper and Docker file steps itself and reports the remaining conflicts
+- Parked Docker files can be merged and adopted as baselines for later upgrades
+
+### Upgrade Instructions
+
+Run `bun <plugin_root>/scripts/evolve-plan.ts .hermit apply` (`evolve-apply`) before resolving Docker conflicts. Resolve only its `remaining` entries through the evolve reference, preserving operator edits and entrypoint sidecar content.
+
+**Operator action required:** For Docker hermits whose `Dockerfile.hermit` was parked, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize`, adopt the checked merge, then run `hermitd update` on the host.
+
 ## [1.4.25] - 2026-11-03
 
 ### Added

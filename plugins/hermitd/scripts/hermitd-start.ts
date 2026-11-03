@@ -11,7 +11,7 @@
  */
 
 import fs from 'node:fs';
-import { maybeStartBrowserDisplay } from './browser-display';
+import { ensureDisplay } from './browser-display';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -1821,7 +1821,8 @@ async function main(): Promise<void> {
     execvp(cmd);
   }
 
-  maybeStartBrowserDisplay(runtimeMode);
+  const display = await ensureDisplay();
+  if ('blocker' in display) console.log(`[hermit] Browser display: ${display.blocker}`);
   maybeInstallWatchdogScheduler(
     runtimeMode,
     config.watchdog?.scheduler_enabled,

@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
+import { renderSources } from '../scripts/render-docker-templates';
 import { deriveRenderInputs } from '../scripts/lib/derive-render-inputs';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-rdt-');
@@ -386,14 +387,17 @@ test('browser derives true when absent and rejects non-booleans', async () => {
   }
 });
 
-test('browser false is byte-identical to absent and has no browser lines', async () => {
+test('browser false is byte-identical to absent and keeps the gated browser block', async () => {
   const absent = freshDir();
   const disabled = freshDir();
   await render(absent);
   await render(disabled, { browser: false });
   expect(dockerfile(disabled)).toBe(dockerfile(absent));
   expect(compose(disabled)).toBe(compose(absent));
-  expect(dockerfile(disabled)).not.toMatch(/browser|chrome|BROWSER/);
+  expect(dockerfile(disabled)).toContain('# --- managed browser ---\nARG HERMIT_BROWSER=1\nRUN if [ "$HERMIT_BROWSER" = 1 ]; then');
+  expect(dockerfile(disabled)).toContain("printf 'display=plugin\\n' > /etc/hermit/managed-browser");
+  expect(dockerfile(disabled)).not.toContain('ENV AGENT_BROWSER_');
+  expect(compose(disabled)).toContain('HERMIT_BROWSER: ${HERMIT_BROWSER:-1}');
 });
 
 test('browser true pins and verifies both architectures above the root operator block', async () => {
@@ -416,17 +420,18 @@ test('browser true pins and verifies both architectures above the root operator 
   expect(compose(dir)).toBe(compose(baseline));
 });
 
-test('managed browser startup and cleanup actions are marker-gated', () => {
+test('entrypoint keeps marker-gated admission cleanup and plugin display shutdown', () => {
   const source = fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/docker/docker-entrypoint.hermit.sh.template'), 'utf8');
   const gates = [...source.matchAll(/if \[ -f \/etc\/hermit\/managed-browser \]; then([\s\S]*?)\n(?:  )?fi/g)].map(match => match[1]);
   expect(gates).toHaveLength(2);
-  for (const action of ['mkdir -p /home/claude/.claude/browser/profile', 'chmod 700', 'Singleton*', '/tmp/.X1-lock', '/tmp/.X11-unix/X1', 'Xvnc :1', 'openbox &']) {
-    expect(gates[0]).toContain(action);
-    expect(source.replace(gates[0], '').replace(gates[1], '')).not.toContain(action);
+  expect(gates[0]).toContain('/tmp/hermit-browser-*/*.pid');
+  expect(gates[0]).toContain('/tmp/hermit-browser-*/admissions.json');
+  expect(source).not.toContain('Xvnc :1');
+  expect(source).not.toContain('openbox &');
+  expect(source).not.toContain('scripts/browser-viewer.ts');
+  for (const action of ['human-release', 'teardown shutdown', 'agent-browser --task shutdown close', 'browser.ts" teardown', 'scripts/browser-display.ts" stop']) {
+    expect(gates[1]).toContain(action);
   }
-  expect(gates[0]).toContain('-rfbport -1');
-  expect(gates[0]).toContain('-SendCutText=0');
-  expect(gates[1]).toContain('agent-browser --task shutdown close');
 });
 
 test('viewer port has one bridge publish site, survives derivation, and binds directly on host networking', async () => {
@@ -457,4 +462,20 @@ test('operator-installed agent-browser defaults off and an explicit browser choi
   expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(false);
   fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true }, docker: { packages: [] } }));
   expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(true);
+});
+
+test('legacy pristine templates keep conditional browser installs and environment', () => {
+  const templates = {
+    dockerfile: '{{PACKAGES_BLOCK}}\n# --- operator: retained ---\n{{BROWSER_ENV}}',
+    compose: '',
+  };
+  for (const browser of [false, true]) {
+    const output = renderSources({ ...BASE_INPUT, browser }, templates).dockerfile;
+    expect(output.includes('# Managed browser')).toBe(browser);
+    expect(output.includes('touch /etc/hermit/managed-browser')).toBe(browser);
+    expect(output.includes('ENV AGENT_BROWSER_EXECUTABLE_PATH=')).toBe(browser);
+    expect(output.includes('ENV AGENT_BROWSER_ARGS=--no-sandbox')).toBe(browser);
+    expect(output).not.toContain('ARG HERMIT_BROWSER');
+    expect(output).toContain('# --- operator: retained ---');
+  }
 });

@@ -19,6 +19,7 @@ execution:
     - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
     - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
     - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
+    - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
     - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
     - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
     - `evolve-snapshot`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit snapshot`
@@ -37,7 +38,9 @@ execution:
     2. Execute its **steps 0 through 9** directly, in order. Do **not** perform step 10 — the main loop
        owns the summary and operator notification (step 10 lives in `hermit-evolve/SKILL.md`, which you do
        not need to read).
-    3. Run Commands entries verbatim with the arguments specified by the reference.
+    3. Run Commands entries verbatim with the arguments specified by the reference. At Step 5 run
+       `evolve-apply` first, then resolve only its `remaining` entries. Build the Templates, Bin wrappers,
+       Docker entrypoint and Docker templates report lines from its JSON receipt plus those resolutions.
 
     ## Delegated-mode rules (you cannot prompt the operator)
 
@@ -50,11 +53,11 @@ execution:
     - **Settings target refusal:** if any `apply-settings` call (Step 8 or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
     - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
       `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
-    - **Template conflicts (step 5):** always park upstream as `<name>.new` and keep the operator's copy
-      live. Never overwrite a conflicted non-boot template.
+    - **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
+      boot-wrapper backups, clean Docker merges, bootstrap parks and their baselines. Do not redo them.
+      Resolve only `remaining` entries using `reference.md`; keep customized files unless that procedure
+      explicitly resolves their entrypoint sidecar migration.
     - **Legacy `## Plan` strip (step 4b):** warn only, never strip.
-    - **Boot-critical conflicts (steps 5b bin/, 5c docker entrypoint):** follow `reference.md` as written —
-      replace with upstream and save the operator's copy as `.bak` / timestamped backup. These never prompt.
     - **Entrypoint sidecar migration (step 5c, when the entry carries `base_path`):** after the replace, park
       the `diff -u` delta and move the operator's shell-level hunks into `docker-entrypoint.hermit-local.sh` per
       `reference.md`. Hunks inside a heredoc, a loop body, or the plugin-install logic are never moved — that
@@ -78,7 +81,7 @@ execution:
       Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —
       `version_only` is not a failure and never blocks.
 
-    Everything else (version gates 0/0b, the plan pre-pass, classification, copies, manifest write, and the
+    Everything else (version gates 0/0b, the plan pre-pass, the apply receipt, remaining resolutions, and the
     step-9 config write — the `new_config_keys` merge and the `_hermit_versions` bump, both performed by
     `evolve-finalize.ts` in one atomic write) runs exactly as `reference.md` specifies.
 
@@ -136,12 +139,13 @@ execution:
     - bun --version: 1.4.2
     - evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}
     - evolve-plan: {"templates_changed":[{"name":"PROPOSAL.md.template","class":"conflict"}],"settings_added":[],"bin_changed":[],"docker":"n/a","siblings":[],"upgrade_steps":[]}
+    - evolve-apply: {"applied":[{"file":"templates/PROPOSAL.md.template","outcome":"parked-new"}],"remaining":[],"parked":[],"own_browser":false}
     - evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}
     - Every other script the procedure names: OK with no changes.
     </system-reminder>
     Run the upgrade for this hermit now and return your report.
 graders:
-  - {"name":"parked-new","type":"file_exists","path":".hermit/templates/PROPOSAL.md.template.new","weight":3}
+  - {"name":"no-copy-writes","type":"tool_used","tool":"Write","min":0,"max":0,"weight":3}
   - {"name":"report-conflict","type":"regex","target":"last_message","pattern":"Templates:[^\\n]*conflicts-parked-1","weight":3}
   - {"name":"not-blocked","type":"regex","target":"last_message","pattern":"Upgrade:\\s*blocked","weight":2,"match":"not_contains"}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked for review, and claims nothing it did not do. FAIL otherwise.","weight":2}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked as .new by evolve-apply, and claims nothing beyond the supplied command output. FAIL otherwise.","weight":2}

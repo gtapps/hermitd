@@ -32,7 +32,11 @@ export function browserEnabled(dir = hermitDir()): boolean {
 export function dockerfileHasOwnBrowser(file: string): boolean {
   try {
     let managed = false;
+    let delimited = false;
     return fs.readFileSync(file, 'utf8').split('\n').some(line => {
+      if (line === '# --- managed browser ---') { delimited = true; return false; }
+      if (line === '# --- end managed browser ---') { delimited = false; return false; }
+      if (delimited) return false;
       if (line.startsWith('# Managed browser')) { managed = true; return false; }
       if (managed) {
         if (line.trim() && !line.endsWith('\\')) managed = false;
@@ -64,7 +68,7 @@ export function installedBrowser(data = browserDataDir()) {
 }
 
 export function browserViewerPaths(dir = hermitDir()) {
-  if (browserDeployment(dir) === 'container') return { novncRoot: '/opt/novnc', vncSocket: '/tmp/hermit-browser/vnc.sock' };
+  if (browserDeployment(dir) === 'container') return { novncRoot: '/opt/novnc', vncSocket: path.join(browserSocketDir(dir), 'vnc.sock') };
   const browser = installedBrowser();
   if (!browser) throw new Error('browser_install_missing: run hermitd run browser-host');
   return { novncRoot: browser.novnc, vncSocket: path.join(browserSocketDir(dir), 'vnc.sock') };

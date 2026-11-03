@@ -529,13 +529,13 @@ The top-level `browser` object is protected by the native settings prompt. It is
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | boolean | `true` | The hermit’s managed browser. Use `/hermitd:hermit-settings browser` to decline; Docker also needs `hermitd update` to remove the image block. |
+| `enabled` | boolean | `true` | The hermit’s managed browser. Use `/hermitd:hermit-settings browser` to decline; On tmux it applies at the next `hermitd restart`; on Docker either toggle applies at the next `hermitd update` through the `HERMIT_BROWSER` build argument, without rewriting the Dockerfile. |
 | `default` | string | `agent-browser` | `agent-browser` or `chrome`. Choosing Chrome requires `chrome: true`; turn the default back to `agent-browser` before disabling Chrome. Set through `/hermitd:hermit-settings browser-default`. |
 | `admins` | array | `[]` | Exact Tailscale logins and channel mentions: `[{"login":"person@example.com","mentions":{"channel":"handle"}}]`. Phone takeover is inactive until configured. |
 | `port` | integer or null | `null` | Viewer loopback port, 1–65535, saved by `hermitd run browser-host`. |
 | `host` | string or null | `null` | Verified Tailscale DNS host saved by the host command. Links use `https://<browser.host>:<browser.port>/?task=<id>`. Authenticated HTTP and socket requests must match this Host. |
 
-`/hermitd:browser` collects admins in chat, asks for the host command once and declares the `browser-handback` monitor. The command skips Tailscale when admins are unset. See [Browser Tasks](how-to-use.md#browser-tasks) and [host prerequisites](../skills/browser/host-setup.md).
+`/hermitd:browser` collects admins in chat, asks for the host command once and declares the `browser-handback` monitor. The command skips Tailscale when admins are unset. Managed Docker images carry `/etc/hermit/managed-browser` containing `display=plugin`; the plugin starts the display on demand. Older bare markers require `hermitd update`, and a Dockerfile without the delimited managed-browser block needs the parked upstream merge first. See [Browser Tasks](how-to-use.md#browser-tasks) and [host prerequisites](../skills/browser/host-setup.md).
 
 ## `docker`
 

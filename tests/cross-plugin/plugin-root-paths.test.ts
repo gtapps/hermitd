@@ -34,6 +34,7 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'task -> channel-responder/SKILL.md': 'prose-only',
     'docker-security -> hatch/SKILL.md': 'prose-only',
     'docker-setup -> hatch/SKILL.md': 'prose-only',
+    'docker-customize -> hermit-evolve/reference.md': 'prose-only',
     'weekly-review -> spawn-session/SKILL.md': 'prose-only',
   },
 };

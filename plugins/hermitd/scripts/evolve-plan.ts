@@ -48,6 +48,8 @@ import { sha256 } from './lib/hash';
 import { cmpSemver } from './lib/semver';
 import { newConfigKeys, isPlainObject } from './lib/evolve-config';
 import { deriveRenderInputs } from './lib/derive-render-inputs';
+import { dockerfileHasOwnBrowser } from './lib/browser-runtime';
+import { seedTemplateManifest, type PristineBaseline } from './lib/pristine-baseline';
 import { renderSources } from './render-docker-templates';
 
 type Json = any;
@@ -335,27 +337,17 @@ function classifyDockerTemplates(
   if (inputs === null) return reportDockerTemplateDrift(stDir, projectRoot, manifestFiles);
 
   const out: Json[] = [];
-  // Wiped per run: a `base` left by a previous run is rendered from a template
-  // that has since moved, and nothing else prunes this scratch tree.
+  // Keep unchanged merge inputs intact so a repeated apply writes nothing.
   const renderRoot = path.join(hermitDir, 'state', 'evolve-docker');
-  fs.rmSync(renderRoot, { recursive: true, force: true });
   const theirsDir = path.join(renderRoot, 'theirs');
-  fs.mkdirSync(theirsDir, { recursive: true });
-  const renderScript = path.join(path.dirname(stDir), 'scripts', 'render-docker-templates.ts');
-  const rendered = Bun.spawnSync({
-    cmd: [process.execPath, renderScript, projectRoot, '--to', theirsDir],
-    stdin: Buffer.from(JSON.stringify(inputs)),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  if (rendered.exitCode !== 0) {
-    throw new Error(`render-docker-templates failed: ${rendered.stdout.toString().trim()}`);
-  }
-
   const currentSources = {
     compose: fs.readFileSync(path.join(stDir, 'docker', 'docker-compose.hermit.yml.template'), 'utf8'),
     dockerfile: fs.readFileSync(path.join(stDir, 'docker', 'Dockerfile.hermit.template'), 'utf8'),
   };
+  let rendered: ReturnType<typeof renderSources>;
+  try { rendered = renderSources(inputs, currentSources); }
+  catch (error) { throw new Error(`render-docker-templates failed: ${error instanceof Error ? error.message : error}`); }
+  for (const f of DOCKER_TEMPLATE_FILES) writeChanged(path.join(theirsDir, f.rendered), Buffer.from(rendered[f.field]));
   for (const f of DOCKER_TEMPLATE_FILES) {
     let ours: Buffer;
     try {
@@ -393,11 +385,12 @@ function classifyDockerTemplates(
     entry.theirs_path = theirsPath;
     if (baseRendered === null) {
       entry.bootstrap = true;
+      fs.rmSync(path.join(renderRoot, 'base', f.rendered), { force: true });
     } else {
       const baseDir = path.join(renderRoot, 'base');
       fs.mkdirSync(baseDir, { recursive: true });
       const basePath = path.join(baseDir, f.rendered);
-      fs.writeFileSync(basePath, baseRendered);
+      writeChanged(basePath, Buffer.from(baseRendered));
       entry.base_path = basePath;
     }
     out.push(entry);
@@ -694,6 +687,175 @@ function buildPlan({ hermitDir, pluginRoot, pluginListJsonPath }: {
   return plan;
 }
 
+function writeChanged(file: string, bytes: Buffer): boolean {
+  try { if (fs.readFileSync(file).equals(bytes)) return false; } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, bytes);
+  return true;
+}
+
+/** The structural checks from evolve reference §5d, before any merged bytes land. */
+export function dockerMergeChecks(name: string, text: string): boolean {
+  if (/^(<<<<<<<|=======|>>>>>>>)/m.test(text)) return false;
+  if (name === 'docker-compose.hermit.yml') {
+    try {
+      const parsed: any = Bun.YAML.parse(text);
+      return isPlainObject(parsed) && isPlainObject(parsed.services) && isPlainObject(parsed.services.hermit)
+        && isPlainObject(parsed.volumes);
+    } catch { return false; }
+  }
+  const users = [...text.matchAll(/^USER\s+(\S+)/gm)];
+  return /^FROM\s+\S+/m.test(text) && /^ARG HOST_UID=/m.test(text)
+    && /^ARG CLAUDE_CODE_VERSION=/m.test(text) && /^ARG BUN_VERSION=/m.test(text)
+    && /^COPY.*docker-entrypoint\.hermit\.sh.*docker-entrypoint\.sh/m.test(text)
+    && !!users.length && !/^(root|0+)(:|$)/.test(users.at(-1)![1]);
+}
+
+function parkedCopies(dir: string, name: string): string[] {
+  const state = path.join(dir, 'state');
+  if (!fs.existsSync(state)) return [];
+  return fs.readdirSync(state).filter(file => file.startsWith(name + '.') && file.endsWith('.upstream'))
+    .sort().map(file => path.join(state, file));
+}
+function pruneParked(dir: string, name: string, keep?: string): void {
+  for (const file of parkedCopies(dir, name)) {
+    if (file === keep) continue;
+    fs.rmSync(file);
+    fs.rmSync(file + '.json', { force: true });
+  }
+}
+interface ApplyReceipt {
+  applied: { file: string; outcome: string }[];
+  remaining: { file: string; class: string; base_path: string | null; theirs_path: string | null; bak: string | null }[];
+  parked: string[]; own_browser: boolean;
+}
+export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?: string): ApplyReceipt {
+  const plan = buildPlan({ hermitDir: dir, pluginRoot, pluginListJsonPath });
+  if (plan.errors.length) throw new Error(plan.errors.map((error: Json) => error.code + ':' + error.message).join('; '));
+  const stDir = path.join(pluginRoot, 'state-templates'), project = path.dirname(dir);
+  const manifestPath = path.join(dir, 'state/template-manifest.json');
+  const manifest = fs.existsSync(manifestPath) ? readTemplateManifestFiles(manifestPath) : {};
+  const pristine: PristineBaseline[] = [];
+  const receipt: ApplyReceipt = { applied: [], remaining: [], parked: [], own_browser: false };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const note = (file: string, outcome: string) => receipt.applied.push({ file, outcome });
+  const seed = (key: string, buf: Buffer) => {
+    if (manifest[key]?.sha256 !== sha256(buf)) pristine.push({ key, buf });
+  };
+  const backup = (name: string, source: string) => {
+    const dest = path.join(dir, 'state', name + '.' + stamp + '.bak');
+    writeChanged(dest, fs.readFileSync(source));
+    return dest;
+  };
+  const remain = (entry: Json, file: string) => receipt.remaining.push({
+    file, class: entry.class ?? entry.status, base_path: entry.base_path ?? null,
+    theirs_path: entry.theirs_path ?? null, bak: null,
+  });
+  const park = (name: string, theirs: Buffer) => {
+    let candidate = parkedCopies(dir, name).at(-1);
+    if (!candidate || !fs.readFileSync(candidate).equals(theirs)) {
+      candidate = path.join(dir, 'state', name + '.' + stamp + '.upstream');
+      writeChanged(candidate, theirs);
+      writeChanged(candidate + '.json', Buffer.from(JSON.stringify({ project_sha: sha256(fs.readFileSync(path.join(project, name))) }) + '\n'));
+      note(name, 'parked');
+    }
+    pruneParked(dir, name, candidate);
+    receipt.parked.push(candidate);
+  };
+  for (const [prefix, entries] of [['templates', plan.templates_changed], ['bin', plan.bin_changed]] as const) {
+    for (const entry of entries) {
+      const key = prefix + '/' + entry.name, dest = path.join(dir, key);
+      const upstream = fs.readFileSync(path.join(stDir, prefix === 'bin' ? 'bin' : '', entry.name));
+      if (entry.class === 'customized-kept') { remain(entry, key); continue; }
+      if (prefix === 'templates' && entry.class === 'conflict') {
+        if (writeChanged(dest + '.new', upstream)) note(key, 'parked-new');
+        continue;
+      }
+      if (fs.existsSync(dest) && (plan.manifest_bootstrap || entry.class === 'conflict')) writeChanged(dest + '.bak', fs.readFileSync(dest));
+      if (writeChanged(dest, upstream)) note(key, entry.class === 'missing' ? 'restored' : 'refreshed');
+      if (prefix === 'bin') fs.chmodSync(dest, 0o755);
+      seed(key, upstream);
+    }
+  }
+  const entrypoint = plan.docker_entrypoint;
+  if (entrypoint) {
+    const name = entrypoint.name, dest = path.join(project, name);
+    if (entrypoint.class !== 'unmodified') remain(entrypoint, name);
+    else {
+      if (entrypoint.bootstrap || plan.manifest_bootstrap) backup(name, dest);
+      const upstream = fs.readFileSync(path.join(stDir, 'docker', name + '.template'));
+      if (writeChanged(dest, upstream)) note(name, 'refreshed');
+      fs.chmodSync(dest, 0o755);
+      seed('docker/' + name, upstream);
+    }
+  }
+  for (const entry of plan.docker_templates) {
+    const name = entry.name, dest = path.join(project, name);
+    if (!entry.class || entry.class === 'customized-kept') { remain(entry, name); continue; }
+    const theirs = fs.readFileSync(entry.theirs_path);
+    if (entry.bootstrap) { park(name, theirs); continue; }
+    let merged: Buffer = theirs;
+    if (entry.class === 'conflict') {
+      const result = Bun.spawnSync(['git', 'merge-file', '-p', dest, entry.base_path, entry.theirs_path], { stdout: 'pipe', stderr: 'pipe' });
+      if (result.exitCode !== 0 || !dockerMergeChecks(name, result.stdout.toString())) {
+        park(name, theirs);
+        remain(entry, name);
+        continue;
+      }
+      merged = result.stdout;
+      backup(name, dest);
+    }
+    if (!dockerMergeChecks(name, merged.toString())) { remain(entry, name); continue; }
+    if (writeChanged(dest, merged)) note(name, 'merged(3-way)');
+    seed('docker/' + name + '.template', fs.readFileSync(path.join(stDir, 'docker', name + '.template')));
+    pruneParked(dir, name);
+  }
+  // Raw copies can already equal upstream after an interrupted seed; rendered Docker files cannot.
+  const raw = [
+    ...TEMPLATE_FILES.map(name => ({ key: 'templates/' + name, source: path.join(stDir, name), dest: path.join(dir, 'templates', name) })),
+    ...fs.readdirSync(path.join(stDir, 'bin'), { withFileTypes: true }).filter(file => file.isFile())
+      .map(file => ({ key: 'bin/' + file.name, source: path.join(stDir, 'bin', file.name), dest: path.join(dir, 'bin', file.name) })),
+    { key: 'docker/docker-entrypoint.hermit.sh', source: path.join(stDir, 'docker/docker-entrypoint.hermit.sh.template'), dest: path.join(project, 'docker-entrypoint.hermit.sh') },
+  ];
+  for (const file of raw) {
+    if (!fs.existsSync(file.source) || !fs.existsSync(file.dest)) continue;
+    const upstream = fs.readFileSync(file.source);
+    if (fs.readFileSync(file.dest).equals(upstream) && manifest[file.key]?.sha256 !== sha256(upstream)
+      && !pristine.some(entry => entry.key === file.key)) {
+      seed(file.key, upstream); note(file.key, 'baseline-seeded');
+    }
+  }
+  if (pristine.length) seedTemplateManifest(dir, plan.to, pristine);
+  // Keep only the newest parked candidate, never prune recovery .bak files.
+  for (const { rendered } of DOCKER_TEMPLATE_FILES) pruneParked(dir, rendered, parkedCopies(dir, rendered).at(-1));
+  receipt.own_browser = dockerfileHasOwnBrowser(path.join(project, 'Dockerfile.hermit'));
+  return receipt;
+}
+
+export function adoptDocker(dir: string, pluginRoot: string, name: 'Dockerfile.hermit' | 'docker-compose.hermit.yml') {
+  const refused = (reason: string) => ({ status: 'refused', reason });
+  const candidate = parkedCopies(dir, name).at(-1);
+  if (!candidate) return refused('no_candidate');
+  const project = path.dirname(dir);
+  const inputs = deriveRenderInputs(path.join(dir, 'config.json'), path.join(project, 'docker-compose.hermit.yml'));
+  if (!inputs) return refused('stale_candidate');
+  const dockerDir = path.join(pluginRoot, 'state-templates/docker');
+  const rendered = renderSources(inputs, {
+    dockerfile: fs.readFileSync(path.join(dockerDir, 'Dockerfile.hermit.template'), 'utf8'),
+    compose: fs.readFileSync(path.join(dockerDir, 'docker-compose.hermit.yml.template'), 'utf8'),
+  });
+  if (!fs.readFileSync(candidate).equals(Buffer.from(rendered[name === 'Dockerfile.hermit' ? 'dockerfile' : 'compose']))) return refused('stale_candidate');
+  const metadata = readJSON(candidate + '.json');
+  const current = fs.readFileSync(path.join(project, name));
+  if (sha256(current) === metadata.project_sha) return refused('unmerged');
+  if (!/^[0-9a-f]{64}$/.test(metadata.project_sha ?? '') || !dockerMergeChecks(name, current.toString())) return refused('checks_failed');
+  seedTemplateManifest(dir, readJSON(path.join(pluginRoot, '.claude-plugin/plugin.json')).version, [{
+    key: 'docker/' + name + '.template', buf: fs.readFileSync(path.join(dockerDir, name + '.template')),
+  }]);
+  pruneParked(dir, name);
+  return { status: 'adopted', file: name };
+}
+
 function parseArgs(argv: string[]) {
   let hermitDir: string | null = null;
   let pluginListJsonPath: string | null = null;
@@ -708,6 +870,19 @@ export { buildPlan, cmpSemver, changelogSlice, newConfigKeys, classifyFiles, cla
 export type { ClassifiedFile, FileClass };
 
 if (import.meta.main) {
+  const args = process.argv.slice(2);
+  if (args[1] === 'apply') {
+    if (args.length !== 2) exitError('unexpected_args');
+    const dir = pinStateDirOrExit(args[0]);
+    try { emitJson(applyEvolve(dir, process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..'))); }
+    catch (error) { exitError(error instanceof Error ? error.message : String(error)); }
+  }
+  if (args[1] === 'adopt') {
+    if (args.length !== 3 || !['Dockerfile.hermit', 'docker-compose.hermit.yml'].includes(args[2])) exitError('unexpected_args');
+    const dir = pinStateDirOrExit(args[0]);
+    try { emitJson(adoptDocker(dir, process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..'), args[2] as 'Dockerfile.hermit' | 'docker-compose.hermit.yml')); }
+    catch (error) { exitError(error instanceof Error ? error.message : String(error)); }
+  }
   const { hermitDir: hermitArg, pluginListJsonPath } = parseArgs(process.argv.slice(2));
   if (process.argv.slice(2).filter(a => !a.startsWith('--'))[1] === 'leftover-check') {
     const hermitDir = pinStateDirOrExit(hermitArg);

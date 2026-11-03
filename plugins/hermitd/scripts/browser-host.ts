@@ -155,9 +155,33 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     const version = (await required(['docker', 'version', '--format', '{{.Server.Version}}'])).trim();
     if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version) || Number(version.split('.')[0]) < 28) throw new Error('Docker server 28.0.0 or newer is required for safe localhost publishing.');
     const marker = await run(browserImageProbe(path.join(project, 'docker-compose.hermit.yml')));
-    if (marker.code) throw new Error('Managed browser missing from the image: run hermitd update to rebuild first.');
+    if (marker.code) {
+      const dockerfile = path.join(project, 'Dockerfile.hermit');
+      const source = fs.existsSync(dockerfile) ? fs.readFileSync(dockerfile, 'utf8') : '';
+      if (!source.includes('# --- managed browser ---') || !source.includes('# --- end managed browser ---')) {
+        const state = path.join(dir, 'state');
+        const parked = fs.existsSync(state) ? fs.readdirSync(state).filter(name => /^Dockerfile\.hermit\..+\.upstream$/.test(name)).sort().at(-1) : undefined;
+        throw new Error('Dockerfile.hermit has no managed-browser block: ask the hermit to merge it'
+          + (parked ? ` (parked copy: ${path.join(state, parked)})` : ' (parked copy: none)'));
+      }
+      throw new Error('Managed browser missing from the image: run hermitd update to rebuild');
+    }
   }
-  if (!config.browser.admins.length) return { status: 'ready' };
+  const containerDisplay = async (verb: 'ensure' | 'status') => {
+    const args = ['docker', 'compose', '-f', path.join(project, 'docker-compose.hermit.yml')];
+    const security = path.join(project, 'docker-compose.security.yml');
+    if (fs.existsSync(security)) args.push('-f', security);
+    args.push('exec', '-T', 'hermit', '.hermit/bin/hermitd-run', 'browser-display', verb);
+    return JSON.parse(await required(args));
+  };
+  const ensureDockerDisplay = async () => {
+    const result = await containerDisplay('ensure');
+    if (result.blocker) throw new Error(`Browser display unavailable: ${result.blocker}; run hermitd update on the Docker host.`);
+  };
+  if (!config.browser.admins.length) {
+    if (deployment === 'docker_host') await ensureDockerDisplay();
+    return { status: 'ready' };
+  }
   const tailscale = tailscaleCLI();
   const status = JSON.parse(await required([tailscale, 'status', '--json']));
   const host = status.Self?.DNSName?.replace(/\.$/, '');
@@ -187,7 +211,8 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
       try {
         const response = await (options.fetch ?? fetch)(target, { signal: AbortSignal.timeout(5000), redirect: 'error' });
         const body = await response.json() as { error?: unknown };
-        if (response.status === 403 && body?.error === 'browser_identity_refused') return;
+        if (response.status === 403 && body?.error === 'browser_identity_refused'
+          && (deployment !== 'docker_host' || (await containerDisplay('status')).display === 'up')) return;
       } catch {}
       if (Date.now() >= deadline) break;
       await Bun.sleep(2000);
@@ -201,7 +226,8 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   if (config.browser.port !== port) await set('browser.port', port);
   if (config.browser.host !== host) await set('browser.host', host);
   if (configured && config.browser.port === port) {
-    startDisplay();
+    if (deployment === 'docker_host') await ensureDockerDisplay();
+    else startDisplay();
     await verifyRoute();
     log(`Browser viewer ready: https://${host}:${port}/`);
     return { status: 'ready', host, port };
@@ -228,6 +254,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
       throw new Error('Tailscale Serve failed; existing routes were left in place.');
     }
   }
+  if (deployment === 'docker_host') await ensureDockerDisplay();
   await verifyRoute();
   log(`Browser viewer ready: https://${host}:${port}/`);
   return { status: 'ready', host, port };

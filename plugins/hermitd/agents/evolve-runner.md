@@ -24,6 +24,7 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
 - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
 - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
+- `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
 - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
 - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
 - `evolve-snapshot`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit snapshot`
@@ -42,7 +43,9 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 2. Execute its **steps 0 through 9** directly, in order. Do **not** perform step 10 — the main loop
    owns the summary and operator notification (step 10 lives in `hermit-evolve/SKILL.md`, which you do
    not need to read).
-3. Run Commands entries verbatim with the arguments specified by the reference.
+3. Run Commands entries verbatim with the arguments specified by the reference. At Step 5 run
+   `evolve-apply` first, then resolve only its `remaining` entries. Build the Templates, Bin wrappers,
+   Docker entrypoint and Docker templates report lines from its JSON receipt plus those resolutions.
 
 ## Delegated-mode rules (you cannot prompt the operator)
 
@@ -55,11 +58,11 @@ never block:
 - **Settings target refusal:** if any `apply-settings` call (Step 8 or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
 - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
   `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
-- **Template conflicts (step 5):** always park upstream as `<name>.new` and keep the operator's copy
-  live. Never overwrite a conflicted non-boot template.
+- **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
+  boot-wrapper backups, clean Docker merges, bootstrap parks and their baselines. Do not redo them.
+  Resolve only `remaining` entries using `reference.md`; keep customized files unless that procedure
+  explicitly resolves their entrypoint sidecar migration.
 - **Legacy `## Plan` strip (step 4b):** warn only, never strip.
-- **Boot-critical conflicts (steps 5b bin/, 5c docker entrypoint):** follow `reference.md` as written —
-  replace with upstream and save the operator's copy as `.bak` / timestamped backup. These never prompt.
 - **Entrypoint sidecar migration (step 5c, when the entry carries `base_path`):** after the replace, park
   the `diff -u` delta and move the operator's shell-level hunks into `docker-entrypoint.hermit-local.sh` per
   `reference.md`. Hunks inside a heredoc, a loop body, or the plugin-install logic are never moved — that
@@ -83,7 +86,7 @@ never block:
   Copy the finalizer's `audit_scope` into the report's `Audit scope:` line —
   `version_only` is not a failure and never blocks.
 
-Everything else (version gates 0/0b, the plan pre-pass, classification, copies, manifest write, and the
+Everything else (version gates 0/0b, the plan pre-pass, the apply receipt, remaining resolutions, and the
 step-9 config write — the `new_config_keys` merge and the `_hermit_versions` bump, both performed by
 `evolve-finalize.ts` in one atomic write) runs exactly as `reference.md` specifies.
 

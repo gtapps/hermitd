@@ -284,7 +284,7 @@ chainCase('watch-relay-unknown-sender-shop', 'heldout', 'An idle notice from a s
   chainScaffold({ '.hermit/state/monitors.runtime.json': registry('export-wholesale') }), ['Skill', 'Read', 'Glob', 'Grep'],
   { resident: true, maxTurns: 12, timeout: 480 });
 
-// --- evolve-runner conflict judgment (case 11, Write granted) ------------
+// --- evolve-runner apply receipt (case 11, script output supplied) ------------
 
 const EVOLVE_STATE = [
   '- Plugin root for this run: `spec/plugin/` (the upstream state-templates are under `spec/plugin/state-templates/`).',
@@ -292,6 +292,7 @@ const EVOLVE_STATE = [
   '- bun --version: 1.4.2',
   '- evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}',
   '- evolve-plan: {"templates_changed":[{"name":"PROPOSAL.md.template","class":"conflict"}],"settings_added":[],"bin_changed":[],"docker":"n/a","siblings":[],"upgrade_steps":[]}',
+  '- evolve-apply: {"applied":[{"file":"templates/PROPOSAL.md.template","outcome":"parked-new"}],"remaining":[],"parked":[],"own_browser":false}',
   '- evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}',
   '- Every other script the procedure names: OK with no changes.',
 ];
@@ -300,13 +301,14 @@ chainCase('evolve-runner-template-conflict-home', 'train', 'A customized templat
   "<system-reminder>\nUpgrade state for this run. This session has no shell: each line below is that command's output right now. "
   + 'Use it as the output; do not try to run commands.\n' + EVOLVE_STATE.join('\n') + '\n</system-reminder>\n'
   + 'Run the upgrade for this hermit now and return your report.',
-  [{ name: 'parked-new', type: 'file_exists', path: '.hermit/templates/PROPOSAL.md.template.new', weight: 3 },
+  [{ name: 'no-copy-writes', type: 'tool_used', tool: 'Write', min: 0, max: 0, weight: 3 },
     last('report-conflict', String.raw`Templates:[^\n]*conflicts-parked-1`, 3),
     last('not-blocked', String.raw`Upgrade:\s*blocked`, 2, true),
-    rubric('PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked for review, and claims nothing it did not do. FAIL otherwise.')],
+    rubric('PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked as .new by evolve-apply, and claims nothing beyond the supplied command output. FAIL otherwise.')],
   chainScaffold({ '.hermit/templates/PROPOSAL.md.template': '# Proposal: {{title}}\n\n## Problem\n{{problem}}\n\n## What I would change\n{{solution}}\n\n## House rule\nNever touch the door locks.\n' },
     [['skills/hermit-evolve/reference.md', 'spec/plugin/skills/hermit-evolve/reference.md'],
-      ['state-templates/PROPOSAL.md.template', 'spec/plugin/state-templates/PROPOSAL.md.template']]),
+      ['state-templates/PROPOSAL.md.template', 'spec/plugin/state-templates/PROPOSAL.md.template'],
+      ['state-templates/PROPOSAL.md.template', '.hermit/templates/PROPOSAL.md.template.new']]),
   ['Read', 'Glob', 'Grep'], { write: true, append: agentBody('evolve-runner'), maxTurns: 30, timeout: 900 });
 
 report('chains');
