@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   while (args.length) {
     const token = args.shift()!;
     const name = token.slice(2);
-    if (!token.startsWith('--') || !allowed[verb].includes(name)) throw new Error('invalid_flag');
+    if (!token.startsWith('--') || !allowed[verb].includes(name)) throw new Error(`invalid_flag:${token} (accepts ${allowed[verb].map(flag => `--${flag}`).join(' ')})`);
     if (booleans.has(name)) { flags[name] = true; continue; }
     const value = args.shift();
     if (value === undefined || value.startsWith('--')) throw new Error(`missing_${name.replaceAll('-', '_')}`);

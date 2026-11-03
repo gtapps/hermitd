@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Task flag errors name the rejected flag and accepted flags, and missing reason stdin is distinguished from an empty reason
+- Manual compaction preserves idle execution state so quiet updates can proceed
+- Update summaries omit reload advice when no plugin update succeeded
+
 ## [1.4.25] - 2026-11-03
 
 ### Added

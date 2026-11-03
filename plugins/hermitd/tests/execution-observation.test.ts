@@ -17,8 +17,10 @@ for (const prompt of ['Hello', 'ROUTINE_DUE test', 'HEARTBEAT_EVALUATE', '[peer]
 });
 for (const [script, event, state, extra] of [
   ['stop-pipeline.ts', 'Stop', 'idle', {}], ['stop-failure-stamp.ts', 'StopFailure', 'idle', { error: 'api_error' }],
-  ['precompact-stamp.ts', 'PreCompact', 'unknown', { trigger: 'manual' }],
-  ...['startup', 'resume', 'clear', 'compact'].map(source => ['startup-context.ts', 'SessionStart', source === 'clear' ? 'idle' : 'unknown', { source }]),
+  ['precompact-stamp.ts', 'PreCompact', 'idle', { trigger: 'manual' }],
+  ['precompact-stamp.ts', 'PreCompact', 'unknown', { trigger: 'auto' }],
+  ...['startup', 'resume', 'clear'].map(source => ['startup-context.ts', 'SessionStart', source === 'clear' ? 'idle' : 'unknown', { source }]),
+  ['startup-context.ts', 'SessionStart', 'unknown', {}],
 ] as [string, string, string, object][]) {
   it(`${event} ${JSON.stringify(extra)} writes ${state}`, async () => { const f = taskFixture(); try {
     const r = await runScript(script, { cwd: f.dir, env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ hook_event_name: event, session_id: 'resident', ...extra }) });
@@ -32,6 +34,28 @@ for (const [script, event, state, extra] of [
     expect(fs.existsSync(path.join(f.dir, 'state/session-start.json'))).toBe(false);
   } finally { f.cleanup(); } });
 }
+for (const [trigger, state] of [['manual', 'idle'], ['auto', 'unknown']]) it(`SessionStart compact preserves ${trigger} PreCompact observation`, async () => {
+  const f = taskFixture(); try {
+    const env = { AGENT_DIR: f.dir, HERMIT_RESIDENT: '1' };
+    const precompact = await runScript('precompact-stamp.ts', { cwd: f.dir, env, stdin: JSON.stringify({ hook_event_name: 'PreCompact', session_id: 'resident', trigger }) });
+    expect(precompact.exitCode).toBe(0);
+    const executionPath = path.join(f.dir, 'state/execution.json');
+    const before = fs.readFileSync(executionPath, 'utf8');
+    expect(JSON.parse(before).state).toBe(state);
+    const start = await runScript('startup-context.ts', { cwd: f.dir, env, stdin: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'resident', source: 'compact' }) });
+    expect(start.exitCode).toBe(0);
+    expect(fs.readFileSync(executionPath, 'utf8')).toBe(before);
+  } finally { f.cleanup(); }
+});
+it('guest SessionStart compact writes no execution observation', async () => {
+  const f = taskFixture(); try {
+    markGuest(path.join(f.dir, 'state'), 'guest');
+    const r = await runScript('startup-context.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: '' }, stdin: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'guest', source: 'compact' }) });
+    expect(r.exitCode).toBe(0);
+    expect(fs.existsSync(path.join(f.dir, 'state/execution.json'))).toBe(false);
+    expect(fs.existsSync(path.join(f.dir, 'state/session-start.json'))).toBe(false);
+  } finally { f.cleanup(); }
+});
 it('resident SessionStart records its source in session-start.json and a later prompt leaves it', async () => { const f = taskFixture(); try {
   f.put('config.json', { channels: {} }); f.put('state/runtime.json', { hermit_pid: process.pid });
   await runScript('startup-context.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir, HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'resident', source: 'compact' }) });
