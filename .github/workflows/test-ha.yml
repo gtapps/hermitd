@@ -21,18 +21,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # tests/gate-corpus.test.ts materializes the retired Python gates
           # from git history (42c0c8f~1) for side-by-side equivalence runs.
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
       # Python here is a TEST FIXTURE only (nothing shipped runs it): the
       # golden-corpus test replays the retired Python hooks against the TS
       # ports, and yaml-parity.test.ts compares against PyYAML.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - run: pip install pyyaml python-dotenv

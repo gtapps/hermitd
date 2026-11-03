@@ -51,18 +51,18 @@ jobs:
     # nothing at all. Green runs take about 2m; 5m fails a hung run fast.
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # HA's gate-corpus.test.ts materializes the retired Python gates from
           # git history, so it needs the full history (matches test-ha.yml).
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
       # Python is a TEST FIXTURE for the HA suite only; nothing shipped runs it.
       # gate-corpus replays the retired Python hooks and yaml-parity compares
       # against PyYAML. Same versions test-ha.yml pins.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - run: pip install pyyaml python-dotenv
