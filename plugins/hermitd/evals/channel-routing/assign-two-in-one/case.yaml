@@ -27,7 +27,7 @@ execution:
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
     <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000019" user="sam" user_id="100000000000000001" ts="2026-10-01T09:09:00.000Z">
-    two things please: rename the weekly report title to 'Week in review', and check whether the disk usage trend is going up
+    two things please: rename the weekly report title to 'Week in review', and find out why disk usage keeps climbing
     </channel>
 graders:
   - name: task-skill
