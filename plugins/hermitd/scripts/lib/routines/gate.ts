@@ -174,10 +174,9 @@ function readBoundedPrefix(filePath: string): string {
 /**
  * Run one command and return its first stdout line plus how it ended.
  *
- * stdout goes to a file, never a pipe. A gate that forks a background helper
- * leaves that child holding the write end, and a pipe read would then block until
- * the grandchild exits — turning a 2ms gate into a hung poll. Verified live:
- * with an fd, a script that backgrounds `sleep 30` and exits returns in ~2ms.
+ * stdout goes to a file, never a pipe, so a background helper cannot hold a
+ * pipe read open. The gate runs in its own process group, which is killed after
+ * every exit or timeout.
  */
 function spawnGate(
   cmd: string[],
@@ -198,7 +197,10 @@ function spawnGate(
       stdio: ['ignore', fd, 'ignore'],
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
+      detached: true,
     });
+    try { process.kill(-result.pid, 'SIGKILL'); }
+    catch { /* best effort: the group is already gone */ }
     fs.closeSync(fd);
     fd = null;
 

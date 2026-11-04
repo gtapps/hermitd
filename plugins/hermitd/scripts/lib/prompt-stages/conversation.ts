@@ -1,5 +1,5 @@
 import { conversationKey } from '../conversation-key';
-import { conversationRecords, threadRecords, taskListing, type Task } from '../tasks';
+import { conversationRecords, latestWaitIsStall, threadRecords, taskListing, type Task } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
 import { classifyChat } from '../channel-chats';
@@ -83,7 +83,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   if (owner !== 'worker' && record.waiting_on !== null) {
     // `note --done` clears result/result_at without clearing waiting_on, so a
     // record can be waiting with neither a stall nor a result to quote.
-    const latestIsStall = record.stall_at !== null && (!record.result_at || Date.parse(record.stall_at) > Date.parse(record.result_at));
+    const latestIsStall = latestWaitIsStall(record);
     const reason = latestIsStall
       ? `${safeForLLM(record.stall_status).slice(0, 160)}; next: ${safeForLLM(record.stall_next).slice(0, 160)}`
       : record.result
