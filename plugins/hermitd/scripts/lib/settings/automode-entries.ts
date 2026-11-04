@@ -101,7 +101,7 @@ export function automodeAllowEntry(
 
 export const AUTOMODE_WATCH_ALLOW_ENTRY =
   'User policy: an exception to Account & Standing-Rule Changes for specific invocations, standing for the session and needing no per-invocation consent. It clears no other rule. ' +
-  'ALLOWED, exactly: (a) .hermit/bin/hermitd-run settings-edit .hermit/config.json append monitors <entry>, where <entry> is one single-quoted JSON object with string id, description and command, boolean enabled, and optional string chat, and command is exactly ".hermit/bin/hermitd-run watch-poll <id> [--every <duration>] [--timeout <seconds>] -- <check>" with the same <id>; ' +
+  'ALLOWED, exactly: (a) .hermit/bin/hermitd-run settings-edit .hermit/config.json append monitors <entry>, where <entry> is one single-quoted JSON object with string id, description and command, boolean enabled, optional class "poll" or "stream", and optional string chat, and command is exactly ".hermit/bin/hermitd-run watch-poll <id> [--every <duration>] [--timeout <seconds>] -- <check>" with the same <id>; ' +
   '(b) .hermit/bin/hermitd-run settings-edit .hermit/config.json set monitors.<n>.enabled true or false; (c) .hermit/bin/hermitd-run settings-edit .hermit/config.json unset monitors.<n>; <n> is a literal integer. ' +
   'No shell chaining, redirection, env-var prefix or added argument around the settings-edit call. This exception covers saving the watch, not the check: judge <check> as if the session were running it directly now, and block the save whenever running <check> directly would be blocked.';
 

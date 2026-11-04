@@ -24,7 +24,7 @@ Two classes:
 ```
 /hermitd:watch <instruction>              # requested watch: saved; step of other work: temporary
 /hermitd:watch <stream-command>           # start ad-hoc stream
-/hermitd:watch enable <id>               # [internal] turn on a staged watch (config-watch.md)
+/hermitd:watch enable <id> --answer <a>  # [internal] turn on a staged watch (config-watch.md)
 /hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
 /hermitd:watch notice <text>              # [internal] handle a watched-session notice
 /hermitd:watch start                      # activate the config watch monitor
@@ -94,8 +94,9 @@ Route by purpose, even inside a task thread: if the watch itself is the request,
    - If instruction is a shell command (contains pipes, flags, or path): use as-is
    - If instruction is a natural language description: use:
      ```
-     .hermit/bin/hermitd-run watch-poll <id> --every <interval> -- <check>
+     .hermit/bin/hermitd-run watch-poll <id> --every <interval> -- "<check>"
      ```
+     Quote the check as in [config-watch.md](config-watch.md) § Create step 2.
 5. Invoke Monitor tool with all 3 required params:
    - `description`: the operator's instruction text plus ` (notify with --watch <id>)` (shown in every notification)
    - `command`: the constructed command

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { exitError } from './lib/cli';
 import { sha256 } from './lib/hash';
 import { writeFileAtomic } from './lib/md-write';
 import { parseDuration } from './lib/time';
@@ -13,6 +12,13 @@ interface WatchState {
   state_hash: string | null;
   failures: number;
   failing: boolean;
+}
+
+// Startup failures go to stderr: stdout lines become WATCH_EVENT notifications, and
+// the watch monitor restarts this helper, so a stdout error would wake the session each time.
+function exitError(token: string): never {
+  console.error(JSON.stringify({ error: token }));
+  process.exit(1);
 }
 
 const args = process.argv.slice(2);
@@ -72,7 +78,7 @@ function killCheck(): void {
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
   }
 }
-for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
   process.on(signal, () => {
     stopping = true;
     killCheck();

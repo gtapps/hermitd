@@ -137,14 +137,15 @@ test('state write failure reports once and keeps polling with in-memory state', 
   } finally { await watch.stop(); }
 }));
 
-test('invalid arguments fail with JSON', async () => {
+test('invalid arguments fail with JSON on stderr', async () => {
   for (const args of [
     ['../bad', '--', 'true'], ['ok', '--every', '59s', '--', 'true'],
     ['ok', '--timeout', '301', '--', 'true'], ['ok', '--', ''],
   ]) {
     const proc = Bun.spawn(['bun', path.join(SCRIPTS_DIR, 'watch-poll.ts'), ...args], { stdout: 'pipe', stderr: 'pipe' });
-    const stdout = await new Response(proc.stdout).text();
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
     expect(await proc.exited).toBe(1);
-    expect(JSON.parse(stdout).error).toBeString();
+    expect(stdout).toBe('');
+    expect(JSON.parse(stderr).error).toBeString();
   }
 });
