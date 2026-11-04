@@ -12,7 +12,7 @@
 ### Changed
 
 - Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
-- In shared chats, only the admin can answer the agent's pending questions; a member can still answer questions about their own request
+- In chats with named admins or allowed users, only the admin can answer the agent's pending questions; a member can still answer questions about their own request
 - An admin's watch save, turn-on and stop from their own chat need no permission prompt in auto mode
 - Chat edits to permission files are refused in bypass mode
 - A saved watch that reports the event ending its request asks its chat whether to stop watching

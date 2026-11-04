@@ -81,6 +81,7 @@ test('clear of already-done items precedes the micro answer and never guesses', 
 test('resolver accepts numbered and label replies', () => {
   expect(approvals).toContain('match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply');
   expect(approvals).toContain('Reason `not_admin`');
+  expect(skill).toContain("live turn with § Micro-approval response's `match` call");
   expect(approvals).toContain('`match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve`');
   expect(approvals).toContain('`ambiguous`: list the `choices`');
 });

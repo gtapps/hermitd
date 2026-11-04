@@ -10,9 +10,10 @@
 // Output (stdout, one JSON line):
 //   match: {"status":"match","id","question","answer","tier","on_resolve":<string|null>}
 //          With --chat, only entries asked in that chat are visible; without it
-//          (a terminal turn), every pending entry is. In a chat, a primary
-//          operator answers any entry and another sender only entries queued
-//          with their `user`; otherwise {"status":"none","reason":"not_admin"}.
+//          (a terminal turn), every pending entry is. In a chat whose channel
+//          sets a non-empty `operators` or `allowed_users`, a primary operator
+//          answers any entry and another sender only entries queued with their
+//          `user`; otherwise {"status":"none","reason":"not_admin"}.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
 //          {"status":"none","reason":"no_pending"|"no_match"|"not_admin"}
 //   resolve: {"status":"resolved","id","action"} / {"status":"none","reason":"no_match"}
@@ -54,7 +55,7 @@ import { listProposalFiles, readFrontmatter } from '../frontmatter';
 import { readSettledConfig } from '../config-read';
 import { resolve as resolveHomeTarget } from '../../resolve-outbound-channel';
 import { conversationKey, isKey } from '../conversation-key';
-import { isPrimaryOperator } from '../channel-auth';
+import { channelEntry, isPrimaryOperator } from '../channel-auth';
 
 type Json = any;
 
@@ -295,12 +296,16 @@ function matchReply(stateDir: string, args: string[]): never {
   if (!pending.length) none('no_pending');
   const target = id ? pending.find(entry => entry.id === id) : undefined;
   if (id && !target) none('no_match');
-  // In a chat, an entry without `user` is the admin's question; one with `user`
-  // is also that requester's. Terminal answers stay unrestricted.
-  if (chat !== undefined) {
-    // A thread key's `~<thread>` suffix is not part of the chat id the home and maintainer rules compare.
-    const [source, chatId] = chat.split(/[:~]/);
-    if (!isPrimaryOperator(readSettledConfig(stateDir), source, user ?? null, chatId)) {
+  // In a chat whose channel names people (`operators` or `allowed_users`), an
+  // entry without `user` is the admin's question; one with `user` is also that
+  // requester's. With no names there is no admin to tell apart, and terminal
+  // answers stay unrestricted.
+  const [source, chatId] = chat?.split(':') ?? [];
+  const config = chat === undefined ? null : readSettledConfig(stateDir);
+  const ch = config && channelEntry(config, source);
+  const namesPeople = [ch?.operators, ch?.allowed_users].some(list => Array.isArray(list) && list.length > 0);
+  if (namesPeople) {
+    if (!isPrimaryOperator(config, source, user ?? null, chatId)) {
       pending = pending.filter(entry => user !== undefined && entry.user === user);
     }
     if (!pending.length || (target && !pending.includes(target))) none('not_admin');
