@@ -510,7 +510,7 @@ describe('channel-status-responder', () => {
         await run(wd, '!status', stub.url);
         const text = stub.requests[0].body.text as string;
         expect(text).toContain('À sua espera:\n• Relatório: confirme o resultado (');
-        expect(text).toMatch(/há \d+ segundos/);
+        expect(text).toMatch(/há \d+ segundos?\)/);
       } finally {
         stub.stop();
         wd.cleanup();
