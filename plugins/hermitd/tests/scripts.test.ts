@@ -2723,6 +2723,24 @@ describe('proposal queue-micro', () => {
     expect(JSON.parse(reply.stdout)).toEqual({ status: 'match', id: keyed.id, question: 'Fix the leftovers?', answer: 'Fix them', tier: 1, on_resolve: null });
   }));
 
+  test('queue-micro (user names the requester; a disagreeing repeat leaves it to the admin)', withDir(async (dir) => {
+    seed(dir);
+    const ask = { tier: 1, question: 'Use the short form?', chat: 'discord:1' };
+    const first = await queue(dir, { ...ask, user: 'member' });
+    expect(microFile(dir).pending[0]).toMatchObject({ id: first.id, user: 'member' });
+    expect(await queue(dir, { ...ask, user: 'member' })).toEqual({ status: 'duplicate', id: first.id });
+    expect(microFile(dir).pending[0].user).toBe('member');
+    expect(await queue(dir, { ...ask, user: 'other' })).toEqual({ status: 'duplicate', id: first.id });
+    expect(microFile(dir).pending[0].user).toBeUndefined();
+    await queue(dir, { ...ask, user: 'other' });
+    expect(microFile(dir).pending[0].user).toBeUndefined();
+    for (const user of [7, '']) {
+      const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ ...ask, user }) });
+      expect(r.exitCode).toBe(1);
+      expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
+    }
+  }));
+
   test('queue-micro (a non-string or empty key -> exit 1)', withDir(async (dir) => {
     seed(dir);
     for (const key of [7, '']) {
@@ -6149,7 +6167,8 @@ describe('proposal micro match is read-only', () => {
   const ambiguous = (reason: string, ...choices: [string, string[]][]) =>
     ({ status: 'ambiguous', reason, choices: choices.map(([id, options]) => ({ id, options })) });
   const none = (reason: string) => ({ status: 'none', reason });
-  const cases: { name: string; pending: any[]; args: string[]; output: object }[] = [
+  const refused = { status: 'refused', reason: 'not_admin' };
+  const cases: { name: string; config?: object; pending: any[]; args: string[]; output: object }[] = [
     { name: 'yes case insensitive', pending: [plain], args: ['--reply', 'YES'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'no case insensitive', pending: [plain], args: ['--reply', 'No'], output: match('MP-plain', 'no', 1, null) },
     { name: 'explicit id', pending: [plain], args: ['MP-plain', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
@@ -6171,14 +6190,27 @@ describe('proposal micro match is read-only', () => {
     { name: 'none pending', pending: [], args: ['--reply', 'yes'], output: none('no_pending') },
     { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: none('no_pending') },
-    { name: 'asking chat matches', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'asking chat matches', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'member cannot answer the admin question', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
+    { name: 'unknown sender in a chat is not admin', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: refused },
+    { name: 'requester answers their own question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'admin answers a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'no'], output: match('MP-plain', 'no', 1, null) },
+    { name: 'another member cannot answer a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'other', '--reply', 'yes'], output: refused },
+    { name: 'member sees only their own question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
+    { name: 'member names the admin question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['MP-plain', '--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
+    { name: 'listed operator is primary', config: { channels: { discord: { operators: ['lead'], allowed_users: ['admin', 'lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'lead', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'no named people keeps any sender answering', config: { operator_profile: 'non-technical', channels: { discord: { default_chat_id: '1' } } }, pending: [{ ...plain, chat: 'discord:1~5' }], args: ['--chat', 'discord:1~5', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'empty lists name nobody to check', config: { channels: { discord: { operators: [], allowed_users: [] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
+    { name: 'operators alone name the admin', config: { channels: { discord: { operators: ['lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
     { name: 'other chat sees nothing', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'telegram:9', '--reply', 'yes'], output: none('no_pending') },
     { name: 'unstamped entry hidden from a chat', pending: [plain], args: ['--chat', 'discord:1', '--reply', 'yes'], output: none('no_pending') },
     { name: 'explicit id from another chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['MP-plain', '--chat', 'discord:2', '--reply', 'yes'], output: none('no_pending') },
-    { name: 'ambiguity only within the chat', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:2' }], args: ['--chat', 'discord:2', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
+    { name: 'ambiguity only within the chat', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:2' }], args: ['--chat', 'discord:2', '--user', 'admin', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
     { name: 'terminal sees every chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
   ];
+  const defaultConfig = { channels: { discord: { allowed_users: ['admin', 'member', 'other'] } } };
   for (const item of cases) test(item.name, withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), JSON.stringify(item.config ?? defaultConfig));
     const file = hermit(dir, 'state', 'micro-proposals.json');
     const ledger = hermit(dir, 'state', 'proposal-metrics.jsonl');
     const before = JSON.stringify({ pending: item.pending });
@@ -6213,7 +6245,7 @@ describe('proposal micro match is read-only', () => {
     expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
   }));
 
-  for (const args of [[], ['MP-plain'], ['--reply'], ['--bogus', 'yes'], ['MP-plain', '--reply', 'yes', 'extra'], ['--chat', 'discord:1'], ['--chat', 'nochat', '--reply', 'yes'], ['--chat', 'a:1', '--chat', 'b:2', '--reply', 'yes']]) {
+  for (const args of [[], ['MP-plain'], ['--reply'], ['--bogus', 'yes'], ['MP-plain', '--reply', 'yes', 'extra'], ['--chat', 'discord:1'], ['--chat', 'nochat', '--reply', 'yes'], ['--chat', 'a:1', '--chat', 'b:2', '--reply', 'yes'], ['--user', 'admin', '--reply', 'yes'], ['--chat', 'a:1', '--user', 'x', '--user', 'y', '--reply', 'yes']]) {
     test(`rejects malformed match args ${JSON.stringify(args)}`, withDir(async (dir) => {
       const result = await runProposal(hermit(dir), ['micro', 'match', ...args]);
       expect(result.exitCode).toBe(1);

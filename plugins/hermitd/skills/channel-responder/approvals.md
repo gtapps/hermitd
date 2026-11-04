@@ -3,9 +3,10 @@
 ## Micro-approval response
 
 - **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
-  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --reply "<token>"`, using this chat's normalized key; pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match. Follow its `status`:
+  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply "<token>"`, using this chat's normalized key and the envelope's `user_id` (§1c); pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match, and only a primary operator or the requester the question was asked of can answer. Follow its `status`:
     - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
+    - `refused`: a question is pending in this chat, but it is the admin's to answer. Reply that only the admin can answer it and that it stays open. Do not resolve it, act on the reply, or classify it further.
     - `none`, reason `no_pending`: keep classifying; a bare yes/no can still be a Proposal approval below. Reason `no_match`: ask for clarification once; do not resolve.
     - On a script error, report it and do not resolve or hand-edit the queue.
   - **Suggestion escape hatch:** on `ambiguous` for a bare yes, no or later, run `proposal-list` (Commands) with arguments `--status=proposed` and check the returned `proposals`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.

@@ -79,7 +79,9 @@ test('clear of already-done items precedes the micro answer and never guesses', 
 
 // Channel-safe approvals: the micro-proposal resolver's reply grammar.
 test('resolver accepts numbered and label replies', () => {
-  expect(approvals).toContain('match [<MP-id>] --chat <sourceKey>:<chat_id> --reply');
+  expect(approvals).toContain('match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply');
+  expect(approvals).toContain("`refused`: a question is pending in this chat, but it is the admin's to answer.");
+  expect(skill).toContain("live turn with § Micro-approval response's `match` call");
   expect(approvals).toContain('`match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve`');
   expect(approvals).toContain('`ambiguous`: list the `choices`');
 });

@@ -70,4 +70,31 @@ describe('eval case copies of live text', () => {
     for (let i = 0; i < routed.length; i += 8) problems.push(...await Promise.all(routed.slice(i, i + 8).map(check)));
     expect(problems.flat()).toEqual([]);
   }, 60_000);
+
+  // A fresh eval session gets the full SessionStart context, which never lists pending
+  // micro-proposals; only the compaction capsule does. A case that stands that line in
+  // must carry what the capsule prints for the queue its own scaffold seeds.
+  test('pending micro-proposals lines match the compaction capsule for the scaffolded queue', async () => {
+    const withLine = CASES.flatMap(c => {
+      const line = c.prompt.match(/^\s*(pending micro-proposals: .+)$/m)?.[1];
+      return line ? [{ ...c, line }] : [];
+    });
+    expect(withLine.length).toBeGreaterThan(0);
+    const stale: string[] = [];
+    for (const c of withLine) {
+      const wd = setupWorkdir();
+      try {
+        const scaffold = path.join(EVALS, path.dirname(c.file), 'scaffold.sh');
+        const s = Bun.spawnSync(['bash', scaffold], { cwd: wd.dir });
+        if (s.exitCode !== 0) { stale.push(`${c.file}: scaffold failed`); continue; }
+        const r = await runScript('startup-context.ts', {
+          cwd: wd.dir, env: { HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ source: 'compact', session_id: 'drift' }),
+        });
+        if (!r.stdout.split('\n').includes(c.line)) stale.push(`${c.file}: ${c.line}`);
+      } finally {
+        wd.cleanup();
+      }
+    }
+    expect(stale).toEqual([]);
+  }, 60_000);
 });

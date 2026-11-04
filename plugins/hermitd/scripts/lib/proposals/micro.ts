@@ -5,12 +5,16 @@
 // Usage:
 //   proposal.ts micro <hermit-state-dir> resolve <MP-id> --action approved|rejected|answered|expired [--answer "<label>"]
 //   proposal.ts micro <hermit-state-dir> brief-cycle
-//   proposal.ts micro <hermit-state-dir> match [<MP-id>] [--chat <sourceKey>:<chat_id>] --reply <token>
+//   proposal.ts micro <hermit-state-dir> match [<MP-id>] [--chat <sourceKey>:<chat_id> [--user <user_id>]] --reply <token>
 //   proposal.ts micro <hermit-state-dir> stamp-chat
 // Output (stdout, one JSON line):
 //   match: {"status":"match","id","question","answer","tier","on_resolve":<string|null>}
 //          With --chat, only entries asked in that chat are visible; without it
-//          (a terminal turn), every pending entry is.
+//          (a terminal turn), every pending entry is. In a chat whose channel
+//          sets a non-empty `operators` or `allowed_users`, a primary operator
+//          answers any entry and another sender only entries queued with their
+//          `user`; otherwise {"status":"refused","reason":"not_admin"}: a question
+//          is pending, but this sender may not answer it.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
 //          {"status":"none","reason":"no_pending"|"no_match"}
 //   resolve: {"status":"resolved","id","action"} / {"status":"none","reason":"no_match"}
@@ -52,6 +56,7 @@ import { listProposalFiles, readFrontmatter } from '../frontmatter';
 import { readSettledConfig } from '../config-read';
 import { resolve as resolveHomeTarget } from '../../resolve-outbound-channel';
 import { conversationKey, isKey } from '../conversation-key';
+import { channelEntry, isPrimaryOperator } from '../channel-auth';
 
 type Json = any;
 
@@ -268,31 +273,45 @@ export function sweepMoot(stateDir: string, proposalId: string): SweepResult {
 // Read-only matching leaves resolution and its write ordering with resolve.
 function matchReply(stateDir: string, args: string[]): never {
   let id: string | undefined;
-  let chat: string | undefined;
-  let rawReply: string | undefined;
+  const flags: Record<string, string | undefined> = {};
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--reply' || arg === '--chat') {
+    if (arg === '--reply' || arg === '--chat' || arg === '--user') {
       const value = args[++i];
-      if (value === undefined || (arg === '--reply' ? rawReply : chat) !== undefined) fail('usage');
-      if (arg === '--reply') rawReply = value;
-      else chat = value;
+      if (value === undefined || flags[arg] !== undefined) fail('usage');
+      flags[arg] = value;
     } else if (i === 1 && !arg.startsWith('-')) {
       id = arg;
     } else {
       fail('usage');
     }
   }
-  if (rawReply === undefined || (chat !== undefined && !isKey(chat))) fail('usage');
+  const { '--reply': rawReply, '--chat': chat, '--user': user } = flags;
+  if (rawReply === undefined || (chat !== undefined && !isKey(chat)) || (user !== undefined && chat === undefined)) fail('usage');
   const reply = rawReply.trim().toLowerCase();
   const read = readMicroProposals(path.join(stateDir, 'state', 'micro-proposals.json'));
   if (read.status === 'corrupt') fail('queue_corrupt');
-  const pending: Json[] = read.status === 'missing' ? []
+  let pending: Json[] = read.status === 'missing' ? []
     : read.data.pending.filter((entry: Json) => entry?.status === 'pending'
       && (chat === undefined || entry.chat === chat));
   if (!pending.length) none('no_pending');
-  const entry = id ? pending.find(entry => entry.id === id) : pending[0];
-  if (!entry) none('no_match');
+  const target = id ? pending.find(entry => entry.id === id) : undefined;
+  if (id && !target) none('no_match');
+  // In a chat whose channel names people (`operators` or `allowed_users`), an
+  // entry without `user` is the admin's question; one with `user` is also that
+  // requester's. With no names there is no admin to tell apart, and terminal
+  // answers stay unrestricted.
+  const [source, chatId] = chat?.split(':') ?? [];
+  const config = chat === undefined ? null : readSettledConfig(stateDir);
+  const ch = config && channelEntry(config, source);
+  const namesPeople = [ch?.operators, ch?.allowed_users].some(list => Array.isArray(list) && list.length > 0);
+  if (namesPeople) {
+    if (!isPrimaryOperator(config, source, user ?? null, chatId)) {
+      pending = pending.filter(entry => user !== undefined && entry.user === user);
+    }
+    if (!pending.length || (target && !pending.includes(target))) emitJson({ status: 'refused', reason: 'not_admin' });
+  }
+  const entry: Json = target ?? pending[0];
 
   const ambiguous = (reason: string, entries: Json[]): never => emitJson({
     status: 'ambiguous', reason,
