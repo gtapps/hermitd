@@ -121,7 +121,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     && isAllowedSender(ctx.config(), envelope.source, envelope.userId)
     && await isSelfMentioned(ctx.dir, ctx.config(), sourceKey, chatIdRaw, envelope.body, envelope);
 
-  const admittedConversation = !!(ctx.conversation || ctx.closedThread)
+  const admittedConversation = !!(ctx.conversation || ctx.closedThread || ctx.openTasksInChat)
     && isAllowedSender(ctx.config(), envelope.source, envelope.userId);
   const willBlock = passive && !addressed && !admittedConversation;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)) {

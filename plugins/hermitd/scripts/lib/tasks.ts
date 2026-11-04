@@ -38,9 +38,8 @@ export type Task = Record<typeof requiredStrings[number], string> & Record<typeo
 const WORKER_OWNER = /^worker:[0-9a-f]{8,}$/;
 const HELPER_OWNER = /^helper:[A-Za-z0-9._-]{1,64}$/;
 const validOwner = (value: string) => value === 'resident' || WORKER_OWNER.test(value) || HELPER_OWNER.test(value);
-// The records that own a chat thread: one open record per conversation key, held by
-// the resident, a worker, or a spawned helper session. The three hook paths that resolve a
-// thread from a chat id all read it from here.
+// Open conversation records held by the resident, a worker, or a spawned helper.
+// Records own real threads; chats without threads may share several records.
 export const threadRecords = (dir: string): Task[] =>
   readTasks(dir).filter(record => record.status === 'open' && record.conversation !== null && validOwner(record.owner));
 // Conversation bindings remain addressable after the task finishes.

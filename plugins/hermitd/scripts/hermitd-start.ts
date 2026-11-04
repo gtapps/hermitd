@@ -180,7 +180,6 @@ const DEFAULT_CONFIG: Json = {
     fleet_mesh: false,
   },
   tasks: {
-    handle_in_dm: false,
     duties_open_records: true,
     queue_nudge_minutes: 60,
   },

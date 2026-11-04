@@ -17,6 +17,7 @@ export interface StageContext {
   suppressResponderInvoke?: boolean;
   sessionId?: string | null;
   closedThread?: boolean;
+  openTasksInChat?: boolean;
   conversation?: { key: string; task_id: string; owner: string };
   /** Resolved hermit state dir — computed once for the whole pipeline. */
   dir: string;

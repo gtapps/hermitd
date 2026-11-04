@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: assign-release-note
-description: 'A work assignment needing review opens a task.'
+description: 'A draft requiring later review opens a task because sign-off is owed.'
 tags: [channel-routing, train]
 expected_outcome: 'Task route via the task skill.'
 context:

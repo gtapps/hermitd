@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
-import { lookupChat, lookupGuildRoles, createThread } from '../scripts/lib/channel-chats';
+import { lookupChat, lookupGuildRoles, createThread, classifyChat } from '../scripts/lib/channel-chats';
 
 test.serial('Discord metadata caches success, errors, and retries errors after 24 hours', async () => {
   const wd = setupWorkdir();
@@ -99,6 +99,44 @@ test.serial('thread creation posts the name and returns null on HTTP or network 
     expect(bodies.slice(2)).toEqual([{ name: 'Task thread' }, { name: 'Task thread', type: 11 }, { name: 'Task thread' }, { name: 'Task thread', type: 10 }]);
     server.stop(true);
     expect(await createThread(dir, config, '123', '456', 'Task thread')).toBeNull();
+  } finally {
+    if (previousStateDir === undefined) delete process.env.DISCORD_STATE_DIR;
+    else process.env.DISCORD_STATE_DIR = previousStateDir;
+    if (previousApi === undefined) delete process.env.HERMIT_DISCORD_API_URL;
+    else process.env.HERMIT_DISCORD_API_URL = previousApi;
+    server.stop(true);
+    wd.cleanup();
+  }
+});
+
+
+test.serial('chat classifier resolves warm and cold Discord metadata and envelope threads', async () => {
+  const wd = setupWorkdir();
+  const dir = path.join(wd.dir, '.hermit');
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: {
+    dm: { type: 1 }, guild: { type: 0 }, thread: { type: 11 },
+  } } }));
+  const tokenDir = path.join(wd.dir, 'discord');
+  fs.mkdirSync(tokenDir);
+  fs.writeFileSync(path.join(tokenDir, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+  const config = { channels: { discord: { state_dir: tokenDir } } };
+  const previousStateDir = process.env.DISCORD_STATE_DIR;
+  const previousApi = process.env.HERMIT_DISCORD_API_URL;
+  process.env.DISCORD_STATE_DIR = tokenDir;
+  const server = Bun.serve({ port: 0, fetch(req) {
+    return new URL(req.url).pathname.endsWith('/cold')
+      ? Response.json({ type: 11 }) : new Response('', { status: 403 });
+  } });
+  process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
+  try {
+    expect(await classifyChat(dir, config, 'discord', 'dm', null)).toBe('shared');
+    expect(await classifyChat(dir, config, 'discord', 'guild', null)).toBe('shared');
+    expect(await classifyChat(dir, config, 'discord', 'thread', null)).toBe('thread');
+    expect(await classifyChat(dir, config, 'discord', 'cold', null)).toBe('thread');
+    expect(await classifyChat(dir, config, 'discord', 'failed', null)).toBe('shared');
+    expect(await classifyChat(dir, config, 'telegram', '1', 'topic')).toBe('thread');
+    expect(await classifyChat(dir, config, 'telegram', '1', null)).toBe('shared');
   } finally {
     if (previousStateDir === undefined) delete process.env.DISCORD_STATE_DIR;
     else process.env.DISCORD_STATE_DIR = previousStateDir;

@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     observeExecution(HERMIT_DIR, 'idle', sessionId(payload), null, null);
     try {
       if (payload.stop_hook_active !== true) {
-        const reason = intakeBlockReason(HERMIT_DIR, sessionId(payload)) ?? replyBlockReason(HERMIT_DIR, payload);
+        const reason = await intakeBlockReason(HERMIT_DIR, sessionId(payload)) ?? await replyBlockReason(HERMIT_DIR, payload);
         if (reason) {
           console.log(JSON.stringify({ decision: 'block', reason }));
           blocked = true;

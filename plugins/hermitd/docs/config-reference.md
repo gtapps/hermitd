@@ -64,19 +64,19 @@ Modify with `/hermit-settings env` — except `AGENT_HOOK_PROFILE`, which that c
 
 ## `channels`
 
-An assignment from chat opens a task record and runs in an internal task worker with its own context. On a Discord text or announcement channel the assignment opens a thread first; channels with `attributes.thread_id` use one record per thread, and other chats are their own threads. The record's `conversation` key is that thread, and while the record is open every message in the chat belongs to it.
+An assignment from chat opens a task record and runs in an internal task worker with its own context. On a Discord text or announcement channel the assignment opens a thread first; a mapped `attributes.thread_id` identifies a thread on other channels. A record owns its thread. Chats without threads can hold several open records, listed by the hook and routed by the agent as continuations or independent new work.
 
 | Platform | Thread ownership |
 | --- | --- |
-| Discord | One thread per task from a text or announcement channel; an existing thread or DM carries its own record. |
-| Telegram | One record per group or DM; forum topics share the group's record. |
-| iMessage | One record per chat. |
+| Discord | One thread per task from a text or announcement channel; an existing thread carries its record; DMs share several records. |
+| Telegram | Groups and DMs share several records; a mapped topic has its own thread. |
+| iMessage | Several records may share a chat. |
 | Channels with `attributes.thread_id` | One record per thread; a message without the thread attribute is outside any thread. |
-| Other marketplace channel plugins | One record per chat id supplied by the plugin. |
+| Other marketplace channel plugins | Several records may share a chat id supplied by the plugin. |
 
 A message in an open task thread costs one resident routing turn in addition to the worker's own work; the worker edits its own progress card, so progress costs the resident nothing. Results and progress cards use the channel plugin's reply/edit tools. `!mute`, `!unmute`, `!restart`, and `!help` apply to the task thread; `!mute` and `!unmute` also work in a task's own thread after the task closes. On a helper-bound thread, `!model` and `!effort` switch that helper and keep its conversation; a busy helper switches when its current turn ends. Per-conversation `!model` and `!effort` remain unsupported on a worker-owned thread.
 
-Thread ownership lives in the task record under `tasks/`, not in a separate store. An allowed sender's messages in an open task thread bypass the passive-chat block; a muted thread admits mentions and any addressed `!` command, so `!pause`, `!status`, and the conversation commands keep working there. A chat with no open record retains its mention requirement, except a closed task's own thread (a Discord thread or a thread-attribute thread), which stays addressed unless muted. The upstream channel plugin must still deliver the message: Discord threads inherit the parent's mention gate and sender allowlist.
+Thread ownership lives in the task record under `tasks/`, not in a separate store. An allowed sender's messages in an open task thread or a shared chat with open tasks bypass the passive-chat block; a muted thread admits mentions and any addressed `!` command, so `!pause`, `!status`, and the conversation commands keep working there. A chat with no open record retains its mention requirement, except a closed task's own thread (a Discord thread or a thread-attribute thread), which stays addressed unless muted. The upstream channel plugin must still deliver the message: Discord threads inherit the parent's mention gate and sender allowlist.
 
 Object keyed by channel name. Built-in channels (`"discord"`, `"telegram"`, `"imessage"`) resolve their plugin from `claude-plugins-official` automatically; third-party channel plugins set the `marketplace` field below. All channel configuration lives here — no top-level `allowed_users` or `morning_brief` keys.
 
@@ -417,7 +417,6 @@ Modify with `/hermit-settings routines`.
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `tasks.handle_in_dm` | boolean | `false` | Show task handles in DMs when multiple tasks are open. |
 | `tasks.duties_open_records` | boolean | `true` | Let heartbeat and watch skills open deduplicated records when a human must act. |
 
 Task policy wording lives in operator-owned `TASKS.md`. Transition validity and closure evidence stay in code. See [Task records](task-records.md).

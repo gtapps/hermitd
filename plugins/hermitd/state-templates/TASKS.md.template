@@ -1,13 +1,13 @@
 # Task policy
 
 ## Record threshold
-Record work that outlasts the turn or needs a human. Plain questions open nothing.
+Record work needing investigation, a longer exchange, or later sign-off or choice, including a plan posted for approval. A one-off request answered in this reply opens nothing, even with a tool; one message is one task unless the requester asks for separate tasks.
 
 ## Confirmation and cancel words
 Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. A pending micro-proposal is answered first. When unsure, ask. Say when you close or cancel so the requester can object.
 
 ## Card, notice and standup wording
-Keep cards concise: requester, definition of done, due date and outcome. State the queue position when accepting work for later. Show handles when two or more tasks are open in the conversation; in DMs also require tasks.handle_in_dm. A stall notice names the status and next step. Standup groups promised, late and waiting work by person.
+Keep cards concise: requester, definition of done, due date and outcome. State the queue position when accepting work for later. In a chat without threads, show handles in cards and replies when two or more tasks are open there. A stall notice names the status and next step. Standup groups promised, late and waiting work by person.
 
 ## Questions inside a task's place
 Do not log questions unless they change the task.

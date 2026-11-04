@@ -276,8 +276,13 @@ test('guest session and every nonresident verb leave state untouched', async () 
 test('worker-owned thread passes before audit; resident-owned thread queues', async () => {
   for (const owner of ['worker:a1b2c3d4e5f6a7b8c', 'resident']) {
     const { wd, dir } = fixture();
-    expect((await openTask(wd.dir, dir, ['--owner', owner, '--requester', 'telegram:u1', '--conversation', 'telegram:12345'])).exitCode).toBe(0);
-    expect((await call(wd, 'intake', envelope('!clear'))).decision).toBe(owner === 'resident' ? 'queued' : 'pass');
+    // A task thread: Telegram maps its topic attribute, so the record owns telegram:12345~7.
+    const config = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
+    config.channels.telegram.attributes = { thread_id: 'message_thread_id' };
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+    expect((await openTask(wd.dir, dir, ['--owner', owner, '--requester', 'telegram:u1', '--conversation', 'telegram:12345~7'])).exitCode).toBe(0);
+    const inThread = '<channel source="telegram" chat_id="12345" message_thread_id="7" user="u1">!clear</channel>';
+    expect((await call(wd, 'intake', inThread)).decision).toBe(owner === 'resident' ? 'queued' : 'pass');
     expect(fs.existsSync(path.join(dir, 'state/last-operator-action.json'))).toBe(owner === 'resident');
   }
 });

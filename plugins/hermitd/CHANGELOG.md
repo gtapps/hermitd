@@ -1,5 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Chats without threads no longer belong to the oldest open task; the agent routes continuations and dispatches independent new work at once
+- Task intake follows the investigation, longer exchange, or later sign-off test; one-off answers open no record
+- One message is one task unless the requester asks for separate tasks
+- Worker reports name their task when several tasks share a chat without threads
+- The report placeholder carries its task id as `[[helper-report <task-id> <id>]]` and checks the reply destination
+- `tasks.handle_in_dm` is removed; handles identify concurrent tasks in chats without threads
+
+### Upgrade Instructions
+
+1. In `.hermit/TASKS.md`, compare the body of each section below (after its heading up to the next `## ` heading) independently with the previous template text quoted verbatim:
+
+   - `## Record threshold`:
+
+     Record work that outlasts the turn or needs a human. Plain questions open nothing.
+
+   - `## Card, notice and standup wording`:
+
+     Keep cards concise: requester, definition of done, due date and outcome. State the queue position when accepting work for later. Show handles when two or more tasks are open in the conversation; in DMs also require tasks.handle_in_dm. A stall notice names the status and next step. Standup groups promised, late and waiting work by person.
+
+   When a section equals its previous template text, replace only that section with the same-named section from `${CLAUDE_PLUGIN_ROOT}/state-templates/TASKS.md.template`. When it already equals the current template, do nothing. Otherwise preserve the file and **defer per SKILL.md Step 10** with `options: ["Adopt the new policy", "Keep my wording"]`, no `on_resolve`; apply the chosen branch only in attended Step 10:
+   - *Adopt the new policy*: replace that section with the current template section, preserving every other section.
+   - *Keep my wording*: leave the section unchanged.
+
+   TASKS.md participates in the watchdog's policy hash (`scripts/lib/context-policy.ts` → `contextPolicyHash`). Replacing either section makes the install eligible for a context clear under the usual conditions in `docs/task-records.md`; this step promises none.
+2. Remove the retired key: `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset tasks.handle_in_dm`. A missing key is fine; nothing reads it any more.
+
+**Leftover check:** The report placeholder is now `[[helper-report <task-id> <id>]]`; operator-authored procedures using the one-id form need the task id and matching reply destination. Ask once before changing those procedures.
+
+**Leftover check:** Operator-authored intake rules may still force tasks with trigger words or split every bundled request. The agent now tracks investigation, longer exchanges and later sign-off, with one task per message unless separate tasks are requested. Ask once before changing custom rules.
+
+**Leftover check:** `tasks.handle_in_dm` is removed; concurrent tasks in chats without threads always show handles. Ask once before changing custom references.
+
 ## [1.4.26] - 2026-11-03
 
 ### Fixed

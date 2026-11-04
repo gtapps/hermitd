@@ -24,7 +24,7 @@ Mention the hermit with each document. It downloads attachments before dispatchi
 
 The named approver confirms in words when the review is complete. This is conversational sign-off: cancellation is not restricted to that approver, and sign-off is separate from [tool-permission approval](access-model.md). Workers manage context; they do not isolate confidential material from the resident.
 
-Platforms without per-task threads need **one review at a time per chat**. Telegram groups and forum topics share one task record, as do iMessage chats and plugins without `attributes.thread_id`. While a review is open, every message in that chat belongs to it.
+Platforms without per-task threads can hold several concurrent reviews in one chat. The agent routes follow-ups using the hook's open-tasks list and asks once when the reference is ambiguous. Reports and resident-composed replies name their review when several tasks are open; a confirmation closes only the selected review. A mapped `attributes.thread_id` gives a topic its own task thread.
 
 ## Who can change what
 
