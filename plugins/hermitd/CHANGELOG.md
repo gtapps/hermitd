@@ -11,6 +11,16 @@
 - The report placeholder carries its task id as `[[helper-report <task-id> <id>]]` and checks the reply destination
 - `tasks.handle_in_dm` is removed; handles identify concurrent tasks in chats without threads
 - `!mute`, `!unmute` and `!restart` apply only in task threads; a task muted in a chat without threads no longer silences that chat
+- Editing a script run by a routine precheck, channel `send_script` or config watch raises the native permission prompt
+- Child processes left by a precheck, send script or claim check are stopped when it exits
+
+### Fixed
+
+- Timed-out prechecks, send scripts and claim checks no longer leave child processes running
+
+### Added
+
+- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ### Upgrade Instructions
 
@@ -36,14 +46,6 @@
 **Leftover check:** Operator-authored intake rules may still force tasks with trigger words or split every bundled request. The agent now tracks investigation, longer exchanges and later sign-off, with one task per message unless separate tasks are requested. Ask once before changing custom rules.
 
 **Leftover check:** `tasks.handle_in_dm` is removed; concurrent tasks in chats without threads always show handles. Ask once before changing custom references.
-- Editing a script run by a routine precheck, channel `send_script` or config watch raises the native permission prompt
-- Child processes left by a precheck, send script or claim check are stopped when it exits
-
-### Fixed
-
-- Timed-out prechecks, send scripts and claim checks no longer leave child processes running
-### Added
-- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ## [1.4.26] - 2026-11-03
 
