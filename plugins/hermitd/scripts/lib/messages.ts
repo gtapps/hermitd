@@ -35,6 +35,10 @@ export const EN = {
   status_n_approvals: '{n} approvals waiting.',
   status_next_routine: 'Next routine: {hh}:{mm} ({id}).',
   status_all_quiet: 'All quiet — nothing in progress, nothing waiting.',
+  status_waiting_header: 'Waiting on you:',
+  status_waiting_confirm: '{task}: confirm the result ({age})',
+  status_waiting_answer: '{task}: answer the question ({age})',
+  status_waiting_more: '+{n} more',
 
   // Spend cap line in the status reply (lib/spend-status.ts)
   spend_label_daily: 'Today',
@@ -108,6 +112,8 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   pause_reason_watchdog: 'Fills {label} in "Paused ({label}) until you resume it."',
   pause_reason_request: 'Fills {label} in "Paused ({label}) until you resume it."',
   status_one_approval: 'The operator answers with the id and yes or no in their own words; translate yes/no.',
+  status_waiting_confirm: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',
+  status_waiting_answer: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',
   spend_label_daily: 'Fills {label} in spend_cap_status.',
   spend_label_weekly: 'Fills {label} in spend_cap_status.',
   spend_label_monthly: 'Fills {label} in spend_cap_status.',

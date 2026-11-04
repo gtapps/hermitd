@@ -10,6 +10,8 @@
 ### Fixed
 
 - Timed-out prechecks, send scripts and claim checks no longer leave child processes running
+### Added
+- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ## [1.4.26] - 2026-11-03
 
