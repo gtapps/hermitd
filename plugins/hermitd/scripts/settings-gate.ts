@@ -395,9 +395,12 @@ function silentWatchWrite(
   if (!config || (config.monitors !== undefined && !Array.isArray(config.monitors))) return false;
   const monitors: Json[] = config.monitors ?? [];
   const isPrimary = origin.kind === 'terminal' || origin.primary;
+  // Saved watches store their chat without a thread, so a turn in one of its threads is that chat.
+  const inChat = (chat: unknown) => origin.kind === 'channel' && typeof chat === 'string'
+    && (chat === origin.key || (!chat.includes('~') && origin.key.startsWith(`${chat}~`)));
   const owning = (entry: Json) => entry.chat == null
     ? origin.kind === 'terminal' || operatorChat(origin.key)
-    : origin.kind === 'channel' && entry.chat === origin.key;
+    : inChat(entry.chat);
 
   if (verb === 'append' && dotted === 'monitors') {
     if (!/^'[^']*'$/.test(token) || tail !== `append monitors ${token}`) return false;
@@ -406,7 +409,7 @@ function silentWatchWrite(
     if (!watchShape(entry) || typeof entry.description !== 'string'
       || (entry.chat !== undefined && typeof entry.chat !== 'string')
       || monitors.some(item => item?.id === entry.id)) return false;
-    if (entry.enabled === false) return origin.kind === 'channel' && entry.chat === origin.key;
+    if (entry.enabled === false) return inChat(entry.chat);
     return entry.enabled === true && isPrimary && owning(entry);
   }
   const indexed = /^monitors\.(0|[1-9]\d*)(?:\.enabled)?$/.exec(dotted);

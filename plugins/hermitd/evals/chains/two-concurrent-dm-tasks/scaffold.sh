@@ -21,6 +21,8 @@ cat > .hermit/config.json <<HERMIT_CONFIG
   }
 }
 HERMIT_CONFIG
+mkdir -p ".hermit/guides"
+cp "$here/../../../skills/task/learn.md" ".hermit/guides/learn.md"
 mkdir -p ".hermit"
 cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
