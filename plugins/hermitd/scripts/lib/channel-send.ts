@@ -180,8 +180,14 @@ async function sendScript(
     const child = Bun.spawn([script.abs], {
       cwd: root, env, stdin: new Blob([text]), stdout: 'ignore', stderr: 'ignore',
       timeout: Math.max(1, Math.ceil(deadline - performance.now())), killSignal: 'SIGKILL',
+      detached: true,
     });
-    const code = await child.exited;
+    let code: number;
+    try { code = await child.exited; }
+    finally {
+      try { process.kill(-child.pid, 'SIGKILL'); }
+      catch (error: any) { if (error.code !== 'ESRCH') throw error; }
+    }
     return code === 0 ? { ok: true } : { ok: false, error: `exit:${code}` };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };

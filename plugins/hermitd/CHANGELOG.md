@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Editing a script run by a routine precheck, channel `send_script` or config watch raises the native permission prompt
+- Child processes left by a precheck, send script or claim check are stopped when it exits
+
+### Fixed
+
+- Timed-out prechecks, send scripts and claim checks no longer leave child processes running
+
 ## [1.4.26] - 2026-11-03
 
 ### Fixed

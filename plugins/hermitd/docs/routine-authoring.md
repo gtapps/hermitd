@@ -90,7 +90,9 @@ produce a report.
    env var (ISO timestamp of the last successful fire, empty on the first, meaning "everything is
    new"). It also gets `HERMIT_DIR`, `ROUTINE_ID`, `PATH`, and, when set, `HOME`, `LANG`,
    `CLAUDE_CONFIG_DIR`, and `HERMIT_PLUGIN_ROOT`. No other monitor variables are forwarded;
-   secrets belong in a file the script reads, not in the monitor's env. Keep it read-only and cheap:
+   keep tokens out of the gate script and the monitor's env, in a file under `.claude.local/` that
+   the script reads. Hatch gitignores that directory and backup never commits it. Child processes
+   the precheck starts are stopped when it exits or times out. Keep it read-only and cheap:
    mutation belongs in the skill, which only runs when the gate says so. Declaring a gate from chat
    raises Claude Code's native permission prompt (see [`docs/security.md`](security.md) § Settings from chat).
    In CronCreate fallback mode the gate still runs, but after the

@@ -11,7 +11,7 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { runScript } from './helpers/run';
+import { runScript, processRunning } from './helpers/run';
 import { verdictLine } from '../scripts/doctor-check';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { validatePrecheckValue, validatePrecheckTimeout, resolveGate, resolveProjectScript } from '../scripts/lib/routines/gate';
@@ -184,6 +184,29 @@ describe('routine gate — timeout and process hygiene', () => {
     expect(readRows(dir)[0].event).toBe('skipped-precheck');
     expect(elapsed).toBeLessThan(10000);
   }), 20000);
+
+  for (const timeout of [false, true]) {
+    test(`a gate leaves no background process after ${timeout ? 'timeout' : 'exit'}`, withDir(async (dir) => {
+      const duration = 1000000 + process.pid * 2 + Number(timeout);
+      const rel = writeGate(dir, 'child.sh', [
+        '#!/usr/bin/env bash',
+        `sleep ${duration} &`,
+        'child=$!',
+        'while [ "$(ps -o comm= -p "$child")" != sleep ]; do :; done',
+        'ps -o pid=,pgid= -p $$ > "$HERMIT_DIR/state/gate-group"',
+        timeout ? 'sleep 30' : 'echo SKIP',
+        '',
+      ].join('\n'));
+      writeConfig(dir, [ROUTINE({ precheck: rel, precheck_timeout_s: 1 })]);
+      writeSchedule(dir, PRIMED);
+      const r = await runDue(dir);
+      expect(r.exitCode).toBe(0);
+      expect(readRows(dir)[0].detail ?? readRows(dir)[0].event).toBe(timeout ? 'timeout' : 'skipped-precheck');
+      const [pid, pgid] = fs.readFileSync(hermit(dir, 'state', 'gate-group'), 'utf8').trim().split(/\s+/);
+      expect(pgid).toBe(pid);
+      expect(processRunning(`sleep ${duration}`)).toBe(false);
+    }), 20000);
+  }
 
   test('liveness is refreshed after a slow gate, not only at exit', withDir(async (dir) => {
     const rel = writeGate(dir, 'slow.sh', '#!/usr/bin/env bash\nsleep 1\necho SKIP\n');

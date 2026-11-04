@@ -27,6 +27,7 @@ import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from '.
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
+import { resolveProjectScript } from './lib/routines/gate';
 
 type Json = any;
 
@@ -294,6 +295,62 @@ function targetsConfigFile(p: string): string | undefined {
   return PROTECTED_FILES.find((name) => normalized.endsWith(`.hermit/${name}`));
 }
 
+type ConfigScript = { path: string; setting: string; display: string };
+
+function configScripts(): ConfigScript[] {
+  const dir = hermitDir();
+  const config = readConfigRaw(dir);
+  if (!config) return [];
+  let root: string;
+  try { root = fs.realpathSync(path.dirname(dir)); } catch { return []; }
+  const scripts: ConfigScript[] = [];
+  const addScript = (value: unknown, setting: string) => {
+    const resolved = resolveProjectScript(value, root);
+    if (resolved.kind === 'script') scripts.push({ path: resolved.abs, setting, display: String(value).trim() });
+  };
+  if (Array.isArray(config.routines)) {
+    config.routines.forEach((routine: Json, index: number) => addScript(routine?.precheck, `routines[${index}].precheck`));
+  }
+  if (config.channels && typeof config.channels === 'object' && !Array.isArray(config.channels)) {
+    for (const [name, channel] of Object.entries(config.channels) as [string, Json][]) {
+      addScript(channel?.send_script, `channels.${name}.send_script`);
+    }
+  }
+  if (Array.isArray(config.monitors)) {
+    config.monitors.forEach((monitor: Json, index: number) => {
+      if (typeof monitor?.command !== 'string') return;
+      for (const word of monitor.command.split(/\s+/)) {
+        if (!word) continue;
+        const expanded = word.replaceAll('${CLAUDE_PROJECT_DIR}', root)
+          .replaceAll('${CLAUDE_PLUGIN_ROOT}', process.env.CLAUDE_PLUGIN_ROOT ?? path.resolve(import.meta.dir, '..'));
+        try {
+          const real = fs.realpathSync(path.resolve(root, expanded));
+          if (real.startsWith(root + path.sep) && fs.statSync(real).isFile()) {
+            scripts.push({ path: real, setting: `monitors[${index}].command`, display: word });
+          }
+        } catch { /* Not an existing project file. */ }
+      }
+    });
+  }
+  return scripts;
+}
+
+function resolvedTarget(target: string, cwd: string): string {
+  const absolute = path.resolve(cwd, target);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    try { return path.join(fs.realpathSync(path.dirname(absolute)), path.basename(absolute)); }
+    catch { return absolute; }
+  }
+}
+
+function scriptWriteLabel(target: string, cwd: string, scripts: ConfigScript[]): string | undefined {
+  const real = resolvedTarget(target, cwd);
+  const script = scripts.find(entry => entry.path === real);
+  return script && `script run by ${script.setting} (${script.display})`;
+}
+
 /**
  * The routines array as it stands on disk, for the value-aware precheck rule.
  * An unreadable config yields an empty baseline, which makes every declared gate
@@ -409,7 +466,7 @@ const RUNS_SHELL_TEXT = /\b(?:(?:ba|z|da|k|c|tc|a|mk|ya|pw)?sh|fish|eval|source|
  * heredoc tag the scan cannot read exactly, or text a shell would run, keeps the
  * raw command.
  */
-function literalShellText(command: string): string {
+function literalShellText(command: string, conservative = true): string {
   let out = '';
   let i = 0;
   let escaped = -1;
@@ -461,7 +518,29 @@ function literalShellText(command: string): string {
       i += close.index + close[0].length;
     }
   }
-  return RUNS_SHELL_TEXT.test(out) ? command : out;
+  return conservative && RUNS_SHELL_TEXT.test(out) ? command : out;
+}
+
+function shellWriteTargets(command: string): string[] {
+  if (!/>|\b(?:cp|mv|tee|sed)\s/.test(command)) return [];
+  const targets: string[] = [];
+  const text = literalShellText(command, false);
+  const writes = />\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)|\b(cp|mv|tee|sed)\s+([^|;&<>\n]*)/g;
+  for (const match of text.matchAll(writes)) {
+    if (match[1]) {
+      targets.push(stripQuotes(match[1]));
+      continue;
+    }
+    const words = (match[3].match(/(?:[^\s"'\\]+|\\.|"[^"]*"|'[^']*')+/g) ?? []).map(stripQuotes);
+    if (match[2] === 'cp' || match[2] === 'mv') {
+      if (words.length >= 2) targets.push(words[words.length - 1]);
+    } else if (match[2] === 'tee') {
+      targets.push(...words.filter(word => !word.startsWith('-')));
+    } else if (words.some(word => /^-.*i/.test(word))) {
+      targets.push(...words.filter(word => !word.startsWith('-')));
+    }
+  }
+  return targets;
 }
 
 /** A token the shell would still expand: the hook cannot know what it names. */
@@ -524,6 +603,16 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
     // name the source of `cp .../config.json .../claude-settings.json` in the prompt.
     const names = fileWrite[0].match(new RegExp(PROTECTED_FILE_ALT, 'g'));
     return [...listen, names ? names[names.length - 1] : 'config.json'];
+  }
+
+  const targets = shellWriteTargets(command);
+  if (targets.length) {
+    const scripts = configScripts();
+    const labels = targets.flatMap(target => {
+      const label = scriptWriteLabel(target, cwd, scripts);
+      return label ? [label] : [];
+    });
+    if (labels.length) return [...listen, ...new Set(labels)];
   }
 
   // The script path and the config path may each be quoted (a plugin root or
@@ -604,7 +693,9 @@ function main(payload: any): void {
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);
-    asked = match ? [match] : null;
+    const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
+    const script = fp && !match ? scriptWriteLabel(fp, cwd, configScripts()) : undefined;
+    asked = match ? [match] : script ? [script] : null;
   }
 
   if (!asked) return;

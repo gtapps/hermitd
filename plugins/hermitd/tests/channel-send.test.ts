@@ -7,7 +7,7 @@
 import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runScript, runPinnedScript, type RunOptions } from './helpers/run';
+import { runScript, runPinnedScript, processRunning, type RunOptions } from './helpers/run';
 import { setupWorkdir, writeConfig, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
@@ -1327,6 +1327,30 @@ test('project send script receives text and only its declared environment', asyn
     expect(unconsolidated(hermit(wd.dir)).rows[0]).toMatchObject({ source: 'custom', direction: 'out' });
   } finally { delete process.env.HERMIT_SEND_LEAK_PROBE; wd.cleanup(); }
 });
+
+for (const timeout of [false, true]) {
+  test(`project send script stops background processes after ${timeout ? 'timeout' : 'delivery'}`, async () => {
+    const wd = setupWorkdir();
+    const duration = 2000000 + process.pid * 2 + Number(timeout);
+    try {
+      write(path.join(wd.dir, 'send.sh'), [
+        '#!/bin/sh',
+        `sleep ${duration} &`,
+        'child=$!',
+        'while [ "$(ps -o comm= -p "$child")" != sleep ]; do :; done',
+        timeout ? 'sleep 30' : 'exit 0',
+        '',
+      ].join('\n'));
+      fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+      const config = { channels: { custom: { send_script: 'send.sh' } } };
+      const result = await sendToChannel(hermit(wd.dir), 'hello', {
+        config, target: { id: 'custom', chat_id: 'C1' }, timeoutMs: timeout ? 1000 : 10000,
+      });
+      expect(result.ok).toBe(!timeout);
+      expect(processRunning(`sleep ${duration}`)).toBe(false);
+    } finally { wd.cleanup(); }
+  }, 20000);
+}
 
 test('unsendable configured primary stays on its route', async () => {
   const stub = startHttpStub();

@@ -268,6 +268,62 @@ describe('settings-gate reason shape', () => {
 });
 
 describe('settings-gate file writes', () => {
+  test('Edit and Write on config-run scripts ask, including symlinks', async () => {
+    const dir = fixture({
+      routines: [{ precheck: 'tools/gate.sh' }, { precheck: 'reflect' }],
+      channels: { example: { send_script: 'tools/send.sh' } },
+      monitors: [{ command: 'bun ${CLAUDE_PROJECT_DIR}/tools/watch.ts' }],
+    });
+    fs.mkdirSync(path.join(dir, 'tools'));
+    for (const name of ['gate.sh', 'send.sh', 'watch.ts', 'other.sh', 'reflect']) {
+      fs.writeFileSync(path.join(dir, 'tools', name), '', { mode: 0o755 });
+    }
+    fs.symlinkSync('gate.sh', path.join(dir, 'tools', 'alias.sh'));
+    for (const [file, setting, display] of [
+      ['gate.sh', 'routines[0].precheck', 'tools/gate.sh'],
+      ['send.sh', 'channels.example.send_script', 'tools/send.sh'],
+      ['watch.ts', 'monitors[0].command', '${CLAUDE_PROJECT_DIR}/tools/watch.ts'],
+      ['alias.sh', 'routines[0].precheck', 'tools/gate.sh'],
+    ]) {
+      for (const tool of ['Edit', 'Write'] as const) {
+        const r = await runGate(payload({ dir, tool, input: { file_path: path.join(dir, 'tools', file) } }), dir);
+        expect(r.exitCode).toBe(0);
+        expectAsk(r.stdout, `Hermit setting: script run by ${setting} (${display})`);
+      }
+    }
+    for (const file of ['other.sh', 'reflect']) {
+      expectSilent(await runGate(payload({ dir, tool: 'Edit', input: { file_path: path.join(dir, 'tools', file) } }), dir));
+    }
+    fs.unlinkSync(path.join(dir, '.hermit', 'config.json'));
+    expectSilent(await runGate(payload({ dir, tool: 'Write', input: { file_path: path.join(dir, 'tools', 'gate.sh') } }), dir));
+  });
+
+  test('shell writes to config-run scripts ask, while reads, removals and literal text stay silent', async () => {
+    const dir = fixture({ routines: [{ precheck: 'tools/gate.sh' }] });
+    fs.mkdirSync(path.join(dir, 'tools'));
+    for (const file of ['gate.sh', 'other.sh']) {
+      fs.writeFileSync(path.join(dir, 'tools', file), '', { mode: 0o755 });
+    }
+    fs.symlinkSync('gate.sh', path.join(dir, 'tools', 'alias.sh'));
+    for (const command of [
+      'echo x > tools/gate.sh', 'echo x >> ./tools/gate.sh',
+      'cp /tmp/a tools/gate.sh', 'mv /tmp/a tools/gate.sh', 'tee tools/gate.sh',
+      'sed -i s/a/b/ tools/gate.sh', `echo x > "${path.join(dir, 'tools/gate.sh')}"`,
+      'echo x > tools/alias.sh',
+    ]) {
+      const r = await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir);
+      expect(r.exitCode).toBe(0);
+      expectAsk(r.stdout, 'Hermit setting: script run by routines[0].precheck (tools/gate.sh)');
+    }
+    for (const command of [
+      'echo x > tools/other.sh', 'cp /tmp/a tools/other.sh', 'tee tools/other.sh',
+      'sed -i s/a/b/ tools/other.sh', 'rm tools/gate.sh', "echo '> tools/gate.sh'",
+      "cat <<'EOF'\necho x > tools/gate.sh\nEOF", 'cp tools/gate.sh /tmp/a',
+    ]) {
+      expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir));
+    }
+  });
+
   test('Edit and Write on config.json ask', async () => {
     const dir = fixture();
     const fp = path.join(dir, '.hermit', 'config.json');
