@@ -1,5 +1,10 @@
 # Changelog — laravel-forge-hermit
 
+## [Unreleased]
+
+### Fixed
+- Deploy skill no longer cites a watch option Claude Code removed.
+
 ## [0.0.23] - 2026-10-25
 
 ### Changed
