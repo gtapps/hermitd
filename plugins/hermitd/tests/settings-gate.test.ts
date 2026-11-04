@@ -620,18 +620,21 @@ test('quoted nickname alternation does not truncate enrollment approval values',
   expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason).toBe('Hermit setting: listen in discord chat 123: mention=no allow=anyone shared=yes passive=yes + nickname triggers (channel-wide) + seen-emoji off (channel-wide)');
 });
 
-test('native permission edits ask from chat or unknown origins, but not terminal', async () => {
+test('native permission edits ask from chat, unknown or unproven origins, but not a typed terminal', async () => {
   const dir = fixture({ channels: { discord: { allowed_users: ['u1'] } } });
   const transcript = path.join(dir, 'channel.jsonl');
   fs.writeFileSync(transcript, JSON.stringify({
     type: 'user', message: { content: '<channel source="discord" chat_id="100" user_id="u1">change rules</channel>' },
   }) + '\n');
+  const typed = path.join(dir, 'typed.jsonl');
+  fs.writeFileSync(typed, JSON.stringify({ type: 'user', origin: { kind: 'human' }, message: { content: 'change rules' } }) + '\n');
   for (const tool of ['Edit', 'Write'] as const) {
     for (const name of ['settings.json', 'settings.local.json']) {
       const base = JSON.parse(payload({ dir, tool, input: { file_path: path.join(dir, '.claude', name) } }));
       expectAsk((await runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir)).stdout, 'Hermit setting: native permissions');
       expectAsk((await runGate(JSON.stringify({ ...base, transcript_path: path.join(dir, 'missing') }), dir)).stdout, 'Hermit setting: native permissions');
-      expectSilent(await runGate(JSON.stringify(base), dir));
+      expectAsk((await runGate(JSON.stringify(base), dir)).stdout, 'Hermit setting: native permissions');
+      expectSilent(await runGate(JSON.stringify({ ...base, transcript_path: typed }), dir));
     }
   }
 });

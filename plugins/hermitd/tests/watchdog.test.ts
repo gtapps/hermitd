@@ -2768,6 +2768,8 @@ for (const scenario of ['idle', 'operator-recent', 'paused', 'interactive', 'bus
     if (scenario === 'idle') {
       expect(events(h)).toContain('rules-restart');
       expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('rules');
+      expect(readJson(state(h, 'runtime.json')).planned_restart_at).toBeTruthy();
+      expect(readJson(state(h, 'runtime.json')).last_error).not.toBe('unclean_shutdown');
       expect(tmuxCalls(h)).toContain('kill-session');
     } else {
       expect(events(h)).toContain('rules-restart-deferred');
@@ -2776,6 +2778,17 @@ for (const scenario of ['idle', 'operator-recent', 'paused', 'interactive', 'bus
     }
   }));
 }
+
+test('interactive rules deferral is recorded once across ticks', withHermit(async (h) => {
+  writeConfig(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  seedRulesChange(h);
+  patchRuntime(h, { runtime_mode: 'interactive' });
+  expect((await watchdog(h, 'run')).exitCode).toBe(0);
+  expect((await watchdog(h, 'run')).exitCode).toBe(0);
+  expect(String(events(h)).split('rules-restart-deferred').length - 1).toBe(1);
+}));
 
 for (const scenario of ['matching', 'missing', 'malformed'] as const) {
   test(`rules restart ignores ${scenario} state`, withHermit(async (h) => {
@@ -2814,6 +2827,29 @@ test('upgrade restart takes priority over a pending rules restart', withHermit(a
   expect(events(h)).not.toContain('rules-restart');
   expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('upgrade');
   expect(tmuxCalls(h).split('\n').filter((line) => line.startsWith('kill-session '))).toHaveLength(1);
+}));
+
+test('a deferred upgrade restart holds a pending rules restart', withHermit(async (h) => {
+  writeConfig(h);
+  const configPath = path.join(h.dir, '.hermit/config.json');
+  const config = readJson(configPath);
+  config._hermit_versions = { hermitd: readJson(path.join(SCRIPTS_DIR, '..', '.claude-plugin', 'plugin.json')).version };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  seedRulesChange(h);
+  writeState(h, 'update-in-progress.json', { at: new Date().toISOString() });
+  fs.writeFileSync(state(h, '.boot-id'), 'native-boot\n');
+  writeState(h, 'heartbeat-monitor.runtime.json', {
+    launch: 'native', mode: 'monitor', boot_id: 'native-boot', interval: 7200,
+    command: registeredCommand(h, 'heartbeat', 'old-version'), started_at: isoAgo(1),
+  });
+  writeState(h, 'heartbeat-liveness.json', { pid: process.pid, last_peek_at: isoAgo(0) });
+  const result = await watchdog(h, 'run');
+  expect(result.exitCode).toBe(0);
+  expect(events(h)).toContain('update-in-progress');
+  expect(events(h)).not.toContain('rules-restart');
+  expect(tmuxCalls(h)).not.toContain('kill-session');
 }));
 
 for (const leg of ['heartbeat', 'routine'] as const) {

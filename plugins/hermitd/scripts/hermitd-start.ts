@@ -1218,12 +1218,19 @@ function renderLaunchOverlay(config: Json): string | null {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(overlay, null, 2) + '\n');
-    writeFileAtomic(path.resolve(STATE_DIR, 'operator-auto-mode.json'), JSON.stringify({ fingerprint: operatorAutoModeFingerprint(operatorAutoMode) }) + '\n');
-    return file;
   } catch (e: any) {
     console.log(`[hermit] launch overlay not written (${e?.message ?? e}): refusing to start without pause-gate, ask-gate, component-privacy and permission-denied-notify`);
     return null;
   }
+  const fingerprintFile = path.resolve(STATE_DIR, 'operator-auto-mode.json');
+  try {
+    writeFileAtomic(fingerprintFile, JSON.stringify({ fingerprint: operatorAutoModeFingerprint(operatorAutoMode) }) + '\n');
+  } catch (e: any) {
+    // A stale fingerprint would make the watchdog restart on every tick.
+    try { fs.rmSync(fingerprintFile, { force: true }); } catch {}
+    console.log(`[hermit] WARNING: approval-rules fingerprint not written (${e?.message ?? e}); rule changes apply at the next start`);
+  }
+  return file;
 }
 
 /** Seed workspace trust once at boot. */

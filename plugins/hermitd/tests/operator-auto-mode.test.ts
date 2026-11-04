@@ -97,6 +97,8 @@ test('check validates lists and reports activation gate', withDir(async (dir) =>
   writeConfig(dir, { watchdog: { enabled: false } });
   expect(JSON.parse((await run(dir, ['check'])).stdout).applies).toBe('next_start');
   writeConfig(dir, { watchdog: { enabled: true } });
+  expect(JSON.parse((await run(dir, ['check'])).stdout).applies).toBe('next_start');
+  fs.writeFileSync(path.join(dir, '.hermit/state/operator-auto-mode.json'), '{"fingerprint":"x"}');
   expect(JSON.parse((await run(dir, ['check'])).stdout).applies).toBe('quiet_restart');
   expect(fs.readFileSync(settings, 'utf8')).toBe('{"autoMode":{"allow":["rule"]}}');
 }));

@@ -695,18 +695,20 @@ function main(payload: any): void {
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);
-    const nativePermissions = /(?:^|\/)\.claude\/settings(?:\.local)?\.json$/.test(fp.replace(/\\/g, '/'));
+    const nativePermissions = /(?:^|\/)\.claude\/settings(?:\.local)?\.json$/i.test(fp.replace(/\\/g, '/'));
     let turn: RoutineOrigin | undefined;
     const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
+    // Only a proven terminal turn is the operator; a wake, a joined sender or an unreadable turn is not.
+    const notOperator = () => { const value = origin(); return !(value.kind === 'terminal' && value.proven); };
     if (payload.permission_mode === 'bypassPermissions'
-      && (match === 'claude-settings.json' || nativePermissions) && origin().kind === 'channel') {
+      && (match === 'claude-settings.json' || nativePermissions) && notOperator()) {
       deny('Permission settings changes from chat are refused in bypass mode; use a normal session or edit from the terminal.');
       return;
     }
     const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
     const script = fp && !match ? scriptWriteLabel(fp, cwd, configScripts()) : undefined;
     asked = match ? [match] : script ? [script] : null;
-    if (nativePermissions && origin().kind !== 'terminal') asked = [...(asked ?? []), 'native permissions'];
+    if (nativePermissions && notOperator()) asked = [...(asked ?? []), 'native permissions'];
   }
 
   if (!asked) return;

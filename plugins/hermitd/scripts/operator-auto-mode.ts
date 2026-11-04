@@ -46,7 +46,9 @@ function check(): never {
   if (reason) return emitJson({ status: 'invalid', reason });
   const runtime = readRuntimeJson();
   const config = readConfigRaw('.hermit');
-  const applies = runtime?.runtime_mode === 'interactive' || config?.watchdog?.enabled !== true ? 'next_start' : 'quiet_restart';
+  // The watchdog restarts only against the fingerprint the running session's launch recorded.
+  const launched = fs.existsSync('.hermit/state/operator-auto-mode.json');
+  const applies = !launched || runtime?.runtime_mode === 'interactive' || !config?.watchdog?.enabled ? 'next_start' : 'quiet_restart';
   return emitJson({ status: 'ok', applies });
 }
 
