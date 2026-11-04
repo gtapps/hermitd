@@ -112,9 +112,22 @@ async function observe(): Promise<{ value?: string; failure?: string }> {
       detached: true, stdio: ['ignore', 'pipe', 'ignore'],
     });
     const running = child;
+    let settled = false;
+    const finish = (result: { value?: string; failure?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child = null;
+      running.stdout?.destroy();
+      resolve(result);
+    };
+    const exited = () => running.exitCode !== null || running.signalCode !== null;
+    // A failed check settles on exit, not only on stdout close: a descendant that left
+    // the process group can hold the pipe open past the kill.
     const timer = setTimeout(() => {
       failure = 'timeout';
       killCheck();
+      if (exited()) finish({ failure });
     }, timeoutMs);
     running.stdout!.on('data', (chunk: Buffer) => {
       size += chunk.length;
@@ -125,12 +138,11 @@ async function observe(): Promise<{ value?: string; failure?: string }> {
       }
     });
     running.once('error', () => { failure = 'spawn'; });
+    running.once('exit', () => { if (failure) finish({ failure }); });
     running.once('close', (code, signal) => {
-      clearTimeout(timer);
-      child = null;
-      if (failure) resolve({ failure });
-      else if (code !== 0) resolve({ failure: code === null ? signal ?? 'spawn' : String(code) });
-      else resolve({ value: Buffer.concat(chunks).toString('utf8').trim() });
+      if (failure) finish({ failure });
+      else if (code !== 0) finish({ failure: code === null ? signal ?? 'spawn' : String(code) });
+      else finish({ value: Buffer.concat(chunks).toString('utf8').trim() });
     });
   });
 }
@@ -158,3 +170,5 @@ while (!stopping) {
     wake = () => { clearTimeout(timer); wake = null; resolve(); };
   });
 }
+// Exit even while an escaped descendant of an earlier check still holds a handle open.
+process.exit(0);

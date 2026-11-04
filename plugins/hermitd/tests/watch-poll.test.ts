@@ -112,6 +112,20 @@ test('timeout kills the check and over-cap output counts as failure', () => fixt
   } finally { await large.stop(); }
 }));
 
+test('a check whose descendant keeps stdout open still times out', () => fixture(async project => {
+  // The background sleep leaves the check's process group, so the group kill misses it and the pipe stays open.
+  const check = `perl -e 'setpgrp(0, 0); open my $f, ">>", "bgpid"; print $f "$$\\n"; close $f; exec "sleep", "30"' & exit 0`;
+  const watch = start(project, check, { WATCH_POLL_TIMEOUT_MS: '200' });
+  try {
+    await until(() => watch.lines.includes('failing: timeout') ? true : undefined);
+    await watch.stop();
+  } finally {
+    const pids = fs.existsSync(path.join(project, 'bgpid')) ? fs.readFileSync(path.join(project, 'bgpid'), 'utf8').trim().split('\n') : [];
+    for (const pid of pids) try { process.kill(Number(pid), 'SIGKILL'); } catch {}
+    watch.proc.kill('SIGKILL');
+  }
+}));
+
 test('empty state, multiline output, and WATCH_LAST_STATE', () => fixture(async project => {
   const watch = start(project, 'printf "%s" "$WATCH_LAST_STATE" > last; cat value');
   fs.writeFileSync(path.join(project, 'value'), '');
