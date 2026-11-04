@@ -27,6 +27,9 @@ const SAVE = String.raw`settings-edit[^\n]*append monitors[^\n]*watch-poll [a-z0
 const saved: Grader = { name: 'saved-watch-poll', type: 'tool_used', tool: 'Bash', input_match: SAVE, weight: 3 };
 const notSaved: Grader = { name: 'no-monitors-write', type: 'tool_used', tool: 'Bash', input_match: 'append monitors', min: 0, max: 0, weight: 2 };
 const replied: Grader = { name: 'replied-via-channel', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply' };
+// A watch event is a Monitor notification with no inbound chat, so its report goes out as a channel-send notice tagged with the watch id.
+const noticeSent = (id: string): Grader => ({ name: 'reported-via-notice', type: 'tool_used', tool: 'Bash',
+  input_match: String.raw`channel-send(?=[^\n]*--notice)(?=[^\n]*--watch[ =]+['"]?${id}\b)`, weight: 2 });
 
 const THREAD = '700000000000000301';
 const envelope = (chat: string, mid: string, user: string, body: string) =>
@@ -53,12 +56,12 @@ function turn(mid: string, user: string, body: string, task?: string): string {
   });
 }
 
-function watchCase(name: string, split: string, desc: string, expected: string, body: string, graders: Grader[]): void {
+function watchCase(name: string, split: string, desc: string, expected: string, body: string, graders: Grader[], reply: Grader = replied): void {
   const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [watch, ${split}]`,
     `expected_outcome: ${yq(expected)}`, 'context:', '  scaffold_script: scaffold.sh', 'execution:',
     '  max_turns: 14', '  timeout_seconds: 420', '  allowed_tools: [Skill, Read, Glob, Grep, Bash]',
     '  env: {EVAL_HERMIT_RESIDENT: "1"}', '  append_system_prompt: |', indent(residentPrompt()),
-    '  prompt: |', indent(body), 'graders:', ...[...graders, replied].map(g => '  - ' + JSON.stringify(g))];
+    '  prompt: |', indent(body), 'graders:', ...[...graders, reply].map(g => '  - ' + JSON.stringify(g))];
   const scaffold = residentScaffold(CONFIG, { '.hermit/bin/hermitd-run': STUB }) + 'chmod +x .hermit/bin/hermitd-run\n';
   writeCase(path.join(OUT, name), y, scaffold);
 }
@@ -106,6 +109,7 @@ watchCase('met-watch-asks-stop', 'train', 'A saved watch reports the event that 
     watchEvent('deploy-finished', metConfig.monitors[0].description, 'status: finished'),
     ['- config.json monitors[0]: ' + JSON.stringify(metConfig.monitors[0])])),
   [{ name: 'asked-to-stop', type: 'tool_used', tool: 'Bash', input_match: String.raw`queue-micro[\s\S]*watch-stop:deploy-finished`, weight: 3 },
-    { name: 'no-monitors-write', type: 'tool_used', tool: 'Bash', input_match: String.raw`settings-edit[^\n]*monitors`, min: 0, max: 0, weight: 2 }]);
+    { name: 'no-monitors-write', type: 'tool_used', tool: 'Bash', input_match: String.raw`settings-edit[^\n]*monitors`, min: 0, max: 0, weight: 2 }],
+  noticeSent('deploy-finished'));
 
 report('watch');

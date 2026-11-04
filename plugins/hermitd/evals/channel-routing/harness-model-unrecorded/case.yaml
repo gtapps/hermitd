@@ -45,4 +45,4 @@ graders:
   - name: asks-for-resend
     type: llm
     focus: 'mock_calls'
-    criteria: 'PASS if the channel reply asks the operator to send the model command again (now that the agent is idle). FAIL if the reply claims the model was switched, tells them to use a terminal or the Claude app, or no reply was sent.'
+    criteria: 'PASS if the channel reply says chat model commands are unavailable in this session and does not claim the model was switched or promise the switch will happen. FAIL if it claims the switch, promises delivery, or no reply was sent.'

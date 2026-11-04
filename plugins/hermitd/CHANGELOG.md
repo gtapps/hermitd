@@ -31,6 +31,7 @@
 ### Fixed
 
 - Timed-out prechecks, send scripts and claim checks no longer leave child processes running
+- A request in a task thread to keep an eye on something reaches the watch skill instead of staying a task note
 
 ### Upgrade Instructions
 

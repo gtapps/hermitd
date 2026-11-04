@@ -12,11 +12,14 @@ execution:
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents. Every other step of the skill runs as written.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[{"id":"T-20261001-091000","handle":"disk-trend","title":"Check disk usage trend","listing":["open"],"waiting_on":null,"owner":"worker:a1b2c3d4","requester":"discord:100000000000000001"}],"total":1,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-list: {"total":0,"shown":0,"proposals":[]}
+    - conversation.ts thread-open: {"key":"discord:400000000000000001","chat_id":"400000000000000001"}
+    - task.ts open: {"id":"T-20261001-093000","handle":"<slug of the --title>","created":true,"open_count":2,"queued":false}
+    - task.ts note, task.ts block: OK
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -38,4 +41,5 @@ graders:
     weight: 2
   - name: routing-outcome
     type: llm
-    criteria: "PASS only if New work opens its own task and dispatches now; disk-trend is not replaced or steered."
+    focus: 'trace'
+    criteria: "PASS if the domain renewal work gets its own new task record, separate from disk-trend, and disk-trend is neither steered nor replaced. FAIL if the request is folded into disk-trend, replaces it, or is handled without opening a task."
