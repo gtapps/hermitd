@@ -21,6 +21,7 @@ import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { writePtMessages } from './helpers/pt-messages';
+import { decodeTask, encodeTask } from '../scripts/lib/tasks';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
@@ -34,14 +35,33 @@ function payload(body: string, user = 'u1'): string {
 }
 
 // A runnable resident record is the current work the status reply reports.
-async function openTask(wd: Workdir, title: string) {
+async function openTask(wd: Workdir, title: string, owner = 'resident'): Promise<string> {
   const dir = hermit(wd.dir);
   const r = await runScript('task.ts', {
     cwd: wd.dir,
     env: { AGENT_DIR: dir },
-    args: ['open', dir, '--owner', 'resident', '--title', title, '--requester', 'telegram:u1', '--done', 'Result verified'],
+    args: ['open', dir, '--owner', owner, '--title', title, '--requester', 'telegram:u1', '--done', 'Result verified'],
   });
   expect(r.exitCode).toBe(0);
+  const opened = JSON.parse(r.stdout);
+  expect(opened.id).toMatch(/^T-/);
+  return opened.id;
+}
+
+async function taskCommand(wd: Workdir, verb: string, id: string, args: string[], stdin = '') {
+  const dir = hermit(wd.dir);
+  const r = await runScript('task.ts', {
+    cwd: wd.dir, env: { AGENT_DIR: dir }, args: [verb, dir, id, ...args], stdin,
+  });
+  expect(r.exitCode).toBe(0);
+  expect(JSON.parse(r.stdout).status).not.toBe('refused');
+}
+
+// A record parked on a question to `who`.
+async function waitOn(wd: Workdir, title: string, who: string): Promise<string> {
+  const id = await openTask(wd, title);
+  await taskCommand(wd, 'block', id, ['--waiting-on', who, '--status-line', 'Need answer', '--next', 'Reply']);
+  return id;
 }
 
 function setupChannelWorkdir(configExtra: object = {}): Workdir {
@@ -271,6 +291,120 @@ describe('channel-status-responder', () => {
     }
   });
 
+  test('waiting results and questions are scoped to the requester and omit cleared waits', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      const result = await openTask(wd, 'Draft report', 'helper:report');
+      await taskCommand(wd, 'block', result, ['--result-stdin'], 'Ready for review');
+      await waitOn(wd, 'Book venue', 'telegram:u1');
+      await waitOn(wd, 'Someone else', 'telegram:u2');
+      const cleared = await waitOn(wd, 'Cleared wait', 'telegram:u1');
+      await taskCommand(wd, 'note', cleared, ['--clear-waiting']);
+
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      const block = text.slice(text.indexOf('Waiting on you:'));
+      expect(block).toContain('• Draft report: confirm the result (');
+      expect(block).toContain('• Book venue: answer the question (');
+      expect(block).not.toContain('Someone else');
+      expect(block).not.toContain('Cleared wait');
+      expect(block).not.toMatch(/T-\d/);
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('orders waits by their relevant timestamp and uses locale relative time', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      await waitOn(wd, 'Newer question', 'telegram:u1');
+      const older = await openTask(wd, 'Older result');
+      await taskCommand(wd, 'block', older, ['--result-stdin'], 'Ready');
+      const file = hermit(wd.dir, 'tasks', `${older}.md`);
+      const record = decodeTask(fs.readFileSync(file, 'utf8'));
+      record.result_at = new Date(Date.now() - 3 * 3600000).toISOString();
+      fs.writeFileSync(file, encodeTask(record));
+
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('Older result: confirm the result (3 hours ago)');
+      expect(text.indexOf('Older result')).toBeLessThan(text.indexOf('Newer question'));
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('counts only approvals for this chat, treating chat-less entries as home', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-home', status: 'pending' },
+        { id: 'MP-other', status: 'pending', chat: 'telegram:999' },
+        { id: 'MP-resolved', status: 'resolved', chat: 'telegram:12345' },
+      ] }));
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('• 1 approval waiting (reply "MP-home yes/no").');
+      expect(text).not.toContain('MP-other');
+      expect(text).not.toContain('2 approvals');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('limits the block to five items and counts hidden approvals', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      for (let i = 0; i < 7; i++) await waitOn(wd, `Item ${i}`, 'telegram:u1');
+      await run(wd, '!status', stub.url);
+      const lines = (stub.requests[0].body.text as string).split('\n');
+      expect(lines.filter(line => line.startsWith('• '))).toHaveLength(5);
+      expect(lines.at(-1)).toBe('+2 more');
+      expect(lines.join('\n')).not.toMatch(/T-\d/);
+
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-home', status: 'pending' },
+      ] }));
+      await run(wd, '!status', stub.url);
+      const withApproval = (stub.requests[1].body.text as string).split('\n');
+      expect(withApproval.filter(line => line.startsWith('• '))).toHaveLength(5);
+      expect(withApproval.at(-1)).toBe('+3 more');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('trusted home chat without a sender sees only operator waits', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({
+      channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+    });
+    try {
+      await waitOn(wd, 'Operator wait', 'operator');
+      const sender = await openTask(wd, 'Personal wait');
+      await taskCommand(wd, 'block', sender, ['--result-stdin'], 'Ready');
+      const r = await runScript('user-prompt-pipeline.ts', {
+        cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
+        stdin: JSON.stringify({ prompt: '<channel source="telegram" chat_id="12345">!status</channel>' }),
+      });
+      expect(r.exitCode).toBe(0);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('Operator wait: answer the question');
+      expect(text).not.toContain('Personal wait');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('over-budget -> reply names the cap', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir({ budget: { daily_usd: 5, weekly_usd: null, monthly_usd: null, action: 'alert' } });
@@ -315,7 +449,7 @@ describe('channel-status-responder', () => {
       expect(text).not.toContain('secret-migration'); // task text withheld
       expect(text).not.toContain('$5.00');             // budget figure withheld
       expect(text).not.toContain('MP-20260705-0');     // approval id withheld
-      expect(text).toContain('Working');               // coarse state only
+      expect(text).toBe('Working.');                   // coarse state only
     } finally {
       stub.stop();
       wd.cleanup();
@@ -326,6 +460,23 @@ describe('channel-status-responder', () => {
   // The exact-English assertions above stay untouched; these cover the same
   // reply shapes read from a Portuguese state/messages.json.
   describe('pt-PT localization', () => {
+    test('waiting header and result confirmation', async () => {
+      const stub = startHttpStub();
+      const wd = setupChannelWorkdir({ language: 'português' });
+      try {
+        writePtMessages(hermit(wd.dir), 'português');
+        const id = await openTask(wd, 'Relatório');
+        await taskCommand(wd, 'block', id, ['--result-stdin'], 'Pronto');
+        await run(wd, '!status', stub.url);
+        const text = stub.requests[0].body.text as string;
+        expect(text).toContain('À sua espera:\n• Relatório: confirme o resultado (');
+        expect(text).toMatch(/há \d+ segundos/);
+      } finally {
+        stub.stop();
+        wd.cleanup();
+      }
+    });
+
     test('working line', async () => {
       const stub = startHttpStub();
       const wd = setupChannelWorkdir({ language: 'português' });

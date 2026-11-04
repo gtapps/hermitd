@@ -28,6 +28,8 @@ import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
 import { readTasks, isRunnable, type Task } from '../tasks';
+import { conversationKey } from '../conversation-key';
+import { homeChatKey } from '../proposals/micro';
 import type { StageContext, StageResult } from './types';
 
 type Json = any;
@@ -67,15 +69,45 @@ function taskLine(dir: string, m: Messages): string | null {
 
 // Only worth a line when something is actually pending — an empty queue
 // shouldn't crowd out the "all quiet" fallback in composeStatusReply.
-function approvalsLine(dir: string, m: Messages): string | null {
+function approvalsLine(dir: string, config: Json, chatKey: string | undefined, m: Messages): string | null {
   const mp = readJson(path.join(dir, 'state', 'micro-proposals.json'));
-  const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) => p?.status === 'pending') : [];
+  const home = homeChatKey(config?.channels);
+  const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) =>
+    p?.status === 'pending' && (typeof p.chat === 'string' ? p.chat : home) === chatKey) : [];
   if (pending.length === 0) return null;
   if (pending.length === 1) {
     const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
     return m.t('status_one_approval', { id });
   }
   return m.t('status_n_approvals', { n: pending.length });
+}
+
+const AGE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 365 * 86400], ['month', 30 * 86400], ['week', 7 * 86400], ['day', 86400],
+  ['hour', 3600], ['minute', 60], ['second', 1],
+];
+
+// Open records whose wait is on this sender (or on 'operator' for the trusted
+// controller), oldest wait first, as localized board lines.
+function waitingRecords(dir: string, keys: Set<string>, m: Messages): string[] {
+  let records: Task[];
+  try {
+    records = readTasks(dir).filter(task => task.status === 'open' && task.waiting_on !== null && keys.has(task.waiting_on));
+  } catch {
+    return [];
+  }
+  if (records.length === 0) return [];
+  const now = Date.now();
+  const formatter = new Intl.RelativeTimeFormat(m.locale, { numeric: 'always' });
+  return records
+    .map(task => ({ task, start: Date.parse((task.result ? task.result_at : null) ?? task.waiting_since ?? task.opened_at) }))
+    .sort((a, b) => a.start - b.start)
+    .map(({ task, start }) => {
+      const seconds = Math.max(0, (now - start) / 1000);
+      const [unit, size] = AGE_UNITS.find(([, duration]) => seconds >= duration) ?? AGE_UNITS[AGE_UNITS.length - 1];
+      const age = formatter.format(-Math.floor(seconds / size), unit);
+      return m.t(task.result ? 'status_waiting_confirm' : 'status_waiting_answer', { task: task.title, age });
+    });
 }
 
 // Cron day-of-week matcher (0=Sun..6=Sat; 7 also Sun). Supports '*', comma
@@ -142,7 +174,12 @@ function nextRoutineLine(config: Json, timezone: string, m: Messages): string | 
   return m.t('status_next_routine', { hh, mm, id: best.id });
 }
 
-export function composeStatusReply(dir: string, config: Json, opts: { redact?: boolean } = {}): string {
+export function composeStatusReply(dir: string, config: Json, opts: {
+  redact?: boolean;
+  senderKey?: string | null;
+  chatKey?: string;
+  trusted?: boolean;
+} = {}): string {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
   const lines: string[] = [];
@@ -163,14 +200,20 @@ export function composeStatusReply(dir: string, config: Json, opts: { redact?: b
   const budget = budgetLine(dir, config, timezone, m);
   if (budget) lines.push(budget);
 
-  const approvals = approvalsLine(dir, m);
-  if (approvals) lines.push(approvals);
-
   const routine = nextRoutineLine(config, timezone, m);
   if (routine) lines.push(routine);
 
-  if (lines.length === 0) return m.t('status_all_quiet');
-  return lines.join(' ');
+  const keys = new Set<string>();
+  if (opts.senderKey) keys.add(opts.senderKey);
+  if (opts.trusted) keys.add('operator');
+  const waiting = waitingRecords(dir, keys, m);
+  const approvals = approvalsLine(dir, config, opts.chatKey, m);
+  if (approvals) waiting.push(`• ${approvals}`);
+  const head = lines.join(' ');
+  if (waiting.length === 0) return head || m.t('status_all_quiet');
+  const block = [m.t('status_waiting_header'), ...waiting.slice(0, 5)];
+  if (waiting.length > 5) block.push(m.t('status_waiting_more', { n: waiting.length - 5 }));
+  return [head, ...block].filter(Boolean).join('\n');
 }
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
@@ -191,7 +234,12 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // Full status only for the trusted operator (explicit allowlist, or the DM chat
   // when no list is set); any other accepted sender gets a redacted, coarse reply.
   const trusted = isTrustedController(config, envelope.source, envelope.userId, envelope.chatId);
-  const reply = composeStatusReply(dir, config, { redact: !trusted });
+  const reply = composeStatusReply(dir, config, {
+    redact: !trusted,
+    senderKey: envelope.userId === null ? null : `${envelope.sourceKey}:${envelope.userId}`,
+    chatKey: conversationKey(envelope.sourceKey, envelope.chatId),
+    trusted,
+  });
   // Reply to the chat the request arrived on — not the globally-resolved
   // outbound channel — so a status asked in a group or a non-primary channel is
   // answered where it was asked. This also keeps the destination aligned with the
