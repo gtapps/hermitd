@@ -1,5 +1,5 @@
 export async function runEvidence(cmd: string, root: string, timeoutS: number) {
-  const proc = Bun.spawn(['bash', '-c', cmd], { cwd: root, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn(['bash', '-c', cmd], { cwd: root, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true });
   const chunks: Buffer[] = [];
   let size = 0;
   let timedOut = false;
@@ -24,9 +24,12 @@ export async function runEvidence(cmd: string, root: string, timeoutS: number) {
   }
   try {
     const drained = Promise.all([drain(readers[0]), drain(readers[1])]);
-    await Promise.race([drained, new Promise<void>(resolve => { deadline = resolve; })]);
     const exit = await proc.exited;
+    try { process.kill(-proc.pid, 'SIGKILL'); }
+    catch { /* best effort: the group is already gone */ }
+    if (!timedOut) {
+      await Promise.race([drained, new Promise<void>(resolve => { deadline = resolve; })]);
+    }
     return { exit, output: new TextDecoder('utf-8').decode(Buffer.concat(chunks), { stream: true }), timed_out: timedOut };
   } finally { clearTimeout(timer); }
 }
-

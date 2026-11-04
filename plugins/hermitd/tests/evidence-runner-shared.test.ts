@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import path from 'node:path';
 import { runEvidence } from '../scripts/lib/evidence-runner';
 import { withDir } from './helpers/workdir';
-import { runScript } from './helpers/run';
+import { runScript, processRunning } from './helpers/run';
 
 const LOOP = 'while :; do :; done';
 
@@ -25,5 +25,21 @@ for (const cmd of ["printf evidence; test -d .hermit", "printf failure >&2; exit
       if (previous === undefined) delete process.env.LATER_CHECK_TIMEOUT_MS;
       else process.env.LATER_CHECK_TIMEOUT_MS = previous;
     }
+  }));
+}
+
+for (const timeout of [false, true]) {
+  test(`shared runner stops background processes after ${timeout ? 'timeout' : 'exit'}`, withDir(async dir => {
+    const duration = 3000000 + process.pid * 2 + Number(timeout);
+    const command = [
+      `sleep ${duration} &`,
+      'child=$!',
+      'until ps -o args= -p "$child" | grep -q "^sleep "; do :; done',
+      timeout ? 'while :; do :; done' : 'printf evidence',
+    ].join('\n');
+    const result = await runEvidence(command, dir, 1);
+    expect(result.timed_out).toBe(timeout);
+    if (!timeout) expect(result).toEqual({ exit: 0, output: 'evidence', timed_out: false });
+    expect(processRunning(`sleep ${duration}`)).toBe(false);
   }));
 }
