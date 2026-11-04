@@ -52,6 +52,8 @@ From config: channels with `enabled !== false` and whether each has an allowlist
 
 ### Direct saves and scope
 
+Standing approval rules about actions allowed without asking or never allowed route to **Settings change request** (`hermit-settings rules`), not role saves; one-off requests stay conversational.
+
 An admitted sender's durable request about how this chat should behave is a Standing role save, even without the word “remember”. Judge meaning in any language. Save it now as this chat's pinned memory role using the save and one-line confirmation below. A task-output preference owned by an editable skill follows the resident's Knowledge Discipline rule: fold it into that skill. An ambiguous scope gets one short clarifying question before any write. Inside an annotated task thread, the message remains steering; do not directly save it as a role. The scheduled review can consider repeated corrections there later. A direct save never changes chat instructions.
 
 ### Pending review proposals

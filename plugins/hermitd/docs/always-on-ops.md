@@ -10,7 +10,7 @@ tmux-based setup for running your hermit without Docker, plus the lifecycle refe
 | ------------------------ | ------------ | ------------------------------------------ |
 | **tmux**                 | Boot scripts | `brew install tmux` / `apt install tmux` — see [Installing tmux](https://github.com/tmux/tmux/wiki/Installing) for other platforms |
 | **Bun 1.4+**             | Hooks, scripts | Every hook and helper script runs on Bun |
-| **Claude Code v2.1.314+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.318+** | Channels, sandbox | Minimum supported version |
 
 tmux is required. Channels are optional.
 
@@ -209,6 +209,8 @@ Not suitable for routines whose value is chat or transcript output (subagent out
 ## 5. Reconnecting After Disconnects
 
 Restarts the watchdog detects (a dead session, a frozen pane, a dead monitor) resume the resident conversation when the session id is known and no other restart happened in the previous hour (`last_restart_at` in `state/watchdog-state.json`); a missing id starts fresh as `fresh: no-session-id` and a crash loop starts fresh as `fresh: recent-restart`, both recorded in `state/watchdog-events.jsonl`. A restart requested through `hermitd-watchdog restart`, such as a login renewal, always starts fresh (`fresh: requested`). `hermitd-start` starts fresh when the transcript has no user turn or the resident prompt changed (including an absent saved prompt). Upgrade and requested watchdog restarts are planned, so boot does not record them as crashes. Docker keeps the container alive for up to 60 seconds while tmux returns. The restart notice says whether the conversation was restored or started fresh.
+
+When operator auto-mode rules differ from the fingerprint recorded at launch, the enabled watchdog waits for the lifecycle and execution guards, including ten minutes without operator activity, then attempts a resumed `rules` restart. It records `rules-restart` or `rules-restart-deferred` with the guard reason in `state/watchdog-events.jsonl`; an update restart takes precedence. Interactive or watchdog-disabled installs apply changes on the next start. Missing fingerprints or unreadable settings do not trigger this restart.
 
 For a manual start that keeps the conversation, use `hermitd-start --resume` or `hermitd-docker restart --resume` (`hermitd-docker up --resume` also accepts the opt-in). Manual resume skips the loop guard but still requires a transcript with a user turn and an unchanged resident prompt. Starts without `--resume` create a fresh conversation. Resume applies only to always-on boots with a bootstrap prompt; the existing archive-or-resume recovery question still controls whether work continues.
 

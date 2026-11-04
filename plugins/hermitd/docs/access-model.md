@@ -6,6 +6,8 @@ Access is owned by the existing channel, native settings, and hermit configurati
 
 The channel plugin's DM-paired `allowFrom` list owns native permission-prompt delivery and approval. DM-pair only people who may approve tool use: every listed DM receives and can answer prompts. An empty list reaches nobody, so an unattended prompt waits. Removing a person from this list removes their DM approval relay; it does not remove their group membership or undo an earlier approval. The saved pairing list survives restart. See **Settings from chat** in [security](security.md#auto-mode-classifier).
 
+Only an approver may request a standing classifier approval-rule change through `/hermitd:hermit-settings rules`; other participants are told an approver must set it. A terminal operator may also request one. The native prompt still decides each edit, and a classifier `allow` cannot override native ask or deny rules.
+
 ## Participants
 
 Groups own admission independently of the DM `allowFrom` list. Other participants should join through groups. Hermit `channels.<name>.allowed_users` narrows who can wake the hermit, never who can approve tool use: absent means accept all delivered senders, while `[]` accepts none. Removing an ID from an explicit list blocks that sender's wake eligibility; deleting the list restores accept-all. Group membership and saved allowlists survive restart. Any member of an enabled group can attempt a permission reply by guessing its code before a hermit hook sees it. See [channel configuration](config-reference.md#channels) and [known limitations](security.md#known-limitations).

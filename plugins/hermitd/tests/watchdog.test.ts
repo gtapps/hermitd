@@ -27,6 +27,7 @@ import { startHttpStub, type Stub } from './helpers/http-stub';
 import { localIdentity } from './helpers/registry-fixture';
 import { finalize, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 import { EN_MESSAGES } from '../scripts/lib/messages';
+import { operatorAutoModeFingerprint } from '../scripts/lib/settings/operator-auto-mode';
 import { PT } from './helpers/pt-messages';
 
 // The one line to flip when hermitd-watchdog is ported to TypeScript.
@@ -2746,6 +2747,74 @@ const registeredCommand = (h: Hermit, leg: string, version: string): string => {
   fs.writeFileSync(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'hermitd', version }));
   return `bash "${root}"/scripts/monitor-supervisor.sh ${leg === 'heartbeat' ? 'heartbeat' : 'routines'} "${path.join(h.dir, '.hermit')}"`;
 };
+
+function seedRulesChange(h: Hermit): void {
+  writeState(h, 'operator-auto-mode.json', { fingerprint: operatorAutoModeFingerprint(undefined) });
+  fs.writeFileSync(path.join(h.dir, '.hermit/claude-settings.json'), JSON.stringify({ autoMode: { allow: ['staging'] } }));
+}
+
+for (const scenario of ['idle', 'operator-recent', 'paused', 'interactive', 'busy'] as const) {
+  test(`rules restart ${scenario}`, withHermit(async (h) => {
+    writeConfig(h);
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    seedRulesChange(h);
+    if (scenario === 'operator-recent') writeState(h, 'last-operator-action.json', { at: isoAgo(1 / 60) });
+    if (scenario === 'paused') writeState(h, 'operator-pause.json', { paused: true, paused_until: null, reason: 'operator' });
+    if (scenario === 'interactive') patchRuntime(h, { runtime_mode: 'interactive' });
+    if (scenario === 'busy') writeState(h, 'execution.json', { state: 'in_flight', cc_session_id: 'resident-boundary', at: isoAgo(1) });
+    const result = await watchdog(h, 'run');
+    expect(result.exitCode).toBe(0);
+    if (scenario === 'idle') {
+      expect(events(h)).toContain('rules-restart');
+      expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('rules');
+      expect(tmuxCalls(h)).toContain('kill-session');
+    } else {
+      expect(events(h)).toContain('rules-restart-deferred');
+      expect(events(h)).toContain(scenario === 'busy' ? 'execution-not-idle' : scenario);
+      expect(tmuxCalls(h)).not.toContain('kill-session');
+    }
+  }));
+}
+
+for (const scenario of ['matching', 'missing', 'malformed'] as const) {
+  test(`rules restart ignores ${scenario} state`, withHermit(async (h) => {
+    writeConfig(h);
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    seedRulesChange(h);
+    if (scenario === 'matching') writeState(h, 'operator-auto-mode.json', { fingerprint: operatorAutoModeFingerprint({ allow: ['staging'] }) });
+    if (scenario === 'missing') fs.unlinkSync(state(h, 'operator-auto-mode.json'));
+    if (scenario === 'malformed') fs.writeFileSync(path.join(h.dir, '.hermit/claude-settings.json'), '{broken');
+    const result = await watchdog(h, 'run');
+    expect(result.exitCode).toBe(0);
+    expect(events(h)).not.toContain('rules-restart');
+    expect(tmuxCalls(h)).not.toContain('kill-session');
+  }));
+}
+
+test('upgrade restart takes priority over a pending rules restart', withHermit(async (h) => {
+  writeConfig(h);
+  const configPath = path.join(h.dir, '.hermit/config.json');
+  const config = readJson(configPath);
+  config._hermit_versions = { hermitd: readJson(path.join(SCRIPTS_DIR, '..', '.claude-plugin', 'plugin.json')).version };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  seedRulesChange(h);
+  fs.writeFileSync(state(h, '.boot-id'), 'native-boot\n');
+  writeState(h, 'heartbeat-monitor.runtime.json', {
+    launch: 'native', mode: 'monitor', boot_id: 'native-boot', interval: 7200,
+    command: registeredCommand(h, 'heartbeat', 'old-version'), started_at: isoAgo(1),
+  });
+  writeState(h, 'heartbeat-liveness.json', { pid: process.pid, last_peek_at: isoAgo(0) });
+  const result = await watchdog(h, 'run');
+  expect(result.exitCode).toBe(0);
+  expect(events(h)).toContain('upgrade-restart');
+  expect(events(h)).not.toContain('rules-restart');
+  expect(readJson(state(h, 'runtime.json')).watchdog_restart_reason).toBe('upgrade');
+  expect(tmuxCalls(h).split('\n').filter((line) => line.startsWith('kill-session '))).toHaveLength(1);
+}));
 
 for (const leg of ['heartbeat', 'routine'] as const) {
   for (const scenario of ['idle', 'evolve-pending', 'in_flight', 'paused', 'current-copy', 'update-fresh', 'update-stale'] as const) {

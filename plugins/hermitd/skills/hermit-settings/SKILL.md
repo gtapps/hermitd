@@ -1,6 +1,6 @@
 ---
 name: hermit-settings
-description: View or change hermit configuration for this project. Manages model, channels, morning brief, heartbeat, routines, compaction thresholds, Docker packages, and unattended mode.
+description: View or change hermit configuration and approval rules for this project. Manages model, channels, morning brief, heartbeat, routines, compaction thresholds, Docker packages, and unattended mode.
 ---
 
 # Hermit Settings
@@ -27,6 +27,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings name          — set agent name
 /hermitd:hermit-settings language       — set preferred language
 /hermitd:hermit-settings messages       : reword a fixed notice (watchdog, status, budget, login)
+/hermitd:hermit-settings rules          : view or change approval rules
 /hermitd:hermit-settings voice          : edit how the hermit talks (style: everyday; custom prose: native permission prompt)
 /hermitd:hermit-settings timezone       — set timezone
 /hermitd:hermit-settings escalation     — set escalation threshold
@@ -76,6 +77,9 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json record-fi
 **Every write goes through these verbs — never edit `config.json` with Edit/Write.** The script preserves siblings, refuses a change that would make the config invalid, and records the change in the audit ledger that `history` reads. A hand-edit bypasses all three.
 
 ### 2. Show or modify
+
+**If argument is "rules":**
+Read [rules.md](rules.md) and follow its approval-rule procedure.
 
 **If no argument** (or argument is "all"):
 

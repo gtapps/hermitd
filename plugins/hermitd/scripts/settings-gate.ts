@@ -695,9 +695,18 @@ function main(payload: any): void {
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);
+    const nativePermissions = /(?:^|\/)\.claude\/settings(?:\.local)?\.json$/.test(fp.replace(/\\/g, '/'));
+    let turn: RoutineOrigin | undefined;
+    const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
+    if (payload.permission_mode === 'bypassPermissions'
+      && (match === 'claude-settings.json' || nativePermissions) && origin().kind === 'channel') {
+      deny('Permission settings changes from chat are refused in bypass mode; use a normal session or edit from the terminal.');
+      return;
+    }
     const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
     const script = fp && !match ? scriptWriteLabel(fp, cwd, configScripts()) : undefined;
     asked = match ? [match] : script ? [script] : null;
+    if (nativePermissions && origin().kind !== 'terminal') asked = [...(asked ?? []), 'native permissions'];
   }
 
   if (!asked) return;
