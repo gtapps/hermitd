@@ -135,7 +135,7 @@ Rule of thumb: `CLAUDE.md` is read by every session in the project, helpers and 
 
 **Heartbeat** is the built-in periodic health check — polls every 30m by default, evaluates the `HEARTBEAT.md` checklist, and alerts you only when something needs attention. It's always-on infrastructure.
 
-**Watch** (`/watch`) covers two cases. Config watches in `monitors` keep running across restarts: the background monitor starts at boot, restarts a command that exits, and applies config edits live. `/hermitd:watch stop` on one sets `enabled: false`. An ad-hoc `/watch` is for one current concern, such as "watch for CI failures every 5 minutes", and ends with the session.
+**Watch** (`/watch`) saves a requested watch until stopped, including across restarts. Poll checks report their initial state, then changes, failures and recovery; unchanged observations stay quiet. A watch that is a step toward another outcome stays temporary and ends with the session. For PR automation or webhook needs, see Claude Code's [cloud scheduled tasks](https://code.claude.com/docs/en/routines) and [PR auto-fix](https://code.claude.com/docs/en/claude-code-on-the-web#auto-fix-pull-requests).
 
 ---
 

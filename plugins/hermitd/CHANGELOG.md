@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `hermitd-run watch-poll` runs a check on an interval and reports only changes, failures and recovery
+- `settings-edit append` adds an entry to a config list
+
 ### Changed
 
+- Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
 - Chats without threads no longer belong to the oldest open task; the agent routes continuations and dispatches independent new work at once
 - Task intake follows the investigation, longer exchange, or later sign-off test; one-off answers open no record
 - One message is one task unless the requester asks for separate tasks

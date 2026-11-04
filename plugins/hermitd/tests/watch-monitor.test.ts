@@ -211,3 +211,32 @@ test('changing a command replaces its child and removing it stops the replacemen
   await until(() => f.runtime()?.watches.length === 0 ? true : undefined);
   expect(alive(newPid)).toBe(false);
 }));
+
+for (const action of ['disable', 'replacement', 'shutdown'] as const) {
+  test(`watch-poll leaves no helper or check after ${action}`, () => fixture(async f => {
+    const bin = path.join(f.dir, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, 'hermitd-run'),
+      `#!/bin/sh\nshift\nexec bun '${path.join(SCRIPTS_DIR, 'watch-poll.ts')}' "$@"\n`, { mode: 0o755 });
+    const command = ".hermit/bin/hermitd-run watch-poll sample -- 'echo $$ > check-pid; exec tail -f /dev/null'";
+    f.configure(command);
+    const pids = await until(() => {
+      const root = f.runtime()?.watches[0]?.pid;
+      if (!root || !fs.existsSync(path.join(f.project, 'check-pid'))) return undefined;
+      const tree = collectTree([root], Number.MAX_SAFE_INTEGER);
+      const checkPid = Number(fs.readFileSync(path.join(f.project, 'check-pid'), 'utf8'));
+      return tree.pids.length >= 2 && tree.pids.includes(checkPid) ? tree.pids : undefined;
+    });
+    if (action === 'disable') {
+      f.configure(command, false);
+      await until(() => f.runtime()?.watches.length === 0 ? true : undefined);
+    } else if (action === 'replacement') {
+      f.configure('exec tail -f /dev/null');
+      await until(() => {
+        const pid = f.runtime()?.watches[0]?.pid;
+        return pid && pid !== pids[0] ? true : undefined;
+      });
+    } else await f.stop();
+    await until(() => pids.every(pid => !alive(pid)) ? true : undefined);
+  }));
+}

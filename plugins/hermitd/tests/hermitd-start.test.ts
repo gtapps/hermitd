@@ -56,7 +56,7 @@ import {
 } from '../scripts/hermitd-start';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import { readRuntimeState } from '../scripts/lib/runtime';
-import { automodeAllowEntry, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
+import { automodeAllowEntry, AUTOMODE_WATCH_ALLOW_ENTRY, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
 import { claudeStateFile, TOKEN_ENV_VAR } from '../scripts/lib/setup-token';
 
 // The top-level beforeEach/afterEach below process.chdir()s into a fresh
@@ -1767,6 +1767,9 @@ describe('renderLaunchOverlay', () => {
     const overlay = readOverlay();
     expect(overlay.autoMode.soft_deny[0]).toBe('$defaults');
     expect(overlay.autoMode.soft_deny.some((e: string) => e.includes('Hermit ask-listed settings'))).toBe(true);
+    expect(overlay.autoMode.soft_deny[1]).toContain('watch-save allow policy');
+    expect(overlay.autoMode.allow[2]).toBe(AUTOMODE_WATCH_ALLOW_ENTRY);
+    expect(overlay.autoMode.allow[2]).toContain('judge <check> as if the session were running it directly now');
   });
 
   // A hermit that publishes nothing still sends on its channels and still runs the

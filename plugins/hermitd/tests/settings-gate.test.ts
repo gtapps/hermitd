@@ -646,6 +646,29 @@ describe('routine chat binding', () => {
   const added = (chat: string) =>
     `set routines.2 '${JSON.stringify({ id: 'weekly', schedule: '0 9 * * 1', skill: 'hermitd:brief', enabled: true, chat })}'`;
 
+  test('append routines matches indexed adds for precheck, chat, origin, and resolver forms', async () => {
+    for (const [chatId, userId, entry] of [
+      [null, 'u1', { id: 'new' }],
+      [null, 'u1', { id: 'new', precheck: 'scripts/gate.sh' }],
+      ['555', 'u1', { id: 'new', chat: 'discord:555' }],
+      ['555', 'u1', { id: 'new', chat: 'discord:999' }],
+      ['100', 'u2', { id: 'new', chat: 'discord:100' }],
+    ] as const) {
+      const value = `'${JSON.stringify(entry)}'`;
+      const indexed = asked(await runFrom(chatId, `set routines.2 ${value}`, undefined, userId));
+      for (const runner of ['bun /p/scripts/settings-edit.ts', '.hermit/bin/hermitd-run settings-edit']) {
+        expect(asked(await runFrom(chatId, '', `${runner} .hermit/config.json append routines ${value}`, userId))).toBe(indexed);
+      }
+    }
+  });
+
+  test('append monitors asks in both invocation forms', async () => {
+    const entry = `'${JSON.stringify({ id: 'new', command: 'echo hello' })}'`;
+    for (const runner of ['bun /p/scripts/settings-edit.ts', '.hermit/bin/hermitd-run settings-edit']) {
+      expect(asked(await runFrom(null, '', `${runner} .hermit/config.json append monitors ${entry}`))).toBe(true);
+    }
+  });
+
   test('a new routine bound to the asking chat applies without a prompt', async () => {
     expect(asked(await runFrom('555', added('discord:555')))).toBe(false);
   });
@@ -701,6 +724,75 @@ describe('routine chat binding', () => {
     expect(asked(await runFrom('555', '', proposal({ ...weekly, chat: 'discord:999' })))).toBe(true);
     expect(asked(await runFrom('555', '', proposal({ ...ROUTINES[1], enabled: false })))).toBe(true);
     expect(asked(await runFrom(null, '', 'bun /p/scripts/proposal.ts routine .hermit < entry.json'))).toBe(true);
+  });
+});
+
+describe('watch mutations', () => {
+  const watch = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, description: 'watch test', command: `.hermit/bin/hermitd-run watch-poll ${id} --every 5m -- echo ready`,
+    class: 'event', enabled: true, ...extra,
+  });
+  const entries = [watch('home'), watch('group', { chat: 'discord:555' }),
+    watch('staged', { chat: 'discord:555', enabled: false })];
+  const append = (entry: unknown) => `append monitors '${JSON.stringify(entry)}'`;
+
+  async function decision(rest: string, mode: string, chat: string | null, sender = 'primary', missing = false, runner = '.hermit/bin/hermitd-run settings-edit') {
+    const dir = fixture({
+      channels: { discord: { default_chat_id: '100', allowed_users: ['primary', 'member'], operators: ['primary'] } },
+      monitors: entries,
+    });
+    const transcript = path.join(dir, 'watch.jsonl');
+    const content = chat === null ? 'watch this' : `<channel source="discord" chat_id="${chat}" user_id="${sender}">watch this</channel>`;
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'user', origin: { kind: 'human' }, message: { content } }) + '\n');
+    const input = JSON.parse(payload({ dir, tool: 'Bash', permission_mode: mode,
+      input: { command: `${runner} .hermit/config.json ${rest}` } }));
+    input.transcript_path = missing ? path.join(dir, 'missing') : transcript;
+    const result = await runGate(JSON.stringify(input), dir);
+    expect(result.exitCode).toBe(0);
+    return result.stdout !== '';
+  }
+
+  const cases: Array<[string, string, string | null, string, boolean]> = [
+    ['primary home add', append(watch('new')), '100', 'primary', false],
+    ['primary own group add', append(watch('new', { chat: 'discord:555' })), '555', 'primary', false],
+    ['primary terminal add', append(watch('new')), null, 'primary', false],
+    ['member staged add', append(watch('new', { enabled: false, chat: 'discord:555' })), '555', 'member', false],
+    ['primary enable', 'set monitors.2.enabled true', '555', 'primary', false],
+    ['terminal enable', 'set monitors.0.enabled true', null, 'primary', false],
+    ['member owning stop', 'set monitors.1.enabled false', '555', 'member', false],
+    ['member owning remove', 'unset monitors.1', '555', 'member', false],
+    ['home stop', 'set monitors.0.enabled false', '100', 'member', false],
+    ['terminal remove', 'unset monitors.0', null, 'primary', false],
+    ['non-shape', append(watch('new', { command: 'echo ready' })), '100', 'primary', true],
+    ['mismatched id', append(watch('new', { command: '.hermit/bin/hermitd-run watch-poll other -- echo ready' })), '100', 'primary', true],
+    ['duplicate id', append(watch('home')), '100', 'primary', true],
+    ['expanded value', 'append monitors "$ENTRY"', '100', 'primary', true],
+    ['expanded index', 'set monitors.$N.enabled false', '555', 'member', true],
+    ['another chat', 'unset monitors.1', '999', 'primary', true],
+    ['other chat add', append(watch('new', { chat: 'discord:999' })), '555', 'primary', true],
+    ['command edit', 'set monitors.0.command echo', '100', 'primary', true],
+    ['whole array', "set monitors '[]'", '100', 'primary', true],
+    ['member enable', 'set monitors.2.enabled true', '555', 'member', true],
+    ['chained write', 'set monitors.0.enabled false && echo ok', '100', 'primary', true],
+  ];
+  for (const [label, rest, chat, sender, autoAsks] of cases) {
+    test(label, async () => {
+      expect(await decision(rest, 'auto', chat, sender)).toBe(autoAsks);
+      expect(await decision(rest, 'default', chat, sender)).toBe(true);
+    });
+  }
+
+  test('unknown origin asks in both modes', async () => {
+    for (const mode of ['auto', 'default']) {
+      expect(await decision(append(watch('new')), mode, null, 'primary', true)).toBe(true);
+    }
+  });
+
+  test('direct script form follows the same watch rules', async () => {
+    for (const mode of ['auto', 'default']) {
+      expect(await decision(append(watch('new')), mode, '100', 'primary', false,
+        'bun /p/scripts/settings-edit.ts')).toBe(mode !== 'auto');
+    }
   });
 });
 

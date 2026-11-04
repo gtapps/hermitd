@@ -6,6 +6,7 @@
  * Operations:
  *   get [dotted.path]        Print {"value":...} at path (whole config if path omitted)
  *   set <dotted.path> <val>  Set a nested leaf, creating parent objects as needed
+ *   append <dotted.path> <val>  Append a value to an array, creating it if absent
  *   unset <dotted.path>      Delete a nested leaf (parents are left in place)
  *   toggle <dotted.path>     Boolean flip (absent → true; errors if current isn't boolean)
  *   show                     Print the settings summary data from live values
@@ -17,7 +18,7 @@
  * `get`, `show`, `apply-known`, `history` and `record-file` print one JSON
  * object; a failure prints `{"error":"<token>[:detail]"}` with exit 1.
  *
- * Value parsing for `set`: 'none'/'clear' → null; otherwise JSON.parse first
+ * Value parsing for `set` and `append`: 'none'/'clear' → null; otherwise JSON.parse first
  * (so true, 42, "x", {...} work), falling back to the raw string on parse failure.
  *
  * Rules:
@@ -541,6 +542,26 @@ if (import.meta.main) {
       if (!dotted || rest.length < 2) exitError();
       try {
         setPath(config, dotted, parseValue(rest[1]));
+      } catch (err) {
+        failJson(err);
+        process.exit();
+      }
+      done(persist());
+      break;
+    }
+
+    case 'append': {
+      const dotted = rest[0];
+      if (!dotted || rest.length < 2) exitError();
+      const current = getPath(config, dotted);
+      if (current !== undefined && !Array.isArray(current)) exitError(`not_an_array:${dotted}`);
+      const value = parseValue(rest[1]);
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)
+        && typeof value.id === 'string' && current?.some((entry: Json) => entry?.id === value.id)) {
+        exitError(`duplicate_id:${value.id}`);
+      }
+      try {
+        setPath(config, dotted, [...(current ?? []), value]);
       } catch (err) {
         failJson(err);
         process.exit();

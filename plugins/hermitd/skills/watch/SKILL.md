@@ -22,8 +22,9 @@ Two classes:
 ## Usage
 
 ```
-/hermitd:watch <instruction>              # start ad-hoc (poll, default 5m interval)
+/hermitd:watch <instruction>              # requested watch: saved; step of other work: temporary
 /hermitd:watch <stream-command>           # start ad-hoc stream
+/hermitd:watch enable <id>               # [internal] turn on a staged watch (config-watch.md)
 /hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
 /hermitd:watch notice <text>              # [internal] handle a watched-session notice
 /hermitd:watch start                      # activate the config watch monitor
@@ -84,14 +85,16 @@ or record write that already completed.
 
 ### Starting an ad-hoc watch
 
+Route by purpose, even inside a task thread: if the watch itself is the request, read [config-watch.md](config-watch.md) and save it. A watch that is a step toward another outcome stays temporary. For `enable`, read the same file.
+
 1. Parse instruction + optional interval from operator message. Default interval: 5m.
 3. Generate id: `adhoc-<epoch>-<4char-random>` (e.g., `adhoc-1744460400-a3f2`).
    Timestamp + random suffix avoids collisions across sessions.
 4. Determine command shape:
    - If instruction is a shell command (contains pipes, flags, or path): use as-is
-   - If instruction is a natural language description: wrap in a poll loop:
+   - If instruction is a natural language description: use:
      ```
-     while true; do <check-command> && echo "<brief-event-description>"; sleep <interval_secs>; done
+     .hermit/bin/hermitd-run watch-poll <id> --every <interval> -- <check>
      ```
 5. Invoke Monitor tool with all 3 required params:
    - `description`: the operator's instruction text plus ` (notify with --watch <id>)` (shown in every notification)
@@ -124,9 +127,9 @@ Runs at boot or manually.
 1. Parse the id or `--all` flag.
 2. For `stop <config-id>`, find the entry's zero-based index in `config.json` → `monitors[]` and run:
    ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set monitors.<n>.enabled false
+   .hermit/bin/hermitd-run settings-edit .hermit/config.json set monitors.<n>.enabled false
    ```
-   This raises Claude Code's native permission prompt. A No is final: leave the watch enabled and do not try another write path. On approval, the poller stops the child when it reloads config; the disabled state persists across boots.
+   The owning chat can stop silently in auto mode; other writes may raise a native prompt. A No is final: leave the watch enabled and do not try another write path. The poller stops the child on reload; the disabled state persists across boots.
 3. For an id in the ad-hoc/session registry, call `TaskStop` on its `task_id` and/or `poll_task_id` when present, then remove its entry. If the task already exited, remove the stale entry anyway.
 4. `stop` without an id considers only ad-hoc registry entries (`source: "adhoc"`), including `peer-idle`. With none, report no active ad-hoc watches; with one, stop it; with several, ask which one or offer `--all`.
 5. `stop --all` stops and removes only ad-hoc registry entries. Config watches remain enabled.
@@ -164,10 +167,9 @@ or watch id.
 ## Notes
 
 - Config edits apply live when the poller sees `config.json` change. Enabled watches restart after any command exit, with backoff; `WATCH_MONITOR_ERROR` reports repeated exits. Do not re-register them through the Monitor tool.
-- Config watch commands run from the project root under `bash -c`, with literal `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PROJECT_DIR}` substituted. They inherit PATH and exported environment variables. Functions from the shell profile are unavailable.
 - For ad-hoc watches, All 3 Monitor tool params are required: `description`, `command` and `timeout_ms` (cap 1800000 ms). Resolve plugin-root placeholders before registration; the plugin-root variable is not exported to Monitor subprocesses.
 - Use `grep --line-buffered` in pipelines so events arrive promptly, and emit stdout only on a genuine change or event.
-- Add `|| true` after API calls in poll loops when a failed request should leave the loop running.
+- Use `|| true` only for expected errors that should not fail a stream command.
 - For filesystem events in Docker use `inotifywait` from `inotify-tools`, included in the base image, instead of macOS-only `fswatch`.
 - Each launch clears the ad-hoc/session registry and config-watch duty records. `/clear` and compaction leave surviving watches alone.
 

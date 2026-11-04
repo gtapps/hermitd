@@ -31,7 +31,7 @@ import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateD
 import { cmpSemver } from './lib/semver';
 import { sanitizeLanguage } from './lib/operator-language';
 import { outputStyleFor } from './lib/voice';
-import { automodeAllowEntry, AUTOMODE_ENV_ENTRIES, AUTOMODE_SOFT_DENY_ENTRY, SEALED_SETTINGS_OPS } from './lib/settings/automode-entries';
+import { automodeAllowEntry, AUTOMODE_ENV_ENTRIES, AUTOMODE_SOFT_DENY_ENTRY, AUTOMODE_WATCH_ALLOW_ENTRY, SEALED_SETTINGS_OPS } from './lib/settings/automode-entries';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
@@ -1187,7 +1187,7 @@ function renderLaunchOverlay(config: Json): string | null {
   const ops = artifactGrantApplies(config)
     ? SEALED_SETTINGS_OPS
     : SEALED_SETTINGS_OPS.filter((op) => op !== 'artifact-allow');
-  autoMode.allow = ['$defaults', automodeAllowEntry(path.join(defaultConfigDir(), 'plugins'), PLUGIN_ROOT, ops)];
+  autoMode.allow = ['$defaults', automodeAllowEntry(path.join(defaultConfigDir(), 'plugins'), PLUGIN_ROOT, ops), AUTOMODE_WATCH_ALLOW_ENTRY];
   autoMode.environment = ['$defaults', ...AUTOMODE_ENV_ENTRIES];
   // Cross-session inbox. Claude Code holds an inbound peer message purely on
   // permission class: a prompting receiver (auto/acceptEdits/dontAsk — the hermit
