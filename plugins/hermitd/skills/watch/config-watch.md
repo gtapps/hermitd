@@ -33,3 +33,15 @@ For `/hermitd:watch enable <id> --answer <answer>`, act only on a primary sender
 ```
 
 If the watch is absent, belongs to another chat, or is already enabled, report its status instead of writing. A declined native prompt is final, with no substitute. Confirm with `/hermitd:watch status`.
+
+## Met
+
+A saved watch's `description` records the request it serves. When an event meets that request's end condition (the deploy finished, the price dropped), judge it from the request's intent, report it, then ask the watch's chat whether to stop watching. Write the question in the chat's language and queue it:
+
+```bash
+.hermit/bin/hermitd-run proposal queue-micro .hermit <<'HERMIT_MP'
+{"tier":1,"question":"<yes/no question naming the watch>","on_resolve":"/hermitd:watch stop <id> --answer {answer}","chat":"<the watch's chat>","key":"watch-stop:<id>"}
+HERMIT_MP
+```
+
+Use the entry's `chat`, or the home chat when it has none. A yes stops the watch; a no leaves it running. If queuing fails, report it and leave the watch running.

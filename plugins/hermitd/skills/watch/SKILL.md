@@ -124,7 +124,7 @@ At boot or manually.
 
 ### Stopping a watch
 
-1. Parse the id or `--all` flag.
+1. Parse the id or `--all` flag. With `--answer`, stop only on a yes.
 2. For `stop <config-id>`, find the entry's zero-based index in `config.json` → `monitors[]` and run:
    ```bash
    .hermit/bin/hermitd-run settings-edit .hermit/config.json set monitors.<n>.enabled false
@@ -177,6 +177,6 @@ or watch id.
 
 Pass `--watch <id>` to every `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --notice` reporting a stream/poll watch's events, before removing its entry. Session watches keep their record-thread routing.
 
-When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This writes `last_event_at` and `last_verdict` to `state/watch-duties.json` for a config id, or to its registry entry for an ad-hoc id; listings are labeled since session start. When a config watch event meets its description's end condition, report it, then run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset monitors.<n>`; otherwise leave it running.
+When a watch event is handled, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts record .hermit watch <id> --verdict <verdict>` before removing a consumed entry. This writes `last_event_at` and `last_verdict` to `state/watch-duties.json` for a config id, or to its registry entry for an ad-hoc id; listings are labeled since session start. When a config watch event meets its description's end condition, report it, then follow [config-watch.md](config-watch.md) § Met. Otherwise leave it running.
 
 Read `TASKS.md`. If a finding requires a human and `config.tasks.duties_open_records` is true, use `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --requester duty:watch --title ... --done ... --due <ISO> --dedupe-key duty:watch:<watch-id>:<event-key>` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit <id> --waiting-on <human> --status-line ... --next ...`. Post the stall notice only on `created:true`; repeated open digests refer to the same record. Otherwise post plain messages. A verified resolution closes only its matching record with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts close .hermit <id> --by check --actor duty:watch`; ambiguous reads never close records.

@@ -1,8 +1,8 @@
 schema_version: "1.1"
-name: met-one-shot-removed
-description: 'A saved one-shot watch reports completion and is removed after the reply.'
+name: met-watch-asks-stop
+description: 'A saved watch reports the event that ends its request, then asks its chat whether to stop.'
 tags: [watch, train]
-expected_outcome: 'Channel reply reporting the finished deploy, then Bash settings-edit unset monitors'
+expected_outcome: 'Report of the finished deploy, then a queued watch-stop yes/no for the watch''s chat; no monitors write in the event turn'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -36,7 +36,7 @@ execution:
 
     Delivery failures, degraded legs, and status handling: `skills/channel-responder/outbound.md`.
 
-    **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the five channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`) may be named when the operator asks how to control you.
+    **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`) may be named when the operator asks how to control you.
 
     **Language & audience.** Compose channel messages and push notifications in the operator's configured `language` (`config.json`); when unset, match the language the operator writes in. The `maintainer` key of the `--notice` payload supplements the `client` key, never replaces it: it carries the detail the operator's chat shouldn't get (spend figures, internal IDs, commands, diagnostics), and the script routes it — never a reply tool. Where both audiences resolve to one chat the script sends client text, a blank line, then maintainer text together. Keep only technical detail in `maintainer`; neither part repeats the other. Any notice asking for a decision, a reply, or action — heartbeat findings, inbox items, pending proposals — must carry a plain-language `client` leg unless a skill mandates a maintainer-only one; a `maintainer`-only payload is for FYI diagnostics and spend only.
 
@@ -83,12 +83,14 @@ execution:
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
-    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
-    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+
     </system-reminder>
-    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000307" user="sam" user_id="100000000000000001" ts="2026-10-21T09:00:00.000Z">
-    [watch deploy-finished] The deploy finished successfully.
-    </channel>
+    <task-notification>
+    <task-id>w4tch9q2x</task-id>
+    <summary>Monitor event: "hermit-watch"</summary>
+    <event>WATCH_EVENT [hermit-watch:deploy-finished] (Tell me when the deploy finishes) status: finished</event>
+    </task-notification>
 graders:
-  - {"name":"removed-met-watch","type":"tool_used","tool":"Bash","input_match":"unset monitors","weight":3}
+  - {"name":"asked-to-stop","type":"tool_used","tool":"Bash","input_match":"queue-micro[\\s\\S]*watch-stop:deploy-finished","weight":3}
+  - {"name":"no-monitors-write","type":"tool_used","tool":"Bash","input_match":"settings-edit[^\\n]*monitors","min":0,"max":0,"weight":2}
   - {"name":"replied-via-channel","type":"tool_used","tool":"mcp__plugin_discord_discord__reply"}

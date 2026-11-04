@@ -558,6 +558,7 @@ function clearWatchRegistry(): void {
       console.log(`[hermit] WARNING: watch-poll not cleared (${error?.message ?? error}).`);
     }
   }
+  if (names.length === 0) return;
   const config = readConfigRaw(path.dirname(CONFIG_PATH));
   const savedIds = config === null ? null : new Set((Array.isArray(config.monitors) ? config.monitors : []).map((watch: Json) => watch?.id));
   for (const name of names) {

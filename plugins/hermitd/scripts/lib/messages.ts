@@ -42,9 +42,10 @@ export const EN = {
 
   // Scheduled work reply (lib/prompt-stages/channel-status-responder.ts)
   scheduled_empty: 'Nothing scheduled in this chat.',
-  scheduled_count: '{n} scheduled items in this chat.',
+  scheduled_count: 'Scheduled in this chat: {n}.',
   scheduled_routine: '• {id}: {schedule} ({timezone}); {state}',
   scheduled_watch: '• {id}: {description}; every {every}; {state}; check: {check}',
+  scheduled_stream: '• {id}: {description}; {state}; command: {check}',
   scheduled_on: 'on',
   scheduled_off: 'off',
   scheduled_pending: "waiting for an admin's yes",
@@ -127,6 +128,7 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   scheduled_count: 'Count only, for admitted senders without access to details; {n} includes routines and saved watches.',
   scheduled_routine: '{schedule} is the configured cron time, or cron expression when not a fixed time, in the agent timezone. {state} is scheduled_on or scheduled_off.',
   scheduled_watch: '{every} is a duration such as 5m. {state} is scheduled_on, scheduled_off or scheduled_pending. {check} is shell text; do not translate it.',
+  scheduled_stream: 'A watch whose command streams events instead of polling on an interval. {state} is scheduled_on, scheduled_off or scheduled_pending. {check} is shell text; do not translate it.',
   scheduled_pending: 'A member requested this watch; an admin must say yes before it runs.',
   spend_label_daily: 'Fills {label} in spend_cap_status.',
   spend_label_weekly: 'Fills {label} in spend_cap_status.',

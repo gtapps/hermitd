@@ -53,7 +53,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       // Records sort oldest first; list the newest five.
       const inChat = records.filter(task => task.conversation === key).reverse();
       if (sharedRestart && inChat.length) {
-        const target = args ? inChat.find(task => task.handle === args) : inChat.length === 1 ? inChat[0] : undefined;
+        const target = args ? inChat.find(task => task.handle === args.toLowerCase()) : inChat.length === 1 ? inChat[0] : undefined;
         return { context: target
           ? `[conversation command: restart task=${target.id}]`
           : `[conversation command: restart needs a handle: ${inChat.map(task => task.handle).join(' ')}]` };

@@ -96,11 +96,16 @@ watchCase('member-staged-disabled', 'heldout', 'A non-primary member asks for a 
     { name: 'queued-yes-no', type: 'tool_used', tool: 'Bash', input_match: 'proposal(\\.ts)? queue-micro', weight: 2 }]);
 
 const metConfig = { ...CONFIG, monitors: [{ id: 'deploy-finished', chat: `discord:${CHAT}`, description: 'Tell me when the deploy finishes', command: 'watch-poll deploy-finished --every 5m -- bin/deploy-status', enabled: true }] };
-watchCase('met-one-shot-removed', 'train', 'A saved one-shot watch reports completion and is removed after the reply.',
-  'Channel reply reporting the finished deploy, then Bash settings-edit unset monitors',
+// Delivered as the watch monitor's notification (watch-monitor.ts), not as a chat message.
+const watchEvent = (id: string, description: string, line: string) =>
+  '<task-notification>\n<task-id>w4tch9q2x</task-id>\n<summary>Monitor event: "hermit-watch"</summary>\n'
+  + `<event>WATCH_EVENT [hermit-watch:${id}] (${description}) ${line}</event>\n</task-notification>`;
+watchCase('met-watch-asks-stop', 'train', 'A saved watch reports the event that ends its request, then asks its chat whether to stop.',
+  "Report of the finished deploy, then a queued watch-stop yes/no for the watch's chat; no monitors write in the event turn",
   withInstall({ '.hermit/config.json': configJson(metConfig) }, ({ run }) => prompt(run,
-    envelope(CHAT, '500000000000000307', USER, '[watch deploy-finished] The deploy finished successfully.'),
+    watchEvent('deploy-finished', metConfig.monitors[0].description, 'status: finished'),
     ['- config.json monitors[0]: ' + JSON.stringify(metConfig.monitors[0])])),
-  [{ name: 'removed-met-watch', type: 'tool_used', tool: 'Bash', input_match: 'unset monitors', weight: 3 }]);
+  [{ name: 'asked-to-stop', type: 'tool_used', tool: 'Bash', input_match: String.raw`queue-micro[\s\S]*watch-stop:deploy-finished`, weight: 3 },
+    { name: 'no-monitors-write', type: 'tool_used', tool: 'Bash', input_match: String.raw`settings-edit[^\n]*monitors`, min: 0, max: 0, weight: 2 }]);
 
 report('watch');

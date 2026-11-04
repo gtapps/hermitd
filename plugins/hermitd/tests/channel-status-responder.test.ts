@@ -685,6 +685,8 @@ describe('!scheduled', () => {
       { id: 'disk', description: 'Disk usage', command: 'watch-poll disk --every 2m -- df -h', enabled: true },
       { id: 'deploy', description: 'Deploy finishes', command: 'watch-poll deploy -- bin/deploy', enabled: false, chat: 'telegram:12345' },
       { id: 'off', description: 'Disabled watch', command: 'watch-poll off -- echo off', enabled: false, chat: 'telegram:12345' },
+      { id: 'flagged', description: 'Flag in check', command: 'watch-poll flagged -- "tool --every 2h"', enabled: true },
+      { id: 'stream', description: 'Log errors', command: 'tail -f app.log', enabled: true },
       { id: 'other-watch', description: 'Other chat', command: 'watch-poll other -- secret', chat: 'telegram:other' },
     ] });
     try {
@@ -699,7 +701,9 @@ describe('!scheduled', () => {
       expect(JSON.parse(r.stdout).decision).toBe('block');
       const text = stub.requests[0].body.text as string;
       expect(text).toContain('daily: 09:15 (Europe/Lisbon); on');
-      expect(text).toContain('disabled: 12:00 (Europe/Lisbon); off');
+      expect(text).toContain('disabled: 0 12 * * 1 (Europe/Lisbon); off');
+      expect(text).toContain('flagged: Flag in check; every 5m; on; check: "tool --every 2h"');
+      expect(text).toContain('stream: Log errors; on; command: tail -f app.log');
       expect(text).toContain('disk: Disk usage; every 2m; on; check: df -h');
       expect(text).toContain("deploy: Deploy finishes; every 5m; waiting for an admin's yes; check: bin/deploy");
       expect(text).toContain('off: Disabled watch; every 5m; off; check: echo off');
@@ -740,7 +744,7 @@ describe('!scheduled', () => {
     try {
       await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
         stdin: JSON.stringify({ prompt: envelope('!scheduled', 'member', 'group') }) });
-      expect(stub.requests[0].body.text).toBe('1 scheduled items in this chat.');
+      expect(stub.requests[0].body.text).toBe('Scheduled in this chat: 1.');
     } finally { stub.stop(); wd.cleanup(); }
   });
 
@@ -788,22 +792,32 @@ describe('!scheduled', () => {
     } finally { stub.stop(); wd.cleanup(); }
   });
 
-  test('uses the thread key for scheduled entries', async () => {
+  test('a thread lists its whole chat\'s standing work and approvals', async () => {
     const wd = setupWorkdir();
     try {
-      write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > scheduled.out\n');
+      write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat >> replies.out\n');
       fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
       write(hermit(wd.dir, 'config.json'), JSON.stringify({
         channels: { custom: { send_script: 'send.sh', allowed_users: ['U1'], attributes: { chat_id: 'channel_id', thread_id: 'thread_ts' } } },
-        routines: [{ id: 'thread-only', schedule: '0 8 * * *', chat: 'custom:C1~T1' },
-          { id: 'parent-only', schedule: '0 9 * * *', chat: 'custom:C1' }],
+        routines: [{ id: 'thread-routine', schedule: '0 8 * * *', chat: 'custom:C1~T1' },
+          { id: 'chat-routine', schedule: '0 9 * * *', chat: 'custom:C1' },
+          { id: 'other-chat-routine', schedule: '0 10 * * *', chat: 'custom:C2' }],
+        monitors: [{ id: 'chat-watch', description: 'deploy', enabled: true, chat: 'custom:C1',
+          command: '.hermit/bin/hermitd-run watch-poll chat-watch -- curl -s example.test' }],
       }));
-      const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
-        stdin: JSON.stringify({ prompt: '<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">!scheduled</channel>' }) });
-      expect(JSON.parse(r.stdout).decision).toBe('block');
-      const text = fs.readFileSync(path.join(wd.dir, 'scheduled.out'), 'utf8');
-      expect(text).toContain('thread-only');
-      expect(text).not.toContain('parent-only');
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-1', status: 'pending', chat: 'custom:C1', key: 'watch-enable:x', question: 'q?' }] }));
+      for (const command of ['!scheduled', '!status']) {
+        const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
+          stdin: JSON.stringify({ prompt: `<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">${command}</channel>` }) });
+        expect(JSON.parse(r.stdout).decision).toBe('block');
+      }
+      const text = fs.readFileSync(path.join(wd.dir, 'replies.out'), 'utf8');
+      expect(text).toContain('thread-routine');
+      expect(text).toContain('chat-routine');
+      expect(text).toContain('chat-watch');
+      expect(text).not.toContain('other-chat-routine');
+      expect(text).toContain('MP-1');
     } finally { wd.cleanup(); }
   });
 });

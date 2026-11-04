@@ -14,7 +14,7 @@
 - Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
 - An admin's watch save, turn-on and stop from their own chat need no permission prompt in auto mode
 - Chat edits to permission files are refused in bypass mode
-- A watch asked to end on a condition is removed once the agent reports that condition
+- A saved watch that reports the event ending its request asks its chat whether to stop watching
 - Operator `autoMode` lists merge after generated launch entries
 - `/hermitd:hermit-settings rules` takes approval-rule requests from the agent's admin, with quiet-restart activation
 - Chat edits of native permission files raise the native prompt

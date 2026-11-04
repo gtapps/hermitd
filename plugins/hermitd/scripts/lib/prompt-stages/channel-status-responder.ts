@@ -17,7 +17,7 @@ import { isAllowedSender, isTrustedController, isPrimaryOperator, channelBotIden
 import { resolveSlashCommand } from '../channel-slash-address';
 import { isPaused, pauseReasonLabel } from '../pause';
 import { resolveTimezone, budgetLine } from '../spend-status';
-import { friendlyBoundary, parseSimpleCronTime, parseDuration } from '../time';
+import { friendlyBoundary, parseSimpleCronTime } from '../time';
 import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
@@ -62,7 +62,7 @@ function approvalsLine(dir: string, config: Json, chatKey: string | undefined, m
   const home = homeChatKey(config?.channels);
   // A chat-less entry belongs to the home chat, or to any chat when none resolves (as askedOutsideHome treats it).
   const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) =>
-    p?.status === 'pending' && (typeof p.chat === 'string' ? p.chat === chatKey : home === null || home === chatKey)) : [];
+    p?.status === 'pending' && (typeof p.chat !== 'string' && home === null || belongsToChat(p, chatKey, home))) : [];
   if (pending.length === 0) return null;
   if (pending.length === 1) {
     const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
@@ -139,8 +139,13 @@ function minutesUntilNextFire(dowField: string, fireMin: number, nowMin: number,
   return null;
 }
 
+// Standing work (routines, saved watches, approvals) belongs to the chat; a thread
+// suffix on either key is ignored, so a thread lists its whole chat's entries.
 function belongsToChat(entry: Json, chatKey: string | undefined, home: string | null): boolean {
-  return typeof entry?.chat === 'string' ? entry.chat === chatKey : home !== null && home === chatKey;
+  if (chatKey === undefined) return false;
+  const chat = chatKey.split('~')[0];
+  if (typeof entry?.chat === 'string') return entry.chat.split('~')[0] === chat;
+  return home !== null && home === chat;
 }
 
 function nextRoutineLine(config: Json, chatKey: string | undefined, timezone: string, m: Messages): string | null {
@@ -228,24 +233,25 @@ function composeScheduledReply(dir: string, config: Json, chatKey: string, trust
     .filter((entry: Json) => entry?.status === 'pending' && belongsToChat(entry, chatKey, home))
     .map((entry: Json) => entry.key) : []);
   const rows: string[] = [];
-  for (const routine of routines.slice(0, 10)) {
-    const time = parseSimpleCronTime(routine.schedule);
+  // Saved watches first, so a home chat's built-in routines cannot push them past the cap.
+  for (const watch of watches.slice(0, 10)) {
+    const command = String(watch.command ?? '');
+    const poll = /(?:^|\s)watch-poll\s+\S+(?:\s+--every\s+(\S+))?(?:\s+--timeout\s+\S+)?\s+--\s+([\s\S]*)$/.exec(command);
+    const state = m.t(watch.enabled !== false ? 'scheduled_on'
+      : pending.has(`watch-enable:${watch.id}`) ? 'scheduled_pending' : 'scheduled_off');
+    const description = String(watch.description ?? '');
+    rows.push(poll
+      ? m.t('scheduled_watch', { id: String(watch.id), description, every: poll[1] ?? '5m', state, check: poll[2].slice(0, 200) })
+      : m.t('scheduled_stream', { id: String(watch.id), description, state, check: command.slice(0, 200) }));
+  }
+  for (const routine of routines.slice(0, 10 - rows.length)) {
+    // HH:MM only for a fixed daily time; any other cron keeps its day fields visible.
+    const daily = /^\d+\s+\d+\s+\*\s+\*\s+\*$/.test(String(routine.schedule ?? '').trim());
+    const time = daily ? parseSimpleCronTime(routine.schedule) : null;
     const schedule = time ? `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}` : String(routine.schedule ?? '');
     rows.push(m.t('scheduled_routine', {
       id: String(routine.id), schedule, timezone,
       state: m.t(routine.enabled === false ? 'scheduled_off' : 'scheduled_on'),
-    }));
-  }
-  for (const watch of watches.slice(0, 10 - rows.length)) {
-    const command = String(watch.command ?? '');
-    const interval = command.match(/(?:^|\s)--every\s+(\S+)/)?.[1] ?? '5m';
-    const every = Number.isFinite(parseDuration(interval, NaN)) ? interval : '5m';
-    const boundary = command.indexOf(' -- ');
-    const check = boundary < 0 ? '' : command.slice(boundary + 4).slice(0, 200);
-    const state = watch.enabled !== false ? 'scheduled_on'
-      : pending.has(`watch-enable:${watch.id}`) ? 'scheduled_pending' : 'scheduled_off';
-    rows.push(m.t('scheduled_watch', {
-      id: String(watch.id), description: String(watch.description ?? ''), every, state: m.t(state), check,
     }));
   }
   if (count > rows.length) rows.push(m.t('status_waiting_more', { n: count - rows.length }));
