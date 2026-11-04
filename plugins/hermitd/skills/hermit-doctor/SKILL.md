@@ -66,8 +66,7 @@ the row's own tier and the operator's config, not by the flag.
    When the finding is `classifier-denials`, name what was blocked by kind: a `bun` block is
    usually a hermit script, a call-shape/upstream matter the hermit reports; interpreter heredocs
    (`python3`, `node`) are something the hermit stops doing itself; an operator's own host needs an
-   `autoMode.environment` entry naming it, added to `~/.claude/settings.json` from the terminal.
-   Never offer to add classifier context on a chat reply.
+   `autoMode.environment` entry naming it, managed through `/hermitd:hermit-settings rules`.
 
    **Rows carrying `tier: "maintainer"` go on the maintainer leg only.** Their content is what the
    `PermissionDenied` hook already keeps off a client chat, so the payload splits by audience and

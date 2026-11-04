@@ -6,10 +6,15 @@
 
 - `hermitd-run watch-poll` runs a check on an interval and reports only changes, failures and recovery
 - `settings-edit append` adds an entry to a config list
+- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ### Changed
 
 - Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
+- Operator `autoMode` lists merge after generated launch entries
+- `/hermitd:hermit-settings rules` manages approval rules with quiet-restart activation
+- Chat edits of native permission files raise the native prompt
+- Requires Claude Code 2.1.318
 - Chats without threads no longer belong to the oldest open task; the agent routes continuations and dispatches independent new work at once
 - Task intake follows the investigation, longer exchange, or later sign-off test; one-off answers open no record
 - One message is one task unless the requester asks for separate tasks
@@ -23,10 +28,6 @@
 ### Fixed
 
 - Timed-out prechecks, send scripts and claim checks no longer leave child processes running
-
-### Added
-
-- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ### Upgrade Instructions
 
@@ -46,6 +47,7 @@
 
    TASKS.md participates in the watchdog's policy hash (`scripts/lib/context-policy.ts` → `contextPolicyHash`). Replacing either section makes the install eligible for a context clear under the usual conditions in `docs/task-records.md`; this step promises none.
 2. Remove the retired key: `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset tasks.handle_in_dm`. A missing key is fine; nothing reads it any more.
+3. If `.hermit/claude-settings.json` contains an `autoMode` key, tell the operator once that its lists now apply from the next start. If its `hard_deny` list lacks `"$defaults"`, name that list and explain that it replaces Claude Code's built-in hard block. Preserve the file.
 
 **Leftover check:** The report placeholder is now `[[helper-report <task-id> <id>]]`; operator-authored procedures using the one-id form need the task id and matching reply destination. Ask once before changing those procedures.
 

@@ -1100,11 +1100,11 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
         try {
           const e = JSON.parse(line);
           if (e.ts < cutoff) continue;
-          // Upgrade and requested restarts are planned and announced when they happen,
+          // Upgrade, rules and requested restarts are planned and announced when they happen,
           // so they don't warn. Reason format: hermitd-watchdog.ts doRestart.
           if (e.action === 'restart') {
             const reason = String(e.reason ?? '');
-            if (reason.startsWith('upgrade,') || reason.includes('fresh: requested')) plannedRestarts++;
+            if (reason.startsWith('upgrade,') || reason.startsWith('rules,') || reason.includes('fresh: requested')) plannedRestarts++;
             else restarts++;
           }
           // 'nudge-socket' is the same wedge nudge delivered over the session's

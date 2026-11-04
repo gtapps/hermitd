@@ -118,9 +118,11 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Settings change request** ("change the model", "add a routine", "turn off the heartbeat" — anything that alters `.hermit/config.json`)
   - Route every config write through `/hermitd:hermit-settings` and `.hermit/bin/hermitd-run settings-edit …`. Never Edit or Write `config.json`, from any turn origin. `settings-gate` raises native permission prompts for asked paths.
+  - Route standing rules about actions allowed without asking or never allowed to `/hermitd:hermit-settings rules`; judge meaning, not wording.
   - Respect a No: never retry or route around it.
 
 - **Standing role** ("remember (for this channel): when X, do Y", "forget/update the X rule", "what do you remember?")
+  - Approval rules follow **Settings change request**, not a role save.
   - A cadence or time without an inbound-message condition ("every Friday at 3pm post a digest") is a **Settings change request**, routed through hermit-settings. A rule conditioned on a message ("when someone...", "when a message...") is a role even if it contains "every" or a weekday.
   - Read `reference.md` § Standing role; hermit-wide only for a primary operator (§1c).
 
