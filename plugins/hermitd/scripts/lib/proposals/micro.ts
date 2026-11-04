@@ -298,7 +298,8 @@ function matchReply(stateDir: string, args: string[]): never {
   // In a chat, an entry without `user` is the admin's question; one with `user`
   // is also that requester's. Terminal answers stay unrestricted.
   if (chat !== undefined) {
-    const [source, chatId] = chat.split(':');
+    // A thread key's `~<thread>` suffix is not part of the chat id the home and maintainer rules compare.
+    const [source, chatId] = chat.split(/[:~]/);
     if (!isPrimaryOperator(readSettledConfig(stateDir), source, user ?? null, chatId)) {
       pending = pending.filter(entry => user !== undefined && entry.user === user);
     }

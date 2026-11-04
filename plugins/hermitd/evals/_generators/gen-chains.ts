@@ -173,7 +173,7 @@ const WORKER_THREAD = '700000000000000001';
 const WORKER_PROMPT = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run }) =>
   channelPrompt(run, envelope(CHAT, '500000000000000101', 'work on this: compare our three best-selling teas against the supplier price list and tell me which to reprice'), [
     `- task.ts list --open --conversation discord:${CHAT}: ${run('task.ts', ['list', '.hermit', '--open', '--conversation', `discord:${CHAT}`, '--json'])}`,
-    `- proposal-micro match: ${run('proposal.ts', ['micro', '.hermit', 'match', '--chat', `discord:${CHAT}`, '--reply', 'work on this'])}`,
+    `- proposal-micro match: ${run('proposal.ts', ['micro', '.hermit', 'match', '--chat', `discord:${CHAT}`, '--user', USER, '--reply', 'work on this'])}`,
     // thread-open calls the Discord API; this is its output for a server channel, which gets a native thread.
     `- conversation.ts thread-open: ${JSON.stringify({ key: `discord:${WORKER_THREAD}`, chat_id: WORKER_THREAD })}`,
     `- task.ts open: ${run('task.ts', ['open', '.hermit', '--title', 'Reprice the best-selling teas', '--requester', `discord:${USER}`,

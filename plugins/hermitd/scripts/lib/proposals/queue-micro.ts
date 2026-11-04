@@ -3,8 +3,8 @@
 // Usage: proposal.ts queue-micro <hermit-state-dir> <<'HERMIT_MP'
 //        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>","user":"<user_id>","key":"..."}
 //        HERMIT_MP
-//   — `user` names the requester who may answer besides a primary operator;
-//     without it, only a primary operator can answer in a chat.
+//   `user` names the requester who may answer besides a primary operator;
+//   without it, only a primary operator can answer in a chat.
 //   — stdin only (question is free text and may contain apostrophes/quotes; no argv mode).
 // Output (stdout, one JSON line):
 //   {"status":"queued","id":"<MP-id>"}
