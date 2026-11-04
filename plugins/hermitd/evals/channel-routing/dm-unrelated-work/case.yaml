@@ -39,7 +39,8 @@ graders:
     tool: 'Skill'
     input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
     weight: 2
-  - name: routing-outcome
-    type: llm
-    focus: 'trace'
-    criteria: "PASS if the domain renewal work gets its own new task record, separate from disk-trend, and disk-trend is neither steered nor replaced. FAIL if the request is folded into disk-trend, replaces it, or is handled without opening a task."
+  - name: new-task-dispatched
+    type: tool_used
+    tool: 'Agent'
+    input_match: 'hermitd:task-worker'
+    weight: 2

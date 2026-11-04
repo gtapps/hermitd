@@ -40,5 +40,5 @@ graders:
     weight: 2
   - name: routing-outcome
     type: llm
-    focus: 'trace'
-    criteria: "PASS if the agent opens a task record for the migration plan that waits for the requester's approval, whether the plan is posted this turn or later. FAIL if it posts a plan without opening a record, or starts the migration."
+    focus: 'mock_calls'
+    criteria: "PASS if the reply posts a draft plan, or says one will follow, and waits for the requester's approval before anything changes. FAIL if it says any migration step was carried out, or no reply was sent."

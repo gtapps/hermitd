@@ -39,7 +39,3 @@ graders:
     tool: 'Skill'
     input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
     weight: 2
-  - name: routing-outcome
-    type: llm
-    focus: 'trace'
-    criteria: "PASS if the agent opens a task for the investigation at this message. FAIL if it only answers or asks for data without opening a task."

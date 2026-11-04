@@ -32,6 +32,8 @@
 
 - Timed-out prechecks, send scripts and claim checks no longer leave child processes running
 - A request in a task thread to keep an eye on something reaches the watch skill instead of staying a task note
+- Work that needs details from the requester before it starts opens a task before the question
+- With several open suggestions, a bare reply is answered by asking for the suggestion number
 
 ### Upgrade Instructions
 

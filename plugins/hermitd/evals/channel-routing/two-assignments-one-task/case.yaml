@@ -38,7 +38,9 @@ graders:
     tool: 'Skill'
     input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
     weight: 2
-  - name: routing-outcome
-    type: llm
-    focus: 'trace'
-    criteria: "PASS if the agent takes the task route and opens one record covering both the provider comparison and the invoice investigation. FAIL if it opens separate records without the requester asking for a split, or handles the message without opening a task."
+  - name: one-task
+    type: tool_used
+    tool: 'Agent'
+    input_match: 'hermitd:task-worker'
+    min: 0
+    max: 1

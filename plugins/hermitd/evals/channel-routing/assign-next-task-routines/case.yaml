@@ -1,8 +1,8 @@
 schema_version: "1.1"
 name: assign-next-task-routines
-description: 'Investigation of operational history needs a task regardless of the introductory wording.'
+description: 'A question about which routines have not fired is Standing work answered now, despite a "next task:" prefix.'
 tags: [channel-routing, train]
-expected_outcome: 'Task route via the task skill.'
+expected_outcome: 'Standing work inspection through reference.md; no task skill.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -30,11 +30,17 @@ execution:
     next task: go through the routines and tell me which ones haven't fired in the last two weeks
     </channel>
 graders:
-  - name: task-skill
+  - name: no-task-skill
     type: tool_used
     tool: 'Skill'
     input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
+    min: 0
+    max: 0
     weight: 2
+  - name: read-standing-work
+    type: tool_used
+    tool: 'Read'
+    input_match: 'channel-responder/reference\.md'
   - name: replied-via-channel
     type: tool_used
     tool: 'mcp__plugin_discord_discord__reply'

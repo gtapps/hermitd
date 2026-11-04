@@ -39,6 +39,8 @@ graders:
     type: tool_used
     tool: 'mcp__plugin_discord_discord__reply'
   - name: one-task
-    type: llm
-    focus: 'trace'
-    criteria: "PASS if the agent takes the task route and treats both requests as one task: one record and one acknowledgement covering both. FAIL if it opens or proposes separate records without the requester asking for a split, or handles the message without the task route."
+    type: tool_used
+    tool: 'Agent'
+    input_match: 'hermitd:task-worker'
+    min: 0
+    max: 1

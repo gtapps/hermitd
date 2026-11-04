@@ -107,14 +107,14 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - Otherwise invoke `/hermitd:cost-reflect`; a channel turn reads its `--plain` data. Do not run the raw token-category breakdown here.
 
 - **Task assignment**
-  - Open a task when the message needs investigation, a longer exchange, or later sign-off or choice. A one-off answer opens nothing, even with a tool. Questions get answers; work with no verifiable end is answered as a question. A plan posted for approval is a task that closes on approval. One message is one task unless the requester asks for separate tasks. No trigger words.
-  - Apply TASKS.md and take the **Task thread** route, with `--due <ISO>` for a given date. Otherwise answer without a record.
+  - Open a task when the message needs investigation, a longer exchange (asking for details first counts), or later sign-off or choice. A one-off answer opens nothing, even with a tool. Questions get answers; work with no verifiable end is answered as a question. A plan posted for approval is a task that closes on approval. One message is one task unless the requester asks for separate tasks. No trigger words.
+  - Apply TASKS.md and invoke `/hermitd:task`, with `--due <ISO>` for a given date.
 
 - **Clear** of "Looks already done": `approvals.md` § Already-done items.
 
 - **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): only while a pending entry exists, read `approvals.md` § Micro-approval response. Else keep classifying (**Proposal approval** next).
 
-- **Proposal approval** ("accept PROP-", "approve PROP-", proposal numbers, `#N`, or yes/later/no in any language): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. A bare one not confirming a task (§1) or answering you: with exactly one open suggestion and in a home chat, apply it through `/hermitd:proposal-act`, even with no question open; otherwise act on none and ask which by number ("#14 or #15?"), not title.
+- **Proposal approval** ("accept PROP-", "approve PROP-", proposal numbers, `#N`, or yes/later/no in any language): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. A bare one not confirming a task (§1) or answering you: with exactly one open suggestion and in a home chat, apply it through `/hermitd:proposal-act`, even with no question open; otherwise act on none and ask which by number, not title (`PROP-014` is #14).
 
 - **Settings change request** ("change the model", "add a routine", "turn off the heartbeat" — anything that alters `.hermit/config.json`)
   - Route every config write through `/hermitd:hermit-settings` and `.hermit/bin/hermitd-run settings-edit …`. Never Edit or Write `config.json`, from any turn origin. `settings-gate` raises native permission prompts for asked paths.
@@ -122,9 +122,9 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - Respect a No: never retry or route around it.
 
 - **Standing role** ("remember (for this channel): when X, do Y", "forget/update the X rule", "what do you remember?")
+  - Read `reference.md` § Standing role first; hermit-wide only for a primary operator (§1c).
   - Approval rules follow **Settings change request**, not a role save.
   - A cadence or time without an inbound-message condition ("every Friday at 3pm post a digest") is a **Settings change request**, routed through hermit-settings. A rule conditioned on a message ("when someone...", "when a message...") is a role even if it contains "every" or a weekday.
-  - Read `reference.md` § Standing role; hermit-wide only for a primary operator (§1c).
 
 - **Question** ("why did you...", "what about...", "how does X work?")
   - Answer using current session context

@@ -18,7 +18,7 @@ surface.
 
 Synthetic channel turns that score `skills/channel-responder/SKILL.md` § 2 (Classify the Message): which route each message takes and whether the reply stays in channel voice. The `maintainer-content-stays`, `sibling-thread-reference` and `thread-go-ahead-resolves-here` cases score the § 3 chat boundary.
 
-Each case's `scaffold.sh` copies the live `state-templates/TASKS.md.template` and writes `config.json` with the case's `operator_profile`, so the task policy comes from the real hook. The prompt carries what no hook produces in an eval run: the reply reminder and responder nudge (checked by the drift test), any `[harness-command]`, `[pause]`, `[task thread]` or `[conversation command]` line, and a `Hermit state` block standing in for the `config.json` facts the responder reads (`operator_profile`, language, primary operator), `task.ts list`, `proposal-micro match` and the proposals index. No hook injects those config facts; without that line, the non-technical spend case called cost-reflect in 3 of 3 runs on 2026-10-26. The task-intake cases (`assign-*`, `dm-*`, `plan-awaiting-approval`, `question-grows-investigation`, `two-assignments-one-task` and the negatives `start-one-liner`, `three-plain-questions`) also stand in for `conversation.ts thread-open`, `task.ts open`, `note` and `block` and say every other skill step runs as written: with only read stand-ins and "no shell", Sonnet and Opus judged the task route impossible and never invoked `/hermitd:task`. Their LLM routing rubrics grade with `focus: trace`, or `mock_calls` when only the reply text matters; the default `last_message` is the terminal summary, which shows no routing. The cases are hand-written; update them in the same change as that wording. The Discord reply tool is a fixed mock under `mocks/plugin_discord_discord/`, so reply text is graded through `mock_calls`. The resident prompt is not appended here, unlike in `chains`.
+Each case's `scaffold.sh` copies the live `state-templates/TASKS.md.template` and writes `config.json` with the case's `operator_profile`, so the task policy comes from the real hook. The prompt carries what no hook produces in an eval run: the reply reminder and responder nudge (checked by the drift test), any `[harness-command]`, `[pause]`, `[task thread]` or `[conversation command]` line, and a `Hermit state` block standing in for the `config.json` facts the responder reads (`operator_profile`, language, primary operator), `task.ts list`, `proposal-micro match` and the proposals index. No hook injects those config facts; without that line, the non-technical spend case called cost-reflect in 3 of 3 runs on 2026-10-26. The task-intake cases (`assign-*`, `dm-*`, `plan-awaiting-approval`, `question-grows-investigation`, `two-assignments-one-task` and the negatives `start-one-liner`, `three-plain-questions`) also stand in for `conversation.ts thread-open`, `task.ts open`, `note` and `block` and say every other skill step runs as written: with only read stand-ins and "no shell", Sonnet and Opus judged the task route impossible and never invoked `/hermitd:task`. Routing is graded with tool graders (`Skill` for the task route, `Agent` with `hermitd:task-worker` for dispatch counts) and LLM rubrics only on `mock_calls`: the default `last_message` is the terminal summary, which shows no routing, and `focus: trace` elides the middle of a run (`[…37 messages elided…]`), so the judge never saw the `Skill` or `Agent` call. The cases are hand-written; update them in the same change as that wording. The Discord reply tool is a fixed mock under `mocks/plugin_discord_discord/`, so reply text is graded through `mock_calls`. The resident prompt is not appended here, unlike in `chains`.
 
 ## heartbeat
 
@@ -194,6 +194,31 @@ Claude Code 2.1.316, `--model sonnet`, low effort, `--runs 3` over three rounds,
 - `branches.md` then gained the same carve-out: a `current-session` candidate that is Tier 3 only through the external-origin override keeps the Tier-1 recurrence path. Over 9 runs, 7 reached both gates (five 0.8, two 0.4 where the rubric failed a narrower "ask before applying" proposal 2 to 1), and 2 declined in main, calling a customer's instruction unfit for a standing rule. `judge-external-quarantine-home` and `judge-suppress-no-evidence-shop` stayed at 1.
 - Current-session candidates then cited the record's task ID instead of `Sessions: current`, which matched no `task-report` row the judge is handed. Reflect scored 0.8 on 3 of 3, every run judged against `T-20261020-090000`; `judge-accept-shop` and `judge-external-quarantine-home` stayed at 1.
 - Neighbor bare-reply cases scored 1, 3 runs each. Opus on the five proposal cases: 14 of 15, one `names-both-numbers` miss.
+
+### Task-intake repair, 2026-11-04
+
+Claude Code 2.1.318, `--model sonnet`, low effort, `--runs 3`, $7.47 for the targeted cases on the branch with the intake stand-ins and `focus: trace` rubrics. Before is the gated run on the pre-tag merge.
+
+| Case | Before | After |
+|---|---|---|
+| `question-grows-investigation`, `three-plain-questions`, `harness-model-unrecorded` | 0.75 each run | 1, 1, 1 |
+| `start-one-liner` | 1, 1, 0.75 | 1, 1, 1 |
+| `approval-rules-approver` | 6-turn cap on 2 of 3 | 1, 1, 1 |
+| `dm-follow-up` | 0.75, 0.75, 0.75 | 1, 1, 1 |
+| `dm-unrelated-work`, `plan-awaiting-approval` | 0.75 each run | 0.75 each run |
+| `two-assignments-one-task` | 0.75, 0.75, 0.75 | 0.75, 0.75, 0.25 |
+| `assign-multi-for-today` | 0.25 each run | 0.25, 0.75, 0.25 |
+| `assign-next-task-routines`, `assign-next-task-watch-shaped` | 0.33 each run | 0.33 each run |
+| `assign-question-shaped` | 0.77 mean, 6-turn cap twice | 0.33, 1, 0.33 |
+| `assign-release-note` | 0.33 each run | 0.33, 1, 1 |
+| chains-write `task-answer-waiting-record-shop` | 0.63, 0.63, 0.25 | 0.63, 1, 1 |
+| watch `met-watch-asks-stop` | 0.83 each run | 1, 1, 1 |
+| watch `step-in-task-thread-temporary` | 0.67, 0.67, 1 | 1, 1, 1 |
+
+- The remaining routing-rubric failures were the elided trace, not routing: those runs passed `task-skill`. The rubrics were then replaced as described in § channel-routing.
+- `assign-next-task-*` answered as Standing work on Sonnet 6 of 6 and Opus 1 of 1. Questions that name routines or watches are Standing work, and intake has no trigger words, so the cases now expect that answer with no task.
+- `assign-multi-for-today` and the other assign misses asked the requester for details without opening a task. The responder now counts that as a longer exchange and names `/hermitd:task` in the assignment branch.
+- These follow-up changes, and the `proposal-no-two-open` and `standing-role-save` responder wording, are not yet re-measured.
 
 ## Changing routing wording
 

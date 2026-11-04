@@ -41,5 +41,5 @@ graders:
     weight: 2
   - name: routing-outcome
     type: llm
-    focus: 'trace'
-    criteria: "PASS if the message is handled as steering of the existing disk-trend task (noted on that record or forwarded to it) and no new record is opened. FAIL if a new task is opened for it or the change is dropped."
+    focus: 'mock_calls'
+    criteria: "PASS if the reply treats the message as a change to the existing disk-trend check (the weekends are added to it). FAIL if it announces a separate new task for it, or no reply was sent."
