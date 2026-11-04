@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: standing-role-save
 description: 'A message-conditioned rule is a standing role.'
 tags: [channel-routing, train]
-expected_outcome: 'Standing role branch (reference.md); no settings change, no task.'
+expected_outcome: 'Standing role branch: the reply treats it as a rule for this channel; no settings change, no task.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -27,10 +27,10 @@ execution:
     remember for this channel: when someone posts a link, reply with a two-line summary of it
     </channel>
 graders:
-  - name: read-reference
-    type: tool_used
-    tool: 'Read'
-    input_match: 'channel-responder/reference\.md'
+  - name: role-reply
+    type: llm
+    focus: 'mock_calls'
+    criteria: 'PASS if the channel reply treats the link-summary instruction as a standing rule for this channel: it confirms the rule is saved or remembered here, or says it could not be saved in this session. FAIL if it treats the message as a one-off or a task, summarizes a link, or no reply was sent.'
   - name: no-settings-skill
     type: tool_used
     tool: 'Skill'
