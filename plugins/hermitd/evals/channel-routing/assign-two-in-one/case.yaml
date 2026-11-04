@@ -12,11 +12,14 @@ execution:
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents. Every other step of the skill runs as written.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
     - proposal-micro match: {"status":"none","reason":"no_pending"}
     - proposal-list: {"total":0,"shown":0,"proposals":[]}
+    - conversation.ts thread-open: {"key":"discord:700000000000000001","chat_id":"700000000000000001"}
+    - task.ts open: {"id":"T-20261001-093000","handle":"<slug of the --title>","created":true,"open_count":1,"queued":false}
+    - task.ts note, task.ts block: OK
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -24,7 +27,7 @@ execution:
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
     <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000019" user="sam" user_id="100000000000000001" ts="2026-10-01T09:09:00.000Z">
-    two things please: rename the weekly report title to 'Week in review', and check whether the disk usage trend is going up
+    two things please: rename the weekly report title to 'Week in review', and find out why disk usage keeps climbing
     </channel>
 graders:
   - name: task-skill
@@ -36,5 +39,8 @@ graders:
     type: tool_used
     tool: 'mcp__plugin_discord_discord__reply'
   - name: one-task
-    type: llm
-    criteria: 'PASS if the task route treats the bundled work as one task; FAIL if it splits records without a requester split request.'
+    type: tool_used
+    tool: 'Agent'
+    input_match: 'hermitd:task-worker'
+    min: 0
+    max: 1

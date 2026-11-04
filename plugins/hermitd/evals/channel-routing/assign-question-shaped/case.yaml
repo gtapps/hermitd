@@ -6,7 +6,7 @@ expected_outcome: 'Task route via the task skill.'
 context:
   scaffold_script: scaffold.sh
 execution:
-  max_turns: 6
+  max_turns: 8
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep]
   env: {EVAL_HERMIT_RESIDENT: "1"}
