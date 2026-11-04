@@ -6,13 +6,17 @@
 
 - `hermitd-run watch-poll` runs a check on an interval and reports only changes, failures and recovery
 - `settings-edit append` adds an entry to a config list
-- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
+- `!status` lists work and waits in this chat, with pending approvals and general operator waits for the admin
+- `!scheduled` lists this chat's routines and saved watches with their schedules, states and checks without a model turn
 
 ### Changed
 
 - Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
+- An admin's watch save, turn-on and stop from their own chat need no permission prompt in auto mode
+- Chat edits to permission files are refused in bypass mode
+- A saved watch that reports the event ending its request asks its chat whether to stop watching
 - Operator `autoMode` lists merge after generated launch entries
-- `/hermitd:hermit-settings rules` manages approval rules with quiet-restart activation
+- `/hermitd:hermit-settings rules` takes approval-rule requests from the agent's admin, with quiet-restart activation
 - Chat edits of native permission files raise the native prompt
 - Requires Claude Code 2.1.318
 - Chats without threads no longer belong to the oldest open task; the agent routes continuations and dispatches independent new work at once
@@ -21,9 +25,8 @@
 - Worker reports name their task when several tasks share a chat without threads
 - The report placeholder carries its task id as `[[helper-report <task-id> <id>]]` and checks the reply destination
 - `tasks.handle_in_dm` is removed; handles identify concurrent tasks in chats without threads
-- `!mute`, `!unmute` and `!restart` apply only in task threads; a task muted in a chat without threads no longer silences that chat
+- `!restart` works in chats without threads for the sole open task or with `!restart <handle>`; `!mute` and `!unmute` remain thread-only, and a task muted in a chat without threads no longer silences that chat
 - Editing a script run by a routine precheck, channel `send_script` or config watch raises the native permission prompt
-- Child processes left by a precheck, send script or claim check are stopped when it exits
 
 ### Fixed
 
@@ -45,7 +48,6 @@
    - *Adopt the new policy*: replace that section with the current template section, preserving every other section.
    - *Keep my wording*: leave the section unchanged.
 
-   TASKS.md participates in the watchdog's policy hash (`scripts/lib/context-policy.ts` → `contextPolicyHash`). Replacing either section makes the install eligible for a context clear under the usual conditions in `docs/task-records.md`; this step promises none.
 2. Remove the retired key: `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset tasks.handle_in_dm`. A missing key is fine; nothing reads it any more.
 3. If `.hermit/claude-settings.json` contains an `autoMode` key, tell the operator once that its lists now apply from the next start. If its `hard_deny` list lacks `"$defaults"`, name that list and explain that it replaces Claude Code's built-in hard block. Preserve the file.
 

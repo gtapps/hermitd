@@ -1,14 +1,8 @@
-// UserPromptSubmit stage — deterministic status responder.
+// UserPromptSubmit stage: deterministic status and scheduled-work replies.
 //
-// When the inbound prompt is a <channel> envelope whose body is exactly
-// "/status" (trimmed, case-insensitive, optionally addressed to this bot as
-// "/status@handle") and the sender passes the channel's
-// allowed_users gate, formats an operator-language status reply from
-// read-only state (pause, current task record, budget, pending approvals, next
-// routine) and sends it directly via lib/channel-send — bypassing the model
-// entirely. This is the one case a model-composed reply can't cover: a
-// paused session can speak but can't Read, so any model-answered status
-// while paused would be blind.
+// Exact, optionally bot-addressed /status and /scheduled commands from admitted
+// channel senders read state and reply through lib/channel-send without a model
+// turn. This also works while paused, when the model cannot Read current state.
 //
 // Send-then-block: only emits {"decision":"block"} after a confirmed
 // successful send, so a failed send always falls through to a normal model
@@ -19,7 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isAllowedSender, isTrustedController, channelBotIdentity } from '../channel-auth';
+import { isAllowedSender, isTrustedController, isPrimaryOperator, channelBotIdentity } from '../channel-auth';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { isPaused, pauseReasonLabel } from '../pause';
 import { resolveTimezone, budgetLine } from '../spend-status';
@@ -68,7 +62,7 @@ function approvalsLine(dir: string, config: Json, chatKey: string | undefined, m
   const home = homeChatKey(config?.channels);
   // A chat-less entry belongs to the home chat, or to any chat when none resolves (as askedOutsideHome treats it).
   const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) =>
-    p?.status === 'pending' && (typeof p.chat === 'string' ? p.chat === chatKey : home === null || home === chatKey)) : [];
+    p?.status === 'pending' && (typeof p.chat !== 'string' && home === null || belongsToChat(p, chatKey, home))) : [];
   if (pending.length === 0) return null;
   if (pending.length === 1) {
     const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
@@ -82,8 +76,8 @@ const AGE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['hour', 3600], ['minute', 60], ['second', 1],
 ];
 
-// Open records whose wait is on this sender (or on 'operator' for the trusted
-// controller), oldest wait first, as localized board lines.
+// Open records whose wait is on this sender (or on 'operator' for the primary
+// operator), oldest wait first, as localized board lines.
 function waitingRecords(all: Task[], keys: Set<string>, m: Messages): string[] {
   const records = all.filter(task => task.status === 'open' && task.waiting_on !== null && keys.has(task.waiting_on));
   if (records.length === 0) return [];
@@ -145,7 +139,16 @@ function minutesUntilNextFire(dowField: string, fireMin: number, nowMin: number,
   return null;
 }
 
-function nextRoutineLine(config: Json, timezone: string, m: Messages): string | null {
+// Standing work (routines, saved watches, approvals) belongs to the chat; a thread
+// suffix on either key is ignored, so a thread lists its whole chat's entries.
+function belongsToChat(entry: Json, chatKey: string | undefined, home: string | null): boolean {
+  if (chatKey === undefined) return false;
+  const chat = chatKey.split('~')[0];
+  if (typeof entry?.chat === 'string') return entry.chat.split('~')[0] === chat;
+  return home !== null && home === chat;
+}
+
+function nextRoutineLine(config: Json, chatKey: string | undefined, timezone: string, m: Messages): string | null {
   const routines = Array.isArray(config?.routines) ? config.routines : [];
   const now = wallMinutes(timezone, new Date());
   if (now === null) return null;
@@ -154,7 +157,7 @@ function nextRoutineLine(config: Json, timezone: string, m: Messages): string | 
 
   let best: { id: string; hour: number; minute: number; delta: number } | null = null;
   for (const r of routines) {
-    if (!r || r.enabled === false || typeof r.schedule !== 'string') continue;
+    if (!r || r.enabled === false || typeof r.schedule !== 'string' || !belongsToChat(r, chatKey, homeChatKey(config?.channels))) continue;
     const fireTime = parseSimpleCronTime(r.schedule);
     if (!fireTime) continue;
     const dowField = String(r.schedule).trim().split(/\s+/)[4] ?? '*';
@@ -172,13 +175,14 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   redact?: boolean;
   senderKey?: string | null;
   chatKey?: string;
-  trusted?: boolean;
+  primary?: boolean;
 } = {}): string {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
   const records = readRecords(dir);
   // The resident's first runnable record is its current work.
-  const current = records.find(isRunnable) ?? null;
+  const scoped = records.filter(task => task.conversation === opts.chatKey);
+  const current = (opts.redact ? records : scoped).find(isRunnable) ?? null;
   const lines: string[] = [];
 
   const pause = pauseLine(dir, timezone, m);
@@ -196,20 +200,62 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const budget = budgetLine(dir, config, timezone, m);
   if (budget) lines.push(budget);
 
-  const routine = nextRoutineLine(config, timezone, m);
+  const routine = nextRoutineLine(config, opts.chatKey, timezone, m);
   if (routine) lines.push(routine);
 
   const keys = new Set<string>();
   if (opts.senderKey) keys.add(opts.senderKey);
-  if (opts.trusted) keys.add('operator');
-  const waiting = waitingRecords(records, keys, m);
-  const approvals = approvalsLine(dir, config, opts.chatKey, m);
+  if (opts.primary) keys.add('operator');
+  const waiting = waitingRecords(scoped, keys, m);
+  const approvals = opts.primary ? approvalsLine(dir, config, opts.chatKey, m) : null;
   if (approvals) waiting.push(approvals);
   const head = lines.join(' ');
   if (waiting.length === 0) return head || m.t('status_all_quiet');
   const block = [m.t('status_waiting_header'), ...waiting.slice(0, 5).map(item => `• ${item}`)];
   if (waiting.length > 5) block.push(m.t('status_waiting_more', { n: waiting.length - 5 }));
   return [head, ...block].filter(Boolean).join('\n');
+}
+
+function composeScheduledReply(dir: string, config: Json, chatKey: string, trusted: boolean): string {
+  const m = loadMessages(dir, config?.language);
+  const home = homeChatKey(config?.channels);
+  const routines = (Array.isArray(config?.routines) ? config.routines : [])
+    .filter((entry: Json) => entry && belongsToChat(entry, chatKey, home));
+  const watches = (Array.isArray(config?.monitors) ? config.monitors : [])
+    .filter((entry: Json) => entry && belongsToChat(entry, chatKey, home));
+  const count = routines.length + watches.length;
+  if (count === 0) return m.t('scheduled_empty');
+  if (!trusted) return m.t('scheduled_count', { n: count });
+
+  const timezone = resolveTimezone(config);
+  const proposals = readJson(path.join(dir, 'state', 'micro-proposals.json'));
+  const pending = new Set(Array.isArray(proposals?.pending) ? proposals.pending
+    .filter((entry: Json) => entry?.status === 'pending' && belongsToChat(entry, chatKey, home))
+    .map((entry: Json) => entry.key) : []);
+  const rows: string[] = [];
+  // Saved watches first, so a home chat's built-in routines cannot push them past the cap.
+  for (const watch of watches.slice(0, 10)) {
+    const command = String(watch.command ?? '');
+    const poll = /(?:^|\s)watch-poll\s+\S+(?:\s+--every\s+(\S+))?(?:\s+--timeout\s+\S+)?\s+--\s+([\s\S]*)$/.exec(command);
+    const state = m.t(watch.enabled !== false ? 'scheduled_on'
+      : pending.has(`watch-enable:${watch.id}`) ? 'scheduled_pending' : 'scheduled_off');
+    const description = String(watch.description ?? '');
+    rows.push(poll
+      ? m.t('scheduled_watch', { id: String(watch.id), description, every: poll[1] ?? '5m', state, check: poll[2].slice(0, 200) })
+      : m.t('scheduled_stream', { id: String(watch.id), description, state, check: command.slice(0, 200) }));
+  }
+  for (const routine of routines.slice(0, 10 - rows.length)) {
+    // HH:MM only for a fixed daily time; any other cron keeps its day fields visible.
+    const daily = /^\d+\s+\d+\s+\*\s+\*\s+\*$/.test(String(routine.schedule ?? '').trim());
+    const time = daily ? parseSimpleCronTime(routine.schedule) : null;
+    const schedule = time ? `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}` : String(routine.schedule ?? '');
+    rows.push(m.t('scheduled_routine', {
+      id: String(routine.id), schedule, timezone,
+      state: m.t(routine.enabled === false ? 'scheduled_off' : 'scheduled_on'),
+    }));
+  }
+  if (count > rows.length) rows.push(m.t('status_waiting_more', { n: count - rows.length }));
+  return rows.join('\n');
 }
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
@@ -223,18 +269,20 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // Slash-only exact match, same rule as the pause and harness commands — a bare
   // "status" now falls through to the model, as every near-miss already did.
   const addressed = resolveSlashCommand(envelope.body, channelBotIdentity(config, envelope.source));
-  if (!addressed || addressed.command !== '/status' || addressed.rest.length > 0) return;
+  if (!addressed || !['/status', '/scheduled'].includes(addressed.command) || addressed.rest.length > 0) return;
 
   if (!isAllowedSender(config, envelope.source, envelope.userId)) return;
 
   // Full status only for the trusted operator (explicit allowlist, or the DM chat
   // when no list is set); any other accepted sender gets a redacted, coarse reply.
   const trusted = isTrustedController(config, envelope.source, envelope.userId, envelope.chatId);
-  const reply = composeStatusReply(dir, config, {
+  const chatKey = conversationKey(envelope.sourceKey, envelope.chatId, envelope.thread);
+  const scheduled = addressed.command === '/scheduled';
+  const reply = scheduled ? composeScheduledReply(dir, config, chatKey, trusted) : composeStatusReply(dir, config, {
     redact: !trusted,
     senderKey: envelope.userId === null ? null : `${envelope.sourceKey}:${envelope.userId}`,
-    chatKey: conversationKey(envelope.sourceKey, envelope.chatId),
-    trusted,
+    chatKey,
+    primary: isPrimaryOperator(config, envelope.source, envelope.userId, envelope.chatId),
   });
   // Reply to the chat the request arrived on — not the globally-resolved
   // outbound channel — so a status asked in a group or a non-primary channel is
@@ -246,7 +294,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     config, // already loaded by the pipeline — don't make the sender re-read it
   });
   if (result.ok) {
-    return { block: 'status answered deterministically' };
+    return { block: `${scheduled ? 'scheduled' : 'status'} answered deterministically` };
   }
 
   // Deterministic delivery failed — an unsupported platform (iMessage/webhook aren't
@@ -260,8 +308,8 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // mechanism channel-reply-reminder.ts relies on.
   return {
     context:
-      `[status] Deterministic status delivery is unavailable on this channel. Relay the ` +
-      `following status to the operator verbatim via the channel reply tool (to the chat ` +
+      `[${scheduled ? 'scheduled' : 'status'}] Deterministic delivery is unavailable on this channel. Relay the ` +
+      `following reply to the operator verbatim via the channel reply tool (to the chat ` +
       `this message arrived on), then stop — add no commentary:\n${reply}\n`,
   };
 }

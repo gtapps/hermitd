@@ -533,7 +533,7 @@ function writeBootId(): void {
  * entry is stale. A `/clear` never runs hermitd-start, so its surviving
  * monitors keep their entries. Config-watch duties and the watch poller's process
  * list are reset for the new session as well. Missing files stay missing.
- * Ad-hoc watch-poll state files are deleted at launch.
+ * Ad-hoc and removed config watch-poll state files are deleted at launch.
  */
 function clearWatchRegistry(): void {
   for (const [name, empty] of [
@@ -558,8 +558,12 @@ function clearWatchRegistry(): void {
       console.log(`[hermit] WARNING: watch-poll not cleared (${error?.message ?? error}).`);
     }
   }
+  if (names.length === 0) return;
+  const config = readConfigRaw(path.dirname(CONFIG_PATH));
+  const savedIds = config === null ? null : new Set((Array.isArray(config.monitors) ? config.monitors : []).map((watch: Json) => watch?.id));
   for (const name of names) {
-    if (!name.startsWith('adhoc-') || !name.endsWith('.json')) continue;
+    if (!name.endsWith('.json')) continue;
+    if (!name.startsWith('adhoc-') && (savedIds === null || savedIds.has(name.slice(0, -5)))) continue;
     try {
       fs.unlinkSync(path.join(pollDir, name));
     } catch (error: any) {

@@ -822,6 +822,30 @@ describe('watch mutations', () => {
     }
   });
 
+  test('a thread of the watch chat owns its thread-less watches', async () => {
+    const threaded = [...entries, watch('other-thread', { chat: 'discord:555~T2' })];
+    async function asks(rest: string, sender = 'member') {
+      const dir = fixture({
+        channels: { discord: { default_chat_id: '100', allowed_users: ['primary', 'member'], operators: ['primary'], attributes: { thread_id: 'thread_ts' } } },
+        monitors: threaded,
+      });
+      const transcript = path.join(dir, 'watch.jsonl');
+      const content = `<channel source="discord" chat_id="555" thread_ts="T1" user_id="${sender}">yes</channel>`;
+      fs.writeFileSync(transcript, JSON.stringify({ type: 'user', origin: { kind: 'human' }, message: { content } }) + '\n');
+      const input = JSON.parse(payload({ dir, tool: 'Bash', permission_mode: 'auto',
+        input: { command: `.hermit/bin/hermitd-run settings-edit .hermit/config.json ${rest}` } }));
+      input.transcript_path = transcript;
+      const result = await runGate(JSON.stringify(input), dir);
+      expect(result.exitCode).toBe(0);
+      return result.stdout !== '';
+    }
+    expect(await asks('set monitors.1.enabled false')).toBe(false);
+    expect(await asks('unset monitors.1')).toBe(false);
+    expect(await asks(append(watch('new', { enabled: false, chat: 'discord:555' })))).toBe(false);
+    expect(await asks('set monitors.3.enabled false')).toBe(true);
+    expect(await asks('set monitors.2.enabled true')).toBe(true);
+  });
+
   test('direct script form follows the same watch rules', async () => {
     for (const mode of ['auto', 'default']) {
       expect(await decision(append(watch('new')), mode, '100', 'primary', false,

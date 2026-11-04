@@ -646,6 +646,24 @@ describe('clearWatchRegistry', () => {
     expect(fs.readdirSync(dir).sort()).toEqual(['adhoc-keep.txt', 'disk-usage.json', 'other-adhoc-a.json']);
   });
 
+  test('removes orphan state and keeps saved watches', () => {
+    const dir = '.hermit/state/watch-poll';
+    fs.mkdirSync(dir);
+    fs.writeFileSync('.hermit/config.json', JSON.stringify({ monitors: [{ id: 'saved' }] }));
+    for (const name of ['saved.json', 'removed.json', 'adhoc-old.json']) fs.writeFileSync(path.join(dir, name), '{}');
+    expect(captureLog(clearWatchRegistry).out).toBe('');
+    expect(fs.readdirSync(dir)).toEqual(['saved.json']);
+  });
+
+  test('unreadable config preserves saved state while removing ad-hoc state', () => {
+    const dir = '.hermit/state/watch-poll';
+    fs.mkdirSync(dir);
+    fs.writeFileSync('.hermit/config.json', '{');
+    for (const name of ['saved.json', 'adhoc-old.json']) fs.writeFileSync(path.join(dir, name), '{}');
+    expect(captureLog(clearWatchRegistry).out).toBe('');
+    expect(fs.readdirSync(dir)).toEqual(['saved.json']);
+  });
+
   test('warns on a failed deletion and continues clearing other ad-hoc state', () => {
     const dir = '.hermit/state/watch-poll';
     fs.mkdirSync(dir);

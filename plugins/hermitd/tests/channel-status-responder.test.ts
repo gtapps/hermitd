@@ -35,12 +35,12 @@ function payload(body: string, user = 'u1'): string {
 }
 
 // A runnable resident record is the current work the status reply reports.
-async function openTask(wd: Workdir, title: string, owner = 'resident'): Promise<string> {
+async function openTask(wd: Workdir, title: string, owner = 'resident', conversation = 'telegram:12345'): Promise<string> {
   const dir = hermit(wd.dir);
   const r = await runScript('task.ts', {
     cwd: wd.dir,
     env: { AGENT_DIR: dir },
-    args: ['open', dir, '--owner', owner, '--title', title, '--requester', 'telegram:u1', '--done', 'Result verified'],
+    args: ['open', dir, '--owner', owner, '--title', title, '--requester', 'telegram:u1', '--done', 'Result verified', '--conversation', conversation],
   });
   expect(r.exitCode).toBe(0);
   const opened = JSON.parse(r.stdout);
@@ -86,6 +86,50 @@ async function run(wd: Workdir, body: string, stubUrl: string, user = 'u1') {
 }
 
 describe('channel-status-responder', () => {
+  test('Rui sees only his asking chat; Ana sees no admin waits or approvals', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({ channels: { telegram: {
+      enabled: true, default_chat_id: '12345', allowed_users: ['rui', 'ana'], state_dir: '.claude.local/channels/telegram',
+    } } });
+    try {
+      const report = await openTask(wd, 'DM report', 'resident', 'telegram:12345');
+      await taskCommand(wd, 'block', report, ['--waiting-on', 'telegram:rui', '--status-line', 'Review', '--next', 'Reply']);
+      const question = await openTask(wd, 'Loja question', 'resident', 'telegram:loja');
+      await taskCommand(wd, 'block', question, ['--waiting-on', 'operator', '--status-line', 'Answer', '--next', 'Reply']);
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-watch', status: 'pending', chat: 'telegram:loja' },
+      ] }));
+      for (const [user, chat] of [['rui', '12345'], ['rui', 'loja'], ['ana', 'loja']]) {
+        const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
+          stdin: JSON.stringify({ prompt: envelope('!status', user, chat) }) });
+        expect(r.exitCode).toBe(0);
+      }
+      expect(stub.requests[0].body.text).toContain('DM report');
+      expect(stub.requests[0].body.text).not.toContain('Loja');
+      expect(stub.requests[0].body.text).not.toContain('MP-watch');
+      expect(stub.requests[1].body.text).toContain('Loja question');
+      expect(stub.requests[1].body.text).toContain('MP-watch');
+      expect(stub.requests[1].body.text).not.toContain('DM report');
+      expect(stub.requests[2].body.text).toBe('All quiet — nothing in progress, nothing waiting.');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('next routine is scoped to the chat with unbound routines only at home', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({ routines: [
+      { id: 'home-only', schedule: '0 8 * * *' },
+      { id: 'elsewhere', schedule: '0 9 * * *', chat: 'telegram:elsewhere' },
+    ] });
+    try {
+      await run(wd, '!status', stub.url);
+      expect(stub.requests[0].body.text).toContain('home-only');
+      expect(stub.requests[0].body.text).not.toContain('elsewhere');
+      await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
+        stdin: JSON.stringify({ prompt: envelope('!status', 'u1', 'loja') }) });
+      expect(stub.requests[1].body.text).not.toContain('Next routine');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
   test('exact "!status" + allowed sender -> send-then-block', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
@@ -616,6 +660,8 @@ test('mapped threaded status is sent through the project script in the asking th
     write(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { custom: {
       send_script: 'send.sh', allowed_users: ['U1'], attributes: { chat_id: 'channel_id', thread_id: 'thread_ts' },
     } } }));
+    await openTask(wd, 'Other thread work', 'resident', 'custom:C1~T2');
+    await openTask(wd, 'This thread work', 'resident', 'custom:C1~T1');
     const result = await runScript('user-prompt-pipeline.ts', {
       cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
       stdin: JSON.stringify({ prompt: '<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">!status</channel>' }),
@@ -623,6 +669,155 @@ test('mapped threaded status is sent through the project script in the asking th
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout).decision).toBe('block');
     expect(fs.readFileSync(path.join(wd.dir, 'thread.out'), 'utf8')).toBe('T1');
-    expect(fs.readFileSync(path.join(wd.dir, 'status.out'), 'utf8').length).toBeGreaterThan(0);
+    expect(fs.readFileSync(path.join(wd.dir, 'status.out'), 'utf8')).toContain('This thread work');
+    expect(fs.readFileSync(path.join(wd.dir, 'status.out'), 'utf8')).not.toContain('Other thread work');
   } finally { wd.cleanup(); }
+});
+
+describe('!scheduled', () => {
+  test('lists this chat and home unbound entries, states, intervals, and checks while paused', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({ timezone: 'Europe/Lisbon', routines: [
+      { id: 'daily', schedule: '15 9 * * *', enabled: true },
+      { id: 'disabled', schedule: '0 12 * * 1', enabled: false, chat: 'telegram:12345' },
+      { id: 'other-routine', schedule: '0 8 * * *', chat: 'telegram:other' },
+    ], monitors: [
+      { id: 'disk', description: 'Disk usage', command: 'watch-poll disk --every 2m -- df -h', enabled: true },
+      { id: 'deploy', description: 'Deploy finishes', command: 'watch-poll deploy -- bin/deploy', enabled: false, chat: 'telegram:12345' },
+      { id: 'off', description: 'Disabled watch', command: 'watch-poll off -- echo off', enabled: false, chat: 'telegram:12345' },
+      { id: 'flagged', description: 'Flag in check', command: 'watch-poll flagged -- "tool --every 2h"', enabled: true },
+      { id: 'stream', description: 'Log errors', command: 'tail -f app.log', enabled: true },
+      { id: 'other-watch', description: 'Other chat', command: 'watch-poll other -- secret', chat: 'telegram:other' },
+    ] });
+    try {
+      write(hermit(wd.dir, 'state', 'pause.json'), JSON.stringify({ paused: true, reason: 'operator' }));
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { status: 'pending', key: 'watch-enable:deploy', chat: 'telegram:12345' },
+        { status: 'pending', key: 'watch-enable:off', chat: 'telegram:other' },
+      ] }));
+      write(hermit(wd.dir, 'state', 'monitors.runtime.json'), JSON.stringify({ monitors: [{ id: 'temporary' }] }));
+      const r = await run(wd, '!scheduled', stub.url);
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout).decision).toBe('block');
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('daily: 09:15 (Europe/Lisbon); on');
+      expect(text).toContain('disabled: 0 12 * * 1 (Europe/Lisbon); off');
+      expect(text).toContain('flagged: Flag in check; every 5m; on; check: "tool --every 2h"');
+      expect(text).toContain('stream: Log errors; on; command: tail -f app.log');
+      expect(text).toContain('disk: Disk usage; every 2m; on; check: df -h');
+      expect(text).toContain("deploy: Deploy finishes; every 5m; waiting for an admin's yes; check: bin/deploy");
+      expect(text).toContain('off: Disabled watch; every 5m; off; check: echo off');
+      expect(text).not.toMatch(/other-routine|other-watch|temporary/);
+      await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
+        stdin: JSON.stringify({ prompt: envelope('!scheduled', 'u1', 'other') }) });
+      const other = stub.requests[1].body.text as string;
+      expect(other).toContain('other-routine');
+      expect(other).toContain('other-watch');
+      expect(other).not.toMatch(/daily:|disk:|deploy:/);
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('caps rows at ten and check text at 200 characters', async () => {
+    const stub = startHttpStub();
+    const check = 'x'.repeat(220);
+    const wd = setupChannelWorkdir({
+      routines: [{ id: 'daily', schedule: '0 8 * * *' }],
+      monitors: Array.from({ length: 11 }, (_, i) => ({ id: `watch-${i}`, description: 'Check', command: `watch-poll watch-${i} -- ${check}` })),
+    });
+    try {
+      await run(wd, '!scheduled', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text.split('\n').filter(line => line.startsWith('• '))).toHaveLength(10);
+      expect(text.split('\n').at(-1)).toBe('+2 more');
+      expect(text).toContain('check: ' + 'x'.repeat(200));
+      expect(text).not.toContain('x'.repeat(201));
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('an admitted untrusted sender gets only this chat count', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({
+      channels: { telegram: { enabled: true, default_chat_id: '12345', state_dir: '.claude.local/channels/telegram' } },
+      monitors: [{ id: 'secret', description: 'Private check', command: 'watch-poll secret -- hidden', chat: 'telegram:group' },
+        { id: 'home-only', command: 'watch-poll home-only -- hidden' }],
+    });
+    try {
+      await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
+        stdin: JSON.stringify({ prompt: envelope('!scheduled', 'member', 'group') }) });
+      expect(stub.requests[0].body.text).toBe('Scheduled in this chat: 1.');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('unbound entries are hidden when no home resolves', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({
+      channels: { telegram: { enabled: true, allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
+      monitors: [{ id: 'unbound', command: 'watch-poll unbound -- hidden' }],
+    });
+    try {
+      await run(wd, '!scheduled', stub.url);
+      expect(stub.requests[0].body.text).toBe('Nothing scheduled in this chat.');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('translates empty and watch replies into European Portuguese', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({ language: 'português' });
+    try {
+      writePtMessages(hermit(wd.dir), 'português');
+      await run(wd, '!scheduled', stub.url);
+      expect(stub.requests[0].body.text).toBe('Nada agendado nesta conversa.');
+      const config = JSON.parse(fs.readFileSync(hermit(wd.dir, 'config.json'), 'utf8'));
+      config.monitors = [{ id: 'deploy', description: 'Fim do deploy', enabled: false, command: 'watch-poll deploy -- bin/deploy' }];
+      write(hermit(wd.dir, 'config.json'), JSON.stringify(config));
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { status: 'pending', key: 'watch-enable:deploy', chat: 'telegram:12345' },
+      ] }));
+      await run(wd, '!scheduled', stub.url);
+      expect(stub.requests[1].body.text).toContain('a cada 5m; à espera do sim de um administrador; verificação: bin/deploy');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('rejects arguments and unadmitted senders and relays failed delivery', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      await run(wd, '!scheduled extra', stub.url);
+      await run(wd, '!scheduled', stub.url, 'not-allowed');
+      expect(stub.requests).toHaveLength(0);
+      const failed = await run(wd, '!scheduled', 'http://127.0.0.1:1');
+      expect(failed.stdout).toContain('[scheduled]');
+      expect(failed.stdout).toContain('Nothing scheduled in this chat.');
+      expect(failed.stdout).not.toContain('"decision":"block"');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
+  test('a thread lists its whole chat\'s standing work and approvals', async () => {
+    const wd = setupWorkdir();
+    try {
+      write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat >> replies.out\n');
+      fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+      write(hermit(wd.dir, 'config.json'), JSON.stringify({
+        channels: { custom: { send_script: 'send.sh', allowed_users: ['U1'], attributes: { chat_id: 'channel_id', thread_id: 'thread_ts' } } },
+        routines: [{ id: 'thread-routine', schedule: '0 8 * * *', chat: 'custom:C1~T1' },
+          { id: 'chat-routine', schedule: '0 9 * * *', chat: 'custom:C1' },
+          { id: 'other-chat-routine', schedule: '0 10 * * *', chat: 'custom:C2' }],
+        monitors: [{ id: 'chat-watch', description: 'deploy', enabled: true, chat: 'custom:C1',
+          command: '.hermit/bin/hermitd-run watch-poll chat-watch -- curl -s example.test' }],
+      }));
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-1', status: 'pending', chat: 'custom:C1', key: 'watch-enable:x', question: 'q?' }] }));
+      for (const command of ['!scheduled', '!status']) {
+        const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
+          stdin: JSON.stringify({ prompt: `<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">${command}</channel>` }) });
+        expect(JSON.parse(r.stdout).decision).toBe('block');
+      }
+      const text = fs.readFileSync(path.join(wd.dir, 'replies.out'), 'utf8');
+      expect(text).toContain('thread-routine');
+      expect(text).toContain('chat-routine');
+      expect(text).toContain('chat-watch');
+      expect(text).not.toContain('other-chat-routine');
+      expect(text).toContain('MP-1');
+    } finally { wd.cleanup(); }
+  });
 });

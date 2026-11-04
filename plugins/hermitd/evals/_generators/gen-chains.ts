@@ -253,7 +253,9 @@ const [DM_PROMPT, DM_RECORDS, DM_IDS] = withInstall({ '.hermit/config.json': con
     events.push(`- Relay substitution at delivery for ${id}: ${relay}`);
     events.push(`- task.ts block .hermit ${id} --result-stdin: ${run('task.ts', ['block', '.hermit', id, '--result-stdin'], { stdin: read(`.hermit/helper-reports/${reportId}.md`) })}`);
   }
-  const close = run('task.ts', ['close', '.hermit', ids[0], '--by', 'confirmed', '--actor', `discord:${USER}`, '--result-rev', '1', '--reason-stdin'], { stdin: 'approve renew-domain only' });
+  // The digest's guide path is a machine path; point it at the scaffold's copy, as the close case below does.
+  const digest = JSON.parse(run('task.ts', ['close', '.hermit', ids[0], '--by', 'confirmed', '--actor', `discord:${USER}`, '--result-rev', '1', '--reason-stdin'], { stdin: 'approve renew-domain only' }));
+  const close = JSON.stringify({ ...digest, next: digest.next.slice(0, digest.next.indexOf('/')) + '.hermit/guides/learn.md' });
   events.push(`- Only after both reports, task.ts close .hermit ${ids[0]} --by confirmed --actor discord:${USER} --result-rev 1 --reason-stdin: ${close}`);
   events.push(`- Open records after that close: ${listOpen()}`);
   return [`Process these queued completions in order before handling the final channel confirmation. The script and relay outputs below are stand-ins as described in the turn context. Deliver each report through its own task-scoped placeholder; the relay outputs show the delivered labels.\n\n${events.join('\n')}\n\n${prompt}`, records, ids] as const;
@@ -263,7 +265,7 @@ chainCase('two-concurrent-dm-tasks', 'heldout', 'Two concurrent tasks in one DM 
   [{ name: 'two-reports', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply', min: 2, weight: 2 },
     rubric(`PASS only if the invoice report for ${DM_IDS[1]} is sent before the domain report for ${DM_IDS[0]}, each using its own task-scoped placeholder (the supplied relay output labels it) or the exact supplied labeled text, then the confirmation closes renew-domain alone and leaves review-invoice open. FAIL if either report is lost, mislabeled, assigned to the other task, or both tasks are closed.`, 'mock_calls'),
     rubric('PASS if the final channel response says the domain task is closed and the invoice task is still awaiting approval, without internal task ids.', 'mock_calls')],
-  chainScaffold({ ...DM_FIXTURES, ...DM_RECORDS }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
+  chainScaffold({ ...DM_FIXTURES, ...DM_RECORDS }, [['skills/task/learn.md', '.hermit/guides/learn.md']]), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('two-concurrent-dm-tasks', CARD_MOCK);
 
 // --- close outside the task skill -> review guide -------------------------

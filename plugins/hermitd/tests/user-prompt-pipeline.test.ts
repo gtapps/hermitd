@@ -827,6 +827,28 @@ describe('task thread admission', () => {
 });
 
 describe('conversation commands', () => {
+  for (const scenario of ['sole', 'matching', 'several', 'unknown', 'empty']) {
+    test(`shared-chat restart: ${scenario}`, async () => {
+      const wd = setupChannelWorkdir();
+      const count = scenario === 'empty' ? 0 : scenario === 'sole' ? 1 : 2;
+      for (let i = 0; i < count; i++) {
+        expect((await openTask(wd.dir, hermit(wd.dir), ['--title', `Work ${i}`, '--requester', 'telegram:u1', '--conversation', 'telegram:12345'])).exitCode).toBe(0);
+      }
+      expect((await openTask(wd.dir, hermit(wd.dir), ['--title', 'Other chat', '--requester', 'telegram:u1', '--conversation', 'telegram:elsewhere'])).exitCode).toBe(0);
+      const records = readTasks(hermit(wd.dir)).filter(task => task.conversation === 'telegram:12345');
+      const body = scenario === 'matching' ? `!restart ${records[0].handle}` : scenario === 'unknown' ? '!restart missing' : '!restart';
+      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect(result.exitCode).toBe(0);
+      if (scenario === 'sole' || scenario === 'matching') expect(result.stdout).toContain(`[conversation command: restart task=${records[0].id}]`);
+      else if (scenario === 'empty') expect(result.stdout).toContain('[conversation command outside a task thread]');
+      else {
+        expect(result.stdout).toContain('[conversation command: restart needs a handle:');
+        for (const record of records) expect(result.stdout).toContain(record.handle);
+        expect(result.stdout).not.toContain('Other chat');
+      }
+    });
+  }
+
   for (const [body, annotation] of [
     ['!model sonnet', 'conversation command: helper-switch --model sonnet'],
     ['!effort xhigh', 'conversation command: helper-switch --effort xhigh'],
