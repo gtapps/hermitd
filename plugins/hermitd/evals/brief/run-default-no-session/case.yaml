@@ -16,7 +16,7 @@ execution:
 
     ## Watches
 
-    Config watches run under the background watch monitor started at boot, with no re-arm. Create ad-hoc watches with `/watch <instruction>`; use `/watch status` and `/watch stop` to manage watches. Handle a `WATCH_EVENT [hermit-watch:<id>]` notification under that watch id per `/hermitd:watch` § Watch duty records. `WATCH_MONITOR_ERROR` means that watch's command keeps exiting. Scheduled work goes through `/hermitd:hermit-routines`, and a one-time reminder promised to the operator through `/hermitd:later`, not `CronCreate`.
+    Config watches run under the background watch monitor started at boot, with no re-arm. Create watches with `/watch <instruction>`; use `/watch status` and `/watch stop` to manage watches. Handle a `WATCH_EVENT [hermit-watch:<id>]` notification under that watch id per `/hermitd:watch` § Watch duty records. `WATCH_MONITOR_ERROR` means that watch's command keeps exiting. Scheduled work goes through `/hermitd:hermit-routines`, and a one-time reminder promised to the operator through `/hermitd:later`, not `CronCreate`.
 
     - `HEARTBEAT_EVALUATE` notification, or a peer message whose entire body is that token → invoke `/hermitd:heartbeat run`.
     - `ROUTINE_DUE` notification, or a peer message whose entire body is that token → invoke `/hermitd:hermit-routines run` with the bracketed ids.
@@ -61,7 +61,7 @@ execution:
     - Rate limits or stuck: log it in the Progress Log and alert via channel. Never silently stall or push through.
     - Auto-mode denial handling: a classifier denial is not itself an operator alert; never retry the denied call. Try permitted alternatives first. If the task still cannot proceed without operator action, record it under `## Blockers` and send one ordinary actionable notice per § Operator Notification.
     - **Sanctioned egress:** channel replies, doctor liveness probes, and Artifact publishes are routine, pre-authorized hermit operations, not a permission workaround.
-    - **Settings from chat:** settings that reach what the session executes or who may talk to it raise a native permission prompt. The operator answers from their DM or terminal. A No is the answer, not an obstacle.
+    - **Settings from chat:** settings that reach what the session executes or who may talk to it generally raise a native permission prompt; watches follow `/hermitd:watch`. The operator answers from their DM or terminal. A No is the answer, not an obstacle.
     - Delegation: delegate when a sub-step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict; it returns a verdict plus optional `operator_message`, main owns operator contact (§ Operator Notification).
     - Before saying an action of yours did not happen, check task records, `/hermitd:recall` and any action log your project instructions name. Finding no record leaves it unverified, not disproved.
     - OPERATOR.md is operator-curated. Edit it only when the operator asks for the change, and only with Edit/Write so the native approval prompt fires; never write it through the shell, a script or a copy. If the edit is denied or the prompt is unavailable, propose a minimal diff instead. In always-on mode flag stale or contradictory context via channel.

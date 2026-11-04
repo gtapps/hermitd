@@ -2,8 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `hermitd-run watch-poll` runs a check on an interval and reports only changes, failures and recovery
+- `settings-edit append` adds an entry to a config list
+- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
+
 ### Changed
 
+- Watches you ask for in chat persist across restarts; a member's watch waits for an admin's yes
 - Operator `autoMode` lists merge after generated launch entries
 - `/hermitd:hermit-settings rules` manages approval rules with quiet-restart activation
 - Chat edits of native permission files raise the native prompt
@@ -21,10 +28,6 @@
 ### Fixed
 
 - Timed-out prechecks, send scripts and claim checks no longer leave child processes running
-
-### Added
-
-- `!status` lists what is waiting on the sender: results to confirm, questions asked of them, and this chat's pending approvals
 
 ### Upgrade Instructions
 

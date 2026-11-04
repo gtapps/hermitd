@@ -166,7 +166,7 @@ Inspect live state with `/hermitd:hermit-routines status` (monitor liveness + an
 
 **Hybrid model:** Monitors handle reactive event streams (interrupt-OK). Routines handle scheduled work, gated outside the session for near-zero cost. Heartbeat handles continuous health checks. Neither replaces the others.
 
-Config watches run under the background watch monitor: it starts at boot, applies config edits live, and restarts commands on exit. `/hermitd:watch stop <id>` sets `enabled: false`. Observed state is `.hermit/state/watch-monitor.runtime.json`. Ad-hoc watches stay in `.hermit/state/monitors.runtime.json`.
+Requested watches are saved until stopped under the background watch monitor: it starts at boot, applies config edits live, and restarts commands on exit. `/hermitd:watch stop <id>` sets `enabled: false`. `watch-poll` saves the last successful observation across restarts and emits only the initial state, changes, failures and recovery. A watch that is a step toward another outcome stays session-scoped. Monitor runtime is `.hermit/state/watch-monitor.runtime.json`; temporary watches stay in `.hermit/state/monitors.runtime.json`.
 
 ---
 

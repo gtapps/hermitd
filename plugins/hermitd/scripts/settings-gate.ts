@@ -32,10 +32,10 @@ import { resolveProjectScript } from './lib/routines/gate';
 type Json = any;
 
 /** settings-edit verbs that mutate config.json. */
-const WRITE_VERBS = new Set(['set', 'unset', 'toggle', 'apply-known', 'migrate']);
+const WRITE_VERBS = new Set(['set', 'append', 'unset', 'toggle', 'apply-known', 'migrate']);
 
 /** Write verbs that take a value after the target; see settings-edit.ts's dispatch. */
-const TAKES_VALUE = new Set(['set', 'apply-known']);
+const TAKES_VALUE = new Set(['set', 'append', 'apply-known']);
 
 /** Static protected subtrees. Parent replacements compare only this content. */
 const ASK_PATH = askPathRegex();
@@ -370,6 +370,55 @@ function currentRoutines(): Json[] {
   return Array.isArray(routines) ? routines : [];
 }
 
+function watchShape(entry: Json): boolean {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+    || typeof entry.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(entry.id)
+    || typeof entry.command !== 'string') return false;
+  const command = /^\.hermit\/bin\/hermitd-run watch-poll ([a-z0-9][a-z0-9-]*)(?: --every \S+)?(?: --timeout \S+)? -- (\S[\s\S]*)$/.exec(entry.command);
+  return command !== null && command[1] === entry.id;
+}
+
+const WATCH_EDIT_PREFIX = /^(?:\.hermit\/bin\/hermitd-run settings-edit|bun (?:\/[^\s'"]+|[^\s'"]+)\/scripts\/settings-edit\.ts) \.hermit\/config\.json /;
+
+/** Only literal, isolated settings-edit invocations are eligible for a silent watch write. */
+function silentWatchWrite(
+  command: string, verb: string, dotted: string, token: string,
+  mode: string, turnOrigin: () => RoutineOrigin,
+): boolean {
+  if (mode !== 'auto') return false;
+  const match = WATCH_EDIT_PREFIX.exec(command);
+  if (!match) return false;
+  const origin = turnOrigin();
+  if (origin.kind === 'unknown' || !origin.proven) return false;
+  const tail = command.slice(match[0].length);
+  const config = readConfigRaw(hermitDir());
+  if (!config || (config.monitors !== undefined && !Array.isArray(config.monitors))) return false;
+  const monitors: Json[] = config.monitors ?? [];
+  const isPrimary = origin.kind === 'terminal' || origin.primary;
+  const owning = (entry: Json) => entry.chat == null
+    ? origin.kind === 'terminal' || operatorChat(origin.key)
+    : origin.kind === 'channel' && entry.chat === origin.key;
+
+  if (verb === 'append' && dotted === 'monitors') {
+    if (!/^'[^']*'$/.test(token) || tail !== `append monitors ${token}`) return false;
+    let entry: Json;
+    try { entry = JSON.parse(token.slice(1, -1)); } catch { return false; }
+    if (!watchShape(entry) || typeof entry.description !== 'string'
+      || (entry.chat !== undefined && typeof entry.chat !== 'string')
+      || monitors.some(item => item?.id === entry.id)) return false;
+    if (entry.enabled === false) return origin.kind === 'channel' && entry.chat === origin.key;
+    return entry.enabled === true && isPrimary && owning(entry);
+  }
+  const indexed = /^monitors\.(0|[1-9]\d*)(?:\.enabled)?$/.exec(dotted);
+  if (!indexed) return false;
+  const entry = monitors[Number(indexed[1])];
+  if (!entry || !owning(entry)) return false;
+  if (verb === 'unset' && dotted === `monitors.${indexed[1]}`) return tail === `unset ${dotted}`;
+  if (verb !== 'set' || dotted !== `monitors.${indexed[1]}.enabled`) return false;
+  if (tail === `set ${dotted} false`) return true;
+  return tail === `set ${dotted} true` && isPrimary && watchShape(entry);
+}
+
 function stripQuotes(value: string): string {
   return value.trim().replace(/^['"]|['"]$/g, '');
 }
@@ -587,7 +636,7 @@ function channelAccessAsks(command: string): string[] {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin): string[] | null {
+function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin, mode: string): string[] | null {
   const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
   const originAsks = () => {
     const value = origin();
@@ -649,6 +698,8 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
       continue;
     }
     const dotted = resolveTarget(verb, t);
+    if ((dotted === 'monitors' || dotted.startsWith('monitors.'))
+      && silentWatchWrite(command, verb, dotted, token, mode, origin)) continue;
     if (!ASK_PATH.test(dotted) && ASK_CONTAINER.test(dotted)) {
       // A preceding shell command can change cwd or the comparison baseline.
       // Keep such parent writes opaque rather than interpreting shell programs.
@@ -658,12 +709,14 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
       for (const field of changed) if (!shown.includes(field)) shown.push(field);
       continue;
     }
+    const scopePath = verb === 'append' && dotted === 'routines'
+      ? `routines.${currentRoutines().length}` : dotted;
     const needsAsk = (ROUTINE_PATH.test(dotted) && originAsks())
       || ASK_PATH.test(dotted)
       || (ROUTINES_CONTAINER.test(dotted) && value !== ''
         && routinesWriteAsks(value, turn))
       || (verb === 'set' && ROUTINE_CHAT_LEAF.test(dotted) && chatLeafChanged(dotted, value, turn))
-      || routineScopeAsks(dotted, turn);
+      || routineScopeAsks(scopePath, turn);
     if (!needsAsk) continue;
     const label = value ? displayFor(dotted, value) : dotted;
     if (!shown.includes(label)) shown.push(label);
@@ -691,7 +744,8 @@ function main(payload: any): void {
     let turn: RoutineOrigin | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
       typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
-      () => (turn === undefined ? (turn = turnConversation(payload)) : turn));
+      () => (turn === undefined ? (turn = turnConversation(payload)) : turn),
+      payload.permission_mode);
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);

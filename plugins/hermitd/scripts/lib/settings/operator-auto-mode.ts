@@ -3,7 +3,7 @@ import { isDict, pyTruthy } from '../channel-config';
 import { foreignArtifactBackend } from '../config-read';
 import { sha256 } from '../hash';
 import { defaultConfigDir } from '../setup-token';
-import { automodeAllowEntry, AUTOMODE_ENV_ENTRIES, AUTOMODE_SOFT_DENY_ENTRY, SEALED_SETTINGS_OPS } from './automode-entries';
+import { automodeAllowEntry, AUTOMODE_ENV_ENTRIES, AUTOMODE_SOFT_DENY_ENTRY, AUTOMODE_WATCH_ALLOW_ENTRY, SEALED_SETTINGS_OPS } from './automode-entries';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, '../../..');
 export const LISTS = ['environment', 'allow', 'soft_deny', 'hard_deny'] as const;
@@ -20,7 +20,7 @@ export function generatedAutoMode(config: any): Record<string, string[]> {
     : SEALED_SETTINGS_OPS.filter((op) => op !== 'artifact-allow');
   return {
     soft_deny: ['$defaults', AUTOMODE_SOFT_DENY_ENTRY],
-    allow: ['$defaults', automodeAllowEntry(path.join(defaultConfigDir(), 'plugins'), PLUGIN_ROOT, ops)],
+    allow: ['$defaults', automodeAllowEntry(path.join(defaultConfigDir(), 'plugins'), PLUGIN_ROOT, ops), AUTOMODE_WATCH_ALLOW_ENTRY],
     environment: ['$defaults', ...AUTOMODE_ENV_ENTRIES],
   };
 }

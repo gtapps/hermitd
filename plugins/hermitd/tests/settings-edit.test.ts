@@ -572,6 +572,62 @@ describe('settings-edit audit ledger', () => {
   });
 });
 
+describe('settings-edit append', () => {
+  const routine = (id: string) => ({ id, schedule: '0 9 * * *', skill: 'hermitd:brief', enabled: true });
+
+  test('appends to empty, existing, and absent arrays and records audit rows', async () => {
+    for (const existing of [[], [routine('first')], undefined]) {
+      const dir = freshDir();
+      const config = validConfig();
+      if (existing === undefined) delete config.routines;
+      else config.routines = existing;
+      const file = seedConfig(dir, config);
+      const result = await runScript('settings-edit.ts', {
+        args: [file, 'append', 'routines', JSON.stringify(routine('next'))],
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('OK');
+      expect(readConfig(file).routines).toEqual([...(existing ?? []), routine('next')]);
+      expect(auditRows(dir)).toHaveLength(1);
+      expect(auditRows(dir)[0]).toMatchObject({ actor: 'settings-edit', path: 'routines' });
+    }
+  });
+
+  test('duplicate id refuses the write without changing the file or audit ledger', async () => {
+    const dir = freshDir();
+    const file = seedConfig(dir, validConfig({ routines: [routine('first')] }));
+    const before = fs.readFileSync(file, 'utf8');
+    const result = await runScript('settings-edit.ts', {
+      args: [file, 'append', 'routines', JSON.stringify(routine('first'))],
+    });
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'duplicate_id:first' });
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(auditRows(dir)).toHaveLength(0);
+  });
+
+  test('non-array target refuses the write', async () => {
+    const dir = freshDir();
+    const file = seedConfig(dir, validConfig());
+    const before = fs.readFileSync(file, 'utf8');
+    const result = await runScript('settings-edit.ts', { args: [file, 'append', 'agent_name', '"next"'] });
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'not_an_array:agent_name' });
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(auditRows(dir)).toHaveLength(0);
+  });
+
+  test('parses scalar values like set', async () => {
+    const dir = freshDir();
+    const file = seedConfig(dir, validConfig({ extra: [] }));
+    for (const value of ['true', '42', 'none', 'text']) {
+      const result = await runScript('settings-edit.ts', { args: [file, 'append', 'extra', value] });
+      expect(result.exitCode).toBe(0);
+    }
+    expect(readConfig(file).extra).toEqual([true, 42, null, 'text']);
+  });
+});
+
 describe('settings-edit unset', () => {
   test('removes a nested leaf, leaving parents and siblings', async () => {
     const dir = freshDir();
