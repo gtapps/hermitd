@@ -298,6 +298,24 @@ describe('settings-gate file writes', () => {
     expectSilent(await runGate(payload({ dir, tool: 'Write', input: { file_path: path.join(dir, 'tools', 'gate.sh') } }), dir));
   });
 
+  test('writes to missing or non-executable config-run scripts and quoted watch paths ask', async () => {
+    const dir = fixture({
+      routines: [{ precheck: 'tools/gate.sh' }, { precheck: 'tools/missing.sh' }],
+      monitors: [{ command: 'bash "${CLAUDE_PROJECT_DIR}/tools/watch.sh"' }],
+    });
+    fs.mkdirSync(path.join(dir, 'tools'));
+    fs.writeFileSync(path.join(dir, 'tools', 'gate.sh'), '', { mode: 0o644 });
+    fs.writeFileSync(path.join(dir, 'tools', 'watch.sh'), '', { mode: 0o644 });
+    for (const [file, setting, display] of [
+      ['gate.sh', 'routines[0].precheck', 'tools/gate.sh'],
+      ['missing.sh', 'routines[1].precheck', 'tools/missing.sh'],
+      ['watch.sh', 'monitors[0].command', '"${CLAUDE_PROJECT_DIR}/tools/watch.sh"'],
+    ]) {
+      const r = await runGate(payload({ dir, tool: 'Write', input: { file_path: path.join(dir, 'tools', file) } }), dir);
+      expectAsk(r.stdout, `Hermit setting: script run by ${setting} (${display})`);
+    }
+  });
+
   test('shell writes to config-run scripts ask, while reads, removals and literal text stay silent', async () => {
     const dir = fixture({ routines: [{ precheck: 'tools/gate.sh' }] });
     fs.mkdirSync(path.join(dir, 'tools'));

@@ -192,7 +192,7 @@ describe('routine gate — timeout and process hygiene', () => {
         '#!/usr/bin/env bash',
         `sleep ${duration} &`,
         'child=$!',
-        'while [ "$(ps -o comm= -p "$child")" != sleep ]; do :; done',
+        'until ps -o args= -p "$child" | grep -q "^sleep "; do :; done',
         'ps -o pid=,pgid= -p $$ > "$HERMIT_DIR/state/gate-group"',
         timeout ? 'sleep 30' : 'echo SKIP',
         '',

@@ -186,7 +186,7 @@ async function sendScript(
     try { code = await child.exited; }
     finally {
       try { process.kill(-child.pid, 'SIGKILL'); }
-      catch (error: any) { if (error.code !== 'ESRCH') throw error; }
+      catch { /* best effort: the group is already gone */ }
     }
     return code === 0 ? { ok: true } : { ok: false, error: `exit:${code}` };
   } catch (e: any) {

@@ -306,7 +306,10 @@ function configScripts(): ConfigScript[] {
   const scripts: ConfigScript[] = [];
   const addScript = (value: unknown, setting: string) => {
     const resolved = resolveProjectScript(value, root);
-    if (resolved.kind === 'script') scripts.push({ path: resolved.abs, setting, display: String(value).trim() });
+    // A missing or non-executable configured path still runs once it is written and made executable.
+    const real = resolved.kind === 'script' ? resolved.abs
+      : resolved.detail === 'not-executable' ? resolvedTarget(String(value).trim(), root) : null;
+    if (real?.startsWith(root + path.sep)) scripts.push({ path: real, setting, display: String(value).trim() });
   };
   if (Array.isArray(config.routines)) {
     config.routines.forEach((routine: Json, index: number) => addScript(routine?.precheck, `routines[${index}].precheck`));
@@ -321,7 +324,7 @@ function configScripts(): ConfigScript[] {
       if (typeof monitor?.command !== 'string') return;
       for (const word of monitor.command.split(/\s+/)) {
         if (!word) continue;
-        const expanded = word.replaceAll('${CLAUDE_PROJECT_DIR}', root)
+        const expanded = stripQuotes(word).replaceAll('${CLAUDE_PROJECT_DIR}', root)
           .replaceAll('${CLAUDE_PLUGIN_ROOT}', process.env.CLAUDE_PLUGIN_ROOT ?? path.resolve(import.meta.dir, '..'));
         try {
           const real = fs.realpathSync(path.resolve(root, expanded));
@@ -605,14 +608,14 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
     return [...listen, names ? names[names.length - 1] : 'config.json'];
   }
 
+  const shown: string[] = [...listen];
   const targets = shellWriteTargets(command);
   if (targets.length) {
     const scripts = configScripts();
-    const labels = targets.flatMap(target => {
+    for (const target of targets) {
       const label = scriptWriteLabel(target, cwd, scripts);
-      return label ? [label] : [];
-    });
-    if (labels.length) return [...listen, ...new Set(labels)];
+      if (label && !shown.includes(label)) shown.push(label);
+    }
   }
 
   // The script path and the config path may each be quoted (a plugin root or
@@ -623,7 +626,6 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
   // for the prompt label: precheckSetChanged() would then parse a fragment, fail,
   // and raise a prompt for every routine add. A single-quoted value may splice
   // apostrophes as `'\''`, so the label keeps the text after one.
-  const shown: string[] = [...listen];
   for (const m of command.matchAll(PROPOSAL_ROUTINE)) {
     const asked = proposalRoutineAsks(command.slice(m.index + m[0].length), turn, originAsks);
     if (asked && !shown.includes(asked)) shown.push(asked);

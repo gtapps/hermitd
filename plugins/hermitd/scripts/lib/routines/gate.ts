@@ -200,7 +200,7 @@ function spawnGate(
       detached: true,
     });
     try { process.kill(-result.pid, 'SIGKILL'); }
-    catch (error: any) { if (error.code !== 'ESRCH') throw error; }
+    catch { /* best effort: the group is already gone */ }
     fs.closeSync(fd);
     fd = null;
 

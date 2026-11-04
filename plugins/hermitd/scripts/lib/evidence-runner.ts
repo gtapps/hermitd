@@ -26,7 +26,7 @@ export async function runEvidence(cmd: string, root: string, timeoutS: number) {
     const drained = Promise.all([drain(readers[0]), drain(readers[1])]);
     const exit = await proc.exited;
     try { process.kill(-proc.pid, 'SIGKILL'); }
-    catch (error: any) { if (error.code !== 'ESRCH') throw error; }
+    catch { /* best effort: the group is already gone */ }
     if (!timedOut) {
       await Promise.race([drained, new Promise<void>(resolve => { deadline = resolve; })]);
     }

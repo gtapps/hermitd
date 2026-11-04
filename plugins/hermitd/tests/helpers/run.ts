@@ -136,7 +136,7 @@ export async function runScript(script: string, opts: RunOptions = {}): Promise<
 
 /** True when a process whose full command line is exactly `cmd` is running. */
 export function processRunning(cmd: string): boolean {
-  const ps = Bun.spawnSync(['ps', '-eo', 'pid=,cmd=']);
+  const ps = Bun.spawnSync(['ps', '-A', '-o', 'pid=', '-o', 'args=']);
   if (ps.exitCode !== 0) throw new Error('ps failed');
   return ps.stdout.toString().split('\n').some(line => line.trim().replace(/^\d+\s+/, '') === cmd);
 }

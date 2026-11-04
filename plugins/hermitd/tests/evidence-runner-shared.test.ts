@@ -34,7 +34,7 @@ for (const timeout of [false, true]) {
     const command = [
       `sleep ${duration} &`,
       'child=$!',
-      'while [ "$(ps -o comm= -p "$child")" != sleep ]; do :; done',
+      'until ps -o args= -p "$child" | grep -q "^sleep "; do :; done',
       timeout ? 'while :; do :; done' : 'printf evidence',
     ].join('\n');
     const result = await runEvidence(command, dir, 1);

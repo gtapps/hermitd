@@ -1337,7 +1337,7 @@ for (const timeout of [false, true]) {
         '#!/bin/sh',
         `sleep ${duration} &`,
         'child=$!',
-        'while [ "$(ps -o comm= -p "$child")" != sleep ]; do :; done',
+        'until ps -o args= -p "$child" | grep -q "^sleep "; do :; done',
         timeout ? 'sleep 30' : 'exit 0',
         '',
       ].join('\n'));
