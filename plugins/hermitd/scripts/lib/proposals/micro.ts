@@ -13,9 +13,10 @@
 //          (a terminal turn), every pending entry is. In a chat whose channel
 //          sets a non-empty `operators` or `allowed_users`, a primary operator
 //          answers any entry and another sender only entries queued with their
-//          `user`; otherwise {"status":"none","reason":"not_admin"}.
+//          `user`; otherwise {"status":"refused","reason":"not_admin"}: a question
+//          is pending, but this sender may not answer it.
 //          {"status":"ambiguous","reason","choices":[{"id","options":[...]}]}
-//          {"status":"none","reason":"no_pending"|"no_match"|"not_admin"}
+//          {"status":"none","reason":"no_pending"|"no_match"}
 //   resolve: {"status":"resolved","id","action"} / {"status":"none","reason":"no_match"}
 //   stamp-chat: {"status":"stamped","stamped":<n>}, giving each pending entry
 //          without a `chat` the home chat; {"status":"skipped","reason":"no_home_chat"}
@@ -308,7 +309,7 @@ function matchReply(stateDir: string, args: string[]): never {
     if (!isPrimaryOperator(config, source, user ?? null, chatId)) {
       pending = pending.filter(entry => user !== undefined && entry.user === user);
     }
-    if (!pending.length || (target && !pending.includes(target))) none('not_admin');
+    if (!pending.length || (target && !pending.includes(target))) emitJson({ status: 'refused', reason: 'not_admin' });
   }
   const entry: Json = target ?? pending[0];
 

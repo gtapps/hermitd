@@ -6167,6 +6167,7 @@ describe('proposal micro match is read-only', () => {
   const ambiguous = (reason: string, ...choices: [string, string[]][]) =>
     ({ status: 'ambiguous', reason, choices: choices.map(([id, options]) => ({ id, options })) });
   const none = (reason: string) => ({ status: 'none', reason });
+  const refused = { status: 'refused', reason: 'not_admin' };
   const cases: { name: string; config?: object; pending: any[]; args: string[]; output: object }[] = [
     { name: 'yes case insensitive', pending: [plain], args: ['--reply', 'YES'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'no case insensitive', pending: [plain], args: ['--reply', 'No'], output: match('MP-plain', 'no', 1, null) },
@@ -6190,17 +6191,17 @@ describe('proposal micro match is read-only', () => {
     { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: none('no_pending') },
     { name: 'asking chat matches', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'member cannot answer the admin question', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: none('not_admin') },
-    { name: 'unknown sender in a chat is not admin', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: none('not_admin') },
+    { name: 'member cannot answer the admin question', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
+    { name: 'unknown sender in a chat is not admin', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: refused },
     { name: 'requester answers their own question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'admin answers a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'no'], output: match('MP-plain', 'no', 1, null) },
-    { name: 'another member cannot answer a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'other', '--reply', 'yes'], output: none('not_admin') },
+    { name: 'another member cannot answer a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'other', '--reply', 'yes'], output: refused },
     { name: 'member sees only their own question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
-    { name: 'member names the admin question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['MP-plain', '--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: none('not_admin') },
+    { name: 'member names the admin question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['MP-plain', '--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
     { name: 'listed operator is primary', config: { channels: { discord: { operators: ['lead'], allowed_users: ['admin', 'lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'lead', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'no named people keeps any sender answering', config: { operator_profile: 'non-technical', channels: { discord: { default_chat_id: '1' } } }, pending: [{ ...plain, chat: 'discord:1~5' }], args: ['--chat', 'discord:1~5', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
     { name: 'empty lists name nobody to check', config: { channels: { discord: { operators: [], allowed_users: [] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'operators alone name the admin', config: { channels: { discord: { operators: ['lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: none('not_admin') },
+    { name: 'operators alone name the admin', config: { channels: { discord: { operators: ['lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
     { name: 'other chat sees nothing', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'telegram:9', '--reply', 'yes'], output: none('no_pending') },
     { name: 'unstamped entry hidden from a chat', pending: [plain], args: ['--chat', 'discord:1', '--reply', 'yes'], output: none('no_pending') },
     { name: 'explicit id from another chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['MP-plain', '--chat', 'discord:2', '--reply', 'yes'], output: none('no_pending') },
