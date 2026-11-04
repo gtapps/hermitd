@@ -33,7 +33,7 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.314+ and Bun 1.4+ installed:
+With Claude Code 2.1.318+ and Bun 1.4+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local

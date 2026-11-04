@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
+import { automodeAllowEntry, AUTOMODE_SOFT_DENY_ENTRY, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-op-registry-');
 afterAll(cleanup);
@@ -14,6 +14,12 @@ afterAll(cleanup);
 // TERMINAL_ONLY_SETTINGS_OPS are real but deliberately outside the classifier
 // grant — reachable only from an explicit terminal choice.
 describe('apply-settings.ts op registry', () => {
+  test('classifier policy names operator settings and the caller-supplied deny exception', () => {
+    expect(AUTOMODE_SOFT_DENY_ENTRY).toContain('.hermit/claude-settings.json');
+    const entry = automodeAllowEntry('/plugins', '/plugins/hermitd');
+    expect(entry).toContain('deny-add adds caller-supplied deny rules, which only narrow');
+    expect(entry).not.toContain('apply permission and deny sets');
+  });
   test('every dispatched op is sealed or terminal-only', () => {
     const src = fs.readFileSync(
       path.join(import.meta.dir, '..', 'scripts', 'apply-settings.ts'),

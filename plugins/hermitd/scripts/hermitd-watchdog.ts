@@ -59,6 +59,7 @@ import { routineHealth } from './lib/routines/arm';
 import { bootMismatch } from './lib/monitor-health';
 import { readBootId } from './lib/routines/registry';
 import { resolveMaintainerTarget } from './resolve-outbound-channel';
+import { operatorAutoModeFingerprint } from './lib/settings/operator-auto-mode';
 
 type Json = any;
 
@@ -188,6 +189,25 @@ function appendEvent(action: string, reason: string, world: World = REAL_WORLD):
   }
 }
 
+/** True when the newest watchdog-events.jsonl line has this action and reason. */
+function lastEventIs(action: string, reason: string, world: World = REAL_WORLD): boolean {
+  try {
+    const fd = fs.openSync(path.join(world.paths.stateDir, 'watchdog-events.jsonl'), 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      const len = Math.min(size, 4096);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      const last = JSON.parse(buf.toString('utf8').trimEnd().split('\n').pop() ?? '');
+      return last?.action === action && last?.reason === reason;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
 // --- Deterministic operator pushes (channel voice) ---
 //
 // The watchdog is out-of-process and single-shot, so a direct import of the
@@ -249,9 +269,11 @@ export function composeRestartMessage(reason: string, resumed: boolean, timezone
     ? 'watchdog_cause_not_running'
     : reason === 'upgrade'
       ? 'watchdog_cause_upgrade'
-      : reason === 'requested'
-        ? 'watchdog_cause_requested'
-        : 'watchdog_cause_frozen');
+      : reason === 'rules'
+        ? 'watchdog_cause_rules'
+        : reason === 'requested'
+          ? 'watchdog_cause_requested'
+          : 'watchdog_cause_frozen');
   return m.t(resumed ? 'watchdog_restart_resumed' : 'watchdog_restart_fresh', { time: nowHHMM(timezone), cause });
 }
 
@@ -847,7 +869,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
 
   try {
     // Mark runtime before killing so resident-start recovery sees the reason
-    if (reason === 'upgrade' || !resumable) {
+    if (reason === 'upgrade' || reason === 'rules' || !resumable) {
       runtime.planned_restart_at = new Date().toISOString();
     } else {
       runtime.last_error = 'unclean_shutdown';
@@ -911,7 +933,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     });
     child.on('error', (e) => process.stderr.write(`[watchdog] restart failed: ${e}\n`));
     child.unref();
-    // doctor-check.ts checkWatchdog reads `upgrade,` and `fresh: requested` from this reason.
+    // doctor-check.ts checkWatchdog reads `upgrade,`, `rules,` and `fresh: requested` from this reason.
     appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`);
     process.stderr.write(`[watchdog] attempting restart of "${sessionName}", reason: ${reason}\n`);
     // Only announce a restart attempt when the start binary is actually
@@ -1333,7 +1355,7 @@ function registeredPluginVersion(command: unknown, world: World): string | null 
  * command of the mod's in-flight request never stamps the operator-activity clock,
  * see record-operator-action.ts).
  */
-async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive: boolean, operatorGraceSecs: number, world: World = REAL_WORLD): Promise<void> {
+async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive: boolean, operatorGraceSecs: number, world: World = REAL_WORLD): Promise<'restarted' | 'upgrade-pending' | void> {
   const bootId = readBootId(world.paths.hermitRoot);
   for (const [record, liveness] of [
     ['heartbeat-monitor.runtime.json', 'heartbeat-liveness.json'],
@@ -1349,6 +1371,7 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     if (guard.ok && boundary.ok) {
       await world.actions.restart(sessionName, 'monitor-dead', runtime, config.timezone ?? 'UTC');
       appendEvent('monitor-restart', `${record} supervisor dead`, world);
+      return 'restarted';
     } else {
       appendEvent('monitor-dead-deferred', guard.ok ? (boundary.ok ? 'idle' : boundary.reason) : guard.reason, world);
     }
@@ -1375,27 +1398,22 @@ async function maybeMonitorRearm(config: Json, sessionName: string, sessionAlive
     const updateAge = world.clock.nowMs() - Date.parse(update?.at);
     if (updateAge >= 0 && updateAge < 60 * 60 * 1000) {
       appendEvent('upgrade-restart-deferred', 'update-in-progress', world);
-      return;
+      return 'upgrade-pending';
     }
     const pluginVersion = world.files.readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))?.version;
     if (!pluginVersion || applied !== pluginVersion) {
       appendEvent('upgrade-restart-deferred', 'evolve-pending', world);
-      return;
+      return 'upgrade-pending';
     }
     const runtime = readRuntimeJson(world.paths.stateDir);
-    const guard = passesLifecycleGuards(runtime ?? {}, world);
-    if (!guard.ok) {
-      appendEvent('upgrade-restart-deferred', guard.reason, world);
-      return;
-    }
-    const boundary = passesExecutionBoundary(world.paths.hermitRoot);
-    if (!boundary.ok) {
-      appendEvent('upgrade-restart-deferred', boundary.reason, world);
-      return;
+    const reason = restartDeferral(runtime ?? {}, world);
+    if (reason) {
+      appendEvent('upgrade-restart-deferred', reason, world);
+      return 'upgrade-pending';
     }
     await world.actions.restart(sessionName, 'upgrade', runtime, config.timezone ?? 'UTC');
     appendEvent('upgrade-restart', upgradeLegs.join('+'), world);
-    return;
+    return 'restarted';
   }
   if (isPaused(world.paths.hermitRoot).paused) return;               // no injection while paused (mirrors doNudge)
   if (!sessionAlive) return;                              // dead session belongs to the doRestart path
@@ -1513,6 +1531,31 @@ export function passesLifecycleGuards(runtime: Json, world: World = REAL_WORLD):
   if (opAge !== null && opAge < 10 * 60) return { ok: false, reason: 'operator-recent' }; // operator-recency backoff
 
   return { ok: true, sessionName };
+}
+
+function restartDeferral(runtime: Json, world: World): string | null {
+  const guard = passesLifecycleGuards(runtime, world);
+  if (!guard.ok) return guard.reason;
+  const boundary = passesExecutionBoundary(world.paths.hermitRoot);
+  return boundary.ok ? null : boundary.reason;
+}
+
+async function maybeRulesRestart(config: Json, runtime: Json, sessionName: string, world: World): Promise<void> {
+  const saved = world.files.readJson(path.join(world.paths.stateDir, 'operator-auto-mode.json'));
+  if (typeof saved?.fingerprint !== 'string') return;
+  const settings = world.files.readJson(path.join(world.paths.hermitRoot, 'claude-settings.json'));
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return;
+  if (saved.fingerprint === operatorAutoModeFingerprint(settings.autoMode)) return;
+  const reason = restartDeferral(runtime, world);
+  if (reason) {
+    // An interactive deferral lasts until the next start; record it once, not every tick.
+    if (reason !== 'interactive' || !lastEventIs('rules-restart-deferred', reason, world)) {
+      appendEvent('rules-restart-deferred', reason, world);
+    }
+    return;
+  }
+  await world.actions.restart(sessionName, 'rules', runtime, config.timezone ?? 'UTC');
+  appendEvent('rules-restart', 'operator auto-mode changed', world);
 }
 
 // maybeContextCompact needs "the last cost-log entry for this session" on every tick.
@@ -2355,7 +2398,12 @@ const RECOVERY: Decision<RecoveryContext>[] = [
   { id: 'pending-question-stop', run: pendingQuestionStop },
   { id: 'heartbeat-wedge', run: heartbeatWedge },
   { id: 'monitor-rearm', run: async ({ world, config, snap }): Promise<DecisionResult> => {
-    await maybeMonitorRearm(config, snap.sessionName, snap.liveness.state === 'alive', snap.operatorGraceSecs, world);
+    const result = await maybeMonitorRearm(config, snap.sessionName, snap.liveness.state === 'alive', snap.operatorGraceSecs, world);
+    // A pending upgrade restart, even a deferred one, keeps the rules restart from racing it.
+    return result ? 'stop' : 'continue';
+  } },
+  { id: 'rules-restart', run: async ({ world, config, snap }): Promise<DecisionResult> => {
+    await maybeRulesRestart(config, snap.runtime, snap.sessionName, world);
     return 'continue';
   } },
 ];
@@ -2375,7 +2423,15 @@ export async function tick(world: World): Promise<void> {
     if (await decision.run(ctx) === 'stop') return;
   }
   const snap = buildSnapshot(ctx);
-  if (!snap) return;
+  if (!snap) {
+    // Interactive sessions never enter recovery, but a pending change can still
+    // record why it must wait for the next start.
+    const runtime = readRuntimeJson(world.paths.stateDir);
+    if (config?.watchdog?.enabled && runtime?.runtime_mode === 'interactive') {
+      await maybeRulesRestart(config, runtime, runtime.tmux_session ?? '', world);
+    }
+    return;
+  }
   for (const decision of RECOVERY) {
     if (await decision.run({ ...ctx, snap }) === 'stop') return;
   }

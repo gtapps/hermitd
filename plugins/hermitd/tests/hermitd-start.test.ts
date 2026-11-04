@@ -57,6 +57,7 @@ import {
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import { readRuntimeState } from '../scripts/lib/runtime';
 import { automodeAllowEntry, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
+import { operatorAutoModeFingerprint } from '../scripts/lib/settings/operator-auto-mode';
 import { claudeStateFile, TOKEN_ENV_VAR } from '../scripts/lib/setup-token';
 
 // The top-level beforeEach/afterEach below process.chdir()s into a fresh
@@ -2297,6 +2298,19 @@ describe('launch settings carriers', () => {
 
 describe('operator launch settings', () => {
   const overridePath = '.hermit/claude-settings.json';
+  test('operator auto-mode is merged and fingerprinted idempotently', () => {
+    const operator = { allow: ['$defaults', 'allow staging'], hard_deny: ['$defaults', 'never push main'] };
+    fs.writeFileSync(overridePath, JSON.stringify({ autoMode: operator }));
+    const file = renderLaunchOverlay({})!;
+    const first = fs.readFileSync(file, 'utf8');
+    const overlay = JSON.parse(first);
+    expect(overlay.autoMode.allow.at(-1)).toBe('allow staging');
+    expect(overlay.autoMode.hard_deny).toEqual(operator.hard_deny);
+    expect(JSON.parse(fs.readFileSync('.hermit/state/operator-auto-mode.json', 'utf8')))
+      .toEqual({ fingerprint: operatorAutoModeFingerprint(operator) });
+    renderLaunchOverlay({});
+    expect(fs.readFileSync(file, 'utf8')).toBe(first);
+  });
   test('operator hooks: generated entries first per event, operator-only events pass through', () => {
     const opA = { matcher: 'Bash', hooks: [{ type: 'command', command: 'operator-a' }] };
     const opB = { hooks: [{ type: 'command', command: 'operator-b' }] };

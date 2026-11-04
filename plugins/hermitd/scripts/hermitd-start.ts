@@ -16,7 +16,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock } from './lib/lockfile';
-import { foreignArtifactBackend, readConfigRaw } from './lib/config-read';
+import { readConfigRaw } from './lib/config-read';
 import { readJson } from './lib/cli';
 import { auditConfigChange } from './lib/config-audit';
 import { writeRuntimeJson, readRuntimeJson, readRuntimeState, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
@@ -31,7 +31,7 @@ import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateD
 import { cmpSemver } from './lib/semver';
 import { sanitizeLanguage } from './lib/operator-language';
 import { outputStyleFor } from './lib/voice';
-import { automodeAllowEntry, AUTOMODE_ENV_ENTRIES, AUTOMODE_SOFT_DENY_ENTRY, SEALED_SETTINGS_OPS } from './lib/settings/automode-entries';
+import { artifactGrantApplies, generatedAutoMode, mergeOperatorAutoMode, operatorAutoModeFingerprint } from './lib/settings/operator-auto-mode';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
@@ -1123,19 +1123,6 @@ function applyVoiceRender(config: Json): void {
 }
 
 /**
- * Does the artifact publish grant apply — a page enabled, explicit
- * authorization, and the default/claude backend?
- *
- * Gates applyArtifactGrant's boot-time permission write, and nothing else.
- */
-function artifactGrantApplies(config: Json): boolean {
-  const artifacts = isDict(config.artifacts) ? config.artifacts : {};
-  const anyPage = ['dashboard', 'proposals', 'weekly_review'].some((k) => pyTruthy(artifacts[k]));
-  if (!anyPage || artifacts.publish_authorized !== true) return false;
-  return foreignArtifactBackend(config) === null;
-}
-
-/**
  * True when the operator has set `crossSessionInbound` in their own user settings.
  * Unreadable or malformed counts as unset — the same fail-open the rest of boot
  * takes on a settings file it cannot parse.
@@ -1167,28 +1154,7 @@ function userScopeSetsInbound(): boolean {
  * pointing at a half-written file.
  */
 function renderLaunchOverlay(config: Json): string | null {
-  const autoMode: Record<string, string[]> = {
-    soft_deny: ['$defaults', AUTOMODE_SOFT_DENY_ENTRY],
-  };
-  // Unconditional, like the soft_deny above. Neither entry is about artifacts: the
-  // environment list names the hermit's own notification domains and state directory,
-  // and the allow entry covers apply-settings ops (permissions-plan, permissions-sync,
-  // deny, channel-env) that hermit-evolve, hatch, channel-setup and docker-setup all
-  // run on hermits that publish nothing. Gating them on the artifact grant left those
-  // hermits with an empty environment list, which is both what draws classifier
-  // denials on their own channel sends and the condition Claude Code offers
-  // /auto-mode-setup on.
-  //
-  // One op is still gated: `artifact-allow` writes the native Artifact permission,
-  // exactly the write applyArtifactGrant refuses on an unauthorized or non-claude
-  // backend. Enumerating it unconditionally would pre-clear, prompt-free, the publish
-  // an operator configured a backend (or a withheld publish_authorized) to prevent, so
-  // it leaves the list where the grant does not apply and stays Self-Modification.
-  const ops = artifactGrantApplies(config)
-    ? SEALED_SETTINGS_OPS
-    : SEALED_SETTINGS_OPS.filter((op) => op !== 'artifact-allow');
-  autoMode.allow = ['$defaults', automodeAllowEntry(path.join(defaultConfigDir(), 'plugins'), PLUGIN_ROOT, ops)];
-  autoMode.environment = ['$defaults', ...AUTOMODE_ENV_ENTRIES];
+  const autoMode = generatedAutoMode(config);
   // Cross-session inbox. Claude Code holds an inbound peer message purely on
   // permission class: a prompting receiver (auto/acceptEdits/dontAsk — the hermit
   // default) holds anything from a sender that identifies as bypassPermissions,
@@ -1213,6 +1179,7 @@ function renderLaunchOverlay(config: Json): string | null {
   if (!userScopeSetsInbound()) overlay.crossSessionInbound = 'accept';
 
   const overridePath = hermitFile('claude-settings.json');
+  let operatorAutoMode: unknown;
   if (fs.existsSync(overridePath)) {
     try {
       const override = JSON.parse(fs.readFileSync(overridePath, 'utf8'));
@@ -1220,6 +1187,10 @@ function renderLaunchOverlay(config: Json): string | null {
       const generated = { ...overlay };
       Object.assign(overlay, override, generated);
       overlay.env = { ...(isDict(override.env) ? override.env : {}), ...generated.env };
+      operatorAutoMode = override.autoMode;
+      const merged = mergeOperatorAutoMode(generated.autoMode, operatorAutoMode);
+      overlay.autoMode = merged.autoMode;
+      for (const warning of merged.warnings) console.log(`[hermit] WARNING: ${warning}`);
       let malformedHooks = false;
       if ('hooks' in override) {
         if (!isDict(override.hooks)) {
@@ -1247,11 +1218,19 @@ function renderLaunchOverlay(config: Json): string | null {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(overlay, null, 2) + '\n');
-    return file;
   } catch (e: any) {
     console.log(`[hermit] launch overlay not written (${e?.message ?? e}): refusing to start without pause-gate, ask-gate, component-privacy and permission-denied-notify`);
     return null;
   }
+  const fingerprintFile = path.resolve(STATE_DIR, 'operator-auto-mode.json');
+  try {
+    writeFileAtomic(fingerprintFile, JSON.stringify({ fingerprint: operatorAutoModeFingerprint(operatorAutoMode) }) + '\n');
+  } catch (e: any) {
+    // A stale fingerprint would make the watchdog restart on every tick.
+    try { fs.rmSync(fingerprintFile, { force: true }); } catch {}
+    console.log(`[hermit] WARNING: approval-rules fingerprint not written (${e?.message ?? e}); rule changes apply at the next start`);
+  }
+  return file;
 }
 
 /** Seed workspace trust once at boot. */

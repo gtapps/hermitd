@@ -51,6 +51,7 @@ const PT_TEXT: Record<MessageKey, string> = {
   watchdog_cause_not_running: 'não estava a correr',
   watchdog_cause_frozen: 'tinha bloqueado',
   watchdog_cause_upgrade: 'precisa de concluir uma atualização',
+  watchdog_cause_rules: 'as regras de aprovação mudaram',
   watchdog_cause_requested: 'foi pedido um reinício',
   watchdog_wedge: 'O seu agente não responde há algum tempo — estou a verificá-lo agora ({time}). Se tiver de ser reiniciado, o trabalho em curso pode perder-se.',
   watchdog_wedge_recovered: 'O seu agente já está a responder, não precisa de fazer nada ({time}).',
