@@ -629,8 +629,32 @@ describe('clearWatchRegistry', () => {
   });
 
   test('leaves a missing registry missing', () => {
-    clearWatchRegistry();
+    expect(captureLog(clearWatchRegistry).out).toBe('');
     expect(fs.existsSync(REGISTRY)).toBe(false);
+    expect(fs.existsSync('.hermit/state/watch-poll')).toBe(false);
+  });
+
+  test('removes ad-hoc watch-poll state and preserves other files', () => {
+    const dir = '.hermit/state/watch-poll';
+    fs.mkdirSync(dir);
+    for (const name of ['adhoc-1744460400-a3f2.json', 'adhoc-other.json', 'disk-usage.json', 'adhoc-keep.txt', 'other-adhoc-a.json']) {
+      fs.writeFileSync(path.join(dir, name), name);
+    }
+
+    expect(captureLog(clearWatchRegistry).out).toBe('');
+    expect(fs.readdirSync(dir).sort()).toEqual(['adhoc-keep.txt', 'disk-usage.json', 'other-adhoc-a.json']);
+  });
+
+  test('warns on a failed deletion and continues clearing other ad-hoc state', () => {
+    const dir = '.hermit/state/watch-poll';
+    fs.mkdirSync(dir);
+    fs.mkdirSync(path.join(dir, 'adhoc-blocked.json'));
+    fs.writeFileSync(path.join(dir, 'adhoc-removable.json'), '{}');
+
+    const { out } = captureLog(clearWatchRegistry);
+    expect(out).toContain('[hermit] WARNING: watch-poll/adhoc-blocked.json not cleared');
+    expect(fs.existsSync(path.join(dir, 'adhoc-blocked.json'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'adhoc-removable.json'))).toBe(false);
   });
 });
 
