@@ -556,8 +556,7 @@ if (import.meta.main) {
       const current = getPath(config, dotted);
       if (current !== undefined && !Array.isArray(current)) exitError(`not_an_array:${dotted}`);
       const value = parseValue(rest[1]);
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)
-        && typeof value.id === 'string' && current?.some((entry: Json) => entry?.id === value.id)) {
+      if (typeof value?.id === 'string' && current?.some((entry: Json) => entry?.id === value.id)) {
         exitError(`duplicate_id:${value.id}`);
       }
       try {

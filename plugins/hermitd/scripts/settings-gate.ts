@@ -378,15 +378,18 @@ function watchShape(entry: Json): boolean {
   return command !== null && command[1] === entry.id;
 }
 
+const WATCH_EDIT_PREFIX = /^(?:\.hermit\/bin\/hermitd-run settings-edit|bun (?:\/[^\s'"]+|[^\s'"]+)\/scripts\/settings-edit\.ts) \.hermit\/config\.json /;
+
 /** Only literal, isolated settings-edit invocations are eligible for a silent watch write. */
 function silentWatchWrite(
   command: string, verb: string, dotted: string, token: string,
-  mode: string, origin: RoutineOrigin,
+  mode: string, turnOrigin: () => RoutineOrigin,
 ): boolean {
-  if (mode !== 'auto' || origin.kind === 'unknown' || !origin.proven) return false;
-  const prefix = /^(?:\.hermit\/bin\/hermitd-run settings-edit|bun (?:\/[^\s'"]+|[^\s'"]+)\/scripts\/settings-edit\.ts) \.hermit\/config\.json /;
-  const match = prefix.exec(command);
+  if (mode !== 'auto') return false;
+  const match = WATCH_EDIT_PREFIX.exec(command);
   if (!match) return false;
+  const origin = turnOrigin();
+  if (origin.kind === 'unknown' || !origin.proven) return false;
   const tail = command.slice(match[0].length);
   const config = readConfigRaw(hermitDir());
   if (!config || (config.monitors !== undefined && !Array.isArray(config.monitors))) return false;
@@ -696,7 +699,7 @@ function protectedMutation(command: string, cwd: string, origin: () => RoutineOr
     }
     const dotted = resolveTarget(verb, t);
     if ((dotted === 'monitors' || dotted.startsWith('monitors.'))
-      && silentWatchWrite(command, verb, dotted, token, mode, origin())) continue;
+      && silentWatchWrite(command, verb, dotted, token, mode, origin)) continue;
     if (!ASK_PATH.test(dotted) && ASK_CONTAINER.test(dotted)) {
       // A preceding shell command can change cwd or the comparison baseline.
       // Keep such parent writes opaque rather than interpreting shell programs.

@@ -14,11 +14,11 @@ Return to [SKILL.md](SKILL.md) for status, stopping, and event handling. Save a 
    ```
 
    On `duplicate_id`, read the matching entry: if its command is identical, say it is already being watched and do not write. Otherwise choose a new id and retry once. On an error, report it. A native prompt may appear; No is final, with no substitute path.
-5. For a member's disabled watch, queue one micro-proposal and send the same neutral yes/no question in the asking chat. Replace placeholders with the actual id and chat:
+5. For a member's disabled watch, queue one micro-proposal and send the same neutral yes/no question in the asking chat. Write the question in the chat's language and name what the watch checks. Replace placeholders with the actual question, id and chat:
 
    ```bash
    .hermit/bin/hermitd-run proposal queue-micro .hermit <<'HERMIT_MP'
-   {"tier":1,"question":"Start this watch? Yes / No","on_resolve":"/hermitd:watch enable <id> --answer {answer}","chat":"<sourceKey>:<chat_id>","key":"watch-enable:<id>"}
+   {"tier":1,"question":"<yes/no question naming the watch>","on_resolve":"/hermitd:watch enable <id> --answer {answer}","chat":"<sourceKey>:<chat_id>","key":"watch-enable:<id>"}
    HERMIT_MP
    ```
 

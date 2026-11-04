@@ -112,10 +112,11 @@ async function observe(): Promise<{ value?: string; failure?: string }> {
     }, timeoutMs);
     running.stdout!.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > 64 * 1024) {
+      if (size <= 64 * 1024) chunks.push(chunk);
+      else if (!failure) {
         failure = 'output_too_large';
         killCheck();
-      } else chunks.push(chunk);
+      }
     });
     running.once('error', () => { failure = 'spawn'; });
     running.once('close', (code, signal) => {
