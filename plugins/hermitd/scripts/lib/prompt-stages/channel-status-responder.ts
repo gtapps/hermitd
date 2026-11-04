@@ -27,7 +27,9 @@ import { friendlyBoundary, parseSimpleCronTime } from '../time';
 import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
-import { readTasks, isRunnable, type Task } from '../tasks';
+import { readTasks, isRunnable, latestWaitIsStall, type Task } from '../tasks';
+import { conversationKey } from '../conversation-key';
+import { homeChatKey } from '../proposals/micro';
 import type { StageContext, StageResult } from './types';
 
 type Json = any;
@@ -50,32 +52,56 @@ function pauseLine(dir: string, timezone: string, m: Messages): string | null {
   return m.t('status_paused_until_date', { label, boundary: friendlyBoundary(status.until as string, timezone) });
 }
 
-// The resident's first runnable record is its current work. An unreadable store is
-// treated as nothing to report rather than failing the reply.
-function currentTask(dir: string): Task | null {
+// An unreadable store is treated as nothing to report rather than failing the reply.
+function readRecords(dir: string): Task[] {
   try {
-    return readTasks(dir).find(isRunnable) ?? null;
+    return readTasks(dir);
   } catch {
-    return null;
+    return [];
   }
-}
-
-function taskLine(dir: string, m: Messages): string | null {
-  const task = currentTask(dir);
-  return task ? m.t('status_working_on', { task: task.title }) : null;
 }
 
 // Only worth a line when something is actually pending — an empty queue
 // shouldn't crowd out the "all quiet" fallback in composeStatusReply.
-function approvalsLine(dir: string, m: Messages): string | null {
+function approvalsLine(dir: string, config: Json, chatKey: string | undefined, m: Messages): string | null {
   const mp = readJson(path.join(dir, 'state', 'micro-proposals.json'));
-  const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) => p?.status === 'pending') : [];
+  const home = homeChatKey(config?.channels);
+  // A chat-less entry belongs to the home chat, or to any chat when none resolves (as askedOutsideHome treats it).
+  const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) =>
+    p?.status === 'pending' && (typeof p.chat === 'string' ? p.chat === chatKey : home === null || home === chatKey)) : [];
   if (pending.length === 0) return null;
   if (pending.length === 1) {
     const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
     return m.t('status_one_approval', { id });
   }
   return m.t('status_n_approvals', { n: pending.length });
+}
+
+const AGE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 365 * 86400], ['month', 30 * 86400], ['week', 7 * 86400], ['day', 86400],
+  ['hour', 3600], ['minute', 60], ['second', 1],
+];
+
+// Open records whose wait is on this sender (or on 'operator' for the trusted
+// controller), oldest wait first, as localized board lines.
+function waitingRecords(all: Task[], keys: Set<string>, m: Messages): string[] {
+  const records = all.filter(task => task.status === 'open' && task.waiting_on !== null && keys.has(task.waiting_on));
+  if (records.length === 0) return [];
+  const now = Date.now();
+  const formatter = new Intl.RelativeTimeFormat(m.locale, { numeric: 'always' });
+  return records
+    .map(task => {
+      // A stall raised after a result is the current ask, so it wins the label and the age.
+      const confirm = !!task.result && !latestWaitIsStall(task);
+      return { task, confirm, start: Date.parse((confirm ? task.result_at : null) ?? task.waiting_since ?? task.opened_at) };
+    })
+    .sort((a, b) => a.start - b.start)
+    .map(({ task, confirm, start }) => {
+      const seconds = Math.max(0, (now - start) / 1000);
+      const [unit, size] = AGE_UNITS.find(([, duration]) => seconds >= duration) ?? AGE_UNITS[AGE_UNITS.length - 1];
+      const age = formatter.format(-Math.floor(seconds / size), unit);
+      return m.t(confirm ? 'status_waiting_confirm' : 'status_waiting_answer', { task: task.title, age });
+    });
 }
 
 // Cron day-of-week matcher (0=Sun..6=Sat; 7 also Sun). Supports '*', comma
@@ -142,9 +168,17 @@ function nextRoutineLine(config: Json, timezone: string, m: Messages): string | 
   return m.t('status_next_routine', { hh, mm, id: best.id });
 }
 
-export function composeStatusReply(dir: string, config: Json, opts: { redact?: boolean } = {}): string {
+export function composeStatusReply(dir: string, config: Json, opts: {
+  redact?: boolean;
+  senderKey?: string | null;
+  chatKey?: string;
+  trusted?: boolean;
+} = {}): string {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
+  const records = readRecords(dir);
+  // The resident's first runnable record is its current work.
+  const current = records.find(isRunnable) ?? null;
   const lines: string[] = [];
 
   const pause = pauseLine(dir, timezone, m);
@@ -153,24 +187,29 @@ export function composeStatusReply(dir: string, config: Json, opts: { redact?: b
   if (opts.redact) {
     // Unauthenticated sender on a no-allowlist channel: coarse state only — never
     // spend figures, task text, pending-approval IDs, or the routine schedule.
-    lines.push(m.t(currentTask(dir) ? 'status_working' : 'status_idle'));
+    lines.push(m.t(current ? 'status_working' : 'status_idle'));
     return lines.join(' ');
   }
 
-  const task = taskLine(dir, m);
-  if (task) lines.push(task);
+  if (current) lines.push(m.t('status_working_on', { task: current.title }));
 
   const budget = budgetLine(dir, config, timezone, m);
   if (budget) lines.push(budget);
 
-  const approvals = approvalsLine(dir, m);
-  if (approvals) lines.push(approvals);
-
   const routine = nextRoutineLine(config, timezone, m);
   if (routine) lines.push(routine);
 
-  if (lines.length === 0) return m.t('status_all_quiet');
-  return lines.join(' ');
+  const keys = new Set<string>();
+  if (opts.senderKey) keys.add(opts.senderKey);
+  if (opts.trusted) keys.add('operator');
+  const waiting = waitingRecords(records, keys, m);
+  const approvals = approvalsLine(dir, config, opts.chatKey, m);
+  if (approvals) waiting.push(approvals);
+  const head = lines.join(' ');
+  if (waiting.length === 0) return head || m.t('status_all_quiet');
+  const block = [m.t('status_waiting_header'), ...waiting.slice(0, 5).map(item => `• ${item}`)];
+  if (waiting.length > 5) block.push(m.t('status_waiting_more', { n: waiting.length - 5 }));
+  return [head, ...block].filter(Boolean).join('\n');
 }
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
@@ -191,7 +230,12 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // Full status only for the trusted operator (explicit allowlist, or the DM chat
   // when no list is set); any other accepted sender gets a redacted, coarse reply.
   const trusted = isTrustedController(config, envelope.source, envelope.userId, envelope.chatId);
-  const reply = composeStatusReply(dir, config, { redact: !trusted });
+  const reply = composeStatusReply(dir, config, {
+    redact: !trusted,
+    senderKey: envelope.userId === null ? null : `${envelope.sourceKey}:${envelope.userId}`,
+    chatKey: conversationKey(envelope.sourceKey, envelope.chatId),
+    trusted,
+  });
   // Reply to the chat the request arrived on — not the globally-resolved
   // outbound channel — so a status asked in a group or a non-primary channel is
   // answered where it was asked. This also keeps the destination aligned with the
