@@ -954,6 +954,17 @@ describe('shared chat task routing', () => {
     writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
     expect((await run(wd, '!clear', 'http://127.0.0.1:1')).stdout).not.toContain('[conversation command: restart]');
   });
+
+  test('a result-less waiting DM row offers no confirmed close and keeps its last worker', async () => {
+    const wd = setupChannelWorkdir();
+    expect((await openTask(wd.dir, hermit(wd.dir), ['--title', 'Pick supplier', '--owner', 'resident', '--requester', 'telegram:u1', '--conversation', 'telegram:12345'])).exitCode).toBe(0);
+    const [record] = readTasks(hermit(wd.dir));
+    Object.assign(record, { waiting_on: 'telegram:u1', waiting_since: new Date().toISOString(), last_worker: 'a1b2c3d4e5f6a7b8c' });
+    fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
+    const result = await run(wd, 'use the October list', 'http://127.0.0.1:1');
+    expect(result.stdout).toContain(`[waiting task ${record.id} last_worker=a1b2c3d4e5f6a7b8c actor=telegram:u1;`);
+    expect(result.stdout).not.toContain('--by confirmed');
+  });
 });
 
 

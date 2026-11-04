@@ -110,8 +110,7 @@ export function isThreadChannelType(chat: Pick<Chat, 'type'> | null | undefined)
 
 export async function classifyChat(hermitDir: string, config: Json, sourceKey: string, chatId: string, envelopeThread: string | null | undefined): Promise<'thread' | 'shared'> {
   if (sourceKey !== 'discord') return envelopeThread != null ? 'thread' : 'shared';
-  const chat = cachedChat(hermitDir, chatId) ?? await lookupChat(hermitDir, config, chatId);
-  return isThreadChannelType(chat) ? 'thread' : 'shared';
+  return isThreadChannelType(await lookupChat(hermitDir, config, chatId)) ? 'thread' : 'shared';
 }
 
 export async function needsThread(hermitDir: string, config: Json, source: string, chatId: string, cachedOnly = false): Promise<boolean> {

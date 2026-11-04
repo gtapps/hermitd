@@ -4,7 +4,7 @@ import { hermitDir } from './lib/cc-compat';
 import { classifyChat } from './lib/channel-chats';
 import { readConfigRaw } from './lib/config-read';
 import { safeForLLM } from './lib/sanitize';
-import { threadRecords } from './lib/tasks';
+import { TASK_ID, threadRecords } from './lib/tasks';
 import { runHook } from './lib/hook-input';
 
 function refuse(reason: string): never {
@@ -20,8 +20,8 @@ async function main(payload: any): Promise<void> {
     refuse('helper report was not substituted; delivery failed');
   }
   if (payload.hook_event_name !== 'PreToolUse') return;
-  const match = /^\[\[helper-report (T-\d{8}-\d{6}(?:-[a-z0-9])?) ([a-z0-9]{6,64})\]\]$/.exec(input.text.trim());
-  if (!match) refuse('malformed helper-report placeholder: send exactly [[helper-report <task-id> <id>]], <id> 6 to 64 characters of [a-z0-9]');
+  const match = /^\[\[helper-report (\S+) ([a-z0-9]{6,64})\]\]$/.exec(input.text.trim());
+  if (!match || !TASK_ID.test(match[1])) refuse('malformed helper-report placeholder: send exactly [[helper-report <task-id> <id>]], <id> 6 to 64 characters of [a-z0-9]');
   try {
     if (typeof input.chat_id !== 'string' || !input.chat_id) throw new Error('missing chat_id');
     const dir = hermitDir();

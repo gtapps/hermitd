@@ -10,6 +10,7 @@
 - Worker reports name their task when several tasks share a chat without threads
 - The report placeholder carries its task id as `[[helper-report <task-id> <id>]]` and checks the reply destination
 - `tasks.handle_in_dm` is removed; handles identify concurrent tasks in chats without threads
+- `!mute`, `!unmute` and `!restart` apply only in task threads; a task muted in a chat without threads no longer silences that chat
 
 ### Upgrade Instructions
 
