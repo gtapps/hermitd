@@ -25,12 +25,14 @@ Natural companion to `/release-status` when the queue has drifted, and worth a r
 ## Step 1 — Collect the evidence
 
 ```bash
-bun .claude/skills/stale-proposals/scripts/collect-evidence.ts [--from PROP-NNN] [--status <list>]
+bun .claude/skills/stale-proposals/scripts/collect-evidence.ts [--hermit-dir <hermit-dir>] [--from PROP-NNN] [--status <list>]
 ```
 
-This writes a bundle containing every in-scope open proposal (with an excerpt of its Problem section) alongside every CHANGELOG bullet and first-parent commit dated after the oldest open proposal — nothing can have shipped before the proposal that asked for it existed, so that date is a sound floor.
+`<hermit-dir>` is the state folder that holds `proposals/` and `tasks/`. It defaults to `<repo>/.hermit`, which is only right in the resident's own checkout. In a checkout whose `.hermit` is a projection (a core checkout under a resident workspace, a worktree), pass the resident's absolute `.hermit` path. Use that same path in Steps 3 and 4.
 
-Output is `OK|<bundle-path>|<open>|<bullets>|<commits>|<cutoff>`, or `NONE|no-open-proposals` (report "Queue is clean — no open proposals." and stop).
+This writes a bundle containing every in-scope open proposal (with an excerpt of its Problem section) alongside every CHANGELOG bullet, closed task record naming a PROP id, and first-parent commit dated after the oldest open proposal — nothing can have shipped before the proposal that asked for it existed, so that date is a sound floor.
+
+Output is `OK|<bundle-path>|<open>|<bullets>|<commits>|<cutoff>|<tasks>`, or `NONE|no-open-proposals` (report "Queue is clean — no open proposals." and stop). A non-zero exit means the proposals folder is missing: report the stderr message and stop. It is a wrong path, never a clean queue.
 
 **Do not read the bundle.** It is on the order of 40k tokens and belongs in a subagent, not in the operator's session. You only need its path.
 
@@ -51,7 +53,9 @@ Give it the bundle path and this contract verbatim:
 >
 > **STRONG requires all three:** the evidence names the same component the proposal targets; it describes the same behavior change the proposal asked for; and no distinct part of the proposal's ask is left unaddressed. A proposal asking for three things where the changelog delivers two is **WEAK**, not strong — partial delivery is the single most likely way this audit closes live work by mistake, so when you notice yourself arguing for why a gap "probably doesn't matter," that is WEAK.
 >
-> Ignore date order at your peril: evidence dated before a proposal was created cannot be that proposal shipping. It is usually the prior art the proposal was written against. Changelog dates have day granularity while proposals carry a timestamp, so same-day evidence cannot be ordered at all — treat it as at most `SHIPPED-WEAK` and say so.
+> Ignore date order at your peril: evidence dated before a proposal was created cannot be that proposal shipping. It is usually the prior art the proposal was written against. Changelog dates have day granularity while proposals carry a timestamp, so same-day changelog or commit evidence cannot be ordered at all — treat it as at most `SHIPPED-WEAK` and say so.
+>
+> **Closed task records** (the bundle's task section) are stronger evidence. A record whose title or `closed_reason` names the proposal, closed `done`, with a `closed_reason` saying its PR or PRs all merged, counts as `SHIPPED-STRONG` evidence even when it is the only evidence and even on the same day as the proposal: the record was opened and closed after the proposal existed. It must still cover the whole ask; a record for one of several parts is `SHIPPED-WEAK`. A cancelled record, or one that only records a helper report or investigation, is not shipping evidence.
 >
 > A proposal can ship under a different name than it asked for. Match on substance — the component, the behavior, the problem being closed — not on the proposal's chosen identifier.
 >
@@ -80,9 +84,9 @@ Skip this entire step under `--no-apply`.
 For each `SHIPPED-STRONG` verdict, resolve the ID to a filename, then close it the same way `/hermitd:proposal-act` does: the `resolve` verb writes the metrics rows and the patch together, recording the accept first when the proposal was still `proposed`:
 
 ```bash
-bun plugins/hermitd/scripts/proposal.ts resolve-id .hermit "<PROP-ID>"
+bun plugins/hermitd/scripts/proposal.ts resolve-id <hermit-dir> "<PROP-ID>"
 
-bun plugins/hermitd/scripts/proposal.ts resolve .hermit <filename> --stdin <<'HERMIT_PATCH'
+bun plugins/hermitd/scripts/proposal.ts resolve <hermit-dir> <filename> --stdin <<'HERMIT_PATCH'
 Decision: Resolved on @now — shipped in <plugin> <version>. <evidence sentence>
 HERMIT_PATCH
 ```
@@ -95,7 +99,7 @@ Writing the evidence into the Decision line is what makes an automatic flip audi
 
 Present `SHIPPED-WEAK` and `AGED` together in one `AskUserQuestion` round, weak matches first (they carry evidence; aged ones carry only silence). Offer per group: resolve them, dismiss them, defer them, or leave them open. Where a group's members clearly want different answers, ask about them separately rather than forcing one verdict onto all.
 
-Apply confirmed answers with the same `proposal.ts patch` call, following `/hermitd:proposal-act`'s flow for whichever status the operator picked rather than improvising the fields — the flows differ in ways that are easy to get wrong:
+Apply confirmed answers with the same `proposal.ts patch` call (same `<hermit-dir>` as Step 1), following `/hermitd:proposal-act`'s flow for whichever status the operator picked rather than improvising the fields — the flows differ in ways that are easy to get wrong:
 
 - **dismiss** — `--set status=dismissed --set dismissed_date=@now --set resolved_date=@now`. A dismissal is also a *first response*: if the proposal's `responded` field is still `false`, fire a `{"type":"responded","action":"dismiss"}` metrics event before the patch and add `--set responded=true` to it, or the proposal never counts as answered.
 - **defer** — no date fields.

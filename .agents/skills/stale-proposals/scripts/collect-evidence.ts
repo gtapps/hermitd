@@ -9,13 +9,17 @@
  * worker by path and never enters the calling context.
  *
  * Usage: bun collect-evidence.ts [--hermit-dir DIR] [--out FILE]
- * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>
+ * --hermit-dir is the state folder holding proposals/ and tasks/ (default:
+ * <repo>/.hermit). A checkout whose .hermit is a projection has no proposals/,
+ * so pass the real one.
+ *
+ * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>|<task-count>
  *         NONE|no-open-proposals
- *         NONE|no-proposals-dir
+ * A missing proposals/ folder is an error: message on stderr, exit 1.
  */
 
-import { basename, join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { basename, join, resolve } from 'node:path';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
@@ -29,7 +33,7 @@ function arg(flag: string, fallback: string): string {
 }
 
 const repoRoot = execSync('git rev-parse --show-toplevel').toString().trim();
-const hermitDir = arg('--hermit-dir', join(repoRoot, '.hermit'));
+const hermitDir = resolve(arg('--hermit-dir', join(repoRoot, '.hermit')));
 const outPath = arg(
   '--out',
   join(tmpdir(), `stale-proposals-evidence-${process.pid}.md`),
@@ -77,8 +81,10 @@ function excerpt(text: string): string {
 
 const proposalsDir = join(hermitDir, 'proposals');
 if (!existsSync(proposalsDir)) {
-  console.log('NONE|no-proposals-dir');
-  process.exit(0);
+  console.error(
+    `no proposals folder at ${proposalsDir}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+  );
+  process.exit(1);
 }
 
 const open: Proposal[] = [];
@@ -108,6 +114,30 @@ const cutoff = open
   .map((proposal) => proposal.created)
   .filter(Boolean)
   .sort()[0];
+
+type TaskRow = {
+  title: string;
+  closed_reason: string | null;
+  closed_at: string | null;
+  outcome: string;
+  source_path: string;
+};
+
+// task-report.ts owns the task file format and exposes closed_reason. A record
+// titled or closed with a PROP id is often the clearest sign it shipped.
+const taskScript = join(repoRoot, 'plugins', 'hermitd', 'scripts', 'task-report.ts');
+const taskRows: TaskRow[] = (
+  JSON.parse(
+    execFileSync('bun', [taskScript, hermitDir, '--recent', '--limit', '100000'], {
+      maxBuffer: 64 * 1024 * 1024,
+    }).toString(),
+  ).rows as TaskRow[]
+).filter(
+  (task) =>
+    task.closed_at &&
+    task.closed_at.slice(0, 10) >= cutoff &&
+    /PROP-\d+/.test(`${task.title} ${task.closed_reason ?? ''}`),
+);
 
 type Entry = {
   plugin: string;
@@ -197,10 +227,19 @@ for (const entry of entries) {
   lines.push(...entry.bullets.map((bullet) => `- ${bullet}`), '');
 }
 
+lines.push(`## Closed task records naming a PROP (${taskRows.length})`, '');
+for (const task of taskRows) {
+  const note = (task.closed_reason ?? '').replace(/\s+/g, ' ').slice(0, BULLET_CHARS);
+  lines.push(
+    `- ${basename(task.source_path, '.md')} | ${task.outcome} | closed ${task.closed_at!.slice(0, 10)} | ${task.title} | closed_reason: ${note}`,
+  );
+}
+lines.push('');
+
 lines.push(`## First-parent history since ${cutoff} (${commits.length})`, '');
 lines.push(...commits.map((commit) => `- ${commit.replace(/\t/, ' | ')}`));
 
 writeFileSync(outPath, lines.join('\n'));
 console.log(
-  `OK|${outPath}|${open.length}|${bulletCount}|${commits.length}|${cutoff}`,
+  `OK|${outPath}|${open.length}|${bulletCount}|${commits.length}|${cutoff}|${taskRows.length}`,
 );

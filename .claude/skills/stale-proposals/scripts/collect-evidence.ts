@@ -14,13 +14,18 @@
  * --from narrows the audit to proposals numbered NNN and up; --status to the
  * listed open statuses. Both scope the bundle itself, so the evidence floor
  * moves with them and the subagent never sees out-of-scope proposals.
- * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>
+ * --hermit-dir is the state folder holding proposals/ and tasks/ (default:
+ * <repo>/.hermit). A checkout whose .hermit is a projection has no proposals/,
+ * so pass the real one.
+ *
+ * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>|<task-count>
  *         NONE|no-open-proposals
+ * A missing proposals/ folder is an error: message on stderr, exit 1.
  */
 
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
-import { execSync } from "node:child_process";
+import { join, basename, resolve } from "node:path";
+import { execSync, execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 const OPEN_STATUSES = new Set(["proposed", "deferred", "accepted"]);
@@ -40,7 +45,7 @@ const statuses = statusArg
   : OPEN_STATUSES;
 
 const repoRoot = execSync("git rev-parse --show-toplevel").toString().trim();
-const hermitDir = arg("--hermit-dir", join(repoRoot, ".hermit"));
+const hermitDir = resolve(arg("--hermit-dir", join(repoRoot, ".hermit")));
 const outPath = arg(
   "--out",
   join(process.env.CLAUDE_JOB_DIR || tmpdir(), "stale-proposals-evidence.md"),
@@ -89,8 +94,10 @@ function excerpt(text: string): string {
 
 const proposalsDir = join(hermitDir, "proposals");
 if (!existsSync(proposalsDir)) {
-  console.log("NONE|no-proposals-dir");
-  process.exit(0);
+  console.error(
+    `no proposals folder at ${proposalsDir}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+  );
+  process.exit(1);
 }
 
 const open: Proposal[] = [];
@@ -124,6 +131,32 @@ const cutoff = open
   .map((p) => p.created)
   .filter(Boolean)
   .sort()[0];
+
+// ---------- closed task records ----------
+
+/** task-report.ts owns the task file format and exposes closed_reason. A record
+ *  titled or closed with a PROP id is often the clearest sign it shipped. */
+type TaskRow = {
+  title: string;
+  closed_reason: string | null;
+  closed_at: string | null;
+  outcome: string;
+  source_path: string;
+};
+
+const taskScript = join(repoRoot, "plugins", "hermitd", "scripts", "task-report.ts");
+const taskRows: TaskRow[] = (
+  JSON.parse(
+    execFileSync("bun", [taskScript, hermitDir, "--recent", "--limit", "100000"], {
+      maxBuffer: 64 * 1024 * 1024,
+    }).toString(),
+  ).rows as TaskRow[]
+).filter(
+  (t) =>
+    t.closed_at &&
+    t.closed_at.slice(0, 10) >= cutoff &&
+    /PROP-\d+/.test(`${t.title} ${t.closed_reason ?? ""}`),
+);
 
 // ---------- changelog bullets ----------
 
@@ -209,10 +242,19 @@ for (const e of entries) {
   lines.push(...e.bullets.map((b) => `- ${b}`), "");
 }
 
+lines.push(`## Closed task records naming a PROP (${taskRows.length})`, "");
+for (const t of taskRows) {
+  const note = (t.closed_reason ?? "").replace(/\s+/g, " ").slice(0, BULLET_CHARS);
+  lines.push(
+    `- ${basename(t.source_path, ".md")} | ${t.outcome} | closed ${t.closed_at!.slice(0, 10)} | ${t.title} | closed_reason: ${note}`,
+  );
+}
+lines.push("");
+
 lines.push(`## First-parent history since ${cutoff} (${commits.length})`, "");
 lines.push(...commits.map((c) => `- ${c.replace(/\t/, " | ")}`));
 
 writeFileSync(outPath, lines.join("\n"));
 console.log(
-  `OK|${outPath}|${open.length}|${bulletCount}|${commits.length}|${cutoff}`,
+  `OK|${outPath}|${open.length}|${bulletCount}|${commits.length}|${cutoff}|${taskRows.length}`,
 );
