@@ -384,6 +384,11 @@ export function taskListing(record: Task, records: Task[], shared = false): stri
   return labels.length ? labels : ['open'];
 }
 
+// The newer of a stall and a result is what a waiting record waits on now.
+export function latestWaitIsStall(record: Task): boolean {
+  return record.stall_at !== null && (!record.result_at || Date.parse(record.stall_at) > Date.parse(record.result_at));
+}
+
 export function isRunnable(record: Task): boolean {
   return record.status === 'open' && record.owner === 'resident' && !record.result && !record.waiting_on;
 }

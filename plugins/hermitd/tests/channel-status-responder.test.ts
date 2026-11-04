@@ -338,6 +338,29 @@ describe('channel-status-responder', () => {
     }
   });
 
+  test('a question raised after a result is listed as the question', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      const id = await openTask(wd, 'Draft report');
+      await taskCommand(wd, 'block', id, ['--result-stdin'], 'Ready');
+      const file = hermit(wd.dir, 'tasks', `${id}.md`);
+      const record = decodeTask(fs.readFileSync(file, 'utf8'));
+      record.result_at = new Date(Date.now() - 3 * 3600000).toISOString();
+      fs.writeFileSync(file, encodeTask(record));
+      await taskCommand(wd, 'block', id, ['--waiting-on', 'telegram:u1', '--status-line', 'Need answer', '--next', 'Reply']);
+
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('• Draft report: answer the question (');
+      expect(text).not.toContain('confirm the result');
+      expect(text).not.toContain('hours ago');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('counts only approvals for this chat, treating chat-less entries as home', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
@@ -352,6 +375,23 @@ describe('channel-status-responder', () => {
       expect(text).toContain('• 1 approval waiting (reply "MP-home yes/no").');
       expect(text).not.toContain('MP-other');
       expect(text).not.toContain('2 approvals');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
+  test('chat-less approvals count in any chat when no home chat resolves', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir({
+      channels: { telegram: { enabled: true, allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
+    });
+    try {
+      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+        { id: 'MP-legacy', status: 'pending' },
+      ] }));
+      await run(wd, '!status', stub.url);
+      expect(stub.requests[0].body.text as string).toContain('• 1 approval waiting (reply "MP-legacy yes/no").');
     } finally {
       stub.stop();
       wd.cleanup();
