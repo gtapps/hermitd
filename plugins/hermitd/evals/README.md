@@ -218,7 +218,7 @@ Claude Code 2.1.318, `--model sonnet`, low effort, `--runs 3`, $7.47 for the tar
 - The remaining routing-rubric failures were the elided trace, not routing: those runs passed `task-skill`. The rubrics were then replaced as described in § channel-routing.
 - `assign-next-task-*` answered as Standing work on Sonnet 6 of 6 and Opus 1 of 1. Questions that name routines or watches are Standing work, and intake has no trigger words, so the cases now expect that answer with no task.
 - `assign-multi-for-today` and the other assign misses asked the requester for details without opening a task. The responder now counts that as a longer exchange and names `/hermitd:task` in the assignment branch.
-- These follow-up changes, and the `proposal-no-two-open` and `standing-role-save` responder wording, are not yet re-measured.
+- After those changes, same settings, partial run (cut short by the account limit): `two-assignments-one-task`, `dm-unrelated-work` and `plan-awaiting-approval` 3 of 3; `assign-multi-for-today` 2 of 3 and `assign-two-in-one` 1 of 3, both missing `/hermitd:task`; `assign-next-task-routines` 0 of 3 only on a `reference.md` read grader. That grader was dropped: § Standing work gathers through scripts and state files the case neither stands in for nor allows. The rest are not yet re-measured.
 
 ## Changing routing wording
 

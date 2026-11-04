@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: assign-next-task-watch-shaped
 description: 'A question about which watches are running is Standing work answered now, despite a "next task:" prefix.'
 tags: [channel-routing, heldout]
-expected_outcome: 'Standing work inspection through reference.md; no task skill.'
+expected_outcome: 'Answered as Standing work in this reply; no task skill.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -37,10 +37,6 @@ graders:
     min: 0
     max: 0
     weight: 2
-  - name: read-standing-work
-    type: tool_used
-    tool: 'Read'
-    input_match: 'channel-responder/reference\.md'
   - name: replied-via-channel
     type: tool_used
     tool: 'mcp__plugin_discord_discord__reply'
