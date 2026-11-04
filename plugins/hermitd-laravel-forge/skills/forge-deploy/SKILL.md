@@ -57,7 +57,7 @@ php /ABS/php/forge.php deploy-watch <server-id> <site-id> <deploy-id>
 
 The `TERMINAL` line carries only numeric IDs (never display names) — Forge server names can contain spaces, which would break the space-delimited fields.
 
-`/hermitd:watch` registers this as an ad-hoc watch. Its 30-minute Monitor deadline is longer than the loop's own ~15 min cap (180 × 5 s), so the loop ends first with a `timeout` terminal line and never becomes an unbounded watch. It is otherwise quiet, emitting only on status change. On any `TERMINAL` line the command exits and core clears the registry entry automatically; that line carries everything Step 5 needs.
+`/hermitd:watch` registers this as an ad-hoc watch. The loop stops itself after 180 polls (about 15 min at normal API latency), well inside the 30-minute Monitor deadline, and ends with a `timeout` terminal line. It is otherwise quiet, emitting only on status change. On any `TERMINAL` line the command exits and core clears the registry entry automatically; that line carries everything Step 5 needs.
 
 ### Step 5 — On the terminal watch event
 
