@@ -1,8 +1,10 @@
 // `proposal.ts queue-micro <stateDir>` — generates an MP-id, dedups, appends a
 // pending entry to state/micro-proposals.json, and logs the micro-queued event.
 // Usage: proposal.ts queue-micro <hermit-state-dir> <<'HERMIT_MP'
-//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>","key":"..."}
+//        {"tier":1,"question":"<full question text>","options":["..."],"on_resolve":"...","chat":"<sourceKey>:<chat_id>","user":"<user_id>","key":"..."}
 //        HERMIT_MP
+//   — `user` names the requester who may answer besides a primary operator;
+//     without it, only a primary operator can answer in a chat.
 //   — stdin only (question is free text and may contain apostrophes/quotes; no argv mode).
 // Output (stdout, one JSON line):
 //   {"status":"queued","id":"<MP-id>"}
@@ -61,6 +63,8 @@ export async function run(stateDir: string): Promise<void> {
   // The chat the question was asked in; only a reply there can answer it.
   // Callers asking outside a channel turn omit it and get the home chat.
   if (payload.chat !== undefined && !isKey(payload.chat)) emitJson({ error: 'invalid_input' });
+  const user: string | undefined = payload.user;
+  if (user !== undefined && (typeof user !== 'string' || !user)) emitJson({ error: 'invalid_input' });
   const config = readSettledConfig(stateDir);
   const chat: string | null = payload.chat ?? homeChatKey(config.channels);
 
@@ -91,6 +95,8 @@ export async function run(stateDir: string): Promise<void> {
     // A repeat ask from another chat moves the answer there, where the
     // operator now sees the question.
     if (chat && existing.chat !== chat) { existing.chat = chat; changed = true; }
+    // Asks that disagree on the requester leave the answer to the admin.
+    if (existing.user !== undefined && existing.user !== user) { delete existing.user; changed = true; }
     // A repeat ask keeps the one entry and takes the newest wording.
     if (existing.question !== question) { existing.question = question; changed = true; }
     if (changed) writeFileAtomic(microPath, JSON.stringify(micro, null, 2) + '\n');
@@ -124,6 +130,7 @@ export async function run(stateDir: string): Promise<void> {
   if (proposalId) entry.proposal_id = proposalId;
   if (key !== undefined) entry.key = key;
   if (chat) entry.chat = chat;
+  if (user !== undefined) entry.user = user;
   micro.pending.push(entry);
 
   fs.mkdirSync(stateSubdir, { recursive: true });
