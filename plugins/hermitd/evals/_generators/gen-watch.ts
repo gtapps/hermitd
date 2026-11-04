@@ -95,4 +95,12 @@ watchCase('member-staged-disabled', 'heldout', 'A non-primary member asks for a 
   [{ name: 'saved-disabled', type: 'tool_used', tool: 'Bash', input_match: String.raw`append monitors[^\n]*\\?"enabled\\?"\s*:\s*false`, weight: 3 },
     { name: 'queued-yes-no', type: 'tool_used', tool: 'Bash', input_match: 'proposal(\\.ts)? queue-micro', weight: 2 }]);
 
+const metConfig = { ...CONFIG, monitors: [{ id: 'deploy-finished', chat: `discord:${CHAT}`, description: 'Tell me when the deploy finishes', command: 'watch-poll deploy-finished --every 5m -- bin/deploy-status', enabled: true }] };
+watchCase('met-one-shot-removed', 'train', 'A saved one-shot watch reports completion and is removed after the reply.',
+  'Channel reply reporting the finished deploy, then Bash settings-edit unset monitors',
+  withInstall({ '.hermit/config.json': configJson(metConfig) }, ({ run }) => prompt(run,
+    envelope(CHAT, '500000000000000307', USER, '[watch deploy-finished] The deploy finished successfully.'),
+    ['- config.json monitors[0]: ' + JSON.stringify(metConfig.monitors[0])])),
+  [{ name: 'removed-met-watch', type: 'tool_used', tool: 'Bash', input_match: 'unset monitors', weight: 3 }]);
+
 report('watch');

@@ -40,6 +40,15 @@ export const EN = {
   status_waiting_answer: '{task}: answer the question ({age})',
   status_waiting_more: '+{n} more',
 
+  // Scheduled work reply (lib/prompt-stages/channel-status-responder.ts)
+  scheduled_empty: 'Nothing scheduled in this chat.',
+  scheduled_count: '{n} scheduled items in this chat.',
+  scheduled_routine: '• {id}: {schedule} ({timezone}); {state}',
+  scheduled_watch: '• {id}: {description}; every {every}; {state}; check: {check}',
+  scheduled_on: 'on',
+  scheduled_off: 'off',
+  scheduled_pending: "waiting for an admin's yes",
+
   // Spend cap line in the status reply (lib/spend-status.ts)
   spend_label_daily: 'Today',
   spend_label_weekly: 'This week',
@@ -115,6 +124,10 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   status_one_approval: 'The operator answers with the id and yes or no in their own words; translate yes/no.',
   status_waiting_confirm: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',
   status_waiting_answer: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',
+  scheduled_count: 'Count only, for admitted senders without access to details; {n} includes routines and saved watches.',
+  scheduled_routine: '{schedule} is the configured cron time, or cron expression when not a fixed time, in the agent timezone. {state} is scheduled_on or scheduled_off.',
+  scheduled_watch: '{every} is a duration such as 5m. {state} is scheduled_on, scheduled_off or scheduled_pending. {check} is shell text; do not translate it.',
+  scheduled_pending: 'A member requested this watch; an admin must say yes before it runs.',
   spend_label_daily: 'Fills {label} in spend_cap_status.',
   spend_label_weekly: 'Fills {label} in spend_cap_status.',
   spend_label_monthly: 'Fills {label} in spend_cap_status.',

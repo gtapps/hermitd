@@ -5,9 +5,9 @@ Rare-branch procedures for `task/SKILL.md`. Read only the section the skill name
 ## Conversation command
 
 - `helper-switch`: invoke `/hermitd:spawn-session --switch <n> --record <id>` with the annotation's flags; `<n>` is the owner minus `helper:`.
-- `help`: list `!help`, `!mute`, `!unmute`, and `!restart`. `!model` and `!effort` switch the helper on a helper thread and are unsupported per conversation elsewhere. Global controls still affect the resident.
+- `help`: list `!help`, `!status`, `!scheduled`, `!mute`, `!unmute`, and `!restart`; outside task threads, use `!restart` for the sole open task or `!restart <handle>`. `!model` and `!effort` switch the helper on a helper thread and are unsupported per conversation elsewhere. Global controls still affect the resident.
 - `mute` / `unmute`: only in a task thread, run `task-note` (Commands) with arguments `<id> --muted true|false`, then acknowledge. Take `<id>` from `task=` in a `[closed task thread …]` annotation when present. Muting suppresses unmentioned steering.
-- `restart`: when the record's `owner` names a listed agent, stop it with `TaskStop`; no match means it is already gone. On a stop failure, report it and start nothing. Then follow § Replace an unreachable worker.
+- `restart`: take `<id>` from `task=` in the annotation when present. When the record's `owner` names a listed agent, stop it with `TaskStop`; no match means it is already gone. On a stop failure, report it and start nothing. Then follow § Replace an unreachable worker.
 
 ## Replace an unreachable worker
 

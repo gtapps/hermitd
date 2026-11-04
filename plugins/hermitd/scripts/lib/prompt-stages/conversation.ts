@@ -21,11 +21,13 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // harness-command stage could record them for the resident. A resident-owned thread
   // takes them as ordinary session commands, like any other chat.
   const harnessCommand = !!name && ['clear', 'compact', 'model', 'effort', 'advisor', 'permission-mode'].includes(name);
-  const inThread = await classifyChat(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.thread) === 'thread';
+  const chatType = await classifyChat(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.thread);
+  const inThread = chatType === 'thread';
+  const sharedRestart = chatType === 'shared' && name === 'restart';
   // A command outside a task thread only adds the open-tasks line, so an unreadable
   // task file cannot cost it its annotation.
   let records: Task[] = [];
-  try { records = threadRecords(ctx.dir); } catch (error) { if (inThread || !conversationCommand) throw error; }
+  try { records = threadRecords(ctx.dir); } catch (error) { if (inThread || (!conversationCommand && !sharedRestart)) throw error; }
   const record = inThread ? records.find(task => task.conversation === key) : undefined;
   if (!record) {
     // Only a task's own thread stays addressed after it closes; a DM or group chat
@@ -50,6 +52,12 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     if (!inThread) {
       // Records sort oldest first; list the newest five.
       const inChat = records.filter(task => task.conversation === key).reverse();
+      if (sharedRestart && inChat.length) {
+        const target = args ? inChat.find(task => task.handle === args) : inChat.length === 1 ? inChat[0] : undefined;
+        return { context: target
+          ? `[conversation command: restart task=${target.id}]`
+          : `[conversation command: restart needs a handle: ${inChat.map(task => task.handle).join(' ')}]` };
+      }
       const rows = inChat.slice(0, 5);
       if (inChat.length) {
         ctx.openTasksInChat = true;
@@ -64,7 +72,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
         }
       }
     }
-    if (conversationCommand) {
+    if (conversationCommand || sharedRestart) {
       lines.push(name === 'help' ? '[conversation command: help]' : '[conversation command outside a task thread]');
       return { context: lines.join('\n') };
     }
