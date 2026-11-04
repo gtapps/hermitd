@@ -4,9 +4,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson } from './cli';
+import { classifyChat } from './channel-chats';
+import { readConfigRaw } from './config-read';
 import { readTasks } from './tasks';
 
-export function intakeBlockReason(dir: string, sessionId: string | null): string | null {
+export async function intakeBlockReason(dir: string, sessionId: string | null): Promise<string | null> {
   try {
     const ackPath = path.join(dir, 'state', 'intake-acks.jsonl');
     let raw = '';
@@ -40,11 +42,25 @@ export function intakeBlockReason(dir: string, sessionId: string | null): string
       if (task.conversation !== null || (task.status === 'closed' && !(Date.parse(task.closed_at ?? '') >= turnAt))) return false;
       try { return fs.statSync(path.join(dir, 'tasks', `${task.id}.md`)).mtimeMs >= turnAt; } catch { return false; }
     });
-    const chats = new Map(acks.map(ack => [ack.key, String(ack.chat_id)]));
-    // A thread-attribute thread's card sits in its parent chat, so only a whole-chat key can match by card.
-    const missing = [...chats].filter(([key, chatId]) => !tasks.some(task =>
-      (task.conversation === key || (!key.includes('~') && task.card_chat_id === chatId)) && (task.status === 'open' || openedThisTurn(task))
-    )).map(([key]) => key);
+    const chats = new Map<string, { chatId: string; count: number }>();
+    for (const ack of acks) {
+      const previous = chats.get(ack.key);
+      chats.set(ack.key, { chatId: String(ack.chat_id), count: (previous?.count ?? 0) + 1 });
+    }
+    const config = readConfigRaw(dir);
+    const missing: string[] = [];
+    for (const [key, { chatId, count }] of chats) {
+      const [sourceKey, destination] = key.split(':');
+      const thread = destination?.split('~')[1];
+      const chatClass = await classifyChat(dir, config, sourceKey, chatId, thread);
+      if (chatClass === 'shared') {
+        if (tasks.filter(task => task.conversation === key && openedThisTurn(task)).length < count) missing.push(key);
+      } else {
+        // A thread-attribute thread's card sits in its parent chat, so only a whole-chat key can match by card.
+        if (!tasks.some(task => (task.conversation === key || (!key.includes('~') && task.card_chat_id === chatId))
+          && (task.status === 'open' || openedThisTurn(task)))) missing.push(key);
+      }
+    }
     if (missing.length > (resumedConversationless ? 1 : 0)) {
       return `task skill intake is still open. Run task.ts open now for the work you just acknowledged in ${missing.join(', ')}.`;
     }

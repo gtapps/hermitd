@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: thread-waiting-answer
-description: 'An answer to a waiting record in its thread goes to the task route.'
+description: 'In a real thread: an answer to a waiting record in its thread goes to the task route.'
 tags: [channel-routing, heldout]
 expected_outcome: 'Task route via the task skill.'
 context:

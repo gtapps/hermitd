@@ -1,17 +1,12 @@
 import { conversationKey } from '../conversation-key';
-import { conversationRecords, latestWaitIsStall, threadRecords } from '../tasks';
+import { conversationRecords, latestWaitIsStall, threadRecords, taskListing, type Task } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
-import { cachedChat, needsThread } from '../channel-chats';
+import { classifyChat } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
-
-// A parent chat that needs a thread belongs to no task thread unless the envelope
-// carries one, whatever record the parent chat's key might match.
-const inThreadChat = async (ctx: StageContext, sourceKey: string, chatId: string) =>
-  ctx.envelope?.thread != null || !(await needsThread(ctx.dir, ctx.config(), sourceKey, chatId, true));
 
 export async function run(ctx: StageContext): Promise<StageResult | void> {
   const env = ctx.envelope;
@@ -26,18 +21,16 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // harness-command stage could record them for the resident. A resident-owned thread
   // takes them as ordinary session commands, like any other chat.
   const harnessCommand = !!name && ['clear', 'compact', 'model', 'effort', 'advisor', 'permission-mode'].includes(name);
-  const inThread = await inThreadChat(ctx, env.sourceKey, env.chatId);
-  // A command outside a task thread needs no records, so an unreadable task file
-  // cannot cost it its annotation.
-  const records = inThread || !conversationCommand ? threadRecords(ctx.dir) : [];
+  const inThread = await classifyChat(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.thread) === 'thread';
+  // A command outside a task thread only adds the open-tasks line, so an unreadable
+  // task file cannot cost it its annotation.
+  let records: Task[] = [];
+  try { records = threadRecords(ctx.dir); } catch (error) { if (inThread || !conversationCommand) throw error; }
   const record = inThread ? records.find(task => task.conversation === key) : undefined;
   if (!record) {
     // Only a task's own thread stays addressed after it closes; a DM or group chat
     // that carried a record returns to its ordinary rules.
-    const ownThread = env.sourceKey === 'discord'
-      ? [10, 11, 12].includes(cachedChat(ctx.dir, env.chatId)?.type ?? -1)
-      : env.thread != null;
-    const closed = ownThread
+    const closed = inThread
       ? conversationRecords(ctx.dir).filter(task => task.status === 'closed' && task.conversation === key)
         .sort((a, b) => a.closed_at!.localeCompare(b.closed_at!) || a.id.localeCompare(b.id)).at(-1)
       : undefined;
@@ -53,17 +46,36 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     }
     // `!help` is answerable anywhere, so it gets its annotation rather than the
     // "needs a thread" refusal — without one the model has nothing to act on.
+    const lines: string[] = [];
+    if (!inThread) {
+      // Records sort oldest first; list the newest five.
+      const inChat = records.filter(task => task.conversation === key).reverse();
+      const rows = inChat.slice(0, 5);
+      if (inChat.length) {
+        ctx.openTasksInChat = true;
+        lines.push(`[open tasks in this chat: total=${inChat.length} omitted=${inChat.length - rows.length}; ${rows.map(row => `${row.handle} ${row.id} ${JSON.stringify(safeForLLM(row.title).slice(0, 80))} owner=${row.owner.split(':')[0]} state=${safeForLLM(taskListing(row, records).join(', '))}`).join('; ')}] a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.`);
+        const waiting = rows.filter(row => row.waiting_on !== null);
+        if (waiting.length) {
+          const actor = env.userId === null ? null : safeForLLM(`${env.sourceKey}:${env.userId}`).slice(0, 160);
+          // Only a posted result is confirmed by close; a result-less wait is a question to answer.
+          const confirmed = actor && waiting.some(row => row.result)
+            ? '; operator confirmed a row with result_rev: .hermit/bin/hermitd-run task close .hermit <id> --by confirmed --actor <actor> --result-rev <result_rev> --reason-stdin' : '';
+          lines.push(`[waiting task ${waiting.map(row => `${row.id}${row.result ? ` result_rev=${row.result_rev}` : ''}${row.last_worker ? ` last_worker=${row.last_worker}` : ''}${actor ? ` actor=${actor}` : ''}`).join('; ')}; commands (use the row's id, revision and actor): .hermit/bin/hermitd-run task block .hermit <id> --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit <id> --clear-waiting${confirmed}; nothing is owed when this message does not change the task]`);
+        }
+      }
+    }
     if (conversationCommand) {
-      return { context: name === 'help' ? '[conversation command: help]' : '[conversation command outside a task thread]' };
+      lines.push(name === 'help' ? '[conversation command: help]' : '[conversation command outside a task thread]');
+      return { context: lines.join('\n') };
     }
     // A message outside any task thread may continue work the sender's spawned
     // session already holds, so name those tasks for the responder to route to.
-    if (env.userId === null) return;
+    if (env.userId === null) return lines.length ? { context: lines.join('\n') } : undefined;
     const requester = `${env.sourceKey}:${env.userId}`;
     // Records sort oldest first; keep the newest, the likeliest to be continued.
     const bound = records.filter(task => task.owner.startsWith('helper:') && task.requester === requester).slice(-5);
-    if (!bound.length) return;
-    return { context: `[bound tasks: ${bound.map(task => `${task.id} ${JSON.stringify(safeForLLM(task.title).slice(0, 80))}`).join('; ')}]` };
+    if (bound.length) lines.push(`[bound tasks: ${bound.map(task => `${task.id} ${JSON.stringify(safeForLLM(task.title).slice(0, 80))}`).join('; ')}]`);
+    return lines.length ? { context: lines.join('\n') } : undefined;
   }
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';

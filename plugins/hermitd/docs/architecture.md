@@ -103,12 +103,12 @@ The plugin manifest registers 16 shared hooks. The four resident-only hooks (`pa
 
 | Hook | Event and matcher | What it does |
 | ---- | ----------------- | ------------ |
-| Helper report relay | PreToolUse `.*reply$` | Replaces a `[[helper-report <id>]]` reply with that report from `helper-reports/`, refusing the send when the placeholder is malformed or no single open record owns the chat |
+| Helper report relay | PreToolUse `.*reply$` | Replaces a `[[helper-report <task-id> <id>]]` reply with that report from `helper-reports/`, labeled by task when several records share a chat without threads, refusing the send when the placeholder is malformed or the named task is not open or its source, chat or configured thread attribute does not match the reply |
 | Cache edit guard | PreToolUse `Edit\|Write` | Warns (or blocks) when Edit/Write targets a marketplace cache copy |
 | Settings gate | PreToolUse `Bash\|Edit\|Write` | Raises Claude Code's native permission prompt for execution-adjacent hermit settings, channel enrollment, and direct `config.json` edits |
 | Artifact backend guard | PreToolUse `Artifact` | Denies a native Artifact publish when `artifacts.backend` is not claude, with a reason that names the backend |
 | Channel responder invoked | PostToolUse `Skill` | Resident-only evidence that the channel responder was invoked |
-| Helper report relay | PostToolUse `.*reply$` | Fails the reply when a `[[helper-report <id>]]` placeholder was not substituted |
+| Helper report relay | PostToolUse `.*reply$` | Fails the reply when a `[[helper-report <task-id> <id>]]` placeholder was not substituted |
 | Channel hook | PostToolUse `(discord\|telegram\|imessage).*reply` | Captures outbound reply text and seeds an empty `default_chat_id` only for replies to a matching inbound message (pairing seeds it first when setup pairs) |
 | Config validator | PostToolUse `Edit\|Write` | Validates `config.json`'s required keys, types, routine time formats, and channel structure |
 | Summary generator | PostToolUse `Edit\|Write` | Regenerates `state-summary.md` when a `state/` file is edited |

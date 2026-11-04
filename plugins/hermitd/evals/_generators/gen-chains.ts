@@ -186,14 +186,15 @@ chainCase('task-worker-needs-input-shop', 'train', 'An assignment opens a thread
   [{ name: 'dispatched-worker-bg', type: 'tool_used', tool: 'Agent', input_match: String.raw`(?=[\s\S]*hermitd:task-worker)(?=[\s\S]*"run_in_background"\s*:\s*true)`, weight: 3 },
     { name: 'report-file', type: 'file_exists', path: '.hermit/helper-reports/*.md', weight: 2 },
     { name: 'replied', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply' },
-    rubric('PASS if the chat messages acknowledge the assignment first and later deliver the worker outcome, either as a `[[helper-report <id>]]` placeholder or a plain message saying what was done or what blocks it. FAIL if the requester gets no acknowledgement, or a message claims work that was not done.', 'mock_calls')],
+    rubric('PASS if the chat messages acknowledge the assignment first and later deliver the worker outcome, either as a `[[helper-report <task-id> <id>]]` placeholder or a plain message saying what was done or what blocks it. FAIL if the requester gets no acknowledgement, or a message claims work that was not done.', 'mock_calls')],
   chainScaffold(), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-worker-needs-input-shop', CARD_MOCK);
 
 // The record the requester answers: opened in its task thread, then blocked on a question to them.
 const WAIT_THREAD = '700000000000000002';
 const WAIT_WORKER = 'a1b2c3d4e5f6a7b8c';
-const [WAIT_PROMPT, WAIT_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run, read }) => {
+const [WAIT_PROMPT, WAIT_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG),
+  '.hermit/state/channel-chats.json': JSON.stringify({ discord: { chats: { [WAIT_THREAD]: { type: 11 } } } }) + '\n' }, ({ run, read }) => {
   const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Reprice the autumn tea range', '--requester', `discord:${USER}`,
     '--conversation', `discord:${WAIT_THREAD}`, '--done', 'Every autumn tea repriced against the current supplier list'], { now: '2026-10-19T09:00:00.000Z' })).id;
   for (const owner of [`worker:${WAIT_WORKER}`, 'resident']) {
@@ -214,6 +215,56 @@ chainCase('task-answer-waiting-record-shop', 'heldout', 'An answer to a waiting 
     rubric('PASS if the chat messages acknowledge that the October list will be used and then either deliver the repricing or say plainly what blocks it. FAIL if the requester gets no reply, or a message claims repricing that was not done.', 'mock_calls')],
   chainScaffold(WAIT_RECORD), ['Skill', 'SendMessage', 'Agent', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 mock('task-answer-waiting-record-shop', CARD_MOCK);
+
+// Two records share a DM. Real scripts produce relay and closure stand-ins for queued events.
+// chainScaffold writes the version-stamped config itself, so the fixtures leave it out.
+const DM_FIXTURES = {
+  '.hermit/state/channel-chats.json': JSON.stringify({ discord: { chats: { [CHAT]: { type: 1 } } } }) + '\n',
+  '.hermit/helper-reports/domain12.md': 'The domain renewal comparison is ready for approval.\n',
+  '.hermit/helper-reports/invoice12.md': 'The invoice discrepancy review is ready for approval.\n',
+};
+const [DM_PROMPT, DM_RECORDS, DM_IDS] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG), ...DM_FIXTURES }, ({ run, read }) => {
+  const ids: string[] = [];
+  const records: Record<string, string> = {};
+  for (const [title, owner] of [['Renew domain', 'worker:a1b2c3d4'], ['Review invoice', 'worker:b1b2c3d4']]) {
+    const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', title, '--owner', owner,
+      '--requester', `discord:${USER}`, '--conversation', `discord:${CHAT}`, '--done', 'Recommendation approved'], { now: MESSAGE_AT })).id;
+    ids.push(id);
+    records[`.hermit/tasks/${id}.md`] = read(`.hermit/tasks/${id}.md`);
+  }
+  // The execution block carries the pipeline's random turn id; drop it so regeneration is stable.
+  const listOpen = () => {
+    const out = JSON.parse(run('task.ts', ['list', '.hermit', '--open', '--conversation', `discord:${CHAT}`]));
+    delete out.execution;
+    return JSON.stringify(out);
+  };
+  const state = [`- This is a Discord DM with two running tasks, not a real thread.`,
+    `- task.ts list --open --conversation discord:${CHAT}: ${listOpen()}`];
+  const message = envelope(CHAT, '500000000000000103', 'approve renew-domain only; leave review-invoice open');
+  const prompt = channelPrompt(run, message, state);
+  const events: string[] = [];
+  // Reverse order: invoice was opened second and reports first.
+  for (const [index, reportId, worker] of [[1, 'invoice12', 'b1b2c3d4'], [0, 'domain12', 'a1b2c3d4']] as const) {
+    const id = ids[index];
+    events.push(`Worker ${worker}: WORKER ${id} done ${reportId}`);
+    events.push(`- task.ts note .hermit ${id} --owner resident: ${run('task.ts', ['note', '.hermit', id, '--owner', 'resident'])}`);
+    const relay = run('helper-report-relay.ts', [], { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'mcp__plugin_discord_discord__reply',
+      tool_input: { chat_id: CHAT, text: `[[helper-report ${id} ${reportId}]]` } }) });
+    events.push(`- Relay substitution at delivery for ${id}: ${relay}`);
+    events.push(`- task.ts block .hermit ${id} --result-stdin: ${run('task.ts', ['block', '.hermit', id, '--result-stdin'], { stdin: read(`.hermit/helper-reports/${reportId}.md`) })}`);
+  }
+  const close = run('task.ts', ['close', '.hermit', ids[0], '--by', 'confirmed', '--actor', `discord:${USER}`, '--result-rev', '1', '--reason-stdin'], { stdin: 'approve renew-domain only' });
+  events.push(`- Only after both reports, task.ts close .hermit ${ids[0]} --by confirmed --actor discord:${USER} --result-rev 1 --reason-stdin: ${close}`);
+  events.push(`- Open records after that close: ${listOpen()}`);
+  return [`Process these queued completions in order before handling the final channel confirmation. The script and relay outputs below are stand-ins as described in the turn context. Deliver each report through its own task-scoped placeholder; the relay outputs show the delivered labels.\n\n${events.join('\n')}\n\n${prompt}`, records, ids] as const;
+});
+chainCase('two-concurrent-dm-tasks', 'heldout', 'Two concurrent tasks in one DM report in reverse order; each report is labeled and confirmation closes only the named record.',
+  'Invoice report then domain report, both labeled by task; renew-domain closes and review-invoice stays open', DM_PROMPT,
+  [{ name: 'two-reports', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply', min: 2, weight: 2 },
+    rubric(`PASS only if the invoice report for ${DM_IDS[1]} is sent before the domain report for ${DM_IDS[0]}, each using its own task-scoped placeholder (the supplied relay output labels it) or the exact supplied labeled text, then the confirmation closes renew-domain alone and leaves review-invoice open. FAIL if either report is lost, mislabeled, assigned to the other task, or both tasks are closed.`, 'mock_calls'),
+    rubric('PASS if the final channel response says the domain task is closed and the invoice task is still awaiting approval, without internal task ids.', 'mock_calls')],
+  chainScaffold({ ...DM_FIXTURES, ...DM_RECORDS }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
+mock('two-concurrent-dm-tasks', CARD_MOCK);
 
 // --- close outside the task skill -> review guide -------------------------
 

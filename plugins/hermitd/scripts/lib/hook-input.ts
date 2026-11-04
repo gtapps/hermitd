@@ -42,18 +42,18 @@ export async function readHookInput(
 }
 
 // Standard drain-parse-dispatch-exit(0) wrapper for hooks whose `main` is a
-// synchronous, single-shot handler (no internal early exit(0) branches).
+// single-shot handler (no internal early exit(0) branches).
 // `onOversize` lets a default-deny gate fail closed on a payload too large to
 // parse (it may call process.exit(2)); omit it to fail open, the default hook
 // contract.
 export async function runHook(
-  main: (payload: any) => void,
+  main: (payload: any) => void | Promise<void>,
   onOversize?: () => void
 ): Promise<void> {
   try {
     const payload = await readHookInput();
     if (payload === OVERSIZE) onOversize?.();
-    else if (payload) main(payload);
+    else if (payload) await main(payload);
   } catch { /* fail-open */ }
   process.exit(0);
 }

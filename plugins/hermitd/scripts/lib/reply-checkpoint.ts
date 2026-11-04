@@ -2,11 +2,12 @@
 // prompt is a <channel> envelope, with no channel tool call this turn, holds
 // once so the operator is not left with silence. Fail-open: any error returns null.
 import { isAllowedSender } from './channel-auth';
+import { classifyChat } from './channel-chats';
 import { conversationKey } from './conversation-key';
 import { parseChannelEnvelope } from './channel-envelope';
 import { readConfigRaw } from './config-read';
 import { threadRecords } from './tasks';
-import { readTailLines, toolUseNames, transcriptPath, turnPromptText } from './cc-compat';
+import { readTailLines, toolUseNames, toolUsesWithResults, transcriptPath, turnPromptText } from './cc-compat';
 import { readJson } from './cli';
 import path from 'node:path';
 
@@ -16,7 +17,7 @@ const TAIL_BYTES = 512 * 1024;
 // Channel tools that only read, so calling one sends the operator nothing.
 const READ_ONLY_TOOL_RE = /(download_attachment|fetch_messages)$/;
 
-export function replyBlockReason(dir: string, payload: Json): string | null {
+export async function replyBlockReason(dir: string, payload: Json): Promise<string | null> {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return null;
@@ -33,15 +34,28 @@ export function replyBlockReason(dir: string, payload: Json): string | null {
     const key = conversationKey(env.sourceKey, env.chatId, env.thread);
     // A worker-owned thread ends its turn on a SendMessage to the worker, so no
     // reply is owed there; a resident-owned thread still owes one like any chat.
-    if (threadRecords(dir).some(task => task.conversation === key && task.owner !== 'resident')) return null;
+    const owned = threadRecords(dir).filter(task => task.conversation === key && task.owner !== 'resident');
+    // Only an owned record can exempt the turn, so a chat without one skips the lookup.
+    const chatClass = owned.length ? await classifyChat(dir, config, env.sourceKey, env.chatId, env.thread) : null;
+    if (chatClass === 'thread') return null;
+    const entries: Json[] = [];
 
     for (let i = prompt.index + 1; i < lines.length; i++) {
       const line = lines[i];
       if (!line) continue;
       let entry: Json;
       try { entry = JSON.parse(line); } catch { continue; }
+      if (chatClass === 'shared') entries.push(entry);
       if (toolUseNames(entry).some(t => t.name.includes(env.sourceKey) && !READ_ONLY_TOOL_RE.test(t.name))) return null;
     }
+
+    if (chatClass === 'shared' && toolUsesWithResults(entries).some(call =>
+      call.name === 'SendMessage' && call.isError === false && call.to !== null && owned.some(task => {
+        const recipient = task.owner.slice(task.owner.indexOf(':') + 1);
+        return task.owner.startsWith('worker:') ? call.to === recipient
+          : call.to === recipient || call.to!.startsWith(`${recipient} [`);
+      })
+    )) return null;
 
     // The transcript read can miss a reply already sent; the reply hook's stamp cannot.
     const openedAt = JSON.parse(lines[prompt.index]).timestamp;

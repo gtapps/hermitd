@@ -604,6 +604,24 @@ function toolUseNames(entry: Json): Array<{ id: string; name: string }> {
   return out;
 }
 
+/** Tool calls joined to results within the supplied transcript entries. Missing results stay null. */
+function toolUsesWithResults(entries: Json[]): Array<{ id: string; name: string; to: string | null; isError: boolean | null }> {
+  const calls = new Map<string, { id: string; name: string; to: string | null; isError: boolean | null }>();
+  for (const entry of entries) {
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (entry.type === 'assistant' && block?.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string' && !calls.has(block.id)) {
+        calls.set(block.id, { id: block.id, name: block.name, to: typeof block.input?.to === 'string' ? block.input.to : null, isError: null });
+      } else if (entry.type === 'user' && block?.type === 'tool_result') {
+        const call = calls.get(block.tool_use_id);
+        if (call) call.isError = block.is_error === true;
+      }
+    }
+  }
+  return [...calls.values()];
+}
+
 /**
  * Add the ids of main-chain tool_use blocks timestamped at or after `since` to
  * `ids`, stopping once it holds `limit`. Reads the whole transcript, so a caller
@@ -801,6 +819,7 @@ export {
   turnPromptText,
   isCompactBoundary,
   toolUseNames,
+  toolUsesWithResults,
   collectToolUseIds,
   classifyToolResults,
   transcriptPathKey,

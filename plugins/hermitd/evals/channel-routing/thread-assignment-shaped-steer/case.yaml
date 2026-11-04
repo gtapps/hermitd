@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: thread-assignment-shaped-steer
-description: 'An assignment-shaped message inside a task thread is steering, not a new task.'
+description: 'In a real thread: an assignment-shaped message inside a task thread is steering, not a new task.'
 tags: [channel-routing, train]
 expected_outcome: 'Task route via the task skill.'
 context:

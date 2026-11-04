@@ -652,7 +652,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
     // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
     'routine_wake_lint', 'routine_wake_lint.max_windows',
     // Settled by config-read.ts TABLE for task records; not part of the loadConfig merge.
-    'tasks', 'tasks.handle_in_dm', 'tasks.duties_open_records',
+    'tasks', 'tasks.duties_open_records',
     // Read directly by doctor-check.ts's routine-cost check (raw config read, own default of 2) — not part of the loadConfig merge.
     'doctor', 'doctor.routine_cost_floor_usd',
     // Read by hermitd-watchdog through lib/config-read (own default of '4h') — not part of the loadConfig merge.

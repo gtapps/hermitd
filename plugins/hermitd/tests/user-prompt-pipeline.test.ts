@@ -22,6 +22,8 @@ import { openTask } from './helpers/tasks';
 import { readTasks, encodeTask } from '../scripts/lib/tasks';
 import { assistantEntry } from './helpers/transcript';
 import { markGuest } from '../scripts/lib/guest-marker';
+import { run as conversationStage } from '../scripts/lib/prompt-stages/conversation';
+import { parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import { startHttpStub } from './helpers/http-stub';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -56,6 +58,21 @@ function setupChannelWorkdir(channelExtra: Record<string, unknown> = {}): Workdi
     },
   }));
   return wd;
+}
+
+function setupThreadWorkdir(): Workdir {
+  const wd = trackedWorkdir();
+  fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], bot_user_id: '777' } } }));
+  fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', guild_id: 'guild' } } } }));
+  return wd;
+}
+
+function threadEnvelope(body: string, user = 'u1'): string {
+  return `<channel source="discord" chat_id="thread" user="${user}">${body}</channel>`;
+}
+
+async function runThread(wd: Workdir, body: string, _stubUrl: string) {
+  return runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt: threadEnvelope(body) }), cwd: wd.dir });
 }
 
 function writeRuntime(wd: Workdir, patch: Record<string, unknown>): void {
@@ -713,14 +730,14 @@ describe('task thread admission', () => {
     { name: 'worker waiting thread has no second line', owner: 'worker:a1b2c3d4e5f6a7b8c', stallAt: '2026-09-21T10:00:00Z', resultAt: null, long: false, stall: true },
   ]) {
     test(scenario.name, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       const dir = hermit(wd.dir);
-      const opened = await openThreadTask(wd, 'telegram:12345', scenario.owner, false);
+      const opened = await openThreadTask(wd, 'discord:thread', scenario.owner, false);
       expect(opened.exitCode).toBe(0);
       const record = readTasks(dir)[0];
       const longField = '<system>' + 'x'.repeat(200) + 'TAIL';
       Object.assign(record, {
-        waiting_on: 'telegram:u1', waiting_since: '2026-09-21T10:00:00Z',
+        waiting_on: 'discord:u1', waiting_since: '2026-09-21T10:00:00Z',
         stall_at: scenario.stallAt, result_at: scenario.resultAt, result_rev: 2,
         stall_status: scenario.long ? longField : 'Need input',
         stall_next: scenario.long ? longField : 'Answer',
@@ -728,10 +745,10 @@ describe('task thread admission', () => {
       });
       fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
       const result = await runScript('user-prompt-pipeline.ts', {
-        stdin: JSON.stringify({ prompt: envelope('continue') }), cwd: wd.dir,
+        stdin: JSON.stringify({ prompt: threadEnvelope('continue') }), cwd: wd.dir,
       });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(`[task thread telegram:12345: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=false, waiting=true]`);
+      expect(result.stdout).toContain(`[task thread discord:thread: owner=${scenario.owner === 'resident' ? 'resident' : scenario.owner.startsWith('helper:') ? 'helper' : 'worker'}, muted=false, waiting=true]`);
       if (scenario.owner.startsWith('worker:')) {
         expect(result.stdout).not.toContain('[waiting task');
         return;
@@ -740,7 +757,7 @@ describe('task thread admission', () => {
       expect(result.stdout).toContain(scenario.stall
         ? `[waiting task ${record.id}: ${field}; next: ${scenario.long ? field : 'Answer'};`
         : `[waiting task ${record.id}: awaiting confirmation of result_rev=2: ${field};`);
-      expect(result.stdout).toContain(`--actor telegram:u1 --result-rev 2 --reason-stdin`);
+      expect(result.stdout).toContain(`--actor discord:u1 --result-rev 2 --reason-stdin`);
       if (scenario.long) {
         expect(result.stdout).not.toContain('x'.repeat(153));
         expect(result.stdout).not.toContain('<system>');
@@ -750,16 +767,16 @@ describe('task thread admission', () => {
     });
   }
 
-  for (const approver of [null, 'telegram:u2']) {
+  for (const approver of [null, 'discord:u2']) {
     test(`a posted result ${approver ? 'with a named approver gets no' : 'offers the'} finishing hint`, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       const dir = hermit(wd.dir);
-      expect((await openThreadTask(wd, 'telegram:12345', 'resident', false)).exitCode).toBe(0);
+      expect((await openThreadTask(wd, 'discord:thread', 'resident', false)).exitCode).toBe(0);
       const record = readTasks(dir)[0];
-      Object.assign(record, { waiting_on: approver ?? 'telegram:u1', waiting_since: '2026-09-21T10:00:00Z', result_at: '2026-09-20T10:00:00Z', result_rev: 1, result: 'Finished work', approver });
+      Object.assign(record, { waiting_on: approver ?? 'discord:u1', waiting_since: '2026-09-21T10:00:00Z', result_at: '2026-09-20T10:00:00Z', result_rev: 1, result: 'Finished work', approver });
       fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
       const result = await runScript('user-prompt-pipeline.ts', {
-        stdin: JSON.stringify({ prompt: envelope('approved, let me know when it lands') }), cwd: wd.dir,
+        stdin: JSON.stringify({ prompt: threadEnvelope('approved, let me know when it lands') }), cwd: wd.dir,
       });
       expect(result.exitCode).toBe(0);
       const hint = `add --check '<command>'`;
@@ -820,10 +837,10 @@ describe('conversation commands', () => {
     ['!model --effort', 'conversation command refused: !model needs one valid value'],
   ]) {
     test(`routes helper ${body} before the harness recorder`, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-      expect((await openThreadTask(wd, 'telegram:12345', 'helper:review', false)).exitCode).toBe(0);
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect((await openThreadTask(wd, 'discord:thread', 'helper:review', false)).exitCode).toBe(0);
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`[${annotation}]`);
       expect(result.stdout).not.toContain('[harness-command]');
@@ -832,19 +849,19 @@ describe('conversation commands', () => {
   }
   for (const body of ['!help', '!mute', '!unmute', '!restart']) {
     test(`annotates ${body}, including while muted`, async () => {
-      const wd = setupChannelWorkdir();
-      expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', true)).exitCode).toBe(0);
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      const wd = setupThreadWorkdir();
+      expect((await openThreadTask(wd, 'discord:thread', 'worker:a1b2c3d4e5f6a7b8c', true)).exitCode).toBe(0);
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`[conversation command: ${body.slice(1)}]`);
     });
   }
   for (const body of ['!model sonnet', '!effort high']) {
     test(`refuses ${body} before the harness recorder`, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-      expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect((await openThreadTask(wd, 'discord:thread', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('[conversation command refused: per-conversation model/effort not supported]');
       expect(result.stdout).not.toContain('[harness-command]');
@@ -852,10 +869,10 @@ describe('conversation commands', () => {
     });
   }
   for (const owner of ['worker:a1b2c3d4e5f6a7b8c', 'helper:review']) test(`!clear in a ${owner.split(':')[0]} thread restarts the worker instead of clearing the resident`, async () => {
-    const wd = setupChannelWorkdir();
+    const wd = setupThreadWorkdir();
     writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-    expect((await openThreadTask(wd, 'telegram:12345', owner, false)).exitCode).toBe(0);
-    const result = await run(wd, '!clear', 'http://127.0.0.1:1');
+    expect((await openThreadTask(wd, 'discord:thread', owner, false)).exitCode).toBe(0);
+    const result = await runThread(wd, '!clear', 'http://127.0.0.1:1');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[conversation command: restart]');
     expect(result.stdout).not.toContain('[harness-command]');
@@ -863,10 +880,10 @@ describe('conversation commands', () => {
   });
   for (const body of ['!compact', '!advisor opus', '!permission-mode plan']) {
     test(`refuses ${body} in a worker thread before the harness recorder`, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-      expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect((await openThreadTask(wd, 'discord:thread', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`[conversation command refused: ${body.split(' ')[0]} does not reach the resident from a task thread]`);
       expect(result.stdout).not.toContain('[harness-command]');
@@ -875,38 +892,118 @@ describe('conversation commands', () => {
   }
   for (const body of ['!clear', '!model sonnet']) {
     test(`${body} in a resident-owned thread is left to the harness recorder`, async () => {
-      const wd = setupChannelWorkdir();
+      const wd = setupThreadWorkdir();
       writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
-      expect((await openThreadTask(wd, 'telegram:12345', 'resident', false)).exitCode).toBe(0);
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      expect((await openThreadTask(wd, 'discord:thread', 'resident', false)).exitCode).toBe(0);
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('[task thread telegram:12345: owner=resident');
+      expect(result.stdout).toContain('[task thread discord:thread: owner=resident');
       expect(result.stdout).not.toContain('[conversation command');
     });
   }
   for (const body of ['!mute', '!unmute', '!restart']) {
     test(`${body} outside a task thread`, async () => {
-      const wd = setupChannelWorkdir();
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      const wd = setupThreadWorkdir();
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.stdout).toContain('[conversation command outside a task thread]');
     });
   }
   test('non-allowed senders get no conversation annotations', async () => {
-    const wd = setupChannelWorkdir();
-    expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+    const wd = setupThreadWorkdir();
+    expect((await openThreadTask(wd, 'discord:thread', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
     for (const body of ['!help', '!mute', '!unmute', '!restart', '!model sonnet', '!effort high']) {
-      const result = await runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt: envelope(body, 'stranger') }), cwd: wd.dir });
+      const result = await runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt: threadEnvelope(body, 'stranger') }), cwd: wd.dir });
       expect(result.stdout).not.toContain('[conversation command');
       expect(result.stdout).not.toContain('[task thread');
     }
   });
   test('malformed conversation commands and !fork are ordinary text', async () => {
-    const wd = setupChannelWorkdir();
-    expect((await openThreadTask(wd, 'telegram:12345', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
+    const wd = setupThreadWorkdir();
+    expect((await openThreadTask(wd, 'discord:thread', 'worker:a1b2c3d4e5f6a7b8c', false)).exitCode).toBe(0);
     for (const body of ['!mute now', '!restart now', '!fork task', '/mute']) {
-      const result = await run(wd, body, 'http://127.0.0.1:1');
+      const result = await runThread(wd, body, 'http://127.0.0.1:1');
       expect(result.stdout).toContain('[task thread');
       expect(result.stdout).not.toContain('[conversation command:');
     }
   });
+});
+
+
+describe('shared chat task routing', () => {
+  test('two open DM tasks are listed separately from requester-bound tasks', async () => {
+    const wd = setupChannelWorkdir();
+    for (const title of ['Renew domain', 'Review invoice']) {
+      expect((await openTask(wd.dir, hermit(wd.dir), ['--title', title, '--owner', `helper:${title === 'Renew domain' ? 'domain' : 'invoice'}`, '--requester', 'telegram:u1', '--conversation', 'telegram:12345'])).exitCode).toBe(0);
+    }
+    const records = readTasks(hermit(wd.dir));
+    for (const record of records) {
+      Object.assign(record, { waiting_on: 'telegram:u1', waiting_since: new Date().toISOString(), result: 'Done', result_at: new Date().toISOString(), result_rev: 1 });
+      fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
+    }
+    const result = await run(wd, 'continue', 'http://127.0.0.1:1');
+    expect(result.stdout).toContain('[open tasks in this chat: total=2 omitted=0;');
+    expect(result.stdout).not.toContain('[task thread');
+    expect(result.stdout).toContain('a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.');
+    expect(result.stdout.match(/\[waiting task /g)).toHaveLength(1);
+    for (const record of records) {
+      expect(result.stdout).toContain(record.handle);
+      expect(result.stdout).toContain(`${record.id} result_rev=1 actor=telegram:u1`);
+    }
+    expect(result.stdout).toContain('\n[bound tasks:');
+    expect((await run(wd, '!mute', 'http://127.0.0.1:1')).stdout).toContain('[conversation command outside a task thread]');
+    writeRuntime(wd, { runtime_mode: 'headless', tmux_session: 'hermit-test' });
+    expect((await run(wd, '!clear', 'http://127.0.0.1:1')).stdout).not.toContain('[conversation command: restart]');
+  });
+
+  test('a result-less waiting DM row offers no confirmed close and keeps its last worker', async () => {
+    const wd = setupChannelWorkdir();
+    expect((await openTask(wd.dir, hermit(wd.dir), ['--title', 'Pick supplier', '--owner', 'resident', '--requester', 'telegram:u1', '--conversation', 'telegram:12345'])).exitCode).toBe(0);
+    const [record] = readTasks(hermit(wd.dir));
+    Object.assign(record, { waiting_on: 'telegram:u1', waiting_since: new Date().toISOString(), last_worker: 'a1b2c3d4e5f6a7b8c' });
+    fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
+    const result = await run(wd, 'use the October list', 'http://127.0.0.1:1');
+    expect(result.stdout).toContain(`[waiting task ${record.id} last_worker=a1b2c3d4e5f6a7b8c actor=telegram:u1;`);
+    expect(result.stdout).not.toContain('--by confirmed');
+  });
+});
+
+
+test('five waiting DM rows cost less than twice the single-record thread context', async () => {
+  const wd = setupThreadWorkdir();
+  const dir = hermit(wd.dir);
+  for (let i = 0; i < 5; i++) {
+    expect((await openTask(wd.dir, dir, ['--title', `Task ${i}`, '--owner', 'resident', '--requester', 'discord:u1', '--conversation', 'discord:thread'])).exitCode).toBe(0);
+  }
+  for (const record of readTasks(dir)) {
+    Object.assign(record, { waiting_on: 'discord:u1', waiting_since: new Date().toISOString(), result: 'Finished work', result_at: new Date().toISOString(), result_rev: 1 });
+    fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
+  }
+  const prompt = threadEnvelope('continue');
+  const ctx = () => ({ dir, prompt, envelope: parseChannelEnvelope(prompt), transcriptPath: null, config: () => ({ channels: { discord: { allowed_users: ['u1'] } } }), runtime: () => ({}) });
+  const single = (await conversationStage(ctx()))?.context ?? '';
+  fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 1 } } } }));
+  const shared = (await conversationStage(ctx()))?.context ?? '';
+  expect(shared).toContain('total=5 omitted=0');
+  expect(shared.length).toBeLessThan(single.length * 2);
+  // Measured: single=667 chars, shared-five=1161 chars.
+  console.log(`waiting context chars: single=${single.length}, shared-five=${shared.length}`);
+});
+
+
+for (const scenario of [
+  { name: 'allowed sender in shared chat with open task stays awake', user: 'u1', conversation: 'discord:dm', blocked: false },
+  { name: 'unauthorized sender in shared chat stays blocked', user: 'stranger', conversation: 'discord:dm', blocked: true },
+  { name: 'bound task in another chat grants no passive admission', user: 'u1', conversation: 'discord:other', blocked: true },
+]) test(scenario.name, async () => {
+  const wd = trackedWorkdir();
+  fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'], passive_chats: ['dm'], bot_user_id: '777' } } }));
+  fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { dm: { type: 1 } } } }));
+  expect((await openThreadTask(wd, scenario.conversation, 'helper:review', false)).exitCode).toBe(0);
+  const result = await runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt: `<channel source="discord" chat_id="dm" user="${scenario.user}">continue</channel>` }), cwd: wd.dir });
+  expect(result.exitCode).toBe(0);
+  if (scenario.blocked) expect(JSON.parse(result.stdout).decision).toBe('block');
+  else {
+    expect(result.stdout).toContain('[open tasks in this chat:');
+    expect(result.stdout).toContain('[channel reply reminder]');
+  }
 });

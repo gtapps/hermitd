@@ -1,8 +1,8 @@
 schema_version: "1.1"
 name: assign-two-in-one
-description: 'Two assignments in one message go through the task route.'
+description: 'Two assignments needing investigation form one task without a split request.'
 tags: [channel-routing, train]
-expected_outcome: 'Task route via the task skill.'
+expected_outcome: 'One task via the task skill, covering both requested outcomes.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -35,3 +35,6 @@ graders:
   - name: replied-via-channel
     type: tool_used
     tool: 'mcp__plugin_discord_discord__reply'
+  - name: one-task
+    type: llm
+    criteria: 'PASS if the task route treats the bundled work as one task; FAIL if it splits records without a requester split request.'

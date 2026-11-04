@@ -41,7 +41,7 @@ Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<ch
 
 Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and the §1d `record-operator-action.ts --force` call after authorization; role checks excepted. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
-Apply **Micro-approval response** before treating a bare yes/ok/no as task confirmation. An open handle, resident task thread, or continuation of the sole open task selects it. With multiple open tasks and neither handle nor thread, ask one short question naming the handles and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
+Apply **Micro-approval response** before treating a bare yes/ok/no as task confirmation. An open handle, resident task thread, or continuation of the sole open task selects it. For an ambiguous continuation or confirmation, ask once naming the tasks and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
 
 ## 1c. Check Authorization
 
@@ -72,12 +72,12 @@ Setup pairing, else the first eligible inbound reply, seeds `channels.<channel>.
 
 First apply `reference.md` § Standing role.
 
-Precedence: hook-classified commands, then a done-items clear, then a pending micro answer, then an annotated task thread, then a bound-task continuation, then general classification.
+Precedence: hook-classified commands, then a done-items clear, then a pending micro answer, then an annotated task thread, then a selected-task continuation, then general classification.
 
 Invoke `/hermitd:task` for an assignment at or above the TASKS.md threshold, any message in an annotated task thread, a confirmation, cancel or changed definition of done for a selected record, a `[conversation command: ...]` annotation, or a `WORKER <task-id> ...` completion.
 Acknowledge first through the channel.
 A later message in an annotated task thread is steering, never a second record.
-A `[bound tasks: …]` annotation lists the sender's open tasks held by a spawned session. An assignment that continues one of them is steering for that record: reply naming that task, then invoke `/hermitd:task` to handle it as **Steer the bound session** on that record. Anything else follows general classification.
+`[open tasks in this chat: …]` guides routing without selecting a record. `[bound tasks: …]` names the sender’s spawned-session tasks. A continuation selects that record: reply naming it and invoke `/hermitd:task` (helper-owned: **Steer the bound session**). New work follows general classification.
 
 - **Task thread**, **Conversation command**, **New instruction**: invoke `/hermitd:task` through the task route above.
 
@@ -106,9 +106,9 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - **If `config.operator_profile === 'non-technical'`:** do not invoke cost-reflect or surface figures. Reply in the client chat and operator's language that their provider handles day-to-day costs, then offer other help. Figures remain maintainer-side (terminal, maintainer chat, weekly review).
   - Otherwise invoke `/hermitd:cost-reflect`; a channel turn reads its `--plain` data. Do not run the raw token-category breakdown here.
 
-- **Task assignment** ("work on X", "next task: Z", "start Y", or any message describing work to be done)
-  - Apply TASKS.md policy; an explicit marker like these, or several requests in one message, meets its threshold on any subject even when the work fits this turn. At or above it the message is a **Task thread**: handle it there, including the `--due <ISO>` flag on `task.ts open` when a date was given, and end the turn.
-  - Below the threshold, answer in this turn and open no record.
+- **Task assignment**
+  - Open a task when the message needs investigation, a longer exchange, or later sign-off or choice. A one-off answer opens nothing, even with a tool. Questions get answers; work with no verifiable end is answered as a question. A plan posted for approval is a task that closes on approval. One message is one task unless the requester asks for separate tasks. No trigger words.
+  - Apply TASKS.md and take the **Task thread** route, with `--due <ISO>` for a given date. Otherwise answer without a record.
 
 - **Clear** of "Looks already done": `approvals.md` § Already-done items.
 

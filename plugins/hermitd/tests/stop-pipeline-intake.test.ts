@@ -202,14 +202,14 @@ describe('stop-pipeline — channel intake checkpoint', () => {
     expect(turnExists(dir)).toBe(false);
   }));
 
-  test('two acks in one chat with a single record: stdout empty', withDir(async (dir) => {
+  test('two acks in one chat with a single record: blocked', withDir(async (dir) => {
     writeTurn(dir);
     writeChats(dir, 'dm', 1);
     writeAck(dir, { chat_id: 'dm' });
     writeAck(dir, { chat_id: 'dm' });
     await openResident(dir, 'discord:dm');
     const r = await runStop(dir);
-    expect(r.stdout.trim()).toBe('');
+    expect(JSON.parse(r.stdout).decision).toBe('block');
   }));
 
   test('two unrecorded chats plus a touched conversation-less record: block JSON', withDir(async (dir) => {
@@ -243,3 +243,26 @@ describe('stop-pipeline — channel intake checkpoint', () => {
     expect(passed.stdout.trim()).toBe('');
   }));
 });
+
+
+test('DM old open record does not satisfy a new acknowledgement', withDir(async dir => {
+  writeChats(dir, 'dm', 1);
+  await openResident(dir, 'discord:dm');
+  writeTurn(dir, new Date(Date.now() + 1000).toISOString());
+  writeAck(dir, { chat_id: 'dm', at: new Date(Date.now() + 2000).toISOString() });
+  const result = await runStop(dir);
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).decision).toBe('block');
+}));
+
+test('two DM acknowledgements with two new records pass', withDir(async dir => {
+  writeChats(dir, 'dm', 1);
+  writeTurn(dir);
+  writeAck(dir, { chat_id: 'dm' });
+  writeAck(dir, { chat_id: 'dm' });
+  await openResident(dir, 'discord:dm');
+  await openResident(dir, 'discord:dm');
+  const result = await runStop(dir);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.trim()).toBe('');
+}));

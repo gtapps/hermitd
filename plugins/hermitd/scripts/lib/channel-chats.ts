@@ -103,6 +103,16 @@ export function isGuildChannelType(chat: Pick<Chat, 'type'> | null | undefined):
   return chat?.type === 0 || chat?.type === 5;
 }
 
+// An announcement, public or private thread.
+export function isThreadChannelType(chat: Pick<Chat, 'type'> | null | undefined): boolean {
+  return chat?.type === 10 || chat?.type === 11 || chat?.type === 12;
+}
+
+export async function classifyChat(hermitDir: string, config: Json, sourceKey: string, chatId: string, envelopeThread: string | null | undefined): Promise<'thread' | 'shared'> {
+  if (sourceKey !== 'discord') return envelopeThread != null ? 'thread' : 'shared';
+  return isThreadChannelType(await lookupChat(hermitDir, config, chatId)) ? 'thread' : 'shared';
+}
+
 export async function needsThread(hermitDir: string, config: Json, source: string, chatId: string, cachedOnly = false): Promise<boolean> {
   if (source === 'discord') {
     return isGuildChannelType(cachedOnly ? cachedChat(hermitDir, chatId) : await lookupChat(hermitDir, config, chatId));

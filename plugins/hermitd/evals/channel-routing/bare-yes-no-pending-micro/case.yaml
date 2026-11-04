@@ -20,6 +20,7 @@ execution:
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
+    [open tasks in this chat: total=1 omitted=0; release-note T-20261001-091200 "Draft release note" owner=resident state=unconfirmed] a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>

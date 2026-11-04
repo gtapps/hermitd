@@ -352,8 +352,9 @@ describe('passive capture', () => {
           if (scenario === 'thread') blocked(r.stdout);
           else expect(r.stdout).toContain('[channel reply reminder]');
         }
-        expect(requests).toBe(scenario === 'empty' ? 0 : 1);
-        expect(fs.existsSync(hermit(dir, 'state', 'channel-chats.json'))).toBe(scenario !== 'empty');
+        // Conversation classification resolves metadata even without passive chats.
+        expect(requests).toBe(1);
+        expect(fs.existsSync(hermit(dir, 'state', 'channel-chats.json'))).toBe(true);
       } finally { server.stop(true); }
     }, config('discord', scenario === 'empty' ? { passive_chats: [] } : {})));
   }

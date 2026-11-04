@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: assign-next-task-routines
-description: 'An explicit "next task" about routines is an assignment, not a standing-work question.'
+description: 'Investigation of operational history needs a task regardless of the introductory wording.'
 tags: [channel-routing, train]
 expected_outcome: 'Task route via the task skill.'
 context:

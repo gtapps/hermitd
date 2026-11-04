@@ -143,6 +143,7 @@ describe('stop-pipeline — channel reply checkpoint', () => {
   }));
 
   test('envelope whose sourceKey:chatId owns an open task thread: stdout empty', withDir(async (dir) => {
+    fs.writeFileSync(hermit(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { '123': { type: 11 } } } }));
     writeTranscript(dir, [envelope(), assistantText()]);
     const opened = await runScript('task.ts', {
       args: ['open', hermit(dir), '--owner', 'worker:a1b2c3d4e5f6a7b8c', '--requester', 'discord:u1', '--conversation', 'discord:123', '--title', 'Thread work', '--done', 'Verified'],
@@ -156,6 +157,7 @@ describe('stop-pipeline — channel reply checkpoint', () => {
   }));
 
   test('envelope whose chat holds only a resident-owned record: reply still owed', withDir(async (dir) => {
+    fs.writeFileSync(hermit(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { '123': { type: 11 } } } }));
     writeTranscript(dir, [envelope(), assistantText()]);
     const opened = await runScript('task.ts', {
       args: ['open', hermit(dir), '--owner', 'resident', '--requester', 'discord:u1', '--conversation', 'discord:123', '--title', 'Thread work', '--done', 'Verified'],
@@ -208,5 +210,26 @@ test('threaded worker handoff clears the reply checkpoint for its conversation k
   writeConfig(dir, { channels: { custom: { attributes: { thread_id: 'thread_ts' } } } });
   mutateTask(hermit(dir), 'open', undefined, { owner: 'worker:a1b2c3d4', requester: 'custom:U1', conversation: 'custom:C1~T1', title: 'Thread task', done: 'Complete' }, '');
   const transcript = writeTranscript(dir, [{ type: 'user', message: { content: '<channel source="custom" chat_id="C1" thread_ts="T1">hello</channel>' } }, assistantText()]);
-  expect(replyBlockReason(hermit(dir), { transcript_path: transcript })).toBeNull();
+  expect(await replyBlockReason(hermit(dir), { transcript_path: transcript })).toBeNull();
+}));
+
+
+for (const scenario of [
+  { name: 'worker', owner: 'worker:a1b2c3d4', to: 'a1b2c3d4', pass: true },
+  { name: 'helper bare', owner: 'helper:review', to: 'review', pass: true },
+  { name: 'helper reference', owner: 'helper:review', to: 'review [session-ref]', pass: true },
+  { name: 'unrelated', owner: 'helper:review', to: 'other', pass: false },
+  { name: 'errored', owner: 'helper:review', to: 'review', error: true, pass: false },
+  { name: 'previous turn', owner: 'helper:review', to: 'review', previous: true, pass: false },
+  { name: 'missing result', owner: 'helper:review', to: 'review', missing: true, pass: false },
+]) test(`shared chat handoff: ${scenario.name}`, withDir(async dir => {
+  const { mutateTask } = await import('../scripts/lib/tasks');
+  const { replyBlockReason } = await import('../scripts/lib/reply-checkpoint');
+  fs.writeFileSync(hermit(dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { '123': { type: 1 } } } }));
+  mutateTask(hermit(dir), 'open', undefined, { owner: scenario.owner, requester: 'discord:u1', conversation: 'discord:123', title: 'Work', done: 'Complete' }, '');
+  const send = [assistantTool('SendMessage', { to: scenario.to }), ...(scenario.missing ? [] : [{ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: scenario.error ?? false, content: 'sent' }] } }])];
+  const transcript = writeTranscript(dir, scenario.previous ? [envelope(), ...send, envelope(), assistantText()] : [envelope(), ...send]);
+  const reason = await replyBlockReason(hermit(dir), { transcript_path: transcript });
+  if (scenario.pass) expect(reason).toBeNull();
+  else expect(reason).toContain('reply is still owed');
 }));
