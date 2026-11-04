@@ -74,9 +74,8 @@ let stateWriteFailed = false;
 
 function killCheck(): void {
   if (!child?.pid) return;
-  try { process.kill(-child.pid, 'SIGKILL'); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-  }
+  // Best effort: the group may already be gone (ESRCH), or hold only exited processes (EPERM on macOS).
+  try { process.kill(-child.pid, 'SIGKILL'); } catch { /* nothing left to kill */ }
 }
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
   process.on(signal, () => {
