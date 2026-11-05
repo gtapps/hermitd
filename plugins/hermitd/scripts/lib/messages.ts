@@ -28,7 +28,7 @@ export const EN = {
   // Status reply (lib/prompt-stages/channel-status-responder.ts)
   status_paused_until_resume: 'Paused ({label}) until you resume it.',
   status_paused_until_date: 'Paused ({label}) until {boundary}.',
-  status_working_on: 'Working on {task}.',
+  status_working_on: 'Working on {task} (opened {age}).',
   status_working: 'Working.',
   status_idle: 'Idle.',
   status_one_approval: '1 approval waiting (reply "{id} yes/no").',
@@ -122,6 +122,7 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   pause_reason_budget: 'Fills {label} in "Paused ({label}) until you resume it."',
   pause_reason_watchdog: 'Fills {label} in "Paused ({label}) until you resume it."',
   pause_reason_request: 'Fills {label} in "Paused ({label}) until you resume it."',
+  status_working_on: '{age} is a locale-formatted relative time since the task was opened.',
   status_one_approval: 'The operator answers with the id and yes or no in their own words; translate yes/no.',
   status_waiting_confirm: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',
   status_waiting_answer: 'Follows status_waiting_header; {age} is a locale-formatted relative time.',

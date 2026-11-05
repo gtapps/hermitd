@@ -246,7 +246,7 @@ To queue work for the hermit to pick up next, use `/hermitd:proposal-create` fol
 hermitd status
 ```
 
-No tokens burned. Prints transport, execution and its age in seconds, open and waiting task counts, and the first runnable task:
+No tokens burned. Prints transport, execution and its age in seconds, open and waiting task counts, and the task in progress (the first runnable one, else one a worker or helper runs):
 
 ```
 NAME       RUNTIME  TRANSPORT  EXECUTION  AGE  OPEN  WAITING  WORKING ON
