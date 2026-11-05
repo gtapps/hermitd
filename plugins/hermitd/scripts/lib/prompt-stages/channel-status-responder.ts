@@ -21,7 +21,7 @@ import { friendlyBoundary, parseSimpleCronTime } from '../time';
 import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
-import { readTasks, isRunnable, latestWaitIsStall, type Task } from '../tasks';
+import { readTasks, currentWork, latestWaitIsStall, type Task } from '../tasks';
 import { conversationKey } from '../conversation-key';
 import { homeChatKey } from '../proposals/micro';
 import type { StageContext, StageResult } from './types';
@@ -76,13 +76,18 @@ const AGE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['hour', 3600], ['minute', 60], ['second', 1],
 ];
 
+// How long ago `start` was, as locale relative time ("3 hours ago").
+function relativeAge(start: number, m: Messages): string {
+  const seconds = Math.max(0, (Date.now() - start) / 1000);
+  const [unit, size] = AGE_UNITS.find(([, duration]) => seconds >= duration) ?? AGE_UNITS[AGE_UNITS.length - 1];
+  return new Intl.RelativeTimeFormat(m.locale, { numeric: 'always' }).format(-Math.floor(seconds / size), unit);
+}
+
 // Open records whose wait is on this sender (or on 'operator' for the primary
 // operator), oldest wait first, as localized board lines.
 function waitingRecords(all: Task[], keys: Set<string>, m: Messages): string[] {
   const records = all.filter(task => task.status === 'open' && task.waiting_on !== null && keys.has(task.waiting_on));
   if (records.length === 0) return [];
-  const now = Date.now();
-  const formatter = new Intl.RelativeTimeFormat(m.locale, { numeric: 'always' });
   return records
     .map(task => {
       // A stall raised after a result is the current ask, so it wins the label and the age.
@@ -90,12 +95,8 @@ function waitingRecords(all: Task[], keys: Set<string>, m: Messages): string[] {
       return { task, confirm, start: Date.parse((confirm ? task.result_at : null) ?? task.waiting_since ?? task.opened_at) };
     })
     .sort((a, b) => a.start - b.start)
-    .map(({ task, confirm, start }) => {
-      const seconds = Math.max(0, (now - start) / 1000);
-      const [unit, size] = AGE_UNITS.find(([, duration]) => seconds >= duration) ?? AGE_UNITS[AGE_UNITS.length - 1];
-      const age = formatter.format(-Math.floor(seconds / size), unit);
-      return m.t(confirm ? 'status_waiting_confirm' : 'status_waiting_answer', { task: task.title, age });
-    });
+    .map(({ task, confirm, start }) =>
+      m.t(confirm ? 'status_waiting_confirm' : 'status_waiting_answer', { task: task.title, age: relativeAge(start, m) }));
 }
 
 // Cron day-of-week matcher (0=Sun..6=Sat; 7 also Sun). Supports '*', comma
@@ -180,9 +181,8 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
   const records = readRecords(dir);
-  // The resident's first runnable record is its current work.
   const scoped = records.filter(task => task.conversation === opts.chatKey);
-  const current = (opts.redact ? records : scoped).find(isRunnable) ?? null;
+  const current = currentWork(opts.redact ? records : scoped);
   const lines: string[] = [];
 
   const pause = pauseLine(dir, timezone, m);
@@ -195,7 +195,8 @@ export function composeStatusReply(dir: string, config: Json, opts: {
     return lines.join(' ');
   }
 
-  if (current) lines.push(m.t('status_working_on', { task: current.title }));
+  // The age lets the operator judge whether long-running work has stalled.
+  if (current) lines.push(m.t('status_working_on', { task: current.title, age: relativeAge(Date.parse(current.opened_at), m) }));
 
   const budget = budgetLine(dir, config, timezone, m);
   if (budget) lines.push(budget);

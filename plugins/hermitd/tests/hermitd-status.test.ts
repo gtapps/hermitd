@@ -39,3 +39,14 @@ test('counts all open tasks and reads do not write or consult the host registry 
   expect(row.execution).toBe('unknown');
   expect(snapshot()).toBe(before);
 });
+test('work a helper runs is what the agent is working on', () => {
+  const { project, dir } = fixture('hermit');
+  mutateTask(dir, 'open', undefined, { title: 'Helper draft', requester: 'operator', done: 'Verified', owner: 'helper:report' }, '');
+  expect(projectStatus(project).working_on).toBe('Helper draft');
+});
+test('the resident\'s own runnable work wins over an older helper record', () => {
+  const { project, dir } = fixture('hermit');
+  mutateTask(dir, 'open', undefined, { title: 'Helper draft', requester: 'operator', done: 'Verified', owner: 'helper:report' }, '');
+  mutateTask(dir, 'open', undefined, { title: 'Resident fix', requester: 'operator', done: 'Verified' }, '');
+  expect(projectStatus(project).working_on).toBe('Resident fix');
+});

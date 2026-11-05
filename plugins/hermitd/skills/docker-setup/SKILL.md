@@ -556,7 +556,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set watch
 
 This only flips `.watchdog.enabled` — the other watchdog tuning keys (`stale_factor`, `wedge_floor`, `escalate_after`, `operator_grace`) are preserved, the whole config is validated, and the change lands in the settings ledger. Never write `config.json` with Edit/Write or a shell redirect; direct `Edit` calls raise an approval prompt (seeded ask rule) and skip validation and the ledger.
 
-Run `.hermit/bin/hermitd-status` and show output. The table reports transport, execution and its age, open and waiting task counts, and the first runnable task. Transport `up` means the `hermit` service is running; a sidecar alone reports `down`. Execution can be `unknown` until the first execution stamp appears. Do **not** add `sleep` before the status check.
+Run `.hermit/bin/hermitd-status` and show output. The table reports transport, execution and its age, open and waiting task counts, and the task in progress, including one a worker or helper runs. Transport `up` means the `hermit` service is running; a sidecar alone reports `down`. Execution can be `unknown` until the first execution stamp appears. Do **not** add `sleep` before the status check.
 
 If healthy:
 ```

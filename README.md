@@ -296,7 +296,7 @@ Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-co
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update waits for a quiet moment, applies migrations, then restarts the agent once and resumes the conversation.
 
-`hermitd list` shows registered and discovered agents on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the first runnable task. Both support `--json`. Listing never removes entries; `hermitd prune` removes missing projects.
+`hermitd list` shows registered and discovered agents on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the task in progress, including one a worker or helper runs. Both support `--json`. Listing never removes entries; `hermitd prune` removes missing projects.
 
 Use `hermitd start|stop|restart|attach [name]` for lifecycle commands, `hermitd pause [name] on|off|snooze <duration>|status`, `hermitd watchdog [name] run|install|uninstall`, or `hermitd run [name] <script> [args]` for maintenance. Names match the project folder or agent name; with no name, the nearest project above the current folder is used.
 

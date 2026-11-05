@@ -146,6 +146,21 @@ describe('channel-status-responder', () => {
     }
   });
 
+  test.each(['helper:report', 'worker:a5670124e38fb50cb'])('a record owned by %s counts as work in progress', async owner => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      await openTask(wd, 'Delegated draft', owner);
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toMatch(/Working on Delegated draft \(opened \d+ seconds? ago\)\./);
+      expect(text).not.toContain('All quiet');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('routes the reply to the chat it was asked on (group id), not default_chat_id', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
@@ -568,7 +583,7 @@ describe('channel-status-responder', () => {
         writePtMessages(hermit(wd.dir), 'português');
         await openTask(wd, 'o plano');
         await run(wd, '!status', stub.url);
-        expect(stub.requests[0].body.text).toContain('A trabalhar em o plano.');
+        expect(stub.requests[0].body.text).toMatch(/A trabalhar em o plano \(aberta há \d+ segundos?\)\./);
       } finally {
         stub.stop();
         wd.cleanup();

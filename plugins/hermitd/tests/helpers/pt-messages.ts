@@ -11,7 +11,7 @@ const PT_TEXT: Record<MessageKey, string> = {
   pause_reason_request: 'o seu pedido',
   status_paused_until_resume: 'Em pausa ({label}) até que a retome.',
   status_paused_until_date: 'Em pausa ({label}) até {boundary}.',
-  status_working_on: 'A trabalhar em {task}.',
+  status_working_on: 'A trabalhar em {task} (aberta {age}).',
   status_working: 'A trabalhar.',
   status_idle: 'Parado.',
   status_one_approval: '1 aprovação pendente (responda "{id} sim/não").',

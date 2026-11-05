@@ -5,6 +5,8 @@
 ### Fixed
 
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat
+- `!status` and the `hermitd status` working-on column name work a helper or worker is running instead of reporting nothing in progress
+- `!status` says how long ago the task it is working on was opened
 
 ## [1.4.27] - 2026-11-04
 
