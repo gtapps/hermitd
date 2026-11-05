@@ -20,6 +20,7 @@ execution:
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
+    [pending question in this chat: MP-0020; a bare reply may answer it: run proposal-micro match first]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>

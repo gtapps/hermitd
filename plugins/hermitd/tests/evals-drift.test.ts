@@ -17,6 +17,8 @@ import path from 'node:path';
 
 import { EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
 import { runScript, walkFiles } from './helpers/run';
+import { pendingQuestionLine } from '../scripts/lib/prompt-stages/pending-question';
+import { normalizeChannelSource } from '../scripts/lib/channel-envelope';
 import { setupWorkdir } from './helpers/workdir';
 
 interface Case { file: string; prompt: string; appendSystemPrompt?: string }
@@ -71,13 +73,14 @@ describe('eval case copies of live text', () => {
     expect(problems.flat()).toEqual([]);
   }, 60_000);
 
-  // A fresh eval session gets the full SessionStart context, which never lists pending
-  // micro-proposals; only the compaction capsule does. A case that stands that line in
-  // must carry what the capsule prints for the queue its own scaffold seeds.
-  test('pending micro-proposals lines match the compaction capsule for the scaffolded queue', async () => {
+  // Evals never run the UserPromptSubmit pipeline, so a case that stands in the
+  // pending-question line must carry what the stage prints for the queue its own
+  // scaffold seeds, in the chat its envelope names.
+  test('pending-question lines match the stage for the scaffolded queue', () => {
     const withLine = CASES.flatMap(c => {
-      const line = c.prompt.match(/^\s*(pending micro-proposals: .+)$/m)?.[1];
-      return line ? [{ ...c, line }] : [];
+      const line = c.prompt.match(/^\s*(\[pending question in this chat: .+\])$/m)?.[1];
+      const env = c.prompt.match(/<channel source="([^"]+)" chat_id="([^"]+)"/);
+      return line && env ? [{ ...c, line, chatKey: `${normalizeChannelSource(env[1])}:${env[2]}` }] : [];
     });
     expect(withLine.length).toBeGreaterThan(0);
     const stale: string[] = [];
@@ -87,10 +90,8 @@ describe('eval case copies of live text', () => {
         const scaffold = path.join(EVALS, path.dirname(c.file), 'scaffold.sh');
         const s = Bun.spawnSync(['bash', scaffold], { cwd: wd.dir });
         if (s.exitCode !== 0) { stale.push(`${c.file}: scaffold failed`); continue; }
-        const r = await runScript('startup-context.ts', {
-          cwd: wd.dir, env: { HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ source: 'compact', session_id: 'drift' }),
-        });
-        if (!r.stdout.split('\n').includes(c.line)) stale.push(`${c.file}: ${c.line}`);
+        const printed = pendingQuestionLine(path.join(wd.dir, '.hermit'), c.chatKey);
+        if (printed !== c.line) stale.push(`${c.file}: ${c.line} != ${printed}`);
       } finally {
         wd.cleanup();
       }

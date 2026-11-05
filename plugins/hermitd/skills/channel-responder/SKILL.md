@@ -112,7 +112,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Clear** of "Looks already done": `approvals.md` § Already-done items.
 
-- **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): only while a pending entry exists, read `approvals.md` § Micro-approval response. Else keep classifying (**Proposal approval** next).
+- **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): with a `[pending question` line, read `approvals.md` § Micro-approval response. Else keep classifying (**Proposal approval** next).
 
 - **Proposal approval** ("accept PROP-", "approve PROP-", proposal numbers, `#N`, or yes/later/no in any language): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. A bare one not confirming a task (§1) or answering you: with exactly one open suggestion and in a home chat, apply it through `/hermitd:proposal-act`, even with no question open; otherwise act on none and ask which by number, not title (`PROP-014` is #14).
 

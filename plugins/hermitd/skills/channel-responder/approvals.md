@@ -2,7 +2,7 @@
 
 ## Micro-approval response
 
-- **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label while any pending micro-proposal exists)
+- **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label when a `[pending question in this chat]` line is present)
   - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply "<token>"`, using this chat's normalized key and the envelope's `user_id` (§1c); pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match, and only a primary operator or the requester the question was asked of can answer. Follow its `status`:
     - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
     - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
