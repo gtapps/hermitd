@@ -19,16 +19,17 @@ Trust shipping evidence more than age. An unambiguous shipped match can close au
 From the repository root, run:
 
 ```bash
-bun .agents/skills/stale-proposals/scripts/collect-evidence.ts
+bun .agents/skills/stale-proposals/scripts/collect-evidence.ts [--hermit-dir <hermit-dir>]
 ```
+
+`<hermit-dir>` is the state folder that holds `proposals/` and `tasks/`. It defaults to `<repo>/.hermit`, which is only right in the resident's own checkout. In a checkout whose `.hermit` is a projection (a core checkout under a resident workspace, a worktree), pass the resident's absolute `.hermit` path. Use that same path in Steps 3 and 4.
 
 The script prints one of:
 
-- `OK|<bundle-path>|<open>|<bullets>|<commits>|<cutoff>`
+- `OK|<bundle-path>|<open>|<bullets>|<commits>|<cutoff>|<tasks>`
 - `NONE|no-open-proposals`
-- `NONE|no-proposals-dir`
 
-For `NONE|no-open-proposals`, report `Queue is clean — no open proposals.` and stop. For a missing proposals directory, report the missing queue and stop.
+For `NONE|no-open-proposals`, report `Queue is clean — no open proposals.` and stop. A non-zero exit means the proposals folder is missing: report the stderr message and stop. It is a wrong path, never a clean queue. The bundle also lists closed task records that name a PROP id.
 
 Do not read the evidence bundle in the main session. It can be tens of thousands of tokens and exists specifically to keep that corpus isolated.
 
@@ -49,7 +50,9 @@ Use this contract verbatim, substituting the real path:
 >
 > **STRONG requires all three:** the evidence names the same component the proposal targets; it describes the same behavior change the proposal asked for; and no distinct part of the proposal's ask is left unaddressed. A proposal asking for three things where the changelog delivers two is **WEAK**, not strong — partial delivery is the single most likely way this audit closes live work by mistake, so when you notice yourself arguing for why a gap "probably doesn't matter," that is WEAK.
 >
-> Ignore date order at your peril: evidence dated before a proposal was created cannot be that proposal shipping. It is usually the prior art the proposal was written against. Changelog dates have day granularity while proposals carry a timestamp, so same-day evidence cannot be ordered at all — treat it as at most `SHIPPED-WEAK` and say so.
+> Ignore date order at your peril: evidence dated before a proposal was created cannot be that proposal shipping. It is usually the prior art the proposal was written against. Changelog dates have day granularity while proposals carry a timestamp, so same-day changelog or commit evidence cannot be ordered at all — treat it as at most `SHIPPED-WEAK` and say so.
+>
+> **Closed task records** (the bundle's task section) are stronger evidence. A record whose title or `closed_reason` names the proposal, closed `done`, with a `closed_reason` saying its PR or PRs all merged, counts as `SHIPPED-STRONG` evidence even when it is the only evidence and even on the same day as the proposal: the record was opened and closed after the proposal existed. It must still cover the whole ask; a record for one of several parts is `SHIPPED-WEAK`. A cancelled record, or one that only records a helper report or investigation, is not shipping evidence.
 >
 > A proposal can ship under a different name than it asked for. Match on substance — the component, the behavior, the problem being closed — not on the proposal's chosen identifier.
 >
@@ -66,13 +69,13 @@ Skip this step in report-only mode.
 For each `SHIPPED-STRONG` verdict, resolve the proposal ID to a filename. The filename lookup happens before mutation; an ambiguous or missing ID moves into Step 4.
 
 ```bash
-bun plugins/hermitd/scripts/proposal.ts resolve-id .hermit "<PROP-ID>"
+bun plugins/hermitd/scripts/proposal.ts resolve-id <hermit-dir> "<PROP-ID>"
 ```
 
 For an unambiguous filename, resolve it with the `resolve` verb, which writes the metrics rows and the patch together and records the accept first when the proposal was still `proposed`:
 
 ```bash
-bun plugins/hermitd/scripts/proposal.ts resolve .hermit <filename> --stdin <<'HERMIT_PATCH'
+bun plugins/hermitd/scripts/proposal.ts resolve <hermit-dir> <filename> --stdin <<'HERMIT_PATCH'
 Decision: Resolved on @now — shipped in <plugin> <version>. <evidence sentence>
 HERMIT_PATCH
 ```
@@ -88,7 +91,7 @@ Present `SHIPPED-WEAK` first, then `AGED`. Ask the user in one concise round whe
 
 Stop and wait for the response. Do not interpret the original audit request as approval for these mutations.
 
-Before applying a confirmed choice, read the current matching flow in `plugins/hermitd/skills/proposal-act/SKILL.md`; that file is the repository contract for proposal status fields, metrics ordering, decision text, and dashboard refresh behavior.
+Apply confirmed choices against the same `<hermit-dir>` as Step 1. Before applying one, read the current matching flow in `plugins/hermitd/skills/proposal-act/SKILL.md`; that file is the repository contract for proposal status fields, metrics ordering, decision text, and dashboard refresh behavior.
 
 At minimum, preserve these invariants:
 
