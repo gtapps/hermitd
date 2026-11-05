@@ -39,7 +39,7 @@
   <button id="main">Take over</button>
 </header>
 <div id="stage"><div id="view"><div id="screen"></div></div><div id="notice">Take over to sign in, then Hand back.</div></div>
-<textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input" placeholder="Type here, or long-press to paste"></textarea>
+<textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input" placeholder="Type or paste here"></textarea>
 </div>
 <script type="module">
 import RFB from './core/rfb.js';
@@ -116,9 +116,13 @@ type.onmousedown = event => event.preventDefault();
 type.onclick = () => document.activeElement === keyboard ? keyboard.blur() : keyboard.focus();
 keyboard.addEventListener('focus', () => type.setAttribute('aria-pressed', 'true'));
 keyboard.addEventListener('blur', () => type.setAttribute('aria-pressed', 'false'));
-keyboard.addEventListener('input', () => { if (rfb) for (const char of keyboard.value) { const code = char.codePointAt(0); rfb.sendKey(code <= 255 ? code : 0x01000000 + code); } keyboard.value = ''; });
+// The strip takes stage height, and a desktop has no keyboard resize to refit the picture.
+keyboard.addEventListener('focus', fit);
+keyboard.addEventListener('blur', fit);
+keyboard.addEventListener('input', () => { if (rfb) for (const char of keyboard.value) { const code = char.codePointAt(0); rfb.sendKey(code === 10 ? 0xff0d : code === 9 ? 0xff09 : code <= 255 ? code : 0x01000000 + code); } keyboard.value = ''; });
 keyboard.addEventListener('keydown', event => {
-  if (event.key === 'Enter' || event.key === 'Backspace') { rfb?.sendKey(event.key === 'Enter' ? 0xff0d : 0xff08); event.preventDefault(); }
+  const keysym = { Enter: 0xff0d, Backspace: 0xff08, Tab: 0xff09 }[event.key];
+  if (keysym) { rfb?.sendKey(keysym); event.preventDefault(); }
 });
 fetch('/status', { cache: 'no-store' }).then(response => response.json()).then(state => { if (state.human && !holding) setControl(false, 'A person has control'); }, () => {});
 </script>

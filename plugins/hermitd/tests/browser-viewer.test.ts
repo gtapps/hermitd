@@ -40,7 +40,7 @@ test('HTTP identity, cross-origin POST, no-cache page and contained module files
     expect(page.headers.get('cache-control')).toBe('no-store');
     const html = await page.text();
     expect(html).toContain("import RFB from './core/rfb.js'");
-    for (const phrase of ['long-press to paste', 'aria-pressed', 'keyboard.blur()']) expect(html).toContain(phrase);
+    for (const phrase of ['Type or paste here', 'aria-pressed', 'keyboard.blur()']) expect(html).toContain(phrase);
     expect((await f.request('/core/rfb.js')).status).toBe(200);
     expect((await f.request('/vendor/pako.js')).status).toBe(200);
     for (const route of ['/secret', '/core/escape.js', '/core/%2e%2e%2f%2e%2e%2fsecret', '/vnc.html']) expect((await f.request(route)).status).toBe(404);
