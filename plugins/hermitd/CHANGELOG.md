@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Text pasted into the takeover keyboard strip on a phone or desktop is typed into the remote browser
+
 ### Fixed
 
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat
+- Takeover keyboard button shows when the keyboard is open and closes it on a second tap
+- Tab in the takeover keyboard reaches the remote browser instead of leaving the keyboard field
 - `!status` and the `hermitd status` working-on column name work a helper or worker is running instead of reporting nothing in progress
 - `!status` says how long ago the task it is working on was opened
 
