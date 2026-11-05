@@ -18,7 +18,7 @@ describe('en catalog byte-identity', () => {
   test('status lines', () => {
     expect(m.t('status_paused_until_resume', { label: 'X' })).toBe('Paused (X) until you resume it.');
     expect(m.t('status_paused_until_date', { label: 'X', boundary: 'B' })).toBe('Paused (X) until B.');
-    expect(m.t('status_working_on', { task: 'T' })).toBe('Working on T.');
+    expect(m.t('status_working_on', { task: 'T', age: 'A' })).toBe('Working on T (opened A).');
     expect(m.t('status_working')).toBe('Working.');
     expect(m.t('status_idle')).toBe('Idle.');
     expect(m.t('status_one_approval', { id: 'ID' })).toBe('1 approval waiting (reply "ID yes/no").');

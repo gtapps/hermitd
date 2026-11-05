@@ -108,8 +108,8 @@ describe('buildMessages resolution', () => {
   });
 
   test('unknown vars leave the token; values are not rescanned', () => {
-    expect(EN_MESSAGES.t('status_working_on', {})).toBe('Working on {task}.');
-    expect(EN_MESSAGES.t('status_working_on', { task: '{id}' })).toBe('Working on {id}.');
+    expect(EN_MESSAGES.t('status_working_on', {})).toBe('Working on {task} (opened {age}).');
+    expect(EN_MESSAGES.t('status_working_on', { task: '{id}' })).toBe('Working on {id} (opened {age}).');
   });
 });
 

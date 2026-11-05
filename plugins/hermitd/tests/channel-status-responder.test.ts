@@ -153,7 +153,7 @@ describe('channel-status-responder', () => {
       await openTask(wd, 'Delegated draft', owner);
       await run(wd, '!status', stub.url);
       const text = stub.requests[0].body.text as string;
-      expect(text).toContain('Working on Delegated draft.');
+      expect(text).toMatch(/Working on Delegated draft \(opened \d+ seconds? ago\)\./);
       expect(text).not.toContain('All quiet');
     } finally {
       stub.stop();
@@ -583,7 +583,7 @@ describe('channel-status-responder', () => {
         writePtMessages(hermit(wd.dir), 'português');
         await openTask(wd, 'o plano');
         await run(wd, '!status', stub.url);
-        expect(stub.requests[0].body.text).toContain('A trabalhar em o plano.');
+        expect(stub.requests[0].body.text).toMatch(/A trabalhar em o plano \(aberta há \d+ segundos?\)\./);
       } finally {
         stub.stop();
         wd.cleanup();

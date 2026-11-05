@@ -389,11 +389,15 @@ export function latestWaitIsStall(record: Task): boolean {
 }
 
 // Open work nobody waits on, whether the resident, a worker or a helper runs it.
-export function isInProgress(record: Task): boolean {
+function isInProgress(record: Task): boolean {
   return record.status === 'open' && !record.result && !record.waiting_on;
 }
 export function isRunnable(record: Task): boolean {
   return isInProgress(record) && record.owner === 'resident';
+}
+// The resident's first runnable record, else the first one a worker or helper runs.
+export function currentWork(records: Task[]): Task | null {
+  return records.find(isRunnable) ?? records.find(isInProgress) ?? null;
 }
 function nextQueued(records: Task[]) {
   const next = records.find(isRunnable);
