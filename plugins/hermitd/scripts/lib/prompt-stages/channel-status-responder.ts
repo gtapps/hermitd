@@ -21,7 +21,7 @@ import { friendlyBoundary, parseSimpleCronTime } from '../time';
 import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
-import { readTasks, isRunnable, latestWaitIsStall, type Task } from '../tasks';
+import { readTasks, isInProgress, latestWaitIsStall, type Task } from '../tasks';
 import { conversationKey } from '../conversation-key';
 import { homeChatKey } from '../proposals/micro';
 import type { StageContext, StageResult } from './types';
@@ -180,9 +180,9 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
   const records = readRecords(dir);
-  // The resident's first runnable record is its current work.
+  // The first in-progress record is current work.
   const scoped = records.filter(task => task.conversation === opts.chatKey);
-  const current = (opts.redact ? records : scoped).find(isRunnable) ?? null;
+  const current = (opts.redact ? records : scoped).find(isInProgress) ?? null;
   const lines: string[] = [];
 
   const pause = pauseLine(dir, timezone, m);

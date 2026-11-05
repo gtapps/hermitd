@@ -146,6 +146,21 @@ describe('channel-status-responder', () => {
     }
   });
 
+  test.each(['helper:report', 'worker:a5670124e38fb50cb'])('a record owned by %s counts as work in progress', async owner => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      await openTask(wd, 'Delegated draft', owner);
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('Working on Delegated draft.');
+      expect(text).not.toContain('All quiet');
+    } finally {
+      stub.stop();
+      wd.cleanup();
+    }
+  });
+
   test('routes the reply to the chat it was asked on (group id), not default_chat_id', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { isRunnable, readExecution, readTasks } from './tasks';
+import { isInProgress, readExecution, readTasks } from './tasks';
 import { findResident } from './session-registry';
 import { readConfigRaw } from './config-read';
 
@@ -47,7 +47,7 @@ export function projectStatus(project: string) {
     execution: execution.state,
     age: execution.at ? Math.max(0, Math.floor((Date.now() - Date.parse(execution.at)) / 1000)) : null,
     open: records.filter(r => r.status === 'open').length, waiting: records.filter(r => r.status === 'open' && r.waiting_on).length,
-    working_on: records.find(isRunnable)?.title ?? null,
+    working_on: records.find(isInProgress)?.title ?? null,
   };
 }
 export function renderStatus(rows: Record<string, unknown>[], json = false): string {
