@@ -16,14 +16,18 @@ function run(...args: string[]) {
 namespace Laravel\\Forge;
 class Forge {
   public function __construct(string $token) {}
-  private function page(array $items): object {
-    return new class($items) {
-      public function __construct(private array $items) {}
-      public function lazy(): \\Generator { yield from $this->items; }
+  // Each page restarts at key 0, like the SDK's CursorPaginator::lazy().
+  private function page(array ...$pages): object {
+    return new class($pages) {
+      public function __construct(private array $pages) {}
+      public function lazy(): \\Generator { foreach ($this->pages as $items) yield from $items; }
     };
   }
   public function servers(string $org): object {
-    return $this->page([(object)['id'=>12, 'name'=>'test-server', 'ipAddress'=>'192.0.2.1']]);
+    return $this->page(
+      [(object)['id'=>12, 'name'=>'test-server', 'ipAddress'=>'192.0.2.1']],
+      [(object)['id'=>13, 'name'=>'second-server', 'ipAddress'=>'192.0.2.2']],
+    );
   }
   public function serverSites(string $org, int $server): object {
     return $this->page([(object)['id'=>34, 'name'=>'test.example', 'aliases'=>[]]]);
@@ -86,14 +90,26 @@ test('an unmatched target is a no_match outcome with choices, before dispatch', 
   const { result, request } = run('server-reboot', 'missing-server');
   expect(result.exitCode).toBe(0);
   expect(json(result.stdout)).toEqual({
-    status: 'no_match', reason: 'server', choices: [{ id: 12, name: 'test-server', ip_address: '192.0.2.1' }],
+    status: 'no_match', reason: 'server', choices: [
+      { id: 12, name: 'test-server', ip_address: '192.0.2.1' },
+      { id: 13, name: 'second-server', ip_address: '192.0.2.2' },
+    ],
   });
   expect(() => readFileSync(request)).toThrow();
 });
 
 test('list commands print one JSON object', () => {
-  expect(json(run('servers').result.stdout)).toEqual({ servers: [{ id: 12, name: 'test-server', ip_address: '192.0.2.1' }] });
+  expect(json(run('servers').result.stdout)).toEqual({ servers: [
+    { id: 12, name: 'test-server', ip_address: '192.0.2.1' },
+    { id: 13, name: 'second-server', ip_address: '192.0.2.2' },
+  ] });
   expect(json(run('sites', 'test-server').result.stdout)).toEqual({ sites: [{ id: 34, name: 'test.example' }] });
+});
+
+test('a server on a later page resolves by name', () => {
+  const { result } = run('server', 'second-server');
+  expect(result.exitCode).toBe(0);
+  expect(json(result.stdout)).toEqual({ server: { id: 13, name: 'second-server', ipAddress: '192.0.2.2' } });
 });
 
 test('help exits 0; usage and unknown commands fail with an error token', () => {

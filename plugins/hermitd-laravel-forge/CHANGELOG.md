@@ -4,6 +4,7 @@
 
 ### Fixed
 - Deploy skill no longer cites a watch option Claude Code removed.
+- Server, site and organization lists spanning several pages no longer drop earlier pages, so `forge.php servers`, `sites` and name matching see every entry.
 
 ## [0.0.23] - 2026-10-25
 
