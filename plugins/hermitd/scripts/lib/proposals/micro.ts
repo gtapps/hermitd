@@ -71,6 +71,11 @@ export function askedOutsideHome(entry: Json, home: string | null): boolean {
   return typeof entry?.chat === 'string' && entry.chat !== home;
 }
 
+/** True when the entry is pending and was asked in `chat`, the only entries `match --chat` can answer. */
+export function pendingInChat(entry: Json, chat: string): boolean {
+  return entry?.status === 'pending' && entry.chat === chat;
+}
+
 const ACTIONS = ['approved', 'rejected', 'answered', 'expired'];
 
 // A proposal in one of these states can no longer consume an "how should I
@@ -292,8 +297,7 @@ function matchReply(stateDir: string, args: string[]): never {
   const read = readMicroProposals(path.join(stateDir, 'state', 'micro-proposals.json'));
   if (read.status === 'corrupt') fail('queue_corrupt');
   let pending: Json[] = read.status === 'missing' ? []
-    : read.data.pending.filter((entry: Json) => entry?.status === 'pending'
-      && (chat === undefined || entry.chat === chat));
+    : read.data.pending.filter((entry: Json) => chat === undefined ? entry?.status === 'pending' : pendingInChat(entry, chat));
   if (!pending.length) none('no_pending');
   const target = id ? pending.find(entry => entry.id === id) : undefined;
   if (id && !target) none('no_match');

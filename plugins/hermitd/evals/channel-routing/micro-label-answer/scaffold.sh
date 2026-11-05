@@ -9,3 +9,7 @@ ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/.
 cat > .hermit/config.json <<HERMIT_CONFIG
 {"agent_name":"assistant","timezone":"Europe/Lisbon","operator_profile":"technical","language":null,"channels":{"discord":{"allowed_users":["100000000000000001"]}},"_hermit_versions":{"hermitd":"$ver"}}
 HERMIT_CONFIG
+# The pending question, so the pending-question stage reports it as it would live.
+cat > .hermit/state/micro-proposals.json <<'HERMIT_MP'
+{"pending":[{"id":"MP-0020","tier":1,"status":"pending","follow_up_count":0,"ts":"2026-10-01T09:00:00Z","question":"How often should the backup report run? daily / weekly","options":["daily","weekly"],"chat":"discord:400000000000000001"}]}
+HERMIT_MP

@@ -12,10 +12,6 @@ execution:
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    SessionStart hook additional context (after the last compaction):
-    pending micro-proposals: MP-20261001-0
-    </system-reminder>
-    <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
@@ -24,6 +20,7 @@ execution:
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
+    [pending question in this chat: MP-20261001-0; a bare reply may answer it: run proposal-micro match first]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
