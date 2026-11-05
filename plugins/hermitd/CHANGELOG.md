@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Paste into the takeover keyboard strip on a phone or desktop to type it into the remote browser
+
 ### Fixed
 
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat
+- Takeover keyboard button shows when the keyboard is open and closes it on a second tap
 
 ## [1.4.27] - 2026-11-04
 

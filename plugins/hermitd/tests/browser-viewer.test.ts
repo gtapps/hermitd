@@ -38,7 +38,9 @@ test('HTTP identity, cross-origin POST, no-cache page and contained module files
     expect((await f.request('/takeover', { method: 'POST', headers: { Origin: '' } })).status).toBe(403);
     const page = await f.request('/');
     expect(page.headers.get('cache-control')).toBe('no-store');
-    expect(await page.text()).toContain("import RFB from './core/rfb.js'");
+    const html = await page.text();
+    expect(html).toContain("import RFB from './core/rfb.js'");
+    for (const phrase of ['long-press to paste', 'aria-pressed', 'keyboard.blur()']) expect(html).toContain(phrase);
     expect((await f.request('/core/rfb.js')).status).toBe(200);
     expect((await f.request('/vendor/pako.js')).status).toBe(200);
     for (const route of ['/secret', '/core/escape.js', '/core/%2e%2e%2f%2e%2e%2fsecret', '/vnc.html']) expect((await f.request(route)).status).toBe(404);

@@ -18,6 +18,7 @@
   button:active { transform: scale(.97); } button:disabled { opacity: .55; }
   #main { flex: none; padding: 0 16px; }
   #type { flex: none; display: grid; place-items: center; width: 38px; padding: 0; color: var(--text); background: #232b35; }
+  #type[aria-pressed="true"] { color: #0c1116; background: #8fb8ff; }
   #stage { position: relative; flex: 1; min-height: 0; background: var(--bg); padding-bottom: env(safe-area-inset-bottom); }
   .typing #stage { padding-bottom: 0; }
   /* A ring above the canvas: it costs no layout, so the remote picture never rescales. */
@@ -27,15 +28,18 @@
   #notice { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(17, 22, 28, .92); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--text); font-size: 14px; text-align: center; pointer-events: none; }
   /* 16px stops iOS zooming on focus; inside the pinned frame it never scrolls the page. */
   #keyboard { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; }
+  /* While open it is a visible strip, so a phone can long-press it to paste; pasted text is typed like keys. */
+  #keyboard:focus { position: static; flex: none; width: 100%; height: 48px; padding: 13px 14px; border-top: 1px solid var(--line); outline: 0; resize: none; opacity: 1; background: #1b222b; color: var(--text); caret-color: #8fb8ff; }
+  #keyboard::placeholder { color: var(--muted); }
 </style>
 <div id="app">
 <header>
   <span id="chip" role="status">Agent has control</span>
-  <button id="type" aria-label="Keyboard" hidden><svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="1" y="1" width="20" height="14" rx="2.5"/><path d="M5 5.5h.01M9 5.5h.01M13 5.5h.01M17 5.5h.01M5 8.5h.01M9 8.5h.01M13 8.5h.01M17 8.5h.01M7 11.5h8"/></svg></button>
+  <button id="type" aria-label="Keyboard" aria-pressed="false" hidden><svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="1" y="1" width="20" height="14" rx="2.5"/><path d="M5 5.5h.01M9 5.5h.01M13 5.5h.01M17 5.5h.01M5 8.5h.01M9 8.5h.01M13 8.5h.01M17 8.5h.01M7 11.5h8"/></svg></button>
   <button id="main">Take over</button>
 </header>
 <div id="stage"><div id="view"><div id="screen"></div></div><div id="notice">Take over to sign in, then Hand back.</div></div>
-<textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input"></textarea>
+<textarea id="keyboard" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Keyboard input" placeholder="Type here, or long-press to paste"></textarea>
 </div>
 <script type="module">
 import RFB from './core/rfb.js';
@@ -72,6 +76,7 @@ function setControl(mine, label = 'Agent has control') {
   chip.classList.toggle('mine', mine);
   stage.classList.toggle('live', mine);
   type.hidden = !mine;
+  if (!mine) keyboard.blur();
 }
 async function post(path, values) {
   const response = await fetch(path + '?' + new URLSearchParams(values), { method: 'POST', cache: 'no-store' });
@@ -106,7 +111,11 @@ main.onclick = async () => {
   catch (error) { say(error.message); }
   main.disabled = false;
 };
-type.onclick = () => keyboard.focus();
+// The button never takes focus, so a second tap still sees the open keyboard and closes it.
+type.onmousedown = event => event.preventDefault();
+type.onclick = () => document.activeElement === keyboard ? keyboard.blur() : keyboard.focus();
+keyboard.addEventListener('focus', () => type.setAttribute('aria-pressed', 'true'));
+keyboard.addEventListener('blur', () => type.setAttribute('aria-pressed', 'false'));
 keyboard.addEventListener('input', () => { if (rfb) for (const char of keyboard.value) { const code = char.codePointAt(0); rfb.sendKey(code <= 255 ? code : 0x01000000 + code); } keyboard.value = ''; });
 keyboard.addEventListener('keydown', event => {
   if (event.key === 'Enter' || event.key === 'Backspace') { rfb?.sendKey(event.key === 'Enter' ? 0xff0d : 0xff08); event.preventDefault(); }
