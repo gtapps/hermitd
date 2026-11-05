@@ -7,6 +7,10 @@ const roots: string[] = [];
 afterAll(() => { for (const root of roots) rmSync(root, { recursive: true, force: true }); });
 
 function run(...args: string[]) {
+  return runWith({}, ...args);
+}
+
+function runWith(env: Record<string, string>, ...args: string[]) {
   const root = mkdtempSync(join(tmpdir(), 'forge-cli-'));
   roots.push(root);
   const vendor = join(root, '.hermit/forge-runtime/vendor');
@@ -30,7 +34,19 @@ class Forge {
     );
   }
   public function serverSites(string $org, int $server): object {
-    return $this->page([(object)['id'=>34, 'name'=>'test.example', 'aliases'=>[]]]);
+    return $this->page(
+      [(object)['id'=>34, 'name'=>'test.example', 'aliases'=>[]]],
+      [(object)['id'=>35, 'name'=>'second.example', 'aliases'=>[]]],
+    );
+  }
+  public function organizations(): object {
+    return $this->page([(object)['slug'=>'org-a', 'name'=>'Org A']], [(object)['slug'=>'org-b', 'name'=>'Org B']]);
+  }
+  public function deployments(string $org, int $server, int $site): object {
+    return $this->page(
+      [(object)['id'=>71, 'status'=>'finished', 'commit'=>(object)['message'=>'newest']]],
+      [(object)['id'=>70, 'status'=>'failed', 'commit'=>(object)['message'=>'older']]],
+    );
   }
   public function createDeployment(string $org, int $server, int $site, array $data): object {
     file_put_contents(getenv('FORGE_TEST_REQUEST'), json_encode([$org, $server, $site, $data]));
@@ -44,7 +60,7 @@ class Forge {
   const request = join(root, 'request.json');
   const result = Bun.spawnSync(['php', join(import.meta.dir, '../php/forge.php'), ...args], {
     cwd: root,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FORGE_API_TOKEN: 'fixture', FORGE_ORG: 'test-org', FORGE_TEST_REQUEST: request },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FORGE_API_TOKEN: 'fixture', FORGE_ORG: 'test-org', FORGE_TEST_REQUEST: request, ...env },
   });
   return { result, request, root };
 }
@@ -103,13 +119,29 @@ test('list commands print one JSON object', () => {
     { id: 12, name: 'test-server', ip_address: '192.0.2.1' },
     { id: 13, name: 'second-server', ip_address: '192.0.2.2' },
   ] });
-  expect(json(run('sites', 'test-server').result.stdout)).toEqual({ sites: [{ id: 34, name: 'test.example' }] });
+  expect(json(run('sites', 'test-server').result.stdout)).toEqual({ sites: [
+    { id: 34, name: 'test.example' },
+    { id: 35, name: 'second.example' },
+  ] });
+  expect(json(run('deploy-history', 'test-server', 'test.example').result.stdout)).toEqual({ deployments: [
+    { id: 71, status: 'finished', commit: 'newest' },
+    { id: 70, status: 'failed', commit: 'older' },
+  ] });
 });
 
 test('a server on a later page resolves by name', () => {
   const { result } = run('server', 'second-server');
   expect(result.exitCode).toBe(0);
   expect(json(result.stdout)).toEqual({ server: { id: 13, name: 'second-server', ipAddress: '192.0.2.2' } });
+});
+
+test('org discovery counts organizations on every page', () => {
+  const { result } = runWith({ FORGE_ORG: '' }, 'servers');
+  expect(result.exitCode).toBe(0);
+  expect(json(result.stdout)).toEqual({ status: 'ambiguous', reason: 'forge_org_unset', choices: [
+    { slug: 'org-a', name: 'Org A' },
+    { slug: 'org-b', name: 'Org B' },
+  ] });
 });
 
 test('help exits 0; usage and unknown commands fail with an error token', () => {

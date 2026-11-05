@@ -401,12 +401,11 @@ if ($cmd === 'call' || $cmd === 'preview') {
     // This lookup is decoration, not the preview: the request is already captured
     // and its id is printed with it. resolveServer() exits on a miss and
     // lets SDK errors escape, so it is deliberately NOT reused here — an expired
-    // token, a rate limit or a server absent from the listing must not abort a
-    // preview.
+    // token, a rate limit or a missing server must not abort a preview. One
+    // request by id, not a walk over every page of servers.
     if (preg_match('#/servers/(\d+)#', $path, $m) === 1) {
         try {
-            $match = matchServer(allPages($forge->servers($resolveOrg())), $m[1]);
-            if ($match !== []) $preview['server'] = serverRow($match[0]);
+            $preview['server'] = serverRow($forge->server($resolveOrg(), (int) $m[1]));
         } catch (\Throwable $e) {
             fwrite(STDERR, "Note: could not resolve server {$m[1]} for display: {$e->getMessage()}\n");
         }
@@ -567,7 +566,7 @@ if ($cmd === 'deploy-history') {
     $server      = resolveServer($forge, $org, $positional[0]);
     $site        = resolveSite($forge, $org, $server, $positional[1]);
     $rows        = [];
-    foreach ($forge->deployments($org, $server->id, $site->id) as $d) {
+    foreach (allPages($forge->deployments($org, $server->id, $site->id)) as $d) {
         $commitMsg = $d->commit->message ?? null;
         $rows[] = ['id' => $d->id, 'status' => $d->status, 'commit' => $commitMsg === null ? null : substr($commitMsg, 0, 60)];
     }
