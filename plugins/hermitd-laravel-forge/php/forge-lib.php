@@ -378,9 +378,18 @@ function isTerminalStatus(string $status): bool
 }
 
 // ---------------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------------
+
+/** Every item across all pages. Each page restarts at key 0, so keys are dropped. */
+function allPages(object $paginator): array {
+    return iterator_to_array($paginator->lazy(), false);
+}
+
+// ---------------------------------------------------------------------------
 // Matchers — resolve a user-supplied query to candidate server/site records.
 // Inputs are plain arrays; callers materialize the SDK's CursorPaginator with
-// iterator_to_array($paginator->lazy()) before calling these.
+// allPages() before calling these.
 // ---------------------------------------------------------------------------
 function matchServer(array $servers, string $query): array {
     if (is_numeric($query)) {

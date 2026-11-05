@@ -119,7 +119,7 @@ function requireOrg(string $org, Forge $forge): string {
     // organizations() is a CursorPaginator; materialize all pages so count()
     // reflects the true total, not just page 1.
     try {
-        $orgs = iterator_to_array($forge->organizations()->lazy());
+        $orgs = allPages($forge->organizations());
     } catch (\Throwable $e) {
         failSdk($e);
     }
@@ -143,7 +143,7 @@ function siteRow(object $s): array {
 function resolveServer(Forge $forge, string $org, string $serverQuery): object {
     // servers() returns a CursorPaginator — materialize all pages to a plain
     // array so name/IP resolution sees the full estate, not just page 1.
-    $servers = iterator_to_array($forge->servers($org)->lazy());
+    $servers = allPages($forge->servers($org));
     $candidates = matchServer($servers, $serverQuery);
     if (count($candidates) === 0) {
         emit(['status' => 'no_match', 'reason' => 'server', 'choices' => array_map('serverRow', $servers)]);
@@ -156,7 +156,7 @@ function resolveServer(Forge $forge, string $org, string $serverQuery): object {
 
 function resolveSite(Forge $forge, string $org, object $server, string $siteQuery): object {
     // serverSites() returns a CursorPaginator — materialize all pages first.
-    $sites = iterator_to_array($forge->serverSites($org, $server->id)->lazy());
+    $sites = allPages($forge->serverSites($org, $server->id));
     $candidates = matchSite($sites, $siteQuery);
     if (count($candidates) === 0) {
         emit(['status' => 'no_match', 'reason' => 'site', 'choices' => array_map('siteRow', $sites)]);
@@ -401,12 +401,11 @@ if ($cmd === 'call' || $cmd === 'preview') {
     // This lookup is decoration, not the preview: the request is already captured
     // and its id is printed with it. resolveServer() exits on a miss and
     // lets SDK errors escape, so it is deliberately NOT reused here — an expired
-    // token, a rate limit or a server absent from the listing must not abort a
-    // preview.
+    // token, a rate limit or a missing server must not abort a preview. One
+    // request by id, not a walk over every page of servers.
     if (preg_match('#/servers/(\d+)#', $path, $m) === 1) {
         try {
-            $match = matchServer(iterator_to_array($forge->servers($resolveOrg())->lazy()), $m[1]);
-            if ($match !== []) $preview['server'] = serverRow($match[0]);
+            $preview['server'] = serverRow($forge->server($resolveOrg(), (int) $m[1]));
         } catch (\Throwable $e) {
             fwrite(STDERR, "Note: could not resolve server {$m[1]} for display: {$e->getMessage()}\n");
         }
@@ -459,7 +458,7 @@ $resolveOrg();
 // servers
 // ---------------------------------------------------------------------------
 if ($cmd === 'servers') {
-    emit(['servers' => array_map('serverRow', iterator_to_array($forge->servers($org)->lazy()))]);
+    emit(['servers' => array_map('serverRow', allPages($forge->servers($org)))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +476,7 @@ if ($cmd === 'server') {
 if ($cmd === 'sites') {
     check(isset($positional[0]), 'usage:forge.php sites <server>');
     $server = resolveServer($forge, $org, $positional[0]);
-    emit(['sites' => array_map('siteRow', iterator_to_array($forge->serverSites($org, $server->id)->lazy()))]);
+    emit(['sites' => array_map('siteRow', allPages($forge->serverSites($org, $server->id)))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -567,7 +566,7 @@ if ($cmd === 'deploy-history') {
     $server      = resolveServer($forge, $org, $positional[0]);
     $site        = resolveSite($forge, $org, $server, $positional[1]);
     $rows        = [];
-    foreach ($forge->deployments($org, $server->id, $site->id) as $d) {
+    foreach (allPages($forge->deployments($org, $server->id, $site->id)) as $d) {
         $commitMsg = $d->commit->message ?? null;
         $rows[] = ['id' => $d->id, 'status' => $d->status, 'commit' => $commitMsg === null ? null : substr($commitMsg, 0, 60)];
     }
