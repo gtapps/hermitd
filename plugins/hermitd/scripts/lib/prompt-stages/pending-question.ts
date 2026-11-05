@@ -32,7 +32,8 @@ export function pendingQuestionLine(dir: string, chatKey: string): string | null
 
 export function run(ctx: StageContext): StageResult | void {
   const env = ctx.envelope;
-  if (ctx.harnessMode || !env || !isAllowedSender(ctx.config(), env.source, env.userId)) return;
+  // A task thread's bare reply belongs to its task; the [waiting task] line covers it.
+  if (ctx.harnessMode || ctx.conversation || !env || !isAllowedSender(ctx.config(), env.source, env.userId)) return;
   const line = pendingQuestionLine(ctx.dir, conversationKey(env.sourceKey, env.chatId));
   return line ? { context: line } : undefined;
 }

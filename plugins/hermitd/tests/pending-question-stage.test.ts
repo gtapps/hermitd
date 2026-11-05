@@ -1,7 +1,8 @@
 import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pendingQuestionLine } from '../scripts/lib/prompt-stages/pending-question';
+import { pendingQuestionLine, run } from '../scripts/lib/prompt-stages/pending-question';
+import type { StageContext } from '../scripts/lib/prompt-stages/types';
 import { runScript } from './helpers/run';
 import { setupWorkdir } from './helpers/workdir';
 
@@ -58,6 +59,20 @@ describe('pending-question stage: line builder', () => {
   test('says unreadable for a corrupt queue instead of implying none', () => {
     withQueue('{"pending": [', dir => {
       expect(pendingQuestionLine(dir, CHAT)).toBe('[pending question in this chat: unreadable]');
+    });
+  });
+});
+
+describe('pending-question stage: task threads', () => {
+  test('a message in a task thread gets no line, so its bare reply stays with the task', () => {
+    withQueue({ pending: [entry('MP-1', CHAT)] }, dir => {
+      const config = { channels: { discord: { allowed_users: ['u1'] } } };
+      const envelope = { source: 'discord', sourceKey: 'discord', chatId: '400', thread: 't1', userId: 'u1' };
+      const ctx = (conversation?: StageContext['conversation']) => ({
+        dir, prompt: 'yes', transcriptPath: null, envelope, conversation, config: () => config, runtime: () => null,
+      }) as unknown as StageContext;
+      expect(run(ctx())).toEqual({ context: expect.stringContaining('MP-1') });
+      expect(run(ctx({ key: 'discord:400~t1', task_id: 'T-1', owner: 'resident' }))).toBeUndefined();
     });
   });
 });

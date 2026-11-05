@@ -80,11 +80,12 @@ describe('eval case copies of live text', () => {
     const withLine = CASES.flatMap(c => {
       const line = c.prompt.match(/^\s*(\[pending question in this chat: .+\])$/m)?.[1];
       const env = c.prompt.match(/<channel source="([^"]+)" chat_id="([^"]+)"/);
-      return line && env ? [{ ...c, line, chatKey: `${normalizeChannelSource(env[1])}:${env[2]}` }] : [];
+      return line ? [{ ...c, line, chatKey: env ? `${normalizeChannelSource(env[1])}:${env[2]}` : null }] : [];
     });
     expect(withLine.length).toBeGreaterThan(0);
     const stale: string[] = [];
     for (const c of withLine) {
+      if (!c.chatKey) { stale.push(`${c.file}: no channel envelope to key the line`); continue; }
       const wd = setupWorkdir();
       try {
         const scaffold = path.join(EVALS, path.dirname(c.file), 'scaffold.sh');
