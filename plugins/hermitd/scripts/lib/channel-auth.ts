@@ -6,7 +6,7 @@
 
 import { iterChannelConfigs } from './channel-config';
 import { normalizeChannelSource, envelopeAttr, type ChannelEnvelope } from './channel-envelope';
-import { cachedChat, cachedGuildRoles, lookupChat, lookupGuildRoles } from './channel-chats';
+import { cachedChat, cachedGuildRoles, lookupChat, lookupGuildRoles, threadParent, type ThreadParent } from './channel-chats';
 import { escapeRegExp } from './md-write';
 
 type Json = any;
@@ -163,6 +163,35 @@ export function audienceVisible(scope: Json | null | undefined, audience: unknow
     }
   }
   return false;
+}
+
+/** Brief-only public children supplement the answering chat's recall scope. */
+export async function briefVisibility<T extends { id: string; audience: string }>(
+  hermitDir: string, config: Json, selected: string | null, records: T[],
+): Promise<{ scope: Json | null; visible: T[]; unresolved: string[] }> {
+  if (selected === null) return { scope: null, visible: records, unresolved: [] };
+  const [source, selectedChat] = selected.split(':');
+  const chatId = selectedChat.split('~')[0];
+  if (source === 'discord') await lookupChat(hermitDir, config, chatId, true);
+  const scope = recallScope(config, source, chatId, hermitDir);
+  const shown = new Set<T>();
+  const indirect: { record: T; key: string }[] = [];
+  for (const record of records) {
+    if (audienceVisible(scope, record.audience) || record.audience.startsWith(`${source}:${chatId}~`)) shown.add(record);
+    else if (record.audience !== 'operator') indirect.push({ record, key: record.audience.split('~')[0] });
+  }
+  const parents = new Map<string, ThreadParent>();
+  await Promise.all([...new Set(indirect.map(row => row.key))].map(async key => {
+    const [recordSource, recordChat] = key.split(':');
+    parents.set(key, await threadParent(hermitDir, config, recordSource, recordChat));
+  }));
+  const unresolved: string[] = [];
+  for (const { record, key } of indirect) {
+    const parent = parents.get(key);
+    if (parent?.status === 'unresolved') unresolved.push(record.id);
+    else if (key.startsWith(`${source}:`) && parent?.status === 'public' && parent.parent === chatId) shown.add(record);
+  }
+  return { scope, visible: records.filter(record => shown.has(record)), unresolved };
 }
 
 function passiveChats(config: Json, sourceKey: string): string[] {

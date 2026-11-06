@@ -14,7 +14,7 @@
 // decide what "failed to notify the operator" means for them.
 
 import path from 'node:path';
-import { resolve as resolveOutboundChannel, resolveMaintainerTarget } from '../resolve-outbound-channel';
+import { resolve as resolveOutboundChannel, resolveMaintainerTarget, ownedTarget } from '../resolve-outbound-channel';
 import { logMessage, isLoggingEnabled } from './channel-log';
 import { settleConfig, readConfigRaw, readSettledConfig } from './config-read';
 import { resolveProjectScript, projectRootOf } from './routines/gate';
@@ -325,15 +325,6 @@ export interface OperatorNotice {
   relay?: boolean;
 }
 
-/** The `chat` of entry `id` in `entries` as a send target, or null when it has none. */
-function ownedChat(entries: Json, id: string | undefined): { id: string; chat_id: string } | null {
-  if (!id || !Array.isArray(entries)) return null;
-  const chat = entries.find((e: Json) => e?.id === id)?.chat;
-  if (!isKey(chat)) return null;
-  const at = chat.indexOf(':');
-  return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
-}
-
 function sameChat(a: { id: string; chat_id: Json } | null, b: { id: string; chat_id: Json } | null): boolean {
   return !!a && !!b && a.id === b.id && String(a.chat_id) === String(b.chat_id);
 }
@@ -377,11 +368,11 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   // A routine's or watch's own chat takes the client leg; the maintainer leg keeps
   // the home routing, so technical detail never reaches a team chat.
   const owned = notice.routine
-    ? ownedChat(config.routines, notice.routine)
+    ? ownedTarget(config.routines, notice.routine)
     : notice.watch
       // A config watch's chat is read live from config.json, like a routine's;
       // an ad-hoc watch's lives on its registry entry.
-      ? ownedChat(
+      ? ownedTarget(
         Array.isArray(config.monitors) && config.monitors.some((m: Json) => m?.id === notice.watch)
           ? config.monitors
           : readJson(path.join(hermitDir, 'state/monitors.runtime.json'))?.monitors,

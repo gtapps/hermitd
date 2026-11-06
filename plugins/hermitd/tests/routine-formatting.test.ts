@@ -32,9 +32,11 @@ test('inline and delegated routine templates use the bounded Read', () => {
 });
 
 
-test('inline and delegated chat routine invocations supply the routine id', () => {
+test('inline and delegated routine invocations supply the routine id', () => {
   const dispatch = routines.slice(routines.indexOf('**Model-override substitution.**'), routines.indexOf('Base execution,'));
   const inline = routines.slice(routines.indexOf('Base execution,'), routines.indexOf('**Optional `precheck`'));
-  expect(dispatch).toContain('This is routine <id>.');
-  expect(inline).toContain('tell the skill before invocation: `This is routine <id>.`');
+  expect(dispatch).toContain('always append `This is routine <id>.');
+  expect(dispatch).toContain('Only when the routine has `chat`, also append `Pass --routine <id>');
+  expect(inline).toContain('Always tell the skill before invocation: `This is routine <id>.`');
+  expect(inline).toContain('When the routine has `chat`, pass `--routine <id>`');
 });

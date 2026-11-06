@@ -115,6 +115,21 @@ runCase('run-default-no-session', ['brief-run'], 'No flag and no open records: a
 runCase('run-morning-context', ['brief-morning'], 'A morning brief names the newest record with its close date, not its open date.', 'Invoke /hermitd:brief --morning',
   [dispatchedRunner, present('newest-record', 'wholesale invoices'), absent('no-open-date', '2026-10-20|Oct(ober)?\\s+20'), WHOLE_REPORT]);
 
+const scopedChat = 'group-brief';
+const scopedConfig = { ...CONFIG, always_on: true, channels: { discord: { default_chat_id: USER } },
+  routines: [{ id: 'group-morning', chat: `discord:${scopedChat}`, skill: 'hermitd:brief --morning' }] };
+const [scopedPath, scopedRecord] = record(11, 'open');
+runCase('run-morning-chat', ['brief-morning'], 'A routine-owned group brief keeps other chats and agent-wide steps out.',
+  'This is routine group-morning. Invoke /hermitd:brief --morning. Return the brief text in your final reply for inspection; delivery itself is stood in.',
+  [dispatchedRunner, present('own-chat-work', 'loyalty discounts'), absent('no-other-chat-work', WORK.filter((_, i) => i !== 11).join('|')),
+    absent('no-proposals-line', 'proposals?\\s*:'),
+    { name: 'no-micro-aging', type: 'tool_used', tool: 'Bash', input_match: 'brief-cycle', min: 0, max: 0 },
+    { name: 'no-upgrade-check', type: 'tool_used', tool: 'Bash', input_match: 'check-upgrade', min: 0, max: 0 }],
+  { '.hermit/config.json': JSON.stringify(scopedConfig, null, 2) + '\n',
+    '.hermit/state/channel-chats.json': JSON.stringify({ discord: { chats: { [scopedChat]: { type: 0, parent_id: null, guild_id: 'shop', fetched_at: '2026-11-06T00:00:00Z' } } } }) + '\n',
+    [scopedPath]: scopedRecord.replaceAll(`discord:${USER}`, `discord:${scopedChat}`),
+    '.hermit/proposals/PROP-001.md': '---\nstatus: proposed\nsource: auto-detected\ntitle: Agent-wide proposal\n---\n' });
+
 const [firstPath, firstRecord] = record(0, KINDS[0]);
 const supportedLesson = 'Keep source row identifiers when exporting the price list.';
 const contradictedRecord = firstRecord

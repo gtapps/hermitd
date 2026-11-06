@@ -6,10 +6,12 @@ const root = join(import.meta.dir, '..');
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 
 describe('task-based reader instructions', () => {
-  test('brief gates on resident records and includes observed duties', () => {
+  test('every brief reads the scoped digest and plain brief reads nothing else', () => {
     const skill = read('skills/brief/SKILL.md');
-    expect(skill).toContain('--open --owner resident --json');
-    expect(skill).toContain('scripts/duties.ts summary');
+    expect(skill).toContain('Every mode uses `brief-digest`');
+    expect(skill).toContain('context <selector>` before any other step');
+    expect(skill).toContain('read only `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit morning <selector>`');
+    for (const reader of ['--owner resident', 'task-report.ts', 'task.ts list', 'scripts/duties.ts', 'scan `.hermit/proposals/`']) expect(skill).not.toContain(reader);
     expect(skill).not.toContain('session_state');
     expect(skill).not.toContain('SHELL.md');
     expect(skill).not.toContain('S-*-REPORT.md');

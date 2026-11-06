@@ -2061,8 +2061,8 @@ describe('brief delegation contract', () => {
     expect(refFile).not.toContain('default-no-session');
     expect(skill).not.toContain('use the current task list');
     expect(skill).not.toContain('--limit 20');
-    expect(skill).toContain('task-report.ts .hermit --recent --limit 5');
-    expect(skill).toContain('task-report.ts .hermit --limit 1');
+    expect(skill).toContain('brief-digest.ts .hermit morning <selector>');
+    expect(skill).not.toContain('task-report.ts');
     expect(skill).toContain('"brief today"/"daily summary"/"what happened today"');
     expect(skill).toContain('duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`');
   });
@@ -2074,6 +2074,14 @@ describe('brief delegation contract', () => {
     expect(skill).toContain('does not make it overnight activity');
     expect(refFile).toContain('Use `closed_at`, else `opened_at`, for date');
     expect(skill).toContain('Use `closed_at`, else `opened_at`, for the date');
+  });
+
+  test('briefs resolve context first and skip queue aging outside agent steps', () => {
+    expect(skill).toContain('context <selector>` before any other step');
+    expect(skill).toContain('When its `agent_steps` is `false`, skip micro-proposal aging and decision questions');
+    expect(skill).toContain('For `agent_steps: false`, skip this entire section');
+    expect(refFile).toContain('For `agent_steps: false`, keep `duties`, `pending_proposals` and `operator_priorities` empty');
+    expect(refFile).toContain('appending the mode and supplied selector');
   });
 
   test('schema block is byte-identical in reference.md and SKILL.md', () => {

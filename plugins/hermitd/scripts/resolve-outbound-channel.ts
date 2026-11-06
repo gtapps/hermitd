@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { emitJson, exitError } from './lib/cli';
+import { isKey } from './lib/conversation-key';
 import { sanitizeLanguage } from './lib/operator-language';
 
 type Json = any;
@@ -43,6 +44,15 @@ function eligible(ch: Json): boolean {
 
 function resolve(channels: Json): { id: string; chat_id: string } | null {
   return resolveTarget(channels, eligible, proactiveChatId);
+}
+
+/** The `chat` of entry `id` in `entries` as a send target, or null when it has none. */
+export function ownedTarget(entries: Json, id: string | undefined): { id: string; chat_id: string } | null {
+  if (!id || !Array.isArray(entries)) return null;
+  const chat = entries.find((e: Json) => e?.id === id)?.chat;
+  if (!isKey(chat)) return null;
+  const at = chat.indexOf(':');
+  return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
 }
 
 // A channel block is maintainer-eligible when it's enabled and carries a

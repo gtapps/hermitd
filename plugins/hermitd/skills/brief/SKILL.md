@@ -1,15 +1,13 @@
 ---
 name: brief
-description: Returns a 5-line executive summary of recent work. Checks open resident records first, then recent task outcomes. Activates on messages like "brief", "what happened", "morning update", "overnight summary", "progress", "what are you working on", "how's it going".
+description: Returns a 5-line executive summary of recent work. Checks open records first, then recent task outcomes. Activates on messages like "brief", "what happened", "morning update", "overnight summary", "progress", "what are you working on", "how's it going".
 ---
 # Task Brief
 
 Provide a concise executive summary of recent task activity. Designed for morning check-ins, phone/channel consumption, and quick status updates.
 
 ## Commands
-- `duties-summary`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit`
 - `brief-digest`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit`
-- `task-report`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit`
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 
 ## Always-On Delivery Rule
@@ -18,17 +16,19 @@ If `config.always_on` is `true`, deliver all operator-facing output per `prompts
 
 ## Dispatch
 
-Before composing any brief, determine the dispatch mode:
+Resolve scope before composing or dispatching any brief:
 
-1. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary"/"what happened today", or no flag).
-2. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns. Run nothing before dispatch except morning micro-queue aging.
-3. For a no-flag brief, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --owner resident --json` and `bun ${CLAUDE_PLUGIN_ROOT}/scripts/duties.ts summary .hermit` for requested and observed duty rows, compose in main, and never dispatch.
+1. Build `<selector>`: when told `This is routine <id>.`, use `--routine <id>`; otherwise, when asked in a chat, use `--chat <source>:<chat_id>` from that message's conversation key, including its `~<thread>` suffix when the channel maps threads; otherwise use no selector.
+2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit context <selector>` before any other step. Its `scope` decides which records the brief covers. When its `agent_steps` is `false`, skip micro-proposal aging and decision questions, the upgrade check, `last-brief.json` writes, dashboard refresh and `OPERATOR.md` priorities. Deliver to the answering chat; a routine uses its resolved `destination`.
+3. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary"/"what happened today", or no flag).
+4. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns. After context, run nothing before dispatch except morning micro-queue aging when `agent_steps` is `true`.
+5. For a no-flag brief, read only `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit morning <selector>`, compose in main, and never dispatch.
 
-Read these bounded digests fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`). For morning, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
+Read the digest fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`) and the exact selector arguments (or none). For a morning with `agent_steps: true`, first age the micro-proposal queue (§ --morning, Decision questions), pass its `new` and `renudged` entries as `decision_items` (`{"key": "micro-proposal-pending:<id>", "text": "<question>"}`), and also name `${CLAUDE_PLUGIN_ROOT}/skills/heartbeat/decision-refresh.md`.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 
-Scheduled readers use `brief-digest` for bounded task, duty and proposal data. Keep the project root as the working directory, including in the runner; do not change into `plugin_root`. Never open frozen session archives. If the runner fails or returns malformed JSON, read `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` and follow it for the active mode.
+Every mode uses `brief-digest` for bounded task, duty and proposal data. Keep the project root as the working directory, including in the runner; do not change into `plugin_root`. Never open frozen session archives. If the runner fails or returns malformed JSON, read `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` and follow it for the active mode with the same selector.
 
 **Eval runner return schema** — the runner returns a JSON object conforming to this block. The schema is byte-identical in `reference.md` (producer) and here (consumer); a contract test asserts this.
 
@@ -57,7 +57,7 @@ Compose `runner.waiting` entries in the operator's language from `title`, `state
 
 ### --morning (routine mode)
 
-**Delivery:** Write the full composed brief text (before any push-fallback single-line condensing) to `.hermit/state/last-brief.json` as `{"kind":"morning","text":"<brief text>","generated_at":"<now, ISO>"}`, so the dashboard's "latest brief" section can pick it up. Then refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, append a final line `📎 <url>`. Then deliver the brief to the operator (see Always-On Delivery Rule above).
+**Delivery:** For `agent_steps: false`, skip the `last-brief.json` write and dashboard refresh and deliver per the Always-On Delivery Rule. For `agent_steps: true`, write the full composed brief text (before any push-fallback single-line condensing) to `.hermit/state/last-brief.json` as `{"kind":"morning","text":"<brief text>","generated_at":"<now, ISO>"}`, so the dashboard's "latest brief" section can pick it up. Then refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, append a final line `📎 <url>`. Then deliver the brief to the operator (see Always-On Delivery Rule above).
 
 Emphasize forward-looking content. Compose from runner JSON (see Dispatch above) and live main-session data:
 - **Pending proposals:** use `runner.pending_proposals`
@@ -69,9 +69,9 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 - If `config.always_on` is `true`: frame as "what happened overnight (activity since evening routine)"
 - If `config.always_on` is `false`: frame as "here's where things stand"
 - **Decisions:** use `runner.decisions` for what changed and why; omit the line when the array is empty
-- If `config.always_on` is `true`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/check-upgrade.sh" "${CLAUDE_PLUGIN_ROOT}"` from the project root; output nothing for `OK`. For `status: "upgrade_available"`, append `⚠ Plugin update available: v<config_version> → v<plugin_version>, run /hermitd:hermit-evolve`. For `"stale_plugin_runtime"`, append `⚠ Stale plugin install` with both versions and the fix: update the `claude plugin list` entry loaded from `plugin_root` with `claude plugin update hermitd@hermitd --scope <its scope>`, then restart. Never call it an update or suggest evolve: it cannot help. (Interactive operators see it at resident startup.)
+- If `agent_steps` is `true` and `config.always_on` is `true`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/check-upgrade.sh" "${CLAUDE_PLUGIN_ROOT}"` from the project root; output nothing for `OK`. For `status: "upgrade_available"`, append `⚠ Plugin update available: v<config_version> → v<plugin_version>, run /hermitd:hermit-evolve`. For `"stale_plugin_runtime"`, append `⚠ Stale plugin install` with both versions and the fix: update the `claude plugin list` entry loaded from `plugin_root` with `claude plugin update hermitd@hermitd --scope <its scope>`, then restart. Never call it an update or suggest evolve: it cannot help. (Interactive operators see it at resident startup.)
 
-**Decision questions.** Before the morning dispatch, age the micro-proposal queue in one pass: run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit brief-cycle`. It reads `state/micro-proposals.json`, runs the whole lifecycle atomically (re-nudges `follow_up_count` 1 entries, expires `follow_up_count` ≥2 entries and records each expiry, prunes any entry whose `status` isn't `"pending"`), and prints one JSON line `{"new":[…],"renudged":[…],"expired":[…],"dropped":[…]}` — never hand-edit the file or read it separately. Render straight from that verdict, applying the runner's `refresh` entries by key:
+**Decision questions.** For `agent_steps: false`, skip this entire section. For `agent_steps: true`: Before the morning dispatch, age the micro-proposal queue in one pass: run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit brief-cycle`. It reads `state/micro-proposals.json`, runs the whole lifecycle atomically (re-nudges `follow_up_count` 1 entries, expires `follow_up_count` ≥2 entries and records each expiry, prunes any entry whose `status` isn't `"pending"`), and prints one JSON line `{"new":[…],"renudged":[…],"expired":[…],"dropped":[…]}` — never hand-edit the file or read it separately. Render straight from that verdict, applying the runner's `refresh` entries by key:
 - A `done` item (question or pending proposal) leaves its usual line and joins one final line: "Looks already done: <refresh texts>. Reply 'clear' to drop these." A `partial` item uses its refresh text in place of the question or title, keeping the reply hint. Every other item renders as below with its queued question, including every `new` and `renudged` entry when the runner fails or returns no `refresh`.
 - Each `new` entry (first display): append as a final line. Without `options`: `MP-YYYYMMDD-N (tier N): [question]` — Reply `"MP-YYYYMMDD-N yes"` or `"MP-YYYYMMDD-N no"`. (Bare `yes`/`no` accepted when only one pending.) With `options`: render them numbered under the question and reply hint `Reply "MP-YYYYMMDD-N <number or label>"` (bare accepted when only one pending).
 - Each `renudged` entry: append with softer framing: "Still waiting on MP-YYYYMMDD-N: [question] — ignore again to drop it" (if it carries `options`, re-render them numbered beneath it so the choices aren't lost on the re-nudge).
@@ -81,7 +81,7 @@ Emphasize forward-looking content. Compose from runner JSON (see Dispatch above)
 
 ### --evening (routine mode)
 
-**Delivery:** Write the full composed brief text (before any push-fallback single-line condensing) to `.hermit/state/last-brief.json` as `{"kind":"evening","text":"<brief text>","generated_at":"<now, ISO>"}`, so the dashboard's "latest brief" section can pick it up. Then refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, append a final line `📎 <url>`. Then deliver the brief to the operator (see Always-On Delivery Rule above).
+**Delivery:** For `agent_steps: false`, skip the `last-brief.json` write and dashboard refresh and deliver per the Always-On Delivery Rule. For `agent_steps: true`, write the full composed brief text (before any push-fallback single-line condensing) to `.hermit/state/last-brief.json` as `{"kind":"evening","text":"<brief text>","generated_at":"<now, ISO>"}`, so the dashboard's "latest brief" section can pick it up. Then refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, append a final line `📎 <url>`. Then deliver the brief to the operator (see Always-On Delivery Rule above).
 
 Emphasize backward-looking content. Compose from runner JSON (see Dispatch above) and live main-session data:
 - **Tasks today:** use `runner.tasks_today`.
@@ -97,13 +97,14 @@ Current behavior — general purpose summary as described below.
 
 ## Plan
 
-1. If open resident records exist, summarize their titles, results, and waiting reasons. Read normalized outcomes with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --recent --limit 5` when needed.
-2. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 1` and summarize the record. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `closed_at`, else `opened_at`, for the date, empty tags, the title for working on, and the waiting reason or open work for next. If there is no record history, say "No task history yet." An empty record list never falls back to archived reports.
-3. Include the duty digest in routine briefs; for a default brief, surface only a duty whose requested and observed state disagree. Before surfacing one, check it against the duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` § Inputs.
+1. Use only the morning digest read in Dispatch. If `open` rows exist, summarize their titles, states and waiting reasons. Name a `delegated` row as work a helper or worker is running. Never describe it as queued work or an operator wait.
+2. Otherwise summarize `latest`. Map `done` to `completed`, waiting work to `blocked`, and other outcomes to `partial`, naming the actual outcome in the summary. Use `closed_at`, else `opened_at`, for the date, empty tags, the title for working on, and the waiting reason or open work for next. If `latest` is null, say "No task history yet." Never fall back to archived reports.
+3. Surface only a duty from `duties` whose requested and observed state disagree. Before surfacing one, check it against the duty rule in `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md` § Inputs.
+4. When `proposals` is nonempty, append `Proposals: N auto-detected proposal(s) pending review` using its row count. Do not scan proposal files or make other data reads.
 
 ## Output Format
 
-One line per field below, plus an optional line for pending proposals (see Rules below):
+One line per field below, plus an optional line for pending proposals (see Plan step 4):
 
 ```
 [Brief] YYYY-MM-DD | [tags if present]
@@ -121,8 +122,7 @@ Next: description of next action (or "No next action" if all done)
 - Include tags in the header only if they exist
 - For "Done", list only records with outcome `done`. Label cancelled and unconfirmed outcomes explicitly.
 - For "Next", name an open record or its waiting reason; do not infer success from a result awaiting confirmation.
-- Open, waiting and queued items come only from records read this turn (runner JSON, the dispatch task list, or `task-report` output). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
-- After composing the 5-line output: scan `.hermit/proposals/` for files with `source: auto-detected` and `status: proposed` (read `status:` and `source:` from the **leading `---` YAML frontmatter block only** — do not count files where those phrases appear in the proposal body text; skip files with no frontmatter block). If any exist, append a 6th line: `Proposals: N auto-detected proposal(s) pending review`
+- Open, waiting and queued items come only from records read this turn (runner JSON or the plain brief digest). Earlier briefs (`state/last-brief.json`, `compiled/brief-*`) and earlier conversation are never sources for them; a closed record is never listed as open, waiting or queued.
 
 ## Daily Summary Format
 
