@@ -66,7 +66,7 @@ async function main(): Promise<void> {
         const chat = await lookupChat(dir, config, opts.chat_id, true);
         if (!chat) throw new Error('lookup_failed');
         if (isThreadChannelType(chat) && threadRecords(dir).some(record => record.conversation === conversationKey(opts.source, chatId))) {
-          const parent = chat.parent_id ? await lookupChat(dir, config, chat.parent_id) : null;
+          const parent = chat.parent_id ? await lookupChat(dir, config, chat.parent_id, true) : null;
           printJson(isGuildChannelType(parent)
             ? { status: 'thread_busy', chat_id: chat.parent_id }
             : { status: 'thread_busy', reason: 'no_top_level' });
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
       }
       const key = conversationKey(opts.source, chatId, thread);
       checkKey(key);
-      if (thread && opts.thread_id && threadRecords(dir).some(record => record.conversation === key)) {
+      if (thread && threadRecords(dir).some(record => record.conversation === key)) {
         printJson({ status: 'thread_busy', chat_id: chatId });
         return;
       }

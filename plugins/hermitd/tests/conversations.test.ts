@@ -236,6 +236,7 @@ test('attribute thread refuses an open record but reuses a closed thread', async
   const { id } = mutateTask(dir, 'open', undefined, { requester: 'operator', conversation: 'slack:chat~m1', title: 'First', done: 'Done' }, '') as { id: string };
   const args = ['thread-open', '--source', 'slack', '--chat-id', 'chat', '--thread-id', 'm1', '--message-id', 'm2', '--name', 'Second'];
   expect(await cli(dir, args)).toEqual({ code: 0, stdout: '{"status":"thread_busy","chat_id":"chat"}\n' });
+  expect(await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'chat', '--message-id', 'm1', '--name', 'Second'])).toEqual({ code: 0, stdout: '{"status":"thread_busy","chat_id":"chat"}\n' });
   expect(fs.existsSync(path.join(dir, 'state/intake-acks.jsonl'))).toBe(false);
   mutateTask(dir, 'cancel', id, { actor: 'operator', 'reason-stdin': true }, 'Done');
   const result = await cli(dir, args);

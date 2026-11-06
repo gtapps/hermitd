@@ -1,5 +1,6 @@
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { classifyChat, needsThread } from './lib/channel-chats';
+import { isKey } from './lib/conversation-key';
 import { readSettledConfig } from './lib/config-read';
 import { exitError } from './lib/cli';
 import { listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
@@ -47,7 +48,7 @@ async function main(): Promise<void> {
   } else {
     const input = verb === 'note' || verb === 'lesson' || flags['note-stdin'] || flags['result-stdin'] || flags['reason-stdin'] ? await Bun.stdin.text() : '';
     let threadConversation = false;
-    if (verb === 'open' && typeof flags.conversation === 'string') {
+    if (verb === 'open' && isKey(flags.conversation)) {
       const config = readSettledConfig(dir);
       const [source, destination] = flags.conversation.split(':');
       const [chatId, thread] = destination.split('~');
