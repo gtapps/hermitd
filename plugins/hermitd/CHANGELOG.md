@@ -6,6 +6,10 @@
 
 - Text pasted into the takeover keyboard strip on a phone or desktop is typed into the remote browser
 
+### Changed
+
+- The agent moves to its browser when a web fetch fails, is refused or returns an empty or JavaScript-only page, and says how to turn the browser on when it is off
+
 ### Fixed
 
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat

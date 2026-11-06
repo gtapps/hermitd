@@ -1,11 +1,11 @@
 ---
 name: browser
-description: Use the hermit's own browser for web tasks, or the operator's Chrome when their account is needed.
+description: Drives the agent's own browser, or the operator's Chrome for their accounts. Use when WebFetch or WebSearch fails, times out, or returns a 403, an empty page or a JavaScript-only shell; when a page needs clicks, forms, scrolling or sign-in; or when a screenshot or exact rendered text is needed. Public read-only lookups start with WebSearch or WebFetch.
 ---
 
 # Browser
 
-Read the top-level `browser` object in config. `browser.enabled` defaults to true and `browser.default` to `agent-browser`. Follow `browser.default` for ordinary tasks; the operator's own account uses Claude in Chrome only when `chrome: true` and its tools are available. Never switch browsers after a failure: report the blocker and wait. Each managed command on Docker and hosts is `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts`; never invoke the operator’s own binary.
+Read the top-level `browser` object in config. `browser.enabled` defaults to true and `browser.default` to `agent-browser`. Follow `browser.default` for ordinary tasks; the operator's own account uses Claude in Chrome only when `chrome: true` and its tools are available. Never switch between the agent's browser and the operator's Chrome, or back to a fetch tool, after a browser failure: report the blocker and wait. When `browser.enabled` is false and Claude in Chrome is unavailable, follow the `disabled` row below and do not retry the fetch. Treat a captcha or bot-check page like a login page: a person clears it through Take over in the agent's browser, or report the blocker. Opening a page WebFetch could not pass in the agent's browser is the normal escalation; never route around the check through the operator's Chrome, another fetch tool, another URL spelling, a cache or archive copy, or a fresh session. Each managed command on Docker and hosts is `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts`; never invoke the operator’s own binary.
 
 At a login in an anonymous `--session`, claim the shared profile first, then reopen the URL with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> open <url>`. Only then request sign-in, so Take over shows the correct page. Respect `busy` and `human` before reopening. On macOS, takeover is unsupported: use configured Claude in Chrome for the operator’s account or report the blocker. Never request a login to an invisible anonymous page.
 
@@ -48,7 +48,7 @@ Handle wrapper results before continuing:
 | Result | Action |
 |---|---|
 | `installing` | Rerun after one minute, at most three tries, then report that installation is still pending. |
-| `disabled` | The operator declined the managed browser. Report that choice; use `/hermitd:hermit-settings` only if asked to change it. |
+| `disabled` | The operator turned the managed browser off. Say the page needs a browser, that the agent's browser is off, and that `/hermitd:hermit-settings browser` turns it on; change it only if asked. |
 | `browser_install_failed:<detail>` | Report the download or prerequisite failure; ask the operator to run `hermitd run browser-host`. Do not install packages from the task. |
 | `browser_sandbox_blocked` | Relay both fixes in the detail: terminal `hermitd run browser-host`, and the `bun */scripts/browser-agent.ts *` line in `sandbox.excludedCommands`. Never disable Chrome’s sandbox. |
 | `takeover_unsupported` | macOS has no phone takeover. Use configured Claude in Chrome for the operator’s account or report the blocker. |

@@ -1,0 +1,32 @@
+schema_version: "1.1"
+name: browser-docs-fetched
+description: 'A docs page that fetched fine is answered without the browser.'
+tags: [browser, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    What is the default request timeout in the example HTTP client? The docs are at https://docs.example.org/client/config
+    
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    # Client configuration
+    | Option | Default | Notes |
+    |---|---|---|
+    | timeout_ms | 30000 | Whole request, including retries |
+    | retries | 2 | Exponential backoff |
+    | user_agent | example-client/3 | Override per request |
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: no-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    min: 0
+    max: 0
+    weight: 3

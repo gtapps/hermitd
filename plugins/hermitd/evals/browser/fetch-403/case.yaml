@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: browser-fetch-403
+description: 'A fetch refused with 403 escalates to the agent browser.'
+tags: [browser, train]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    What does the Team plan cost per month on https://pricing.example.com/plans ?
+    
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    `Request failed with status code 403 Forbidden`
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: used-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    weight: 3
