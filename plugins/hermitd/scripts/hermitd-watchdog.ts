@@ -178,8 +178,8 @@ function writeJson(p: string, data: Json): void {
 }
 
 /** Append one audit line to watchdog-events.jsonl. */
-function appendEvent(action: string, reason: string, world: World = REAL_WORLD): void {
-  const line = JSON.stringify({ ts: worldStamp(world), action, reason }) + '\n';
+function appendEvent(action: string, reason: string, world: World = REAL_WORLD, extra: Json = {}): void {
+  const line = JSON.stringify({ ts: worldStamp(world), action, reason, ...extra }) + '\n';
   try {
     const eventsPath = path.join(world.paths.stateDir, 'watchdog-events.jsonl');
     ensureLedgerFile(eventsPath);
@@ -859,9 +859,9 @@ function copyOauthAccount(stagedDir: string): void {
 }
 
 /** Try-acquire lock, mark runtime, kill session, verify the old tree died, spawn hermitd-start.
- *  `resumable` is false for restarts someone asked for (cmdRestart: manual, login renewal),
- *  which start fresh as before; only restarts the watchdog detects resume. */
-async function doRestart(sessionName: string, reason: string, runtime: Json, timezone: string, resumable = true): Promise<void> {
+ *  `requested` is true for restarts someone asked for (cmdRestart: manual, login renewal):
+ *  they count as planned and resume without the loop guard. Detected restarts resume too. */
+async function doRestart(sessionName: string, reason: string, runtime: Json, timezone: string, requested = false): Promise<void> {
   if (!tryAcquireLifecycleLock()) {
     process.stderr.write('[watchdog] lifecycle lock held — backing off restart\n');
     return;
@@ -869,7 +869,7 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
 
   try {
     // Mark runtime before killing so resident-start recovery sees the reason
-    if (reason === 'upgrade' || reason === 'rules' || !resumable) {
+    if (reason === 'upgrade' || reason === 'rules' || requested) {
       runtime.planned_restart_at = new Date().toISOString();
     } else {
       runtime.last_error = 'unclean_shutdown';
@@ -906,15 +906,15 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     // Release before spawning hermitd-start (it re-acquires)
     releaseLock(LIFECYCLE_LOCK);
 
-    // Resume the conversation unless the restart was requested, there is none to
-    // resume, or a restart already happened inside the loop guard. hermitd-start still
-    // starts fresh when the transcript has no user turn (resolveResumeTarget).
+    // Resume the conversation unless there is none to resume, or a detected restart
+    // already happened inside the loop guard (a requested restart skips the guard).
+    // hermitd-start still starts fresh when the transcript has no user turn
+    // (resolveResumeTarget).
     const id = runtime.cc_session_id;
     const ws = readWatchdogState();
     const sinceLast = typeof ws.last_restart_at === 'string' ? ageSecs(ws.last_restart_at) : null;
-    const initialSkip = !resumable ? 'requested'
-      : typeof id !== 'string' || !id.trim() ? 'no-session-id'
-      : sinceLast !== null && sinceLast < RESUME_LOOP_GUARD_SECS ? 'recent-restart'
+    const initialSkip = typeof id !== 'string' || !id.trim() ? 'no-session-id'
+      : !requested && sinceLast !== null && sinceLast < RESUME_LOOP_GUARD_SECS ? 'recent-restart'
       : null;
     ws.last_restart_at = worldStamp(REAL_WORLD);
     writeWatchdogState(ws);
@@ -933,15 +933,15 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     });
     child.on('error', (e) => process.stderr.write(`[watchdog] restart failed: ${e}\n`));
     child.unref();
-    // doctor-check.ts checkWatchdog reads `upgrade,`, `rules,` and `fresh: requested` from this reason.
-    appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`);
+    // doctor-check.ts checkWatchdog counts `upgrade,` and `rules,` reasons and `requested: true` as planned.
+    appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`, REAL_WORLD, requested ? { requested: true } : {});
     process.stderr.write(`[watchdog] attempting restart of "${sessionName}", reason: ${reason}\n`);
     // Only announce a restart attempt when the start binary is actually
     // present — a missing/ENOENT binary makes spawn fail asynchronously via the
     // 'error' handler above, after this synchronous path already returned, so
     // guard the push on the binary existing rather than on spawn's async result.
     // The lock is already released above, so a slow send never holds it.
-    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(resumable ? reason : 'requested', resumed, timezone));
+    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(requested ? 'requested' : reason, resumed, timezone));
   } catch (e) {
     process.stderr.write(`[watchdog] restart failed: ${e}\n`);
   } finally {
@@ -2464,7 +2464,7 @@ async function cmdRestart(reason: string): Promise<void> {
   const sessionName = runtime.tmux_session || deriveSessionName(config);
   if (!sessionName) process.exit(0);
   OPERATOR_MESSAGES = loadMessages(HERMIT_ROOT, config.language);
-  await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', false);
+  await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', true);
 }
 
 export type UpgradeReadiness = { status: 'ready' } | { status: 'timeout'; reason: string };

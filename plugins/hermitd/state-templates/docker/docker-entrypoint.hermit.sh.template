@@ -553,12 +553,11 @@ fi
 
 # --- 5. Launch hermitd-start ---
 # HERMIT_RESUME is baked into the container's environment when `hermitd-docker
-# up|restart --resume` creates it, so `restart: unless-stopped` would replay the
-# opt-in on every daemon restart and host reboot — resuming without the size gate
-# the watchdog applies, and with no way for the operator to see which mode a
-# running container is in. Consume it once per container: the marker lives in the
-# writable layer, so a restart of this container sees it and a recreate (any
-# `hermitd-docker up`/`restart`, with or without --resume) does not.
+# up --resume` or `restart` (without --fresh) creates it, so `restart: unless-stopped`
+# would replay it on every daemon restart and host reboot, with no way for the
+# operator to see which mode a running container is in. Consume it once per
+# container: the marker lives in the writable layer, so a restart of this container
+# sees it and a recreate (any `hermitd-docker up`/`restart`) does not.
 HERMIT_RESUME_MARKER=/tmp/.hermit-resume-consumed
 if [ "${HERMIT_RESUME:-0}" = "1" ] && [ ! -f "$HERMIT_RESUME_MARKER" ]; then
   : > "$HERMIT_RESUME_MARKER"

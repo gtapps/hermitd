@@ -1105,16 +1105,16 @@ describe('hermitd-docker up host tmux guard', () => {
     const stub = path.join(proj, '.stub');
     const dockerLog = path.join(stub, 'docker.log');
     fs.mkdirSync(stub);
-    write(path.join(stub, 'docker'), `#!/usr/bin/env bash\necho "$*" >> "${dockerLog}"\ncase "$*" in *" ps "*) echo hermit ;; esac\nexit 0\n`);
+    write(path.join(stub, 'docker'), `#!/usr/bin/env bash\necho "$*" >> "${dockerLog}"\ncase "$*" in *" ps "*) echo hermit ;; *"up -d"*) echo "HERMIT_RESUME=\${HERMIT_RESUME:-unset}" >> "${dockerLog}" ;; esac\nexit 0\n`);
     write(path.join(stub, 'tmux'), '#!/usr/bin/env bash\n[ "$1 $2 $3" = "has-session -t =hermit-demo" ] && exit 0\nexit 1\n');
     write(path.join(stub, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
     for (const f of ['docker', 'tmux', 'sleep']) fs.chmodSync(path.join(stub, f), 0o755);
     try {
       const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
-        args: [cmd], cwd: proj, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}`, ...env },
+        args: cmd.split(' '), cwd: proj, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}`, ...env },
       });
       const calls = fs.existsSync(dockerLog) ? fs.readFileSync(dockerLog, 'utf8') : '';
-      return { ...r, booted: calls.includes('up -d') };
+      return { ...r, booted: calls.includes('up -d'), resume: /HERMIT_RESUME=(\S+)/.exec(calls)?.[1] };
     } finally { wd.cleanup(); }
   }
 
@@ -1138,6 +1138,14 @@ describe('hermitd-docker up host tmux guard', () => {
     expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' })).booted).toBe(true);
     expect((await up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' })).booted).toBe(true);
     expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' })).booted).toBe(true);
+  });
+
+  test('restart resumes by default, --fresh starts clean, up stays fresh', async () => {
+    const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
+    expect((await up(docker, {}, 'restart')).resume).toBe('1');
+    expect((await up(docker, {}, 'restart --resume')).resume).toBe('1');
+    expect((await up(docker, {}, 'restart --fresh')).resume).toBe('0');
+    expect((await up(docker)).resume).toBe('unset');
   });
 });
 

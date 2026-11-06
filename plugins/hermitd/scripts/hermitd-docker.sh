@@ -464,13 +464,15 @@ case "$CMD" in
 
   restart)
     _require_running
+    # Restart keeps the conversation unless --fresh; --resume is accepted as a no-op.
+    export HERMIT_RESUME=1
     RESTART_ARGS=()
     for arg in "$@"; do
-      if [ "$arg" = "--resume" ]; then
-        export HERMIT_RESUME=1
-      else
-        RESTART_ARGS+=("$arg")
-      fi
+      case "$arg" in
+        --fresh) export HERMIT_RESUME=0 ;;
+        --resume) ;;
+        *) RESTART_ARGS+=("$arg") ;;
+      esac
     done
     # Guarded for the same reason as `up` above — bash < 4.4 rejects an empty
     # array expansion under `set -u`.

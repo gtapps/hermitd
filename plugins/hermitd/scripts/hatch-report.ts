@@ -173,7 +173,7 @@ export function finalData(o: Observed, deployment: string): Json {
     // A re-init of a hermit docker-setup already built only needs the container
     // to pick up the new config.
     steps.push(o.dockerSetUp
-      ? { run: '!hermitd restart', purpose: 'restart_container' }
+      ? { run: '!hermitd restart --fresh', purpose: 'restart_container' }
       : { run: '/hermitd:docker-setup', purpose: 'build_and_start_container' });
     runningAfter = steps.length;
     // docker-setup pairs channels itself; a re-init that adds one pairs it after the restart.

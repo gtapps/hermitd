@@ -146,7 +146,7 @@ describe('final next-steps keys off deployment', () => {
     const root = hatched();
     fs.writeFileSync(path.join(root, 'docker-compose.hermit.yml'), 'services: {}\n');
     const out = finalData(observe(root), 'docker');
-    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd restart']);
+    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd restart --fresh']);
     expect(out.running_after_step).toBe(2);
   });
 
@@ -154,7 +154,7 @@ describe('final next-steps keys off deployment', () => {
     const root = hatched(discord);
     fs.writeFileSync(path.join(root, 'docker-compose.hermit.yml'), 'services: {}\n');
     const out = finalData(observe(root), 'docker');
-    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd restart', '/hermitd:channel-setup']);
+    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd restart --fresh', '/hermitd:channel-setup']);
     expect(out.running_after_step).toBe(2);
   });
 

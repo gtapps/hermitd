@@ -55,6 +55,13 @@ test('failed stop prevents restart from starting', async () => {
   const f = fixture(); expect((await f.run(['restart', 'demo'], f.root, { WRAPPER_EXIT: '7' })).exitCode).toBe(7);
   expect(f.calls()).toBe(`stop|${f.p}|\n`);
 });
+test('restart resumes by default; --fresh starts clean; --resume is a no-op', async () => {
+  const f = fixture();
+  expect((await f.run(['restart', 'demo'])).exitCode).toBe(0);
+  expect((await f.run(['restart', 'demo', '--fresh'])).exitCode).toBe(0);
+  expect((await f.run(['restart', 'demo', '--resume'])).exitCode).toBe(0);
+  expect(f.calls()).toBe(`stop|${f.p}|\nstart|${f.p}|--resume\nstop|${f.p}|\nstart|${f.p}|\nstop|${f.p}|\nstart|${f.p}|--resume\n`);
+});
 test('interactive status and attach', async () => {
   const f = fixture(); write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');
   expect(JSON.parse((await f.run(['status', 'demo', '--json'])).stdout).runtime).toBe('interactive');

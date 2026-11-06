@@ -593,12 +593,40 @@ describe('restart subcommand', () => {
       expect(events).toContain('restart');
       expect(readJson(state(h, 'runtime.json')).planned_restart_at).toBeString();
       expect(readJson(state(h, 'runtime.json')).last_error).not.toBe('unclean_shutdown');
-      expect(events).toContain('fresh: requested'); // doctor checkWatchdog keys planned restarts on this
+      expect(JSON.parse(events.trim().split('\n').pop()!).requested).toBe(true); // doctor checkWatchdog counts it as planned
       expect(await waitForStartMarker(h)).toBe(true);
       // The operator notice names a requested restart, whatever reason was passed.
       expect(stub.requests.length).toBe(1);
       expect(stub.requests[0].body.text).toContain('a restart was requested');
       expect(stub.requests[0].body.text).not.toContain('frozen');
+    } finally {
+      stub.stop();
+    }
+  }), 45000);
+
+  test('restart with a resumable transcript inside the loop guard → resumes, restored notice', withHermit(async (h) => {
+    writeConfig(h);
+    configureChannel(h);
+    const transcriptEnv = seedTranscript(h, CC_SESSION_ID, ['{"type":"user"}']);
+    const { buildResidentPrompt } = await import('../scripts/lib/resident-prompt');
+    fs.writeFileSync(state(h, 'resident-system-prompt.md'), buildResidentPrompt(h.dir));
+    patchRuntime(h, { cc_session_id: CC_SESSION_ID });
+    fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({ last_restart_at: isoAgo(5 / 60) }) + '\n');
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    const stub = startHttpStub();
+    try {
+      const r = await watchdog(h, 'restart', { env: { ...transcriptEnv, HERMIT_TELEGRAM_API_URL: stub.url } });
+      expect(r.exitCode).toBe(0);
+      expect(await waitForStartMarker(h)).toBe(true);
+      expect(fs.readFileSync(path.join(h.dir, 'hermit-start-args'), 'utf8').trim()).toBe(`--resume ${CC_SESSION_ID}`);
+      const event = JSON.parse(fs.readFileSync(eventsFile(h), 'utf-8').trim().split('\n').pop()!);
+      expect(event.reason).toContain(`resume ${CC_SESSION_ID}`);
+      expect(event.requested).toBe(true);
+      expect(readJson(state(h, 'runtime.json')).planned_restart_at).toBeString();
+      expect(stub.requests.length).toBe(1);
+      expect(stub.requests[0].body.text).toContain('a restart was requested');
+      expect(stub.requests[0].body.text).toContain('conversation is restored');
     } finally {
       stub.stop();
     }
@@ -3336,7 +3364,7 @@ test('doctor checkWatchdog: planned restarts (upgrade, requested) → ok, counte
   writeDoctorConfig(h);
   fs.writeFileSync(eventsFile(h), [
     { ts: isoAgoSeconds(0), action: 'restart', reason: 'upgrade, tree-verified, resume abc' },
-    { ts: isoAgoSeconds(0), action: 'restart', reason: 'reauth, tree-verified, fresh: requested' },
+    { ts: isoAgoSeconds(0), action: 'restart', reason: 'reauth, tree-verified, resume abc', requested: true },
   ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   setLastRun(h, new Date().toISOString());
   const w = await doctorWatchdogCheck(h);
@@ -5441,8 +5469,9 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
 });
 
 describe('restart resume', () => {
-  // Watchdog-detected restarts (a dead session on a `run` tick) resume; a restart
-  // someone asked for through the `restart` subcommand always starts fresh.
+  // Watchdog-detected restarts (a dead session on a `run` tick) and restarts someone
+  // asked for through the `restart` subcommand both resume; only detected ones obey
+  // the loop guard.
   const scenarios: Record<string, { expected: string; via: 'run' | 'restart' }> = {
     'default': { expected: 'resume', via: 'run' },
     'no-session-id': { expected: 'fresh: no-session-id', via: 'run' },
@@ -5450,7 +5479,8 @@ describe('restart resume', () => {
     'prompt-changed': { expected: 'fresh: prompt-changed', via: 'run' },
     'recent-restart': { expected: 'fresh: recent-restart', via: 'run' },
     'compact-off-large-context': { expected: 'resume', via: 'run' },
-    'requested': { expected: 'fresh: requested', via: 'restart' },
+    'requested': { expected: 'resume', via: 'restart' },
+    'requested-recent-restart': { expected: 'resume', via: 'restart' },
   };
   for (const [scenario, { expected, via }] of Object.entries(scenarios)) {
     test(scenario, withHermit(async (h) => {
@@ -5469,7 +5499,7 @@ describe('restart resume', () => {
       const priorRestart = isoAgo(5 / 60);
       fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
         consecutive_stale: 2, last_pane_hash: 'abc',
-        ...(scenario === 'recent-restart' ? { last_restart_at: priorRestart } : {}),
+        ...(scenario.endsWith('recent-restart') ? { last_restart_at: priorRestart } : {}),
       }) + '\n');
       writeFakeTmux(h, via === 'run' ? 1 : 0);
       writeFakePgrep(h, 1);
