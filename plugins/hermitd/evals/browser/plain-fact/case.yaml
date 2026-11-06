@@ -1,0 +1,21 @@
+schema_version: "1.1"
+name: browser-plain-fact
+description: 'A plain fact question does not open the browser.'
+tags: [browser, train]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    Quick one: what year was the Eiffel Tower completed?
+graders:
+  - name: no-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    min: 0
+    max: 0
+    weight: 3

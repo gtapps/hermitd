@@ -207,7 +207,7 @@ See [Always-On Operations](always-on-ops.md) for tmux setup and operational deta
 
 ## Browser Tasks
 
-Every hermit has its own managed browser by default, on Docker, Linux/WSL2 tmux and macOS. Ask for a public page or use `/hermitd:browser`; the operator’s own `agent-browser` is untouched. Hatch asks no browser question in Quick. Advanced can decline it and choose a default browser. Existing hermits receive the browser through upgrade; a Dockerfile already installing `agent-browser` stays opted out with instructions for enabling it.
+Every hermit has its own managed browser by default, on Docker, Linux/WSL2 tmux and macOS. Public pages are read with web fetch first; the agent moves to its browser when a fetch fails or a page needs clicks, forms or sign-in. Use `/hermitd:browser` to start it directly; the operator’s own `agent-browser` is untouched. Hatch asks no browser question in Quick. Advanced can decline it and choose a default browser. Existing hermits receive the browser through upgrade; a Dockerfile already installing `agent-browser` stays opted out with instructions for enabling it.
 
 Hosts download pinned, checksum-verified browser files into versioned plugin data folders, about 500 MB on first use. When packages, libraries or Chrome’s sandbox prerequisite are missing, run `hermitd run browser-host` once in the host terminal. It uses sudo only for system prerequisites. Linux hosts restricting unprivileged user namespaces need its AppArmor profile. Chrome keeps its sandbox on hosts; see the [host setup details](../skills/browser/host-setup.md) and [Claude Code sandbox configuration](https://code.claude.com/docs/en/sandboxing).
 

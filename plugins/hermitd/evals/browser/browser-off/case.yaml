@@ -1,0 +1,29 @@
+schema_version: "1.1"
+name: browser-browser-off
+description: 'With the managed browser off, a JavaScript-only page gets an explanation and the way to turn it on.'
+tags: [browser, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what the hermit returns right now. Use it as the result; every other step of the skill runs as written.
+    - config.json: browser.enabled=false, chrome=false (Claude in Chrome is not configured).
+    - browser-agent.ts (any command): {"status":"disabled"}
+    </system-reminder>
+    List the opening hours shown on https://shop.example.com/stores/lisbon
+    
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    <html><head><title>Shop</title></head><body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div><script src="/static/js/main.4f2a.js"></script></body></html>
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: explains-browser-off
+    type: llm
+    criteria: 'PASS if the reply says the page needs a browser, that its browser is turned off or disabled, and that it can be turned on in the agent''s settings (for example /hermitd:hermit-settings browser). FAIL if it lists opening hours, guesses them, or omits that the browser is off.'
+    weight: 3
