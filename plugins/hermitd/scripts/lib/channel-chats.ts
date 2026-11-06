@@ -93,6 +93,17 @@ export async function lookupChat(hermitDir: string, config: Json, chatId: string
   return await lookup(hermitDir, config, 'chats', chatId, retryError) as Chat | null;
 }
 
+export type ThreadParent = { status: 'none' } | { status: 'public'; parent: string } | { status: 'unresolved' };
+
+export async function threadParent(hermitDir: string, config: Json, source: string, chatId: string): Promise<ThreadParent> {
+  if (source !== 'discord') return { status: 'none' };
+  const chat = await lookupChat(hermitDir, config, chatId, true);
+  if (!chat) return { status: 'unresolved' };
+  return (chat.type === 10 || chat.type === 11) && chat.parent_id
+    ? { status: 'public', parent: chat.parent_id }
+    : { status: 'none' };
+}
+
 export async function lookupGuildRoles(hermitDir: string, config: Json, guildId: string): Promise<GuildRoles | null> {
   if (!config?.channels?.discord?.bot_user_id) return null;
   return await lookup(hermitDir, config, 'guilds', guildId) as GuildRoles | null;

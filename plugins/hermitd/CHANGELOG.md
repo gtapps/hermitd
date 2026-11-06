@@ -8,11 +8,15 @@
 
 ### Changed
 
+- A brief sent to or asked for in a team chat, or the home chat on a non-technical profile, covers only that chat and its public threads; the maintainer chat, a technical home chat and the terminal still see everything
+
 - `hermitd restart` keeps the conversation by default on host and Docker; `hermitd restart --fresh` starts a clean one
 - Login renewals and `hermitd-watchdog restart` keep the conversation and are no longer subject to the one-hour restart guard
 - The agent moves to its browser when a web fetch fails, is refused or returns an empty or JavaScript-only page, and says how to turn the browser on when it is off
 
 ### Fixed
+
+- Briefs list results and waits on work a spawned session or worker holds
 
 - A task thread holds one open task, and separate work asked in it opens its own top-level thread
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat

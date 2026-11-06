@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
-import { lookupChat, lookupGuildRoles, createThread, classifyChat } from '../scripts/lib/channel-chats';
+import { lookupChat, lookupGuildRoles, createThread, classifyChat, threadParent } from '../scripts/lib/channel-chats';
 
 test.serial('Discord metadata caches success, errors, and retries errors after 24 hours', async () => {
   const wd = setupWorkdir();
@@ -137,6 +137,44 @@ test.serial('chat classifier resolves warm and cold Discord metadata and envelop
     expect(await classifyChat(dir, config, 'discord', 'failed', null)).toBe('shared');
     expect(await classifyChat(dir, config, 'telegram', '1', 'topic')).toBe('thread');
     expect(await classifyChat(dir, config, 'telegram', '1', null)).toBe('shared');
+  } finally {
+    if (previousStateDir === undefined) delete process.env.DISCORD_STATE_DIR;
+    else process.env.DISCORD_STATE_DIR = previousStateDir;
+    if (previousApi === undefined) delete process.env.HERMIT_DISCORD_API_URL;
+    else process.env.HERMIT_DISCORD_API_URL = previousApi;
+    server.stop(true);
+    wd.cleanup();
+  }
+});
+
+test.serial('thread parents include only public children and retry cached failures', async () => {
+  const wd = setupWorkdir();
+  const dir = path.join(wd.dir, '.hermit');
+  const tokenDir = path.join(wd.dir, 'discord');
+  fs.mkdirSync(tokenDir);
+  fs.writeFileSync(path.join(tokenDir, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+  const previousStateDir = process.env.DISCORD_STATE_DIR;
+  const previousApi = process.env.HERMIT_DISCORD_API_URL;
+  process.env.DISCORD_STATE_DIR = tokenDir;
+  const requests: string[] = [];
+  const server = Bun.serve({ port: 0, fetch(req) {
+    const id = new URL(req.url).pathname.split('/').pop()!;
+    requests.push(id);
+    if (id === 'failed') return new Response('', { status: 403 });
+    return Response.json({ type: Number(id), parent_id: 'parent' });
+  } });
+  process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
+  const config = { channels: { discord: { state_dir: tokenDir } } };
+  try {
+    expect(await threadParent(dir, config, 'telegram', '11')).toEqual({ status: 'none' });
+    expect(requests).toEqual([]);
+    for (const id of ['10', '11']) expect(await threadParent(dir, config, 'discord', id)).toEqual({ status: 'public', parent: 'parent' });
+    for (const id of ['12', '0', '4']) expect(await threadParent(dir, config, 'discord', id)).toEqual({ status: 'none' });
+    expect(await threadParent(dir, config, 'discord', 'failed')).toEqual({ status: 'unresolved' });
+    expect(await threadParent(dir, config, 'discord', 'failed')).toEqual({ status: 'unresolved' });
+    expect(requests.filter(id => id === 'failed')).toHaveLength(2);
+    delete process.env.DISCORD_STATE_DIR;
+    expect(await threadParent(dir, {}, 'discord', 'missing-token')).toEqual({ status: 'unresolved' });
   } finally {
     if (previousStateDir === undefined) delete process.env.DISCORD_STATE_DIR;
     else process.env.DISCORD_STATE_DIR = previousStateDir;

@@ -12,7 +12,7 @@ import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
 import { normalizeChannelSource, parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import {
-  isAllowedSender, isTrustedController, isPrimaryOperator, canCompleteAuthentication, recallScope, audienceVisible,
+  isAllowedSender, isTrustedController, isPrimaryOperator, canCompleteAuthentication, recallScope, audienceVisible, briefVisibility,
 } from '../scripts/lib/channel-auth';
 
 const scopeWorkdir = setupWorkdir();
@@ -332,4 +332,24 @@ describe('canCompleteAuthentication', () => {
     expect(authority({ allowed_users: ['a', 'b'] }, 'b')).toBe(false);
     expect(authority({ operators: ['b'], allowed_users: ['a', 'b'] }, 'b')).toBe(true);
   });
+});
+
+test('brief visibility expands only the selected public children', async () => {
+  const wd = setupWorkdir();
+  const dir = path.join(wd.dir, '.hermit');
+  fs.writeFileSync(path.join(dir, 'state/channel-chats.json'), JSON.stringify({ discord: { chats: {
+    PARENT: { type: 0 }, A: { type: 11, parent_id: 'PARENT' },
+    B: { type: 10, parent_id: 'PARENT' }, PRIVATE: { type: 12, parent_id: 'PARENT' },
+  } } }));
+  const records = ['PARENT', 'A', 'B', 'PRIVATE', 'PARENT~topic'].map(id => ({ id, audience: `discord:${id}` }));
+  records.push({ id: 'operator', audience: 'operator' });
+  const config = { channels: { discord: {} } };
+  try {
+    const parent = await briefVisibility(dir, config, 'discord:PARENT~topic', records);
+    expect(parent.visible.map(row => row.id)).toEqual(['PARENT', 'A', 'B', 'PARENT~topic']);
+    const thread = await briefVisibility(dir, config, 'discord:A', records);
+    expect(thread.visible.map(row => row.id)).toEqual(['PARENT', 'A']);
+    expect((await briefVisibility(dir, config, null, records)).visible).toEqual(records);
+    expect((await briefVisibility(dir, config, null, records)).unresolved).toEqual([]);
+  } finally { wd.cleanup(); }
 });
