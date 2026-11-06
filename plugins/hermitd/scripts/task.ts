@@ -1,5 +1,6 @@
 import { pinStateDirOrExit } from './lib/cc-compat';
-import { needsThread } from './lib/channel-chats';
+import { classifyChat, needsThread } from './lib/channel-chats';
+import { isKey } from './lib/conversation-key';
 import { readSettledConfig } from './lib/config-read';
 import { exitError } from './lib/cli';
 import { listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
@@ -46,12 +47,15 @@ async function main(): Promise<void> {
     result = taskStandup(dir, days);
   } else {
     const input = verb === 'note' || verb === 'lesson' || flags['note-stdin'] || flags['result-stdin'] || flags['reason-stdin'] ? await Bun.stdin.text() : '';
-    if (verb === 'open' && typeof flags.conversation === 'string' && !flags.conversation.includes('~')) {
+    let threadConversation = false;
+    if (verb === 'open' && isKey(flags.conversation)) {
       const config = readSettledConfig(dir);
-      const [source, chatId] = flags.conversation.split(':');
-      if (await needsThread(dir, config, source, chatId)) throw new Error('thread_required');
+      const [source, destination] = flags.conversation.split(':');
+      const [chatId, thread] = destination.split('~');
+      threadConversation = await classifyChat(dir, config, source, chatId, thread) === 'thread';
+      if (thread === undefined && await needsThread(dir, config, source, chatId)) throw new Error('thread_required');
     }
-    result = mutateTask(dir, verb, id, flags, input);
+    result = mutateTask(dir, verb, id, flags, input, threadConversation);
     if (verb === 'close') resolveProposalOnCheckClose(dir, id!, result as Record<string, unknown>);
   }
   console.log(JSON.stringify(result));

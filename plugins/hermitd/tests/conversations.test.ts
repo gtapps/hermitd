@@ -200,3 +200,46 @@ test('failed thread-open writes no intake ack', async () => {
   expect(result.code).toBe(1);
   expect(fs.existsSync(path.join(dir, 'state/intake-acks.jsonl'))).toBe(false);
 });
+
+for (const parentType of [0, 5, 15, null]) {
+  test(`busy Discord thread routes through parent type ${parentType} without side effects`, async () => {
+    const { mutateTask } = await import('../scripts/lib/tasks');
+    const dir = freshDir();
+    const tokenDir = path.join(dir, 'discord');
+    fs.mkdirSync(tokenDir, { recursive: true });
+    fs.writeFileSync(path.join(tokenDir, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { discord: { state_dir: tokenDir } } }));
+    mutateTask(dir, 'open', undefined, { requester: 'operator', conversation: 'discord:thread1', title: 'First', done: 'Done' }, '');
+    let posts = 0;
+    const server = Bun.serve({ port: 0, fetch(req) {
+      if (req.method === 'POST') posts++;
+      return Response.json(new URL(req.url).pathname === '/channels/thread1'
+        ? { type: 11, parent_id: parentType === null ? null : 'parent' }
+        : { type: parentType, parent_id: null });
+    } });
+    try {
+      const result = await cli(dir, ['thread-open', '--source', 'discord', '--chat-id', 'thread1', '--message-id', 'm1', '--name', 'Second'], { HERMIT_DISCORD_API_URL: server.url.toString().replace(/\/$/, ''), DISCORD_STATE_DIR: tokenDir });
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(parentType === 0 || parentType === 5
+        ? { status: 'thread_busy', chat_id: 'parent' }
+        : { status: 'thread_busy', reason: 'no_top_level' });
+      expect(posts).toBe(0);
+      expect(fs.existsSync(path.join(dir, 'state/intake-acks.jsonl'))).toBe(false);
+    } finally { server.stop(true); }
+  });
+}
+
+test('attribute thread refuses an open record but reuses a closed thread', async () => {
+  const { mutateTask } = await import('../scripts/lib/tasks');
+  const dir = freshDir();
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { slack: { attributes: { thread_id: 'thread_ts' } } } }));
+  const { id } = mutateTask(dir, 'open', undefined, { requester: 'operator', conversation: 'slack:chat~m1', title: 'First', done: 'Done' }, '') as { id: string };
+  const args = ['thread-open', '--source', 'slack', '--chat-id', 'chat', '--thread-id', 'm1', '--message-id', 'm2', '--name', 'Second'];
+  expect(await cli(dir, args)).toEqual({ code: 0, stdout: '{"status":"thread_busy","chat_id":"chat"}\n' });
+  expect(await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'chat', '--message-id', 'm1', '--name', 'Second'])).toEqual({ code: 0, stdout: '{"status":"thread_busy","chat_id":"chat"}\n' });
+  expect(fs.existsSync(path.join(dir, 'state/intake-acks.jsonl'))).toBe(false);
+  mutateTask(dir, 'cancel', id, { actor: 'operator', 'reason-stdin': true }, 'Done');
+  const result = await cli(dir, args);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ key: 'slack:chat~m1', chat_id: 'chat', reply: { thread_ts: 'm1' } });
+});
