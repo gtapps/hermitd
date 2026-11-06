@@ -162,8 +162,11 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (interactive && verb === 'stop') return wrapper(project, 'hermitd-stop', args);
   if (useDocker) return dockerScript(project, [verb === 'start' ? 'up' : verb === 'stop' ? 'down' : verb, ...args], hostInstall(project).installPath);
   if (verb === 'restart') {
+    // Restart keeps the conversation unless --fresh; --resume is accepted as a no-op.
+    const fresh = args.includes('--fresh');
+    const rest = args.filter((a) => a !== '--fresh' && a !== '--resume');
     const code = wrapper(project, 'hermitd-stop', []);
-    return code === 0 ? wrapper(project, 'hermitd-start', args) : code;
+    return code === 0 ? wrapper(project, 'hermitd-start', fresh ? rest : ['--resume', ...rest]) : code;
   }
   return wrapper(project, `hermitd-${verb}`, args);
 }

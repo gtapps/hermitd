@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Docker management CLI for hermit containers.
 # Usage: hermitd-docker <command> [args...]
-# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build]
+# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build] [--fresh]
 set -euo pipefail
 
 SCRIPT_DIR="$PWD/.hermit/bin"
 CONFIG="$SCRIPT_DIR/../config.json"
-CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]}"
+CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]}"
 shift
 
 if [ ! -f "$CONFIG" ]; then
@@ -464,13 +464,15 @@ case "$CMD" in
 
   restart)
     _require_running
+    # Restart keeps the conversation unless --fresh; --resume is accepted as a no-op.
+    export HERMIT_RESUME=1
     RESTART_ARGS=()
     for arg in "$@"; do
-      if [ "$arg" = "--resume" ]; then
-        export HERMIT_RESUME=1
-      else
-        RESTART_ARGS+=("$arg")
-      fi
+      case "$arg" in
+        --fresh) export HERMIT_RESUME=0 ;;
+        --resume) ;;
+        *) RESTART_ARGS+=("$arg") ;;
+      esac
     done
     # Guarded for the same reason as `up` above — bash < 4.4 rejects an empty
     # array expansion under `set -u`.
@@ -904,7 +906,7 @@ JSEOF
     ;;
 
   *)
-    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]" >&2
+    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]" >&2
     exit 1
     ;;
 esac

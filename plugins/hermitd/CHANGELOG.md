@@ -8,6 +8,8 @@
 
 ### Changed
 
+- `hermitd restart` keeps the conversation by default on host and Docker; `hermitd restart --fresh` starts a clean one
+- Login renewals and `hermitd-watchdog restart` keep the conversation and are no longer subject to the one-hour restart guard
 - The agent moves to its browser when a web fetch fails, is refused or returns an empty or JavaScript-only page, and says how to turn the browser on when it is off
 
 ### Fixed
