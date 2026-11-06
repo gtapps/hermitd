@@ -2076,11 +2076,11 @@ describe('brief delegation contract', () => {
     expect(skill).toContain('Use `closed_at`, else `opened_at`, for the date');
   });
 
-  test('chat-scoped briefs resolve context first and skip queue aging', () => {
+  test('briefs resolve context first and skip queue aging outside agent steps', () => {
     expect(skill).toContain('context <selector>` before any other step');
-    expect(skill).toContain('When its `scope` is `chat`, skip micro-proposal aging and decision questions');
-    expect(skill).toContain('For `scope: chat`, skip this entire section');
-    expect(refFile).toContain('For `scope: chat`, keep `duties`, `pending_proposals` and `operator_priorities` empty');
+    expect(skill).toContain('When its `agent_steps` is `false`, skip micro-proposal aging and decision questions');
+    expect(skill).toContain('For `agent_steps: false`, skip this entire section');
+    expect(refFile).toContain('For `agent_steps: false`, keep `duties`, `pending_proposals` and `operator_priorities` empty');
     expect(refFile).toContain('appending the mode and supplied selector');
   });
 

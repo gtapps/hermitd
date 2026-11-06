@@ -55,10 +55,6 @@ export function ownedTarget(entries: Json, id: string | undefined): { id: string
   return { id: chat.slice(0, at), chat_id: chat.slice(at + 1) };
 }
 
-export function briefTarget(config: Json, routineId: string): { id: string; chat_id: string } | null {
-  return ownedTarget(config.routines, routineId) ?? resolve(config.channels);
-}
-
 // A channel block is maintainer-eligible when it's enabled and carries a
 // non-empty maintainer_channel_id — the outbound-only second destination on the
 // same platform/bot token, used for technical/ops/spend content that should not

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { taskFixture } from './helpers/tasks';
 import { runScript } from './helpers/run';
 import { readTasks, encodeTask, type Task } from '../scripts/lib/tasks';
-import { briefDigest, type BriefMode } from '../scripts/lib/brief-digest';
+import { briefContext, briefDigest, type BriefMode } from '../scripts/lib/brief-digest';
 
 const reference = new Date('2026-10-20T12:00:00Z');
 function save(dir: string, task: Task) {
@@ -25,7 +25,7 @@ test('empty install and CLI mode and argument contracts', async () => {
       const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, mode] });
       expect(result.exitCode).toBe(0);
       const row = JSON.parse(result.stdout);
-      expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'latest', 'proposals', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'records', 'open', 'decisions', 'duties', 'omitted']);
+      expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'agent_steps', 'latest', 'proposals', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'agent_steps', 'records', 'open', 'decisions', 'duties', 'omitted']);
       expect(row.open).toEqual([]);
       expect(mode === 'morning' ? row.latest : row.records).toEqual(mode === 'morning' ? null : []);
     }
@@ -196,6 +196,7 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     }
     const digest = await briefDigest(f.dir, 'daily', reference, { routine: 'group' });
     expect(digest.scope).toBe('chat');
+    expect(digest.agent_steps).toBe(false);
     if (!('records' in digest)) throw new Error('Expected daily records');
     expect(digest.open.map(row => row.id)).toEqual([0, 1, 2, 3].map(i => `T-20261020-10000${i}`));
     expect(digest.records).toHaveLength(4);
@@ -211,7 +212,7 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     for (const args of [['context', '--routine', 'group'], ['context', '--chat', 'discord:group']]) {
       const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
       expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual({ scope: 'chat', destination: 'discord:group' });
+      expect(JSON.parse(result.stdout)).toEqual({ scope: 'chat', agent_steps: false, destination: 'discord:group' });
     }
     for (const args of [['context', '--routine', 'missing'], ['morning', '--chat', 'bad'], ['morning', '--chat', 'discord:group', '--routine', 'group']]) {
       const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
@@ -219,6 +220,30 @@ test('brief selectors scope all record sections and suppress agent-wide sections
       expect(JSON.parse(result.stdout)).toHaveProperty('error');
     }
     f.put('config.json', { operator_profile: 'non-technical', channels: { discord: { default_chat_id: 'group' } } });
-    expect((await briefDigest(f.dir, 'morning', reference, { chat: 'discord:group' })).scope).toBe('chat');
+    const home = await briefDigest(f.dir, 'morning', reference, { chat: 'discord:group~topic' });
+    expect(home.scope).toBe('chat');
+    expect(home.agent_steps).toBe(true);
+    expect(await briefContext(f.dir, { chat: 'discord:group' })).toEqual({ scope: 'chat', agent_steps: true, destination: 'discord:group' });
+  } finally { f.cleanup(); }
+});
+
+test('scoped briefs skip closed unresolved records and bound morning candidates to recent closed work', async () => {
+  const f = taskFixture();
+  try {
+    const base = await seed(f);
+    f.put('config.json', { channels: { discord: { default_chat_id: 'home' } }, routines: [{ id: 'group', chat: 'discord:group' }] });
+    const chats: Record<string, unknown> = { group: { type: 0 } };
+    const closed = (i: number, audience: string) => ({ ...base, id: `T-20261019-${String(100000 + i)}`, audience, status: 'closed' as const,
+      opened_at: '2026-10-19T08:00:00Z', created: '2026-10-19T08:00:00Z', closed_at: `2026-10-19T${String(9 + Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00Z`,
+      closed_by: 'confirmed' as const, closed_reason: 'done' });
+    save(f.dir, closed(0, 'discord:group'));
+    for (let i = 1; i <= 20; i++) { chats[`other${i}`] = { type: 0 }; save(f.dir, closed(i, `discord:other${i}`)); }
+    save(f.dir, closed(21, 'discord:gone'));
+    save(f.dir, { ...base, id: 'T-20261020-110000', audience: 'discord:gone-open' });
+    f.put('state/channel-chats.json', { discord: { chats } });
+    const morning = await briefDigest(f.dir, 'morning', reference, { routine: 'group' });
+    if (!('latest' in morning)) throw new Error('Expected morning latest');
+    expect(morning.latest).toBeNull();
+    expect(morning.omitted).toMatchObject({ open: 1, records: 0 });
   } finally { f.cleanup(); }
 });

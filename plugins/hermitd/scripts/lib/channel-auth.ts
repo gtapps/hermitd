@@ -172,7 +172,7 @@ export async function briefVisibility<T extends { id: string; audience: string }
   if (selected === null) return { scope: null, visible: records, unresolved: [] };
   const [source, selectedChat] = selected.split(':');
   const chatId = selectedChat.split('~')[0];
-  if (source === 'discord') await lookupChat(hermitDir, config, chatId);
+  if (source === 'discord') await lookupChat(hermitDir, config, chatId, true);
   const scope = recallScope(config, source, chatId, hermitDir);
   const shown = new Set<T>();
   const indirect: { record: T; key: string }[] = [];

@@ -6,9 +6,9 @@ Return structured JSON for the calling skill to compose and deliver.
 
 The caller supplies `plugin_root` (absolute) and `mode` (`morning`, `evening`, `daily`), plus the exact selector arguments (`--routine <id>`, `--chat <key>`, or none).
 
-Run `brief-digest` (Commands) once, appending the mode and supplied selector. Keep the project root as the working directory; `plugin_root` locates the script, while `.hermit` is the project's state directory. This is the only task, duty and proposal data read. Do not open task files, proposal files, caches or frozen session archives to supplement it. Only when the digest has `scope: agent`, for morning priorities also read `.hermit/OPERATOR.md` if present. Apply the decision refresh below when requested.
+Run `brief-digest` (Commands) once, appending the mode and supplied selector. Keep the project root as the working directory; `plugin_root` locates the script, while `.hermit` is the project's state directory. This is the only task, duty and proposal data read. Do not open task files, proposal files, caches or frozen session archives to supplement it. Only when the digest has `agent_steps: true`, for morning priorities also read `.hermit/OPERATOR.md` if present. Apply the decision refresh below when requested.
 
-For `scope: chat`, keep `duties`, `pending_proposals` and `operator_priorities` empty; skip decision refresh and priorities reads.
+For `agent_steps: false`, keep `duties`, `pending_proposals` and `operator_priorities` empty; skip decision refresh and priorities reads.
 
 Use the digest's `duties` for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` `last_event` is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy. Return each duty as one line with its name, requested settings and observed liveness in `duties`.
 
@@ -16,7 +16,7 @@ Open, waiting and queued items come only from the digest's `open` rows returned 
 
 ## Per-mode instructions
 
-For morning, put each digest `proposals` row in `pending_proposals` as `<id>: <title>`. When the dispatch names `decision-refresh.md` and there is at least one `decision_items` or `pending_proposals` entry, read it and apply it to the `decision_items` followed by each `pending_proposals` entry as `proposal-pending:<PROP-NNN>`. Only for `scope: agent`, use `.hermit/OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from `open` rows with `state: runnable`. Summarize `latest` in `report_summary`.
+For morning, put each digest `proposals` row in `pending_proposals` as `<id>: <title>`. When the dispatch names `decision-refresh.md` and there is at least one `decision_items` or `pending_proposals` entry, read it and apply it to the `decision_items` followed by each `pending_proposals` entry as `proposal-pending:<PROP-NNN>`. Only for `agent_steps: true`, use `.hermit/OPERATOR.md` for `operator_priorities` if present. Populate `queued_work` from `open` rows with `state: runnable`. Summarize `latest` in `report_summary`.
 
 For evening and daily, use the digest's `records`, which selects the day in the configured timezone. Populate `tasks_today` with each record's `id` as `task` and one-line summaries from `closed_reason` for a cancelled record, otherwise from the record's `result` when set, otherwise from the title plus the check output after `check:exit-0:` in `closed_reason` for a record closed by `check`, otherwise from title and outcome. For a record with `result_truncated`, the summary is its title and outcome, with nothing taken from the excerpt. Populate `findings` from the selected records' lessons, skipping any lesson the record's `result` contradicts, without filtering lessons by date. Populate `tomorrow` from `open` rows with `state: runnable`, excluding all other states. Do not count `cancelled` or `unconfirmed` as done.
 
