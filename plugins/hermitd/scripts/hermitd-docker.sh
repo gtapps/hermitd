@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Docker management CLI for hermit containers.
 # Usage: hermitd-docker <command> [args...]
-# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build]
+# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build] [--fresh]
 set -euo pipefail
 
 SCRIPT_DIR="$PWD/.hermit/bin"
 CONFIG="$SCRIPT_DIR/../config.json"
-CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]}"
+CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]}"
 shift
 
 if [ ! -f "$CONFIG" ]; then
@@ -906,7 +906,7 @@ JSEOF
     ;;
 
   *)
-    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build]|update> [args...]" >&2
+    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]" >&2
     exit 1
     ;;
 esac

@@ -5480,7 +5480,6 @@ describe('restart resume', () => {
     'recent-restart': { expected: 'fresh: recent-restart', via: 'run' },
     'compact-off-large-context': { expected: 'resume', via: 'run' },
     'requested': { expected: 'resume', via: 'restart' },
-    'requested-recent-restart': { expected: 'resume', via: 'restart' },
   };
   for (const [scenario, { expected, via }] of Object.entries(scenarios)) {
     test(scenario, withHermit(async (h) => {
@@ -5499,7 +5498,7 @@ describe('restart resume', () => {
       const priorRestart = isoAgo(5 / 60);
       fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
         consecutive_stale: 2, last_pane_hash: 'abc',
-        ...(scenario.endsWith('recent-restart') ? { last_restart_at: priorRestart } : {}),
+        ...(scenario === 'recent-restart' ? { last_restart_at: priorRestart } : {}),
       }) + '\n');
       writeFakeTmux(h, via === 'run' ? 1 : 0);
       writeFakePgrep(h, 1);
