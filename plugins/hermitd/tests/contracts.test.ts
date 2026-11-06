@@ -3649,6 +3649,7 @@ describe('task-worker agent contract', () => {
     expect(task).toContain('WORKER <task-id> done <id>');
     expect(task).toContain('WORKER <task-id> needs-input <id>');
     expect(task).toContain('[task thread <key>: ');
+    expect(task).toContain('thread_busy');
   });
 });
 

@@ -46,3 +46,36 @@ for (const conversation of ['slack:chat', 'slack:chat~message', 'discord:chat~me
     } finally { f.cleanup(); }
   });
 }
+
+for (const conversation of ['discord:thread1', 'slack:chat~m1', 'telegram:123', 'discord:dm1']) {
+  test(`second open and closed-thread reuse for ${conversation}`, async () => {
+    const f = taskFixture();
+    try {
+      f.put('state/channel-chats.json', { discord: { chats: {
+        thread1: { type: 11, parent_id: 'parent', guild_id: 'guild', fetched_at: new Date().toISOString() },
+        dm1: { type: 1, parent_id: null, guild_id: null, fetched_at: new Date().toISOString() },
+      } } });
+      const args = ['--conversation', conversation];
+      const first = await f.open([...args, '--dedupe-key', 'same']);
+      expect((await f.open([...args, '--dedupe-key', 'same'])).id).toBe(first.id);
+      const second = await f.open(args);
+      if (conversation === 'telegram:123' || conversation === 'discord:dm1') expect(second.id).toBeString();
+      else {
+        expect(second).toEqual({ status: 'refused', reason: 'thread_busy' });
+        expect((await f.ok('list', ['--all', '--json'])).rows).toHaveLength(1);
+        await f.ok('cancel', [first.id, '--actor', 'operator', '--reason-stdin'], 'Done');
+        expect((await f.open(args)).id).toBeString();
+      }
+    } finally { f.cleanup(); }
+  });
+}
+
+test('concurrent opens on one thread write only one record', async () => {
+  const f = taskFixture();
+  try {
+    const results = await Promise.all([f.open(['--conversation', 'slack:chat~m1']), f.open(['--conversation', 'slack:chat~m1'])]);
+    expect(results.filter(r => r.id)).toHaveLength(1);
+    expect(results.filter(r => r.reason === 'thread_busy')).toHaveLength(1);
+    expect((await f.ok('list', ['--all', '--json'])).rows).toHaveLength(1);
+  } finally { f.cleanup(); }
+});

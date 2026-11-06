@@ -994,6 +994,7 @@ test('five waiting DM rows cost less than twice the single-record thread context
   const wd = setupThreadWorkdir();
   const dir = hermit(wd.dir);
   for (let i = 0; i < 5; i++) {
+    if (i === 1) fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 1 } } } }));
     expect((await openTask(wd.dir, dir, ['--title', `Task ${i}`, '--owner', 'resident', '--requester', 'discord:u1', '--conversation', 'discord:thread'])).exitCode).toBe(0);
   }
   for (const record of readTasks(dir)) {
@@ -1002,6 +1003,7 @@ test('five waiting DM rows cost less than twice the single-record thread context
   }
   const prompt = threadEnvelope('continue');
   const ctx = () => ({ dir, prompt, envelope: parseChannelEnvelope(prompt), transcriptPath: null, config: () => ({ channels: { discord: { allowed_users: ['u1'] } } }), runtime: () => ({}) });
+  fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', guild_id: 'guild' } } } }));
   const single = (await conversationStage(ctx()))?.context ?? '';
   fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 1 } } } }));
   const shared = (await conversationStage(ctx()))?.context ?? '';

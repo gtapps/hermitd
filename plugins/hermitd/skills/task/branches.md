@@ -18,3 +18,12 @@ Write the output of `conversation` (Commands) with arguments `history --source '
 `standup --json` groups promised, late and waiting work by stable identity. Execution is advisory. A shared turn divides its cost equally across its bound tasks; a missed progress note may bill to conversation. `pre_upgrade: true` means some cost rows in the window carry no bucket.
 
 Duties open deduplicated records only when a human must act and `config.tasks.duties_open_records` permits it. Otherwise post plain messages. An ambiguous duty read never closes a record.
+
+## Busy thread
+
+On `thread_busy` from `thread-open` or `task.ts open`, keep the original thread as the reply destination for the handoff notice.
+
+- With `chat_id`, post the new task’s “On it” card at the top level of that chat, with no thread reply parameter. Re-run `thread-open` with that chat and the card’s message id. Open the task with the returned key and `--card` pointing at the top-level card, then reply in the original thread naming the new task. Continue with the task’s intake dispatch or explicit after-this queue rule.
+- With `reason: no_top_level`, say a separate task cannot be opened here and create no record. A Discord forum post cannot host a second task.
+
+`task.ts open` reports only `status: refused, reason: thread_busy`; recover the destination by re-running `thread-open` for the original thread, then apply the result above.

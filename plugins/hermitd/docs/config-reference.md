@@ -64,14 +64,14 @@ Modify with `/hermit-settings env` — except `AGENT_HOOK_PROFILE`, which that c
 
 ## `channels`
 
-An assignment from chat opens a task record and runs in an internal task worker with its own context. On a Discord text or announcement channel the assignment opens a thread first; a mapped `attributes.thread_id` identifies a thread on other channels. A record owns its thread. Chats without threads can hold several open records, listed by the hook and routed by the agent as continuations or independent new work.
+An assignment from chat opens a task record and runs in an internal task worker with its own context. On a Discord text or announcement channel the assignment opens a thread first; a mapped `attributes.thread_id` identifies a thread on other channels. A thread holds one open task. New work asked in a busy thread gets its own top-level card and thread; a Discord forum post cannot host a second task. Chats without threads can hold several open records, listed by the hook and routed by the agent as continuations or independent new work.
 
 | Platform | Thread ownership |
 | --- | --- |
-| Discord | One thread per task from a text or announcement channel; an existing thread carries its record; DMs share several records. |
-| Telegram | Groups and DMs share several records; a mapped topic has its own thread. |
+| Discord | One thread per task from a text or announcement channel; an existing thread holds one open task, with separate work routed to a top-level card and thread; a forum post cannot host a second task; DMs share several records. |
+| Telegram | Groups and DMs share several records; a mapped topic holds one open task; separate work gets its own top-level card and thread. |
 | iMessage | Several records may share a chat. |
-| Channels with `attributes.thread_id` | One record per thread; a message without the thread attribute is outside any thread. |
+| Channels with `attributes.thread_id` | One open task per thread; a message without the thread attribute is outside any thread. |
 | Other marketplace channel plugins | Several records may share a chat id supplied by the plugin. |
 
 A message in an open task thread costs one resident routing turn in addition to the worker's own work; the worker edits its own progress card, so progress costs the resident nothing. Results and progress cards use the channel plugin's reply/edit tools. `!mute`, `!unmute`, `!restart`, and `!help` apply to the task thread; `!mute` and `!unmute` also work in a task's own thread after the task closes. On a helper-bound thread, `!model` and `!effort` switch that helper and keep its conversation; a busy helper switches when its current turn ends. Per-conversation `!model` and `!effort` remain unsupported on a worker-owned thread.

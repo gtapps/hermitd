@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- A task thread holds one open task, and separate work asked in it opens its own top-level thread
 - A bare yes or no after a restart or `/clear` now reaches the question pending in that chat
 - Takeover keyboard button shows when the keyboard is open and closes it on a second tap
 - Tab in the takeover keyboard reaches the remote browser instead of leaving the keyboard field

@@ -19,7 +19,7 @@ import { REVIEW_CALLS } from './learned-skills';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['thread_required', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
+const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -207,7 +207,7 @@ function reviewCallsReached(dir: string, record: Task): boolean {
   return ids.size >= REVIEW_CALLS;
 }
 
-export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string): unknown {
+export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
@@ -227,6 +227,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const dedupe = flag(flags, 'dedupe-key') ?? null;
       const existing = dedupe && records.find(r => r.status === 'open' && r.dedupe_key === dedupe);
       if (existing) return openDigest(existing, records, false);
+      if (threadConversation && records.some(r => r.status === 'open' && r.conversation === conversation)) throw new Error('thread_busy');
       checkOwnerAvailable(records, owner);
       const title = required(flags, 'title');
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'task';
