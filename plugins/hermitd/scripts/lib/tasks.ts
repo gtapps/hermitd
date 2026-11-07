@@ -497,12 +497,15 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
       if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
       const decision = pendingDecision(record);
-      const protectedRecord = record.kind === 'proposal' || record.requester === 'agent' || decision?.authority === 'admin';
+      // An agent-requested task is guarded only while its decision is pending; once
+      // answered, the resumed procedure closes it like any other record.
+      const protectedRecord = record.kind === 'proposal' || (decision !== null && (record.requester === 'agent' || decision.authority === 'admin'));
       if (['check-result', 'close', 'cancel'].includes(verb) && protectedRecord) {
         const authority = decision ?? { purpose: 'consent', authority: 'admin', generation: 1 } as Decision;
         if (decision?.purpose === 'consent' || (verb !== 'check-result' && !canDecide(dir, record, flags, authority)) || (verb === 'check-result' && record.kind === 'proposal' && record.approved_rev === null)) throw new Error('not_decider');
       }
-      if (verb === 'note' && flags['clear-waiting'] && protectedRecord && (!decision || decision.purpose === 'consent' || !canDecide(dir, record, flags, decision))) throw new Error('not_decider');
+      // A plain wait (such as the browser lease) clears as before; only a pending decision needs its decider.
+      if (verb === 'note' && flags['clear-waiting'] && decision && protectedRecord && (decision.purpose === 'consent' || !canDecide(dir, record, flags, decision))) throw new Error('not_decider');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
@@ -568,7 +571,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           const next = record.decision ? decodeDecision(record.decision) : null;
           if (next?.purpose === 'consent') startConsent(record, now, previousGeneration);
           else if (flags['result-stdin']) record.decision = JSON.stringify({ purpose: 'result', authority: 'admin', generation: previousGeneration + 1 });
-          else if (!next) throw new Error('invalid_decision');
+          else if (!next && flag(flags, 'waiting-on') === 'agent') throw new Error('invalid_waiting_on');
         }
         if (record.decision !== null) {
           const next = decodeDecision(record.decision);
@@ -589,7 +592,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         }
         if (record.kind === 'proposal') {
           record.approver = null;
-          record.waiting_on = decodeDecision(record.decision!).authority;
+          if (record.decision !== null) record.waiting_on = decodeDecision(record.decision).authority;
         }
         record.waiting_since = now;
       } else if (verb === 'close') {

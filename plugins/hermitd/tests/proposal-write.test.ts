@@ -21,11 +21,11 @@ test('CLI create prints one task receipt with metadata and dedupes replay', with
   expect(result.exitCode).toBe(0); expect(result.stderr).toBe('');
   expect(result.stdout.trim().split('\n')).toHaveLength(1);
   const receipt = out(result);
-  expect(Object.keys(receipt)).toEqual(['id', 'handle']);
+  expect(receipt).toMatchObject({ created: true }); expect(Object.keys(receipt)).toEqual(['id', 'handle', 'created']);
   const record = decodeTask(fs.readFileSync(path.join(stateArg(dir), 'tasks', receipt.id + '.md'), 'utf8'));
   expect(record.source).toBe('reflect');
   expect(record.body).toContain('First paragraph.\n\nSecond paragraph.\n');
-  expect(out(await runProposal(stateArg(dir), ['create'], { stdin }))).toEqual(receipt);
+  expect(out(await runProposal(stateArg(dir), ['create'], { stdin }))).toEqual({ ...receipt, created: false });
   expect(metricsLines(dir)).toHaveLength(1);
 }));
 

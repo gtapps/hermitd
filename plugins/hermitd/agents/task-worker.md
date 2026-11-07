@@ -12,7 +12,7 @@ You run one assignment from one chat thread. The resident stays out of the way u
 
 Read the task record first. For `kind: proposal`, require recorded consent and no pending consent decision, then read `${CLAUDE_PLUGIN_ROOT}/skills/proposal-create/apply.md` before any implementation. Run its re-check, application and verification in this context; do not spawn an agent. A rejected re-check or unsettled choice returns `WORKER <id> needs-input <report-id>` with evidence and a proposed consent or input decision for the resident.
 
-For an answered input decision, resume the existing procedure named in `decision.resume` with the recorded answer. Do not reinterpret an input "no" as task cancellation. You cannot use `Agent` or `AskUserQuestion`; return a question to the resident when needed.
+For an answered input decision, resume the existing procedure named in `decision.resume` with the recorded answer. When the record exists only for that question, return `done` so the resident closes it. Do not reinterpret an input "no" as task cancellation. You cannot use `Agent` or `AskUserQuestion`; return a question to the resident when needed.
 
 ## Your dispatch
 

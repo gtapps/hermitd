@@ -19,7 +19,7 @@ import { writeRegistryEntry } from './helpers/registry-fixture';
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { openTask } from './helpers/tasks';
-import { readTasks, encodeTask } from '../scripts/lib/tasks';
+import { readTasks, encodeTask, mutateTask } from '../scripts/lib/tasks';
 import { assistantEntry } from './helpers/transcript';
 import { markGuest } from '../scripts/lib/guest-marker';
 import { run as conversationStage } from '../scripts/lib/prompt-stages/conversation';
@@ -1011,6 +1011,24 @@ test('five waiting DM rows cost less than twice the single-record thread context
   expect(shared.length).toBeLessThan(single.length * 2);
   // Measured: single=667 chars, shared-five=1161 chars.
   console.log(`waiting context chars: single=${single.length}, shared-five=${shared.length}`);
+});
+
+test('a primary sender sees the count of admin decisions including unscoped ones', async () => {
+  const wd = trackedWorkdir();
+  const dir = hermit(wd.dir);
+  fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { dm: { type: 1 } } } }));
+  const admin = (conversation?: string) => mutateTask(dir, 'open', undefined, { requester: 'agent', title: 'Question', done: 'Answered', 'waiting-on': 'admin',
+    decision: JSON.stringify({ purpose: 'input', authority: 'admin', generation: 1 }), ...(conversation ? { conversation } : {}) }, '');
+  mutateTask(dir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Unscoped proposal', done: 'Done' }, '');
+  admin('discord:dm');
+  admin('discord:other');
+  const context = async (user: string) => {
+    const prompt = `<channel source="discord" chat_id="dm" user="${user}">hello</channel>`;
+    return (await conversationStage({ dir, prompt, envelope: parseChannelEnvelope(prompt), transcriptPath: null,
+      config: () => ({ channels: { discord: { operators: ['u1'], allowed_users: ['u1', 'u2'] } } }), runtime: () => ({}) } as any))?.context ?? '';
+  };
+  expect(await context('u1')).toContain('[admin decisions waiting on you: 2; answer with .hermit/bin/hermitd-run task answer .hermit --chat discord:dm --user u1 --reply <token>]');
+  expect(await context('u2')).not.toContain('admin decisions waiting');
 });
 
 

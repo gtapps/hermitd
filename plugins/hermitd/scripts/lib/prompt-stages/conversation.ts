@@ -1,7 +1,7 @@
 import { conversationKey } from '../conversation-key';
-import { conversationRecords, latestWaitIsStall, threadRecords, taskListing, type Task } from '../tasks';
+import { conversationRecords, decodeDecision, latestWaitIsStall, readTasks, threadRecords, taskListing, type Task } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
-import { channelBotIdentity, isAllowedSender, isSelfMentioned } from '../channel-auth';
+import { channelBotIdentity, isAllowedSender, isPrimaryOperator, isSelfMentioned } from '../channel-auth';
 import { classifyChat } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
@@ -60,7 +60,16 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       }
       const people = inChat.filter(row => row.kind !== 'proposal');
       const proposalCount = inChat.length - people.length;
-      if (proposalCount) lines.push(`[agent proposal waits in this chat: ${proposalCount}; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`);
+      const answerHint = `answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>`;
+      // A primary sender also decides admin questions with no chat, counted as `!status` counts them.
+      if (isPrimaryOperator(ctx.config(), env.source, env.userId, env.chatId)) {
+        let admin = 0;
+        try {
+          admin = readTasks(ctx.dir).filter(task => task.status === 'open' && task.waiting_on !== null && task.decision !== null
+            && (task.conversation === key || task.conversation === null) && decodeDecision(task.decision).authority === 'admin').length;
+        } catch { /* an unreadable record costs only this count */ }
+        if (admin) lines.push(`[admin decisions waiting on you: ${admin}; ${answerHint}]`);
+      } else if (proposalCount) lines.push(`[agent proposal waits in this chat: ${proposalCount}; ${answerHint}]`);
       const rows = people.slice(0, 5);
       if (people.length) {
         ctx.openTasksInChat = true;

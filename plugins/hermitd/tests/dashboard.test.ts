@@ -407,31 +407,6 @@ describe('renderDashboard', () => {
     expect(html).toContain('No active alerts.');
   }));
 
-  test('proposal-pending alerts stay out of the alert list but keep counting in the tile', withHermitDir((hermitDir) => {
-    writeJson(hermitDir, 'state/alert-state.json', {
-      alerts: {
-        'decision-pending:PROP-001': { message: 'PROP-001 awaiting decision' },
-        'decision-pending:PROP-002': { message: 'PROP-002 awaiting decision' },
-        'budget-daily': { message: 'Daily budget at 92%' },
-      },
-      self_eval: {}, total_ticks: 1, last_digest_date: null,
-    });
-    const { html } = renderDashboard(loadDashboardState(hermitDir));
-    expect(html).not.toContain('PROP-001 awaiting decision');
-    expect(html).toContain('Daily budget at 92%');          // other kinds still render
-    expect(html).toContain('>3<');                          // tile still counts all three
-  }));
-
-  test('renders no alert list rather than "No active alerts." when every alert is card-owned', withHermitDir((hermitDir) => {
-    writeJson(hermitDir, 'state/alert-state.json', {
-      alerts: { 'decision-pending:PROP-001': { message: 'PROP-001 awaiting decision' } },
-      self_eval: {}, total_ticks: 1, last_digest_date: null,
-    });
-    const { html } = renderDashboard(loadDashboardState(hermitDir));
-    expect(html).not.toContain('No active alerts.');        // would contradict the tile
-    expect(html).not.toContain('PROP-001 awaiting decision');
-  }));
-
   test('omits the weekly card entirely when there is no review yet', withHermitDir((hermitDir) => {
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).not.toContain('<h2>Week ');

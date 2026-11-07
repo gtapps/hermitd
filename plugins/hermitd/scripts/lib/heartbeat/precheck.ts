@@ -11,7 +11,7 @@ import { pendingQueue } from './queue';
 // writes stdout or exits, keeping the verb's output byte-identical.
 //
 // Owner contract (write-field split with SKILL.md):
-//   This script owns: alert-state.json total_ticks, last_micro_corrupt_wake_at;
+//   This script owns: alert-state.json total_ticks, last_decision_read_failure_wake_at;
 //   alert-state owns: alert-state.json alerts{}, self_eval{}, last_digest_date, last_clean_eval_at,
 //                     structured_read_failure_notified_date (the `heartbeat.ts alert-state` verb)
 
@@ -20,7 +20,7 @@ import path from 'node:path';
 import { currentHHMM, todayYMD, parseDuration } from '../time';
 import { readSettledConfig } from '../config-read';
 import { readAlertState, defaultAlertState, quarantineAlertState, writeAlertState, readMergedAlerts } from '../alert-state';
-import { pendingDecisions } from '../decisions';
+import { pendingDecisions, deliveryDue } from '../decisions';
 import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChecklistItems } from '../heartbeat-items';
 import { isPaused } from '../pause';
 import { probeDeclaredCredentials, strayTokenNote } from '../credential-probe';
@@ -165,12 +165,31 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
     alertState.total_ticks = 0;
   }
   const decisions = pendingDecisions(stateDir);
+  // Clear the stamp once the inventory reads again: a later failure is a new incident.
+  if (decisions.ok && !peek && typeof alertState.last_decision_read_failure_wake_at === 'string') {
+    delete alertState.last_decision_read_failure_wake_at;
+  }
   if (!peek) {
     alertState.total_ticks += 1;
     writeAlertState(alertStatePath, alertState);
   }
-  if (!decisions.ok || decisions.records.some(row => row.delivered < 2)) return 'EVALUATE';
   if (peek ? (alertState.total_ticks + 1) % 20 === 0 : alertState.total_ticks % 20 === 0) return 'EVALUATE';
+  // A decision wakes only when a delivery attempt is due (budget unspent, no attempt in 24h).
+  if (decisions.ok && decisions.records.some(row => deliveryDue(row, now))) return 'EVALUATE';
+  // Unreadable inventory: wake so the tick can tell the operator, at most once a day,
+  // since it stays unreadable until someone repairs it.
+  if (!decisions.ok) {
+    const lastWake = typeof alertState.last_decision_read_failure_wake_at === 'string'
+      ? new Date(alertState.last_decision_read_failure_wake_at).getTime()
+      : NaN;
+    if (isNaN(lastWake) || (now - lastWake) >= 24 * 3600000) {
+      if (!peek) {
+        alertState.last_decision_read_failure_wake_at = new Date(now).toISOString();
+        writeAlertState(alertStatePath, alertState);
+      }
+      return 'EVALUATE';
+    }
+  }
 
   // PROP-016: an un-notified budget alert (cost-tracker.ts writes these directly,
   // bypassing the LLM-owned suppressed/digest dance the generic checklist alerts use)
@@ -188,16 +207,9 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
   if (hasSuppressed && alertState.last_digest_date !== today) return 'EVALUATE';
 
   // Clean-recheck damper: suppress re-evaluation for clean_recheck_cooldown after a tick
-  // concludes nothing actionable. Sits after all change-detecting gates so micro-
-  // proposal/suppressed-digest still pre-empt it. Two bypasses, both bounded:
-  //   - a resolving entry (consecutive_clean > 0), so the hysteresis window is never masked;
-  //   - a `proposal-pending:*` entry that has not reached suppression yet. These keys bake a
-  //     PROP-NNN id into their text, so their first observation is silenced by design
-  //     (alert-update's silentOnNewKeys) — the count===6 suppression transition is the
-  //     operator's FIRST notice that a decision is waiting. Damping the five ticks in
-  //     between would push that notice from ~5 ticks out to ~5 cooldown windows. This
-  //     mirrors the micro-proposal gate above, which pre-empts the damper on the same
-  //     terms and self-limits the same way.
+  // concludes nothing actionable. Sits after all change-detecting gates so pending
+  // decisions and the suppressed digest still pre-empt it. One bounded bypass: a
+  // resolving entry (consecutive_clean > 0), so the hysteresis window is never masked.
   // An unsuppressed entry of any other kind needs no bypass — it already notified on first
   // observation, and every apply rewrites last_clean_eval_at while a genuinely new key nulls it.
   // `null` cooldown disables it.

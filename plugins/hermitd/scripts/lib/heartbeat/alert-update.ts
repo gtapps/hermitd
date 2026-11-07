@@ -1,8 +1,7 @@
 // Updates alert-state.json after a heartbeat evaluation tick. Owns the full
 // dedup/suppression/resolution/digest ladder (issue #594): the eval subagent
-// returns only a firing set of {key,text} judgment items; this script derives
-// the file-backed structured keys (micro-proposal-pending, proposal-pending)
-// from their source-of-truth and runs the deterministic ladder over the union.
+// returns only a firing set of {key,text} judgment items; this script runs the
+// deterministic ladder over them. Pending decisions live in task records, not here.
 // Zero npm dependencies, Node stdlib only.
 //
 // Fail-safe contract: ANY validation failure or write failure leaves
@@ -24,9 +23,9 @@ import { emitJson, exitError } from '../cli';
 import { runSelfEval, type SelfEvalProposal } from './self-eval';
 import {
   readAlertState, defaultAlertState, quarantineAlertState, writeAlertState,
-  classifyTick, deriveDecisionPendingKeys, FiringItem, DecisionRefresh,
-  DOCTOR_PREFIX, isStructuredKey, scrubInternalIds,
+  classifyTick, FiringItem, DOCTOR_PREFIX,
 } from '../alert-state';
+import { pendingDecisions } from '../decisions';
 import { currentHHMM, todayYMD, resolveHermitNowMs } from '../time';
 import { readSettledConfig } from '../config-read';
 import { canonicalChecklistKeys, normalizeItemKey, normalizeCustomKey } from '../heartbeat-items';
@@ -39,12 +38,6 @@ if (!stateFile) exitError();
 
 // stateFile = <stateDir>/state/alert-state.json
 const stateDir = path.dirname(path.dirname(stateFile));
-
-// Keys backed by a filesystem source-of-truth — the model may never author
-// these directly (see deriveMicroPendingKeys/deriveProposalPendingKeys). A
-// model-injected entry under either prefix is a phantom and is dropped.
-// MICRO_PREFIX/PROPOSAL_PREFIX/isStructuredKey are owned by alert-state.ts
-// (co-located with the derivers and the channel-safe scrub).
 
 type RawFiring = { key?: string; item?: string; text: string };
 
@@ -64,34 +57,9 @@ function validateFiring(raw: Json): RawFiring[] | null {
   return out;
 }
 
-// Lenient, unlike validateFiring: `refresh` only rewords the digest, so a bad
-// value degrades to no refresh instead of costing the tick. Only keys this
-// script derived from their source of truth are accepted; `open` needs no
-// entry because the queued text already stands.
-const REFRESH_TEXT_MAX = 300;
-function parseRefresh(raw: Json, derivedKeys: Set<string>): Map<string, DecisionRefresh> {
-  const out = new Map<string, DecisionRefresh>();
-  if (!Array.isArray(raw)) return out;
-  for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
-    const { key, status, text } = entry;
-    if (typeof key !== 'string' || !derivedKeys.has(key) || out.has(key)) continue;
-    if (status !== 'done' && status !== 'partial') continue;
-    if (typeof text !== 'string') continue;
-    // One line in the digest; text that is only an internal id would scrub to nothing.
-    const line = text.replace(/\s+/g, ' ').trim();
-    if (!scrubInternalIds(line).replace(/[.;\s]+$/, '')) continue;
-    out.set(key, { status, text: line.slice(0, REFRESH_TEXT_MAX) });
-  }
-  return out;
-}
-
 // Keys the model may never author. Returned verbatim so the modelFiring filter
-// below still recognises and drops them — minting a `custom:` key for one instead
-// would smuggle a phantom past that guard, with its raw PROP-NNN/MP-… id
-// un-scrubbed on the way to the channel.
-const isReservedKey = (key: string): boolean =>
-  isStructuredKey(key) || key.startsWith(DOCTOR_PREFIX);
+// below still recognises and drops them, instead of minting a `custom:` key.
+const isReservedKey = (key: string): boolean => key.startsWith(DOCTOR_PREFIX);
 
 function resolveEntryKey(entry: RawFiring, canonical: Set<string>): string | null {
   if (entry.key === 'waiting-timeout' || (entry.key && entry.key.startsWith('custom:'))) {
@@ -189,12 +157,7 @@ function apply(payloadJson: string): void {
   const today = todayYMD(timezone, nowDate);
   const hhmm = currentHHMM(timezone, nowDate) ?? nowIso.slice(11, 16);
 
-  const decisions = deriveDecisionPendingKeys(stateDir);
-
-  // Fail-safe: an ambiguous source-of-truth read must never age or resolve
-  // that prefix's existing entries this tick (the exact #594 harm this
-  // refactor exists to prevent) — freeze them untouched instead.
-  const frozen: Json = {};
+  const decisions = pendingDecisions(stateDir);
   const classifiable: Json = { ...prevAlerts };
 
   // Retire doctor:* residue left in alert-state.json by v1.2.17–v1.2.24, when
@@ -206,45 +169,25 @@ function apply(payloadJson: string): void {
   for (const k of Object.keys(classifiable)) {
     if (k.startsWith(DOCTOR_PREFIX)) delete classifiable[k];
   }
-  const freezePrefix = (prefix: string) => {
-    for (const k of Object.keys(classifiable)) {
-      if (k.startsWith(prefix)) { frozen[k] = classifiable[k]; delete classifiable[k]; }
-    }
-  };
-  if (!decisions.ok) freezePrefix('decision-pending:');
-  else for (const key of Object.keys(classifiable)) if (isStructuredKey(key)) delete classifiable[key];
-
   // An ambiguous structured read means this tick's view is partial: never report
   // a verified-clean eval (would arm the precheck damper over an unverifiable
   // pending decision) and never emit/advance the digest on a partial view.
   const hasStructuredReadFailure = !decisions.ok;
 
-  const structuredItems: FiringItem[] = [];
-  const firing: FiringItem[] = [...modelFiring, ...structuredItems];
-
-  // Structured keys' text bakes in a raw PROP-NNN/MP-… id, which must never
-  // reach the operator channel (house channel-voice rule) — silence their
-  // first-observation notification. Internal diagnostic lines are unaffected.
-  const silentOnNewKeys = new Set(structuredItems.map(i => i.key));
-
   const result = classifyTick({
     prevAlerts: classifiable,
-    firing,
+    firing: modelFiring,
     nowIso,
     today,
     hhmm,
     prevLastDigestDate: typeof state.last_digest_date === 'string' ? state.last_digest_date : null,
-    silentOnNewKeys,
     structuredReadOk: !hasStructuredReadFailure,
-    refresh: parseRefresh(payload.refresh, silentOnNewKeys),
   });
 
-  const alerts: Json = { ...result.alerts, ...frozen };
+  const alerts: Json = result.alerts;
 
-  // The freeze above keeps a corrupt source-of-truth from resolving real pending
-  // decisions, but on its own it is silent: frozen entries produce no firing item,
-  // so classifyTick emits nothing and the digest gate is off by design — the operator
-  // is never told their pending questions became unreadable (#764). Notify directly,
+  // An unreadable task inventory hides pending decisions, so tell the operator
+  // their pending questions became unreadable (#764). Notify directly,
   // once per day, for as long as the read keeps failing. Channel-voice split: the
   // operator gets plain language; parser details stay in internal diagnostic lines.
   const shouldNotifyStructuredFailure =
@@ -295,7 +238,7 @@ function apply(payloadJson: string): void {
     } catch { /* fail-open: the tick's alert bookkeeping still lands */ }
   }
 
-  // Spread state first so precheck-owned fields (total_ticks, last_micro_corrupt_wake_at) are preserved.
+  // Spread state first so precheck-owned fields (total_ticks, last_decision_read_failure_wake_at) are preserved.
   const updated = {
     ...state,
     alerts,
@@ -315,7 +258,6 @@ function apply(payloadJson: string): void {
     self_eval_proposals: selfEvalProposals,
     // Never OK when a structured pending decision couldn't be verified this tick.
     heartbeat_result: hasStructuredReadFailure ? 'alert' : result.heartbeatResult,
-    ...(result.digestDoneKeys.length > 0 ? { digest_done: result.digestDoneKeys } : {}),
   });
 }
 

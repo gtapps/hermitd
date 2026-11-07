@@ -145,8 +145,33 @@ describe('pending decision delivery budget', () => {
     const send = async (url: string, generation = 1) => runScript('channel-send.ts', { cwd: f.dir + '/..', args: [f.dir, '--notice'], env: { AGENT_DIR: f.dir, HERMIT_TELEGRAM_API_URL: url },
       stdin: JSON.stringify({ client: 'From the agent: Question. Waiting on you.', decision: { task: receipt.id, generation } }),
     });
-    return { ...f, id: receipt.id, send };
+    // A proposal-scan item resolves without an alert, so only the decision gates decide the wake.
+    const precheck = async (now: number) => (fs.writeFileSync(path.join(f.dir, 'HEARTBEAT.md'), '# Checks\n- Scan proposals/ for status proposed\n'), await runScript('heartbeat.ts', { args: ['precheck', f.dir], env: { AGENT_DIR: f.dir, HERMIT_NOW: new Date(now).toISOString() } })).stdout.trim();
+    return { ...f, id: receipt.id, send, precheck };
   }
+  test('a decision wakes once per attempt window, and a failed attempt still waits a day', async () => {
+    const f = decisionFixture('admin', { maintainer_channel_id: 'maintainer' });
+    const stub = startHttpStub(); stub.setStatus(403);
+    try {
+      const now = Date.now();
+      expect(await f.precheck(now)).toBe('EVALUATE');
+      await f.send(stub.url);
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 0, attempted_at: expect.any(String) }] });
+      expect(await f.precheck(now + 3600000)).toBe('OK');
+      expect(await f.precheck(now + 25 * 3600000)).toBe('EVALUATE');
+    } finally { stub.stop(); f.cleanup(); }
+  });
+  test('an unreadable inventory wakes at most once a day', async () => {
+    const f = decisionFixture();
+    try {
+      fs.writeFileSync(path.join(f.dir, 'tasks', 'corrupt.md'), 'not a record');
+      expect(pendingDecisions(f.dir)).toEqual({ ok: false });
+      const now = Date.now();
+      expect(await f.precheck(now)).toBe('EVALUATE');
+      expect(await f.precheck(now + 3600000)).toBe('OK');
+      expect(await f.precheck(now + 25 * 3600000)).toBe('EVALUATE');
+    } finally { f.cleanup(); }
+  });
   test('two confirmed deliveries then silence, including a non-technical home fallback', async () => {
     const f = decisionFixture(); const stub = startHttpStub();
     try {

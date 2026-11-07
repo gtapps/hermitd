@@ -1,4 +1,4 @@
-import { pendingDecisions } from '../decisions';
+import { pendingDecisions, deliveryDue } from '../decisions';
 // One deterministic heartbeat tick: verdict, budget notifications and queued records.
 // The skill delivers notifications and acknowledges successful delivery; composing
 // a notice never consumes it or changes the resident's execution state.
@@ -35,14 +35,14 @@ type TickResult = {
 const DECISION_REFRESH_LIMIT = 5;
 
 /**
- * Pending decisions today's digest will repeat, oldest first, for the evaluator to
- * re-check before they are asked again. Same selection as the digest itself, so the
+ * Pending decisions with a delivery attempt due, oldest first, for the evaluator to
+ * re-check before they are asked again. Same selection as the precheck wake, so the
  * list cannot drift from it; `text` keeps the internal id the check needs.
  */
-function dueDecisionItems(hermitDir: string): DecisionItem[] {
+function dueDecisionItems(hermitDir: string, nowMs: number): DecisionItem[] {
   const inventory = pendingDecisions(hermitDir);
   if (!inventory.ok) return [];
-  return inventory.records.filter(row => row.delivered < 2).slice(0, DECISION_REFRESH_LIMIT)
+  return inventory.records.filter(row => deliveryDue(row, nowMs)).slice(0, DECISION_REFRESH_LIMIT)
     .map(({ task, decision }) => ({ key: `${task.id}:${decision.generation}`, text: task.title }));
 }
 
@@ -119,7 +119,7 @@ export async function run(args: string[]): Promise<void> {
       if (result.status === 'evaluate') {
         const queue = pendingQueue(hermitDir, nowMs);
         if (queue) result.notifications.queue = queue;
-        const due = dueDecisionItems(hermitDir);
+        const due = dueDecisionItems(hermitDir, nowMs);
         if (due.length > 0) result.decision_refresh = due;
       }
     }

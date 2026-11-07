@@ -41,7 +41,7 @@ Produce one firing entry per true item:
 
 Normalise: strip the list marker and any checkbox first, then lowercase, remove non-alphanumeric characters, truncate at the listed limit.
 
-**Never** emit a `decision-pending:*` key in `firing`. Pending decisions come from task records and use the confirmed-delivery budget, separately from generic alert suppression and digest. Read `decision-refresh.md` for sends; the script owns counting.
+Pending decisions are never `firing` items. They come from task records and use the confirmed-delivery budget, separately from generic alert suppression and digest. Read `decision-refresh.md` for sends; the script owns counting.
 
 ## Firing Item Text
 

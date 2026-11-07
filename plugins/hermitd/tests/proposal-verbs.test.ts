@@ -17,13 +17,14 @@ describe('task-backed proposal creation', () => {
   test('one receipt, complete metadata, verbatim proposal, and replay-safe created metrics', withDir(async dir => {
     const base = seed(dir);
     const receipt = verbCreate(base, input());
-    expect(Object.keys(receipt)).toEqual(['id', 'handle']);
+    expect(Object.keys(receipt)).toEqual(['id', 'handle', 'created']);
+    expect(receipt.created).toBe(true);
     expect(receipt.id).toMatch(/^T-\d{8}-\d{6}(-[a-z0-9])?$/);
     const record = decodeTask(fs.readFileSync(path.join(base, 'tasks', receipt.id + '.md'), 'utf8'));
     expect(record).toMatchObject({ requester: 'agent', kind: 'proposal', approver: null, source: 'auto-detected', category: 'improvement', tags: '["architecture"]', waiting_on: 'admin', dedupe_key: 'proposal:ship-thing' });
     expect(record.body).toContain('## Proposal\n' + body);
     expect(JSON.parse(record.decision!)).toEqual({ purpose: 'consent', authority: 'admin', generation: 1 });
-    expect(verbCreate(base, input())).toEqual(receipt);
+    expect(verbCreate(base, input())).toEqual({ ...receipt, created: false });
     const rows = fs.readFileSync(path.join(base, 'state', 'proposal-metrics.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ type: 'created', proposal_id: receipt.id, source: record.source, category: record.category, tags: ['architecture'] });
@@ -48,7 +49,8 @@ describe('task-backed proposal creation', () => {
     const receipt = verbCreate(base, input());
     expect(receipt.warnings).toEqual(['metrics_append_failed']);
     expect(decodeTask(fs.readFileSync(path.join(base, 'tasks', receipt.id + '.md'), 'utf8')).kind).toBe('proposal');
-    expect(verbCreate(base, input())).toEqual({ id: receipt.id, handle: receipt.handle });
+    expect(receipt.created).toBe(true);
+    expect(verbCreate(base, input())).toEqual({ id: receipt.id, handle: receipt.handle, created: false });
   }));
   test('a failed record write never appends a created event', withDir(async dir => {
     const base = seed(dir);

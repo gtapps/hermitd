@@ -8,11 +8,9 @@
 // with the rest of the tick's state, and the entries that cross a threshold are
 // handed back for the skill to turn into proposals.
 //
-// Two counters, mirror images, both advanced once per pass (not per tick):
+// One counter, advanced once per pass (not per tick):
 //   clean_ticks: intervals in which the item raised nothing. Twenty of those with
 //                 three distinct local dates behind them means the item is dead weight.
-//   noise_ticks — passes in which an item whose proposal the operator already
-//                 dismissed fired anyway. Same threshold, opposite conclusion.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,9 +26,8 @@ const MAX_CHECKLIST_ITEMS = 10;
 
 export interface SelfEvalProposal {
   key: string;
-  kind: 'clean' | 'noisy' | 'weight';
+  kind: 'clean' | 'weight';
   clean_ticks: number;
-  noise_ticks: number;
   sessions_seen: number;
 }
 
@@ -65,7 +62,6 @@ export function runSelfEval(opts: {
     entry.text = text;
     if (typeof entry.first_observed !== 'string') entry.first_observed = today;
     entry.clean_ticks = num(entry.clean_ticks);
-    entry.noise_ticks = num(entry.noise_ticks);
     entry.sessions_seen = num(entry.sessions_seen);
     entry.proposed = entry.proposed === true;
     self_eval[key] = entry;
@@ -73,9 +69,7 @@ export function runSelfEval(opts: {
   };
 
   // `sessions_seen` counts the distinct local dates an entry has been evaluated in, so it
-  // advances on every pass — a firing one included. Tying it to clean passes alone would
-  // make the noisy threshold (noise_ticks AND sessions_seen) unreachable for exactly the
-  // item it exists for: one that fires on every pass never has a clean pass to count.
+  // advances on every pass, a firing one included.
   const markSession = (entry: Json): void => {
     if (sessionId && sessionId !== entry.last_session_id) {
       entry.sessions_seen += 1;
@@ -93,7 +87,6 @@ export function runSelfEval(opts: {
 
   // Count any firing since the previous pass, including suppressed alerts that
   // recovered before this boundary. Consume the evidence for the next interval.
-  const fired = new Set<string>();
   for (const item of items) {
     const key = normalizeItemKey(item);
     if (!key) continue;
@@ -103,7 +96,6 @@ export function runSelfEval(opts: {
     const firedInInterval = entry.fired_since_self_eval === true;
     delete entry.fired_since_self_eval;
     if (firedInInterval || (alert && (alert.consecutive_clean ?? 0) === 0)) {
-      fired.add(key);
       entry.clean_ticks = 0;
       markSession(entry);
     } else {
@@ -119,33 +111,25 @@ export function runSelfEval(opts: {
     delete self_eval[WEIGHT_KEY];
   }
 
-  // One pass over the proposals this hermit raised about its own checklist:
-  // a dismissal re-opens the item for observation, and an item that keeps firing
-  // after its proposal was dismissed accrues noise instead.
+  // A dismissal of a proposal this hermit raised about its own checklist is final
+  // (the cancelled record latches its dedupe key), so the item is never raised again.
   const inventory = readTaskInventory(stateDir);
   for (const record of inventory.ok ? inventory.records : []) {
     const key = record.kind === 'proposal' && record.dedupe_key?.startsWith('self-eval:') ? record.dedupe_key.slice('self-eval:'.length) : null;
     const entry = key ? self_eval[key] : null;
-    if (!entry) continue;
-    if (record.closed_by === 'cancelled' && entry.proposed === true) { entry.proposed = false; entry.clean_ticks = 0; }
-    if (!fired.has(key!)) continue;
-    if (record.approved_rev !== null || record.closed_by === 'check' || record.closed_by === 'confirmed') entry.noise_ticks = 0;
-    else if (record.closed_by === 'cancelled') entry.noise_ticks += 1;
+    if (entry && record.closed_by === 'cancelled') entry.proposed = true;
   }
 
   const proposals: SelfEvalProposal[] = [];
   for (const [key, entry] of Object.entries(self_eval) as Array<[string, Json]>) {
     if (!entry || entry.proposed === true || entry.sessions_seen < SESSIONS_THRESHOLD) continue;
-    let kind: SelfEvalProposal['kind'] | null = null;
-    if (entry.noise_ticks >= TICK_THRESHOLD) kind = 'noisy';
-    else if (entry.clean_ticks >= TICK_THRESHOLD) kind = key === WEIGHT_KEY ? 'weight' : 'clean';
-    if (!kind) continue;
+    if (entry.clean_ticks < TICK_THRESHOLD) continue;
+    const kind: SelfEvalProposal['kind'] = key === WEIGHT_KEY ? 'weight' : 'clean';
     entry.proposed = true;
     proposals.push({
       key,
       kind,
       clean_ticks: entry.clean_ticks,
-      noise_ticks: entry.noise_ticks,
       sessions_seen: entry.sessions_seen,
     });
   }

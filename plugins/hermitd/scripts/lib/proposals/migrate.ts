@@ -6,11 +6,13 @@ import { readSettledConfig } from '../config-read';
 import { importTaskRecords, type TaskImport } from '../tasks';
 import { homeChatKey } from '../home-chat';
 import { isKey } from '../conversation-key';
+import { alertStatePath, readAlertState, writeAlertState } from '../alert-state';
+import { acquireLockWithWait, releaseLock } from '../lockfile';
 
-export type MigrationReceipt = { imported: number; enriched: number; archived: number; skipped: { source: string; reason: string }[] };
+export type MigrationReceipt = { imported: number; enriched: number; archived: number; alerts_dropped: number; skipped: { source: string; reason: string }[] };
 const statuses = new Set(['proposed', 'deferred', 'dismissed', 'accepted', 'resolved']);
 export function migrate(dir: string): MigrationReceipt | { error: string } {
-  const receipt: MigrationReceipt = { imported: 0, enriched: 0, archived: 0, skipped: [] };
+  const receipt: MigrationReceipt = { imported: 0, enriched: 0, archived: 0, alerts_dropped: 0, skipped: [] };
   const proposalDir = path.join(dir, 'proposals');
   const files = listProposalFiles(proposalDir);
   if (!files.ok) return { error: 'proposals_unreadable' };
@@ -87,6 +89,7 @@ export function migrate(dir: string): MigrationReceipt | { error: string } {
       } catch { skip(path.basename(sourcePath), 'archive_failed'); }
     }
   }
+  dropLegacyAlerts(dir, receipt);
   if (!receipt.skipped.length) {
     try {
       if (micro.status !== 'missing') fs.unlinkSync(microPath);
@@ -94,6 +97,27 @@ export function migrate(dir: string): MigrationReceipt | { error: string } {
     } catch { skip('state', 'cleanup_failed'); }
   }
   return receipt;
+}
+
+// The retired proposal and question alert ladders left entries nothing resolves any more.
+const LEGACY_ALERT = /^(micro-)?proposal-pending:/;
+function dropLegacyAlerts(dir: string, receipt: MigrationReceipt): void {
+  const file = alertStatePath(dir);
+  const read = readAlertState(file);
+  if (read.kind === 'missing') return;
+  if (read.kind !== 'ok') { receipt.skipped.push({ source: 'state/alert-state.json', reason: 'alert_state_unreadable' }); return; }
+  const lock = path.join(dir, 'state', 'tasks.lock');
+  if (!acquireLockWithWait(lock, 2000)) { receipt.skipped.push({ source: 'state/alert-state.json', reason: 'lock_unavailable' }); return; }
+  try {
+    // Re-read under the lock so a concurrent heartbeat write is not overwritten with stale state.
+    const current = readAlertState(file);
+    if (current.kind !== 'ok' || !current.value.alerts || typeof current.value.alerts !== 'object') return;
+    const legacy = Object.keys(current.value.alerts).filter(key => LEGACY_ALERT.test(key));
+    if (!legacy.length) return;
+    for (const key of legacy) delete current.value.alerts[key];
+    if (writeAlertState(file, current.value)) receipt.alerts_dropped = legacy.length;
+    else receipt.skipped.push({ source: 'state/alert-state.json', reason: 'alert_state_write_failed' });
+  } finally { releaseLock(lock); }
 }
 
 type Json = any;

@@ -28,7 +28,7 @@
 
 ### Upgrade Instructions
 
-1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts migrate .hermit` once. Record its `{imported,enriched,archived,skipped}` receipt. An `{"error":...}` or a nonempty skipped list becomes a deferred-migration block with the affected sources and reason; never delete or hand-convert those sources. Reruns resume safely. Nothing starts automatically.
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts migrate .hermit` once. Record its `{imported,enriched,archived,alerts_dropped,skipped}` receipt; `alerts_dropped` counts retired proposal alert entries it removed. An `{"error":...}` or a nonempty skipped list becomes a deferred-migration block with the affected sources and reason; never delete or hand-convert those sources. Reruns resume safely. Nothing starts automatically.
 2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate task-decisions` to drop `artifacts.proposals`, preserving all other settings. The migration is idempotent.
 3. Preserve operator edits in TASKS.md and HEARTBEAT.md. Replace the following TASKS.md paragraph only on an exact match; otherwise defer with options Keep mine / Replace with the new policy. Old:
 

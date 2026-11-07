@@ -73,7 +73,7 @@ export function verbCreate(stateDir: string, stdin: string): Verdict {
       if (error) warnings.push('metrics_append_failed');
     } catch { warnings.push('metrics_append_failed'); }
   }
-  return withWarnings({ id: receipt.id, handle: receipt.handle }, warnings);
+  return withWarnings({ id: receipt.id, handle: receipt.handle, created: receipt.created }, warnings);
 }
 
 export function proposalDigest(root: string): Verdict {

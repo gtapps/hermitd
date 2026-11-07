@@ -31,6 +31,7 @@ import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
 import { loadMessages } from './messages';
+import { resolveHermitNowMs } from './time';
 
 type Json = any;
 
@@ -482,6 +483,13 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     const pending = inventory.records.find(row => row.task.id === notice.decision!.task && row.decision.generation === notice.decision!.generation);
     if (!pending) return { client: { ok: false, error: 'stale_decision' } };
     if (pending.delivered >= 2) return { client: { ok: false, error: 'decision_budget_spent' } };
+    // Stamp the attempt before sending, so a failed or refused attempt still waits
+    // a day before the heartbeat wakes for this generation again.
+    const budgetPath = path.join(hermitDir, 'state', 'decision-deliveries.json');
+    const key = `${pending.task.id}:${pending.decision.generation}`;
+    const budget = readDeliveryBudget(hermitDir);
+    budget[key] = { delivered: pending.delivered, attempted_at: new Date(resolveHermitNowMs()).toISOString() };
+    writeFileAtomic(budgetPath, JSON.stringify(budget) + '\n');
     const admin = pending.decision.authority === 'admin';
     const text = notice.maintainer?.text ?? notice.client;
     if (!text || (!admin && !pending.task.conversation)) return { client: { ok: false, error: 'decision_destination_missing' } };
@@ -490,9 +498,8 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
       maintainer: admin ? { text, fallback: 'primary' } : undefined,
     }, admin ? null : pending.task.conversation);
     if (admin ? result.maintainer?.delivered && result.maintainer.route !== 'findings' : result.client?.ok) {
-      const budget = readDeliveryBudget(hermitDir);
-      budget[`${pending.task.id}:${pending.decision.generation}`] = pending.delivered + 1;
-      writeFileAtomic(path.join(hermitDir, 'state', 'decision-deliveries.json'), JSON.stringify(budget) + '\n');
+      budget[key] = { ...budget[key], delivered: pending.delivered + 1 };
+      writeFileAtomic(budgetPath, JSON.stringify(budget) + '\n');
     }
     return result;
   } catch { return { client: { ok: false, error: 'decision_delivery_failed' } }; }

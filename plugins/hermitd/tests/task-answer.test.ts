@@ -173,3 +173,32 @@ test('new decisions advance beyond answered generations and get a fresh delivery
     expect(f.answer(id, 'yes', 'admin', { generation: '1' })).toEqual({ status: 'stale' });
   } finally { f.cleanup(); }
 });
+
+test('an answered agent question closes without a decider check, and a later question opens a new record', () => {
+  const f = fixture(); try {
+    const question = { requester: 'agent', title: 'Which mode?', done: 'Answer recorded', conversation: chat, 'waiting-on': 'admin', 'dedupe-key': 'question:watch-enable:w1',
+      decision: JSON.stringify({ purpose: 'input', authority: 'admin', generation: 1, resume: '/hermitd:watch enable w1 --answer {answer}' }) };
+    const { id } = mutateTask(f.dir, 'open', undefined, question, '') as { id: string };
+    expect(() => mutateTask(f.dir, 'close', id, { by: 'confirmed', actor: 'hermit', 'reason-stdin': true }, 'Done')).toThrow('not_decider');
+    expect(f.answer(id)).toMatchObject({ status: 'match', resume: '/hermitd:watch enable w1 --answer {answer}' });
+    mutateTask(f.dir, 'close', id, { by: 'confirmed', actor: 'hermit', 'reason-stdin': true }, 'Resumed');
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'confirmed' });
+    const again = mutateTask(f.dir, 'open', undefined, question, '') as { id: string };
+    expect(again.id).not.toBe(id);
+  } finally { f.cleanup(); }
+});
+
+test('a plain wait clears without a decider, and a proposal may block on a non-decision wait that never names agent', () => {
+  const f = fixture(); try {
+    const plain = mutateTask(f.dir, 'open', undefined, { requester: 'agent', title: 'Browser work', done: 'Done' }, '') as { id: string };
+    mutateTask(f.dir, 'block', plain.id, { 'waiting-on': 'browser', 'status-line': 'Waiting for the browser', next: 'Resume' }, '');
+    mutateTask(f.dir, 'note', plain.id, { 'clear-waiting': true }, '');
+    expect(f.read(plain.id).waiting_on).toBeNull();
+    const { id } = f.openRecord(); f.answer(id);
+    expect(() => mutateTask(f.dir, 'block', id, { 'waiting-on': 'agent', 'status-line': 'Paused', next: 'Resume' }, '')).toThrow('invalid_waiting_on');
+    mutateTask(f.dir, 'block', id, { 'waiting-on': 'browser', 'status-line': 'Waiting for the browser', next: 'Resume' }, '');
+    expect(f.read(id)).toMatchObject({ waiting_on: 'browser', decision: null, approved_by: 'admin' });
+    mutateTask(f.dir, 'note', id, { 'clear-waiting': true }, '');
+    expect(f.read(id).waiting_on).toBeNull();
+  } finally { f.cleanup(); }
+});

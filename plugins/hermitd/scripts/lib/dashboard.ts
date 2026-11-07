@@ -17,7 +17,7 @@ import path from 'node:path';
 import { readFileWithFrontmatter, globDir } from './frontmatter';
 import { formatTokens } from './format';
 import { sha256 } from './hash';
-import { readMergedAlerts, DECISION_PREFIX } from './alert-state';
+import { readMergedAlerts } from './alert-state';
 import { todayYMD } from './time';
 import { readSettledConfig, agentNameFromConfig } from './config-read';
 import { costIndexPath, readCostIndex } from './cost-log';
@@ -378,21 +378,11 @@ function delta(current: number | null, prior: number | null, s: ArtifactStrings)
     : fmt(s.weekly_delta_cost_no_pct, { prior: `$${prior.toFixed(2)}` });
 }
 
-// The proposals card below is the canonical surface for pending proposals — it
-// carries titles, chips and full bodies, which an alert row cannot. Rendering
-// them here too turned a 20-proposal backlog into twenty near-identical lines
-// that buried every other alert. They still count toward the "Needs you" tile,
-// so the number stays honest and the card explains it.
 function renderAlerts(state: DashboardState): string {
   const s = state.strings;
   if (!state.alerts.length) return `<p class="muted">${s.status_no_alerts}</p>`;
 
-  const shown = state.alerts.filter(a => !a.key.startsWith(DECISION_PREFIX));
-  // Every alert was card-owned. That is not "no alerts" — the tile says 20 — so
-  // render nothing rather than contradicting it.
-  if (!shown.length) return '';
-
-  const rows = shown.map(a => railRow({ tone: 'warn', title: a.message }));
+  const rows = state.alerts.map(a => railRow({ tone: 'warn', title: a.message }));
   return `<div class="alerts">${rows.join('')}</div>`;
 }
 

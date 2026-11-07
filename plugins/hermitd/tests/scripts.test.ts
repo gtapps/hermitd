@@ -1822,12 +1822,10 @@ describe('update-alert-state', () => {
     expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
   }));
 
-  test('update-alert-state (a model-authored derived key is dropped, never remapped to custom:)', withDir(async (dir) => {
+  test('update-alert-state (a model-authored doctor key is dropped, never remapped to custom:)', withDir(async (dir) => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
     writeHeartbeat(dir);
     const { state, stdout } = await updateAlertState(dir, firingPayload([
-      { key: 'decision-pending:PROP-042', text: 'PROP-042 waiting' },
-      { key: 'decision-pending:MP-7', text: 'MP-7 waiting' },
       { key: 'doctor:credential-expiry', text: 'doctor finding' },
     ]));
     expect(state.alerts).toEqual({});
