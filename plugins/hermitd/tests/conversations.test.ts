@@ -243,3 +243,13 @@ test('attribute thread refuses an open record but reuses a closed thread', async
   expect(result.code).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({ key: 'slack:chat~m1', chat_id: 'chat', reply: { thread_ts: 'm1' } });
 });
+
+
+test('attribute thread with only an agent question is not busy', async () => {
+  const { mutateTask } = await import('../scripts/lib/tasks');
+  const dir = freshDir();
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { slack: { attributes: { thread_id: 'thread_ts' } } } }));
+  mutateTask(dir, 'open', undefined, { requester: 'agent', conversation: 'slack:chat~m1', title: 'Question', done: 'Answered', 'waiting-on': 'chat', decision: JSON.stringify({ purpose: 'input', authority: 'chat', generation: 1 }) }, '');
+  const result = await cli(dir, ['thread-open', '--source', 'slack', '--chat-id', 'chat', '--thread-id', 'm1', '--message-id', 'm2', '--name', 'Work']);
+  expect(JSON.parse(result.stdout)).toEqual({ key: 'slack:chat~m1', chat_id: 'chat', reply: { thread_ts: 'm1' } });
+});

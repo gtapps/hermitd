@@ -31,12 +31,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeFileAtomic } from './lib/md-write';
 import { SETTINGS, READ_ONLY, byArg, type Setting } from './lib/settings/registry';
 import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
 import { persistConfig } from './lib/config-write';
 import { validate, ROUTINE_ID_RE } from './validate-config';
-import { flagValue, flagEq, emit, emitJson, exitError, failJson } from './lib/cli';
+import { flagValue, flagEq, emit, emitJson, exitError, failJson, readJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
 import { resolveGate, projectRootOf } from './lib/routines/gate';
 import { renameCursors } from './lib/routines/schedule';
@@ -61,7 +62,20 @@ const SIBLING_SKILL_RE = new RegExp(`^/${PLUGIN_ID}:[^\\s:]+$`);
 type Rename = { from: string; to: string };
 
 const migrations: Record<string, Migration> = {
-  'task-decisions': { run: config => { if (config.artifacts && typeof config.artifacts === 'object') delete config.artifacts.proposals; } },
+  'task-decisions': {
+    run: config => {
+      if (config.artifacts && typeof config.artifacts === 'object') delete config.artifacts.proposals;
+      return {};
+    },
+    afterPersist: (hermitDir, report) => {
+      const file = path.join(hermitDir, 'state', 'artifacts.json');
+      const artifacts = readJson(file);
+      if (!artifacts || typeof artifacts !== 'object' || !Object.hasOwn(artifacts, 'proposals')) return;
+      delete artifacts.proposals;
+      writeFileAtomic(file, JSON.stringify(artifacts, null, 2) + '\n');
+      report.note = 'The proposals page is no longer updated; delete it from claude.ai (or your artifact backend) if you no longer want it.';
+    },
+  },
   'browser-default-on': {
     run: (config, ctx) => {
       if (Object.hasOwn(config, 'browser')) return;

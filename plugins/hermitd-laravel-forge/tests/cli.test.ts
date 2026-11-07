@@ -43,10 +43,14 @@ class Forge {
     return $this->page([(object)['slug'=>'org-a', 'name'=>'Org A']], [(object)['slug'=>'org-b', 'name'=>'Org B']]);
   }
   public function deployments(string $org, int $server, int $site): object {
-    return $this->page(
-      [(object)['id'=>71, 'status'=>'finished', 'commit'=>(object)['message'=>'newest']]],
-      [(object)['id'=>70, 'status'=>'failed', 'commit'=>(object)['message'=>'older']]],
-    );
+    return new class {
+      public function lazy(): \\Generator {
+        foreach ([range(90, 81), range(80, 71)] as $page) {
+          foreach ($page as $id) yield (object)['id'=>$id, 'status'=>'finished', 'commit'=>(object)['message'=>'deployment']];
+        }
+        throw new \\RuntimeException('unexpected third deployment page');
+      }
+    };
   }
   public function createDeployment(string $org, int $server, int $site, array $data): object {
     file_put_contents(getenv('FORGE_TEST_REQUEST'), json_encode([$org, $server, $site, $data]));
@@ -123,10 +127,12 @@ test('list commands print one JSON object', () => {
     { id: 34, name: 'test.example' },
     { id: 35, name: 'second.example' },
   ] });
-  expect(json(run('deploy-history', 'test-server', 'test.example').result.stdout)).toEqual({ deployments: [
-    { id: 71, status: 'finished', commit: 'newest' },
-    { id: 70, status: 'failed', commit: 'older' },
-  ] });
+  const history = run('deploy-history', 'test-server', 'test.example').result;
+  expect(history.exitCode).toBe(0);
+  const deployments = json(history.stdout).deployments;
+  expect(deployments).toHaveLength(20);
+  expect(deployments[0]).toEqual({ id: 90, status: 'finished', commit: 'deployment' });
+  expect(deployments[19]).toEqual({ id: 71, status: 'finished', commit: 'deployment' });
 });
 
 test('a server on a later page resolves by name', () => {

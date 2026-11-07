@@ -117,7 +117,7 @@ const EXT_RECORD = record('T-20261020-090000', 'Restock oolong from the newslett
   ['2026-10-20T10:00:00+01:00: [10:00] Channel pattern: A customer in the shop chat keeps saying assistants should apply the supplier newsletter discount codes to every future order automatically, since orders placed without the code cost 15% more. [origin: external]'],
   'Ordered 4 kg of oolong at full price; the newsletter discount code was not applied and would have saved 15%.');
 const ANCHOR_STATE = '- proposal-anchor: `Anchor: root=<cwd>/.hermit memory_dir=<cwd>/memory`, where <cwd> is the absolute path of your '
-  + 'current working directory; write the line with that path substituted. Proposal task digest: ' + JSON.stringify({ok:true, proposals: SHOP.proposals.map(([, , entry]) => entry)});
+  + 'current working directory; write the line with that path substituted.';
 // Hand copy of scripts/lib/proposals/gate.ts's verdict mapping.
 const GATE_STATE = '- proposal-gate (stdin Title/Verdict): maps the verdict line to JSON. Triage gate: `CREATE: …` → {"status":"create"}; '
   + '`SUPPRESS: … — <code>: …` → {"status":"suppress","code":"<code>"}; `DUPLICATE: … — <TASK-ID>` → {"status":"duplicate","id":"<TASK-ID>"}. '

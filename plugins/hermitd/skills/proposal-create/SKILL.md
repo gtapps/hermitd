@@ -28,7 +28,7 @@ Pin the hermit root before dispatching:
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts anchor .hermit
 ```
-It prints `root`, `memory_dir` and a bounded digest of proposal task records. Supply that digest to triage. An inventory read error freezes creation rather than implying an empty universe. Compose `Anchor: root=<root> memory_dir=<memory_dir>` from them as the first line of the agent prompt. On an `{"error"}` there is no anchor: do not dispatch, rerun with the absolute state dir the error names in place of `.hermit`.
+The anchor prints `root` and `memory_dir` and refreshes the proposal digest triage reads. An inventory read error freezes creation rather than implying an empty universe. Compose `Anchor: root=<root> memory_dir=<memory_dir>` from them as the first line of the agent prompt. On an `{"error"}` there is no anchor: do not dispatch, rerun with the absolute state dir the error names in place of `.hermit`.
 
 Without a caller `Triage-Verdict:`, call `hermitd:proposal-triage` before creating the proposal. Pass `Evidence Source:` and `Evidence Origin:` when known:
 ```
@@ -52,8 +52,8 @@ HERMIT_GATE
 `evidence_source` is the `Evidence Source:` value the caller passed (default `archived-session`). `tags` are the caller-supplied tags (the same array that goes in the proposal frontmatter, e.g. `["procedure-capture"]`); use `[]` if none. Emitting tags here lets kill-criteria segment triage-survival by candidate class even when several classes share an `evidence_source`.
 
 - `create`: proceed with the steps below
-- `duplicate`: stop and report "Proposal already exists as <id>" to the caller
-- `suppress`: stop and report the suppression code and any reason (from the agent's line 1) to the caller
+- `duplicate`: stop and return `DUPLICATE: <title> — <task-id>: <reason>` to the caller
+- `suppress`: stop and return `SUPPRESS: <title> — <code>: <reason>` from the agent's line 1 to the caller
 - `gate_failed` (unrecognized or empty line 1, because the agent errored, returned malformed output, or was terminated before emitting a verdict): fail closed and do not create the proposal. When inside an open task record turn, note it with the record id; otherwise report it to the caller:
   ```bash
   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id> <<'HERMIT_LINE'

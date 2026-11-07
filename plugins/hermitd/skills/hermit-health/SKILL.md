@@ -34,7 +34,7 @@ Read the following (gracefully skip any file that doesn't exist). The sources ar
 **Reflect-line rules** (applied to the reflect routine bullet):
 - If `counters` is absent: omit the counter clause entirely
 - If `total_runs` is 0: show `no runs yet (since YYYY-MM-DD)` where the date is `counters.since`
-- Otherwise: `N runs, N empty | output: N proposals, N micro | since YYYY-MM-DD` where the date is `counters.since` — omit `| output: ...` if both `proposals_created` and `micro_proposals_queued` are 0
+- Otherwise: `N runs, N empty | output: N proposal tasks, N input decisions | since YYYY-MM-DD` where the date is `counters.since`; omit `| output: ...` if both `proposals_created` and `micro_proposals_queued` are 0
 
 **Micro:** Count entries with `status: "pending"` in `pending decisions.json`. Omit this section entirely if count is zero.
 
@@ -62,7 +62,7 @@ Reply in ≤1500 chars. Use exactly this section structure:
 (or: Queue empty.)
 
 ### Routine engagement
-- [id]: enabled, schedule [cron], [last ran Xh ago | N runs, N empty | output: N proposals, N micro | since YYYY-MM-DD] [suppress mix suffix if applicable]
+- [id]: enabled, schedule [cron], [last ran Xh ago | N runs, N empty | output: N proposal tasks, N input decisions | since YYYY-MM-DD] [suppress mix suffix if applicable]
 - [id]: disabled
 (or: Routine engagement — config.json not found.)
 

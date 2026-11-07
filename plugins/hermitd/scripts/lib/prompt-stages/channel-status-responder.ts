@@ -169,7 +169,7 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const m = loadMessages(dir, config?.language);
   const records = readRecords(dir);
   const scoped = records.filter(task => task.conversation === opts.chatKey || (opts.primary && task.conversation === null && task.decision && decodeDecision(task.decision).authority === 'admin'));
-  const current = currentWork(opts.redact ? records : scoped);
+  const current = currentWork(opts.redact ? records : records.filter(task => task.conversation === opts.chatKey));
   const lines: string[] = [];
 
   const pause = pauseLine(dir, timezone, m);

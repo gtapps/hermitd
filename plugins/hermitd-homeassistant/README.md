@@ -49,7 +49,7 @@ claude plugin install hermitd-homeassistant --marketplace gtapps/hermitd --scope
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.314+, a paid Claude plan (Pro, Max, Teams, or Enterprise), [Bun](https://bun.sh) 1.4+, and a running [Home Assistant](https://www.home-assistant.io/) instance with the official [MCP Server](https://www.home-assistant.io/integrations/mcp_server/) integration enabled and a Long-Lived Access Token (create one under `/profile/security` on your HA instance).
+> **Prerequisites:** [Claude Code](https://code.claude.com) v2.1.318+, a paid Claude plan (Pro, Max, Teams, or Enterprise), [Bun](https://bun.sh) 1.4+, and a running [Home Assistant](https://www.home-assistant.io/) instance with the official [MCP Server](https://www.home-assistant.io/integrations/mcp_server/) integration enabled and a Long-Lived Access Token (create one under `/profile/security` on your HA instance).
 
 ### 1. Install
 
@@ -90,14 +90,9 @@ claude plugin update hermitd-homeassistant@hermitd --scope local
 
 ## The Learning Loop
 
-The hermit watches your house every day — integration drops, automation errors, safety drift, usage patterns you haven't automated yet. When something crosses the three-condition rule (repeated + meaningful + actionable), it writes a proposal:
+The agent watches your house every day: integration drops, automation errors, safety drift, usage patterns you haven't automated yet. When something crosses the three-condition rule (repeated + meaningful + actionable), it writes a proposal.
 
-```
-/hermitd:task                            # see pending decisions
-Tell Hermit which task to approve        # admin consent through task answer
-```
-
-Accept one and the hermit picks it up during idle time. Reject, defer, dismiss — you're always in control.
+The agent sends each proposal to your maintainer chat (else the home chat) and waits. Reply yes or no in your own words; only an admin can approve. `!status` lists what is waiting.
 
 ---
 
@@ -142,7 +137,7 @@ hermitd-homeassistant (this plugin)
   ├── bin/ha-agent-lab    CLI launcher (runs src/cli.ts with bun)
   ├── src/*.ts            TypeScript modules (REST client, policy, simulation, apply, history, silence)
 
-hermitd (core, required ≥ 1.4.21)
+hermitd (core, required ≥ 1.4.28)
   └── Session lifecycle, proposals, reflect, memory, cost tracking
 ```
 

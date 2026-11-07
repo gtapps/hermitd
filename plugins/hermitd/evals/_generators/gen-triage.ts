@@ -18,7 +18,10 @@ function prop(pid: string, slug: string, status: string, title: string, problem:
     ...(closed || status === 'accepted' ? { decision: null, waiting_on: null, waiting_since: null } : {}),
     ...(status === 'accepted' ? { approved_rev: '0', approved_by: 'operator' } : {}),
     body: `## Proposal\n\n## Problem\n${problem}\n\n## Proposed Solution\nSee title.\n` });
-  const entry = { id: pid, status: status === 'dismissed' ? 'cancelled' : status === 'resolved' ? 'completed' : 'open', title, source: 'auto-detected', category: 'improvement', created, tags };
+  const entry = { id: pid, handle: `decision-${pid.toLowerCase()}`, status: closed ? 'closed' : 'open',
+    closed_by: status === 'dismissed' ? 'cancelled' : closed ? 'check' : null,
+    reason: closed ? status : null, summary: title, proposal: `## Proposal\n\n## Problem\n${problem}\n\n## Proposed Solution\nSee title.\n`,
+    title, source: 'auto-detected', category: 'improvement', tags: JSON.stringify(tags) };
   return [path.basename(file), body, entry];
 }
 
@@ -75,6 +78,7 @@ export function scaffold(universe: Universe, withConfig = true): string {
     entries.push(entry);
   }
 
+  files[`${root}/state/proposal-digest.json`] = JSON.stringify({ total: universe.proposals.length, omitted: 0, proposals: entries }) + '\n';
   files[`${root}/OPERATOR.md`] = universe.operator;
   const field = (body: string, key: string) => body.split('\n').find(l => l.startsWith(`${key}:`))!.split(/:(.*)/s)[1].trim();
   const idx: string[] = [];
@@ -121,7 +125,7 @@ const COMMON: Grader[] = [
 ];
 
 function triageCase(name: string, tag: string, desc: string, expected: string, universe: Universe, cands: string[], graders: Grader[], withConfig = true): void {
-  const prompt = CALLER + ANCHOR + 'Proposal task digest: ' + JSON.stringify({ ok: true, proposals: universe.proposals.map(([, , entry]) => entry) }) + '\n' + cands.join('\n\n') + '\n</input>';
+  const prompt = CALLER + ANCHOR + cands.join('\n\n') + '\n</input>';
   const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [proposal-triage, ${tag}]`,
     `expected_outcome: ${yq(expected)}`, 'context:', '  scaffold_script: scaffold.sh', 'execution:', '  max_turns: 8',
     '  timeout_seconds: 400', '  allowed_tools: [Agent, Read, Glob, Grep]', '  prompt: |', indent(prompt), 'graders:',

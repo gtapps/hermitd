@@ -70,7 +70,8 @@ describe('proposal inventory digest', () => {
     mutateTask(base, 'answer', second.id, { chat: 'discord:home', user: 'admin', reply: 'no' }, '');
     mutateTask(base, 'answer', third.id, { chat: 'discord:home', user: 'admin', reply: 'yes' }, '');
     mutateTask(base, 'close', third.id, { by: 'confirmed', actor: 'admin', chat: 'discord:home', user: 'admin', 'reason-stdin': true }, 'Done');
-    const digest = proposalDigest(base);
+    proposalDigest(base);
+    const digest = JSON.parse(fs.readFileSync(path.join(base, 'state', 'proposal-digest.json'), 'utf8'));
     expect(digest.proposals.map((record: any) => record.id)).toContain(first.id);
     expect(digest.proposals.find((record: any) => record.id === second.id).closed_by).toBe('cancelled');
     expect(digest.proposals.find((record: any) => record.id === third.id).closed_by).toBe('confirmed');

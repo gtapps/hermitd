@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript, runProposal } from './helpers/run';
 import { withDir } from './helpers/workdir';
-import { decodeTask } from '../scripts/lib/tasks';
+import { decodeTask, encodeTask } from '../scripts/lib/tasks';
 const stateArg = (dir: string) => path.join(dir, '.hermit');
 const out = (result: { stdout: string }) => JSON.parse(result.stdout);
 function seedState(dir: string, opts: Record<string, unknown> = {}): void {
@@ -35,11 +35,13 @@ for (const verb of ['patch', 'resolve', 'resolve-id', 'queue-micro', 'micro', 'i
   expect(result.exitCode).toBe(1); expect(out(result)).toEqual({ error: 'unknown_verb' });
 }));
 
-test('anchor returns a digest and does not build an index', withDir(async dir => {
+test('anchor writes a digest and does not build an index', withDir(async dir => {
   seedState(dir);
   const result = await runProposal(stateArg(dir), ['anchor']);
   expect(result.exitCode).toBe(0);
-  expect(out(result)).toMatchObject({ root: stateArg(dir), proposals: [], total: 0 });
+  expect(Object.keys(out(result))).toEqual(['root', 'memory_dir']);
+  expect(out(result).root).toBe(stateArg(dir));
+  expect(JSON.parse(fs.readFileSync(path.join(stateArg(dir), 'state/proposal-digest.json'), 'utf8'))).toEqual({ proposals: [], total: 0, omitted: 0 });
   expect(fs.existsSync(path.join(stateArg(dir), 'state', 'proposals-index.json'))).toBe(false);
 }));
 
@@ -156,3 +158,32 @@ describe('proposal.ts routine', () => {
     expect(fs.readFileSync(path.join(stateArg(dir), 'config.json'), 'utf-8')).toBe(before);
   }));
 });
+
+
+test('anchor bounds the digest to the latest 50 proposals', withDir(async dir => {
+  seedState(dir);
+  const receipt = out(await runProposal(stateArg(dir), ['create'], { stdin }));
+  const file = path.join(stateArg(dir), 'tasks', receipt.id + '.md');
+  const record = decodeTask(fs.readFileSync(file, 'utf8'));
+  fs.unlinkSync(file);
+  for (let index = 0; index < 51; index++) {
+    const id = 'T-20261101-1200' + String(index).padStart(2, '0');
+    fs.writeFileSync(path.join(stateArg(dir), 'tasks', id + '.md'), encodeTask({ ...record, id }));
+  }
+  expect((await runProposal(stateArg(dir), ['anchor'])).exitCode).toBe(0);
+  const digest = JSON.parse(fs.readFileSync(path.join(stateArg(dir), 'state/proposal-digest.json'), 'utf8'));
+  expect(digest.total).toBe(51);
+  expect(digest.omitted).toBe(1);
+  expect(digest.proposals).toHaveLength(50);
+  expect(digest.proposals[0].id).toBe('T-20261101-120001');
+}));
+
+test('inventory failure removes a stale digest', withDir(async dir => {
+  seedState(dir);
+  await runProposal(stateArg(dir), ['anchor']);
+  fs.mkdirSync(path.join(stateArg(dir), 'tasks'), { recursive: true });
+  fs.writeFileSync(path.join(stateArg(dir), 'tasks', 'broken.md'), 'invalid');
+  const result = await runProposal(stateArg(dir), ['anchor']);
+  expect(out(result)).toEqual({ error: 'inventory_read_failed' });
+  expect(fs.existsSync(path.join(stateArg(dir), 'state/proposal-digest.json'))).toBe(false);
+}));

@@ -147,7 +147,7 @@ Hermit uses several layers of memory:
 - **TASKS.md**: operator policy for deciding which assignments get records.
 - **OPERATOR.md** — your persistent instructions, read at every session start
 - **Claude Code memory** — cross-session learning that persists between conversations (the hermit reflects on its experience and saves what it learns)
-- **Proposals** (`PROP-NNN.md`) — structured improvement recommendations with evidence
+- **Proposals** (task records in `tasks/`) contain structured improvement recommendations with evidence; pending decisions appear in the dashboard waiting section.
 
 Reflection combines memory with the three most recent done, cancelled or unconfirmed task records. Frozen pre-upgrade archives remain available to recall but are ignored by task readers.
 

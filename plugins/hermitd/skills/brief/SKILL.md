@@ -18,13 +18,13 @@ If `config.always_on` is `true`, deliver all operator-facing output per `prompts
 
 Resolve scope before composing or dispatching any brief:
 
-1. Build `<selector>`: when told `This is routine <id>.`, use `--routine <id>`; otherwise, when asked in a chat, use `--chat <source>:<chat_id>` from that message's conversation key, including its `~<thread>` suffix when the channel maps threads; otherwise use no selector.
+1. Build `<selector>`: when told `This is routine <id>.`, use `--routine <id>`; otherwise, when asked in a chat, use `--chat <source>:<chat_id>` from that message's conversation key, including its `~<thread>` suffix when the channel maps threads; otherwise, from the terminal or Remote Control, use `--agent`.
 2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit context <selector>` before any other step. Its `scope` decides which records the brief covers. When its `agent_steps` is `false`, skip agent-wide admin decisions, duties, the upgrade check, `last-brief.json` writes, dashboard refresh and `OPERATOR.md` priorities. Deliver to the answering chat; a routine uses its resolved `destination`.
 3. Resolve the active flag (`--morning`, `--evening`, "brief today"/"daily summary"/"what happened today", or no flag).
 4. For morning, evening and daily, always dispatch `hermitd:skill-eval-runner` pointed at `${CLAUDE_PLUGIN_ROOT}/skills/brief/reference.md`. Do not compose the brief before the runner returns. After context, dispatch before any other read or mutation.
 5. For a no-flag brief, read only `bun ${CLAUDE_PLUGIN_ROOT}/scripts/brief-digest.ts .hermit morning <selector>`, compose in main, and never dispatch.
 
-Read the digest fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`) and the exact selector arguments (or none). The digest already enforces `agent_steps` and chat scope for `decisions_pending`; never age a queue or make a separate decision read.
+Read the digest fresh each turn. Pass the runner `plugin_root` (resolved absolute path), `mode` (`morning`, `evening`, or `daily`) and the exact selector arguments (`--agent`, `--routine <id>` or `--chat <key>`). The digest already enforces `agent_steps` and chat scope for `decisions_pending`; never age a queue or make a separate decision read.
 
 Copy this skill's Commands entries verbatim into the dispatch prompt (already absolute); the runner uses them with the reference's arguments.
 

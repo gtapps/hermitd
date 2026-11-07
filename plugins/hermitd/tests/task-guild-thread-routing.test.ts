@@ -79,3 +79,17 @@ test('concurrent opens on one thread write only one record', async () => {
     expect((await f.ok('list', ['--all', '--json'])).rows).toHaveLength(1);
   } finally { f.cleanup(); }
 });
+
+
+for (const questionFirst of [false, true]) test('agent questions coexist with thread work, question first=' + questionFirst, async () => {
+  const f = taskFixture(); try {
+    f.put('state/channel-chats.json', { discord: { chats: { thread: { type: 11, parent_id: 'parent', fetched_at: new Date().toISOString() } } } });
+    const question = ['--requester', 'agent', '--conversation', 'discord:thread', '--waiting-on', 'chat', '--decision', JSON.stringify({ purpose: 'input', authority: 'chat', generation: 1 })];
+    const work = ['--conversation', 'discord:thread'];
+    const a = await f.open(questionFirst ? question : work);
+    const b = await f.open(questionFirst ? work : question);
+    expect(a.id).toBeString();
+    expect(b.id).toBeString();
+    expect((await f.ok('list', ['--all', '--json'])).rows).toHaveLength(2);
+  } finally { f.cleanup(); }
+});

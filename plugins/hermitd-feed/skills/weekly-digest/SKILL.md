@@ -91,7 +91,7 @@ Produce a weekly synthesis from the archived brief notes. All data comes from
    - Parse each line (format: `YYYY-MM-DD <slot> | <emoji> | source: <name> | topic: <topic>`).
    - Filter to entries within the past 7 days (the week window).
    - Count 👍 and 👎 per source. If any source has ≥3 reactions total in the window, add a brief note to the digest's **Source notes** section (e.g. "Source A — 5 👍 this week", "Source B — 3 👎 this week (consider deprioritizing)").
-   - **Persistent negative signal:** if a source's 👎 count exceeds its 👍 by 3 or more over the month window (both files), open an admin-consent proposal task via `/hermitd:proposal-create` to deprioritize or remove that source (Evidence Source: scheduled-check/source-health).
+   - **Persistent negative signal:** if a source's 👎 count exceeds its 👍 by 3 or more over the month window (both files), create a proposal via `/hermitd:proposal-create` to deprioritize or remove that source (Evidence Source: scheduled-check/source-health).
 
 ## Notes
 

@@ -36,7 +36,7 @@ Artifact: <machine-written state file> — <cited value/pattern>   (optional)
 
 `Evidence Origin:` is optional. Default: `own-work`. External-content candidates require admin consent upstream by `reflection-judge` and `reflect`; triage is not the primary gate for this control. Emit `origin: external-content` as additive metadata when present, for audit.
 
-Steps 1–3's file reads are batch-invariant — the same universe of files (the task digest returned by `proposal.ts anchor`, the operator's `MEMORY.md` index at `<memory_dir>`, `<root>/OPERATOR.md`, `<root>/compiled/*.md`) applies to every candidate in the batch. Grep, Glob and Read each source once per dispatch, then check every candidate's title/keywords against that cached set — do not re-Grep, re-Glob or re-Read the same source per candidate. Evaluate each candidate independently through Steps 1–4 against the cached reads; reason about all candidates in thinking, then emit one verdict block per candidate in Output.
+Steps 1–3's file reads are batch-invariant — the same universe of files (the task digest at `<root>/state/proposal-digest.json`, the operator's `MEMORY.md` index at `<memory_dir>`, `<root>/OPERATOR.md`, `<root>/compiled/*.md`) applies to every candidate in the batch. Grep, Glob and Read each source once per dispatch, then check every candidate's title/keywords against that cached set — do not re-Grep, re-Glob or re-Read the same source per candidate. Evaluate each candidate independently through Steps 1–4 against the cached reads; reason about all candidates in thinking, then emit one verdict block per candidate in Output.
 
 ## Your private memory
 
@@ -48,11 +48,11 @@ Your private memory is invisible to the operator. Do not quote it in verdict lin
 
 ## Blindness
 
-Before Step 1: if the first line of the input does not match `^Anchor: root=/`, or a Glob of `<root>/config.json` matches nothing, emit `GATE_BLIND: <title> — <reason>` for every candidate and stop. Do not run Steps 1–4. Nothing else is blindness — a missing index, a missing or empty MEMORY.md, a missing OPERATOR.md, or an empty compiled directory are real absences, not blindness.
+Before Step 1: if the first line of the input does not match `^Anchor: root=/`, or a Glob of `<root>/config.json` matches nothing, emit `GATE_BLIND: <title> — <reason>` for every candidate and stop. Do not run Steps 1–4. A missing or unparseable `<root>/state/proposal-digest.json` is also blindness. Nothing else is blindness — a missing index, a missing or empty MEMORY.md, a missing OPERATOR.md, or an empty compiled directory are real absences, not blindness.
 
 ## Step 1 — Deduplication
 
-Read the bounded proposal-task digest from `proposal.ts anchor`. An inventory error is blindness, never an empty universe. Read only the matched task record's `## Proposal` section when its title and summary warrant it. Match problem statements, not shared integrations or implementation surfaces.
+Read `<root>/state/proposal-digest.json` once per dispatch for the bounded proposal-task digest. A missing or unparseable digest is blindness, never an empty universe. Read only the matched task record's `## Proposal` section when its title and summary warrant it. Match problem statements, not shared integrations or implementation surfaces.
 
 An open proposal or a cancelled proposal for the same problem is a duplicate; cancellation latches dismissal. Return `DUPLICATE: <title> — <task-id>: <reason>`. Completed proposals are background, not a blocker. Record the nearest match as `closest_prop` and continue through the remaining gates when it is not a duplicate.
 

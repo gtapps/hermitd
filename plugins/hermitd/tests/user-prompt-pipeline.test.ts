@@ -624,6 +624,28 @@ describe('user-prompt-pipeline: resident gate', () => {
 
 
 describe('task thread admission', () => {
+  for (const several of [false, true]) test('bind by work count, several=' + several, async () => {
+    const wd = trackedWorkdir();
+    const dir = hermit(wd.dir);
+    fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { discord: { allowed_users: ['u1'] } } }));
+    fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', fetched_at: new Date().toISOString() } } } }));
+    await openThreadTask(wd, 'discord:thread', 'resident', false);
+    const task = readTasks(dir)[0];
+    mutateTask(dir, 'open', undefined, { requester: 'agent', conversation: 'discord:thread', title: 'Question', done: 'Answer', 'waiting-on': 'chat', decision: JSON.stringify({ purpose: 'input', authority: 'chat', generation: 1 }) }, '', true);
+    if (several) fs.writeFileSync(hermit(wd.dir, 'tasks', 'T-20261101-120000.md'), encodeTask({ ...task, id: 'T-20261101-120000', handle: 'second' }));
+    const result = await runScript('user-prompt-pipeline.ts', { stdin: JSON.stringify({ prompt: '<channel source="discord" chat_id="thread" user="u1">continue</channel>' }), cwd: wd.dir });
+    if (several) {
+      expect(result.stdout).toContain('open tasks');
+      expect(result.stdout).toContain(task.handle);
+      expect(result.stdout).toContain('second');
+      expect(result.stdout).toContain('; ask which one]');
+      expect(result.stdout).not.toContain('owner=resident');
+    } else {
+      expect(result.stdout).toContain('[task thread discord:thread: owner=resident');
+      expect(result.stdout).toContain('agent questions waiting in this thread: 1');
+    }
+  });
+
   for (const scenario of [
     { name: 'worker thread inside passive parent passes', task: true, owner: 'worker:a1b2c3d4e5f6a7b8c', muted: false, body: 'continue', blocked: false },
     { name: 'helper thread inside passive parent passes', task: true, owner: 'helper:review', muted: false, body: 'continue', blocked: false },
@@ -1004,7 +1026,10 @@ test('five waiting DM rows cost less than twice the single-record thread context
   const prompt = threadEnvelope('continue');
   const ctx = () => ({ dir, prompt, envelope: parseChannelEnvelope(prompt), transcriptPath: null, config: () => ({ channels: { discord: { allowed_users: ['u1'] } } }), runtime: () => ({}) });
   fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 11, parent_id: 'parent', guild_id: 'guild' } } } }));
+  const otherRecords = readTasks(dir).slice(1);
+  for (const record of otherRecords) fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask({ ...record, conversation: null }));
   const single = (await conversationStage(ctx()))?.context ?? '';
+  for (const record of otherRecords) fs.writeFileSync(hermit(wd.dir, 'tasks', `${record.id}.md`), encodeTask(record));
   fs.writeFileSync(hermit(wd.dir, 'state', 'channel-chats.json'), JSON.stringify({ discord: { chats: { thread: { type: 1 } } } }));
   const shared = (await conversationStage(ctx()))?.context ?? '';
   expect(shared).toContain('total=5 omitted=0');

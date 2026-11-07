@@ -27,9 +27,9 @@ cat > '.hermit/tasks/T-20261001-090000.md' <<'HERMIT_FIXTURE'
 ---
 id: T-20261001-090000
 type: task
-title: "Archive old helper reports"
+title: "How often should reports run: daily or weekly?"
 created: 2026-10-01T09:00:00.000Z
-summary: "Archive old helper reports"
+summary: "How often should reports run: daily or weekly?"
 audience: operator
 status: open
 opened_at: 2026-10-01T09:00:00.000Z
@@ -80,7 +80,7 @@ result_rev: 0
 ## Outcome
 
 ## Proposal
-Archive old helper reports
+How often should reports run: daily or weekly?
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

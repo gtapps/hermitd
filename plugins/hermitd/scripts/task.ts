@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const dir = pinStateDirOrExit(dirArg);
   const allowed: Record<string, string[]> = {
     open: ['source', 'category', 'tags', 'waiting-on', 'decision', 'body-stdin', 'kind', 'note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
-    answer: ['chat', 'user', 'reply', 'generation', 'result-rev'],
+    answer: ['local', 'chat', 'user', 'reply', 'generation', 'result-rev'],
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const id = requiresId || (verb === 'answer' && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');
-  const booleans = new Set(['note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check']);
+  const booleans = new Set(['local', 'note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check']);
   const flags: TaskFlags = {};
   while (args.length) {
     const token = args.shift()!;
@@ -49,12 +49,13 @@ async function main(): Promise<void> {
   } else {
     const input = verb === 'note' || verb === 'lesson' || flags['note-stdin'] || flags['body-stdin'] || flags['result-stdin'] || flags['reason-stdin'] ? await Bun.stdin.text() : '';
     let threadConversation = false;
-    if (verb === 'open' && isKey(flags.conversation)) {
+    const routedChat = verb === 'open' ? flags.conversation : verb === 'answer' && !id && !flags.local ? flags.chat : undefined;
+    if (isKey(routedChat)) {
       const config = readSettledConfig(dir);
-      const [source, destination] = flags.conversation.split(':');
+      const [source, destination] = routedChat.split(':');
       const [chatId, thread] = destination.split('~');
       threadConversation = await classifyChat(dir, config, source, chatId, thread) === 'thread';
-      if (flags.requester !== 'agent' && thread === undefined && await needsThread(dir, config, source, chatId)) throw new Error('thread_required');
+      if (verb === 'open' && flags.requester !== 'agent' && thread === undefined && await needsThread(dir, config, source, chatId)) throw new Error('thread_required');
     }
     result = mutateTask(dir, verb, id, flags, input, threadConversation);
   }

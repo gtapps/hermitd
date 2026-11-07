@@ -2124,7 +2124,7 @@ export async function handleUpdates(
     title: u.title,
     installed_version: u.installed_version,
     latest_version: u.latest_version,
-    ...(digest ? {} : { release_url: u.release_url }),
+    ...(digest ? {} : { entity_id: u.entity_id, release_url: u.release_url }),
   }));
   const payload: Record<string, unknown> = { date: today, total: pending.length, updates, hacs_pending: view.hacs };
   if (digest) payload.more = view.more;

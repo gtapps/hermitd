@@ -251,7 +251,7 @@ history, not new content. Opt in via `/hermit-settings artifact-weekly-review ye
 ## On-demand document publish
 
 Any compiled doc or proposal can be published as a one-off page on operator request
-("open <compiled doc | PROP-NNN> as a page") — **no config gate; operator-initiated by
+("open <compiled doc | proposal task id> as a page") — **no config gate; operator-initiated by
 definition.** The missing gate is on *whether* to publish, not on *where*:
 `config.artifacts.backend` still applies here exactly as in § Shared refresh procedure —
 resolve it first, and take § Non-claude backend deviations when it is anything other than

@@ -60,7 +60,7 @@ echo '[<server-id>]' | php ${CLAUDE_PLUGIN_ROOT}/php/forge.php call backgroundPr
 When the operator says something like "what's wrong with myapp.com" or "triage the failing site", bundle context automatically:
 
 1. `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php site <server> <site>` — confirm the site is reachable and check status fields.
-2. `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php deploy-history <server> <site>` — surface the last few deployments and their statuses.
+2. `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php deploy-history <server> <site>` — surface up to 20 recent deployments and their statuses.
 3. `php ${CLAUDE_PLUGIN_ROOT}/php/forge.php logs <server> <site>` — fetch the latest deployment log.
 4. Synthesize: identify the failure type (build error, composer error, migration error, timeout), highlight the relevant log section, and suggest a remedy.
 

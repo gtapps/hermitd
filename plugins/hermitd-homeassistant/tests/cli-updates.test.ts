@@ -40,7 +40,7 @@ test('cli updates lists a pending update as JSON', async () => {
   expect(code).toBe(0);
   const json = JSON.parse(out);
   expect(json.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  expect(json).toMatchObject({ total: 1, updates: [CORE_JSON], hacs_pending: 0 });
+  expect(json).toMatchObject({ total: 1, updates: [{ ...CORE_JSON, entity_id: 'update.home_assistant_core_update' }], hacs_pending: 0 });
   expect(json.more).toBeUndefined();
 });
 

@@ -3,8 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Proposal and question workflows use task records and require hermitd 1.4.28.
-
+- Approving an update proposal runs `/hermitd-homeassistant:ha-apply-update`; an advisory update closes once Home Assistant no longer lists it. Requires hermitd 1.4.28.
 
 ## [0.4.27] - 2026-10-25
 

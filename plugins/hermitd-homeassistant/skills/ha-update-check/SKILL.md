@@ -24,7 +24,7 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ha-agent-lab ha updates
 The CLI:
 - Fetches live entity states and filters to `update.*` entities where `state == "on"` (an update is pending) and the pending version hasn't been skipped in HA.
 - Classifies each into a tier: `core` (HA Core), `os` (Operating System), `supervisor`, `addon`, or `hacs`. Core/OS/Supervisor are recognized by their well-known entity_ids; add-ons are recognized by the native backup capability they advertise (HA's `supported_features` BACKUP bit), which HACS/custom-integration updates lack; anything without it aggregates into the `hacs` bucket rather than risking noise.
-- Prints one JSON object: `date`, `total`, `updates` (each individual update's `tier`, `title`, `installed_version`, `latest_version`, `release_url`) and `hacs_pending`, or `{"date","status":"skipped","reason","detail"}` when HA is unreachable (`ha_unreachable`) or answers with an error (`ha_http_<status>`).
+- Prints one JSON object: `date`, `total`, `updates` (each individual update's `entity_id`, `tier`, `title`, `installed_version`, `latest_version`, `release_url`) and `hacs_pending`, or `{"date","status":"skipped","reason","detail"}` when HA is unreachable (`ha_unreachable`) or answers with an error (`ha_http_<status>`).
 
 ## Output contract
 
@@ -47,4 +47,4 @@ Each proposal body must name `/hermitd-homeassistant:ha-apply-update` as its app
 
 ## On accept
 
-If `ha_update_auto_apply` is enabled in `.hermit/config.json`, route acceptance through `/hermitd-homeassistant:ha-apply-update` rather than applying directly — it enforces the tier rule (add-ons/HACS may auto-apply; Core/OS/Supervisor always wait for an explicit operator go-ahead). If the flag is absent or false, the proposal is purely advisory: close its task once the operator has applied the update themselves in the HA UI.
+If `ha_update_auto_apply` is enabled in `.hermit/config.json`, route acceptance through `/hermitd-homeassistant:ha-apply-update` rather than applying directly — it enforces the tier rule (add-ons/HACS may auto-apply; Core/OS/Supervisor always wait for an explicit operator go-ahead). If the flag is absent or false, use the advisory branch of `/hermitd-homeassistant:ha-apply-update`: tell the operator where to update, then attach its read-only `ha-agent-lab ha updates` check with `task note --check`. The task closes on a passing check once HA no longer lists the individual update or reports zero pending HACS updates; unreachable or skipped HA and a missing binary keep the check failing.

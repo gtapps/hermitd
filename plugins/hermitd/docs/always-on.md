@@ -236,7 +236,7 @@ hermitd start     # hermit recovers and resumes
 
 `down` waits for a graceful execution boundary before stopping (see [Graceful Shutdown](#graceful-shutdown) below for the exact sequence). On `up`, the resident reads execution state and open task records.
 
-To queue work for the hermit to pick up next, use `/hermitd:proposal-create` followed by ``task answer <id> --chat <key> --user <sender-id> --reply yes``. Consent makes the existing proposal task runnable. A close or cancel returns the next runnable record; heartbeat nudges work left queued.
+To queue work for the hermit to pick up next, use `/hermitd:proposal-create` followed by `task answer <id> --local --reply yes` from the terminal or Remote Control, confirmed by Claude Code's permission prompt. From chat use `task answer <id> --chat <key> --user <sender-id> --reply yes`. An agent in bypass mode with no connected chat cannot answer decisions: connect a channel or leave bypass mode. Consent makes the existing proposal task runnable. A close or cancel returns the next runnable record; heartbeat nudges work left queued.
 
 ---
 

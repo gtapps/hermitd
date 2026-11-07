@@ -161,6 +161,17 @@ describe('pending decision delivery budget', () => {
       expect(await f.precheck(now + 25 * 3600000)).toBe('EVALUATE');
     } finally { stub.stop(); f.cleanup(); }
   });
+  test('an evaluation with no send still waits a day before the next wake', async () => {
+    const f = decisionFixture();
+    try {
+      const now = Date.now();
+      const result = await runScript('heartbeat.ts', { args: ['tick', f.dir], env: { AGENT_DIR: f.dir, HERMIT_NOW: new Date(now).toISOString() } });
+      expect(JSON.parse(result.stdout).decision_refresh).toHaveLength(1);
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 0, attempted_at: new Date(now).toISOString() }] });
+      expect(await f.precheck(now + 3600000)).toBe('OK');
+      expect(await f.precheck(now + 25 * 3600000)).toBe('EVALUATE');
+    } finally { f.cleanup(); }
+  });
   test('an unreadable inventory wakes at most once a day', async () => {
     const f = decisionFixture();
     try {

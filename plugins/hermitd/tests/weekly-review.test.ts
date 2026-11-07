@@ -1,4 +1,4 @@
-import { importTaskRecords, readTasks } from '../scripts/lib/tasks';
+import { importTaskRecords, readTasks, encodeTask } from '../scripts/lib/tasks';
 // bun test for scripts/weekly-review.ts — deliverable enumeration and
 // owner-language-safe frontmatter (delivered/open_loops_count fields).
 // Usage: bun test tests/weekly-review.test.ts   (from the plugin root)
@@ -147,8 +147,13 @@ function writeWeekCostLog(hermitDir: string): void {
 describe('weekly-review Proposals', () => {
   test('prints short ids and lists resolved proposals once, under Recently Resolved', withHermitDir(async dir => {
     const now = new Date().toISOString();
-    importTaskRecords(dir, [{ key: 'proposal:PROP-012', title: 'Tidy the queue', created: now, body: 'Body.', status: 'resolved', closedAt: now }]);
-    const id = readTasks(dir)[0].id;
+    importTaskRecords(dir, [{ key: 'proposal:PROP-012', title: 'Tidy the queue', created: now, body: 'Body.', status: 'accepted', closedAt: now }]);
+    const record = readTasks(dir)[0];
+    const id = record.id;
+    record.status = 'closed';
+    record.closed_by = 'confirmed';
+    record.closed_at = now;
+    fs.writeFileSync(path.join(dir, 'tasks', `${id}.md`), encodeTask(record));
     expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
     const { body } = readReview(dir);
     expect(body).toContain(`1 created: ${id}.`);

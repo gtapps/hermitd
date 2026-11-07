@@ -22,6 +22,10 @@ tags: [wholesale]
 
 Four cafes ordering monthly.
 HERMIT_FIXTURE
+mkdir -p ".hermit/state"
+cat > '.hermit/state/proposal-digest.json' <<'HERMIT_FIXTURE'
+{"total":4,"omitted":0,"proposals":[{"id":"T-20260814-100021","handle":"decision-t-20260814-100021","status":"open","closed_by":null,"reason":null,"summary":"Remind customers about invoices unpaid after 7 days","proposal":"## Proposal\n\n## Problem\nWholesale invoices go unpaid for weeks because nobody chases them.\n\n## Proposed Solution\nSee title.\n","title":"Remind customers about invoices unpaid after 7 days","source":"auto-detected","category":"improvement","tags":"[]"},{"id":"T-20260814-100024","handle":"decision-t-20260814-100024","status":"closed","closed_by":"cancelled","reason":"dismissed","summary":"Weekly sales summary to the channel","proposal":"## Proposal\n\n## Problem\nNo weekly overview of sales.\n\n## Proposed Solution\nSee title.\n","title":"Weekly sales summary to the channel","source":"auto-detected","category":"improvement","tags":"[]"},{"id":"T-20260814-100026","handle":"decision-t-20260814-100026","status":"closed","closed_by":"check","reason":"resolved","summary":"Back up the shop database nightly","proposal":"## Proposal\n\n## Problem\nThe order database had no backup.\n\n## Proposed Solution\nSee title.\n","title":"Back up the shop database nightly","source":"auto-detected","category":"improvement","tags":"[]"},{"id":"T-20260814-100028","handle":"decision-t-20260814-100028","status":"open","closed_by":null,"reason":null,"summary":"Reorder alert when stock falls below 5 units","proposal":"## Proposal\n\n## Problem\nPopular teas sold out before anyone noticed.\n\n## Proposed Solution\nSee title.\n","title":"Reorder alert when stock falls below 5 units","source":"auto-detected","category":"improvement","tags":"[]"}]}
+HERMIT_FIXTURE
 mkdir -p ".hermit/tasks"
 cat > '.hermit/tasks/T-20260814-100021.md' <<'HERMIT_FIXTURE'
 ---

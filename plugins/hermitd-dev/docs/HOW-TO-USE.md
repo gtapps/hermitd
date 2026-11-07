@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com) v2.1.314+
+- [Claude Code](https://code.claude.com) v2.1.318+
 - [hermitd](https://github.com/gtapps/hermitd) core, installed and hatched; `/hermitd-dev:hatch` enforces the required version from `.claude-plugin/hermit-meta.json`
 - Node.js 24+ (for the `git-push-guard` hook at strict profile)
 
@@ -39,7 +39,7 @@ Follow the project's own tests and workflow. Run `/simplify` for cleanup and ver
 
 ### 4. Reflect
 
-At every task boundary, the hermit invokes `reflect` to surface patterns. These become proposals you can accept, defer, or dismiss.
+At every task boundary, the hermit invokes `reflect` to surface patterns. These become proposals you can accept or dismiss.
 
 ---
 

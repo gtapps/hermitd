@@ -4,6 +4,7 @@
 
 ### Added
 
+- `task answer --local` answers a pending decision from the terminal or Remote Control as admin after Claude Code's permission prompt; bypass mode refuses it
 - Text pasted into the takeover keyboard strip on a phone or desktop is typed into the remote browser
 
 ### Changed
@@ -11,16 +12,18 @@
 - Agent proposals and durable questions are task records answered through `task answer` under the decider-or-admin rule
 - Pending decisions receive at most two confirmed reminder deliveries per generation and remain listed without expiry
 - Proposal application closes on a passing executable check or returns authored content for admin confirmation; the dashboard uses a `waiting` section instead of a proposals page
-
-- A brief sent to or asked for in a team chat, or the home chat on a non-technical profile, covers only that chat and its public threads; the maintainer chat, a technical home chat and the terminal still see everything, and only home-chat and whole-agent briefs list the agent's pending decisions, check for updates or refresh the dashboard
+- A brief in a team chat, or the home chat on a non-technical profile, covers only that chat, its public threads and the decisions asked there; terminal and maintainer briefs cover the whole agent
 - `hermitd restart` keeps the conversation by default on host and Docker; `hermitd restart --fresh` starts a clean one
 - Login renewals and `hermitd-watchdog restart` keep the conversation and are no longer subject to the one-hour restart guard
 - The agent moves to its browser when a web fetch fails, is refused or returns an empty or JavaScript-only page, and says how to turn the browser on when it is off
+- `/hermitd:proposal-act` and `/hermitd:proposal-list` are removed; answer proposals in chat or with `task answer --local`
+- Accepted proposals no longer close themselves when a `## Success Signal` cost predicate holds; they close on a passing check or an admin's confirmation
+- `brief-digest` needs `--agent`, `--chat` or `--routine`; with none it returns `needs_selector`
 
 ### Fixed
 
 - Briefs list results and waits on work a spawned session or worker holds
-- A task thread holds one open task, and separate work asked in it opens its own top-level thread
+- A task thread holds one open task alongside the agent's questions there; separate work asked in it opens its own top-level thread
 - Takeover keyboard button shows when the keyboard is open and closes it on a second tap
 - Tab in the takeover keyboard reaches the remote browser instead of leaving the keyboard field
 - `!status` and the `hermitd status` working-on column name work a helper or worker is running instead of reporting nothing in progress
@@ -28,8 +31,8 @@
 
 ### Upgrade Instructions
 
-1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts migrate .hermit` once. Record its `{imported,enriched,archived,alerts_dropped,skipped}` receipt; `alerts_dropped` counts retired proposal alert entries it removed. An `{"error":...}` or a nonempty skipped list becomes a deferred-migration block with the affected sources and reason; never delete or hand-convert those sources. Reruns resume safely. Nothing starts automatically.
-2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate task-decisions` to drop `artifacts.proposals`, preserving all other settings. The migration is idempotent.
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts migrate .hermit` once. Record its `{imported,linked,archived,alerts_dropped,skipped}` receipt. Proposed, deferred and accepted proposals become admin consent waits that post no reminders; one whose `proposal:PROP-NNN` task exists keeps that task unchanged; dismissed proposals and standalone skill drafts become cancelled records; resolved ones are archived only. `alerts_dropped` counts retired proposal alert entries it removed. An `{"error":...}` or a nonempty skipped list becomes a deferred-migration block with the affected sources and reason; never delete or hand-convert those sources. Reruns resume safely. Nothing starts automatically.
+2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate task-decisions` to drop `artifacts.proposals` and the `proposals` entry in `state/artifacts.json`; report the receipt's note, if any, as an Operator note. Preserve all other settings. The migration is idempotent.
 3. Preserve operator edits in TASKS.md and HEARTBEAT.md. Replace the following TASKS.md paragraph only on an exact match; otherwise defer with options Keep mine / Replace with the new policy. Old:
 
 ```text
@@ -39,7 +42,7 @@ Judge confirmation and cancellation from what the requester means, in any wordin
 New:
 
 ```text
-Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. Typed pending decisions are answered through `task answer --chat --user`: consent is admin-only for proposals; input follows its requester, chat or admin authority. Silence never expires a question. When unsure, ask. Say when you close or cancel so the requester can object.
+Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. Typed pending decisions are answered through `task answer`: consent is admin-only for proposals; input follows its requester, chat or admin authority. Silence never expires a question. When unsure, ask. Say when you close or cancel so the requester can object.
 ```
 
 Remove the following HEARTBEAT.md line only on an exact match; otherwise defer with options Keep mine / Remove the old proposal scan. Do not replace the entire file:
@@ -50,6 +53,8 @@ Remove the following HEARTBEAT.md line only on an exact match; otherwise defer w
 
 4. **Leftover check:** `/hermitd:proposal-act`, `/hermitd:proposal-list`, `PROP-` and `MP-` ids, and `queue-micro` in operator files. Replace live procedures with task decisions and `task answer`; retain archived history. Report ambiguous references for operator choice.
 5. **Leftover check:** custom dashboard renderers reading the `proposals` section key or `state.proposals`. The replacement is `waiting` / `state.waiting`, an array of pending task decisions. Re-check each renderer's expected shape before editing; preserve custom layout and unrelated operator code.
+
+**Leftover check:** `brief-digest` calls in operator skills or routines without `--agent`, `--chat` or `--routine`. Add the selector the caller means (terminal or whole agent: `--agent`).
 
 ## [1.4.27] - 2026-11-04
 
@@ -274,11 +279,11 @@ No `config.json` changes required.
 
 ### Upgrade Instructions
 1. Learned skills are on by settled default, including existing configs with no `skills` block. To opt out, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set skills.learning false`. Learning needs `permission_mode` `auto` or `bypassPermissions`; do not change the operator's permission mode automatically.
-2. Inspect each `.hermit/proposals/PROP-*.md` with status `proposed` or `deferred`. Only when its body has `## Skill Draft` and no `## Config`, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <filename> --set status=dismissed --stdin`, supplying `Decision: Dismissed because close-time learned skills replace standalone skill drafts.` on stdin. Leave routine-bound and agent-only proposals and all other statuses unchanged. Report which drafts were dismissed.
+2. Covered by the `proposal.ts migrate` Upgrade step that moves proposals to task records; nothing to run.
 3. Remove the `procedure-brief` line from `.hermit/knowledge-schema.md` only when it still exactly matches the previous template line: `- procedure-brief: audit record of a recurring procedure detected by reflect. Not session-injected (transient record, not a domain output). Required fields: title, type, created, tags, source, session, related_sessions, proposed_skill_name. location: compiled/procedure-brief-<slug>-<date>.md`. Preserve operator edits and existing brief files.
 4. Remove lines whose `source` is `procedure-noticed` or whose `pattern` starts with `procedure-noticed:` from `.hermit/state/observations.jsonl` when the file exists; keep every other line unchanged.
 
-**Leftover check:** standalone `## Skill Draft` proposals with status `proposed` or `deferred` dismissed only when no `## Config` is present; unchanged template `procedure-brief` schema line removed; no `procedure-noticed:` rows left in `state/observations.jsonl`; custom schema lines and routine/agent proposals preserved. Report learning's enabled state and any permission-mode limitation.
+**Leftover check:** unchanged template `procedure-brief` schema line removed; no `procedure-noticed:` rows left in `state/observations.jsonl`; custom schema lines and routine/agent proposals preserved. Report learning's enabled state and any permission-mode limitation.
 
 ## [1.4.21] - 2026-10-25
 
@@ -422,7 +427,7 @@ No `config.json` changes required.
 4. Remove `timeout_ms` and `persistent` from each `.hermit/config.json` `monitors[]` entry when present, preserving every other key.
 5. Report `restart_required` in Operator notes because config watches run under the new monitor only after a restart. Follow the `restart_required` delivery route; never issue a restart on the operator's behalf.
 6. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd update`.
-7. Run `bun <plugin_root>/scripts/proposal.ts micro .hermit stamp-chat` to give every pending micro-proposal without a `chat` the home chat, so a later answer must come from that chat. It is idempotent; report the `stamped` count. On `{"status":"skipped","reason":"no_home_chat"}`, report that pending questions stay answerable only from the terminal until a channel has a home chat and this command runs again. On `{"error":...}`, record a deferred-migration block naming this command and the error; never edit `state/micro-proposals.json` by hand.
+7. Covered by the `proposal.ts migrate` Upgrade step that moves proposals to task records; nothing to run.
 
 ## [1.4.17] - 2026-10-19
 
