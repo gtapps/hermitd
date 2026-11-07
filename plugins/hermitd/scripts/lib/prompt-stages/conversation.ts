@@ -31,8 +31,12 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const inThreadRecords = inThread ? records.filter(task => task.conversation === key) : [];
   const work = inThreadRecords.filter(task => !agentQuestion(task));
   const questions = inThreadRecords.filter(agentQuestion);
-  if (work.length > 1) return { context: `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]` };
-  const record = work[0] ?? (questions.length === 1 ? questions[0] : undefined);
+  if (work.length > 1) {
+    // Admit the thread so the reply reminder does not drop the message before the model can ask.
+    ctx.openTasksInChat = true;
+    return { context: `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]` };
+  }
+  const record = work[0] ?? questions[0];
   if (!record) {
     // Only a task's own thread stays addressed after it closes; a DM or group chat
     // that carried a record returns to its ordinary rules.
@@ -104,7 +108,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
   let context = `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
-  if (work.length && questions.length) context += `\n[agent questions waiting in this thread: ${questions.length}; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
+  if (questions.length > (work.length ? 0 : 1)) context += `\n[agent questions waiting in this thread: ${questions.length}; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
   if (record.kind === 'proposal') context += `\n[agent proposal waits: 1; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
   if (record.kind !== 'proposal' && owner !== 'worker' && record.waiting_on !== null) {
     // `note --done` clears result/result_at without clearing waiting_on, so a

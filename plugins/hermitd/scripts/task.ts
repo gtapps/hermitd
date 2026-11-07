@@ -39,7 +39,6 @@ async function main(): Promise<void> {
     else if (name in flags) throw new Error('duplicate_flag');
     else flags[name] = value;
   }
-  if (verb === 'answer' && flags.local && ('chat' in flags || 'user' in flags)) throw new Error('invalid_arguments');
   if (flags.id && !TASK_ID.test(String(flags.id))) throw new Error('invalid_id');
   let result: unknown;
   if (verb === 'list') result = listTasks(dir, flags);

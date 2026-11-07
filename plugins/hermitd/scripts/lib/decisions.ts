@@ -41,7 +41,6 @@ export function pendingDecisions(dir: string): { ok: true; records: PendingDecis
   } catch { return { ok: false }; }
 }
 
-
 /** Stamp evaluation attempts without spending confirmed-delivery counts. */
 export function recordDecisionAttempts(dir: string, keys: string[], nowMs: number): boolean {
   const lock = path.join(dir, 'state', 'decision-deliveries.lock');

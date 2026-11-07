@@ -927,6 +927,7 @@ test('local answer fallbacks, mixed settings and ordinary channel answers', asyn
   ]) expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir));
   for (const [command, reason] of [
     ['task "$V" --local', 'Admin decision: task answer --local'],
+    ["bash -c 'hermitd-run task answer .hermit --local --reply yes'", 'Admin decision: task answer --local'],
     ['task answer .hermit --local --reply "yes please"', 'Admin decision: answer the pending decision "yes please" as admin'],
     ['task answer .hermit --local --reply yes && ' + cmd('set voice friendly'), 'Admin decision: answer the pending decision "yes" as admin; Hermit setting: voice'],
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
