@@ -55,11 +55,11 @@ describe('ask-gate', () => {
     const r = await run(ASK_PAYLOAD, dir);
     expect(r.exitCode).toBe(2);
     expect(r.stderr).toContain('channel reply tool');
-    expect(r.stderr).toContain('micro-proposals.json');
-    const proposalPath = r.stderr.match(/bun '([^']+)' queue-micro/)?.[1];
+    expect(r.stderr).toContain('task answer --chat --user');
+    const proposalPath = r.stderr.match(/bun '([^']+)' open/)?.[1];
     expect(proposalPath).toBeDefined();
     expect(path.isAbsolute(proposalPath!)).toBe(true);
-    expect(proposalPath!.endsWith('/scripts/proposal.ts')).toBe(true);
+    expect(proposalPath!.endsWith('/scripts/task.ts')).toBe(true);
     expect(fs.existsSync(proposalPath!)).toBe(true);
     expect(r.stderr).not.toContain('${');
   }));

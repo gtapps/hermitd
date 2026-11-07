@@ -16,7 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readFrontmatter, listProposalFiles } from '../frontmatter';
+import { readTaskInventory } from '../tasks';
 import { normalizeItemKey, parseChecklistItems } from '../heartbeat-items';
 
 type Json = any;
@@ -122,19 +122,15 @@ export function runSelfEval(opts: {
   // One pass over the proposals this hermit raised about its own checklist:
   // a dismissal re-opens the item for observation, and an item that keeps firing
   // after its proposal was dismissed accrues noise instead.
-  const listed = listProposalFiles(path.join(stateDir, 'proposals'));
-  for (const file of listed.ok ? listed.files : []) {
-    const fm = readFrontmatter(path.join(stateDir, 'proposals', file));
-    const key = fm && typeof fm.self_eval_key === 'string' ? fm.self_eval_key : null;
+  const inventory = readTaskInventory(stateDir);
+  for (const record of inventory.ok ? inventory.records : []) {
+    const key = record.kind === 'proposal' && record.dedupe_key?.startsWith('self-eval:') ? record.dedupe_key.slice('self-eval:'.length) : null;
     const entry = key ? self_eval[key] : null;
     if (!entry) continue;
-    if (fm.source === 'auto-detected' && fm.status === 'dismissed' && entry.proposed === true) {
-      entry.proposed = false;
-      entry.clean_ticks = 0;
-    }
+    if (record.closed_by === 'cancelled' && entry.proposed === true) { entry.proposed = false; entry.clean_ticks = 0; }
     if (!fired.has(key!)) continue;
-    if (fm.status === 'accepted' || fm.status === 'resolved') entry.noise_ticks = 0;
-    else if (fm.status === 'dismissed') entry.noise_ticks += 1;
+    if (record.approved_rev !== null || record.closed_by === 'check' || record.closed_by === 'confirmed') entry.noise_ticks = 0;
+    else if (record.closed_by === 'cancelled') entry.noise_ticks += 1;
   }
 
   const proposals: SelfEvalProposal[] = [];

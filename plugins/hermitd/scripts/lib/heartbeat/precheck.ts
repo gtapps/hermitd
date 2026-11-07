@@ -19,13 +19,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { currentHHMM, todayYMD, parseDuration } from '../time';
 import { readSettledConfig } from '../config-read';
-import { readAlertState, defaultAlertState, quarantineAlertState, writeAlertState, readMergedAlerts, MICRO_PREFIX, PROPOSAL_PREFIX } from '../alert-state';
-import { readFrontmatter, listProposalFiles } from '../frontmatter';
+import { readAlertState, defaultAlertState, quarantineAlertState, writeAlertState, readMergedAlerts } from '../alert-state';
+import { pendingDecisions } from '../decisions';
 import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChecklistItems } from '../heartbeat-items';
 import { isPaused } from '../pause';
 import { probeDeclaredCredentials, strayTokenNote } from '../credential-probe';
-import { readMicroProposals } from '../micro-proposals-io';
-import { askedOutsideHome, homeChatKey } from '../proposals/micro';
 import { scanForInjection } from '../injection-scan';
 import { sha256 } from '../hash';
 
@@ -41,87 +39,6 @@ const readJSON = (p: string): Json => {
 // the pause-escape gate, the pending-budget gate, and the injection branch.
 export const budgetPending = (dir: string): boolean =>
   Object.values(readMergedAlerts(dir)).some((e: Json) => e?.kind === 'budget' && e.notified === false);
-
-// The default HEARTBEAT.md checklist item scans `proposals/` for review-worthy
-// proposals. Its alerts are keyed `proposal-pending:<PROP-NNN>`, NOT the generic
-// `checklist:<hash>` key the item loop below uses — so the generic rule can never
-// satisfy it and the item always forces EVALUATE (the bug this resolves). Resolve
-// it against real proposal frontmatter + proposal-pending alerts instead. The
-// `isProposalScanItem` classifier lives in ./lib/heartbeat-items (shared with its
-// coherence test).
-
-// 'clean' → item satisfied, continue the loop. 'evaluate' → dispatch the LLM.
-// Fail-open in every ambiguous case (unreadable dir/file, legacy no-frontmatter,
-// lingering alerts that need LLM-owned resolution detection): never a false OK.
-// Read-only — writes nothing, so it is identical under --peek.
-function resolveProposalScanItem(dir: string, alertMap: Json): 'clean' | 'evaluate' {
-  const proposalsDir = path.join(dir, 'proposals');
-  // listProposalFiles distinguishes ENOENT (ok:true, empty — nothing to review,
-  // fall through to the empty-scan branch that still honors a lingering alert)
-  // from any other readdir error (ok:false — EACCES/EIO/ENOTDIR, realistic under
-  // the Docker runtime), which is ambiguous → fail-open, never a false OK. Shared
-  // with the alert-state derivers so both scans agree on what counts as readable.
-  const listed = listProposalFiles(proposalsDir);
-  if (!listed.ok) return 'evaluate';
-  const files = listed.files.map(f => path.join(proposalsDir, f));
-  const proposedIds: string[] = [];
-  for (const f of files) {
-    const fm = readFrontmatter(f);
-    if (!fm || typeof fm.status !== 'string') return 'evaluate'; // legacy/unreadable/malformed
-    if (fm.status === 'proposed') {
-      const m = path.basename(f).match(/^(PROP-\d+)/);
-      if (!m) return 'evaluate';
-      proposedIds.push(m[1]);
-    }
-  }
-  const hasPendingAlert = Object.keys(alertMap).some(k => /^proposal-pending:/.test(k));
-  if (proposedIds.length === 0) {
-    // Nothing to review. A lingering proposal-pending alert means a proposal was
-    // resolved/accepted since it fired; resolution detection + consecutive_clean
-    // cleanup are SKILL.md-owned (this script never writes alerts{}), so defer.
-    return hasPendingAlert ? 'evaluate' : 'clean';
-  }
-  // Some proposals are awaiting review — each needs a suppressed, non-resolving
-  // alert entry, the same predicate the generic item loop applies.
-  for (const id of proposedIds) {
-    const entry = alertMap[`proposal-pending:${id}`];
-    if (!entry || !entry.suppressed || (entry.consecutive_clean ?? 0) > 0) return 'evaluate';
-  }
-  return 'clean';
-}
-
-// Same shape as resolveProposalScanItem, for the micro-approval queue. A pending
-// tier-1 micro-proposal is a structured alert key (MICRO_PREFIX), derived by
-// deriveMicroPendingKeys and aged through the same suppress-after-5-fires ladder on
-// every EVALUATE tick — this scan is what reads that ladder back. Without it the gate
-// fired on raw micro-proposals.json forever, so an unanswered operator question (the
-// channel-bridged ask path forces tier 1) turned every poll into a paid full-context
-// wake for as long as it went unanswered. Bypassing clean_recheck_cooldown is still
-// correct — a pending decision is not "clean" — but bypassing it is not a licence to
-// fire indefinitely; once suppressed, the once-daily digest gate keeps surfacing it.
-// Read-only — writes nothing, so it is identical under --peek.
-// A corrupt file is NOT an empty queue: the sibling scan above fails open on every
-// ambiguous read of its source of truth, and this one must too, or a hand-edit typo
-// silently buries every pending operator question (#764). Caller damps the repeat.
-// An entry asked outside the home chat never gets an alert key (deriveMicroPendingKeys
-// skips it), so it could never be damped; skip it here too.
-function resolveMicroPendingScan(dir: string, alertMap: Json, channels: Json): 'clean' | 'evaluate' | 'corrupt' {
-  const read = readMicroProposals(path.join(dir, 'state', 'micro-proposals.json'));
-  if (read.status === 'corrupt') return 'corrupt';
-  const micro = read.status === 'missing' ? { pending: [] } : read.data;
-  const home = homeChatKey(channels);
-  const pending = Array.isArray(micro.pending)
-    ? micro.pending.filter((p: Json) => p && p.status === 'pending' && p.tier === 1 && !askedOutsideHome(p, home))
-    : [];
-  for (const p of pending) {
-    // deriveMicroPendingKeys skips a non-string id, so no alert key exists to suppress
-    // against — fail open rather than let a malformed entry read as damped.
-    if (typeof p.id !== 'string') return 'evaluate';
-    const entry = alertMap[`${MICRO_PREFIX}${p.id}`];
-    if (!entry || !entry.suppressed || (entry.consecutive_clean ?? 0) > 0) return 'evaluate';
-  }
-  return 'clean';
-}
 
 // The default HEARTBEAT.md credential-expiry item asks the credential itself.
 // Every declared `expiry_probe` (core plus siblings) is run here, so a healthy
@@ -247,38 +164,13 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
   if (typeof alertState.total_ticks !== 'number' || !Number.isFinite(alertState.total_ticks)) {
     alertState.total_ticks = 0;
   }
-  const microScan = resolveMicroPendingScan(stateDir, alertState.alerts ?? {}, config.channels);
-  // Recovery clears the damper: a file repaired and re-broken inside the 24h window is a
-  // NEW corruption, and inheriting the previous one's stamp would silence its wake. Folded
-  // into the tick-increment write below rather than a second writeAlertState call, since
-  // precheck runs on every heartbeat poll.
-  if (microScan !== 'corrupt' && !peek && typeof alertState.last_micro_corrupt_wake_at === 'string') {
-    delete alertState.last_micro_corrupt_wake_at;
-  }
+  const decisions = pendingDecisions(stateDir);
   if (!peek) {
     alertState.total_ticks += 1;
     writeAlertState(alertStatePath, alertState);
   }
-
-  // peek fires one tick early; the subsequent mutating call lands on the multiple-of-20
+  if (!decisions.ok || decisions.records.some(row => row.delivered < 2)) return 'EVALUATE';
   if (peek ? (alertState.total_ticks + 1) % 20 === 0 : alertState.total_ticks % 20 === 0) return 'EVALUATE';
-
-  if (microScan === 'evaluate') return 'EVALUATE';
-  // Corrupt file: wake so the tick can tell the operator, but at most once a day —
-  // the file stays corrupt until a human fixes it, and waking every poll to repeat
-  // that is the same unbounded-wake shape the pending-micro damper just removed.
-  if (microScan === 'corrupt') {
-    const lastWake = typeof alertState.last_micro_corrupt_wake_at === 'string'
-      ? new Date(alertState.last_micro_corrupt_wake_at).getTime()
-      : NaN;
-    if (isNaN(lastWake) || (now - lastWake) >= 24 * 3600000) {
-      if (!peek) {
-        alertState.last_micro_corrupt_wake_at = new Date(now).toISOString();
-        writeAlertState(alertStatePath, alertState);
-      }
-      return 'EVALUATE';
-    }
-  }
 
   // PROP-016: an un-notified budget alert (cost-tracker.ts writes these directly,
   // bypassing the LLM-owned suppressed/digest dance the generic checklist alerts use)
@@ -310,9 +202,7 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
   // observation, and every apply rewrites last_clean_eval_at while a genuinely new key nulls it.
   // `null` cooldown disables it.
   if (hbConfig.clean_recheck_cooldown !== null) {
-    const bypassDamper = Object.entries(alerts).some(([key, e]: [string, Json]) => e
-      && ((e.consecutive_clean ?? 0) > 0
-        || (key.startsWith(PROPOSAL_PREFIX) && e.suppressed !== true)));
+    const bypassDamper = Object.values(alerts).some((entry: Json) => (entry?.consecutive_clean ?? 0) > 0);
     const lastCleanEvalAt = typeof alertState.last_clean_eval_at === 'string'
       ? new Date(alertState.last_clean_eval_at).getTime()
       : NaN;
@@ -331,7 +221,6 @@ export function runPrecheck(stateDir: string, peek: boolean): string {
   // approaching resolution (consecutive_clean === 0).
   for (const item of checklistItems) {
     if (isProposalScanItem(item)) {
-      if (resolveProposalScanItem(stateDir, alerts) === 'evaluate') return 'EVALUATE';
       continue;
     }
     const key = normalizeItemKey(item);

@@ -50,7 +50,6 @@ import type { StageContext, StageResult } from './lib/prompt-stages/types';
 
 import { openTurnMarker, run as recordOperatorAction } from './record-operator-action';
 import { run as conversation } from './lib/prompt-stages/conversation';
-import { run as pendingQuestion } from './lib/prompt-stages/pending-question';
 import { run as promptContext } from './lib/prompt-stages/prompt-context';
 import { run as channelReplyReminder, invokeResponder } from './lib/prompt-stages/channel-reply-reminder';
 import { run as pauseKeyword } from './lib/prompt-stages/pause-keyword';
@@ -166,7 +165,6 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // still names the chat to answer on.
     await stage('prompt-context', promptContext, ctx);
     await stage('conversation', conversation, ctx);
-    await stage('pending-question', pendingQuestion, ctx);
     if (harnessMode && ctx.skipHarnessCommand) return;
     // The reminder stage runs BEFORE the audit: it resolves passive-chat membership
     // and self-mention over the network and warms lib/channel-chats.ts's cache, which

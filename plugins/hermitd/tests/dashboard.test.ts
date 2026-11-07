@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { mutateTask } from '../scripts/lib/tasks';
 import { loadDashboardState, renderDashboard, mdToHtml, escapeHtml } from '../scripts/lib/dashboard';
 
 // ---------- fixture scaffolding ----------
@@ -142,8 +143,7 @@ describe('loadDashboardState', () => {
     expect(state.today_cost_usd).toBe(0);
     expect(state.today_tokens).toBe(0);
     expect(state.alerts).toEqual([]);
-    expect(state.proposals.open).toEqual([]);
-    expect(state.proposals.other).toEqual([]);
+    expect(state.waiting).toEqual([]);
     expect(state.weekly).toBeNull();
   }));
 
@@ -192,98 +192,12 @@ describe('loadDashboardState', () => {
     expect(state.alerts[0].message).not.toContain('budget-breach:daily'); // not the raw dedup key
   }));
 
-  test('oldest open accepted age is measured from accepted_date, not creation', withHermitDir((hermitDir) => {
-    const nowMs = Date.now();
-    const created = new Date(nowMs - 40 * 86400000).toISOString();  // created 40d ago
-    const accepted = new Date(nowMs - 3 * 86400000).toISOString();  // accepted 3d ago
-    writeProposal(hermitDir, 'PROP-010-accepted-100000.md',
-      { id: 'PROP-010-accepted-100000', title: '"Long-open accept"', status: 'accepted', created, accepted_date: accepted },
-      'body');
+  test('waiting is read from task records without relying on the old index', withHermitDir(hermitDir => {
+    const { id } = mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '') as { id: string };
+    writeStaleIndex(hermitDir, [{ id: 'PROP-999-old', file: 'old.md', title: 'Obsolete' }]);
     const state = loadDashboardState(hermitDir);
-    expect(state.proposals.oldest_open_accepted?.id).toBe('PROP-010-accepted-100000');
-    expect(state.proposals.oldest_open_accepted?.age_days).toBe(3); // since accepted, not 40 since created
-  }));
-
-  test('splits proposed/accepted (open, with body) from resolved/dismissed (one-liners)', withHermitDir((hermitDir) => {
-    writeProposal(hermitDir, 'PROP-001-open-100000.md',
-      { id: 'PROP-001-open-100000', title: '"Open one"', status: 'proposed', created: '2026-07-01T10:00:00Z' },
-      '## Context\nSome details here.');
-    writeProposal(hermitDir, 'PROP-002-accepted-100000.md',
-      { id: 'PROP-002-accepted-100000', title: '"Accepted one"', status: 'accepted', created: '2026-06-20T10:00:00Z', accepted_date: '2026-06-21T10:00:00Z' },
-      'Accepted body.');
-    writeProposal(hermitDir, 'PROP-003-resolved-100000.md',
-      { id: 'PROP-003-resolved-100000', title: '"Resolved one"', status: 'resolved', created: '2026-06-01T10:00:00Z' },
-      'Resolved body should not appear.');
-
-    const state = loadDashboardState(hermitDir);
-    expect(state.proposals.open.map(p => p.id).sort()).toEqual(['PROP-001-open-100000', 'PROP-002-accepted-100000']);
-    expect(state.proposals.other.map(p => p.id)).toEqual(['PROP-003-resolved-100000']);
-
-    const open = state.proposals.open.find(p => p.id === 'PROP-001-open-100000')!;
-    expect(open.body).toContain('Some details here.');
-    // Resolved rows are one-liners: no body field on the ProposalRow shape.
-    expect((state.proposals.other[0] as any).body).toBeUndefined();
-
-    expect(state.proposals.oldest_open_accepted?.id).toBe('PROP-002-accepted-100000');
-  }));
-
-  // Regression for the 2026-07-12 incident: a bulk Bash `mv` rename left
-  // proposals-index.json stale (old ids/filenames), and both artifact pages
-  // rendered the open proposal with an empty body until the index was rebuilt
-  // by hand. loadProposals() must now self-heal on every read instead of
-  // trusting a parseable-but-stale cache.
-  test('self-heals a stale index against a renamed proposal file (incident regression)', withHermitDir((hermitDir) => {
-    // Current state on disk: the proposal under its NEW (post-rename) name.
-    writeProposal(hermitDir, 'PROP-004-renamed-140000.md',
-      { id: 'PROP-004-renamed-140000', title: '"Renamed proposal"', status: 'proposed', created: '2026-07-12T10:00:00Z' },
-      'Full body text that must survive the rename.');
-    // Stale cache left over from before the rename: old id/filename that no
-    // longer exists on disk.
-    writeStaleIndex(hermitDir, [
-      { id: 'PROP-004-old-name-100000', file: 'PROP-004-old-name-100000.md', title: 'Renamed proposal' },
-    ]);
-
-    const state = loadDashboardState(hermitDir);
-    expect(state.proposals.open.map(p => p.id)).toEqual(['PROP-004-renamed-140000']);
-    expect(state.proposals.open[0].body).toContain('Full body text that must survive the rename.');
-    // Stale entry from before the rebuild must not linger.
-    expect(state.proposals.open.some(p => p.id === 'PROP-004-old-name-100000')).toBe(false);
-  }));
-
-  test('a stale index entry for a since-deleted proposal file does not appear', withHermitDir((hermitDir) => {
-    // No proposal file on disk — only a stale index claiming one exists.
-    writeStaleIndex(hermitDir, [
-      { id: 'PROP-005-deleted-100000', file: 'PROP-005-deleted-100000.md', title: 'Deleted proposal' },
-    ]);
-
-    const state = loadDashboardState(hermitDir);
-    expect(state.proposals.open).toEqual([]);
-  }));
-
-  test('a proposal file added out-of-band appears even though the index predates it', withHermitDir((hermitDir) => {
-    // Stale index reflects zero proposals.
-    writeJson(hermitDir, 'state/proposals-index.json', {
-      updated: '2026-07-12T09:00:00Z', count: 0, counts: {}, proposals: [],
-    });
-    // A proposal written to disk after that snapshot (e.g. by a script that
-    // bypassed the Write/Edit-gated generate-summary hook).
-    writeProposal(hermitDir, 'PROP-006-new-150000.md',
-      { id: 'PROP-006-new-150000', title: '"New proposal"', status: 'proposed', created: '2026-07-12T15:00:00Z' },
-      'Body of the new proposal.');
-
-    const state = loadDashboardState(hermitDir);
-    expect(state.proposals.open.map(p => p.id)).toEqual(['PROP-006-new-150000']);
-  }));
-
-  test('caps the "other" (resolved/dismissed) list and reports the omitted count', withHermitDir((hermitDir) => {
-    for (let i = 0; i < 25; i++) {
-      writeProposal(hermitDir, `PROP-${String(i).padStart(3, '0')}-old-100000.md`,
-        { id: `PROP-${String(i).padStart(3, '0')}-old-100000`, title: '"Old"', status: 'resolved', created: '2026-01-01T10:00:00Z' },
-        'body');
-    }
-    const state = loadDashboardState(hermitDir);
-    expect(state.proposals.other.length).toBe(20);
-    expect(state.proposals.other_omitted).toBe(5);
+    expect(state.waiting).toEqual([{ id, title: 'Review configuration', authority: 'admin', purpose: 'consent', generation: 1, options: undefined, since: expect.any(String) }]);
+    expect('proposals' in state).toBe(false);
   }));
 
   test('reads latest weekly review and computes deltas against the prior week', withHermitDir((hermitDir) => {
@@ -480,32 +394,24 @@ describe('renderDashboard', () => {
     expect(html).not.toContain('review-weekly-2026-W27.md');
   }));
 
-  test('renders open proposals as expandable details and history as one-liners', withHermitDir((hermitDir) => {
-    writeProposal(hermitDir, 'PROP-001-open-100000.md',
-      { id: 'PROP-001-open-100000', title: '"Open one"', status: 'proposed', created: '2026-07-01T10:00:00Z' },
-      'Full body text for the open proposal.');
-    writeProposal(hermitDir, 'PROP-002-resolved-100000.md',
-      { id: 'PROP-002-resolved-100000', title: '"Resolved one"', status: 'resolved', created: '2026-06-01T10:00:00Z' },
-      'Body that must not appear on the page.');
-
+  test('renders pending decisions as waiting on you', withHermitDir(hermitDir => {
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '');
     const { html } = renderDashboard(loadDashboardState(hermitDir));
-    expect(html).toContain('<details class="proposal">');
-    expect(html).toContain('Full body text for the open proposal.');
-    expect(html).not.toContain('Body that must not appear on the page.');
-    expect(html).toContain('PROP-002-resolved-100000');
+    expect(html).toContain('Waiting on you');
+    expect(html).toContain('From the agent: Review configuration. Waiting on you.');
   }));
 
   test('shows placeholder copy for empty proposals and alerts', withHermitDir((hermitDir) => {
     const { html } = renderDashboard(loadDashboardState(hermitDir));
-    expect(html).toContain('No open proposals.');
+    expect(html).toContain('Nothing waiting on you.');
     expect(html).toContain('No active alerts.');
   }));
 
   test('proposal-pending alerts stay out of the alert list but keep counting in the tile', withHermitDir((hermitDir) => {
     writeJson(hermitDir, 'state/alert-state.json', {
       alerts: {
-        'proposal-pending:PROP-001': { message: 'PROP-001 awaiting decision' },
-        'proposal-pending:PROP-002': { message: 'PROP-002 awaiting decision' },
+        'decision-pending:PROP-001': { message: 'PROP-001 awaiting decision' },
+        'decision-pending:PROP-002': { message: 'PROP-002 awaiting decision' },
         'budget-daily': { message: 'Daily budget at 92%' },
       },
       self_eval: {}, total_ticks: 1, last_digest_date: null,
@@ -518,7 +424,7 @@ describe('renderDashboard', () => {
 
   test('renders no alert list rather than "No active alerts." when every alert is card-owned', withHermitDir((hermitDir) => {
     writeJson(hermitDir, 'state/alert-state.json', {
-      alerts: { 'proposal-pending:PROP-001': { message: 'PROP-001 awaiting decision' } },
+      alerts: { 'decision-pending:PROP-001': { message: 'PROP-001 awaiting decision' } },
       self_eval: {}, total_ticks: 1, last_digest_date: null,
     });
     const { html } = renderDashboard(loadDashboardState(hermitDir));

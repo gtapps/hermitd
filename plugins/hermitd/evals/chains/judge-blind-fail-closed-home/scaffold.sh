@@ -22,18 +22,54 @@ tags: [energy]
 
 Average daily use 9.4 kWh.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-004-washer-finished-notice-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100004.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-004-washer-finished-notice-100000
+id: T-20260814-100004
+type: task
 title: "Notify when the washing machine finishes"
-status: resolved
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Notify when the washing machine finishes"
+audience: operator
+status: closed
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100004
+owner: resident
+closed_at: 2026-08-14T10:00:00+01:00
+closed_by: check
+closed_actor: hermit
+closed_reason: resolved
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100004
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-004 — Notify when the washing machine finishes
+## Proposal
 
 ## Problem
 Laundry sat wet for hours because nobody knew the cycle had ended.
@@ -41,18 +77,54 @@ Laundry sat wet for hours because nobody knew the cycle had ended.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-009-irrigation-rain-skip-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100009.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-009-irrigation-rain-skip-100000
+id: T-20260814-100009
+type: task
 title: "Skip garden irrigation when rain is forecast"
-status: proposed
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Skip garden irrigation when rain is forecast"
+audience: operator
+status: open
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100009
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: admin
+waiting_since: 2026-10-01T09:00:00.000Z
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100009
+check: null
+last_worker: null
+kind: proposal
+decision: "{\"purpose\":\"consent\",\"authority\":\"admin\",\"generation\":1}"
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-009 — Skip garden irrigation when rain is forecast
+## Proposal
 
 ## Problem
 The sprinklers run on schedule even on days with heavy rain, wasting water.
@@ -60,18 +132,54 @@ The sprinklers run on schedule even on days with heavy rain, wasting water.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-011-daily-energy-report-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100011.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-011-daily-energy-report-100000
+id: T-20260814-100011
+type: task
 title: "Daily energy usage report in the morning brief"
-status: dismissed
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Daily energy usage report in the morning brief"
+audience: operator
+status: closed
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100011
+owner: resident
+closed_at: 2026-08-14T10:00:00+01:00
+closed_by: cancelled
+closed_actor: hermit
+closed_reason: dismissed
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100011
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-011 — Daily energy usage report in the morning brief
+## Proposal
 
 ## Problem
 No daily view of electricity use.
@@ -79,18 +187,54 @@ No daily view of electricity use.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-013-notices-in-portuguese-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100013.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-013-notices-in-portuguese-100000
+id: T-20260814-100013
+type: task
 title: "Send household notices in Portuguese"
-status: deferred
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Send household notices in Portuguese"
+audience: operator
+status: open
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100013
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: admin
+waiting_since: 2026-10-01T09:00:00.000Z
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100013
+check: null
+last_worker: null
+kind: proposal
+decision: "{\"purpose\":\"consent\",\"authority\":\"admin\",\"generation\":1}"
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-013 — Send household notices in Portuguese
+## Proposal
 
 ## Problem
 Half the household reads Portuguese more comfortably than English.
@@ -98,83 +242,60 @@ Half the household reads Portuguese more comfortably than English.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-015-auto-lock-midnight-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100015.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-015-auto-lock-midnight-100000
+id: T-20260814-100015
+type: task
 title: "Auto-lock the front door at midnight"
-status: accepted
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Auto-lock the front door at midnight"
+audience: operator
+status: open
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100015
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100015
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: 0
+approved_by: operator
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-015 — Auto-lock the front door at midnight
+## Proposal
 
 ## Problem
 The front door was found unlocked in the morning several times.
 
 ## Proposed Solution
 See title.
-HERMIT_FIXTURE
-mkdir -p ".hermit/state"
-cat > '.hermit/state/proposals-index.json' <<'HERMIT_FIXTURE'
-{
-  "updated": "2026-10-01T08:00:00Z",
-  "count": 5,
-  "proposals": [
-    {
-      "id": "PROP-004-washer-finished-notice-100000",
-      "file": "PROP-004-washer-finished-notice-100000.md",
-      "status": "resolved",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Notify when the washing machine finishes",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-009-irrigation-rain-skip-100000",
-      "file": "PROP-009-irrigation-rain-skip-100000.md",
-      "status": "proposed",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Skip garden irrigation when rain is forecast",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-011-daily-energy-report-100000",
-      "file": "PROP-011-daily-energy-report-100000.md",
-      "status": "dismissed",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Daily energy usage report in the morning brief",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-013-notices-in-portuguese-100000",
-      "file": "PROP-013-notices-in-portuguese-100000.md",
-      "status": "deferred",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Send household notices in Portuguese",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-015-auto-lock-midnight-100000",
-      "file": "PROP-015-auto-lock-midnight-100000.md",
-      "status": "accepted",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Auto-lock the front door at midnight",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    }
-  ]
-}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

@@ -23,7 +23,8 @@ import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
 import { readTasks, currentWork, latestWaitIsStall, type Task } from '../tasks';
 import { conversationKey } from '../conversation-key';
-import { homeChatKey } from '../proposals/micro';
+import { homeChatKey } from '../home-chat';
+import { decodeDecision } from '../tasks';
 import type { StageContext, StageResult } from './types';
 
 type Json = any;
@@ -57,20 +58,6 @@ function readRecords(dir: string): Task[] {
 
 // Only worth a line when something is actually pending — an empty queue
 // shouldn't crowd out the "all quiet" fallback in composeStatusReply.
-function approvalsLine(dir: string, config: Json, chatKey: string | undefined, m: Messages): string | null {
-  const mp = readJson(path.join(dir, 'state', 'micro-proposals.json'));
-  const home = homeChatKey(config?.channels);
-  // A chat-less entry belongs to the home chat, or to any chat when none resolves (as askedOutsideHome treats it).
-  const pending = Array.isArray(mp?.pending) ? mp.pending.filter((p: Json) =>
-    p?.status === 'pending' && (typeof p.chat !== 'string' && home === null || belongsToChat(p, chatKey, home))) : [];
-  if (pending.length === 0) return null;
-  if (pending.length === 1) {
-    const id = typeof pending[0].id === 'string' ? pending[0].id : 'the pending item';
-    return m.t('status_one_approval', { id });
-  }
-  return m.t('status_n_approvals', { n: pending.length });
-}
-
 const AGE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 365 * 86400], ['month', 30 * 86400], ['week', 7 * 86400], ['day', 86400],
   ['hour', 3600], ['minute', 60], ['second', 1],
@@ -181,7 +168,7 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const timezone = resolveTimezone(config);
   const m = loadMessages(dir, config?.language);
   const records = readRecords(dir);
-  const scoped = records.filter(task => task.conversation === opts.chatKey);
+  const scoped = records.filter(task => task.conversation === opts.chatKey || (opts.primary && task.conversation === null && task.decision && decodeDecision(task.decision).authority === 'admin'));
   const current = currentWork(opts.redact ? records : scoped);
   const lines: string[] = [];
 
@@ -207,9 +194,16 @@ export function composeStatusReply(dir: string, config: Json, opts: {
   const keys = new Set<string>();
   if (opts.senderKey) keys.add(opts.senderKey);
   if (opts.primary) keys.add('operator');
-  const waiting = waitingRecords(scoped, keys, m);
-  const approvals = opts.primary ? approvalsLine(dir, config, opts.chatKey, m) : null;
-  if (approvals) waiting.push(approvals);
+  const waiting = waitingRecords(scoped.filter(task => !task.decision), keys, m);
+  const counts = new Map<string, number>();
+  for (const task of scoped) {
+    if (task.status !== 'open' || !task.waiting_on || !task.decision) continue;
+    const decision = decodeDecision(task.decision);
+    if (!opts.primary && decision.authority === 'admin') continue;
+    if (!opts.primary && decision.authority === 'requester' && task.requester !== opts.senderKey) continue;
+    counts.set(decision.authority, (counts.get(decision.authority) ?? 0) + 1);
+  }
+  for (const [decider, n] of counts) waiting.push(m.t('status_decisions_count', { n, decider }));
   const head = lines.join(' ');
   if (waiting.length === 0) return head || m.t('status_all_quiet');
   const block = [m.t('status_waiting_header'), ...waiting.slice(0, 5).map(item => `• ${item}`)];
@@ -229,10 +223,8 @@ function composeScheduledReply(dir: string, config: Json, chatKey: string, trust
   if (!trusted) return m.t('scheduled_count', { n: count });
 
   const timezone = resolveTimezone(config);
-  const proposals = readJson(path.join(dir, 'state', 'micro-proposals.json'));
-  const pending = new Set(Array.isArray(proposals?.pending) ? proposals.pending
-    .filter((entry: Json) => entry?.status === 'pending' && belongsToChat(entry, chatKey, home))
-    .map((entry: Json) => entry.key) : []);
+  const pending = new Set(readRecords(dir).filter(task => task.status === 'open' && task.waiting_on && task.decision &&
+    (task.conversation === chatKey || task.conversation === null)).map(task => task.dedupe_key));
   const rows: string[] = [];
   // Saved watches first, so a home chat's built-in routines cannot push them past the cap.
   for (const watch of watches.slice(0, 10)) {

@@ -160,9 +160,8 @@ your-project/
 │   │   ├── channel-activity.json     # Last channel interaction timestamp (channel-hook-owned)
 │   │   ├── channel-replies.jsonl     # Append-only channel reply log (channel-hook-owned)
 │   │   ├── channel-log.sqlite        # Episodic DM log + FTS5 index (PROP-010); created lazily, absent until first message
-│   │   ├── proposal-metrics.jsonl    # Append-only event log (proposal-create + proposal-act)
+│   │   ├── proposal-metrics.jsonl    # Append-only event log (task-backed creation and decision answers)
 │   │   ├── usage-metrics.jsonl       # Append-only compiled-read usage log (usage-track.ts)
-│   │   ├── micro-proposals.json      # Pending micro-approvals list (reflect + channel-bridged asks + channel-responder)
 │   │   ├── state-summary.md          # Auto-generated health snapshot (generate-summary.ts)
 │   │   ├── monitors.runtime.json     # Ad-hoc/session watch registry, emptied by hermitd-start at each launch
 │   │   ├── watch-monitor.runtime.json # Config watch processes (watch poller-owned; emptied by hermitd-start at launch)
@@ -186,7 +185,7 @@ No `package.json`, no `node_modules`, no build step.
 
 #### state/ ownership model
 
-One writer per state file. No shared mutation bus. (Exception: `state/micro-proposals.json` has several writers — reflect and the channel-bridged asking skills queue entries, channel-responder/brief resolve them — but the hermit runs as a single sequential session, so these never overlap; the "one writer" rule is about avoiding concurrent mutation, which single-session execution already guarantees here.)
+Task mutations and imports share `state/tasks.lock`. Decision sends own `state/decision-deliveries.json` under its separate send lock. Other state files retain their documented owners.
 
 **The single-session guarantee does not extend to hooks.** Claude Code does not serialise hook invocations: one assistant turn issuing parallel tool calls spawns several hook processes that run concurrently (probed 2026-08-28 — four denials, four pids, every `START` before the first `END`). A hook that owns a state file therefore cannot rely on the rule above, and must either append rather than read-modify-write (`lib/denial-log.ts`) or take the advisory lock (`lib/lockfile.ts`, as `permission-denied-notify.ts` does).
 
@@ -202,9 +201,8 @@ One writer per state file. No shared mutation bus. (Exception: `state/micro-prop
 | `state/channel-replies.jsonl`  | channel-hook.ts (append only)                       | none — reflect's engagement join was removed (the ledger records outbound sends only, so it could not measure operator engagement) |
 | `state/channel-log.sqlite`     | channel-reply-reminder stage + channel-hook.ts (append, via `lib/channel-log.ts`); weekly-review marks/prunes | search.ts (recall, fourth source); weekly-review consolidation |
 | `state/observations.jsonl`     | reflect-precheck (`cost-spike`, `startup-drift`) + transcript-digest `--record-observation` (`behavior-digest`) + reflect (`quick-deferral`, `reflect-noticed`); append only | reflect (step 3b graduation), reflection-judge (§1.4 ledger verification) |
-| `state/proposal-metrics.jsonl` | proposal-create + proposal-act (append only)        | generate-summary.ts, proposal.ts metrics (read-only)   |
+| `state/proposal-metrics.jsonl` | task-backed creation and decision answers (append only)        | generate-summary.ts, proposal.ts metrics (read-only)   |
 | `state/usage-metrics.jsonl`    | usage-track.ts (Read PostToolUse, append only; compacted >180d by weekly-review) | weekly-review (untouched-knowledge suggestions) |
-| `state/micro-proposals.json`   | reflect + channel-bridged skills (queue, schema owned by reflect § Queuing procedure) + channel-responder/brief (resolve) | brief, generate-summary.ts |
 | `state/state-summary.md`       | generate-summary.ts only                            | humans                                                        |
 | `state/monitors.runtime.json`  | watch skill; hermitd-start empties it at each launch | resident-start and watch lifecycle      |
 | `state/watch-monitor.runtime.json` | watch poller (`watch-monitor.ts`); `hermitd-start` empties it at launch | watch status and start |
@@ -302,39 +300,21 @@ A legacy `procedure-brief` (`type: procedure-brief`) is the boundary case: it li
 
 ## Learning Loop
 
-```
-Reflection fires -> three-outcome decision:
-    ^                  |
-    | Triggers:        +-> no action (nothing notable)
-    | - Task boundary  +-> memory update (lesson learned)
-    | - Heartbeat idle +-> proposal candidate -> tier classification:
-    | - Evening routine|                          |
-    | - Session close  |    Tier 1 (silent) ------+-> act directly (reversible/routine)
-    |                  |    Tier 2 (micro) -------+-> channel yes/no (meaningful/non-critical)
-    |                  |    Tier 3 (full PROP) ---+-> operator review via proposal-act
-    |                  |                               |
-    |                  |    Three-condition gate:       |
-    |                  |    1. Repeated pattern         |
-    |                  |    2. Meaningful consequence    |
-    |                  |    3. Operator-actionable       |
-    |                  |                               v
-    |                  +---- /proposal-act accept/defer/dismiss
-    |                        -> accepted -> queued task record -> pickup
-    |                                                            |
-    +---- Memory shows no recurrence -> auto-resolved -----------+
+```text
+Evidence -> reflection judge -> triage -> proposal task waiting on admin consent
+Question outliving its turn -> task input decision with authority and resume procedure
+Reply -> task answer --chat --user -> decider/admin check -> recorded answer
+Consent yes -> normal task intake -> shared apply procedure -> executable check or result decision
+Consent no -> cancelled task with a dedupe latch
 ```
 
-Reflection uses auto-memory as primary input. Your hermit reflects on what it remembers: recurring blockers, repeated workarounds, cost patterns, workflow friction. Evidence is conversational ("I've hit this repeatedly") rather than citation-based.
-
-**Three-condition gate:** Every proposal candidate must satisfy the three conditions defined canonically in `agents/proposal-triage.md` § Step 4: repeated pattern across sessions, meaningful consequence if left unaddressed, and an operator-actionable change. This prevents trivial or one-off observations from cluttering the proposal pipeline.
-
-**Micro-proposals (tier 1/2):** For changes that are reversible or non-critical, reflect queues a micro-proposal — a yes/no, or 2-4-option, question sent via channel. Multiple pending micro-proposals can coexist (`state/micro-proposals.json → pending[]`); operator answers by ID. On channel-tagged turns, other skills' bounded asks (e.g. `proposal-act accept`'s 3-way ask, `hermit-settings quality-gate`) queue entries through the same bridge (channel-responder § Channel-safe ask bridge) so the question survives compaction or a session restart. Ignored micro-proposals expire after 2 morning briefs. Before the daily digest or a morning brief repeats a pending decision, the evaluator re-checks it against local evidence (`skills/heartbeat/decision-refresh.md`) and rewords it; nothing is resolved without the operator's reply.
+Task records own proposals and durable questions. Reflect never applies a change on an evidence label alone. Pending decisions receive at most two confirmed deliveries per generation; failed or degraded sends consume none. After that they remain in scoped briefs, status and the dashboard without expiring. Admin decisions reach the maintainer chat, else the home chat on every profile; other inputs reach their owning chat. Delivery does not grant authority.
 
 Hermit provides the **timing infrastructure** (when to reflect), the **proposal pipeline** (structured proposals with an operator gate), and the **tier classification** (which proposals need what level of approval). Claude handles the intelligence — noticing patterns, assessing confidence, formulating proposals.
 
 ### Daily Rhythm
 
-Morning routine (configurable time, default: active hours start + 30m): brief, proposal review, priority check, pending micro-proposals surfaced.
+Morning routine (configurable time, default: active hours start + 30m): brief, pending decisions and priorities within the brief scope.
 Evening routine (configurable time, default: active hours end - 30m): task outcomes, reflection, preparation for tomorrow.
 
 Both are managed by `/hermitd:hermit-routines`. Where the Monitor tool is available, one native plugin monitor started by the activation skill evaluates every enabled routine's schedule outside the session ; a skipped fire costs zero model tokens, and routines due in the same poll batch into one wake. Eligibility gating defers only while an operator turn is genuinely open (a Stop-cleared `state/operator-turn-open.json` marker, 60-min TTL backstop) ; coarser than CronCreate's harness turn-level idle gate: a routine wake can still interject into an active conversation. `hermitd:heartbeat-restart` stays a CronCreate **re-arm anchor**, firing daily at 4am to re-invoke `load` (re-arming the monitor) and, unless `heartbeat.enabled` is explicitly false, activate the native heartbeat monitor. Where Monitor is unavailable (Bedrock/Google Cloud Agent Platform/Foundry, `DISABLE_TELEMETRY`/`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`), `load` falls back to per-routine CronCreate registrations, idle-gated at the harness turn level and re-armed daily by the same anchor before the 7-day expiry cliff.

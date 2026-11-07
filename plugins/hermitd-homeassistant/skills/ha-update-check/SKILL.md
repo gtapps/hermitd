@@ -43,6 +43,8 @@ If `status` is `skipped`: `No actionable findings. (skipped: <detail>)`.
 
 Keep the output to this shape: no prose, no extra sections. Each proposal title should carry the concrete target version (e.g. `[ha-update] HA Core → 2026.7.1`): that keeps same-version re-emits byte-identical so proposal-triage reliably suppresses repeats; Core/OS/Supervisor and each add-on become individual proposals, all pending HACS updates aggregate into one.
 
+Each proposal body must name `/hermitd-homeassistant:ha-apply-update` as its application procedure, with entity_id, tier and target version.
+
 ## On accept
 
-If `ha_update_auto_apply` is enabled in `.hermit/config.json`, route acceptance through `/hermitd-homeassistant:ha-apply-update` rather than applying directly — it enforces the tier rule (add-ons/HACS may auto-apply; Core/OS/Supervisor always wait for an explicit operator go-ahead). If the flag is absent or false, the proposal is purely advisory: resolve it once the operator has applied the update themselves in the HA UI.
+If `ha_update_auto_apply` is enabled in `.hermit/config.json`, route acceptance through `/hermitd-homeassistant:ha-apply-update` rather than applying directly — it enforces the tier rule (add-ons/HACS may auto-apply; Core/OS/Supervisor always wait for an explicit operator go-ahead). If the flag is absent or false, the proposal is purely advisory: close its task once the operator has applied the update themselves in the HA UI.

@@ -12,6 +12,7 @@
 // (`…Z` and `…+01:00` both appear), and no caller has a reason to choose.
 
 import path from 'node:path';
+import { TASK_ID } from '../tasks';
 import { appendJsonlLine } from '../append-jsonl';
 import { flagEq as flag } from '../cli';
 import { utcISOStamp } from '../time';
@@ -48,7 +49,7 @@ function run(stateDir: string, rest: string[]): { error: string } | null {
 
   const id = flag(rest, 'id');
   if (!id) return { error: 'missing_id' };
-  if (!/^PROP-[A-Za-z0-9._-]+$/.test(id)) return { error: `invalid_id:${id}` };
+  if (!TASK_ID.test(id) && !/^PROP-[A-Za-z0-9._-]+$/.test(id)) return { error: `invalid_id:${id}` };
 
   const action = flag(rest, 'action');
   let event: Record<string, unknown>;

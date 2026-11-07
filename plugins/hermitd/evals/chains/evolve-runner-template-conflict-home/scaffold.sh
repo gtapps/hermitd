@@ -24,9 +24,9 @@ HERMIT_CONFIG
 mkdir -p "spec/plugin/skills/hermit-evolve"
 cp "$here/../../../skills/hermit-evolve/reference.md" "spec/plugin/skills/hermit-evolve/reference.md"
 mkdir -p "spec/plugin/state-templates"
-cp "$here/../../../state-templates/PROPOSAL.md.template" "spec/plugin/state-templates/PROPOSAL.md.template"
+cp "$here/../../../state-templates/TASKS.md.template" "spec/plugin/state-templates/TASKS.md.template"
 mkdir -p ".hermit/templates"
-cp "$here/../../../state-templates/PROPOSAL.md.template" ".hermit/templates/PROPOSAL.md.template.new"
+cp "$here/../../../state-templates/TASKS.md.template" ".hermit/templates/TASKS.md.template.new"
 mkdir -p ".hermit"
 cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 # Operator
@@ -34,7 +34,7 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 Runs a small online tea shop alone. Prefers short messages.
 HERMIT_FIXTURE
 mkdir -p ".hermit/templates"
-cat > '.hermit/templates/PROPOSAL.md.template' <<'HERMIT_FIXTURE'
+cat > '.hermit/templates/TASKS.md.template' <<'HERMIT_FIXTURE'
 # Proposal: {{title}}
 
 ## Problem

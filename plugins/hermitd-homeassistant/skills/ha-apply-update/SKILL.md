@@ -9,7 +9,7 @@ allowed-tools:
 
 ## When this runs
 
-Invoked from `proposal-act`'s Accept flow for a `[ha-update]` proposal (originated by `/hermitd-homeassistant:ha-update-check`). The proposal body carries the entity_id, tier (`core`/`os`/`supervisor`/`addon`/`hacs`), and target version.
+Invoked by the proposal task apply procedure after admin consent for a `[ha-update]` proposal (originated by `/hermitd-homeassistant:ha-update-check`). The proposal body carries the entity_id, tier (`core`/`os`/`supervisor`/`addon`/`hacs`), and target version.
 
 ## Steps
 

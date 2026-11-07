@@ -8,7 +8,11 @@
 
 ### Changed
 
-- A brief sent to or asked for in a team chat, or the home chat on a non-technical profile, covers only that chat and its public threads; the maintainer chat, a technical home chat and the terminal still see everything, and only home-chat and whole-agent briefs age proposals, ask decision questions, check for updates or refresh the dashboard
+- Agent proposals and durable questions are task records answered through `task answer` under the decider-or-admin rule
+- Pending decisions receive at most two confirmed reminder deliveries per generation and remain listed without expiry
+- Proposal application closes on a passing executable check or returns authored content for admin confirmation; the dashboard uses a `waiting` section instead of a proposals page
+
+- A brief sent to or asked for in a team chat, or the home chat on a non-technical profile, covers only that chat and its public threads; the maintainer chat, a technical home chat and the terminal still see everything, and only home-chat and whole-agent briefs list the agent's pending decisions, check for updates or refresh the dashboard
 - `hermitd restart` keeps the conversation by default on host and Docker; `hermitd restart --fresh` starts a clean one
 - Login renewals and `hermitd-watchdog restart` keep the conversation and are no longer subject to the one-hour restart guard
 - The agent moves to its browser when a web fetch fails, is refused or returns an empty or JavaScript-only page, and says how to turn the browser on when it is off
@@ -17,11 +21,35 @@
 
 - Briefs list results and waits on work a spawned session or worker holds
 - A task thread holds one open task, and separate work asked in it opens its own top-level thread
-- A bare yes or no after a restart or `/clear` now reaches the question pending in that chat
 - Takeover keyboard button shows when the keyboard is open and closes it on a second tap
 - Tab in the takeover keyboard reaches the remote browser instead of leaving the keyboard field
 - `!status` and the `hermitd status` working-on column name work a helper or worker is running instead of reporting nothing in progress
 - `!status` says how long ago the task it is working on was opened
+
+### Upgrade Instructions
+
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts migrate .hermit` once. Record its `{imported,enriched,archived,skipped}` receipt. An `{"error":...}` or a nonempty skipped list becomes a deferred-migration block with the affected sources and reason; never delete or hand-convert those sources. Reruns resume safely. Nothing starts automatically.
+2. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate task-decisions` to drop `artifacts.proposals`, preserving all other settings. The migration is idempotent.
+3. Preserve operator edits in TASKS.md and HEARTBEAT.md. Replace the following TASKS.md paragraph only on an exact match; otherwise defer with options Keep mine / Replace with the new policy. Old:
+
+```text
+Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. A pending micro-proposal is answered first. When unsure, ask. Say when you close or cancel so the requester can object.
+```
+
+New:
+
+```text
+Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. Typed pending decisions are answered through `task answer --chat --user`: consent is admin-only for proposals; input follows its requester, chat or admin authority. Silence never expires a question. When unsure, ask. Say when you close or cancel so the requester can object.
+```
+
+Remove the following HEARTBEAT.md line only on an exact match; otherwise defer with options Keep mine / Remove the old proposal scan. Do not replace the entire file:
+
+```text
+- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
+```
+
+4. **Leftover check:** `/hermitd:proposal-act`, `/hermitd:proposal-list`, `PROP-` and `MP-` ids, and `queue-micro` in operator files. Replace live procedures with task decisions and `task answer`; retain archived history. Report ambiguous references for operator choice.
+5. **Leftover check:** custom dashboard renderers reading the `proposals` section key or `state.proposals`. The replacement is `waiting` / `state.waiting`, an array of pending task decisions. Re-check each renderer's expected shape before editing; preserve custom layout and unrelated operator code.
 
 ## [1.4.27] - 2026-11-04
 

@@ -10,7 +10,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { rebuildIndex } from './lib/proposals/index-rebuild';
+import { pendingDecisions } from './lib/decisions';
+import { readTasks } from './lib/tasks';
 import { readMergedAlerts } from './lib/alert-state';
 import { pinUnderStateDirOrExit } from './lib/cc-compat';
 import { shortProposalId } from './lib/prop-id';
@@ -19,7 +20,6 @@ type Json = any;
 
 const MAX_STDIN = 64 * 1024;
 const STATE_SUBDIR = '.hermit/state';
-const PROPOSALS_SUBDIR = '.hermit/proposals';
 const HERMIT_SUBDIR = '.hermit';
 
 function run(stateDir: string): void {
@@ -27,7 +27,6 @@ function run(stateDir: string): void {
 const ALERT_STATE = path.join(stateDir, 'alert-state.json');
 const REFLECTION_STATE = path.join(stateDir, 'reflection-state.json');
 const METRICS_FILE = path.join(stateDir, 'proposal-metrics.jsonl');
-const MICRO_FILE = path.join(stateDir, 'micro-proposals.json');
 const OUTPUT = path.join(stateDir, 'state-summary.md');
 
 // Skip entirely if alert-state.json does not exist (not initialized)
@@ -64,9 +63,6 @@ try {
 let proposalsCreated = 0;
 let proposalsResponded = 0;
 let proposalsResolved = 0;
-let microQueued = 0;
-let microApproved = 0;
-let microAnswered = 0;
 const proposalSource: Record<string, string> = {}; // proposal_id -> source (for cross-referencing accepts by source)
 const createdBySource: Record<string, number> = {}; // source -> count
 const acceptedBySource: Record<string, number> = {}; // source -> count
@@ -92,9 +88,6 @@ try {
       // Bridged asks (kind:"ask") are bounded 2-4-way asks, not yes/no approval
       // decisions — exclude them from the approval-rate denominator. They still
       // emit micro-queued so reflect's per-day ID counter stays correct.
-      if (event.type === 'micro-queued' && event.kind !== 'ask') microQueued++;
-      if (event.type === 'micro-resolved' && event.action === 'approved') microApproved++;
-      if (event.type === 'micro-resolved' && event.action === 'answered') microAnswered++;
     } catch {}
   }
 } catch (err: any) {
@@ -114,17 +107,10 @@ const manualAcceptRate = srcAcceptRate('manual');
 const fmtRate = (rate: number | null) => rate !== null ? (rate / 100).toFixed(2) : 'null';
 const fmtRateStr = (rate: number | null) => rate !== null ? `${rate}%` : 'no data';
 
-// Read micro-proposals state
-let microPendingCount = 0;
-let microQuestion: string | null = null;
-try {
-  const mp = JSON.parse(fs.readFileSync(MICRO_FILE, 'utf-8'));
-  const pending: Json[] = Array.isArray(mp.pending) ? mp.pending : [];
-  const activePending = pending.filter(e => e && e.status === 'pending');
-  const count = activePending.length;
-  microPendingCount = count;
-  microQuestion = count === 1 ? (activePending[0].question || null) : null;
-} catch {}
+const pending = pendingDecisions(path.dirname(stateDir));
+if (!pending.ok) throw new Error('decision_inventory_unreadable');
+proposalsResolved = readTasks(path.dirname(stateDir)).filter(record => record.kind === 'proposal' && record.status === 'closed' && record.closed_by !== 'cancelled').length;
+const decisionsPending = pending.records.length;
 
 const responseRate = proposalsCreated > 0
   ? Math.round((proposalsResponded / proposalsCreated) * 100)
@@ -136,11 +122,6 @@ const lastReflectionStr = lastReflection
 
 const responseRateStr = fmtRateStr(responseRate);
 
-const microApprovalRate = microQueued > 0
-  ? Math.round((microApproved / microQueued) * 100)
-  : null;
-const microApprovalRateStr = fmtRateStr(microApprovalRate);
-
 const content = `---
 updated: ${new Date().toISOString()}
 active_alerts: ${activeAlerts}
@@ -151,8 +132,7 @@ proposals_resolved: ${proposalsResolved}
 response_rate: ${fmtRate(responseRate)}
 auto_detect_accept_rate: ${fmtRate(autoDetectAcceptRate)}
 manual_accept_rate: ${fmtRate(manualAcceptRate)}
-micro_pending: ${microPendingCount}
-micro_approval_rate: ${fmtRate(microApprovalRate)}
+decisions_pending: ${decisionsPending}
 last_reflection: ${lastReflection || 'null'}
 ---
 # Agent State
@@ -169,11 +149,8 @@ Response rate: ${responseRateStr}
 Auto-detected accept rate: ${fmtRateStr(autoDetectAcceptRate)}
 Manual accept rate: ${fmtRateStr(manualAcceptRate)}
 
-## Micro-Proposals
-Pending: ${microPendingCount}
-Question: ${microQuestion || (microPendingCount > 1 ? `${microPendingCount} questions pending` : 'none')}
-Approval rate: ${microApprovalRateStr}
-Bridged asks answered: ${microAnswered}
+## Pending Decisions
+Waiting: ${decisionsPending}
 
 ## Reflection
 Last: ${lastReflectionStr}
@@ -214,13 +191,10 @@ if (import.meta.main) {
   });
   process.stdin.on('end', () => {
     try {
-      if (!raw.includes(STATE_SUBDIR) && !raw.includes(PROPOSALS_SUBDIR)) process.exit(0);
+      if (!raw.includes(STATE_SUBDIR)) process.exit(0);
       const event = JSON.parse(raw);
       const filePath = (event.tool_input || {}).file_path || (event.tool_input || {}).path || '';
       // Anchor on the absolute path from the payload — immune to cwd drift (#384)
-      // Proposal write → rebuild the derived proposals index (any writer: create/act/reflect).
-      const pIdx = filePath.indexOf(PROPOSALS_SUBDIR);
-      if (pIdx !== -1) rebuildIndex(filePath.slice(0, pIdx) + HERMIT_SUBDIR);
       // State write → regenerate state-summary.md.
       const sIdx = filePath.indexOf(STATE_SUBDIR);
       if (sIdx !== -1) run(filePath.slice(0, sIdx + STATE_SUBDIR.length));

@@ -1126,3 +1126,13 @@ test('browser migration retains Chrome only when its auth permits it', async () 
     expect(readConfig(file).browser.default).toBe(auth_mode === 'login' ? 'chrome' : 'agent-browser');
   }
 });
+
+test('task-decisions migration drops only the removed artifact key and is idempotent', async () => {
+  const dir = freshDir();
+  const file = seedConfig(dir, { agent_name: 'Atlas', artifacts: { dashboard: true, proposals: true, weekly_review: false }, custom: 'keep' });
+  for (let pass = 0; pass < 2; pass++) {
+    const result = await runScript('settings-edit.ts', { cwd: dir, env: { AGENT_DIR: path.join(dir, '.hermit') }, args: [file, 'migrate', 'task-decisions'] });
+    expect(result.exitCode).toBe(0);
+    expect(readConfig(file)).toEqual({ agent_name: 'Atlas', artifacts: { dashboard: true, weekly_review: false }, custom: 'keep' });
+  }
+});

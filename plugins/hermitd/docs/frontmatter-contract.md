@@ -20,7 +20,6 @@ Field names: lowercase with underscores. Flat only — no nested objects. Use `n
 ## Per-type required fields
 
 
-**Proposal** (`proposals/PROP-NNN-<slug>-HHMMSS.md`): `id`, `title`, `status`, `source`, `created`, `category`, `tags`
 
 **Weekly review** (`compiled/review-weekly-YYYY-Www.md`): `type: review`, `title`, `created`, `tags`, `generated: true`, `week`, `tasks_count`, `proposals_created`, `proposals_accepted`, `proposals_resolved`, `total_cost_usd`, `total_tokens`, `avg_task_cost_usd`, `avg_task_tokens`
 
@@ -29,3 +28,7 @@ Field names: lowercase with underscores. Flat only — no nested objects. Use `n
 **Procedure brief** (`compiled/procedure-brief-<slug>-<YYYY-MM-DD>.md`): `type: procedure-brief`, `title`, `created` (ISO+tz), `tags: [procedure-capture]`, `source: session`, `session` (task id), `related_sessions` (array of task ids), `proposed_skill_name`, optional `proposed_routine` (object: `id`, `schedule`, `skill`) and optional `proposed_agent_name`. Legacy reflect audit format; reflect no longer creates these briefs. Routine/agent proposals may still cite existing briefs. Carries the recurring steps, evidence sessions, and proposed skill name + triggers in the body. Not tagged `foundational`; it is a transient audit record, not a domain output meant for startup injection. The installed skill at `.claude/skills/<name>/SKILL.md` is the live procedure; the brief is the audit trail.
 
 Full per-field schemas are embedded in the scripts and agents that produce each type (`proposal-create`, `scripts/weekly-review.ts`). Those are authoritative.
+
+## Task decisions
+
+Task records accept nullable `kind`, `decision`, `approved_rev`, `approved_by`, `source`, `category` and proposal `tags`. `kind` is `proposal` or null. New proposal tags are a JSON-string array; old task tag arrays still load. `decision` is a JSON string with `purpose` (`consent`, `input`, `result`), `authority` (`admin`, `requester`, `chat`), positive `generation`, optional string-array `options` and string `resume`. Whole-quoted JSON scalars preserve quotes and backslashes in labels. Old records default missing nullable fields to null. Proposal records leave `approver` null; authority belongs to the decision.

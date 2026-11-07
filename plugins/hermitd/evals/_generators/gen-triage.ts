@@ -3,32 +3,36 @@
 
 import path from 'node:path';
 
-import { EVALS, type Grader, configJson, graderYaml, heredocs, indent, report, writeCase, yq } from './lib';
+import { EVALS, type Grader, configJson, decisionFixture, graderYaml, heredocs, indent, report, writeCase, yq } from './lib';
 
 type Entry = Record<string, unknown>;
 type Prop = [fname: string, body: string, entry: Entry];
 export interface Universe { proposals: Prop[]; operator: string; memory: Record<string, string>; compiled: Record<string, string> }
 
 function prop(pid: string, slug: string, status: string, title: string, problem: string, created = '2026-08-14T10:00:00+01:00', tags: string[] = []): Prop {
-  const fname = `${pid}-${slug}-100000.md`;
-  const body = `---\nid: ${pid}-${slug}-100000\ntitle: "${title}"\nstatus: ${status}\nsource: auto-detected\ncreated: ${created}\n`
-    + `category: improvement\ntags: ${JSON.stringify(tags)}\n---\n# Proposal: ${pid} — ${title}\n\n## Problem\n${problem}\n\n`
-    + '## Proposed Solution\nSee title.\n';
-  const entry = { id: `${pid}-${slug}-100000`, file: fname, status, source: 'auto-detected', category: 'improvement', title, created, tags };
-  return [fname, body, entry];
+  const closed = status === 'resolved' || status === 'dismissed';
+  const [file, body] = decisionFixture(pid, title, { source: 'auto-detected', category: 'improvement', tags: JSON.stringify(tags),
+    status: closed ? 'closed' : 'open', closed_by: status === 'dismissed' ? 'cancelled' : closed ? 'check' : null,
+    closed_at: closed ? created : null, closed_reason: closed ? status : null, closed_actor: closed ? 'hermit' : null,
+    created, opened_at: created, conversation: null,
+    ...(closed || status === 'accepted' ? { decision: null, waiting_on: null, waiting_since: null } : {}),
+    ...(status === 'accepted' ? { approved_rev: '0', approved_by: 'operator' } : {}),
+    body: `## Proposal\n\n## Problem\n${problem}\n\n## Proposed Solution\nSee title.\n` });
+  const entry = { id: pid, status: status === 'dismissed' ? 'cancelled' : status === 'resolved' ? 'completed' : 'open', title, source: 'auto-detected', category: 'improvement', created, tags };
+  return [path.basename(file), body, entry];
 }
 
 export const HOME: Universe = {
   proposals: [
-    prop('PROP-004', 'washer-finished-notice', 'resolved', 'Notify when the washing machine finishes',
+    prop('T-20260814-100004', 'washer-finished-notice', 'resolved', 'Notify when the washing machine finishes',
       'Laundry sat wet for hours because nobody knew the cycle had ended.'),
-    prop('PROP-009', 'irrigation-rain-skip', 'proposed', 'Skip garden irrigation when rain is forecast',
+    prop('T-20260814-100009', 'irrigation-rain-skip', 'proposed', 'Skip garden irrigation when rain is forecast',
       'The sprinklers run on schedule even on days with heavy rain, wasting water.'),
-    prop('PROP-011', 'daily-energy-report', 'dismissed', 'Daily energy usage report in the morning brief',
+    prop('T-20260814-100011', 'daily-energy-report', 'dismissed', 'Daily energy usage report in the morning brief',
       'No daily view of electricity use.'),
-    prop('PROP-013', 'notices-in-portuguese', 'deferred', 'Send household notices in Portuguese',
+    prop('T-20260814-100013', 'notices-in-portuguese', 'deferred', 'Send household notices in Portuguese',
       'Half the household reads Portuguese more comfortably than English.'),
-    prop('PROP-015', 'auto-lock-midnight', 'accepted', 'Auto-lock the front door at midnight',
+    prop('T-20260814-100015', 'auto-lock-midnight', 'accepted', 'Auto-lock the front door at midnight',
       'The front door was found unlocked in the morning several times.'),
   ],
   operator: "# Operator\n\nHousehold of two adults and a cat. Prefers short messages.\n\n## Preferences\n- Don't add more daily or weekly reports; the morning brief is enough.\n- Never unlock doors automatically.\n",
@@ -43,13 +47,13 @@ export const HOME: Universe = {
 
 export const SHOP: Universe = {
   proposals: [
-    prop('PROP-021', 'unpaid-invoice-reminders', 'proposed', 'Remind customers about invoices unpaid after 7 days',
+    prop('T-20260814-100021', 'unpaid-invoice-reminders', 'proposed', 'Remind customers about invoices unpaid after 7 days',
       'Wholesale invoices go unpaid for weeks because nobody chases them.'),
-    prop('PROP-024', 'weekly-sales-summary', 'dismissed', 'Weekly sales summary to the channel',
+    prop('T-20260814-100024', 'weekly-sales-summary', 'dismissed', 'Weekly sales summary to the channel',
       'No weekly overview of sales.'),
-    prop('PROP-026', 'nightly-db-backup', 'resolved', 'Back up the shop database nightly',
+    prop('T-20260814-100026', 'nightly-db-backup', 'resolved', 'Back up the shop database nightly',
       'The order database had no backup.'),
-    prop('PROP-028', 'low-stock-reorder', 'accepted', 'Reorder alert when stock falls below 5 units',
+    prop('T-20260814-100028', 'low-stock-reorder', 'accepted', 'Reorder alert when stock falls below 5 units',
       'Popular teas sold out before anyone noticed.'),
   ],
   operator: '# Operator\n\nRuns a small online tea shop alone.\n\n## Preferences\n- I decided not to send automated messages to customers without my review.\n- Keep answers short.\n',
@@ -67,10 +71,10 @@ export function scaffold(universe: Universe, withConfig = true): string {
   if (withConfig) files[`${root}/config.json`] = configJson({ agent_name: 'assistant', timezone: 'Europe/Lisbon' });
   const entries: Entry[] = [];
   for (const [fname, body, entry] of universe.proposals) {
-    files[`${root}/proposals/${fname}`] = body;
+    files[`${root}/tasks/${fname}`] = body;
     entries.push(entry);
   }
-  files[`${root}/state/proposals-index.json`] = JSON.stringify({ updated: '2026-10-01T08:00:00Z', count: entries.length, proposals: entries }, null, 2) + '\n';
+
   files[`${root}/OPERATOR.md`] = universe.operator;
   const field = (body: string, key: string) => body.split('\n').find(l => l.startsWith(`${key}:`))!.split(/:(.*)/s)[1].trim();
   const idx: string[] = [];
@@ -117,7 +121,7 @@ const COMMON: Grader[] = [
 ];
 
 function triageCase(name: string, tag: string, desc: string, expected: string, universe: Universe, cands: string[], graders: Grader[], withConfig = true): void {
-  const prompt = CALLER + ANCHOR + cands.join('\n\n') + '\n</input>';
+  const prompt = CALLER + ANCHOR + 'Proposal task digest: ' + JSON.stringify({ ok: true, proposals: universe.proposals.map(([, , entry]) => entry) }) + '\n' + cands.join('\n\n') + '\n</input>';
   const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [proposal-triage, ${tag}]`,
     `expected_outcome: ${yq(expected)}`, 'context:', '  scaffold_script: scaffold.sh', 'execution:', '  max_turns: 8',
     '  timeout_seconds: 400', '  allowed_tools: [Agent, Read, Glob, Grep]', '  prompt: |', indent(prompt), 'graders:',
@@ -126,25 +130,25 @@ function triageCase(name: string, tag: string, desc: string, expected: string, u
 }
 
 if (import.meta.main) {
-  triageCase('dup-proposed-home', 'train', 'Same problem as an open proposed proposal: DUPLICATE.', 'DUPLICATE: … — PROP-009', HOME,
+  triageCase('dup-proposed-home', 'train', 'Same problem as an open proposed proposal: DUPLICATE.', 'DUPLICATE: … — T-20260814-100009', HOME,
     [candidate('Skip watering the garden on rainy days', 'The irrigation ran on 4 of the last 6 rainy days (rain gauge above 5 mm), soaking the lawn and wasting water.', 'scheduled-check/irrigation')],
-    [verdict('DUPLICATE', String.raw`[^\n]*PROP-009`)]);
+    [verdict('DUPLICATE', String.raw`[^\n]*T-20260814-100009`)]);
 
-  triageCase('dup-dismissed-shop', 'heldout', 'Same problem as a dismissed proposal: DUPLICATE, not a fresh CREATE.', 'DUPLICATE: … — PROP-024', SHOP,
+  triageCase('dup-dismissed-shop', 'heldout', 'Same problem as a dismissed proposal: DUPLICATE, not a fresh CREATE.', 'DUPLICATE: … — T-20260814-100024', SHOP,
     [candidate('Send me a weekly summary of sales', 'Sales questions came up in three conversations this month; a weekly sales summary posted to the channel would answer them.', 'capability-brainstorm')],
-    [verdict('DUPLICATE', String.raw`[^\n]*PROP-024`)]);
+    [verdict('DUPLICATE', String.raw`[^\n]*T-20260814-100024`)]);
 
-  triageCase('dup-deferred-home', 'heldout', 'Same problem as a deferred proposal: DUPLICATE.', 'DUPLICATE: … — PROP-013', HOME,
+  triageCase('dup-deferred-home', 'heldout', 'Same problem as a deferred proposal: DUPLICATE.', 'DUPLICATE: … — T-20260814-100013', HOME,
     [candidate('Write household alerts in Portuguese', 'Two household members asked for alerts in Portuguese; English notices were misread twice.', 'operator-request')],
-    [verdict('DUPLICATE', String.raw`[^\n]*PROP-013`)]);
+    [verdict('DUPLICATE', String.raw`[^\n]*T-20260814-100013`)]);
 
   triageCase('resolved-recurs-home', 'train', 'Same problem as a resolved proposal that came back: not DUPLICATE; CREATE with closest_prop.',
-    'CREATE plus closest_prop: PROP-004', HOME,
+    'CREATE plus closest_prop: T-20260814-100004', HOME,
     [candidate('Washer-finished notices stopped arriving', 'Since the washer firmware update, the finished notice failed on 3 of the last 5 loads and laundry stayed wet overnight twice. Re-pointing the automation to the new power-sensor entity fixes it.', 'current-session')],
-    [verdict('CREATE'), meta('closest_prop', 'PROP-004', 2), notContains('not-duplicate', String.raw`(^|\n)\s*DUPLICATE:`)]);
+    [verdict('CREATE'), meta('closest_prop', 'T-20260814-100004', 2), notContains('not-duplicate', String.raw`(^|\n)\s*DUPLICATE:`)]);
 
   triageCase('shared-surface-shop', 'heldout', 'Shares the invoice surface with a proposed proposal but solves a different problem: CREATE.',
-    'CREATE (not DUPLICATE of PROP-021)', SHOP,
+    'CREATE (not DUPLICATE of T-20260814-100021)', SHOP,
     [candidate('Alert me when a customer card payment fails', 'The payment provider declined 6 card payments in September and I learned about each only when the customer emailed, days later; two orders were lost. A same-day alert from the provider webhook would let me follow up.', 'scheduled-check/payments')],
     [verdict('CREATE'), notContains('not-duplicate', String.raw`(^|\n)\s*DUPLICATE:`)]);
 
@@ -186,10 +190,10 @@ if (import.meta.main) {
     [verdict('GATE_BLIND'), notContains('no-real-verdict', String.raw`(^|\n)\s*(CREATE|SUPPRESS|DUPLICATE): `)],
     false);
 
-  triageCase('batch-shop', 'train', 'Batch of two: one duplicate and one new problem, one block each.', 'DUPLICATE … PROP-021 and CREATE for the payout candidate', SHOP,
+  triageCase('batch-shop', 'train', 'Batch of two: one duplicate and one new problem, one block each.', 'DUPLICATE … T-20260814-100021 and CREATE for the payout candidate', SHOP,
     [candidate('Chase wholesale invoices that are overdue', 'Three wholesale invoices are more than 20 days overdue this month.', 'scheduled-check/invoices'),
       candidate("Alert when the payment provider's payout is late", 'The weekly payout arrived 3 and 5 days late in the last two weeks and I only noticed when supplier payments bounced.', 'scheduled-check/payments')],
-    [verdict('DUPLICATE', String.raw`Chase wholesale[^\n]*PROP-021`, 2, 'dup-first'),
+    [verdict('DUPLICATE', String.raw`Chase wholesale[^\n]*T-20260814-100021`, 2, 'dup-first'),
       verdict('CREATE', 'Alert when the payment', 2, 'create-second')]);
 
   triageCase('ledger-exemption-home', 'heldout', 'A ledger-backed candidate is never suppressed covered-by-memory even when memory matches: CREATE.',

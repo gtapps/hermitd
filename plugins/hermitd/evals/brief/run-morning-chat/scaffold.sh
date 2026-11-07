@@ -23,17 +23,69 @@ cat > '.hermit/config.json' <<'HERMIT_FIXTURE'
   ]
 }
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-001.md' <<'HERMIT_FIXTURE'
----
-status: proposed
-source: auto-detected
-title: Agent-wide proposal
----
-HERMIT_FIXTURE
 mkdir -p ".hermit/state"
 cat > '.hermit/state/channel-chats.json' <<'HERMIT_FIXTURE'
 {"discord":{"chats":{"group-brief":{"type":0,"parent_id":null,"guild_id":"shop","fetched_at":"2026-11-06T00:00:00Z"}}}}
+HERMIT_FIXTURE
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20261001-090000.md' <<'HERMIT_FIXTURE'
+---
+id: T-20261001-090000
+type: task
+title: "Agent-wide proposal"
+created: 2026-10-01T09:00:00.000Z
+summary: "Agent-wide proposal"
+audience: operator
+status: open
+opened_at: 2026-10-01T09:00:00.000Z
+requester: agent
+handle: t-20261001-090000
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: admin
+waiting_since: 2026-10-01T09:00:00.000Z
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20261001-090000
+check: null
+last_worker: null
+kind: proposal
+decision: "{\"purpose\":\"consent\",\"authority\":\"admin\",\"generation\":1}"
+approved_rev: null
+approved_by: null
+source: null
+category: null
+muted: false
+delegated: false
+tags: null
+claims: []
+result_rev: 0
+---
+## Progress
+
+## Decisions
+
+## Approvals
+
+## Lessons
+
+## Outcome
+
+## Proposal
+Agent-wide proposal
 HERMIT_FIXTURE
 mkdir -p ".hermit/tasks"
 cat > '.hermit/tasks/T-20261001-100011.md' <<'HERMIT_FIXTURE'

@@ -61,6 +61,7 @@ const SIBLING_SKILL_RE = new RegExp(`^/${PLUGIN_ID}:[^\\s:]+$`);
 type Rename = { from: string; to: string };
 
 const migrations: Record<string, Migration> = {
+  'task-decisions': { run: config => { if (config.artifacts && typeof config.artifacts === 'object') delete config.artifacts.proposals; } },
   'browser-default-on': {
     run: (config, ctx) => {
       if (Object.hasOwn(config, 'browser')) return;

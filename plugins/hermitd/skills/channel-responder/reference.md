@@ -58,7 +58,7 @@ An admitted sender's durable request about how this chat should behave is a Stan
 
 ### Pending review proposals
 
-When the turn's context carries `[pending role proposals]`, run `.hermit/bin/hermitd-run role-review .hermit get --chat <key>` before interpreting the reply or any Standing role update or forget, using the normalized `<sourceKey>:<chat_id>` and shell-quoted arguments. Without that line this chat has no pending proposal, so skip the check; never read the raw state file. Respect §0's command/pause exceptions and the existing micro-approval and task-thread precedence. A check may precede the reply despite §1's bookkeeping restriction.
+When the turn's context carries `[pending role proposals]`, run `.hermit/bin/hermitd-run role-review .hermit get --chat <key>` before interpreting the reply or any Standing role update or forget, using the normalized `<sourceKey>:<chat_id>` and shell-quoted arguments. Without that line this chat has no pending proposal, so skip the check; never read the raw state file. Respect §0's command/pause exceptions and the task decision and task-thread routing. A check may precede the reply despite §1's bookkeeping restriction.
 
 Match the reply's meaning to the returned proposals for this chat, in any language. Do not match keywords or assume a bare yes approves every proposal. When several fit, ask once which change they mean and write nothing. A reply that refers to none continues normal classification. Refuse a selected `stale:true` proposal plainly because its current wording changed or disappeared; do not apply its saved replacement. A missing proposal is not authority to reconstruct one from chat history.
 
@@ -95,7 +95,7 @@ Without an acceptance, leave the proposal pending and the target unchanged. Dire
 
 A durable chat-behavior rule follows **Standing role**, not `task.ts lesson` or Findings. One-off corrections remain lessons under the rules below. Task-thread steering and preferences owned by an editable skill keep their existing routes.
 
-**Do not write a finding** for: one-off questions, research turns with no preference signal, task assignments, status checks, or micro-approval responses. When in doubt, write nothing — the next scheduled reflect catches genuine recurrence via task-record evidence.
+**Do not write a finding** for: one-off questions, research turns with no preference signal, task assignments, status checks, or task decision responses. When in doubt, write nothing — the next scheduled reflect catches genuine recurrence via task-record evidence.
 
 Format (one line, piped into `task.ts lesson .hermit <id>`; with no open record, write nothing):
 

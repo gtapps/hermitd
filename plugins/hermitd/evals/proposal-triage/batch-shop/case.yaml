@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: batch-shop
 description: 'Batch of two: one duplicate and one new problem, one block each.'
 tags: [proposal-triage, train]
-expected_outcome: 'DUPLICATE … PROP-021 and CREATE for the payout candidate'
+expected_outcome: 'DUPLICATE … T-20260814-100021 and CREATE for the payout candidate'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -14,6 +14,7 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
+    Proposal task digest: {"ok":true,"proposals":[{"id":"T-20260814-100021","status":"open","title":"Remind customers about invoices unpaid after 7 days","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100024","status":"cancelled","title":"Weekly sales summary to the channel","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100026","status":"completed","title":"Back up the shop database nightly","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100028","status":"open","title":"Reorder alert when stock falls below 5 units","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]}]}
     Title: Chase wholesale invoices that are overdue
     Evidence Source: scheduled-check/invoices
     Evidence: Three wholesale invoices are more than 20 days overdue this month.
@@ -34,7 +35,7 @@ graders:
   - name: dup-first
     type: 'regex'
     target: 'last_message'
-    pattern: '(^|\n)\s*DUPLICATE: Chase wholesale[^\n]*PROP-021'
+    pattern: '(^|\n)\s*DUPLICATE: Chase wholesale[^\n]*T-20260814-100021'
     weight: 2
   - name: create-second
     type: 'regex'

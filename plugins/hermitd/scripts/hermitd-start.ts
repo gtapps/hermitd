@@ -246,7 +246,6 @@ const DEFAULT_CONFIG: Json = {
   },
   artifacts: {
     dashboard: true,
-    proposals: true,
     weekly_review: false,
     publish_authorized: null,
     backend: 'claude',

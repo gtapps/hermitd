@@ -73,15 +73,9 @@ skills use this bucket to coordinate across invocations.
 - **Schema enforcement:** if a new JSON state file needs a guaranteed shape, add a
   check to `scripts/validate-config.ts` or a contract test in `tests/contracts.test.ts`.
 
-## proposals/ — improvement suggestions
+## tasks/ and proposal history
 
-- **Naming:** `PROP-NNN.md` (legacy) or `PROP-NNN-<slug>-HHMMSS.md` (current: kebab-cased slug + creation-time `HHMMSS`, optional `a`/`b`/… collision suffix). NNN is a sequential zero-padded 3-digit integer, never renumbered. The full filename stem equals the proposal's `id` in frontmatter.
-- **Lifecycle:** driven by frontmatter `status:` (one of `open`, `resolved`,
-  `dismissed`, `deferred`, `reverted`).
-- **Required frontmatter:** `title:`, `status:`, `tier:`, `category:`, `source:`,
-  `created:`. See `state-templates/PROPOSAL.md.template` for the full shape.
-- **Creation rules:** see `skills/proposal-create/SKILL.md`. Its `proposal-triage` gate
-  applies the three-condition rule to what is and isn't proposal-worthy.
+`tasks/T-*.md` holds work, agent proposals and durable questions. Only the task writer creates or mutates a record. Proposal input is stored verbatim under `## Proposal`; its typed decision carries purpose, authority, generation, optional options and a resume procedure. Imported source files remain under `proposals/archive/` as history, never a live queue.
 
 ## Adding a new domain — checklist
 

@@ -1,6 +1,6 @@
 ---
 name: hermit-scribe
-description: File a GitHub issue or post a comment on an existing issue via a GitHub App bot identity. Use when the operator says "file as a GH issue", "open an issue for PROP-NNN", "report this to the tracker", "add a comment to issue #NNN", "comment on #NNN", "reply to issue #NNN", or similar. Requires HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HERMIT_GH_APP_KEY_FILE in env.
+description: File a GitHub issue or post a comment on an existing issue via a GitHub App bot identity. Use when the operator says "file as a GH issue", "open an issue for T-YYYYMMDD-HHMMSS", "report this to the tracker", "add a comment to issue #NNN", "comment on #NNN", "reply to issue #NNN", or similar. Requires HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HERMIT_GH_APP_KEY_FILE in env.
 ---
 
 # hermit-scribe
@@ -10,7 +10,7 @@ Files a GitHub issue or posts a comment on an existing issue via a configured Gi
 ## When to activate (filing)
 
 Activate when the operator says:
-- "file PROP-NNN as a GH issue"
+- "file T-YYYYMMDD-HHMMSS as a GH issue"
 - "open an issue for this"
 - "report this to the tracker"
 - "file a GH issue for [description]"
@@ -26,10 +26,10 @@ Activate when the operator says:
 
 **Step 1: resolve content.**
 
-If the operator named a proposal (`PROP-NNN`):
-1. Glob `.hermit/proposals/PROP-NNN-*.md` to find the file.
-2. Read frontmatter: `id`, `title`, `category`, `session`.
-3. Read body sections: `## Context`, `## Problem`, `## Proposed Solution`, `## Impact`.
+If the operator named a proposal (`T-YYYYMMDD-HHMMSS`):
+1. Locate the task record using core `task list --id <task-id>` and read that record.
+2. Read task metadata: `id`, `title`, `category`. Treat an absent `session` as unknown.
+3. Read the `## Proposal` section, including its Context, Problem, Proposed Solution and Impact content when present.
 4. Derive the Conventional-Commits type, scope, and labels. Write the **raw** (pre-translation) frontmatter `title` and proposal body to temp files, then run:
 
    ```bash
@@ -38,7 +38,7 @@ If the operator named a proposal (`PROP-NNN`):
 
    It emits JSON `{type, scope, labels, title_line}` — `title_line` is `<type>(<scope>): <title>` (scope omitted when unresolved). Review it, then use `title_line` as the draft title and hold `labels` for Step 6. (Scope resolution reads `_hermit_versions` from `.hermit/config.json`; `hermit-filed` is added by the script — it is not in `labels`.)
 
-5. Construct draft body with the four body sections. The provenance footer (see Step 3) is NOT part of the draft — appending it here would expose `proposal={id}` to the sanitizer, which would redact it as operator-project detail and break dedup.
+5. Construct the draft body from the Proposal section. The provenance footer (see Step 3) is NOT part of the draft — appending it here would expose `proposal={id}` to the sanitizer, which would redact it as operator-project detail and break dedup.
 
 For ad-hoc issues (no proposal): use the title and body the operator provides verbatim — no CC type/scope construction.
 
@@ -54,7 +54,7 @@ If the title or body is not already in English, translate to English. Preserve v
 
 Translate prose, headings, and bullet text. Keep the structure (Context / Problem / Proposed Solution / Impact) and section ordering identical to the source.
 
-The proposal file under `.hermit/proposals/` is NOT modified — translation applies only to what is sent to GitHub.
+The source task record is NOT modified — translation applies only to what is sent to GitHub.
 
 **Step 1c: issue-template detection.** (both proposal-backed and ad-hoc issues)
 
@@ -141,7 +141,7 @@ On success it prints `{"url":...}`, the issue URL; on failure, `{"error":...}`.
 **Step 7: back-write and report.**
 
 On success:
-1. Use the Edit tool to insert `gh_issue: {url}` into the proposal's YAML frontmatter, on a new line directly after the `id:` field. Skip this step for ad-hoc issues (no proposal file).
+1. Record the filed URL through core `task note <id> --decision "GitHub issue: {url}"`. Skip this step for ad-hoc issues.
 2. Output `Filed: {url}`.
 
 On error, surface the `error`; the token names its cause. Two need a hint:
@@ -202,6 +202,6 @@ On error, surface the `error` (same causes as filing).
 ## Notes
 
 - `HERMIT_GH_REPO` overrides the default target (`gtapps/hermitd`).
-- If the operator overrides the dedup check and re-files the same proposal, `gh_issue` in the frontmatter is overwritten with the new URL (latest wins).
+- If the operator overrides the dedup check and re-files the same proposal, add a task note with the new URL; retain previous filing history.
 - Comments skip the dedup check by design — there is no uniqueness constraint on comments.
 - The `issue-sanitizer` subagent strips anything personal or specific to the operator's machine and project unless it's clearly part of an upstream hermit plugin. It does not edit for style or clarity — only for privacy.

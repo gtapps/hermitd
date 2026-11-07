@@ -1,40 +1,11 @@
-# Approvals
-
-## Micro-approval response
-
-- **Micro-approval response** (yes or no in any language, "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label when a `[pending question in this chat: …]` line is present)
-  - Turn the operator's words into the answer token, then run `proposal-micro` (Commands) with arguments `match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply "<token>"`, using this chat's normalized key and the envelope's `user_id` (§1c); pass the explicit id when supplied, otherwise omit it. Only entries asked in this chat can match, and only a primary operator or the requester the question was asked of can answer. Follow its `status`:
-    - `match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve` (null when absent) in the resolution branches below.
-    - `ambiguous`: list the `choices` ids and options and ask for the target or choice once; do not resolve.
-    - `refused`: a question is pending in this chat, but it is the admin's to answer. Reply that only the admin can answer it and that it stays open. Do not resolve it, act on the reply, or classify it further.
-    - `none`, reason `no_pending`: keep classifying; a bare yes/no can still be a Proposal approval below. Reason `no_match`: ask for clarification once; do not resolve.
-    - On a script error, report it and do not resolve or hand-edit the queue.
-  - **Suggestion escape hatch:** on `ambiguous` for a bare yes, no or later, run `proposal-list` (Commands) with arguments `--status=proposed` and check the returned `proposals`. If any proposal has `status: "proposed"`, append: "…or reply 'YES #N' to act on an open suggestion instead." Preserve micro-proposal precedence.
-  - **On resolved entry:** every branch below resolves the entry via one script call — never hand-edit `state/micro-proposals.json`: the script is the only writer that keeps the file and the ledger consistent.
-    - **Entry has `on_resolve`** → **resolve on disk FIRST, then invoke.** Run:
-      Run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`.
-      The script removes the pending entry, then appends `micro-resolved` (`"action":"answered"`) before invocation. A failed ledger append is reported after removal; do not re-run the resolve call. Substitute the selected label into `on_resolve`'s `{answer}`, then invoke the skill command. Insert a single-word verb **bare** (unquoted): `/hermitd:proposal-act {answer} PROP-NNN` becomes `proposal-act accept PROP-NNN`. Keep double quotes around multi-word `--answer` labels such as `session task`. The invoked skill detects re-entry and acts on the answer. `answered` is audit-only, excluded from approval-rate metrics. See `SKILL.md` § Channel-safe ask bridge.
-    - **No `on_resolve`, "yes" on tier 1** → execute the change at next idle, record the outcome with `task.ts note` when a record is open, then:
-      Run `proposal-micro` (Commands) with arguments `resolve <id> --action approved`.
-    - **No `on_resolve`, "yes" on tier 2** → create PROP-NNN via `/hermitd:proposal-create`, queue for next idle, then run the same `resolve <id> --action approved` call.
-    - **No `on_resolve`, an option label** (a deferred upgrade step) → apply that option as the returned `question` describes, in this turn, behind normal permission prompts. For a question that names the `leftover-check` source, `Read` [`hermit-evolve/leftover-check.md`](../hermit-evolve/leftover-check.md) whole and follow its Fix procedure. Apply `config.json` changes through settings-edit verbs, and never write `.claude/settings*.json` from a channel session. Once it is applied, run `proposal-micro` (Commands) with arguments `resolve <id> --action answered --answer "<selected label>"`. If a prompt is denied or the apply fails, leave the entry pending and tell the operator the question is still open and why.
-    - **No `on_resolve`, "no"** → run:
-      Run `proposal-micro` (Commands) with arguments `resolve <id> --action rejected`.
-  - If no pending micro-proposals: keep classifying (Proposal approval below, then the other categories).
+# Answering task waits
 
 ## Already-done items
 
-- A "clear" reply resolves exactly the decisions that message grouped under "Looks already done": the heartbeat's `digest_done` keys, or the brief's `done` refresh entries. Take them from that turn's output in this conversation; never guess them from the queue.
-- Resolve each key:
-  - A proposal (`proposal-pending:<PROP-NNN>`, or a micro entry whose `proposal_id` links one): `/hermitd:proposal-act resolve PROP-NNN`. Resolving the proposal retires a linked question too.
-  - Any other `micro-proposal-pending:<MP-id>`: run `proposal-micro` (Commands) with arguments `resolve <MP-id> --action answered --answer "already done"`, never `approved`, because the operator approved nothing.
-- Reply once, in plain voice, naming what was cleared without internal ids.
-- If no such message's keys are in this conversation, resolve nothing. Say any item still marked done will show again in the next reminder, where a "clear" can drop it.
+A clear reply applies only to records explicitly named by this chat's preceding already-done message. Never guess targets from the store. Use the record's normal `close` or `cancel` command with `--chat <key> --user <sender-id>` and reason `already done`. A refusal is final for this turn: do not bypass pending consent or a decider check. No approval is implied by clearing a stale reminder. Reply once without internal ids.
 
-## Proposal approval
+## Answering a wait
 
-- **Proposal approval** ("accept PROP-", "go ahead with PROP-", "approve PROP-", referencing proposal numbers, `#N`, or a bare/`#N`-qualified yes/later/no reply, card in view or not — only when no pending micro-proposal claimed the reply first, per Micro-approval response above)
-  - **Map the reply to an action by its meaning, in any language; do not match keywords.** A reply meaning go ahead → `accept`, hold for later → `defer`, drop it → `dismiss` (e.g. `YES`/"sim" → `accept`, `LATER`/"depois" → `defer`, `NO`/"não" → `dismiss`). A one-word reply with that meaning is a bare reply below, not a reason to ask again. `accept PROP-`/`approve PROP-` phrasing maps to `accept` directly.
-  - **Resolve the target proposal:** for an explicit `#N` or `PROP-NNN`, run `proposal-resolve-id` (Commands) with argument `PROP-N` before invoking `/hermitd:proposal-act <action> PROP-N` (it zero-pads the integer). On `none`, reply in plain voice: "I don't see Suggestion #N; reply with an open number." A bare reply that confirms a selected task (`SKILL.md` §1) or answers your own last question is not a Proposal approval. For any other bare reply, run `proposal-list` (Commands) with arguments `--status=proposed`: apply when `total` is 1 and this chat is its channel's home chat (`default_chat_id`); otherwise list the open Suggestion numbers and ask which (e.g. "Reply 'YES #14'"), never an internal ID.
-  - Never surface internal proposal fields back to the channel (the exact list and `#N` derivation are canonical in `proposal-list` §4a) — confirm using the Suggestion number (see `proposal-act`'s channel-tagged notify).
+Map the reply by its meaning, in any language; do not match keywords. Pass yes, no, a number or an option label to `task answer [<task-id>] --chat <key> --user <sender-id> --reply '<token>'`. Omit id when the sender did not identify a record; the script owns matching and cross-chat isolation.
 
+On `match`, use the recorded answer and `resume` to continue the owning procedure. Input "no" is an answer, not cancellation. Consent "no" dismisses the proposal. Result acceptance closes only the matching revision. On `ambiguous`, ask once using returned choices; change nothing. On `refused` (`not_decider`), explain that this decision waits for its decider or an admin, and leave it open. On `stale`, reload the current record; do not replay against the new generation. On `none/no_pending`, continue normal classification; `none/no_match` leaves state unchanged. Never clear a typed wait or act on its answer through a different verb.

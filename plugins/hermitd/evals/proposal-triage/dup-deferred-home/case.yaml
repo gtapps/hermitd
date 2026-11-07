@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: dup-deferred-home
 description: 'Same problem as a deferred proposal: DUPLICATE.'
 tags: [proposal-triage, heldout]
-expected_outcome: 'DUPLICATE: … — PROP-013'
+expected_outcome: 'DUPLICATE: … — T-20260814-100013'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -14,6 +14,7 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
+    Proposal task digest: {"ok":true,"proposals":[{"id":"T-20260814-100004","status":"completed","title":"Notify when the washing machine finishes","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100009","status":"open","title":"Skip garden irrigation when rain is forecast","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100011","status":"cancelled","title":"Daily energy usage report in the morning brief","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100013","status":"open","title":"Send household notices in Portuguese","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100015","status":"open","title":"Auto-lock the front door at midnight","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]}]}
     Title: Write household alerts in Portuguese
     Evidence Source: operator-request
     Evidence: Two household members asked for alerts in Portuguese; English notices were misread twice.
@@ -30,5 +31,5 @@ graders:
   - name: verdict-duplicate
     type: 'regex'
     target: 'last_message'
-    pattern: '(^|\n)\s*DUPLICATE: [^\n]*PROP-013'
+    pattern: '(^|\n)\s*DUPLICATE: [^\n]*T-20260814-100013'
     weight: 3

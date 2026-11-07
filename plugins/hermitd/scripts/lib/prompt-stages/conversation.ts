@@ -58,17 +58,20 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
           ? `[conversation command: restart task=${target.id}]`
           : `[conversation command: restart needs a handle: ${inChat.map(task => task.handle).join(' ')}]` };
       }
-      const rows = inChat.slice(0, 5);
-      if (inChat.length) {
+      const people = inChat.filter(row => row.kind !== 'proposal');
+      const proposalCount = inChat.length - people.length;
+      if (proposalCount) lines.push(`[agent proposal waits in this chat: ${proposalCount}; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`);
+      const rows = people.slice(0, 5);
+      if (people.length) {
         ctx.openTasksInChat = true;
-        lines.push(`[open tasks in this chat: total=${inChat.length} omitted=${inChat.length - rows.length}; ${rows.map(row => `${row.handle} ${row.id} ${JSON.stringify(safeForLLM(row.title).slice(0, 80))} owner=${row.owner.split(':')[0]} state=${safeForLLM(taskListing(row, records).join(', '))}`).join('; ')}] a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.`);
+        lines.push(`[open tasks in this chat: total=${people.length} omitted=${people.length - rows.length}; ${rows.map(row => `${row.handle} ${row.id} ${JSON.stringify(safeForLLM(row.title).slice(0, 80))} owner=${row.owner.split(':')[0]} state=${safeForLLM(taskListing(row, records).join(', '))}`).join('; ')}] a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.`);
         const waiting = rows.filter(row => row.waiting_on !== null);
         if (waiting.length) {
           const actor = env.userId === null ? null : safeForLLM(`${env.sourceKey}:${env.userId}`).slice(0, 160);
           // Only a posted result is confirmed by close; a result-less wait is a question to answer.
           const confirmed = actor && waiting.some(row => row.result)
-            ? '; operator confirmed a row with result_rev: .hermit/bin/hermitd-run task close .hermit <id> --by confirmed --actor <actor> --result-rev <result_rev> --reason-stdin' : '';
-          lines.push(`[waiting task ${waiting.map(row => `${row.id}${row.result ? ` result_rev=${row.result_rev}` : ''}${row.last_worker ? ` last_worker=${row.last_worker}` : ''}${actor ? ` actor=${actor}` : ''}`).join('; ')}; commands (use the row's id, revision and actor): .hermit/bin/hermitd-run task block .hermit <id> --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit <id> --clear-waiting${confirmed}; nothing is owed when this message does not change the task]`);
+            ? '; operator confirmed a row with result_rev: .hermit/bin/hermitd-run task close .hermit <id> --by confirmed --actor <actor> --chat <chat> --user <user> --result-rev <result_rev> --reason-stdin' : '';
+          lines.push(`[waiting task ${waiting.map(row => `${row.id}${row.result ? ` result_rev=${row.result_rev}` : ''}${row.last_worker ? ` last_worker=${row.last_worker}` : ''}${actor ? ` actor=${actor}` : ''}`).join('; ')}; commands (use the row's id, revision and actor): .hermit/bin/hermitd-run task block .hermit <id> --result-stdin; wait answered: .hermit/bin/hermitd-run task answer .hermit <id> --chat <chat> --user <user> --reply <token>; legacy wait: .hermit/bin/hermitd-run task note .hermit <id> --clear-waiting --chat <chat> --user <user>${confirmed}; nothing is owed when this message does not change the task]`);
         }
       }
     }
@@ -88,7 +91,8 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
   let context = `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
-  if (owner !== 'worker' && record.waiting_on !== null) {
+  if (record.kind === 'proposal') context += `\n[agent proposal waits: 1; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
+  if (record.kind !== 'proposal' && owner !== 'worker' && record.waiting_on !== null) {
     // `note --done` clears result/result_at without clearing waiting_on, so a
     // record can be waiting with neither a stall nor a result to quote.
     const latestIsStall = latestWaitIsStall(record);
@@ -103,13 +107,13 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     // install with no allowed_users still admits it, leaving no identity to close under.
     const actor = env.userId === null ? null : safeForLLM(`${env.sourceKey}:${env.userId}`).slice(0, 160);
     const confirmed = !actor ? '' : record.result
-      ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --result-rev ${record.result_rev} --reason-stdin`
-      : `; requester explicitly says the work is done: ${taskCommand} close ${target} --by confirmed --actor ${actor} --reason-stdin`;
+      ? `; operator confirmed: ${taskCommand} close ${target} --by confirmed --actor ${actor} --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --result-rev ${record.result_rev} --reason-stdin`
+      : `; requester explicitly says the work is done: ${taskCommand} close ${target} --by confirmed --actor ${actor} --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reason-stdin`;
     // A named approver confirms in words, so only an approver-free result can finish by a check.
     const finishing = record.result && !latestIsStall && !record.approver && !record.check
       ? `; approved, outcome pending a command can observe: add --check '<command>' [--due <iso>] to the --clear-waiting note`
       : '';
-    context += `\n[waiting task ${record.id}: ${reason}${record.last_worker ? '; last_worker=' + record.last_worker : ''}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} note ${target} --clear-waiting${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
+    context += `\n[waiting task ${record.id}: ${reason}${record.last_worker ? '; last_worker=' + record.last_worker : ''}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} answer ${target} --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>; legacy wait: ${taskCommand} note ${target} --clear-waiting --chat <chat> --user <user>${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
   }
   if (harnessCommand && owner !== 'resident') {
     ctx.skipHarnessCommand = true;

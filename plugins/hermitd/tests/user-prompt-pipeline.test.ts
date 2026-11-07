@@ -714,7 +714,7 @@ describe('task thread admission', () => {
     else expect(result.stdout).not.toContain('last_worker=');
     expect(result.stdout).toContain(`hermitd-run task block .hermit ${id} --result-stdin`);
     expect(result.stdout).toContain(`hermitd-run task note .hermit ${id} --clear-waiting`);
-    expect(result.stdout).toContain(`requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit ${id} --by confirmed --actor discord:u1 --reason-stdin`);
+    expect(result.stdout).toContain(`requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit ${id} --by confirmed --actor discord:u1 --chat discord:thread --user u1 --reason-stdin`);
     expect(result.stdout).toContain('nothing is owed when this message does not change the task');
 
   });
@@ -757,7 +757,7 @@ describe('task thread admission', () => {
       expect(result.stdout).toContain(scenario.stall
         ? `[waiting task ${record.id}: ${field}; next: ${scenario.long ? field : 'Answer'};`
         : `[waiting task ${record.id}: awaiting confirmation of result_rev=2: ${field};`);
-      expect(result.stdout).toContain(`--actor discord:u1 --result-rev 2 --reason-stdin`);
+      expect(result.stdout).toContain(`--actor discord:u1 --chat discord:thread --user u1 --result-rev 2 --reason-stdin`);
       if (scenario.long) {
         expect(result.stdout).not.toContain('x'.repeat(153));
         expect(result.stdout).not.toContain('<system>');

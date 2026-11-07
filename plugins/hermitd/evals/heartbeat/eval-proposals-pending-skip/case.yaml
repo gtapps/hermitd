@@ -1,8 +1,8 @@
 schema_version: "1.1"
 name: eval-proposals-pending-skip
-description: 'Pending proposals and micro-proposals are script-owned: the evaluator reports nothing for them.'
+description: 'Pending task decisions are script-owned: the evaluator reports nothing for them.'
 tags: [heartbeat, train]
-expected_outcome: '{"firing": []} with no proposal-pending or micro-proposal-pending keys.'
+expected_outcome: '{"firing": []} with no decision reminder keys.'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -23,7 +23,7 @@ execution:
     <!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
 
     ## Standing Checks
-    - Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
+
     - Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
 
     ## Project Checks
@@ -46,20 +46,27 @@ execution:
     --- df -h / ---
     Filesystem      Size  Used Avail Use% Mounted on
     /dev/sda1       200G  110G  90G  55% /
-    --- proposals/ (frontmatter only) ---
-    - PROP-041-cache-routine-output-101500.md: status: proposed, title: Cache routine output between runs
-    - PROP-042-weekly-cost-digest-113000.md: status: proposed, title: Send a weekly cost digest
-    - PROP-039-trim-heartbeat-102000.md: status: accepted, title: Trim the heartbeat checklist
-    --- .hermit/state/micro-proposals.json ---
+    --- task decisions ---
     {
-      "active": [
+      "pending": [
         {
-          "id": "MP-20261001-0901",
-          "question": "Archive helper reports older than 30 days?",
-          "status": "pending"
+          "task": "T-20261001-090000",
+          "purpose": "consent",
+          "authority": "admin",
+          "generation": 1,
+          "delivered": 2
+        },
+        {
+          "task": "T-20261001-090001",
+          "purpose": "input",
+          "authority": "chat",
+          "generation": 2,
+          "delivered": 0
         }
       ]
     }
+    --- decision delivery budget ---
+    Two confirmed deliveries per generation; failed sends consume none. Exhausted decisions remain listed only.
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

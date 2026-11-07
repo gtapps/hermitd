@@ -17,19 +17,17 @@ import path from 'node:path';
 import { readFileWithFrontmatter, globDir } from './frontmatter';
 import { formatTokens } from './format';
 import { sha256 } from './hash';
-import { readMergedAlerts, PROPOSAL_PREFIX } from './alert-state';
+import { readMergedAlerts, DECISION_PREFIX } from './alert-state';
 import { todayYMD } from './time';
 import { readSettledConfig, agentNameFromConfig } from './config-read';
 import { costIndexPath, readCostIndex } from './cost-log';
-import { rebuildIndex, type ProposalsIndex } from './proposals/index-rebuild';
+import { pendingDecisions } from './decisions';
 import { sharedLivenessAgeSecs, LIVENESS_FRESH_SECS } from './liveness';
 import { loadStrings, fmt, type ArtifactStrings } from './artifact-strings';
 import { chipHtml, card, statTile, railRow, pageShell, META_SEP } from './artifact-theme';
 
 type Json = any;
 
-const OPEN_STATUSES = new Set(['proposed', 'accepted']);
-const OTHER_CAP = 20;
 /** Placeholder standing in for the "last updated" stamp while the content hash is
  *  computed, so an unchanged page hashes identically across renders. Exported for
  *  hermit-local renderers, which must reproduce the same hash-then-swap order. */
@@ -89,12 +87,7 @@ export interface DashboardState {
   today_cost_usd: number;
   today_tokens: number;
   alerts: AlertRow[];
-  proposals: {
-    open: OpenProposalRow[];
-    other: ProposalRow[];
-    other_omitted: number;
-    oldest_open_accepted: OldestAccepted | null;
-  };
+  waiting: { id: string; title: string; authority: string; purpose: string; generation: number; options?: string[]; since: string | null }[];
   weekly: WeeklyState | null;
   last_brief: LastBriefState | null;
   compiled_index: { docs: CompiledDocRow[]; omitted: number };
@@ -122,72 +115,11 @@ function loadTodayCost(hermitDir: string, timezone: string): { cost_usd: number;
   };
 }
 
-function ageDaysFrom(iso: string | null): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return null;
-  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
-}
-
-export function loadProposals(hermitDir: string): DashboardState['proposals'] {
-  // Always rebuild: rebuildIndex() is a cheap frontmatter read (no LLM/token cost) and
-  // this self-heals any out-of-band drift (e.g. a Bash `mv` rename) that the
-  // write-event-gated generate-summary hook never sees. It already reads each open
-  // proposal's full body while parsing frontmatter — capture it via bodyOut instead of
-  // re-reading every open proposal's file a second time below.
-  const bodies = new Map<string, string>();
-  const index: ProposalsIndex | null = rebuildIndex(hermitDir, bodies);
-  if (!index || !Array.isArray(index.proposals)) {
-    return { open: [], other: [], other_omitted: 0, oldest_open_accepted: null };
-  }
-
-  const open: OpenProposalRow[] = [];
-  const other: ProposalRow[] = [];
-  let oldest_open_accepted: OldestAccepted | null = null;
-
-  for (const row of index.proposals) {
-    const status = row.status ?? 'unknown';
-    const base: ProposalRow = {
-      id: row.id,
-      title: row.title ?? 'untitled',
-      status,
-      created: row.created,
-      age_days: ageDaysFrom(row.created),
-    };
-
-    if (status === 'accepted') {
-      // Age since acceptance (the "since accepted" label), not since creation.
-      const acceptedAge = ageDaysFrom(row.accepted_date ?? row.created);
-      if (!oldest_open_accepted || (acceptedAge ?? -1) > (oldest_open_accepted.age_days ?? -1)) {
-        oldest_open_accepted = { id: base.id, title: base.title, age_days: acceptedAge };
-      }
-    }
-
-    if (OPEN_STATUSES.has(status)) {
-      // Body already captured during the rebuild pass above (same read, no re-open).
-      // A missing entry means rebuildIndex itself couldn't read the file (a TOCTOU race
-      // between its readdir and per-file read) — surface that loudly instead of
-      // rendering an empty card that reads as "proposal exists but has no content."
-      const cached = row.file ? bodies.get(row.file) : undefined;
-      const body = cached !== undefined ? cached : (row.file ? `_(file missing: ${row.file})_` : '');
-      open.push({ ...base, body });
-    } else {
-      other.push(base);
-    }
-  }
-
-  // Oldest-waiting first: proposed/accepted proposals are the action items.
-  open.sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1));
-  // Most recent activity first for the resolved/dismissed history.
-  other.sort((a, b) => (a.age_days ?? Infinity) - (b.age_days ?? Infinity));
-
-  const other_omitted = Math.max(0, other.length - OTHER_CAP);
-  return {
-    open,
-    other: other.slice(0, OTHER_CAP),
-    other_omitted,
-    oldest_open_accepted,
-  };
+export function loadWaiting(hermitDir: string): DashboardState['waiting'] {
+  const inventory = pendingDecisions(hermitDir);
+  if (!inventory.ok) throw new Error('decision_inventory_unreadable');
+  return inventory.records.map(({ task, decision }) => ({ id: task.id, title: task.title, authority: decision.authority,
+    purpose: decision.purpose, generation: decision.generation, options: decision.options, since: task.waiting_since }));
 }
 
 function loadWeekly(hermitDir: string): WeeklyState | null {
@@ -278,8 +210,7 @@ function alertMessage(key: string, v: Json, s: ArtifactStrings): string {
   return escapeHtml(key);
 }
 
-/** The hermit's own name, used to lead both page titles. Shared with
- *  proposals-page.ts, which has no other reason to read config.json. */
+/** The hermit's own name, used to lead artifact page titles. */
 export function loadAgentName(hermitDir: string): string {
   return agentNameFromConfig(readSettledConfig(hermitDir));
 }
@@ -314,7 +245,7 @@ export function loadDashboardState(hermitDir: string): DashboardState {
     today_cost_usd: today.cost_usd,
     today_tokens: today.tokens,
     alerts,
-    proposals: loadProposals(hermitDir),
+    waiting: loadWaiting(hermitDir),
     weekly: loadWeekly(hermitDir),
     last_brief: loadLastBrief(hermitDir),
     compiled_index: loadCompiledIndex(hermitDir),
@@ -436,19 +367,6 @@ export function shortPropId(id: string): string {
   return m ? m[1] : id;
 }
 
-function ageLabel(days: number | null, s: ArtifactStrings): string {
-  if (days == null) return '';
-  if (days === 0) return s.age_today;
-  return fmt(s.age_days, { n: days });
-}
-
-// Age as a meta part, or nothing at all when unknown — callers spread this into
-// the monospace meta line, so an absent age contributes no separator.
-function ageMeta(days: number | null, s: ArtifactStrings): string[] {
-  const label = ageLabel(days, s);
-  return label ? [label] : [];
-}
-
 function delta(current: number | null, prior: number | null, s: ArtifactStrings): string {
   if (current == null || prior == null) return '';
   const diff = current - prior;
@@ -469,7 +387,7 @@ function renderAlerts(state: DashboardState): string {
   const s = state.strings;
   if (!state.alerts.length) return `<p class="muted">${s.status_no_alerts}</p>`;
 
-  const shown = state.alerts.filter(a => !a.key.startsWith(PROPOSAL_PREFIX));
+  const shown = state.alerts.filter(a => !a.key.startsWith(DECISION_PREFIX));
   // Every alert was card-owned. That is not "no alerts" — the tile says 20 — so
   // render nothing rather than contradicting it.
   if (!shown.length) return '';
@@ -504,7 +422,6 @@ function renderStatus(state: DashboardState): string {
 // here, created date on the proposals page) drop to a monospace second line.
 // The full id rides along in `title=` so it stays copyable and searchable
 // without being the loudest thing in the row.
-// Exported so proposals-page.ts's open/history rows reuse the same template.
 export function proposalLabel(p: ProposalRow, meta: string[]): string {
   const parts = [
     chip(p.status),
@@ -515,37 +432,10 @@ export function proposalLabel(p: ProposalRow, meta: string[]): string {
     `<p class="rail-meta">${parts.join(META_SEP)}</p>`;
 }
 
-function renderProposals(state: DashboardState): string {
-  const s = state.strings;
-  const { open, other, other_omitted, oldest_open_accepted } = state.proposals;
-
-  const openHtml = open.length
-    ? open
-        .map(
-          p => `<details class="proposal">
-            <summary>${proposalLabel(p, ageMeta(p.age_days, s))}</summary>
-            <div class="proposal-body">${mdToHtml(p.body)}</div>
-          </details>`
-        )
-        .join('')
-    : `<p class="muted">${s.proposals_none_open}</p>`;
-
-  const otherHtml = other.length
-    ? `<ul class="proposal-history">${other
-        .map(p => `<li>${proposalLabel(p, ageMeta(p.age_days, s))}</li>`)
-        .join('')}${other_omitted > 0 ? `<li class="muted">${fmt(s.common_more_not_shown, { n: other_omitted })}</li>` : ''}</ul>`
-    : '';
-
-  const oldestLine = oldest_open_accepted
-    ? `<p class="muted">${fmt(s.proposals_oldest_accepted, {
-        id: escapeHtml(oldest_open_accepted.id),
-        age: oldest_open_accepted.age_days != null
-          ? fmt(s.proposals_since_accepted, { age: ageLabel(oldest_open_accepted.age_days, s) })
-          : '',
-      })}</p>`
-    : '';
-
-  return card(s.proposals_heading, `${oldestLine}${openHtml}${otherHtml}`);
+function renderWaiting(state: DashboardState): string {
+  const rows = state.waiting.map(row => railRow({ tone: 'warn', title: `From the agent: ${row.title}. Waiting on ${row.authority === 'admin' ? 'you' : row.authority}.`,
+    meta: [row.purpose, ...(row.options ?? [])].map(escapeHtml) }));
+  return card(state.strings.waiting_heading, rows.length ? rows.join('') : `<p class="muted">${state.strings.waiting_none}</p>`);
 }
 
 // Omits the card entirely when there is no review yet — an empty section costs a
@@ -611,7 +501,7 @@ export function renderCoreSections(state: DashboardState): Record<string, string
     status: renderStatus(state),
     by_person: renderByPerson(state),
     brief: renderBrief(state),
-    proposals: renderProposals(state),
+    waiting: renderWaiting(state),
     weekly: renderWeekly(state),
     compiled_index: renderCompiledIndex(state),
   };
@@ -638,7 +528,7 @@ export function renderDashboard(state: DashboardState, opts?: { now?: string }):
       sections.status,
       sections.by_person,
       sections.brief,
-      sections.proposals,
+      sections.waiting,
       sections.weekly,
       sections.compiled_index,
     ].filter(Boolean).join('\n  '),

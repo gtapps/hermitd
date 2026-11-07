@@ -20,7 +20,7 @@ cp "$here/../../../skills/heartbeat/reference.md" spec/heartbeat-reference.md
 
 const NOW = 'Now: 2026-10-01T14:30:00+01:00 (timezone Europe/Lisbon; today is 2026-10-01).';
 
-const PROPOSALS_ITEM = '- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.';
+const PROPOSALS_ITEM = ''; // Pending decisions are delivered by scripts, outside the checklist.
 const CRED_ITEM = "- Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.";
 
 function heartbeatMd(...custom: string[]): string {
@@ -41,7 +41,7 @@ function doctor(status = 'ok', detail = 'Discord bot token valid for 41 more day
     { id: 'credential-expiry', status, detail }] });
 }
 
-const NO_PROPOSALS: [string, string] = ['proposals/', '(no files)'];
+const NO_PROPOSALS: [string, string] = ['task decisions', '(none pending)'];
 
 // The skill's instructions for the evaluation subagent, pointing at the reference where the scaffold copies it.
 const EVAL_PROMPT_TAIL = fs.readFileSync(path.join(PLUGIN, 'skills', 'heartbeat', 'SKILL.md'), 'utf-8').split('\n')
@@ -117,15 +117,14 @@ evalCase('eval-credential-warn', 'heldout', 'Doctor credential-expiry warn fires
     msg('text-names-discord', String.raw`"text"\s*:\s*"[^"]*discord`, { flags: 'i' }),
     msg('text-names-reauth-skill', String.raw`"text"\s*:\s*"[^"]*configure`, { flags: 'i' })]);
 
-const PROPS: [string, string] = ['proposals/ (frontmatter only)',
-  '- PROP-041-cache-routine-output-101500.md: status: proposed, title: Cache routine output between runs\n'
-  + '- PROP-042-weekly-cost-digest-113000.md: status: proposed, title: Send a weekly cost digest\n'
-  + '- PROP-039-trim-heartbeat-102000.md: status: accepted, title: Trim the heartbeat checklist'];
-const MICRO: [string, string] = ['.hermit/state/micro-proposals.json',
-  stateFile({ active: [{ id: 'MP-20261001-0901', question: 'Archive helper reports older than 30 days?', status: 'pending' }] })];
+const PROPS: [string, string] = ['task decisions', stateFile({ pending: [
+  { task: 'T-20261001-090000', purpose: 'consent', authority: 'admin', generation: 1, delivered: 2 },
+  { task: 'T-20261001-090001', purpose: 'input', authority: 'chat', generation: 2, delivered: 0 }
+] })];
+const MICRO: [string, string] = ['decision delivery budget', 'Two confirmed deliveries per generation; failed sends consume none. Exhausted decisions remain listed only.'];
 
-evalCase('eval-proposals-pending-skip', 'train', 'Pending proposals and micro-proposals are script-owned: the evaluator reports nothing for them.',
-  '{"firing": []} with no proposal-pending or micro-proposal-pending keys.',
+evalCase('eval-proposals-pending-skip', 'train', 'Pending task decisions are script-owned: the evaluator reports nothing for them.',
+  '{"firing": []} with no decision reminder keys.',
   [['.hermit/HEARTBEAT.md', heartbeatMd(DISK)],
     ['.hermit/state/doctor-report.json', doctor()],
     ['df -h /', df(55)], PROPS, MICRO],
@@ -235,7 +234,7 @@ function customMd(title: string, sections: [string, string[]][]): string {
   return lines.join('\n');
 }
 
-const PT_PROPOSALS = 'Rever `proposals/` com `status: proposed` à espera da minha decisão. Ignorar `accepted`, `resolved`, `deferred` e `dismissed`.';
+const PT_PROPOSALS = 'As decisões pendentes são entregues pelos scripts, com orçamento de duas entregas confirmadas por geração.';
 const FREEZER = 'Temperatura do congelador acima de -15 °C [ask]';
 const DOOR = 'Porta da frente destrancada depois das 23h [ask]';
 evalCase('eval-home-pt', 'heldout, varied-install', 'Portuguese home-automation checklist: freezer too warm fires; a door rule outside its time window does not.',
@@ -244,7 +243,7 @@ evalCase('eval-home-pt', 'heldout, varied-install', 'Portuguese home-automation 
     ['ha-states (Home Assistant, now)', JSON.stringify([
       { entity_id: 'lock.front_door', state: 'unlocked', last_changed: '2026-10-01T13:05:00+01:00' },
       { entity_id: 'sensor.freezer_temperature', state: '-11.2', unit: '°C', last_changed: '2026-10-01T14:21:00+01:00' }])],
-    ['proposals/ (frontmatter only)', '- PROP-007-rega-automatica-090000.md: status: proposed, title: Rega automática ao amanhecer']],
+    ['task decisions', 'T-20261001-090000: consent/admin, generation 1, delivered 2; Rega automática ao amanhecer']],
   [firingCount(1, 3), itemGrader('freezer-item', 'Temperatura do congelador'),
     msg('door-not-firing', String.raw`"item"\s*:\s*"(?:- )?Porta`, { match: 'not_contains', weight: 2 })]);
 

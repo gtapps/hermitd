@@ -25,10 +25,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseFrontmatter, listProposalFiles } from './frontmatter';
-import { readMicroProposals } from './micro-proposals-io';
-import { askedOutsideHome, homeChatKey } from './proposals/micro';
-import { readSettledConfig } from './config-read';
+import { pendingDecisions } from './decisions';
 
 type Json = any;
 
@@ -144,11 +141,9 @@ export interface FiringItem { key: string; text: string; channelText?: string; }
 // deriveProposalPendingKeys). These are the ONLY code path that bakes a raw
 // internal id into an alert's text, so channel-safety scrubbing is scoped to
 // them. Shared with lib/heartbeat/alert-update.ts (phantom-key filter, freeze).
-export const MICRO_PREFIX = 'micro-proposal-pending:';
-export const PROPOSAL_PREFIX = 'proposal-pending:';
-export const STRUCTURED_PREFIXES = [MICRO_PREFIX, PROPOSAL_PREFIX];
-export const isStructuredKey = (key: string): boolean =>
-  STRUCTURED_PREFIXES.some(p => key.startsWith(p));
+export const DECISION_PREFIX = 'decision-pending:';
+export const STRUCTURED_PREFIXES = [DECISION_PREFIX];
+export const isStructuredKey = (key: string): boolean => key.startsWith(DECISION_PREFIX);
 
 // doctor:* episodes live in doctor-alerts.json, written by doctor-check.ts alone.
 // Deliberately NOT in STRUCTURED_PREFIXES: those get id-scrubbing and first-fire
@@ -340,7 +335,6 @@ export function classifyTick(opts: {
 // Structured-key derivation (issue #594, scope A′).
 //
 // `micro-proposal-pending:<id>` and `proposal-pending:<PROP-NNN>` are backed
-// by a filesystem source-of-truth (micro-proposals.json / proposals/*.md
 // frontmatter), and each silences a still-pending operator decision when
 // suppressed. Leaving these to the model means a single garbled/omitted key
 // can silently resolve a real pending decision two ticks later (the
@@ -354,63 +348,11 @@ export function classifyTick(opts: {
 // prefix's existing alerts; it must freeze them untouched for the tick.
 // ---------------------------------------------------------------------------
 
-export function deriveMicroPendingKeys(stateDir: string): { ok: boolean; items: FiringItem[]; error?: string } {
-  const read = readMicroProposals(path.join(stateDir, 'state', 'micro-proposals.json'));
-  if (read.status === 'corrupt') return { ok: false, items: [], error: read.error };
-  if (read.status === 'missing') return { ok: true, items: [] };
-  const pending = read.data.pending;
-  // Heartbeat alerts reach the home chat, which cannot answer another chat's entry.
-  const home = homeChatKey(readSettledConfig(stateDir).channels);
-  const items: FiringItem[] = [];
-  for (const entry of pending) {
-    if (!entry || entry.status !== 'pending' || entry.tier !== 1 || typeof entry.id !== 'string') continue;
-    if (askedOutsideHome(entry, home)) continue;
-    const question = typeof entry.question === 'string' ? entry.question : '';
-    let text = `micro-proposal '${entry.id}' awaiting operator input — ${question}`;
-    // channelText omits the raw MP- id (channel-voice rule); keeps question + options.
-    let channelText = `a decision awaiting your input — ${question}`;
-    if (Array.isArray(entry.options) && entry.options.length > 0) {
-      const opts = ' [' + entry.options.map((o: any, i: number) => `${i + 1}: ${o}`).join(', ') + ']';
-      text += opts;
-      channelText += opts;
-    }
-    items.push({ key: `micro-proposal-pending:${entry.id}`, text, channelText });
-  }
-  return { ok: true, items };
-}
-
-export function deriveProposalPendingKeys(stateDir: string): { ok: boolean; items: FiringItem[] } {
-  const dir = path.join(stateDir, 'proposals');
-  const listed = listProposalFiles(dir);
-  if (!listed.ok) return { ok: false, items: [] };
-  const items: FiringItem[] = [];
-  for (const f of listed.files) {
-    // Match deriveMicroPendingKeys' fail-safe: an ambiguous per-file read
-    // (EACCES/EIO/EISDIR — realistic under the Docker runtime) must freeze the
-    // whole prefix, never silently drop a `status: proposed` file (which would
-    // age its pending alert toward resolution — the exact #594 harm). ENOENT
-    // (file vanished mid-scan) is unambiguous → skip it and let its alert resolve.
-    let raw: string;
-    try {
-      raw = fs.readFileSync(path.join(dir, f), 'utf-8');
-    } catch (err: any) {
-      if (err?.code === 'ENOENT') continue;
-      return { ok: false, items: [] };
-    }
-    const fm = parseFrontmatter(raw);
-    if (!fm || fm.status !== 'proposed') continue; // legacy/no-frontmatter/malformed/not-proposed — skip this file only
-    const m = f.match(/^(PROP-\d+)/);
-    if (!m) continue;
-    const id = m[1];
-    const title = typeof fm.title === 'string' && fm.title ? fm.title : null;
-    // Pre-rendered so the daily digest needs no second frontmatter read: falls
-    // back to the bare id on zero/multiple-match (no title found), never blocks.
-    // channelText omits the raw PROP- id (channel-voice rule); title-only.
-    items.push({
-      key: `proposal-pending:${id}`,
-      text: title ? `${id} "${title}"` : id,
-      channelText: title ? `proposal "${title}" awaiting review` : 'a proposal awaiting review',
-    });
-  }
-  return { ok: true, items };
+export function deriveDecisionPendingKeys(stateDir: string): { ok: boolean; items: FiringItem[] } {
+  const inventory = pendingDecisions(stateDir);
+  if (!inventory.ok) return { ok: false, items: [] };
+  return { ok: true, items: inventory.records.filter(row => row.delivered < 2).map(({ task, decision }) => ({
+    key: `${DECISION_PREFIX}${task.id}:${decision.generation}`, text: task.title,
+    channelText: `From the agent: ${task.title}. Waiting on you.`,
+  })) };
 }

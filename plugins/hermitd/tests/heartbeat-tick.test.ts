@@ -10,6 +10,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { mutateTask } from '../scripts/lib/tasks';
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 
 const tmpdirs: string[] = [];
@@ -230,38 +231,15 @@ describe('heartbeat tick', () => {
   const suppressedRow = (first_seen: string, extra: object = {}) =>
     ({ count: 9, consecutive_clean: 0, suppressed: true, first_seen, last_seen: '2026-07-09', text: `item ${first_seen}`, ...extra });
 
-  test('decision_refresh lists due decision items oldest first, capped at 5', async () => {
-    const hermit = fixture({ alertState: {
-      alerts: {
-        'proposal-pending:PROP-007': suppressedRow('2026-07-07'),
-        'micro-proposal-pending:MP-20260701-0': suppressedRow('2026-07-01'),
-        'proposal-pending:PROP-003': suppressedRow('2026-07-03'),
-        'proposal-pending:PROP-006': suppressedRow('2026-07-06'),
-        'proposal-pending:PROP-002': suppressedRow('2026-07-02'),
-        'proposal-pending:PROP-004': suppressedRow('2026-07-04'),
-        'proposal-pending:PROP-005': suppressedRow('2026-06-30', { consecutive_clean: 1 }),
-        'custom:disk-full': suppressedRow('2026-06-01'),
-      },
-      self_eval: {}, total_ticks: 3, last_digest_date: '2026-07-09',
-    } });
+  test('decision_refresh lists only records with an unspent generation budget, capped at five', async () => {
+    const hermit = fixture();
+    const ids: string[] = [];
+    for (let index = 0; index < 7; index++) ids.push((mutateTask(hermit, 'open', undefined, { requester: 'agent', kind: 'proposal', title: `Proposal ${index}`, done: 'Done' }, '') as { id: string }).id);
     const out = await tick(hermit);
     expect(out.status).toBe('evaluate');
-    expect(out.decision_refresh.map((d: any) => d.key)).toEqual([
-      'micro-proposal-pending:MP-20260701-0', 'proposal-pending:PROP-002', 'proposal-pending:PROP-003',
-      'proposal-pending:PROP-004', 'proposal-pending:PROP-006',
-    ]);
-    expect(out.decision_refresh[0]).toEqual({ key: 'micro-proposal-pending:MP-20260701-0', text: 'item 2026-07-01' });
-  });
-
-  test('decision_refresh is absent once today\'s digest has gone out', async () => {
-    // total_ticks 19 forces EVALUATE through the self-evaluation gate instead.
-    const hermit = fixture({ alertState: {
-      alerts: { 'proposal-pending:PROP-002': suppressedRow('2026-07-02') },
-      self_eval: {}, total_ticks: 19, last_digest_date: '2026-07-10',
-    } });
-    const out = await tick(hermit);
-    expect(out.status).toBe('evaluate');
-    expect(out.decision_refresh).toBeUndefined();
+    expect(out.decision_refresh.map((row: any) => row.key)).toEqual(ids.slice(0, 5).map(id => id + ':1'));
+    write(hermit, 'state/decision-deliveries.json', Object.fromEntries(ids.map(id => [id + ':1', 2])));
+    expect((await tick(hermit)).decision_refresh).toBeUndefined();
   });
 });
 

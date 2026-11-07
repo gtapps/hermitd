@@ -17,7 +17,10 @@ import path from 'node:path';
 
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { deriveMicroPendingKeys } from '../scripts/lib/alert-state';
+import { pendingDecisions } from '../scripts/lib/decisions';
+import { mutateTask } from '../scripts/lib/tasks';
+import { taskFixture } from './helpers/tasks';
+import { startHttpStub } from './helpers/http-stub';
 import { isProposalScanItem, isCredentialExpiryItem, normalizeItemKey, parseChecklistItems, canonicalChecklistKeys } from '../scripts/lib/heartbeat-items';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-hbscan-');
@@ -127,180 +130,83 @@ const microSuppressed = (id: string, consecutive_clean = 0) => ({
   [`micro-proposal-pending:${id}`]: { suppressed: true, consecutive_clean, count: 6 },
 });
 
-describe('default proposal-scan resolution', () => {
-  test('1. proposed proposal with no alert → EVALUATE', async () => {
-    const dir = build({ proposals: [{ id: 'PROP-001', status: 'proposed' }] });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('2. proposed + suppressed alert (digest sent today) → OK', async () => {
-    const dir = build({
-      proposals: [{ id: 'PROP-001', status: 'proposed' }],
-      alertState: { alerts: suppressed('PROP-001') },
+describe('pending decision delivery budget', () => {
+  function decisionFixture(authority = 'admin', extra: object = {}) {
+    const f = taskFixture();
+    const tokenDir = path.join(f.dir, '..', '.claude.local', 'channels', 'telegram');
+    fs.mkdirSync(tokenDir, { recursive: true });
+    fs.writeFileSync(path.join(tokenDir, '.env'), 'TELEGRAM_BOT_TOKEN=test-token\n');
+    f.put('config.json', { operator_profile: 'non-technical', timezone: 'UTC', heartbeat: { active_hours: { start: '00:00', end: '24:00' } }, channels: { telegram: { enabled: true, default_chat_id: 'home', state_dir: tokenDir, ...extra } } });
+    fs.writeFileSync(path.join(f.dir, 'HEARTBEAT.md'), '# Checks\n- Review proposals/ for attention\n');
+    const receipt = mutateTask(f.dir, 'open', undefined, { requester: 'agent', title: 'Question', done: 'Answered',
+      ...(authority === 'admin' ? { kind: 'proposal' } : { conversation: 'telegram:team' }),
+      'waiting-on': authority, decision: JSON.stringify({ purpose: authority === 'admin' ? 'consent' : 'input', authority, generation: 1 }),
+    }, '') as { id: string };
+    const send = async (url: string, generation = 1) => runScript('channel-send.ts', { cwd: f.dir + '/..', args: [f.dir, '--notice'], env: { AGENT_DIR: f.dir, HERMIT_TELEGRAM_API_URL: url },
+      stdin: JSON.stringify({ client: 'From the agent: Question. Waiting on you.', decision: { task: receipt.id, generation } }),
     });
-    expect(await verdict(dir)).toBe('OK');
+    return { ...f, id: receipt.id, send };
+  }
+  test('two confirmed deliveries then silence, including a non-technical home fallback', async () => {
+    const f = decisionFixture(); const stub = startHttpStub();
+    try {
+      for (let count = 1; count <= 2; count++) {
+        const result = await f.send(stub.url);
+        expect(result.exitCode).toBe(0);
+        expect(JSON.parse(result.stdout).status).toBe('delivered');
+        expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: count }] });
+      }
+      await f.send(stub.url);
+      expect(stub.requests).toHaveLength(2);
+      expect(stub.requests[0].body.chat_id).toBe('home');
+    } finally { stub.stop(); f.cleanup(); }
   });
-
-  test('3. suppressed but consecutive_clean > 0 (resolving) → EVALUATE', async () => {
-    const dir = build({
-      proposals: [{ id: 'PROP-001', status: 'proposed' }],
-      alertState: { alerts: suppressed('PROP-001', 1) },
-    });
-    expect(await verdict(dir)).toBe('EVALUATE');
+  test('failed and unreachable maintainer sends consume none', async () => {
+    const f = decisionFixture('admin', { maintainer_channel_id: 'maintainer' });
+    const stub = startHttpStub(); stub.setStatus(403);
+    try {
+      await f.send(stub.url);
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 0 }] });
+      expect(stub.requests.every(request => request.body.chat_id === 'maintainer')).toBe(true);
+    } finally { stub.stop(); f.cleanup(); }
   });
-
-  test('4. no proposed proposals, no alerts → OK (the headline win)', async () => {
-    const dir = build({ proposals: [{ id: 'PROP-001', status: 'accepted' }] });
-    expect(await verdict(dir)).toBe('OK');
+  test('an input decision goes to its own chat', async () => {
+    const f = decisionFixture('chat'); const stub = startHttpStub();
+    try {
+      await f.send(stub.url);
+      expect(stub.requests[0].body.chat_id).toBe('team');
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 1 }] });
+    } finally { stub.stop(); f.cleanup(); }
   });
-
-  test('5. no proposed but stale proposal-pending alert → EVALUATE (resolution cleanup)', async () => {
-    const dir = build({
-      proposals: [{ id: 'PROP-002', status: 'accepted' }],
-      alertState: { alerts: suppressed('PROP-002') },
-    });
-    expect(await verdict(dir)).toBe('EVALUATE');
+  test('a new generation gets a fresh budget and stale sends are refused', async () => {
+    const f = decisionFixture(); const stub = startHttpStub();
+    try {
+      await f.send(stub.url); await f.send(stub.url);
+      f.put('config.json', { channels: { telegram: { operators: ['admin'], enabled: true, default_chat_id: 'home', state_dir: path.join(f.dir, '..', '.claude.local', 'channels', 'telegram') } } });
+      mutateTask(f.dir, 'answer', f.id, { chat: 'telegram:home', user: 'admin', reply: 'yes' }, '');
+      mutateTask(f.dir, 'note', f.id, { done: 'Changed', actor: 'admin' }, '');
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 0, decision: { generation: 2 } }] });
+      await f.send(stub.url, 1); expect(stub.requests).toHaveLength(2);
+      await f.send(stub.url, 2); expect(stub.requests).toHaveLength(3);
+    } finally { stub.stop(); f.cleanup(); }
   });
-
-  test('6. clean scan but a tier-1 micro-proposal is pending → EVALUATE (gate precedes item loop)', async () => {
-    const dir = build({ microPending: true });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('6a. pending micro-proposal + suppressed alert (digest sent today) → OK', async () => {
-    // The cost fix: an unanswered operator question stops forcing a paid wake on
-    // every poll once its alert has aged into the suppressed state.
-    const dir = build({ microPending: true, alertState: { alerts: microSuppressed('MP-1') } });
-    expect(await verdict(dir)).toBe('OK');
-  });
-
-  test('6b. pending micro-proposal, suppressed but consecutive_clean > 0 (resolving) → EVALUATE', async () => {
-    const dir = build({ microPending: true, alertState: { alerts: microSuppressed('MP-1', 1) } });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('6c. two pending micro-proposals, only one suppressed → EVALUATE', async () => {
-    const dir = build({
-      microPendingIds: ['MP-1', 'MP-2'],
-      alertState: { alerts: microSuppressed('MP-1') },
-    });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  // Heartbeat alerts post in the home chat, so a decision asked in another chat
-  // never gets an alert key and could never be damped by one.
-  test('6d. pending micro-proposal asked outside the home chat → OK on every tick', async () => {
-    const dir = build({ homeChatId: '5', microEntries: [{ id: 'MP-group', status: 'pending', tier: 1, chat: 'discord:9' }] });
-    expect(await verdict(dir, true)).toBe('OK');
-    for (let i = 0; i < 3; i++) expect(await verdict(dir)).toBe('OK');
-  });
-
-  test('6e. precheck wakes for exactly the entries the alert deriver keys', async () => {
-    const cases: Array<{ chat?: string; home?: string; eligible: boolean }> = [
-      { chat: 'discord:5', home: '5', eligible: true },
-      { chat: 'discord:9', home: '5', eligible: false },
-      { home: '5', eligible: true },                      // queued before entries carried a chat
-      { chat: 'discord:5', home: '7', eligible: false },  // home chat changed after queueing
-      { chat: 'discord:5', eligible: false },             // no channel can be the home chat
-    ];
-    for (const c of cases) {
-      const entry = { id: 'MP-x', status: 'pending', tier: 1, ...(c.chat ? { chat: c.chat } : {}) };
-      const dir = build({ homeChatId: c.home, microEntries: [entry] });
-      expect(deriveMicroPendingKeys(hermit(dir)).items.length === 1).toBe(c.eligible);
-      expect(await verdict(dir)).toBe(c.eligible ? 'EVALUATE' : 'OK');
-    }
-  });
-
-  test('7. clean scan but 20-tick self-eval is due → EVALUATE (gate precedes item loop)', async () => {
-    const dir = build({ totalTicks: 19 }); // non-peek increments to 20 → self-eval
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  // Not about any supported format — the scan must degrade gracefully on a file
-  // it cannot parse (truncated write, hand-edited, pre-frontmatter leftover)
-  // rather than erroring or silently skipping the tick.
-  test('8. proposal file with no parseable frontmatter → EVALUATE (fail-open)', async () => {
-    const dir = build({ unparseableProposal: 'PROP-006.md' });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('9. custom non-proposal item without a suppressed entry → EVALUATE (generic rule intact)', async () => {
-    const dir = build({ heartbeat: '# Heartbeat\n\n- Check disk usage under 90%\n' });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('10. --peek writes nothing to alert-state.json', async () => {
-    const dir = build({ proposals: [{ id: 'PROP-001', status: 'accepted' }] });
-    const p = hermit(dir, 'state', 'alert-state.json');
-    const before = fs.readFileSync(p, 'utf8');
-    await verdict(dir, true);
-    expect(fs.readFileSync(p, 'utf8')).toBe(before);
-  });
-
-  test('empty proposals dir with no alerts → OK', async () => {
-    const dir = build({});
-    expect(await verdict(dir)).toBe('OK');
-  });
-
-  test('11. missing proposals/ dir, no lingering alert → OK (ENOENT is not ambiguous)', async () => {
-    const dir = build({ noProposalsDir: true });
-    expect(await verdict(dir)).toBe('OK');
-  });
-
-  test('12. proposals/ is a regular file (ENOTDIR readdir error) → EVALUATE (fail-open, never a false OK)', async () => {
-    const dir = build({ proposalsAsFile: true });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  // #764: the micro scan applied the fail-open rule to a malformed *entry* but not
-  // to a malformed *file*, so a corrupt queue read as clean and every pending
-  // operator question went invisible. Corrupt now wakes — but only once a day,
-  // since a human has to fix the file and waking every poll to say so is the
-  // unbounded-wake shape the pending-micro damper exists to prevent.
-  test('13. corrupt micro-proposals.json → EVALUATE (fail-open, never a false OK)', async () => {
-    const dir = build({ microCorrupt: true });
-    expect(await verdict(dir)).toBe('EVALUATE');
-  });
-
-  test('14. corrupt micro-proposals.json, second tick same day → damped, no repeat wake', async () => {
-    const dir = build({ microCorrupt: true });
-    expect(await verdict(dir)).toBe('EVALUATE');
-    expect(await verdict(dir)).toBe('OK'); // damper stamped by the first tick
-  });
-
-  test('15. corrupt micro-proposals.json, 25h later → wakes again', async () => {
-    const dir = build({ microCorrupt: true });
-    expect(await verdict(dir)).toBe('EVALUATE');
-    expect(await verdict(dir, false, '2026-07-04T13:00:00Z')).toBe('EVALUATE');
-  });
-
-  test('16. corrupt micro-proposals.json under --peek writes no damper stamp', async () => {
-    const dir = build({ microCorrupt: true });
-    const p = hermit(dir, 'state', 'alert-state.json');
-    const before = fs.readFileSync(p, 'utf8');
-    expect(await verdict(dir, true)).toBe('EVALUATE');
-    expect(fs.readFileSync(p, 'utf8')).toBe(before);
-  });
-
-  test('17. missing micro-proposals.json stays clean (ENOENT is not ambiguous)', async () => {
-    const dir = build({});
-    expect(await verdict(dir)).toBe('OK');
-  });
-
-  test('18. repaired then re-broken inside 24h wakes again (damper cleared on recovery)', async () => {
-    const dir = build({ microCorrupt: true });
-    const mp = hermit(dir, 'state', 'micro-proposals.json');
-    expect(await verdict(dir)).toBe('EVALUATE');
-    fs.writeFileSync(mp, JSON.stringify({ pending: [] }));
-    expect(await verdict(dir)).toBe('OK');
-    fs.writeFileSync(mp, '{"pending": [');
-    expect(await verdict(dir)).toBe('EVALUATE'); // new corruption, not the old one's silence
+  test('unreadable inventory prevents digest and clean evaluation', async () => {
+    const f = decisionFixture();
+    try {
+      fs.mkdirSync(path.join(f.dir, 'tasks', 'broken.md'));
+      // ENOTDIR makes the inventory ambiguous without relying on uid/chmod behavior.
+      const file = path.join(f.dir, 'tasks', 'corrupt.md');
+      fs.writeFileSync(file, 'not a record');
+      expect(pendingDecisions(f.dir)).toEqual({ ok: false });
+      f.put('state/alert-state.json', { alerts: { 'custom:disk': { count: 6, suppressed: true, consecutive_clean: 0, text: 'disk' } }, last_digest_date: null, last_clean_eval_at: null, total_ticks: 3 });
+      const result = await runScript('heartbeat.ts', { args: ['alert-state', path.join(f.dir, 'state', 'alert-state.json')], env: { AGENT_DIR: f.dir }, stdin: '{"firing":[]}' });
+      expect(result.exitCode).toBe(0);
+      const state = JSON.parse(fs.readFileSync(path.join(f.dir, 'state', 'alert-state.json'), 'utf8'));
+      expect(state.last_digest_date).toBeNull(); expect(state.last_clean_eval_at).toBeNull();
+    } finally { f.cleanup(); }
   });
 });
 
-// Scaffolds a fake plugin root whose hermit-meta.json declares one credential with
-// the given expiry_probe (omit for "no credential declared"). Nested under plugins/
-// so the sibling scan sees only this tree, never another test's tmpdir.
 function fakePluginRoot(probe?: string): string {
   const root = path.join(
     freshCredRoot(), 'plugins', 'hermitd',
@@ -380,14 +286,13 @@ describe('default credential-expiry resolution', () => {
 // wasted-dispatch bug returns with only the 6h damper capping it. Pin them together
 // so a template edit that breaks the match fails here instead of shipping silently.
 describe('shipped HEARTBEAT.md.template ↔ classifier coherence', () => {
-  test('the shipped default proposal-scan item matches isProposalScanItem', () => {
+  test('the shipped default has no proposal scan; scripts own decision deliveries', () => {
     const tpl = fs.readFileSync(
       path.join(PLUGIN_ROOT, 'state-templates', 'HEARTBEAT.md.template'), 'utf8',
     );
     const bullets = parseChecklistItems(tpl);
     const proposalItem = bullets.find(l => /proposals/i.test(l));
-    expect(proposalItem).toBeDefined();
-    expect(isProposalScanItem(proposalItem!)).toBe(true);
+    expect(proposalItem).toBeUndefined();
   });
 
   test('the shipped default credential-expiry item matches isCredentialExpiryItem', () => {

@@ -3,7 +3,6 @@
 // `/simplify` cleanup pass.
 //
 // This module exists because the rubric used to live as prose in two places
-// (proposal-act/SKILL.md's dispatched-subagent prompt and its in-main step e.5)
 // and the two copies had already diverged: the dispatched copy carried no
 // bookkeeping-path filter, so an implementation whose only diff was
 // `sessions/task records` ran /simplify (~$0.25) on one path and skipped on the
@@ -52,7 +51,6 @@ export interface Verdict {
 
 // Session bookkeeping the hermit rewrites on its own schedule. A diff made
 // entirely of these is not an implementation, so it is never worth a cleanup
-// pass. This list is the only copy — proposal-act/SKILL.md deliberately does not
 // restate it; tests/proposal-quality-gate.test.ts asserts each entry individually.
 const BOOKKEEPING: RegExp[] = [
   /(^|\/)sessions\/SHELL\.md$/,

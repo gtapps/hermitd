@@ -10,7 +10,7 @@ export const LISTS = ['environment', 'allow', 'soft_deny', 'hard_deny'] as const
 
 export function artifactGrantApplies(config: any): boolean {
   const artifacts = isDict(config.artifacts) ? config.artifacts : {};
-  const anyPage = ['dashboard', 'proposals', 'weekly_review'].some((key) => pyTruthy(artifacts[key]));
+  const anyPage = ['dashboard', 'weekly_review'].some((key) => pyTruthy(artifacts[key]));
   return anyPage && artifacts.publish_authorized === true && foreignArtifactBackend(config) === null;
 }
 

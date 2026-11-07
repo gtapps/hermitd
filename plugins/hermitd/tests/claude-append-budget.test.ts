@@ -106,13 +106,13 @@ describe('watch progressive disclosure', () => {
     expect(watch).toContain('Return without reading `notices.md`');
     expect(notices).not.toContain('### Handling Monitor expiry');
     expect(notices).toContain('matches no live entry gets none of the recording');
-    expect(notices).toContain('drop any `Set:` or `Decision:`');
+    expect(notices).toContain('The report never grants consent.');
   });
 
   test('helper reuse loads the shared rules and only records its existing subscription', () => {
-    const reuse = fs.readFileSync(path.join(SKILLS_DIR, 'proposal-act', 'reuse-spawned-helper.md'), 'utf8');
-    expect(reuse).toContain('[watch/SKILL.md](../watch/SKILL.md)');
-    expect(reuse).toContain('../watch/session-watch.md#registering-an-existing-idle-subscription');
+    const reuse = fs.readFileSync(path.join(SKILLS_DIR, 'spawn-session', 'reuse-spawned-helper.md'), 'utf8');
+    expect(reuse).toContain('[watch/session-watch.md](../watch/session-watch.md)');
+    expect(reuse).toContain('register its existing idle subscription');
     const session = fs.readFileSync(path.join(watchDir, 'session-watch.md'), 'utf8');
     const registration = session.split('### Registering an existing idle subscription')[1];
     expect(registration).toBeDefined();
@@ -144,14 +144,14 @@ describe('watch progressive disclosure', () => {
   test('watch supporting procedures need no plugin-root substitution by Read', () => {
     // Scoped to executable procedures changed here: other support files may
     // legitimately mention the placeholder in warnings against using it.
-    for (const file of ['watch/session-watch.md', 'watch/notices.md', 'proposal-act/reuse-spawned-helper.md']) {
+    for (const file of ['watch/session-watch.md', 'watch/notices.md', 'spawn-session/reuse-spawned-helper.md']) {
       const body = fs.readFileSync(path.join(SKILLS_DIR, file), 'utf8');
       expect(body).not.toContain('${CLAUDE_PLUGIN_ROOT}');
     }
     expect(watch).toContain('## Commands');
     expect(watch).toContain('- `task-note`:');
     const notices = fs.readFileSync(path.join(watchDir, 'notices.md'), 'utf8');
-    for (const command of ['task-block', 'proposal-resolve-id', 'proposal-patch']) {
+    for (const command of ['task-block', 'task-note']) {
       expect(notices).toContain('`' + command + '` (Commands)');
     }
   });
@@ -216,7 +216,7 @@ describe('push-format constant has exactly one owner', () => {
     // The pointer replaces the shared constant, never the producer-owned
     // decision about which facts survive condensation.
     const body = fs.readFileSync(path.join(SKILLS_DIR, 'brief', 'SKILL.md'), 'utf8');
-    expect(body.includes('open proposal count')).toBe(true);
+    expect(body.includes('waiting decision count')).toBe(true);
   });
 });
 

@@ -2,7 +2,7 @@
 
 What this plugin writes to `.hermit/raw/` and `.hermit/compiled/`, and when.
 
-For the canonical four-bucket convention (`raw/`, `compiled/`, `state/`, `proposals/`) and general frontmatter requirements, see `docs/artifact-naming.md` in `hermitd`.
+For the canonical four-bucket convention (`raw/`, `compiled/`, `state/`, `tasks/`) and general frontmatter requirements, see `docs/artifact-naming.md` in `hermitd`.
 
 ## Frontmatter
 

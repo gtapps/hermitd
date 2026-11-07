@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readTaskReports } from './lib/task-report';
-import { taskStandup } from './lib/tasks';
+import { taskStandup, readTasks } from './lib/tasks';
 import { dutySummary } from './lib/duty-summary';
 // weekly-review.ts — generates a weekly review report
 // Zero npm dependencies. Node stdlib only.
@@ -84,30 +84,24 @@ const weekSessions = allSessions.filter(s => s.parsedDate >= weekStart && s.pars
 const delivered = reports.filter(record => record.outcome === 'done' && record.closed_at
   && new Date(record.closed_at) >= weekStart && new Date(record.closed_at) < weekEnd).map(record => record.title);
 
-// --- Load proposals ---
-const proposalsDir = path.join(hermitDir, 'proposals');
-const proposalFiles = globDir(proposalsDir, /^PROP-\d+(?:-.+)?\.md$/);
-const allProposals = proposalFiles
-  .map(f => ({ file: f, fm: readFrontmatter(f) }))
-  .filter(p => p.fm && p.fm.id);
-
-const weekCreated = allProposals.filter(p => {
-  if (!p.fm.created) return false;
-  const d = new Date(p.fm.created);
-  return d >= weekStart && d < weekEnd;
-});
-
-const weekAccepted = allProposals.filter(p => {
-  if (!p.fm.accepted_date) return false;
-  const d = new Date(p.fm.accepted_date);
-  return d >= weekStart && d < weekEnd;
-});
-
-const weekResolved = allProposals.filter(p => {
-  if (p.fm.status !== 'resolved' || !p.fm.resolved_date) return false;
-  const d = new Date(p.fm.resolved_date);
-  return d >= weekStart && d < weekEnd;
-});
+// Proposal lifecycle counts come from records; consent timestamps come from the ledger.
+const proposalRecords = readTasks(hermitDir).filter(record => record.kind === 'proposal');
+const acceptedDates = new Map<string, string>();
+try {
+  for (const line of fs.readFileSync(path.join(hermitDir, 'state', 'proposal-metrics.jsonl'), 'utf8').split('\n')) {
+    try { const row = JSON.parse(line); if (row.type === 'responded' && row.action === 'accept') acceptedDates.set(row.proposal_id, row.ts); } catch {}
+  }
+} catch {}
+const allProposals = proposalRecords.map(record => ({ file: record.id, fm: {
+  id: record.id, title: record.title, source: record.source, created: record.created,
+  status: record.closed_by === 'cancelled' ? 'dismissed' : record.status === 'closed' ? 'resolved' : record.approved_rev !== null ? 'accepted' : 'proposed',
+  accepted_date: acceptedDates.get(record.id) ?? null, resolved_date: record.closed_at,
+  tags: Array.isArray(record.tags) ? record.tags : record.tags ? JSON.parse(record.tags) : [],
+} }));
+const inWeek = (value: string | null) => value !== null && new Date(value) >= weekStart && new Date(value) < weekEnd;
+const weekCreated = allProposals.filter(row => inWeek(row.fm.created));
+const weekAccepted = allProposals.filter(row => inWeek(row.fm.accepted_date));
+const weekResolved = allProposals.filter(row => row.fm.status === 'resolved' && inWeek(row.fm.resolved_date));
 
 // --- Metrics ---
 const sessionsCount = weekSessions.length;
@@ -163,7 +157,7 @@ function countIncompleteSessions(propTags: string[], datePredicate: (d: Date) =>
 
 const resolvedWithImpact = weekResolved.map(p => {
   const propTags = p.fm.tags || [];
-  const resolvedDate = new Date(p.fm.resolved_date);
+  const resolvedDate = new Date(p.fm.resolved_date!);
   const preCount = countIncompleteSessions(propTags, d => d < resolvedDate);
   const postCount = countIncompleteSessions(propTags, d => d >= resolvedDate);
   const showImpact = propTags.some((t: string) => canShowTagImpact(t));
@@ -192,7 +186,6 @@ const reflectRuns = readRoutineHistory(path.join(hermitDir, 'state', 'routine-me
   .reduce((sum, routine) => sum + routine.fires, 0);
 
 // micro-queued / micro-resolved are reflect-exclusive event types: only the
-// reflect loop queues micro-proposals, so approving one is approving reflect
 // output regardless of which surface records the approval. `created`/`responded`
 // are shared by capability-brainstorm, operator-request, and channel callers and
 // carry no reflect-distinguishing field (the `source` enum value `auto-detected`
@@ -200,6 +193,7 @@ const reflectRuns = readRoutineHistory(path.join(hermitDir, 'state', 'routine-me
 // excluded — undercount, never over-claim non-reflect activity as reflect's.
 // Bridged asks (kind:"ask") ride the same micro-queued event for ID sequencing
 // but are other skills' bounded asks, not reflect candidates — exclude them.
+const autoDetectedIds = new Set(proposalRecords.filter(record => record.source === 'auto-detected').map(record => record.id));
 let reflectSurfaced = 0;
 let reflectAccepted = 0;
 try {
@@ -210,8 +204,8 @@ try {
       const e = JSON.parse(line);
       const d = new Date(e.ts);
       if (!(d >= weekStart && d < weekEnd)) continue;
-      if (e.type === 'micro-queued' && e.kind !== 'ask') reflectSurfaced++;
-      if (e.type === 'micro-resolved' && e.action === 'approved') reflectAccepted++;
+      if (e.type === 'created' && autoDetectedIds.has(e.proposal_id)) reflectSurfaced++;
+      if (e.type === 'responded' && e.action === 'accept' && autoDetectedIds.has(e.proposal_id)) reflectAccepted++;
     } catch {}
   }
 } catch {}

@@ -15,7 +15,7 @@ execution:
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
     Candidate: Batch the packaging order with the tea order
-    Tier: 2
+    Evidence label: repeated friction
     Evidence Source: archived-session
     Evidence: Packaging and tea were ordered separately in two weeks, doubling the shipping cost each time.
     Sessions: T-20261006-090000, T-20261013-090000

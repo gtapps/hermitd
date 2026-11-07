@@ -54,12 +54,12 @@ Run `/hermitd-scribe:hatch` after configuring the env vars above. It installs pu
 
 Trigger phrases:
 
-- `file PROP-007 as a GH issue`
-- `open an issue for PROP-012`
+- `file T-20261106-090000 as a GH issue`
+- `open an issue for T-20261106-100000`
 - `report this to the tracker`
 - `file a GH issue for [description]`
 
-For proposal-backed issues: the skill globs `.hermit/proposals/PROP-NNN-*.md`, reads frontmatter (`id`, `title`, `category`, `session`) and the `## Context` / `## Problem` / `## Proposed Solution` / `## Impact` body sections, then builds a Conventional Commits title (`<type>(<scope>): <title>`, e.g. `feat(homeassistant): integrate HA History API`). Type is derived from `category` (`bug` → `fix`, `infrastructure`/`investigation` → `chore`, otherwise → `feat`); the recognized scope vocabulary is derived from the keys of `_hermit_versions` in `.hermit/config.json`, scanned against explicit mentions in the proposal text first (`plugins/<slug>/` paths or whole-word slug occurrences), falling back to the lone activated fleet hermit when no explicit target appears, with the `hermitd-` prefix stripped. Scope is omitted when signals are absent or ambiguous. The body is translated to English at the GitHub boundary (technical identifiers, code, and frontmatter are preserved verbatim); a `Filed via hermit-scribe · proposal={id} · session={session}` footer is appended after sanitization.
+For proposal-backed issues: the skill reads the task record metadata (`id`, `title`, `category`) and its `## Proposal` section, then builds a Conventional Commits title (`<type>(<scope>): <title>`, e.g. `feat(homeassistant): integrate HA History API`). Type is derived from `category` (`bug` → `fix`, `infrastructure`/`investigation` → `chore`, otherwise → `feat`); the recognized scope vocabulary is derived from the keys of `_hermit_versions` in `.hermit/config.json`, scanned against explicit mentions in the proposal text first (`plugins/<slug>/` paths or whole-word slug occurrences), falling back to the lone activated fleet hermit when no explicit target appears, with the `hermitd-` prefix stripped. Scope is omitted when signals are absent or ambiguous. The body is translated to English at the GitHub boundary (technical identifiers, code, and frontmatter are preserved verbatim); a `Filed via hermit-scribe · proposal={id} · session={session}` footer is appended after sanitization.
 
 For ad-hoc issues: supply title and body directly. The operator's title is passed through verbatim (no CC enforcement); translation and sanitization still apply.
 

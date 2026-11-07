@@ -1,3 +1,4 @@
+import { readTaskInventory } from './lib/tasks';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 import { isLoggingEnabled } from './lib/channel-log';
@@ -328,39 +329,12 @@ function checkCost(p: DoctorPaths = PATHS) {
 }
 
 function checkProposals(p: DoctorPaths = PATHS) {
-  const { proposalsDir } = p;
   try {
-    if (!fs.existsSync(proposalsDir)) {
-      return { id: 'proposals', status: 'ok', detail: 'proposals/ empty (fresh install)' };
-    }
-    const files = globDir(proposalsDir, /^PROP-\d+(?:-.+)?\.md$/);
-    const now = Date.now();
-    const STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    let open = 0;
-    let stale = 0;
-    for (const f of files) {
-      const fm = readFrontmatter(f);
-      // `proposed` is the awaiting-review status; `open` was never in the vocabulary
-      // (proposed|accepted|resolved|dismissed|deferred — see lib/artifact-theme.ts's
-      // CHIP_STATUSES), so this check silently counted zero and both warns below
-      // were unreachable.
-      if (!fm || fm.status !== 'proposed') continue;
-      open++;
-      if (fm.created) {
-        const age = now - new Date(fm.created).getTime();
-        if (Number.isFinite(age) && age > STALE_MS) stale++;
-      }
-    }
-    if (stale > 0) {
-      return { id: 'proposals', status: 'warn', detail: `${open} open (${stale} older than 30d)` };
-    }
-    if (open > 10) {
-      return { id: 'proposals', status: 'warn', detail: `${open} open proposals (consider triage)` };
-    }
-    return { id: 'proposals', status: 'ok', detail: `${open} open proposal(s)` };
-  } catch (e: any) {
-    return { id: 'proposals', status: 'fail', detail: `check failed: ${e.message}` };
-  }
+    const inventory = readTaskInventory(p.hermitDir);
+    if (!inventory.ok) return { id: 'proposals', status: 'fail', detail: 'Task decisions unreadable' };
+    const waiting = inventory.records.filter(record => record.status === 'open' && record.waiting_on && record.decision);
+    return { id: 'proposals', status: 'ok', detail: `${waiting.length} pending decision(s)` };
+  } catch (error: any) { return { id: 'proposals', status: 'fail', detail: error.message }; }
 }
 
 // Full npm-style range evaluation (`>=`, `~`, `^`, `||`, comparators) via Bun.semver.
@@ -826,11 +800,10 @@ function checkReflectLoop(p: DoctorPaths = PATHS) {
     }
     const empty = int(c.empty_runs);
     const props = int(c.proposals_created);
-    const micro = int(c.micro_proposals_queued);
     const suppress = int(c.judge_suppress);
     const rate = `${empty}/${total} empty (${Math.round((empty / total) * 100)}%)`;
 
-    if (props + micro + suppress === 0) {
+    if (props + suppress === 0) {
       return { id: 'reflect', status: 'ok', detail: `${rate}, no output or suppressions${since}` };
     }
     // Same code:N shape and same fixed code order as /hermit-health's suppress-mix suffix, so the
@@ -851,7 +824,7 @@ function checkReflectLoop(p: DoctorPaths = PATHS) {
     return {
       id: 'reflect',
       status: 'ok',
-      detail: `${rate}, ${props} proposal(s), ${micro} micro-proposal(s)${suppressed}${since}`,
+      detail: `${rate}, ${props} proposal(s)${suppressed}${since}`,
     };
   } catch (e: any) {
     return { id: 'reflect', status: 'fail', detail: `check failed: ${e.message}` };

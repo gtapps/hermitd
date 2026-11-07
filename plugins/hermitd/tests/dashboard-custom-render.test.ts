@@ -52,7 +52,7 @@ describe('artifact.ts state dashboard', () => {
     // Theme comes from the live stylesheet, so core-side theme fixes reach custom pages.
     expect(payload.theme_css).toBe(CSS);
     expect(Object.keys(payload.core_sections).sort())
-      .toEqual(['brief', 'by_person', 'compiled_index', 'proposals', 'status', 'weekly']);
+      .toEqual(['brief', 'by_person', 'compiled_index', 'status', 'waiting', 'weekly']);
     expect(payload.state.agent_name).toBe('Hermit');
     expect(typeof payload.updated_token).toBe('string');
     expect(payload.updated_token.length).toBeGreaterThan(0);
@@ -175,7 +175,7 @@ process.exit(res.status ?? 1);
   test('the other pages ignore the dashboard renderer', withHermitDir(async (hermitDir) => {
     writeRenderer(hermitDir, RECEIPT_RENDERER);
     const r = await runScript('artifact.ts', { args: ['render', 'proposals', hermitDir] });
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout).hash).not.toBe('deadbeef');
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).error).toContain('unknown_page');
   }));
 });

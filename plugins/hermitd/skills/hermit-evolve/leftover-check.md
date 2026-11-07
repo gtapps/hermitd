@@ -2,11 +2,7 @@
 
 ## Queue the question
 
-The `question` opens with `leftover-check:`, so a chat answer reaches the Fix procedure below, then has one line per subject from `Findings`: old name to replacement, hit count, up to three file:line locations, `[shared]` after tracked files. Shape the payload like this example:
-
-```json
-{"tier":1,"question":"leftover-check: old routine names left in your files:\nmorning-brief -> hermitd-fitness:morning-brief, 3 hits: CLAUDE.md:9, .claude/skills/tidy/SKILL.md:4 [shared], .hermit/config.json:41\n\"Fix them\" re-checks and updates these files and leaves the changes uncommitted.","options":["Fix them","Leave them"],"key":"leftover-check"}
-```
+Open a task input decision with admin authority, options `Fix them` / `Leave them`, dedupe `question:leftover-check`, and `resume` naming this file's Fix procedure. The task question starts `leftover-check:` and lists each subject, replacement, hit count and up to three file:line examples, marking tracked files `[shared]`. Use [the durable-question contract](../channel-responder/questions.md). Leave them is an input answer and preserves the recorded findings; Fix them resumes only after `task answer` matches.
 
 ## Fix procedure
 

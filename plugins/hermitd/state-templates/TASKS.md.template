@@ -4,7 +4,7 @@
 Record work needing investigation, a longer exchange, or later sign-off or choice, including a plan posted for approval. A one-off request answered in this reply opens nothing, even with a tool; one message is one task unless the requester asks for separate tasks.
 
 ## Confirmation and cancel words
-Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. A pending micro-proposal is answered first. When unsure, ask. Say when you close or cancel so the requester can object.
+Judge confirmation and cancellation from what the requester means, in any wording or language. A posted result is confirmed when the requester clearly accepts it, including by using it or building the next request on it. A correction steers the same record. Silence never confirms. When a task names an approver, only that approver confirms, in words. Typed pending decisions are answered through `task answer --chat --user`: consent is admin-only for proposals; input follows its requester, chat or admin authority. Silence never expires a question. When unsure, ask. Say when you close or cancel so the requester can object.
 
 ## Card, notice and standup wording
 Keep cards concise: requester, definition of done, due date and outcome. State the queue position when accepting work for later. In a chat without threads, show handles in cards and replies when two or more tasks are open there. A stall notice names the status and next step. Standup groups promised, late and waiting work by person.

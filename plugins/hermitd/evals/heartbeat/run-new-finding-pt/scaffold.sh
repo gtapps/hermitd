@@ -36,7 +36,7 @@ cat > '.hermit/HEARTBEAT.md' <<'HERMIT_FIXTURE'
 # Verificações da casa
 
 ## Sempre
-- Rever `proposals/` com `status: proposed` à espera da minha decisão. Ignorar `accepted`, `resolved`, `deferred` e `dismissed`.
+- As decisões pendentes são entregues pelos scripts, com orçamento de duas entregas confirmadas por geração.
 
 ## Casa
 - Porta da frente destrancada depois das 23h [ask]

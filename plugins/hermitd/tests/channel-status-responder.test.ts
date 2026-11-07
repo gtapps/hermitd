@@ -21,10 +21,20 @@ import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { writePtMessages } from './helpers/pt-messages';
-import { decodeTask, encodeTask } from '../scripts/lib/tasks';
+import { decodeTask, encodeTask, mutateTask } from '../scripts/lib/tasks';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
+
+function seedDecisions(wd: Workdir, entries: any[]): void {
+  for (const entry of entries) {
+    if (entry.status !== 'pending') continue;
+    mutateTask(hermit(wd.dir), 'open', undefined, { requester: 'agent', title: entry.question ?? entry.id ?? entry.key ?? 'Question', done: 'Answered',
+      ...(entry.chat ? { conversation: entry.chat } : {}), ...(entry.key ? { 'dedupe-key': entry.key } : {}),
+      'waiting-on': 'admin', decision: JSON.stringify({ purpose: 'input', authority: 'admin', generation: 1 }),
+    }, '');
+  }
+}
 
 function envelope(body: string, user = 'u1', chatId = '12345'): string {
   return `<channel source="telegram" chat_id="${chatId}" user="${user}">${body}</channel>`;
@@ -96,9 +106,9 @@ describe('channel-status-responder', () => {
       await taskCommand(wd, 'block', report, ['--waiting-on', 'telegram:rui', '--status-line', 'Review', '--next', 'Reply']);
       const question = await openTask(wd, 'Loja question', 'resident', 'telegram:loja');
       await taskCommand(wd, 'block', question, ['--waiting-on', 'operator', '--status-line', 'Answer', '--next', 'Reply']);
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { id: 'MP-watch', status: 'pending', chat: 'telegram:loja' },
-      ] }));
+      ]);
       for (const [user, chat] of [['rui', '12345'], ['rui', 'loja'], ['ana', 'loja']]) {
         const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url },
           stdin: JSON.stringify({ prompt: envelope('!status', user, chat) }) });
@@ -106,9 +116,9 @@ describe('channel-status-responder', () => {
       }
       expect(stub.requests[0].body.text).toContain('DM report');
       expect(stub.requests[0].body.text).not.toContain('Loja');
-      expect(stub.requests[0].body.text).not.toContain('MP-watch');
+      expect(stub.requests[0].body.text).not.toContain('1 waiting on admin.');
       expect(stub.requests[1].body.text).toContain('Loja question');
-      expect(stub.requests[1].body.text).toContain('MP-watch');
+      expect(stub.requests[1].body.text).toContain('1 waiting on admin.');
       expect(stub.requests[1].body.text).not.toContain('DM report');
       expect(stub.requests[2].body.text).toBe('All quiet — nothing in progress, nothing waiting.');
     } finally { stub.stop(); wd.cleanup(); }
@@ -339,11 +349,9 @@ describe('channel-status-responder', () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({
-        pending: [{ id: 'MP-20260705-0', status: 'pending', tier: 1, question: 'ok?' }],
-      }));
+      seedDecisions(wd, [{ id: 'MP-20260705-0', status: 'pending', tier: 1, question: 'ok?' }]);
       await run(wd, '!status', stub.url);
-      expect(stub.requests[0].body.text).toContain('MP-20260705-0');
+      expect(stub.requests[0].body.text).toContain('1 waiting on admin.');
     } finally {
       stub.stop();
       wd.cleanup();
@@ -424,14 +432,14 @@ describe('channel-status-responder', () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
     try {
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { id: 'MP-home', status: 'pending' },
         { id: 'MP-other', status: 'pending', chat: 'telegram:999' },
         { id: 'MP-resolved', status: 'resolved', chat: 'telegram:12345' },
-      ] }));
+      ]);
       await run(wd, '!status', stub.url);
       const text = stub.requests[0].body.text as string;
-      expect(text).toContain('• 1 approval waiting (reply "MP-home yes/no").');
+      expect(text).toContain('• 1 waiting on admin.');
       expect(text).not.toContain('MP-other');
       expect(text).not.toContain('2 approvals');
     } finally {
@@ -446,11 +454,11 @@ describe('channel-status-responder', () => {
       channels: { telegram: { enabled: true, allowed_users: ['u1'], state_dir: '.claude.local/channels/telegram' } },
     });
     try {
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { id: 'MP-legacy', status: 'pending' },
-      ] }));
+      ]);
       await run(wd, '!status', stub.url);
-      expect(stub.requests[0].body.text as string).toContain('• 1 approval waiting (reply "MP-legacy yes/no").');
+      expect(stub.requests[0].body.text as string).toContain('• 1 waiting on admin.');
     } finally {
       stub.stop();
       wd.cleanup();
@@ -468,9 +476,9 @@ describe('channel-status-responder', () => {
       expect(lines.at(-1)).toBe('+2 more');
       expect(lines.join('\n')).not.toMatch(/T-\d/);
 
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { id: 'MP-home', status: 'pending' },
-      ] }));
+      ]);
       await run(wd, '!status', stub.url);
       const withApproval = (stub.requests[1].body.text as string).split('\n');
       expect(withApproval.filter(line => line.startsWith('• '))).toHaveLength(5);
@@ -539,7 +547,7 @@ describe('channel-status-responder', () => {
     try {
       fs.mkdirSync(hermit(wd.dir, 'state'), { recursive: true });
       await openTask(wd, 'secret-migration');
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-20260705-0', status: 'pending', tier: 1, question: 'ok?' }] }));
+      seedDecisions(wd, [{ id: 'MP-20260705-0', status: 'pending', tier: 1, question: 'ok?' }]);
 
       const stranger = JSON.stringify({ prompt: '<channel source="telegram" chat_id="999" user="stranger">!status</channel>' });
       const r = await runScript('user-prompt-pipeline.ts', { stdin: stranger, cwd: wd.dir, env: { HERMIT_TELEGRAM_API_URL: stub.url } });
@@ -547,7 +555,7 @@ describe('channel-status-responder', () => {
       const text = stub.requests[0].body.text;
       expect(text).not.toContain('secret-migration'); // task text withheld
       expect(text).not.toContain('$5.00');             // budget figure withheld
-      expect(text).not.toContain('MP-20260705-0');     // approval id withheld
+      expect(text).not.toContain('1 waiting on admin.');     // approval id withheld
       expect(text).toBe('Working.');                   // coarse state only
     } finally {
       stub.stop();
@@ -706,10 +714,10 @@ describe('!scheduled', () => {
     ] });
     try {
       write(hermit(wd.dir, 'state', 'pause.json'), JSON.stringify({ paused: true, reason: 'operator' }));
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { status: 'pending', key: 'watch-enable:deploy', chat: 'telegram:12345' },
         { status: 'pending', key: 'watch-enable:off', chat: 'telegram:other' },
-      ] }));
+      ]);
       write(hermit(wd.dir, 'state', 'monitors.runtime.json'), JSON.stringify({ monitors: [{ id: 'temporary' }] }));
       const r = await run(wd, '!scheduled', stub.url);
       expect(r.exitCode).toBe(0);
@@ -785,9 +793,9 @@ describe('!scheduled', () => {
       const config = JSON.parse(fs.readFileSync(hermit(wd.dir, 'config.json'), 'utf8'));
       config.monitors = [{ id: 'deploy', description: 'Fim do deploy', enabled: false, command: 'watch-poll deploy -- bin/deploy' }];
       write(hermit(wd.dir, 'config.json'), JSON.stringify(config));
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
+      seedDecisions(wd, [
         { status: 'pending', key: 'watch-enable:deploy', chat: 'telegram:12345' },
-      ] }));
+      ]);
       await run(wd, '!scheduled', stub.url);
       expect(stub.requests[1].body.text).toContain('a cada 5m; à espera do sim de um administrador; verificação: bin/deploy');
     } finally { stub.stop(); wd.cleanup(); }
@@ -820,8 +828,8 @@ describe('!scheduled', () => {
         monitors: [{ id: 'chat-watch', description: 'deploy', enabled: true, chat: 'custom:C1',
           command: '.hermit/bin/hermitd-run watch-poll chat-watch -- curl -s example.test' }],
       }));
-      write(hermit(wd.dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
-        { id: 'MP-1', status: 'pending', chat: 'custom:C1', key: 'watch-enable:x', question: 'q?' }] }));
+      seedDecisions(wd, [
+        { id: 'MP-1', status: 'pending', key: 'watch-enable:x', question: 'q?' }]);
       for (const command of ['!scheduled', '!status']) {
         const r = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
           stdin: JSON.stringify({ prompt: `<channel source="custom" channel_id="C1" user_id="U1" thread_ts="T1">${command}</channel>` }) });
@@ -832,7 +840,7 @@ describe('!scheduled', () => {
       expect(text).toContain('chat-routine');
       expect(text).toContain('chat-watch');
       expect(text).not.toContain('other-chat-routine');
-      expect(text).toContain('MP-1');
+      expect(text).toContain('1 waiting on admin.');
     } finally { wd.cleanup(); }
   });
 });

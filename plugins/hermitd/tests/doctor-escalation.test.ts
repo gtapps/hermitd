@@ -13,6 +13,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { mutateTask } from '../scripts/lib/tasks';
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 
 // Serial by necessity, not by taste: bunfig.toml's `concurrentTestGlob`
@@ -265,24 +266,16 @@ describe('doctor-check CLI', () => {
     }
   }, 60_000);
 
-  // The check matched `status: 'open'`, a status no proposal has ever carried
-  // (proposed|accepted|resolved|dismissed|deferred), so it always counted zero and
-  // both warns below it were unreachable — doctor had no long-pending-proposal
-  // surface at all.
-  test.serial('proposals check counts `proposed` only and warns past 30 days', async () => {
+  test.serial('decision check counts task waits instead of legacy proposal files', async () => {
     fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({ timezone: 'UTC' }), 'utf-8');
     const proposals = path.join(hermit, 'proposals');
     fs.mkdirSync(proposals, { recursive: true });
-    const prop = (n: string, status: string, created: string) =>
-      fs.writeFileSync(path.join(proposals, `PROP-${n}-slug-120000.md`),
-        `---\nid: PROP-${n}\nstatus: ${status}\ntitle: T${n}\ncreated: ${created}\n---\nbody\n`, 'utf-8');
-    prop('001', 'proposed', '2020-01-01');  // awaiting review, far past 30d
-    prop('002', 'accepted', '2020-01-01');  // in flight — not the operator's queue
-    prop('003', 'dismissed', '2020-01-01');
-
+    fs.writeFileSync(path.join(proposals, 'PROP-001.md'), '---\nstatus: proposed\ncreated: 2020-01-01\n---\nLegacy history\n');
+    mutateTask(hermit, 'open', undefined, { title: 'Review the backup policy', done: 'Policy applied', requester: 'agent', kind: 'proposal' }, '');
+    mutateTask(hermit, 'open', undefined, { title: 'Ordinary work', done: 'Work done', requester: 'agent' }, '');
     const report = JSON.parse((await runScript('doctor-check.ts', { args: [hermit], cwd: dir })).stdout);
-    const proposalsCheck = report.checks.find((c: any) => c.id === 'proposals');
-    expect(proposalsCheck.status).toBe('warn');
-    expect(proposalsCheck.detail).toBe('1 open (1 older than 30d)');
+    const check = report.checks.find((c: any) => c.id === 'proposals');
+    expect(check.status).toBe('ok');
+    expect(check.detail).toBe('1 pending decision(s)');
   }, 60_000);
 });

@@ -24,8 +24,8 @@ import { emitJson, exitError } from '../cli';
 import { runSelfEval, type SelfEvalProposal } from './self-eval';
 import {
   readAlertState, defaultAlertState, quarantineAlertState, writeAlertState,
-  classifyTick, deriveMicroPendingKeys, deriveProposalPendingKeys, FiringItem, DecisionRefresh,
-  MICRO_PREFIX, PROPOSAL_PREFIX, DOCTOR_PREFIX, isStructuredKey, scrubInternalIds,
+  classifyTick, deriveDecisionPendingKeys, FiringItem, DecisionRefresh,
+  DOCTOR_PREFIX, isStructuredKey, scrubInternalIds,
 } from '../alert-state';
 import { currentHHMM, todayYMD, resolveHermitNowMs } from '../time';
 import { readSettledConfig } from '../config-read';
@@ -189,8 +189,7 @@ function apply(payloadJson: string): void {
   const today = todayYMD(timezone, nowDate);
   const hhmm = currentHHMM(timezone, nowDate) ?? nowIso.slice(11, 16);
 
-  const micro = deriveMicroPendingKeys(stateDir);
-  const proposal = deriveProposalPendingKeys(stateDir);
+  const decisions = deriveDecisionPendingKeys(stateDir);
 
   // Fail-safe: an ambiguous source-of-truth read must never age or resolve
   // that prefix's existing entries this tick (the exact #594 harm this
@@ -212,15 +211,15 @@ function apply(payloadJson: string): void {
       if (k.startsWith(prefix)) { frozen[k] = classifiable[k]; delete classifiable[k]; }
     }
   };
-  if (!micro.ok) freezePrefix(MICRO_PREFIX);
-  if (!proposal.ok) freezePrefix(PROPOSAL_PREFIX);
+  if (!decisions.ok) freezePrefix('decision-pending:');
+  else for (const key of Object.keys(classifiable)) if (isStructuredKey(key)) delete classifiable[key];
 
   // An ambiguous structured read means this tick's view is partial: never report
   // a verified-clean eval (would arm the precheck damper over an unverifiable
   // pending decision) and never emit/advance the digest on a partial view.
-  const hasStructuredReadFailure = !micro.ok || !proposal.ok;
+  const hasStructuredReadFailure = !decisions.ok;
 
-  const structuredItems = [...(micro.ok ? micro.items : []), ...(proposal.ok ? proposal.items : [])];
+  const structuredItems: FiringItem[] = [];
   const firing: FiringItem[] = [...modelFiring, ...structuredItems];
 
   // Structured keys' text bakes in a raw PROP-NNN/MP-… id, which must never
@@ -252,15 +251,14 @@ function apply(payloadJson: string): void {
     hasStructuredReadFailure && state.structured_read_failure_notified_date !== today;
   if (shouldNotifyStructuredFailure) {
     const failedSources = [
-      !micro.ok && 'micro-proposals.json',
-      !proposal.ok && 'proposals/',
+      !decisions.ok && 'tasks/',
     ].filter(Boolean) as string[];
     result.notifications.push(
       "I can't read the record of decisions waiting on you — some may be pending without showing up. It needs a repair before I can see them again.",
     );
     result.monitoringLines.push(
       `[${hhmm}] Heartbeat: structured read failure (${failedSources.join(', ')})` +
-      (micro.error ? ` — ${micro.error}` : '') + '. Pending-decision alerts frozen.');
+      '. Pending-decision alerts frozen.');
   }
   // Clear the stamp the moment the read recovers: a file repaired and re-broken later
   // the same day is a NEW incident, and carrying the old stamp would silence it.

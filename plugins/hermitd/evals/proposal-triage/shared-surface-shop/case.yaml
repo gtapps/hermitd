@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: shared-surface-shop
 description: 'Shares the invoice surface with a proposed proposal but solves a different problem: CREATE.'
 tags: [proposal-triage, heldout]
-expected_outcome: 'CREATE (not DUPLICATE of PROP-021)'
+expected_outcome: 'CREATE (not DUPLICATE of T-20260814-100021)'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -14,6 +14,7 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
+    Proposal task digest: {"ok":true,"proposals":[{"id":"T-20260814-100021","status":"open","title":"Remind customers about invoices unpaid after 7 days","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100024","status":"cancelled","title":"Weekly sales summary to the channel","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100026","status":"completed","title":"Back up the shop database nightly","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100028","status":"open","title":"Reorder alert when stock falls below 5 units","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]}]}
     Title: Alert me when a customer card payment fails
     Evidence Source: scheduled-check/payments
     Evidence: The payment provider declined 6 card payments in September and I learned about each only when the customer emailed, days later; two orders were lost. A same-day alert from the provider webhook would let me follow up.

@@ -178,7 +178,7 @@ function search(hermitDir: string, query: string, opts?: Json): Json[] {
     : [
         path.join(hermitDir, 'sessions'),
         path.join(hermitDir, 'compiled'),
-        path.join(hermitDir, 'proposals'),
+        path.join(hermitDir, 'proposals', 'archive'),
         path.join(hermitDir, 'tasks'),
       ];
 

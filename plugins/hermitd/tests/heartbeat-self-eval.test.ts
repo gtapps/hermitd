@@ -10,6 +10,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { mutateTask } from '../scripts/lib/tasks';
 import { runSelfEval, WEIGHT_KEY } from '../scripts/lib/heartbeat/self-eval';
 import { normalizeItemKey } from '../scripts/lib/heartbeat-items';
 import { runScript, runProposal, PLUGIN_ROOT } from './helpers/run';
@@ -39,12 +40,9 @@ function fixture(): string {
   fs.mkdirSync(path.join(stateDir, 'proposals'), { recursive: true });
   fs.mkdirSync(path.join(stateDir, 'state'), { recursive: true });
   fs.writeFileSync(path.join(stateDir, 'HEARTBEAT.md'), CHECKLIST);
-  fs.writeFileSync(path.join(stateDir, 'proposals', 'PROP-007-disk-noise-101010.md'), proposal({
-    id: 'PROP-007-disk-noise-101010',
-    status: 'dismissed',
-    source: 'auto-detected',
-    self_eval_key: NOISY_KEY,
-  }));
+  fs.writeFileSync(path.join(stateDir, 'config.json'), JSON.stringify({ channels: { discord: { operators: ['admin'] } } }));
+  const { id } = mutateTask(stateDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Disk noise', source: 'auto-detected', done: 'Verified', 'dedupe-key': `self-eval:${NOISY_KEY}` }, '') as { id: string };
+  mutateTask(stateDir, 'answer', id, { chat: 'discord:home', user: 'admin', reply: 'no' }, '');
   return stateDir;
 }
 
@@ -237,17 +235,14 @@ describe('self-evaluation uses current alert state', () => {
 
   test('a proposal created and dismissed through the CLI reopens its actual checklist item', async () => {
     const stateDir = fixture();
-    fs.mkdirSync(path.join(stateDir, 'templates'));
-    fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'PROPOSAL.md.template'),
-      path.join(stateDir, 'templates', 'PROPOSAL.md.template'));
     const created = await runProposal(stateDir, ['create'], { stdin: [
       'Title: Review quiet certificate check', 'Source: auto-detected', 'Category: capability',
       `Self-Eval-Key: ${QUIET_KEY}`, '---', '## Context', 'Review the check.',
     ].join('\n') });
     expect(created.exitCode).toBe(0);
     const { id } = JSON.parse(created.stdout);
-    expect(id).toMatch(/^PROP-/);
-    const dismissed = await runProposal(stateDir, ['patch', id, '--set', 'status=dismissed']);
+    expect(id).toMatch(/^T-/);
+    const dismissed = await runScript('task.ts', { cwd: path.dirname(stateDir), env: { AGENT_DIR: stateDir }, args: ['answer', stateDir, id, '--chat', 'discord:home', '--user', 'admin', '--reply', 'no'] });
     expect(dismissed.exitCode).toBe(0);
     const result = evaluate({ [QUIET_KEY]: { proposed: true, clean_ticks: 20, sessions_seen: 3 } }, stateDir);
     expect(result.self_eval[QUIET_KEY]).toMatchObject({ proposed: false, clean_ticks: 0 });

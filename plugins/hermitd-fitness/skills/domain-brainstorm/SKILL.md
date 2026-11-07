@@ -1,6 +1,6 @@
 ---
 name: domain-brainstorm
-description: On-demand fitness-voice brainstorm — reads Strava history and training-goal signals to surface at most 2 coverage-gap or imbalance ideas, each gated by proposal-triage before becoming a PROP. Invoke when the operator asks "what am I neglecting?", "anything off with my training?", or "brainstorm training gaps". Never runs autonomously.
+description: On-demand fitness-voice brainstorm — reads Strava history and training-goal signals to surface at most 2 coverage-gap or imbalance ideas, each gated by proposal-triage before becoming a proposal task. Invoke when the operator asks "what am I neglecting?", "anything off with my training?", or "brainstorm training gaps". Never runs autonomously.
 ---
 
 # Domain Brainstorm
@@ -57,14 +57,14 @@ Evidence Source: capability-brainstorm
 Evidence: <one paragraph: gap sentence + named grounding items>
 ```
 
-`Evidence Source: capability-brainstorm` is intentional, not a copy-paste: it is the recurrence-bypass token recognized by `proposal-create`'s three-condition rule (a brainstorm pass establishes the candidate, so condition 1 is waived). There is no separate `domain-brainstorm` token. Provenance is carried by the `tags` below, which `proposal-create` writes onto both the `triage-verdict` row and the proposal frontmatter. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
+`Evidence Source: capability-brainstorm` is intentional, not a copy-paste: it is the recurrence-bypass token recognized by `proposal-create`'s three-condition rule (a brainstorm pass establishes the candidate, so condition 1 is waived). There is no separate `domain-brainstorm` token. Provenance is carried by the `tags` below, which `proposal-create` writes onto both the `triage-verdict` row and the proposal task metadata. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
-Set frontmatter: `source: auto-detected`, `category: improvement`, `tags: [capability-brainstorm]`.
+Set task metadata: `source: auto-detected`, `category: improvement`, `tags: [capability-brainstorm]`.
 
 Parse the outcome `/hermitd:proposal-create` returns:
-- `CREATE: <title>`: PROP file written, note the assigned PROP-NNN.
+- `CREATE: <task handle>`: proposal task opened; record its T- id.
 - `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
-- `DUPLICATE: <title> — <PROP-ID>`: record the existing PROP-ID. Don't create.
+- `DUPLICATE: <task handle>`: record the existing task id. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/hermitd:proposal-create` handles it.
 
@@ -84,12 +84,12 @@ Non-zero:
 1. **[prefix] <title>** — <one-line description>
    _Grounding: <item 1>, <item 2>_
    _Gap: <one-sentence friction>_
-   PROP-NNN created  ·  (or: suppressed — <code>  ·  or: duplicate of PROP-NNN)
+   T-YYYYMMDD-HHMMSS created  ·  (or: suppressed — <code>  ·  or: duplicate of T-YYYYMMDD-HHMMSS)
 ```
 
 ### Gate 4 — Compiled artifact (non-empty runs only)
 
-If ≥1 PROP was created (not suppressed or duplicate), write:
+If ≥1 proposal task was created (not suppressed or duplicate), write:
 
 `.hermit/compiled/domain-brainstorm-YYYY-MM-DD-HHMM.md`
 
@@ -100,7 +100,7 @@ type: domain-brainstorm
 created: <ISO timestamp with timezone>
 tags: [domain-brainstorm, ideation]
 source: interactive
-proposals_created: [PROP-NNN, ...]
+proposals_created: [T-YYYYMMDD-HHMMSS, ...]
 ---
 ```
 

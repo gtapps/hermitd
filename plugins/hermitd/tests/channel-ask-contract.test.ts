@@ -93,29 +93,17 @@ describe('channel-ask contract', () => {
   });
 });
 
-// Suggestion cards (PROP audit §8 item 2): a static drift guard for the
-// three markers a channel-facing proposal flow depends on. Same caveat as
-// above — proves the text is present, not that the model obeys it at runtime.
-describe('suggestion cards: channel-facing proposal vocabulary stays plain', () => {
-  test('proposal-list/SKILL.md carries the Step-0 marker and a Suggestion-cards path', () => {
-    const content = skillContent.get('proposal-list')!;
-    expect(content).toContain(STEP0_MARKER);
-    expect(content).toContain('Suggestion cards');
-  });
-
-  test('channel-responder/approvals.md maps YES/LATER/NO replies to accept/defer/dismiss', () => {
+describe('task decision channel contract', () => {
+  test('one answer route owns authority and ambiguity', () => {
     const content = fs.readFileSync(path.join(SKILLS_DIR, 'channel-responder', 'approvals.md'), 'utf8');
-    expect(content).toContain('`YES`');
-    expect(content).toContain('`LATER`');
-    expect(content).toMatch(/`NO`.*dismiss/);
+    expect(content).toContain('task answer');
+    expect(content).toContain('not_decider');
     expect(content).toContain('by its meaning, in any language; do not match keywords');
   });
-
-  test('proposal-act/SKILL.md confirms accept/defer/dismiss in plain voice on a channel-tagged turn', () => {
-    const content = skillContent.get('proposal-act')! + '\n'
-      + fs.readFileSync(path.join(SKILLS_DIR, 'proposal-act', 'branches.md'), 'utf-8');
-    expect(content).toContain('Got it — starting on Suggestion #N.');
-    expect(content).toContain('Held Suggestion #N for later.');
-    expect(content).toContain('Dropped Suggestion #N.');
+  test('authored content returns for acceptance and executable checks close proposals', () => {
+    const content = fs.readFileSync(path.join(SKILLS_DIR, 'proposal-create', 'apply.md'), 'utf8');
+    expect(content).toContain('task-check.ts');
+    expect(content).toContain('result decision');
+    expect(content).toContain('settings gate');
   });
 });

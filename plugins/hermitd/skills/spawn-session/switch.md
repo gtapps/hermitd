@@ -45,11 +45,6 @@ Use the Commands from the parent skill. Never ask the operator a question.
    session id is available, report that outcome and end without inventing one.
    Via `task-note` (Commands) with `<T-id>` and stdin, note:
    `Switched helper <n> to <model>/<effort>. Handed to helper <n> (<new sid>).`
-   When `task-list` (Commands) with `--id <T-id> --json` shows `dedupe_key`
-   `helper:PROP-NNN`, resolve that proposal through `/hermitd:proposal-act`
-   § Resolving a Proposal ID. On MATCH, append via `proposal-patch` (Commands)
-   with `<filename> --stdin` and no `--set`:
-   `Decision: Handed to helper <n> (<new sid>) on @now; record <T-id>.`
-   On a non-MATCH, report the resolver's reason and leave the proposal untouched.
+   The handoff note belongs to that task; keep its `helper:<task-id>` dedupe and source-task link unchanged. No separate proposal record is patched.
 6. Arm no watch. Post one line in the thread:
    `Switched <n> to <model>/<effort>.`

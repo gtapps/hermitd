@@ -15,7 +15,7 @@ execution:
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
     Candidate: Check supplier invoice VAT numbers before filing
-    Tier: 2
+    Evidence label: repeated friction
     Evidence Source: archived-session
     Evidence: Supplier invoices were filed with the wrong VAT number in two separate weeks and had to be reissued.
     Sessions: T-20261003-090000, T-20261010-090000

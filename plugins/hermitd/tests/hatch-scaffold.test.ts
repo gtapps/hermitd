@@ -30,9 +30,8 @@ describe('hatch-scaffold.ts', () => {
       expect(fs.existsSync(path.join(hermit, d))).toBe(true);
     }
     // pristine templates
-    for (const f of ['PROPOSAL.md.template']) {
-      expect(fs.existsSync(path.join(hermit, 'templates', f))).toBe(true);
-    }
+    expect(fs.existsSync(path.join(hermit, 'templates', 'PROPOSAL.md.template'))).toBe(false);
+    expect(fs.existsSync(path.join(hermit, 'state', 'micro-proposals.json'))).toBe(false);
     // bin/ enumerated + executable
     const binNames = fs.readdirSync(path.join(TEMPLATES, 'bin'));
     expect(binNames.length).toBeGreaterThan(0);
@@ -50,7 +49,7 @@ describe('hatch-scaffold.ts', () => {
       expect(fs.existsSync(path.join(hermit, 'templates', name))).toBe(false);
     }
     for (const f of [
-      'alert-state.json', 'micro-proposals.json', 'reflection-state.json',
+      'alert-state.json', 'reflection-state.json',
       'routine-metrics.jsonl', 'proposal-metrics.jsonl', 'observations.jsonl',
       'update-history.jsonl', 'channel-replies.jsonl',
     ]) {

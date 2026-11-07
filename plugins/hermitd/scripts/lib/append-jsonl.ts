@@ -1,8 +1,6 @@
 // Shared validated-append primitive for JSONL event ledgers (proposal-metrics.jsonl,
-// observations.jsonl, micro-proposals.json's metrics companion, etc). Every writer
 // goes through here so the validate-then-append contract is defined once: the typed
 // constructors in lib/observations.ts and lib/proposals/event.ts, and the gate and
-// queue-micro verbs that build their own events.
 
 import fs from 'node:fs';
 

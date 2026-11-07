@@ -36,7 +36,7 @@ execution:
 
     Delivery failures, degraded legs, and status handling: `skills/channel-responder/outbound.md`.
 
-    **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`) may be named when the operator asks how to control you.
+    **Channel voice.** No internal IDs (T-...), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`) may be named when the operator asks how to control you.
 
     **Language & audience.** Compose channel messages and push notifications in the operator's configured `language` (`config.json`); when unset, match the language the operator writes in. The `maintainer` key of the `--notice` payload supplements the `client` key, never replaces it: it carries the detail the operator's chat shouldn't get (spend figures, internal IDs, commands, diagnostics), and the script routes it — never a reply tool. Where both audiences resolve to one chat the script sends client text, a blank line, then maintainer text together. Keep only technical detail in `maintainer`; neither part repeats the other. Any notice asking for a decision, a reply, or action — heartbeat findings, inbox items, pending proposals — must carry a plain-language `client` leg unless a skill mandates a maintainer-only one; a `maintainer`-only payload is for FYI diagnostics and spend only.
 
@@ -79,12 +79,13 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
     - task.ts notes for T-20261019-090000: "Compared 6 of 9 teas against the September list; stopped to ask which list applies."
-    - task.ts note, task.ts note --clear-waiting: OK
+    - task.ts answer --chat discord:700000000000000002 --user 100000000000000001 --reply October: {"status":"match","purpose":"input","reply":"October"}
+    - task.ts note: OK
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
     [task thread discord:700000000000000002: owner=resident, muted=false, waiting=true]
-    [waiting task T-20261019-090000: Compared 6 of 9 teas against the September list; next: Which supplier price list should I use, the September or the October one?; last_worker=a1b2c3d4e5f6a7b8c; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261019-090000 --result-stdin; wait answered: .hermit/bin/hermitd-run task note .hermit T-20261019-090000 --clear-waiting; requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit T-20261019-090000 --by confirmed --actor discord:100000000000000001 --reason-stdin; nothing is owed when this message does not change the task]
+    [waiting task T-20261019-090000: Compared 6 of 9 teas against the September list; next: Which supplier price list should I use, the September or the October one?; last_worker=a1b2c3d4e5f6a7b8c; finished outcome: .hermit/bin/hermitd-run task block .hermit T-20261019-090000 --result-stdin; wait answered: .hermit/bin/hermitd-run task answer .hermit T-20261019-090000 --chat discord:700000000000000002 --user 100000000000000001 --reply <token>; legacy wait: .hermit/bin/hermitd-run task note .hermit T-20261019-090000 --clear-waiting --chat <chat> --user <user>; requester explicitly says the work is done: .hermit/bin/hermitd-run task close .hermit T-20261019-090000 --by confirmed --actor discord:100000000000000001 --chat discord:700000000000000002 --user 100000000000000001 --reason-stdin; nothing is owed when this message does not change the task]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`700000000000000002`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="700000000000000002". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>

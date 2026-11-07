@@ -41,15 +41,12 @@ Produce one firing entry per true item:
 
 Normalise: strip the list marker and any checkbox first, then lowercase, remove non-alphanumeric characters, truncate at the listed limit.
 
-**Never** emit a `micro-proposal-pending:*` or `proposal-pending:*` key in `firing`.
-Those are derived and owned entirely by `heartbeat.ts alert-state` from
-`state/micro-proposals.json` and `proposals/*.md` frontmatter — an entry you emit under either
-prefix is dropped as a phantom and has no effect.
+**Never** emit a `decision-pending:*` key in `firing`. Pending decisions come from task records and use the confirmed-delivery budget, separately from generic alert suppression and digest. Read `decision-refresh.md` for sends; the script owns counting.
 
 ## Firing Item Text
 
 Each firing item's `text` is a channel-voice one-liner: plain language, the concrete condition first, no
-internal IDs (no `PROP-NNN`, no session IDs, no file paths unless the item itself is about a file). It is
+internal IDs (no `T-...`, no session IDs, no file paths unless the item itself is about a file). It is
 used for a brand-new or newly-suppressed alert in the
 operator notification — write it for that audience, not as a debug note to yourself.
 

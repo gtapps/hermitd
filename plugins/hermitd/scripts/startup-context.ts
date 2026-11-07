@@ -20,7 +20,6 @@ import { safe, safeForLLMMultiline, scanInjected } from './lib/sanitize';
 import { resolve as resolveOutboundChannel } from './resolve-outbound-channel';
 import { operatorLanguage as resolveOperatorLanguage } from './lib/operator-language';
 import { readSettledConfig } from './lib/config-read';
-import { readMicroProposals } from './lib/micro-proposals-io';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
 import { findResident, ownsResidentIdentity } from './lib/session-registry';
@@ -129,19 +128,6 @@ function buildCompactionPointers(agentDir: string): string {
   parts.push('Task policy: read TASKS.md before intake or confirmation.');
 
   try {
-    const read = readMicroProposals(path.resolve(agentDir, 'state', 'micro-proposals.json'));
-    // Omitting the line on a corrupt file implies an empty queue (#764) — say so instead.
-    if (read.status === 'corrupt') parts.push('pending micro-proposals: unreadable');
-    const mp = read.status === 'ok' ? read.data : { pending: [] };
-    const pending = (Array.isArray(mp.pending) ? mp.pending : []).filter((p: Json) => p && p.status === 'pending');
-    if (pending.length > 0) {
-      const ids = pending.slice(0, 10).map((p: Json) => safe(p.id ?? '?'));
-      const overflow = pending.length > ids.length ? ` (+${pending.length - ids.length} more)` : '';
-      parts.push(`pending micro-proposals: ${ids.join(', ')}${overflow}`);
-    }
-  } catch {}
-
-  try {
     const config = readSettledConfig(agentDir);
     const route = resolveOutboundChannel(config.channels);
     if (route) parts.push(`outbound channel: ${safe(route.id)} (chat_id: ${safe(route.chat_id)})`);
@@ -152,12 +138,6 @@ function buildCompactionPointers(agentDir: string): string {
     if (report) parts.push(`latest task: tasks/${path.basename(report.source_path)}`);
   } catch {}
 
-
-  try {
-    if (fs.readdirSync(path.resolve(agentDir, 'proposals')).some(f => f.endsWith('.md'))) {
-      parts.push('proposals dir: proposals/');
-    }
-  } catch {}
 
   if (parts.length === 0) return '';
 

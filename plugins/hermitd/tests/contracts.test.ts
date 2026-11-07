@@ -38,7 +38,7 @@ const TEMPLATES = path.join(PLUGIN_ROOT, 'state-templates');
 const read = (p: string) => fs.readFileSync(p, 'utf-8');
 const readJson = (p: string) => JSON.parse(read(p));
 // proposal-act's action procedures live in branches.md; assert against the combined surface.
-const PROPOSAL_ACT = read(path.join(SKILLS, 'proposal-act', 'SKILL.md')) + '\n' + read(path.join(SKILLS, 'proposal-act', 'branches.md'));
+const PROPOSAL_ACT = read(path.join(SKILLS, 'proposal-create', 'apply.md'));
 
 // ---------- tempdir harness (port of _TempDirTest, no chdir needed: cwd is
 // passed to spawned processes instead) ----------
@@ -950,7 +950,7 @@ describe('artifacts validation', () => {
 
   test('non-boolean artifacts.proposals is an error', () => {
     const out = runValidate({ artifacts: { proposals: 1 } });
-    expect(out.errors.some((e: string) => e.includes('artifacts.proposals: must be a boolean'))).toBe(true);
+    expect(out.errors.some((e: string) => e.includes('artifacts.proposals'))).toBe(false);
   });
 
   test('non-boolean artifacts.weekly_review is an error', () => {
@@ -1172,20 +1172,10 @@ describe('channel resolver contract', () => {
 // to the legacy-only form.
 // ============================================================
 
-describe('proposal-id scheme', () => {
-  const WIDENED_REGEX = String.raw`/^PROP-\d+(?:-.+)?\.md$/`;
-  const SCRIPTS_WITH_PROPOSAL_GLOB = ['reflect-precheck.ts', 'weekly-review.ts', 'doctor-check.ts'];
-
-  test('all proposal-scanning scripts must contain the widened filename regex', () => {
-    for (const script of SCRIPTS_WITH_PROPOSAL_GLOB) {
-      const p = path.join(SCRIPTS, script);
-      expect(fs.existsSync(p)).toBe(true);
-      // missing → new-format PROP-NNN-slug-HHMMSS.md files silently dropped
-      expect(read(p)).toContain(WIDENED_REGEX);
-    }
+describe('task-backed proposal readers', () => {
+  test('review and health readers no longer scan live proposal files', () => {
+    for (const script of ['reflect-precheck.ts', 'weekly-review.ts', 'doctor-check.ts']) expect(read(path.join(SCRIPTS, script))).not.toContain(String.raw`/^PROP-\d+(?:-.+)?\.md$/`);
   });
-
-
 });
 
 // ============================================================
@@ -1244,7 +1234,7 @@ describe('plain spend statement routing contract', () => {
 // ============================================================
 
 describe('kill metrics contract', () => {
-  const proposalTemplate = read(path.join(TEMPLATES, 'PROPOSAL.md.template'));
+  const proposalTemplate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
   const proposalCreate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
   const capabilityBrainstorm = read(path.join(SKILLS, 'capability-brainstorm', 'SKILL.md'));
   const reportScriptPath = path.join(SCRIPTS, 'lib', 'proposals', 'metrics.ts');
@@ -1252,7 +1242,7 @@ describe('kill metrics contract', () => {
 
   test('PROPOSAL.md.template must declare a tags field so proposal-create can write it', () => {
     // missing → brainstorm origin can never be preserved in proposal frontmatter
-    expect(proposalTemplate).toContain('tags:');
+    expect(proposalTemplate).toContain('Tags:');
   });
 
   test('PROPOSAL.md.template must carry a Verification section', () => {
@@ -1317,9 +1307,9 @@ describe('learned procedures and retained proposal branches', () => {
     expect(branches).not.toContain('Ephemerality exception');
   });
   test('routine-bound and agent draft install branches remain', () => {
-    const act = read(path.join(SKILLS, 'proposal-act', 'branches.md'));
-    expect(act).toContain('body contains `## Config` and `## Skill Draft`');
-    expect(act).toContain('`## Agent Draft` install branch');
+    const act = read(path.join(SKILLS, 'proposal-create', 'apply.md'));
+    expect(act).toContain('Require both `## Config` and `## Skill Draft`');
+    expect(act).toContain('### Agent Draft');
     expect(act).not.toContain('Second confirmation gate');
     expect(read(path.join(SKILLS, 'proposal-create', 'SKILL.md'))).toContain('## Config');
   });
@@ -1804,8 +1794,8 @@ describe('reflect delegation contract', () => {
     // The runner returns nudge timestamps in the top-level `last_sparse_nudge` map;
     // a stray per-entry `last_sparse_nudge_update` would never reach reflection-state.json.
     expect(refFile).not.toContain('last_sparse_nudge_update');
-    expect(refFile).toContain('last_sparse_nudge');
-    expect(skill).toContain('last_sparse_nudge');
+    expect(refFile).not.toContain('last_sparse_nudge');
+    expect(skill).not.toContain('last_sparse_nudge');
   });
 });
 
@@ -1908,7 +1898,7 @@ describe('external-origin quarantine contract', () => {
 
   test('reflection-judge must document the quarantine escalation and reason phrase', () => {
     expect(judge).toContain('external-content');
-    expect(judge).toContain('quarantine');
+    expect(judge).toContain('admin-decided proposal tasks');
     expect(judge).toContain('Evidence Origin');
   });
 
@@ -2078,9 +2068,9 @@ describe('brief delegation contract', () => {
 
   test('briefs resolve context first and skip queue aging outside agent steps', () => {
     expect(skill).toContain('context <selector>` before any other step');
-    expect(skill).toContain('When its `agent_steps` is `false`, skip micro-proposal aging and decision questions');
-    expect(skill).toContain('For `agent_steps: false`, skip this entire section');
-    expect(refFile).toContain('For `agent_steps: false`, keep `duties`, `pending_proposals` and `operator_priorities` empty');
+    expect(skill).toContain('When its `agent_steps` is `false`, skip agent-wide admin decisions');
+    expect(skill).toContain('requester and chat inputs follow the digest');
+    expect(refFile).toContain('For `agent_steps: false`, keep `duties` and `operator_priorities` empty');
     expect(refFile).toContain('appending the mode and supplied selector');
   });
 
@@ -2091,12 +2081,12 @@ describe('brief delegation contract', () => {
 
   // The runner can only re-check the questions the brief will show if the queue
   // is aged first, and a failed runner must never hide a pending question.
-  test('morning ages the queue before dispatch and re-checks decisions with the shared spec', () => {
-    expect(skill).toContain('Before the morning dispatch, age the micro-proposal queue');
-    expect(skill).not.toContain('After composing the morning brief, age');
-    expect(skill).toContain('skills/heartbeat/decision-refresh.md');
-    expect(skill).toContain('including every `new` and `renudged` entry when the runner fails or returns no `refresh`');
-    expect(refFile).toContain('When the dispatch names `decision-refresh.md`');
+  test('brief decisions are scoped digest data and never age or expire', () => {
+    expect(skill).toContain('decisions_pending');
+    expect(skill).not.toContain('brief-cycle');
+    expect(skill).toContain('No queue aging, expiry, delivery-count write or extra push');
+    expect(refFile).toContain('admin decisions are omitted by the digest');
+    expect(refFile).toContain('Do not read, age, expire, send reminders or mutate decisions');
   });
 });
 
@@ -2160,17 +2150,12 @@ describe('capability-brainstorm delegation contract', () => {
 // can't silently drift.
 // ============================================================
 
-describe('proposal-act dispatch contract', () => {
-  const skill = PROPOSAL_ACT;
-
-  test('dispatch prompt defines the six-field structured return shape', () => {
-    // missing → resolve/notify branch and escalation relay have no defined source fields
-    expect(skill).toContain('Status: implemented | escalated | blocked:');
-    expect(skill).toContain('Touched files:');
-    expect(skill).toContain('Tests run:');
-    expect(skill).toContain('Quality gate:');
-    expect(skill).toContain('Verification: passed | failed:');
-    expect(skill).toContain('Deferred for operator:');
+describe('shared proposal application contract', () => {
+  test('resident and task worker share recheck, quality and verification without nested dispatch', () => {
+    const worker = read(path.join(AGENTS, 'task-worker.md'));
+    for (const fragment of ['REJECT:', 'settings gate', 'quality-gate', 'Verification', 'result decision']) expect(PROPOSAL_ACT).toContain(fragment);
+    expect(worker).toContain('proposal-create/apply.md');
+    expect(worker).toContain('do not spawn an agent');
   });
 });
 
@@ -3420,23 +3405,15 @@ describe('heartbeat eval-runner return contract', () => {
 
   // The refresh rewords the digest; it must never become a way for the model to
   // drop, invent or resolve a pending decision.
-  test('decision refresh: dispatched only with decision_refresh, wording only, never omits a key', () => {
+  test('decision refresh stays read-only and the send script owns confirmation', () => {
     const spec = read(path.join(SKILLS, 'heartbeat', 'decision-refresh.md'));
     expect(skill).toContain('When the tick JSON carries `decision_refresh`');
-    expect(skill).toContain('skills/heartbeat/decision-refresh.md');
-    expect(skill).toContain('`digest_done`');
-    expect(spec).toContain('"refresh": [{"key": "<item key, verbatim>", "status": "open|done|partial", "text": "<channel-voice line>"}]');
-    expect(spec).toContain('Never drop or invent a key');
-    expect(spec).toContain('no `gh`, no web, no network');
-    expect(spec).toContain('Read only: write nothing');
-    expect(spec).toContain('a source is unavailable');
-    for (const field of REMOVED_MODEL_FIELDS) {
-      expect(spec).not.toContain(`\`${field}\``);
-    }
+    expect(spec).toContain('one `refresh` entry for every supplied key');
+    expect(spec).toContain('Never mutate a record');
+    expect(spec).toContain('It alone counts confirmed sends');
+    expect(spec).toContain('at most two per generation');
   });
 
-  // `run` and `start` are the two paths the monitor and the daily anchor take on
-  // every wake, so each needs its deterministic half behind one script call.
   test('SKILL.md run drives the tick verb and marks budget alerts by mark_key', () => {
     expect(skill).toContain('scripts/heartbeat.ts tick');
     expect(skill).toContain('scripts/heartbeat.ts ack-queue');
@@ -3490,21 +3467,12 @@ describe('heartbeat eval-runner return contract', () => {
 // reference would revert the branch back to prose-driven (model-judged) writes.
 // ============================================================
 
-describe('determinized lifecycle wiring contract', () => {
-  test('reflect SKILL.md applies resolution actions via apply-reflection-actions.ts', () => {
-    const skill = read(path.join(SKILLS, 'reflect', 'SKILL.md'));
-    expect(skill).toContain('apply-reflection-actions.ts');
+describe('retired reflection resolution flow', () => {
+  test('reflection does not dispatch the removed resolution writer', () => {
+    expect(read(path.join(SKILLS, 'reflect', 'SKILL.md'))).not.toContain('resolution_actions');
+    expect(fs.existsSync(path.join(SCRIPTS, 'apply-reflection-actions.ts'))).toBe(false);
   });
-
-
 });
-
-// ============================================================
-// Proposal-lifecycle state writes are fully script-mediated — the harness
-// background-isolation guard blocks the Write/Edit tools on the main-rooted
-// `.hermit/` state dir, so proposal-create and proposal-act must
-// never fall back to those tools for a proposal-file or task-record mutation.
-// ============================================================
 
 describe('proposal lifecycle: no tool-mediated state writes', () => {
   const proposalCreate = read(path.join(SKILLS, 'proposal-create', 'SKILL.md'));
@@ -3515,16 +3483,11 @@ describe('proposal lifecycle: no tool-mediated state writes', () => {
     expect(proposalCreate).not.toMatch(/Write tool|Edit the/);
   });
 
-  test('proposal-act/SKILL.md invokes proposal.ts patch/routine and task intake/note instead of Edit/Write', () => {
-    expect(proposalAct).toContain('proposal.ts patch');
-    for (const heading of ['## Start implementing now', '## Queue a task']) {
-      const branch = proposalAct.slice(proposalAct.indexOf(heading)).split('\n## ')[0];
-      expect(branch).toContain('task/SKILL.md');
-      expect(branch).toContain('proposal:PROP-NNN');
-    }
-    expect(proposalAct).toContain('task.ts note');
-    expect(proposalAct).not.toContain('proposal.ts next-task');
+  test('proposal application uses task transitions and the routine writer', () => {
     expect(proposalAct).toContain('proposal.ts routine');
+    expect(proposalAct).toContain('task block');
+    expect(proposalAct).toContain('task-check.ts');
+    expect(proposalAct).not.toContain('proposal.ts patch');
     expect(proposalAct).not.toMatch(/Write tool|Edit the/);
   });
 });

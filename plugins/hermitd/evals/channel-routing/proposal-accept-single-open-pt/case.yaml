@@ -1,40 +1,38 @@
 schema_version: "1.1"
 name: proposal-accept-single-open-pt
-description: 'Bare "sim" from a pt operator with exactly one open suggestion and no pending micro accepts it.'
-tags: [channel-routing, heldout]
-expected_outcome: 'proposal-act accept for the sole proposed suggestion.'
+description: 'Task decision reply: consent/admin as admin'
+tags: [channel-routing, decision-replies]
+expected_outcome: 'Acknowledge the answered task without exposing internal ids.'
 context:
   scaffold_script: scaffold.sh
 execution:
-  max_turns: 6
+  max_turns: 10
   timeout_seconds: 240
-  allowed_tools: [Skill, Read, Glob, Grep]
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
-    - config.json: operator_profile=technical; language=pt-PT; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator); channels.discord.default_chat_id="400000000000000001".
-    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
-    - proposal-micro match: {"status":"none","reason":"no_pending"}
-    - proposal-list: {"total":1,"shown":1,"proposals":[{"id":"PROP-022","status":"proposed","title":"Archive old helper reports"}]}
+    This is a routing eval. The pending tasks are seeded on disk. Invoke the actual answer boundary through `.hermit/bin/hermitd-run task answer ... --chat discord:400000000000000001 --user 100000000000000001 --reply <canonical token>`. That runner stands in for writes and returns the verdict for this turn. All other steps use the live skill.
     </system-reminder>
     <system-reminder>
-    UserPromptSubmit hook additional context:
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
-    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000031" user="sam" user_id="100000000000000001" ts="2026-10-01T09:21:00.000Z">
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000036" user="sam" user_id="100000000000000001" ts="2026-10-01T09:26:00.000Z">
     sim
     </channel>
 graders:
-  - name: proposal-act
-    type: tool_used
-    tool: 'Skill'
-    input_match: '"skill"\s*:\s*"(?:hermitd:)?proposal-act"[\s\S]*accept'
+  - name: answer-boundary
+    type: 'tool_used'
+    tool: 'Bash'
+    input_match: 'task(?:\.ts)? answer[\s\S]*--chat[\s\S]*--user[\s\S]*--reply'
+    weight: 3
+  - name: reply
+    type: 'tool_used'
+    tool: 'mcp__plugin_discord_discord__reply'
+  - name: decision-verdict
+    type: 'llm'
+    focus: 'mock_calls'
+    criteria: |
+      PASS if the channel reply follows this verdict: Acknowledge the answered task without exposing internal ids. FAIL otherwise.
     weight: 2
-  - name: no-task-skill
-    type: tool_used
-    tool: 'Skill'
-    input_match: '"skill"\s*:\s*"(?:hermitd:)?task"'
-    min: 0
-    max: 0

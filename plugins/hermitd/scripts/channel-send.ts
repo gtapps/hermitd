@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { TASK_ID } from './lib/tasks';
 // CLI wrapper around lib/channel-send.ts's sendToChannel/sendOperatorNotice — the
 // seam synchronous callers (hermitd-watchdog.ts, single-shot, no async conversion)
 // reach the deterministic channel send through via spawnSync, instead of
@@ -98,9 +99,10 @@ interface NoticePayload {
   maintainer?: string;
   sensitive?: boolean;
   fallback?: 'client' | 'primary' | 'findings';
+  decision?: { task: string; generation: number };
 }
 
-const NOTICE_KEYS = new Set(['client', 'maintainer', 'sensitive', 'fallback']);
+const NOTICE_KEYS = new Set(['client', 'maintainer', 'sensitive', 'fallback', 'decision']);
 
 // Strict validation: the model is a fuzzy boundary, and rejecting an unknown key
 // (e.g. a typo'd "maintainter") is what stops a silently-dropped audience leg.
@@ -117,7 +119,8 @@ function parseNotice(raw: string): NoticePayload | { error: string } {
   for (const k of Object.keys(obj)) {
     if (!NOTICE_KEYS.has(k)) return { error: `unknown field: ${k}` };
   }
-  const { client, maintainer, sensitive, fallback } = obj;
+  const { client, maintainer, sensitive, fallback, decision } = obj;
+  if (decision !== undefined && (!decision || typeof decision !== 'object' || !TASK_ID.test(decision.task) || !Number.isInteger(decision.generation) || decision.generation < 1 || Object.keys(decision).some(key => !['task', 'generation'].includes(key)))) return { error: 'invalid decision' };
   for (const [name, v] of [['client', client], ['maintainer', maintainer]] as const) {
     if (v !== undefined && (typeof v !== 'string' || v.trim() === '')) {
       return { error: `${name} must be a non-empty string` };
@@ -138,7 +141,7 @@ function parseNotice(raw: string): NoticePayload | { error: string } {
   if (maintainer === undefined && (sensitive !== undefined || fallback !== undefined)) {
     return { error: 'sensitive/fallback apply to the maintainer leg and require maintainer' };
   }
-  return { client, maintainer, sensitive, fallback };
+  return { client, maintainer, sensitive, fallback, decision };
 }
 
 // A leg counts delivered when the send succeeded and didn't degrade to Findings.
@@ -162,6 +165,7 @@ async function runNotice(hermitDir: string, routine?: string, watch?: string): P
       : undefined,
     routine,
     watch,
+    decision: p.decision,
     relay: true,
   });
 
