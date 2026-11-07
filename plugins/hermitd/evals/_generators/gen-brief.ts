@@ -1,3 +1,4 @@
+import { decisionFixture } from './lib';
 // Generate the brief run-* and dispatch-* cases into evals/brief/.
 //
 // These drive the real /hermitd:brief against a busy seeded install, with the
@@ -122,13 +123,13 @@ const [scopedPath, scopedRecord] = record(11, 'open');
 runCase('run-morning-chat', ['brief-morning'], 'A routine-owned group brief keeps other chats and agent-wide steps out.',
   'This is routine group-morning. Invoke /hermitd:brief --morning. Return the brief text in your final reply for inspection; delivery itself is stood in.',
   [dispatchedRunner, present('own-chat-work', 'loyalty discounts'), absent('no-other-chat-work', WORK.filter((_, i) => i !== 11).join('|')),
-    absent('no-proposals-line', 'proposals?\\s*:'),
+    absent('no-admin-decisions', 'Agent-wide proposal'),
     { name: 'no-micro-aging', type: 'tool_used', tool: 'Bash', input_match: 'brief-cycle', min: 0, max: 0 },
     { name: 'no-upgrade-check', type: 'tool_used', tool: 'Bash', input_match: 'check-upgrade', min: 0, max: 0 }],
   { '.hermit/config.json': JSON.stringify(scopedConfig, null, 2) + '\n',
     '.hermit/state/channel-chats.json': JSON.stringify({ discord: { chats: { [scopedChat]: { type: 0, parent_id: null, guild_id: 'shop', fetched_at: '2026-11-06T00:00:00Z' } } } }) + '\n',
     [scopedPath]: scopedRecord.replaceAll(`discord:${USER}`, `discord:${scopedChat}`),
-    '.hermit/proposals/PROP-001.md': '---\nstatus: proposed\nsource: auto-detected\ntitle: Agent-wide proposal\n---\n' });
+    ...Object.fromEntries([decisionFixture('T-20261001-090000', 'Agent-wide proposal', { conversation: null })]) });
 
 const [firstPath, firstRecord] = record(0, KINDS[0]);
 const supportedLesson = 'Keep source row identifiers when exporting the price list.';

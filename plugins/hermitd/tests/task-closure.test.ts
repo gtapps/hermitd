@@ -10,7 +10,7 @@ it('names rejected flags and accepted flags', async () => {
     for (const token of ['--reason', 'stray']) {
       const r = await f.run('cancel', [id, '--actor', 'discord:u1', token, 'x']);
       expect(r.exitCode).toBe(1);
-      expect(JSON.parse(r.stdout)).toEqual({ error: `invalid_flag:${token} (accepts --actor --reason-stdin)` });
+      expect(JSON.parse(r.stdout)).toEqual({ error: `invalid_flag:${token} (accepts --chat --user --actor --reason-stdin)` });
     }
   } finally { f.cleanup(); }
 });

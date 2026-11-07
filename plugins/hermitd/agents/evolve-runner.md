@@ -75,7 +75,7 @@ never block:
 - **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Leftover check:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
   step poses a genuine either/or with **no safe non-destructive default**, do **not** guess — record it
   as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
-  A deferred step's channel-resolution stanza (`options`/`on_resolve`, if the instruction carries one)
+  A deferred step's channel-resolution stanza (`options`/`decision.resume`, if the instruction carries one)
   is data for the main loop's Step 10 — copy it verbatim into the block; do not act on it yourself.
 - **Surgical docker-template migrations:** an Upgrade Instruction may patch a wizard-rendered docker
   template (`Dockerfile.hermit`) and re-record its `template-manifest.json` baseline. On success, set

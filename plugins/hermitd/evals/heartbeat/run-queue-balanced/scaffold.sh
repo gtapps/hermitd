@@ -40,7 +40,7 @@ cat > '.hermit/HEARTBEAT.md' <<'HERMIT_FIXTURE'
 <!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
 
 ## Standing Checks
-- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
+
 - Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
 
 ## Project Checks
@@ -87,6 +87,12 @@ stall_next: null
 dedupe_key: null
 check: null
 last_worker: null
+kind: null
+decision: null
+approved_rev: null
+approved_by: null
+source: null
+category: null
 muted: false
 delegated: false
 tags: ["task","discord:100000000000000001"]

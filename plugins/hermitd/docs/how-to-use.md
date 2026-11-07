@@ -231,7 +231,7 @@ The Linux phone test is a manual pre-merge gate. macOS host browsing and WSL2 ta
 
 **Found an improvement?** — `/hermitd:proposal-create` captures it without interrupting the current work.
 
-**What's Hermit been struggling with?** — `/hermitd:proposal-list` shows auto-detected patterns. Or just ask.
+**What's Hermit been struggling with?** — `/hermitd:task` shows auto-detected patterns. Or just ask.
 
 ---
 
@@ -251,7 +251,6 @@ The Linux phone test is a manual pre-merge gate. macOS host browsing and WSL2 ta
 │   ├── routine-metrics.jsonl <- append-only routine fire log
 │   ├── proposal-metrics.jsonl <- append-only event log
 │   ├── usage-metrics.jsonl    <- append-only compiled-read usage log
-│   ├── micro-proposals.json   <- pending micro-approvals list (pending[])
 │   └── state-summary.md       <- auto-generated health snapshot
 ├── raw/                       <- domain inputs (fetched content, snapshots, logs)
 │   └── .archive/              <- expired raw artifacts
@@ -344,7 +343,7 @@ Most common actions auto-trigger from natural language — just say what you mea
 | **Tasks**      | `resident-start`, `task`                        |
 | **Status**     | `brief`                                                            |
 | **Monitoring** | `watch`, `heartbeat`                                               |
-| **Learning**   | `proposal-create`, `proposal-list`, `proposal-act`, `reflect`      |
+| **Learning**   | `proposal-create`, `reflect`      |
 | **Config**     | `hermit-settings`, `hatch`, `hermit-evolve`                        |
 | **Docker**     | `docker-customize`; `docker-setup`, `docker-security` (type the last two; they never auto-trigger) |
 | **Channels**   | `channel-responder`, `voice-notes`                                 |

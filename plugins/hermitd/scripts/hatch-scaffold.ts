@@ -16,7 +16,6 @@
  *     --reinit=true, created on fresh. = templates/* and bin/* .
  *   - PRESERVE (operator-editable or accumulated state): created only if absent,
  *     in BOTH modes. = OPERATOR.md, HEARTBEAT.md, knowledge-schema.md,
- *     every state/* file (reflection-state, alert-state, micro-proposals, *.jsonl).
  *   - NEVER created: retired lifecycle state.
  * On a FRESH hatch every class is created, so behaviour is identical to today;
  * the classes only diverge on --reinit.
@@ -80,12 +79,6 @@ for (const d of ['proposals', 'templates', 'state', 'raw/.archive', 'compiled', 
   fs.mkdirSync(path.join(hermit, d), { recursive: true });
 }
 
-// --- REFRESH: hermit-owned pristine templates ---
-for (const name of ['PROPOSAL.md.template']) {
-  const dest = path.join(hermit, 'templates', name);
-  refresh(dest, () => copy(path.join(TEMPLATES, name), dest));
-}
-
 // --- REFRESH: bin/ executables (enumerate source, never hardcode) ---
 for (const name of fs.readdirSync(path.join(TEMPLATES, 'bin')).sort()) {
   const src = path.join(TEMPLATES, 'bin', name);
@@ -115,9 +108,6 @@ seedIfAbsent(path.join(hermit, 'knowledge-schema.md'), () =>
 seedIfAbsent(path.join(hermit, 'state', 'alert-state.json'), () =>
   copy(path.join(TEMPLATES, 'alert-state.json.template'), path.join(hermit, 'state', 'alert-state.json')),
 );
-seedIfAbsent(path.join(hermit, 'state', 'micro-proposals.json'), () =>
-  copy(path.join(TEMPLATES, 'micro-proposals.json.template'), path.join(hermit, 'state', 'micro-proposals.json')),
-);
 seedIfAbsent(path.join(hermit, 'state', 'reflection-state.json'), () => {
   const reflectionState = {
     last_reflection: null,
@@ -129,7 +119,6 @@ seedIfAbsent(path.join(hermit, 'state', 'reflection-state.json'), () => {
       judge_downgrade: 0,
       judge_suppress: 0,
       proposals_created: 0,
-      micro_proposals_queued: 0,
       last_run_at: null,
       last_output_at: null,
       since: localISOStamp(),

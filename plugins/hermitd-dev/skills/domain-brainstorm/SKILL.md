@@ -1,6 +1,6 @@
 ---
 name: domain-brainstorm
-description: On-demand dev-voice brainstorm: reads codebase friction signals (git churn, manifest drift, README coverage) and emits at most 2 improvement ideas, each gated by proposal-triage before becoming a PROP. Invoke when the operator asks "what should I be fixing?", "anything wrong with X?", or "brainstorm improvements". Never runs autonomously.
+description: On-demand dev-voice brainstorm: reads codebase friction signals (git churn, manifest drift, README coverage) and emits at most 2 improvement ideas, each gated by proposal-triage before becoming a proposal task. Invoke when the operator asks "what should I be fixing?", "anything wrong with X?", or "brainstorm improvements". Never runs autonomously.
 ---
 
 # Domain Brainstorm
@@ -47,14 +47,14 @@ Evidence Source: capability-brainstorm
 Evidence: <one paragraph: friction sentence + named grounding items>
 ```
 
-Set frontmatter: `source: auto-detected`, `category: improvement`, `tags: [capability-brainstorm]`.
+Set task metadata: `source: auto-detected`, `category: improvement`, `tags: [capability-brainstorm]`.
 
-> `Evidence Source: capability-brainstorm` is reused intentionally: it is the only source `proposal-triage` recognizes for the single-pass recurrence bypass, and adding a dedicated `domain-brainstorm` source is a core edit this skill deliberately avoids. Provenance is carried by the `tags` above, which `proposal-create` writes onto both the `triage-verdict` row and the proposal frontmatter. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
+> `Evidence Source: capability-brainstorm` is reused intentionally: it is the only source `proposal-triage` recognizes for the single-pass recurrence bypass, and adding a dedicated `domain-brainstorm` source is a core edit this skill deliberately avoids. Provenance is carried by the `tags` above, which `proposal-create` writes onto both the `triage-verdict` row and the proposal task metadata. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
 Parse the verdict:
-- `CREATE: <title>`: PROP file written, note the assigned PROP-NNN.
+- `CREATE: <task handle>`: proposal task opened; record its T- id.
 - `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
-- `DUPLICATE: <title> — <PROP-ID>`: record the existing PROP-ID. Don't create.
+- `DUPLICATE: <task handle>`: record the existing task id. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 
@@ -74,12 +74,12 @@ Non-zero:
 1. **[prefix] <title>** — <one-line description>
    _Grounding: <item 1>, <item 2>_
    _Friction: <one-sentence pain>_
-   PROP-NNN created  ·  (or: suppressed — <code>  ·  or: duplicate of PROP-NNN)
+   T-YYYYMMDD-HHMMSS created  ·  (or: suppressed — <code>  ·  or: duplicate of T-YYYYMMDD-HHMMSS)
 ```
 
 ### Gate 4 — Compiled artifact (non-empty runs only)
 
-If ≥1 PROP was created (not suppressed or duplicate), write:
+If ≥1 proposal task was created (not suppressed or duplicate), write:
 
 `.hermit/compiled/domain-brainstorm-YYYY-MM-DD-HHMM.md`
 
@@ -90,7 +90,7 @@ type: domain-brainstorm
 created: <ISO timestamp with timezone>
 tags: [domain-brainstorm, ideation]
 source: interactive
-proposals_created: [PROP-NNN, ...]
+proposals_created: [T-YYYYMMDD-HHMMSS, ...]
 ---
 ```
 

@@ -17,7 +17,6 @@ import path from 'node:path';
 
 import { EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
 import { runScript, walkFiles } from './helpers/run';
-import { pendingQuestionLine } from '../scripts/lib/prompt-stages/pending-question';
 import { normalizeChannelSource } from '../scripts/lib/channel-envelope';
 import { setupWorkdir } from './helpers/workdir';
 
@@ -73,30 +72,8 @@ describe('eval case copies of live text', () => {
     expect(problems.flat()).toEqual([]);
   }, 60_000);
 
-  // Evals never run the UserPromptSubmit pipeline, so a case that stands in the
-  // pending-question line must carry what the stage prints for the queue its own
-  // scaffold seeds, in the chat its envelope names.
-  test('pending-question lines match the stage for the scaffolded queue', () => {
-    const withLine = CASES.flatMap(c => {
-      const line = c.prompt.match(/^\s*(\[pending question in this chat: .+\])$/m)?.[1];
-      const env = c.prompt.match(/<channel source="([^"]+)" chat_id="([^"]+)"/);
-      return line ? [{ ...c, line, chatKey: env ? `${normalizeChannelSource(env[1])}:${env[2]}` : null }] : [];
-    });
-    expect(withLine.length).toBeGreaterThan(0);
-    const stale: string[] = [];
-    for (const c of withLine) {
-      if (!c.chatKey) { stale.push(`${c.file}: no channel envelope to key the line`); continue; }
-      const wd = setupWorkdir();
-      try {
-        const scaffold = path.join(EVALS, path.dirname(c.file), 'scaffold.sh');
-        const s = Bun.spawnSync(['bash', scaffold], { cwd: wd.dir });
-        if (s.exitCode !== 0) { stale.push(`${c.file}: scaffold failed`); continue; }
-        const printed = pendingQuestionLine(path.join(wd.dir, '.hermit'), c.chatKey);
-        if (printed !== c.line) stale.push(`${c.file}: ${c.line} != ${printed}`);
-      } finally {
-        wd.cleanup();
-      }
-    }
-    expect(stale).toEqual([]);
-  }, 60_000);
+  test('the question queue prompt stage is removed', () => {
+    expect(fs.existsSync(path.join(PLUGIN, 'scripts/lib/prompt-stages/pending-question.ts'))).toBe(false);
+    expect(fs.readFileSync(path.join(PLUGIN, 'scripts/user-prompt-pipeline.ts'), 'utf8')).not.toContain("stage('pending-question'");
+  });
 });

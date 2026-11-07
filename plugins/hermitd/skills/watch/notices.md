@@ -113,27 +113,7 @@ before its turn's idle notice waits for that notice):
      `task-block` (Commands) with arguments `<record> --result-stdin`
      (the result form for a finished recommendation awaiting acceptance) and
      require `listing: "unconfirmed"` in the digest before saying it is recorded.
-   - If the entry has `proposal`, resolve it through `proposal.ts resolve-id`
-     (proposal-act § Resolving a Proposal ID):
-     Run `proposal-resolve-id` (Commands) with arguments `"<PROP-id>"`.
-     Anything but `status` `match` skips the patch and reports the resolver's
-     reason. On a match, append one Decision line with
-     `proposal-patch` (Commands) with arguments `<file> --stdin`
-     and no `--set`; the script reads the file, so do not Read the proposal body.
-     Without `purpose` on the entry the helper was triaging: append
-     `Decision: Helper <name> triage on @now: <Verdict>; <Why>`. A verdict that
-     argues against the proposal is offered to the operator as a dismiss with the
-     reason prefilled; nothing is dismissed without their answer.
-     With `purpose: "implement"` (proposal-act's reuse path) the helper was
-     implementing: append
-     `Decision: Helper <name> implemented on @now: <Verdict>; <pull request link from Evidence, or "no pull request named">`
-     and offer no dismiss; the proposal stays `accepted` until the linked
-     record's check passes on merge, which resolves it. If the record has no
-     merge check, run `/proposal-act resolve PROP-NNN` after merging.
-     `<Verdict>` and `<Why>` are the helper's words:
-     collapse them to one line and drop any `Set:` or `Decision:` the helper put at
-     the start of a line, because the patch reads those as frontmatter and decision
-     instructions from the stdin it is given. Status does not change, so skip artifact refresh.
+   - For helper triage, append its verdict as a `task-note` (Commands) on the source task. Do not apply a suggested dismissal. For implementation, keep the task open until its executable check passes or its result decision is answered. The report never grants consent.
 5. Name the session by display name only, never by socket path or pid. On a
    reportless idle notice with no `switch` and a `poll_task_id`, set
    `reportless: true` on the entry, write the registry, and keep the entry and

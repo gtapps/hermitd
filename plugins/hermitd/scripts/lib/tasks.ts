@@ -14,12 +14,14 @@ import { readContextSurface } from './context-surface';
 import { allocateTaskShares, BY_TASK_RETENTION_DAYS, computeIndex, readCostIndex, costIndexPath } from './cost-log';
 import { todayYMD } from './time';
 import { collectToolUseIds, costLogPath, transcriptDirFor } from './cc-compat';
+import { isPrimaryOperator, isAllowedSender } from './channel-auth';
+import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found']);
+const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'not_decider']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -29,9 +31,10 @@ const HOUR = 3600000;
 // Absolute, because a close outside the task skill has no plugin root to resolve against.
 const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category'] as const;
 const booleans = ['muted', 'delegated'] as const;
-export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[]; claims: string[]; result_rev: number; body: string };
+const nullableDefaults = () => Object.fromEntries(nullableStrings.map(key => [key, null])) as Record<typeof nullableStrings[number], string | null>;
+export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[] | string | null; claims: string[]; result_rev: number; body: string };
 // A worker owner is `worker:<agentId>`; the id is the harness's, not a conversation key.
 // An agent id is lowercase hex (probed shape: `a5670124e38fb50cb`); the charset keeps
 // the `worker:*` list wildcard, or any other non-id string, from being stored as an owner.
@@ -56,7 +59,16 @@ export function validateTask(record: Task): void {
   if (![null, 'check', 'confirmed', 'cancelled'].includes(record.closed_by)) fail();
   if (!Number.isInteger(record.result_rev) || record.result_rev < 0) fail();
   for (const key of booleans) if (typeof record[key] !== 'boolean') fail();
-  for (const key of ['tags', 'claims'] as const) if (!Array.isArray(record[key]) || record[key].some(x => typeof x !== 'string' || !SLUG.test(x))) fail();
+  if (!Array.isArray(record.claims) || record.claims.some(x => typeof x !== 'string' || !SLUG.test(x))) fail();
+  if (Array.isArray(record.tags)) {
+    if (record.tags.some(x => typeof x !== 'string' || !SLUG.test(x))) fail();
+  } else if (record.tags !== null) {
+    const tags = JSON.parse(record.tags);
+    if (!Array.isArray(tags) || tags.some(x => typeof x !== 'string')) fail();
+  }
+  if (record.kind !== null && record.kind !== 'proposal') fail();
+  if (record.approved_rev !== null && !/^\d+$/.test(record.approved_rev)) fail();
+  if (record.decision !== null) decodeDecision(record.decision);
   for (const key of ['created', 'opened_at', 'closed_at', 'due', 'waiting_since', 'result_at', 'stall_at'] as const) if (record[key] !== null && !iso(record[key]!)) fail();
   if (record.created !== record.opened_at || (record.status === 'closed') !== (record.closed_by !== null && record.closed_at !== null)) fail();
   if (!validRequester(record.requester) || !SLUG.test(record.handle)) fail();
@@ -86,6 +98,7 @@ export function decodeTask(text: string): Task {
     const fields = [...requiredStrings, ...nullableStrings, ...booleans, 'tags', 'claims', 'result_rev'];
     const record = { ...Object.fromEntries(fields.filter(key => key in fm).map(key => [key, fm[key]])), body: text.slice(end + 4).replace(/^\n/, '') } as Task;
     for (const key of nullableStrings) if (!(key in record)) record[key] = null;
+    if (!Object.hasOwn(record, 'tags')) record.tags = null;
     validateTask(record);
     return record;
   } catch { throw new Error('invalid_record'); }
@@ -107,14 +120,125 @@ export function readTasks(dir: string): Task[] {
   }).sort((a, b) => a.opened_at.localeCompare(b.opened_at) || a.id.localeCompare(b.id));
 }
 
+export type Decision = {
+  purpose: 'consent' | 'input' | 'result';
+  authority: 'admin' | 'requester' | 'chat';
+  options?: string[];
+  generation: number;
+  resume?: string;
+};
+
+export function decodeDecision(value: string): Decision {
+  const decision = JSON.parse(value);
+  if (!decision || !['consent', 'input', 'result'].includes(decision.purpose)
+    || !['admin', 'requester', 'chat'].includes(decision.authority)
+    || !Number.isInteger(decision.generation) || decision.generation < 1
+    || (decision.options !== undefined && (!Array.isArray(decision.options) || decision.options.some((x: unknown) => typeof x !== 'string')))
+    || (decision.resume !== undefined && typeof decision.resume !== 'string')
+    || Object.keys(decision).some(key => !['purpose', 'authority', 'options', 'generation', 'resume'].includes(key))) throw new Error('invalid_decision');
+  return decision;
+}
+
+// A partial inventory must never look like an empty queue to decision readers.
+export function readTaskInventory(dir: string): { ok: true; records: Task[] } | { ok: false } {
+  const records: Task[] = [];
+  const visit = (directory: string, root = false): void => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }); }
+    catch (error: any) { if (root && error?.code === 'ENOENT') return; throw error; }
+    for (const entry of entries) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.isFile() && entry.name.endsWith('.md')) {
+        const record = decodeTask(fs.readFileSync(file, 'utf8'));
+        if (entry.name !== `${record.id}.md`) throw new Error('invalid_record');
+        records.push(record);
+      }
+    }
+  };
+  try {
+    visit(path.join(dir, 'tasks'), true);
+    return { ok: true, records: records.sort((a, b) => a.opened_at.localeCompare(b.opened_at) || a.id.localeCompare(b.id)) };
+  } catch { return { ok: false }; }
+}
+
+export type TaskImport = {
+  key: string; title: string; created: string; body: string;
+  status: 'proposed' | 'deferred' | 'dismissed' | 'accepted' | 'resolved' | 'question';
+  source?: string | null; category?: string | null; tags?: string | null;
+  closedAt?: string | null; reason?: string; conversation?: string | null; requester?: string; decision?: Decision;
+};
+
+// Migration uses the same writer lock as every ordinary record mutation. IDs
+// use the import instant, independently of preserved historical record dates.
+export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: string; action?: 'imported' | 'enriched' | 'existing'; error?: string }[] {
+  const lock = path.join(dir, 'state', 'tasks.lock');
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
+  try {
+    const inventory = readTaskInventory(dir);
+    if (!inventory.ok) throw new Error('inventory_read_failed');
+    const records = inventory.records;
+    const results: { key: string; action?: 'imported' | 'enriched' | 'existing'; error?: string }[] = [];
+    let idTime = Date.now();
+    const budgetPath = path.join(dir, 'state', 'decision-deliveries.json');
+    const budgets = readJson(budgetPath) ?? {};
+    for (const input of inputs) {
+      const matches = records.filter(record => record.dedupe_key === input.key);
+      if (matches.length > 1) { results.push({ key: input.key, error: 'conflicting_tasks' }); continue; }
+      const existing = matches[0];
+      if (existing && existing.body.includes('## Proposal\n' + input.body)) {
+        results.push({ key: input.key, action: 'existing' }); continue;
+      }
+      if (existing && input.status !== 'accepted') { results.push({ key: input.key, error: 'conflicting_task' }); continue; }
+      let id = existing?.id;
+      while (!id) {
+        try { id = allocateTaskId(records.map(record => record.id), new Date(idTime).toISOString()); }
+        catch (error: any) { if (error.message !== 'id_collision') throw error; idTime += 1000; }
+      }
+      const record: Task = existing ? structuredClone(existing) : {
+        ...nullableDefaults(),
+        id, type: 'task', title: input.title, created: input.created, opened_at: input.created,
+        summary: input.title, audience: input.conversation ?? 'operator', status: 'open', requester: input.requester ?? 'agent',
+        handle: `import-${id.toLowerCase()}`, owner: 'resident', tags: input.tags ?? null,
+        claims: [], result_rev: 0, muted: false, delegated: false, body: '## Progress\n\n## Decisions\n\n## Outcome\n',
+      } as Task;
+      record.kind = input.status === 'question' ? null : 'proposal';
+      record.source = input.source ?? null; record.category = input.category ?? null;
+      record.tags = input.tags ?? null; record.approver = null; record.dedupe_key = input.key;
+      record.body += '\n## Proposal\n' + input.body;
+      if (!existing) record.conversation = input.conversation ?? null;
+      const decision: Decision = input.decision ?? { purpose: 'consent', authority: 'admin', generation: 1 };
+      record.decision = JSON.stringify(decision);
+      record.waiting_on = decision.authority; record.waiting_since = input.created;
+      if (input.status === 'accepted') {
+        record.approved_rev = String(record.result_rev); record.approved_by = 'migration';
+        if (record.result) { record.decision = JSON.stringify({ purpose: 'result', authority: 'admin', generation: 1 }); record.waiting_on = 'admin'; }
+        else { record.waiting_on = null; record.waiting_since = null; }
+      }
+      if (input.status === 'dismissed' || input.status === 'resolved') finish(record, input.status === 'dismissed' ? 'cancelled' : 'confirmed', 'migration', input.reason ?? input.status, input.closedAt ?? input.created);
+      const encoded = encodeTask(record);
+      fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
+      const target = path.join(dir, 'tasks', id + '.md');
+      writeFileAtomic(target, encoded);
+      if (encodeTask(decodeTask(fs.readFileSync(target, 'utf8'))) !== encoded) throw new Error('import_verification_failed');
+      if (existing) records[records.indexOf(existing)] = record; else records.push(record);
+      budgets[`${id}:${decision.generation}`] = 2;
+      writeFileAtomic(budgetPath, JSON.stringify(budgets) + '\n');
+      results.push({ key: input.key, action: existing ? 'enriched' : 'imported' });
+    }
+    return results;
+  } finally { releaseLock(lock); }
+}
+
 export function allocateTaskId(ids: string[], now: string): string {
   const base = 'T-' + now.slice(0, 10).replaceAll('-', '') + '-' + now.slice(11, 19).replaceAll(':', '');
   for (const suffix of ['', ...'0123456789abcdefghijklmnopqrstuvwxyz'].map(x => x ? `-${x}` : '')) if (!ids.includes(base + suffix)) return base + suffix;
   throw new Error('id_collision');
 }
 
-function validRequester(value: string): boolean {
-  if (value === 'operator') return true;
+export function validRequester(value: string): boolean {
+  if (value === 'operator' || value === 'agent') return true;
   try { checkKey(value); return true; } catch { return false; }
 }
 
@@ -207,6 +331,92 @@ function reviewCallsReached(dir: string, record: Task): boolean {
   return ids.size >= REVIEW_CALLS;
 }
 
+function pendingDecision(record: Task): Decision | null {
+  return record.status === 'open' && record.waiting_on && record.decision ? decodeDecision(record.decision) : null;
+}
+
+function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decision): boolean {
+  const chat = flag(flags, 'chat');
+  const user = flag(flags, 'user');
+  if (!chat || !user) return false;
+  try { checkKey(chat); } catch { return false; }
+  const [source, destination] = chat.split(':');
+  const config = readSettledConfig(dir);
+  if (isPrimaryOperator(config, source, user, destination.split('~')[0])) return true;
+  if (decision.authority === 'requester') return record.requester === user || record.requester === `${source}:${user}`;
+  return decision.authority === 'chat' && record.conversation === chat && isAllowedSender(config, source, user);
+}
+
+function startConsent(record: Task, now: string, generation = 0): void {
+  const previous = record.decision ? decodeDecision(record.decision) : null;
+  record.decision = JSON.stringify({ purpose: 'consent', authority: 'admin', generation: Math.max(previous?.generation ?? 0, generation) + 1 });
+  record.approved_rev = null;
+  record.approved_by = null;
+  record.approver = null;
+  record.waiting_on = 'admin';
+  record.waiting_since = now;
+}
+
+function answerTask(dir: string, records: Task[], id: string | undefined, flags: TaskFlags, now: string): { record?: Task; verdict: Record<string, unknown>; event?: Record<string, unknown> } {
+  const chat = required(flags, 'chat');
+  required(flags, 'user');
+  checkKey(chat);
+  const reply = required(flags, 'reply').toLowerCase();
+  const candidates = records.filter(record => {
+    const decision = pendingDecision(record);
+    return decision && (record.conversation === chat || (record.conversation === null && decision.authority === 'admin' && canDecide(dir, record, flags, decision)));
+  });
+  if (!candidates.length) return { verdict: { status: 'none', reason: 'no_pending' } };
+  const target = id ? candidates.find(record => record.id === id) : undefined;
+  if (id && !target) return { verdict: { status: 'none', reason: 'no_match' } };
+  const permitted = candidates.filter(record => canDecide(dir, record, flags, pendingDecision(record)!));
+  if (!permitted.length || (target && !permitted.includes(target))) return { verdict: { status: 'refused', reason: 'not_decider' } };
+  const ambiguous = (reason: string, choices: Task[]) => ({ verdict: { status: 'ambiguous', reason, choices: choices.map(record => ({ id: record.id, options: pendingDecision(record)!.options ?? ['yes', 'no'] })) } });
+  if (!id && permitted.length > 1) return ambiguous('multiple_pending', permitted);
+  const record = target ?? permitted[0];
+  const decision = pendingDecision(record)!;
+  if (flags.generation !== undefined && Number(flags.generation) !== decision.generation) return { verdict: { status: 'stale' } };
+  let answer: string;
+  // An exact label wins over yes/no, number and prefix readings of the same reply.
+  const exact = decision.options?.find(label => label.toLowerCase() === reply);
+  if (decision.options === undefined) {
+    if (reply !== 'yes' && reply !== 'no') return { verdict: { status: 'none', reason: 'no_match' } };
+    answer = reply;
+  } else if (exact !== undefined) {
+    answer = exact;
+  } else {
+    if (reply === 'yes' || reply === 'no') return ambiguous('options_require_choice', [record]);
+    if (/^[+-]?\d+$/.test(reply)) {
+      const index = Number(reply) - 1;
+      if (!Number.isSafeInteger(index) || index < 0 || index >= decision.options.length) return ambiguous('number_out_of_range', [record]);
+      answer = decision.options[index];
+    } else {
+      const matches = decision.options.filter(label => label.toLowerCase().startsWith(reply));
+      if (!matches.length) return { verdict: { status: 'none', reason: 'no_match' } };
+      if (matches.length > 1) return ambiguous('multiple_labels', [record]);
+      answer = matches[0];
+    }
+  }
+  const actor = required(flags, 'user');
+  let event: Record<string, unknown> | undefined;
+  if (decision.purpose === 'consent') {
+    if (answer !== 'yes' && answer !== 'no') return { verdict: { status: 'none', reason: 'no_match' } };
+    if (answer === 'no') finish(record, 'cancelled', actor, 'Consent declined: ' + answer, now);
+    else { record.approved_rev = String(record.result_rev); record.approved_by = actor; }
+    event = respondedEvent(record.id, answer === 'yes' ? 'accept' : 'dismiss');
+  } else if (decision.purpose === 'result') {
+    if (flags['result-rev'] !== undefined && Number(flags['result-rev']) !== record.result_rev) return { verdict: { status: 'stale' } };
+    if (answer === 'no') {
+      append(record, 'Decisions', actor, 'Result declined', now);
+      record.result = null;
+      record.result_at = null;
+    } else finish(record, 'confirmed', actor, answer, now);
+  } else append(record, 'Decisions', actor, answer, now);
+  record.waiting_on = null;
+  record.waiting_since = null;
+  return { record, event, verdict: { status: 'match', id: record.id, answer, generation: decision.generation, resume: decision.resume ?? null } };
+}
+
 export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
@@ -218,6 +428,17 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     let record: Task;
     let digest: unknown;
     let progress = true;
+    if (verb === 'answer') {
+      const answered = answerTask(dir, records, id, flags, now);
+      if (answered.record) {
+        writeFileAtomic(path.join(dir, 'tasks', answered.record.id + '.md'), encodeTask(answered.record));
+        if (answered.event) {
+          const error = appendEvent(dir, answered.event);
+          if (error) answered.verdict.warnings = ['metrics_append_failed'];
+        }
+      }
+      return answered.verdict;
+    }
     if (verb === 'open') {
       const requester = required(flags, 'requester');
       if (!validRequester(requester)) throw new Error('invalid_requester');
@@ -225,7 +446,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       try { if (conversation !== null) checkKey(conversation); } catch { throw new Error('invalid_conversation'); }
       const owner = 'owner' in flags ? ownerFlag(flags) : 'resident';
       const dedupe = flag(flags, 'dedupe-key') ?? null;
-      const existing = dedupe && records.find(r => r.status === 'open' && r.dedupe_key === dedupe);
+      const existing = dedupe && records.find(r => (r.status === 'open' || (flags.kind === 'proposal' && r.kind === 'proposal' && r.closed_by === 'cancelled')) && r.dedupe_key === dedupe);
       if (existing) return openDigest(existing, records, false);
       if (threadConversation && records.some(r => r.status === 'open' && r.conversation === conversation)) throw new Error('thread_busy');
       checkOwnerAvailable(records, owner);
@@ -234,7 +455,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       let handle = base;
       for (let n = 2; records.some(r => r.status === 'open' && r.handle === handle); n++) handle = `${base}-${n}`;
       record = {
-        ...Object.fromEntries(nullableStrings.map(key => [key, null])),
+        ...nullableDefaults(),
         id: allocateTaskId(records.map(r => r.id), now), type: 'task', title, created: now, summary: flag(flags, 'done') ?? (flags['note-stdin'] ? title : required(flags, 'done')),
         tags: ['task', requester], audience: conversation ?? 'operator', status: 'open', opened_at: now,
         requester, requester_name: flag(flags, 'requester-name') ?? null, origin_message_id: flag(flags, 'origin-message-id') ?? null,
@@ -244,6 +465,23 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         muted: 'muted' in flags ? mutedFlag(flags) : false,
         body: '## Progress\n\n## Decisions\n\n## Approvals\n\n## Lessons\n\n## Outcome\n',
       } as Task;
+      record.source = flag(flags, 'source') ?? null;
+      record.category = flag(flags, 'category') ?? null;
+      if ('tags' in flags) record.tags = flag(flags, 'tags') ?? null;
+      record.kind = flag(flags, 'kind') ?? null;
+      record.decision = flag(flags, 'decision') ?? null;
+      if (record.decision !== null) decodeDecision(record.decision);
+      record.waiting_on = flag(flags, 'waiting-on') ?? null;
+      record.waiting_since = record.waiting_on === null ? null : now;
+      if (record.kind === 'proposal') {
+        record.approver = null;
+        if (record.decision === null) record.decision = JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 });
+        if (decodeDecision(record.decision).purpose !== 'consent' || decodeDecision(record.decision).authority !== 'admin') throw new Error('invalid_decision');
+        record.waiting_on = 'admin';
+        record.waiting_since = now;
+      }
+      if (record.waiting_on !== null) progress = false;
+      if (flags['body-stdin']) record.body += '\n## Proposal\n' + input;
       record.check = checkFlag(flags);
       card(record, flag(flags, 'card'));
       append(record, 'Progress', requester, 'Opened: ' + record.summary, now);
@@ -258,6 +496,16 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
       if (record.status !== 'open' && !muteOnly) throw new Error('not_open');
+      const decision = pendingDecision(record);
+      // An agent-requested task is guarded only while its decision is pending; once
+      // answered, the resumed procedure closes it like any other record.
+      const protectedRecord = record.kind === 'proposal' || (decision !== null && (record.requester === 'agent' || decision.authority === 'admin'));
+      if (['check-result', 'close', 'cancel'].includes(verb) && protectedRecord) {
+        const authority = decision ?? { purpose: 'consent', authority: 'admin', generation: 1 } as Decision;
+        if (decision?.purpose === 'consent' || (verb !== 'check-result' && !canDecide(dir, record, flags, authority)) || (verb === 'check-result' && record.kind === 'proposal' && record.approved_rev === null)) throw new Error('not_decider');
+      }
+      // A plain wait (such as the browser lease) clears as before; only a pending decision needs its decider.
+      if (verb === 'note' && flags['clear-waiting'] && decision && protectedRecord && (decision.purpose === 'consent' || !canDecide(dir, record, flags, decision))) throw new Error('not_decider');
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
@@ -266,7 +514,9 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (!line && !metadata) throw new Error('empty');
         progress = !!line || 'owner' in flags;
         if (line) append(record, flags.decision ? 'Decisions' : 'Progress', actor, line, now);
-        if ('check' in flags && record.check !== checkFlag(flags)) { record.check = checkFlag(flags); record.result_rev++; }
+        const checkChanged = 'check' in flags && record.check !== checkFlag(flags);
+        const replacesCheck = checkChanged && record.check !== null;
+        if (checkChanged) { record.check = checkFlag(flags); record.result_rev++; }
         if ('due' in flags) record.due = dateFlag(flags, 'due');
         card(record, flag(flags, 'card'));
         if ('owner' in flags) {
@@ -292,6 +542,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           if (!match) throw new Error('invalid_approval');
           append(record, 'Approvals', match[1], match[2], now);
         }
+        if (record.kind === 'proposal' && ('done' in flags || replacesCheck)) startConsent(record, now);
         digest = { id, result_rev: record.result_rev };
       } else if (verb === 'lesson') {
         if (!line) throw new Error('empty');
@@ -303,7 +554,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (Number(exit) === 0) {
           // Clearing the passed check is what ends the daily run: the record stays open with its
           // result, and a still-set check would re-execute the command on every later wake forever.
-          if (record.approver) { record.check = null; append(record, 'Progress', 'hermit', `check passed; approver confirmation still required${line ? ' ' + line : ''}`, now); }
+          if (record.approver || (record.kind === 'proposal' && decision?.purpose === 'result')) { record.check = null; append(record, 'Progress', 'hermit', `check passed; approver confirmation still required${line ? ' ' + line : ''}`, now); }
           else {
             // The reason is surfaced by every task report, so it carries a bounded proof; the body keeps the full output.
             finish(record, 'check', 'hermit', line ? `check:exit-0: ${line.slice(0, 200)}` : 'check:exit-0', now);
@@ -312,6 +563,20 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         } else append(record, 'Progress', 'hermit', `check:exit-${exit} ${line}`, now);
         digest = { id, closed_by: record.closed_by, result_rev: record.result_rev };
       } else if (verb === 'block') {
+        const previousGeneration = record.decision ? decodeDecision(record.decision).generation : 0;
+        if (record.kind === 'proposal' && decision?.purpose === 'consent' && (!flag(flags, 'decision') || decodeDecision(flag(flags, 'decision')!).purpose !== 'consent')) throw new Error('not_decider');
+        record.decision = flag(flags, 'decision') ?? null;
+        if (record.decision !== null) decodeDecision(record.decision);
+        if (record.kind === 'proposal') {
+          const next = record.decision ? decodeDecision(record.decision) : null;
+          if (next?.purpose === 'consent') startConsent(record, now, previousGeneration);
+          else if (flags['result-stdin']) record.decision = JSON.stringify({ purpose: 'result', authority: 'admin', generation: previousGeneration + 1 });
+          else if (!next && flag(flags, 'waiting-on') === 'agent') throw new Error('invalid_waiting_on');
+        }
+        if (record.decision !== null) {
+          const next = decodeDecision(record.decision);
+          record.decision = JSON.stringify({ ...next, generation: Math.max(next.generation, previousGeneration + 1) });
+        }
         if (flags['result-stdin']) {
           if (!line) throw new Error('empty');
           record.result = line; record.result_rev++; record.result_at = now;
@@ -324,6 +589,10 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           record.stall_at = now; record.stall_status = required(flags, 'status-line'); record.stall_next = required(flags, 'next');
           append(record, 'Progress', actor, `${record.stall_status}; next: ${record.stall_next}`, now);
           digest = { id, post_to: { conversation: record.conversation, requester: record.requester }, status_line: record.stall_status, next_step: record.stall_next };
+        }
+        if (record.kind === 'proposal') {
+          record.approver = null;
+          if (record.decision !== null) record.waiting_on = decodeDecision(record.decision).authority;
         }
         record.waiting_since = now;
       } else if (verb === 'close') {
@@ -418,7 +687,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

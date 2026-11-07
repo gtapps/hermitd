@@ -4,7 +4,7 @@
 // {path,bytes,hash} receipt, exit 1 on anything thrown.
 //
 // Usage:
-//   bun artifact.ts render <dashboard|proposals|weekly> <hermit-state-dir> [outPath]
+//   bun artifact.ts render <dashboard|weekly> <hermit-state-dir> [outPath]
 //     Renders the page to disk. Prints {"path":…,"bytes":…,"hash":…} on success,
 //     or {"error":"render_failed:<page>"} (unknown_page, custom_renderer_owns_out_path)
 //     at exit 1. The refresh protocols in docs/artifacts.md treat any failure as
@@ -26,7 +26,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadDashboardState, renderDashboard, renderCoreSections, UPDATED_TOKEN } from './lib/dashboard';
-import { loadProposalsPageState, renderProposalsPage } from './lib/proposals-page';
 import { renderWeeklyArtifact } from './lib/weekly-artifact';
 import { DEFAULT_STRINGS } from './lib/artifact-strings';
 import { CSS } from './lib/artifact-theme';
@@ -51,13 +50,6 @@ const PAGES: Record<string, { defaultOut: (dir: string) => string; render: (dir:
     defaultOut: dir => path.join(dir, 'state', 'dashboard.html'),
     render: dir => {
       const { html, hash } = renderDashboard(loadDashboardState(dir));
-      return { content: html, hash };
-    },
-  },
-  proposals: {
-    defaultOut: dir => path.join(dir, 'state', 'proposals-page.html'),
-    render: dir => {
-      const { html, hash } = renderProposalsPage(loadProposalsPageState(dir));
       return { content: html, hash };
     },
   },

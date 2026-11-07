@@ -8,7 +8,6 @@ import path from 'node:path';
 
 import { DEFAULT_STRINGS, loadStrings, fmt } from '../scripts/lib/artifact-strings';
 import { loadDashboardState, renderDashboard } from '../scripts/lib/dashboard';
-import { loadProposalsPageState, renderProposalsPage } from '../scripts/lib/proposals-page';
 
 // ---------- fixture scaffolding ----------
 
@@ -88,10 +87,10 @@ describe('loadStrings', () => {
   }));
 
   test('escapes HTML in overlay values — a corrupt translation file cannot inject markup', withHermitDir((hermitDir) => {
-    writeStrings(hermitDir, { status_heading: '<script>alert(1)</script>', proposals_history: 'Tom & "Jerry"' });
+    writeStrings(hermitDir, { status_heading: '<script>alert(1)</script>', waiting_heading: 'Tom & "Jerry"' });
     const s = loadStrings(hermitDir);
     expect(s.status_heading).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
-    expect(s.proposals_history).toBe('Tom &amp; &quot;Jerry&quot;');
+    expect(s.waiting_heading).toBe('Tom &amp; &quot;Jerry&quot;');
   }));
 
   test('{placeholder} tokens in an overlay value survive escaping and still fill via fmt()', withHermitDir((hermitDir) => {
@@ -117,7 +116,7 @@ describe('renderers honor the overlay', () => {
     const { html } = renderDashboard(loadDashboardState(hermitDir), { now: '2026-07-05T09:00:00Z' });
 
     // English chrome must be gone (all masked to x-runs)...
-    for (const phrase of ['Status', 'No active alerts.', 'No open proposals.', 'Latest brief',
+    for (const phrase of ['Status', 'No active alerts.', 'Nothing waiting on you.', 'Latest brief',
                           'No brief yet.', 'Compiled docs', 'Dashboard']) {
       expect(html, phrase).not.toContain(phrase);
     }
@@ -126,16 +125,8 @@ describe('renderers honor the overlay', () => {
     expect(html).toContain('xxxxxx'); // masked words present
   }));
 
-  test('proposals page chrome is fully table-sourced', withHermitDir((hermitDir) => {
-    writeStrings(hermitDir, fullMaskedOverlay());
-    const { html } = renderProposalsPage(loadProposalsPageState(hermitDir), { now: '2026-07-05T09:00:00Z' });
-    for (const phrase of ['Proposals', 'No open proposals.']) {
-      expect(html, phrase).not.toContain(phrase);
-    }
-  }));
-
   test('a partial overlay translates only its keys, leaving the rest English', withHermitDir((hermitDir) => {
-    writeStrings(hermitDir, { proposals_none_open: 'Nenhuma proposta aberta.' });
+    writeStrings(hermitDir, { waiting_none: 'Nenhuma proposta aberta.' });
     const { html } = renderDashboard(loadDashboardState(hermitDir), { now: '2026-07-05T09:00:00Z' });
     expect(html).toContain('Nenhuma proposta aberta.');   // overlaid key
     expect(html).toContain('No active alerts.');          // untouched key still English

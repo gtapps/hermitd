@@ -11,7 +11,7 @@ notice, and relay the report through `/hermitd:watch`.
 ## Usage
 
 ```
-/hermitd:spawn-session <prompt-or-/skill> [--cwd <abs-dir>] [--worktree] [--name <n>] [--model <m>] [--effort <e>] [--background <abs-file>] [--proposal <PROP-id>] [--strict-mcp-config]
+/hermitd:spawn-session <prompt-or-/skill> [--cwd <abs-dir>] [--worktree] [--name <n>] [--model <m>] [--effort <e>] [--background <abs-file>] [--task <id>] [--strict-mcp-config]
 /hermitd:spawn-session --switch <n> --record <T-id> [--model <m>] [--effort <e>]
 ```
 
@@ -34,7 +34,7 @@ passed `--strict-mcp-config`: both flags when `<dir>/.mcp.json` exists, and
 user-scope MCP servers from the helper. A background session cannot answer
 the project-server approval dialog, and a folder named by `--cwd` brings its
 own `.mcp.json` to that dialog.
-A helper report counts only when its sender's session name equals the `target` of a live `peer-idle` registry entry; the epoch-suffixed helper name is what distinguishes one spawn from a reused name. The helper never writes `tasks/` or `proposals/`; the resident records progress and results after that sender check.
+A helper report counts only when its sender's session name equals the `target` of a live `peer-idle` registry entry; the epoch-suffixed helper name is what distinguishes one spawn from a reused name. The helper never writes `tasks/`; the resident records progress and results after that sender check.
 
 Six limits sit on that command:
 
@@ -93,11 +93,10 @@ alternate invocation, or weaker permission mode. The exceptions are
 - `trust-workspace`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/trust-workspace.ts`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
-- `proposal-patch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit`
 
 ## Plan
 
-1. Parse `--cwd`, `--worktree`, `--name`, `--model`, `--effort`, `--background`, `--proposal`, and `--strict-mcp-config` from the invocation. `--cwd` must be an absolute path to an existing directory. `--background` must name an existing absolute file; append it to the prompt as an `@<abs-path>` mention. `--proposal <PROP-id>` is resolved in step 2 before any launch.
+1. Parse `--cwd`, `--worktree`, `--name`, `--model`, `--effort`, `--background`, `--task`, and `--strict-mcp-config` from the invocation. `--cwd` must be an absolute path to an existing directory. `--background` must name an existing absolute file; append it to the prompt as an `@<abs-path>` mention. `--task <id>` is resolved in step 2 before any launch.
    Remaining text is the prompt. Empty prompt: stop with a one-line ask for
    the work to run.
 
@@ -126,16 +125,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    `git -C <dir> rev-parse --verify HEAD`; on failure, refuse with one line
    before composing any launch: `<dir>` is not a git repository or has no
    commits; make an initial commit, then retry. An unborn HEAD makes the background launch report
-   success and then crash-loop on worktree creation. When `--proposal` was passed, resolve it
-   now through `proposal.ts resolve-id` (proposal-act § Resolving a Proposal ID)
-   against `<abs>/.hermit`:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve-id <abs>/.hermit "<PROP-id>"
-   ```
-   Anything but `status` `match` refuses before any launch, with the resolver's
-   reason. On a match, append the absolute proposal path
-   `<abs>/.hermit/proposals/<file>` to the prompt as an
-   `@<abs-path>` mention, the same way `--background` is. Read `<p>` from `<abs>/.hermit/config.json`
+   success and then crash-loop on worktree creation. When `--task` was passed, validate `<id>` with `task.ts list <abs>/.hermit --id <id> --json`; refuse a missing or closed record before launch. Append `<abs>/.hermit/tasks/<id>.md` to the helper prompt as an absolute background path. Read `<p>` from `<abs>/.hermit/config.json`
    (`permission_mode`), dropping the flag for `default`, `null` or an absent
    key, mapping `bypassPermissions` to `auto` (Six limits), and passing
    every other value through unchanged. Read `remote` from the same config
@@ -152,7 +142,7 @@ alternate invocation, or weaker permission mode. The exceptions are
 3. `cd <dir>` as its own Bash call, then run the command in Usage as the next
    one, so the launch stands alone in the transcript and in any approval that
    does reach the operator. With `--cwd`, then `cd <abs>` as the next call
-   whatever the launch returned: the `task.ts` and `proposal.ts` calls below
+   whatever the launch returned: the task calls below
    resolve the relative `.hermit` against the Bash tool's
    persisted directory. Print the returned bg id and `claude logs <id>`,
    `claude attach <id>`, `claude stop <id>` hints. For a `Workspace not trusted. Run`
@@ -166,7 +156,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    The printed bg id is only the first 8 characters of `<sid>` and is not a
    resume handle. An empty result means no `<sid>`: say so, write the lines
    below without `(<sid>)`,
-   and continue to step 4. Without `--proposal`, inside an open record's turn,
+   and continue to step 4. Without `--task`, inside an open record's turn,
    append `Handed to helper <n> (<sid>).` as a progress note by piping it into
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id>`,
    where `<T-id>` is that open record's id, not the bg id (the note is
@@ -175,29 +165,12 @@ alternate invocation, or weaker permission mode. The exceptions are
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id> --owner helper:<n>`.
    On `invalid_owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
    `owner_busy`, leave it resident-owned and tell the operator why.
-   With `--proposal`, open the record (title names
-   the helper work; requester is the current operator or channel identity). The
-   key is `helper:PROP-NNN`, not `proposal:PROP-NNN`: that second key belongs to
-   the proposal's implementation record, and reusing it would hang the helper's
-   result on work the helper did not do. A second spawn on the same proposal
-   reuses this record rather than duplicating it:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit \
-       --title "Helper work on PROP-NNN" --requester <requester> \
-       --done "helper report recorded on the proposal" --dedupe-key "helper:PROP-NNN"
-   ```
-   Then append one handoff line with no `--set`:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit <file> --stdin <<'HERMIT_PATCH'
-   Decision: Handed to helper <n> (<sid>) on @now; record <T-id>.
-   HERMIT_PATCH
-   ```
+   With `--task <id>`, open or reuse a helper-work task with `--dedupe-key "helper:<task-id>"`, requester from the current authorized turn, and a title naming the helper work. This record holds the helper's report, not the proposal's implementation result. Note `Handed to helper <n> (<sid>); helper record <helper-task-id>.` on the source task, and bind the helper-work record with `--owner helper:<n>`. A repeated launch for the same source task reuses this helper record.
 
 4. Invoke `/hermitd:watch session <n> "<first 40 chars of the operator prompt>" --id <bg-id>`.
    When the watch reports the helper blocked on its `waitingFor`, add nothing:
    the watch's helper poll announces it in chat.
    Whenever step 3 bound or opened a record, also pass `--record <T-id>`.
-   With `--proposal`, also pass `--proposal <PROP-id>`.
    That skill owns the subscription (`watch/session-watch.md` § Starting a session watch)
    and the idle-notice relay (`watch/notices.md` § Handling idle notices); do not re-implement either.
    When it declines the subscription, pass on the reason it gives rather than

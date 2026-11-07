@@ -6,8 +6,8 @@ import { readTasks, taskListing } from './tasks';
 import { taskReport, selectTodayReports, type TaskReport } from './task-report';
 import { readSettledConfig } from './config-read';
 import { dutyRows } from './duty-summary';
-import { scanProposals } from './proposals/index-rebuild';
-import { homeChatKey } from './proposals/micro';
+import { pendingDecisions } from './decisions';
+import { homeChatKey } from './home-chat';
 
 export type BriefMode = 'morning' | 'evening' | 'daily';
 
@@ -63,7 +63,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
   const scope = visibility.scope === null ? 'agent' : 'chat';
   const agent_steps = agentSteps(config, visibility.scope, destination);
   const newest = (a: TaskReport, b: TaskReport) => (b.closed_at ?? b.opened_at).localeCompare(a.closed_at ?? a.opened_at);
-  const omitted = { clipped: 0, lessons: 0, records: 0, decisions: 0, open: 0, proposals: 0, duties: 0 };
+  const omitted = { clipped: 0, lessons: 0, records: 0, decisions: 0, open: 0, decisions_pending: 0, duties: 0 };
   const openIds = new Set(tasks.filter(row => row.status === 'open').map(row => row.id));
   omitted.open += visibility.unresolved.filter(id => openIds.has(id)).length;
   const clip = (value: string, limit = 200): string => {
@@ -100,8 +100,11 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
     return [{ task_title: clip(report.title), text: recent.text, stamp: recent.stamp }];
   })).sort((a, b) => b.stamp - a.stamp).map(({ task_title, text }) => ({ task_title, text }));
   const duties = (agent_steps ? dutyRows(dir) : []).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'string' ? clip(value) : value])));
-  const proposals = mode === 'morning' && agent_steps ? (scanProposals(dir)?.proposals ?? []).filter(row => row.status === 'proposed' && row.source === 'auto-detected').map(row => ({ id: row.id, title: clip(row.title ?? '') })) : [];
-  const digest = { mode, today: selected.today, scope, agent_steps, ...(mode === 'morning' ? { latest, proposals } : { records }), open, decisions, duties, omitted };
+  const pending = pendingDecisions(dir);
+  if (!pending.ok) throw new Error('decision_inventory_unreadable');
+  const decisions_pending = pending.records.filter(({ task, decision }) => decision.authority === 'admin' ? agent_steps : visible.has(task.id))
+    .map(({ task, decision }) => ({ id: task.id, title: clip(task.title), purpose: decision.purpose, authority: decision.authority, generation: decision.generation, options: decision.options?.map(option => clip(option)), resume: decision.resume ? clip(decision.resume) : null }));
+  const digest = { mode, today: selected.today, scope, agent_steps, ...(mode === 'morning' ? { latest } : { records }), decisions_pending, open, decisions, duties, omitted };
   const bytes = () => Buffer.byteLength(JSON.stringify(digest) + '\n');
   while (bytes() > 25000) {
     const withLessons = records.findLast(row => row.lessons.length);
@@ -119,7 +122,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
     else {
       const runnable = open.findIndex(row => row.state === 'runnable' || row.state === 'delegated');
       if (runnable !== -1) { open.splice(runnable, 1); omitted.open++; }
-      else if (proposals.length) { proposals.pop(); omitted.proposals++; }
+      else if (decisions_pending.length) { decisions_pending.pop(); omitted.decisions_pending++; }
       else if (open.length) { open.shift(); omitted.open++; }
       else if (duties.length) { duties.pop(); omitted.duties++; }
     }

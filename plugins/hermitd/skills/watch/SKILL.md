@@ -14,8 +14,7 @@ Classes:
 - **Poll:** Script checks on interval, emits only on change. Same polling model, less noise.
 
 ## Commands
-- `proposal-patch`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts patch .hermit`
-- `proposal-resolve-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve-id .hermit`
+- `task-open`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit`
 - `task-block`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 
@@ -25,7 +24,7 @@ Classes:
 /hermitd:watch <instruction>              # requested watch: saved; step of other work: temporary
 /hermitd:watch <stream-command>           # start ad-hoc stream
 /hermitd:watch enable <id> --answer <a>  # [internal] turn on a staged watch (config-watch.md)
-/hermitd:watch session <name|glob> [note] [--record <T-id>] [--proposal <PROP-id>] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
+/hermitd:watch session <name|glob> [note] [--record <T-id>] [--record <task-id>] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
 /hermitd:watch notice <text>              # [internal] handle a watched-session notice
 /hermitd:watch start                      # activate the config watch monitor
 /hermitd:watch stop [id]                  # stop by id (or auto if 1 ad-hoc watch)
@@ -57,8 +56,7 @@ For ad-hoc and session watches, `.hermit/state/monitors.runtime.json` is the sol
       "started_at": "2026-04-12T15:00:00Z",
       "source": "adhoc",
       "class": "peer-idle",
-      "record": "T-20260412-150000",
-      "proposal": "PROP-019"
+      "record": "T-20260412-150000"
     }
   ],
   "last_cleared": "2026-04-12T15:00:00Z"

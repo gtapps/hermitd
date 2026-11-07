@@ -23,7 +23,7 @@ execution:
     <!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
 
     ## Standing Checks
-    - Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
+
     - Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.
 
     ## Project Checks
@@ -46,8 +46,8 @@ execution:
     --- df -h / ---
     Filesystem      Size  Used Avail Use% Mounted on
     /dev/sda1       200G  182G  18G  91% /
-    --- proposals/ ---
-    (no files)
+    --- task decisions ---
+    (none pending)
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

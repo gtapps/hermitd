@@ -69,15 +69,13 @@ describe('weekly-review reflect vital-signs', () => {
       await task('close', [id, '--by', 'confirmed', '--actor', 'operator', '--result-rev', '1', '--reason-stdin'], 'Verified');
     }
 
-    // micro-queued / micro-resolved are reflect-exclusive (count toward surfaced/accepted).
-    // created / responded are shared by non-reflect callers (brainstorm, operator, channel)
-    // and must NOT be attributed to reflect. PROP-OLD is out-of-week (date filter).
-    fs.writeFileSync(path.join(hermitDir, 'state', 'proposal-metrics.jsonl'), `{"ts":"${TODAY_TS}","type":"micro-queued","micro_id":"MP-1","tier":1,"question":"q"}
-{"ts":"${TODAY_TS}","type":"created","proposal_id":"PROP-001"}
-{"ts":"${TODAY_TS}","type":"responded","proposal_id":"PROP-001","action":"accept"}
-{"ts":"${TODAY_TS}","type":"micro-resolved","micro_id":"MP-1","action":"approved"}
-{"ts":"2020-01-01T12:00:00Z","type":"created","proposal_id":"PROP-OLD"}
-`);
+    const { id: proposalId } = await task('open', ['--title', 'Reflect improvement', '--requester', 'agent', '--kind', 'proposal', '--source', 'auto-detected', '--done', 'Verified']);
+    fs.writeFileSync(path.join(hermitDir, 'state', 'proposal-metrics.jsonl'), [
+      { ts: TODAY_TS, type: 'created', proposal_id: proposalId, source: 'auto-detected' },
+      { ts: TODAY_TS, type: 'responded', proposal_id: proposalId, action: 'accept' },
+      { ts: TODAY_TS, type: 'created', proposal_id: 'unrelated', source: 'manual' },
+      { ts: '2020-01-01T12:00:00Z', type: 'created', proposal_id: proposalId },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
 
     fs.writeFileSync(path.join(workdir, '.claude', 'cost-log.jsonl'), `{"timestamp":"${TODAY_TS}","source":"routine:hermitd:reflect","estimated_cost_usd":0.50,"total_tokens":1000}
 {"timestamp":"${TODAY_TS}","source":"session","estimated_cost_usd":2.00,"total_tokens":9000}
@@ -101,11 +99,11 @@ describe('weekly-review reflect vital-signs', () => {
     expect(review).not.toContain('suppressed:');
   });
 
-  test('weekly-review: reflect_surfaced counts micro-queued only (excludes shared created)', () => {
+  test('weekly-review: reflect_surfaced counts created events for reflect proposal records', () => {
     expect(review).toContain('reflect_surfaced: 1');
   });
 
-  test('weekly-review: reflect_accepted counts micro-resolved approved only (excludes shared responded)', () => {
+  test('weekly-review: reflect_accepted counts accepted responses for reflect proposal records', () => {
     expect(review).toContain('reflect_accepted: 1');
   });
 
@@ -260,25 +258,17 @@ not json at all
 
 // ── item 4: success_signal push + same-area absence guard ───────────────────
 
-describe('success_signal push + same-area guard', () => {
-  test('proposal-create: pushes for measurable success signal', () => {
-    expect(proposalCreate).toContain('Success signal — push for measurable');
+describe('consent-first reflect routing', () => {
+  test('proposal entry creates a task and apply closes by check or a result decision', () => {
+    expect(proposalCreate).toContain('Triage-Verdict:');
+    expect(proposalCreate).toContain('kind: proposal');
+    const apply = read('skills', 'proposal-create', 'apply.md');
+    expect(apply).toContain('task-check.ts');
+    expect(apply).toContain('result decision');
   });
-
-  test('proposal-create: validates predicate before writing', () => {
-    expect(proposalCreate).toContain('--validate');
-  });
-
-  test('proposal-create: empty signal is the documented exception', () => {
-    expect(proposalCreate).toContain('documented exception');
-  });
-
-  test('reflect: same-area guard before pattern-absence resolution', () => {
-    expect(reflectRef).toContain('Same-area guard');
-  });
-
-  test('reflect: same-area guard requires tag overlap', () => {
-    expect(reflectRef).toContain('proposal-title or Evidence keywords');
+  test('reflection has no observation-based resolution flow', () => {
+    expect(reflectRef).not.toContain('resolution_actions');
+    expect(reflectRef).not.toContain('Resolution Check');
   });
 });
 
@@ -322,8 +312,8 @@ describe('skill-output corrections', () => {
     expect(reflect).toContain('to the Progress Log line and nothing else');
   });
 
-  test('proposal-act: Skill Improvement reads no procedure brief', () => {
-    const proposalAct = read('skills', 'proposal-act', 'SKILL.md') + '\n' + read('skills', 'proposal-act', 'branches.md');
+  test('proposal apply: Skill Improvement reads no procedure brief', () => {
+    const proposalAct = read('skills', 'proposal-create', 'apply.md');
     expect(proposalAct).not.toContain('Parse the `source_artifact:` line from the `## Skill Improvement` body');
     expect(proposalAct).not.toContain('read the brief');
   });

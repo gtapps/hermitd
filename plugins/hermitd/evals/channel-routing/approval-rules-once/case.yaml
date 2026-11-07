@@ -15,8 +15,6 @@ execution:
     Hermit state for this turn. This session has no shell: use these script results; do not run scripts.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"].
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
-    - proposal-micro match: {"status":"none","reason":"no_pending"}
-    - proposal-list: {"total":0,"shown":0,"proposals":[]}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:

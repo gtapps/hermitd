@@ -25,7 +25,7 @@ test('empty install and CLI mode and argument contracts', async () => {
       const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, mode] });
       expect(result.exitCode).toBe(0);
       const row = JSON.parse(result.stdout);
-      expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'agent_steps', 'latest', 'proposals', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'agent_steps', 'records', 'open', 'decisions', 'duties', 'omitted']);
+      expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'agent_steps', 'latest', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'agent_steps', 'records', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted']);
       expect(row.open).toEqual([]);
       expect(mode === 'morning' ? row.latest : row.records).toEqual(mode === 'morning' ? null : []);
     }
@@ -117,7 +117,7 @@ test('all oversized sections pack below exact stdout ceiling including escaped c
     f.put('state/proposals-index.json', { sentinel: true });
     const before = fs.readFileSync(path.join(f.dir, 'state/proposals-index.json'));
     for (let i = 0; i < 150; i++) {
-      save(f.dir, { ...base, id: `T-20261020-${String(100001 + i).padStart(6, '0')}`, title: huge, result: huge, waiting_on: huge,
+      save(f.dir, { ...base, id: `T-20261020-${String(100001 + i).padStart(6, '0')}`, title: huge, result: huge, waiting_on: 'admin', kind: 'proposal', decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 }),
         body: `## Lessons\n- ${'l'.repeat(390)}\n\n## Decisions\n- 2026-10-20T11:00:00Z actor: ${'d'.repeat(390)}\n` });
       fs.writeFileSync(path.join(f.dir, 'proposals', `PROP-${i}.md`), `---\nstatus: proposed\nsource: auto-detected\ntitle: ${'p'.repeat(500)}\n---\n`);
     }
@@ -130,7 +130,7 @@ test('all oversized sections pack below exact stdout ceiling including escaped c
       if (mode === 'morning') {
         if (!('latest' in row)) throw new Error('Expected morning latest');
         expect(row.latest).not.toBeNull();
-        expect(row.omitted.proposals).toBeGreaterThan(0);
+        expect(row.omitted.decisions_pending).toBeGreaterThan(0);
       }
       else { expect(row.omitted.records).toBeGreaterThan(0); expect(row.omitted.decisions).toBeGreaterThan(0); }
     }
@@ -206,7 +206,7 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     const morning = await briefDigest(f.dir, 'morning', reference, { chat: 'discord:group' });
     if (!('latest' in morning)) throw new Error('Expected morning latest');
     expect(morning.latest?.id).toBe('T-20261020-100000');
-    expect(morning.proposals).toEqual([]);
+    expect(morning.decisions_pending).toEqual([]);
     expect((await briefDigest(f.dir, 'morning', reference)).scope).toBe('agent');
     expect((await briefDigest(f.dir, 'morning', reference, { routine: 'home' })).scope).toBe('agent');
     for (const args of [['context', '--routine', 'group'], ['context', '--chat', 'discord:group']]) {

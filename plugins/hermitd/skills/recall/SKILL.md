@@ -1,6 +1,6 @@
 ---
 name: recall
-description: "Full-text search over the recorded past: session reports, compiled notes, proposals, and the channel log. Use it whenever the operator asks what already happened — 'recall X', 'what did I learn/decide/figure out about X', 'when did we last touch X', 'did we ever discuss X', 'have we seen this error before', 'find that proposal about X', 'yesterday I asked you to X' — even when you could grep or Read .hermit/ yourself: this search also covers the channel-message database that file greps miss, ranks hits by relevance and recency, and returns a bounded file:line digest instead of raw dumps. Not for current file contents (reading OPERATOR.md or listing open proposals), live status, or forward-looking briefings."
+description: "Full-text search over the recorded past: session reports, compiled notes, proposals, and the channel log. Use it whenever the operator asks what already happened — 'recall X', 'what did I learn/decide/figure out about X', 'when did we last touch X', 'did we ever discuss X', 'have we seen this error before', 'find that proposal about X', 'yesterday I asked you to X' — even when you could grep or Read .hermit/ yourself: this search also covers the channel-message database that file greps miss, ranks hits by relevance and recency, and returns a bounded file:line digest instead of raw dumps. Not for current file contents (reading OPERATOR.md or listing pending decisions), live status, or forward-looking briefings."
 ---
 # Recall
 
@@ -83,4 +83,4 @@ Skip the offer entirely when results were thin or the answer restated a single s
 
 Channel-turn channel-log results are limited to what that chat may see, following the visibility rule in `docs/config-reference.md`. Compiled pages are additionally scoped by frontmatter `audience`; session reports and proposals are not returned to a scoped reader.
 
-Searches `.hermit/tasks/`, `.hermit/sessions/`, `.hermit/compiled/`, `.hermit/proposals/`, and the episodic channel log (`state/channel-log.sqlite`) via `search.ts`, plus the loaded auto-memory index + topic files. The channel log is feature-detected — a hermit with no channel activity yet simply contributes nothing from that source. Read-only except the operator-confirmed Step 3 write-back — never moves or deletes files.
+Searches `.hermit/tasks/`, `.hermit/sessions/`, `.hermit/compiled/`, `.hermit/proposals/archive/`, and the episodic channel log (`state/channel-log.sqlite`) via `search.ts`, plus the loaded auto-memory index + topic files. The channel log is feature-detected — a hermit with no channel activity yet simply contributes nothing from that source. Read-only except the operator-confirmed Step 3 write-back — never moves or deletes files.

@@ -62,6 +62,12 @@ stall_next: "Which supplier price list should I use, the September or the Octobe
 dedupe_key: null
 check: null
 last_worker: a1b2c3d4e5f6a7b8c
+kind: null
+decision: "{\"purpose\":\"input\",\"authority\":\"requester\",\"generation\":1,\"options\":[\"September\",\"October\"],\"resume\":\"/hermitd:task\"}"
+approved_rev: null
+approved_by: null
+source: null
+category: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]

@@ -14,12 +14,10 @@ Return to [SKILL.md](SKILL.md) for status, stopping, and event handling. Save a 
    ```
 
    On `duplicate_id`, read the matching entry: if its command is identical, say it is already being watched and do not write. Otherwise choose a new id and retry once. On an error, report it. A native prompt may appear; No is final, with no substitute path.
-5. For a member's disabled watch, queue one micro-proposal and send the same neutral yes/no question in the asking chat. Write the question in the chat's language and name what the watch checks. Replace placeholders with the actual question, id and chat:
+5. For a member's disabled watch, open one durable admin input decision and send the same neutral yes/no question in the asking chat. Write the question in the chat's language and name what the watch checks. Replace placeholders with the actual question, id and chat. Run `task-open` (Commands) with:
 
    ```bash
-   .hermit/bin/hermitd-run proposal queue-micro .hermit <<'HERMIT_MP'
-   {"tier":1,"question":"<yes/no question naming the watch>","on_resolve":"/hermitd:watch enable <id> --answer {answer}","chat":"<sourceKey>:<chat_id>","key":"watch-enable:<id>"}
-   HERMIT_MP
+   --title '<question>' --done 'Answer recorded' --requester agent --conversation '<sourceKey>:<chat_id>' --waiting-on admin --dedupe-key 'watch-enable:<id>' --decision '{"purpose":"input","authority":"admin","generation":1,"resume":"/hermitd:watch enable <id> --answer {answer}"}'
    ```
 
    If queuing fails, report it and leave the watch disabled. Confirm the outcome with `/hermitd:watch status`.
@@ -36,12 +34,12 @@ If the watch is absent, belongs to another chat, or is already enabled, report i
 
 ## Met
 
-A saved watch's `description` records the request it serves. When an event meets that request's end condition (the deploy finished, the price dropped), judge it from the request's intent, report it, then ask the watch's chat whether to stop watching. Write the question in the chat's language and queue it:
+A saved watch's `description` records the request it serves. When an event meets that request's end condition (the deploy finished, the price dropped), judge it from the request's intent, report it, then ask the watch's chat whether to stop watching. Write the question in the chat's language. Run `task-open` (Commands) with:
 
 ```bash
-.hermit/bin/hermitd-run proposal queue-micro .hermit <<'HERMIT_MP'
-{"tier":1,"question":"<yes/no question naming the watch>","on_resolve":"/hermitd:watch stop <id> --answer {answer}","chat":"<the watch's chat>","key":"watch-stop:<id>"}
-HERMIT_MP
+--title '<question>' --done 'Answer recorded' --requester agent --conversation '<the watch's chat>' --waiting-on chat --dedupe-key 'watch-stop:<id>' --decision '{"purpose":"input","authority":"chat","generation":1,"resume":"/hermitd:watch stop <id> --answer {answer}"}'
 ```
 
 Use the entry's `chat`, or the home chat when it has none. A yes stops the watch; a no leaves it running. If queuing fails, report it and leave the watch running.
+
+Validate the question target and use [the durable-question contract](../channel-responder/questions.md). Resume only from a matching `task answer` result; a no answer is input, never task cancellation.

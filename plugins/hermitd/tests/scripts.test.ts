@@ -1,3 +1,4 @@
+import { mutateTask } from '../scripts/lib/tasks';
 // Script & static tests for hermitd (bun test port of run-scripts.sh).
 // Tests standalone scripts called by hooks or the CLI, but not themselves hooks.
 //
@@ -1655,7 +1656,7 @@ describe('update-alert-state', () => {
     expect(alerting.last_clean_eval_at).toBeNull();
   }));
 
-  // Issue #783: a proposal awaiting review re-derives its `proposal-pending:*` key
+  // Issue #783: a proposal awaiting review re-derives its `decision-pending:*` key
   // on every tick, so `firing` was never empty and last_clean_eval_at was never
   // stamped — precheck's clean-recheck damper could never arm and every poll
   // promoted to a full paid EVALUATE for as long as the proposal sat unreviewed
@@ -1667,17 +1668,17 @@ describe('update-alert-state', () => {
     const alerts: Record<string, unknown> = {};
     for (const [n, title, count] of pending) {
       write(hermit(dir, 'proposals', `PROP-${n}-slug-120000.md`), `---\nid: PROP-${n}\nstatus: proposed\ntitle: ${title}\n---\nbody\n`);
-      alerts[`proposal-pending:PROP-${n}`] = { count, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: `PROP-${n} "${title}"` };
+      alerts[`custom:PROP-${n}`] = { count, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: `PROP-${n} "${title}"` };
     }
     write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
       alerts, self_eval: {}, total_ticks: 345, last_clean_eval_at: null, last_digest_date: '2026-07-10', // digest already sent today
     }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing new
+    const { state, stdout } = await updateAlertState(dir, firingPayload(pending.map(([n, title]) => ({ key: `custom:PROP-${n}`, text: `PROP-${n} "${title}"` })))); // model reports nothing new
     expect(stdout.heartbeat_result).toBe('ok');
     expect(state.last_clean_eval_at).toBe(NOW);
     expect(stdout.notifications).toEqual([]);
     // Still tracked, still suppressed, still counting — only the damper verdict changed.
-    expect(state.alerts['proposal-pending:PROP-025']).toMatchObject({ count: 228, suppressed: true, consecutive_clean: 0 });
+    expect(state.alerts['custom:PROP-025']).toMatchObject({ count: 228, suppressed: true, consecutive_clean: 0 });
   }));
 
   // The ladder notifies on the first observation and again at count===6; ticks 2-5 push a
@@ -1821,12 +1822,10 @@ describe('update-alert-state', () => {
     expect(state.alerts[normalizeItemKey(CREDENTIAL_ITEM)!]).toBeUndefined();
   }));
 
-  test('update-alert-state (a model-authored derived key is dropped, never remapped to custom:)', withDir(async (dir) => {
+  test('update-alert-state (a model-authored doctor key is dropped, never remapped to custom:)', withDir(async (dir) => {
     write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
     writeHeartbeat(dir);
     const { state, stdout } = await updateAlertState(dir, firingPayload([
-      { key: 'proposal-pending:PROP-042', text: 'PROP-042 waiting' },
-      { key: 'micro-proposal-pending:MP-7', text: 'MP-7 waiting' },
       { key: 'doctor:credential-expiry', text: 'doctor finding' },
     ]));
     expect(state.alerts).toEqual({});
@@ -1935,332 +1934,7 @@ describe('update-alert-state', () => {
   // model-authored. These pin the regression the refactor exists to close.
   // -----------------------------------------------------------------------
 
-  test('update-alert-state (derives heartbeat_result ALERT from a pending micro-proposal even when model firing is empty)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'Proceed?' }] }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([])); // model reports nothing
-    expect(stdout.heartbeat_result).toBe('alert');
-    expect(state.alerts['micro-proposal-pending:MP-1']).toBeDefined();
-    expect(state.alerts['micro-proposal-pending:MP-1'].text).toContain("micro-proposal 'MP-1' awaiting operator input — Proceed?");
-  }));
-
-  test('update-alert-state (channel voice: a new structured-key entry never sends its raw id to the operator)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'Proceed?' }] }));
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-009-test-120000.md'), '---\nid: PROP-009\nstatus: proposed\ntitle: Retry queue\n---\nbody\n');
-    const { state, stdout, monitoring } = await updateAlertState(dir, firingPayload([]));
-    // Both structured keys are new this tick — monitoring lines (file-only) may
-    // carry the id, but notifications (operator channel) must not.
-    expect(state.alerts['micro-proposal-pending:MP-1']).toBeDefined();
-    expect(state.alerts['proposal-pending:PROP-009']).toBeDefined();
-    expect(stdout.notifications).toEqual([]);
-    expect(monitoring).toEqual([]);
-  }));
-
-  test('update-alert-state (#594 regression: model omitting/garbling a pending micro-proposal key never resolves it)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'micro-proposal-pending:MP-1': { count: 2, consecutive_clean: 1, suppressed: false, first_seen: '2026-07-08', last_seen: '2026-07-09', text: 'old label' } },
-      self_eval: {}, total_ticks: 5,
-    }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'Proceed?' }] }));
-    // Model hallucinates a garbled duplicate instead of the real key — the real
-    // key is re-derived from micro-proposals.json regardless, so it is neither
-    // dropped nor aged: count increments and consecutive_clean resets to 0.
-    const { state } = await updateAlertState(dir, firingPayload([{ key: 'micro-proposal-pending:mp1garbled', text: 'garbled' }]));
-    expect(state.alerts['micro-proposal-pending:MP-1']).toMatchObject({ count: 3, consecutive_clean: 0 });
-  }));
-
-  test('update-alert-state (phantom rejection: model-injected structured key is dropped)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
-    // No micro-proposals.json / proposals/ — nothing is actually pending.
-    const { state } = await updateAlertState(dir, firingPayload([
-      { key: 'micro-proposal-pending:FAKE', text: 'hallucinated' },
-      { key: 'proposal-pending:PROP-999', text: 'hallucinated' },
-    ]));
-    expect(state.alerts).toEqual({});
-  }));
-
-  test('update-alert-state (fail-safe: corrupt micro-proposals.json freezes existing entry instead of aging it)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'micro-proposal-pending:MP-1': { count: 2, consecutive_clean: 1, suppressed: false, first_seen: '2026-07-08', last_seen: '2026-07-09', text: 'old label' } },
-      self_eval: {}, total_ticks: 5,
-    }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
-    const { state } = await updateAlertState(dir, firingPayload([]));
-    // consecutive_clean would have become 2 (→ deleted) had this been treated
-    // as "not firing" — frozen means byte-identical, not aged at all.
-    expect(state.alerts['micro-proposal-pending:MP-1']).toEqual({
-      count: 2, consecutive_clean: 1, suppressed: false, first_seen: '2026-07-08', last_seen: '2026-07-09', text: 'old label',
-    });
-  }));
-
-  test('update-alert-state (proposal-pending derives a title-rendered label from frontmatter, falls back to bare id)', withDir(async (dir) => {
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-test-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Add retry logic\n---\nbody\n');
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":1}');
-    const { state } = await updateAlertState(dir, firingPayload([]));
-    expect(state.alerts['proposal-pending:PROP-005'].text).toBe('PROP-005 "Add retry logic"');
-  }));
-
-  test('update-alert-state (fail-safe: an unreadable proposal file freezes existing proposal-pending entry instead of aging it)', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'proposal-pending:PROP-007': { count: 2, consecutive_clean: 1, suppressed: false, first_seen: '2026-07-08', last_seen: '2026-07-09', text: 'PROP-007 "x"' } },
-      self_eval: {}, total_ticks: 5,
-    }));
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.mkdirSync(hermit(dir, 'proposals', 'PROP-007-broken.md')); // a dir where a file is expected → EISDIR on read (ambiguous, non-ENOENT)
-    const { state } = await updateAlertState(dir, firingPayload([]));
-    // consecutive_clean would have become 2 (→ deleted) had the unreadable file
-    // been treated as "not proposed" and the alert aged. Frozen means byte-identical.
-    expect(state.alerts['proposal-pending:PROP-007']).toEqual({
-      count: 2, consecutive_clean: 1, suppressed: false, first_seen: '2026-07-08', last_seen: '2026-07-09', text: 'PROP-007 "x"',
-    });
-  }));
-
-  test('update-alert-state (daily digest fires once per tz-local day, id-free, aged not counted — R2)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    // Still firing: the proposal is on disk at `proposed`, so the key re-derives
-    // this tick. Only a firing entry is digest-eligible, so a fixture that had
-    // gone quiet would prove nothing about the digest's wording.
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-test-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Add retry logic\n---\nbody\n');
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'proposal-pending:PROP-005': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'PROP-005 "Add retry logic"' } },
-      self_eval: {}, total_ticks: 30, last_digest_date: null,
-    }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
-    expect(digest).toContain('Add retry logic');
-    // Age, never the evaluation count: "8x" reads as eight messages sent when
-    // the ladder sent two.
-    expect(digest).toContain('first seen 2026-07-01');
-    expect(digest).not.toMatch(/\d+x,/);
-    expect(stdout.notifications.join('\n')).not.toMatch(/PROP-\d+|MP-[\w-]+|\bS-\d+\b/);
-    expect(state.last_digest_date).toBe('2026-07-10');
-  }));
-
-  // Three pending decisions, all suppressed and still firing: one micro ask, two proposals.
-  function seedDecisionDigest(dir: string) {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
-      { id: 'MP-20260701-0', tier: 1, status: 'pending', follow_up_count: 0, ts: '2026-07-01T08:00:00Z', question: 'Declare the report type in the schema?' },
-    ] }));
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-test-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Add retry logic\n---\nbody\n');
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-006-test-120000.md'), '---\nid: PROP-006\nstatus: proposed\ntitle: Route by area\n---\nbody\n');
-    const row = (first_seen: string, text: string) => ({ count: 9, consecutive_clean: 0, suppressed: true, first_seen, last_seen: '2026-07-09', text });
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: {
-        'micro-proposal-pending:MP-20260701-0': row('2026-07-01', "micro-proposal 'MP-20260701-0' awaiting operator input — Declare the report type in the schema?"),
-        'proposal-pending:PROP-005': row('2026-07-02', 'PROP-005 "Add retry logic"'),
-        'proposal-pending:PROP-006': row('2026-07-03', 'PROP-006 "Route by area"'),
-      },
-      self_eval: {}, total_ticks: 30, last_digest_date: null,
-    }));
-  }
-
-  test('update-alert-state (refresh: done items batch into one clear line, partial relabels, open keeps its queued text)', withDir(async (dir) => {
-    seedDecisionDigest(dir);
-    const { state, stdout } = await updateAlertState(dir, JSON.stringify({
-      firing: [],
-      refresh: [
-        { key: 'micro-proposal-pending:MP-20260701-0', status: 'done', text: 'Report type declared in the schema since Jul 3' },
-        // A stray internal id in model wording is scrubbed like any structured label.
-        { key: 'proposal-pending:PROP-006', status: 'partial', text: 'PROP-006 routing by area: the merged change covers the same requester only' },
-      ],
-    }));
-    const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
-    expect(digest).toBe(
-      'Suppressed alert digest: proposal "Add retry logic" awaiting review (first seen 2026-07-02); '
-      + 'routing by area: the merged change covers the same requester only (first seen 2026-07-03). '
-      + "Looks already done: Report type declared in the schema since Jul 3. Reply 'clear' to drop these.",
-    );
-    expect(stdout.notifications.join('\n')).not.toMatch(/PROP-\d+|MP-[\w-]+/);
-    expect(stdout.digest_done).toEqual(['micro-proposal-pending:MP-20260701-0']);
-    // Wording only: membership and stored state are untouched by the refresh.
-    expect(Object.keys(state.alerts).sort()).toEqual([
-      'micro-proposal-pending:MP-20260701-0', 'proposal-pending:PROP-005', 'proposal-pending:PROP-006',
-    ]);
-    expect(JSON.stringify(state.alerts)).not.toContain('since Jul 3');
-    expect(JSON.stringify(state.alerts)).not.toContain('same requester');
-  }));
-
-  test('update-alert-state (refresh: phantom, non-structured and malformed entries are ignored without costing the tick)', withDir(async (dir) => {
-    seedDecisionDigest(dir);
-    const { state, stdout } = await updateAlertState(dir, JSON.stringify({
-      firing: [{ key: 'custom:disk-full', text: 'Disk is full' }],
-      refresh: [
-        { key: 'proposal-pending:PROP-999', status: 'done', text: 'not a pending decision' },
-        { key: 'custom:disk-full', status: 'done', text: 'model key' },
-        { key: 'proposal-pending:PROP-005', status: 'open', text: 'open needs no entry' },
-        { key: 'proposal-pending:PROP-006', status: 'done', text: '   ' },
-        // Only an internal id: scrubbed to nothing, so it would leave an empty item.
-        { key: 'proposal-pending:PROP-006', status: 'done', text: 'PROP-006.' },
-        'garbage',
-      ],
-    }));
-    expect(stdout.heartbeat_result).toBe('alert');
-    expect(stdout.digest_done).toBeUndefined();
-    const digest = stdout.notifications.find((n: string) => n.startsWith('Suppressed alert digest:'));
-    expect(digest).not.toContain('Looks already done');
-    expect(digest).toContain('Add retry logic');
-    expect(digest).toContain('Route by area');
-    expect(state.alerts['proposal-pending:PROP-999']).toBeUndefined();
-
-    // A refresh that is not an array at all degrades to no refresh.
-    seedDecisionDigest(dir);
-    const second = await updateAlertState(dir, JSON.stringify({ firing: [], refresh: { nope: true } }));
-    expect(second.stdout.heartbeat_result).not.toBe('indeterminate');
-    expect(second.stdout.notifications.some((n: string) => n.startsWith('Suppressed alert digest:'))).toBe(true);
-  }));
-
-  test('update-alert-state (a suppressed entry whose source went quiet is not digested, but still stamps the day)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    // No proposals/ dir → the key stops firing → hysteresis keeps the row one
-    // more tick. Listing it would re-announce a decision already settled; not
-    // stamping the day would leave precheck's digest gate re-firing paid wakes
-    // until the row finally drops.
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'proposal-pending:PROP-005': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'PROP-005 "Add retry logic"', channelText: 'proposal "Add retry logic" awaiting review' } },
-      self_eval: {}, total_ticks: 30, last_digest_date: null,
-    }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.notifications.some((n: string) => n.startsWith('Suppressed alert digest:'))).toBe(false);
-    expect(state.alerts['proposal-pending:PROP-005'].consecutive_clean).toBe(1);
-    expect(state.last_digest_date).toBe('2026-07-10');
-  }));
-
-  test('update-alert-state (digest gate uses configured timezone, not UTC, across the midnight boundary)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'Pacific/Kiritimati' })); // UTC+14 — already "tomorrow" at UTC 12:00
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'checklist:zzz99999': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'noisy' } },
-      self_eval: {}, total_ticks: 30, last_digest_date: '2026-07-11', // already "today" in +14, would wrongly re-fire under UTC's 2026-07-10
-    }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.notifications).toEqual([]); // no repeat digest — tz-local today already matches last_digest_date
-    expect(state.last_digest_date).toBe('2026-07-11');
-  }));
-
-  test('update-alert-state (structured sixth-fire suppression notification names the alert id-free)', withDir(async (dir) => {
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-x-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Add retry logic\n---\nbody\n');
-    // count:5 → the derived proposal-pending re-fires this tick → count:6 = suppression transition.
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: { 'proposal-pending:PROP-005': { count: 5, consecutive_clean: 0, suppressed: false, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'PROP-005 "Add retry logic"', channelText: 'proposal "Add retry logic" awaiting review' } },
-      self_eval: {}, total_ticks: 20, last_digest_date: '2026-07-10', // digest already sent today — isolate the suppression notification
-    }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(state.alerts['proposal-pending:PROP-005']).toMatchObject({ count: 6, suppressed: true });
-    expect(stdout.notifications.length).toBe(1);
-    expect(stdout.notifications[0]).toContain('Add retry logic'); // named, not "above alert"
-    expect(stdout.notifications.join('\n')).not.toMatch(/PROP-\d+|MP-[\w-]+|\bS-\d+\b/);
-  }));
-
-  test('update-alert-state (R3: internal ids embedded in a proposal title / micro question are scrubbed from notifications)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    fs.writeFileSync(hermit(dir, 'proposals', 'PROP-005-x-120000.md'), '---\nid: PROP-005\nstatus: proposed\ntitle: Revert PROP-004 handling\n---\nbody\n');
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-1', status: 'pending', tier: 1, question: 'see S-123 for context — proceed?' }] }));
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: {
-        'proposal-pending:PROP-005': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'x' },
-        'micro-proposal-pending:MP-1': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'x' },
-      },
-      self_eval: {}, total_ticks: 30, last_digest_date: null, // digest due → both suppressed entries surface
-    }));
-    const { stdout } = await updateAlertState(dir, firingPayload([]));
-    const joined = stdout.notifications.join('\n');
-    expect(joined).toContain('Revert'); // the title's descriptive text still reaches the operator
-    expect(joined).not.toMatch(/PROP-\d+|MP-[\w-]+|\bS-\d+\b/); // every embedded id (PROP-004, S-123) scrubbed
-  }));
-
-  test('update-alert-state (R1: corrupt micro-proposals.json with no prior alert still reports ALERT + clears last_clean_eval_at)', withDir(async (dir) => {
-    // frozen is empty (no prior micro alert), so hasFrozen would miss this — the read failure itself is the signal.
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5,"last_clean_eval_at":"2026-06-01T00:00:00.000Z"}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.heartbeat_result).toBe('alert');
-    expect(state.last_clean_eval_at).toBeNull();
-  }));
-
-  test('update-alert-state (R4: an ambiguous structured read blocks the digest even when another suppressed alert is due)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      alerts: {
-        'micro-proposal-pending:MP-1': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'frozen' },
-        'checklist:noisy001': { count: 6, consecutive_clean: 0, suppressed: true, first_seen: '2026-07-01', last_seen: '2026-07-09', text: 'noisy checklist' },
-      },
-      self_eval: {}, total_ticks: 30, last_digest_date: null,
-    }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json'); // ambiguous → freeze micro prefix, structuredReadOk=false
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    // digest suppressed despite the checklist alert being due; the only notification
-    // is the read-failure one (#764), which is precisely not a digest
-    expect(stdout.notifications.filter((n: string) => /digest/i.test(n))).toEqual([]);
-    expect(state.last_digest_date).toBeNull(); // digest clock not advanced on a partial view
-    expect(state.alerts['micro-proposal-pending:MP-1']).toBeDefined(); // frozen entry preserved
-  }));
-
-  test('update-alert-state (#764: a corrupt read notifies once, repeats stay silent until the next day)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
-
-    const first = await updateAlertState(dir, firingPayload([]));
-    expect(first.stdout.notifications).toHaveLength(1);
-    expect(first.stdout.notifications[0]).not.toMatch(/micro-proposals\.json|MP-/); // channel voice: no paths, no ids
-    expect(first.monitoring).toEqual([]); // Frozen session files are not updated.
-    expect(first.state.structured_read_failure_notified_date).toBe('2026-07-10'); // NOW, tz UTC
-
-    const second = await updateAlertState(dir, firingPayload([]));
-    expect(second.stdout.notifications).toEqual([]); // same day — silent
-    expect(second.stdout.heartbeat_result).toBe('alert'); // but still never a false OK
-
-    // A new day re-notifies: the file is still broken and the operator still can't see their queue.
-    write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
-      ...second.state, structured_read_failure_notified_date: '2020-01-01',
-    }));
-    const nextDay = await updateAlertState(dir, firingPayload([]));
-    expect(nextDay.stdout.notifications).toHaveLength(1);
-  }));
-
-  test('update-alert-state (#764: a recovered read clears the stamp, so a same-day re-break notifies again)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
-    const first = await updateAlertState(dir, firingPayload([]));
-    expect(first.state.structured_read_failure_notified_date).toBe('2026-07-10');
-
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [] }));
-    const healthy = await updateAlertState(dir, firingPayload([]));
-    expect(healthy.state.structured_read_failure_notified_date).toBeNull();
-
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{not-json');
-    const again = await updateAlertState(dir, firingPayload([]));
-    expect(again.stdout.notifications).toHaveLength(1); // a new incident, not the old day's silence
-  }));
-
-  test('update-alert-state (#764: a readable file notifies nothing and leaves the stamp alone)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC' }));
-    write(hermit(dir, 'state', 'alert-state.json'), '{"alerts":{},"self_eval":{},"total_ticks":5}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [] }));
-    const { state, stdout } = await updateAlertState(dir, firingPayload([]));
-    expect(stdout.notifications).toEqual([]);
-    expect(stdout.heartbeat_result).toBe('ok');
-    expect(state.structured_read_failure_notified_date).toBeNull();
-  }));
-
 });
-
-// -------------------------------------------------------
-// observations.ts (subprocess — stdin-only typed writer)
-// Replaces append-metrics.ts, whose <arbitrary-path> <arbitrary-json> signature
-// granted more authority than any caller needed. Regression #442 (free-text
-// values with apostrophes must survive shell delivery) is now structural rather
-// than conventional: the label only ever arrives on stdin, so there is no argv
-// mode left to get wrong.
-// -------------------------------------------------------
 
 describe('observations.ts observe', () => {
   async function observe(stateDir: string, source: string, label: string, ...flags: string[]) {
@@ -2406,71 +2080,6 @@ describe('observations.ts observe', () => {
 
 // -------------------------------------------------------
 // proposal.ts resolve-id (subprocess — PROP-id fuzzy resolution)
-// -------------------------------------------------------
-
-describe('proposal resolve-id', () => {
-  function seedProposal(dir: string, filename: string, title: string) {
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    write(hermit(dir, 'proposals', filename), `---\ntitle: ${title}\n---\nbody\n`);
-  }
-  async function resolveProp(dir: string, input: string) {
-    const r = await runProposal(hermit(dir), ['resolve-id', input]);
-    expect(r.exitCode).toBe(0);
-    return JSON.parse(r.stdout);
-  }
-
-  test('resolve-id (legacy exact match)', withDir(async (dir) => {
-    seedProposal(dir, 'PROP-007.md', 'Legacy');
-    expect(await resolveProp(dir, 'prop-7')).toEqual({ status: 'match', file: 'PROP-007.md' });
-  }));
-
-  test('resolve-id (new-format bare-id match)', withDir(async (dir) => {
-    seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    expect(await resolveProp(dir, 'PROP-6')).toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
-  }));
-
-  test('resolve-id (suffix match, lowercase input against lowercase slug)', withDir(async (dir) => {
-    seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    expect(await resolveProp(dir, 'prop-006-capability-brainstorm-103612'))
-      .toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
-  }));
-
-  test('resolve-id (suffix match, timestamp-only input)', withDir(async (dir) => {
-    seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    expect(await resolveProp(dir, 'PROP-006-103612')).toEqual({ status: 'match', file: 'PROP-006-capability-brainstorm-103612.md' });
-  }));
-
-  test('resolve-id (4-digit NNN never collides with 3-digit bare id)', withDir(async (dir) => {
-    // PROP-006 must not match PROP-0061.md once proposal counts cross 1000.
-    seedProposal(dir, 'PROP-0061.md', 'Collision');
-    expect(await resolveProp(dir, 'PROP-6')).toEqual({ status: 'none', reason: 'no_match' });
-  }));
-
-  test('resolve-id (0 matches)', withDir(async (dir) => {
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    expect(await resolveProp(dir, 'PROP-999')).toEqual({ status: 'none', reason: 'no_match' });
-  }));
-
-  test('resolve-id (not a PROP id)', withDir(async (dir) => {
-    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
-    expect(await resolveProp(dir, 'hello')).toEqual({ status: 'none', reason: 'not_a_prop_id' });
-  }));
-
-  test('resolve-id (2+ matches: ambiguous carries file + title)', withDir(async (dir) => {
-    seedProposal(dir, 'PROP-006-capability-brainstorm-103612.md', 'Foo');
-    seedProposal(dir, 'PROP-006-something-else-110000.md', 'Bar');
-    expect(await resolveProp(dir, 'PROP-6')).toEqual({
-      status: 'ambiguous',
-      matches: [
-        { file: 'PROP-006-capability-brainstorm-103612.md', title: 'Foo' },
-        { file: 'PROP-006-something-else-110000.md', title: 'Bar' },
-      ],
-    });
-  }));
-});
-
-// -------------------------------------------------------
-// proposal.ts gate (subprocess — gate-verdict parsing + metric append + routing)
 // -------------------------------------------------------
 
 describe('proposal gate', () => {
@@ -2633,401 +2242,6 @@ describe('proposal gate', () => {
 // proposal.ts queue-micro (subprocess — MP-id generation + dedup + queue write)
 // -------------------------------------------------------
 
-describe('proposal queue-micro', () => {
-  function seed(dir: string) {
-    write(hermit(dir, 'config.json'), '{"timezone":"UTC"}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[]}');
-  }
-  async function queue(dir: string, payload: any) {
-    const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify(payload) });
-    expect(r.exitCode).toBe(0);
-    return JSON.parse(r.stdout);
-  }
-  function microFile(dir: string): any {
-    return readJson(hermit(dir, 'state', 'micro-proposals.json'));
-  }
-
-  test('queue-micro (first entry of the day is N=0)', withDir(async (dir) => {
-    seed(dir);
-    const out = await queue(dir, { tier: 1, question: 'For 3 weeks I added the same hashtags. Automate it? Yes / No' });
-    expect(out.status).toBe('queued');
-    expect(out.id).toMatch(/^MP-\d{8}-0$/);
-    const micro = microFile(dir);
-    expect(micro.pending).toHaveLength(1);
-    expect(micro.pending[0]).toMatchObject({ tier: 1, status: 'pending', follow_up_count: 0 });
-  }));
-
-  test('queue-micro records the asking chat, else the home chat', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC',
-      channels: { telegram: { enabled: true, default_chat_id: '77' } } }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[]}');
-    await queue(dir, { tier: 1, question: 'Asked in a group', chat: 'discord:42' });
-    await queue(dir, { tier: 1, question: 'Asked unattended' });
-    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:42', 'telegram:77']);
-    const again = await queue(dir, { tier: 1, question: 'Asked in a group', chat: 'discord:43' });
-    expect(again.status).toBe('duplicate');
-    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:43', 'telegram:77']);
-    const bad =await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', chat: 'nokey' }) });
-    expect(bad.exitCode).toBe(1);
-    expect(JSON.parse(bad.stdout)).toEqual({ error: 'invalid_input' });
-  }));
-
-  test('micro stamp-chat gives unstamped pending entries the home chat once', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC',
-      channels: { discord: { enabled: true, default_chat_id: '5' } } }));
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [
-      { id: 'MP-a', status: 'pending', tier: 1, question: 'A' },
-      { id: 'MP-b', status: 'pending', tier: 1, question: 'B', chat: 'telegram:9' },
-      { id: 'MP-c', status: 'answered', tier: 1, question: 'C' },
-    ] }));
-    const first = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
-    expect(JSON.parse(first.stdout)).toEqual({ status: 'stamped', stamped: 1 });
-    expect(microFile(dir).pending.map((e: any) => e.chat)).toEqual(['discord:5', 'telegram:9', undefined]);
-    const again = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
-    expect(JSON.parse(again.stdout)).toEqual({ status: 'stamped', stamped: 0 });
-  }));
-
-  test('micro stamp-chat skips when no channel can be home', withDir(async (dir) => {
-    seed(dir);
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-a', status: 'pending', tier: 1, question: 'A' }] }));
-    const r = await runProposal(hermit(dir), ['micro', 'stamp-chat']);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'no_home_chat' });
-  }));
-
-  test('queue-micro (N increments within the same day)', withDir(async (dir) => {
-    seed(dir);
-    const out1 = await queue(dir, { tier: 1, question: 'Question A' });
-    const out2 = await queue(dir, { tier: 2, question: 'Question B' });
-    const n1 = parseInt(out1.id.split('-').pop()!, 10);
-    const n2 = parseInt(out2.id.split('-').pop()!, 10);
-    expect(n2).toBe(n1 + 1);
-  }));
-
-  test('queue-micro (dedup by exact question match)', withDir(async (dir) => {
-    seed(dir);
-    const out1 = await queue(dir, { tier: 1, question: 'Same question here' });
-    const out2 = await queue(dir, { tier: 1, question: 'Same question here' });
-    expect(out2).toEqual({ status: 'duplicate', id: out1.id });
-    expect(microFile(dir).pending).toHaveLength(1);
-  }));
-
-  const keyedAsk = { tier: 1, options: ['Fix them', 'Leave them'], key: 'leftover-check' };
-
-  test('queue-micro (a keyed ask queued again in new words stays one entry with the new question)', withDir(async (dir) => {
-    seed(dir);
-    const first = await queue(dir, { ...keyedAsk, question: 'Old wording' });
-    expect(first.status).toBe('queued');
-    expect(await queue(dir, { ...keyedAsk, question: 'New wording' })).toEqual({ status: 'duplicate', id: first.id });
-    expect(microFile(dir).pending).toEqual([expect.objectContaining({ id: first.id, key: 'leftover-check', question: 'New wording' })]);
-    expect((await queue(dir, { ...keyedAsk, key: 'something-else', question: 'New wording' })).status).toBe('duplicate');
-    expect(microFile(dir).pending[0].key).toBe('leftover-check');
-  }));
-
-  test('queue-micro (match on a keyed entry returns the usual fields only)', withDir(async (dir) => {
-    seed(dir);
-    const keyed = await queue(dir, { ...keyedAsk, question: 'Fix the leftovers?' });
-    const reply = await runProposal(hermit(dir), ['micro', 'match', keyed.id, '--reply', '1']);
-    expect(JSON.parse(reply.stdout)).toEqual({ status: 'match', id: keyed.id, question: 'Fix the leftovers?', answer: 'Fix them', tier: 1, on_resolve: null });
-  }));
-
-  test('queue-micro (user names the requester; a disagreeing repeat leaves it to the admin)', withDir(async (dir) => {
-    seed(dir);
-    const ask = { tier: 1, question: 'Use the short form?', chat: 'discord:1' };
-    const first = await queue(dir, { ...ask, user: 'member' });
-    expect(microFile(dir).pending[0]).toMatchObject({ id: first.id, user: 'member' });
-    expect(await queue(dir, { ...ask, user: 'member' })).toEqual({ status: 'duplicate', id: first.id });
-    expect(microFile(dir).pending[0].user).toBe('member');
-    expect(await queue(dir, { ...ask, user: 'other' })).toEqual({ status: 'duplicate', id: first.id });
-    expect(microFile(dir).pending[0].user).toBeUndefined();
-    await queue(dir, { ...ask, user: 'other' });
-    expect(microFile(dir).pending[0].user).toBeUndefined();
-    for (const user of [7, '']) {
-      const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ ...ask, user }) });
-      expect(r.exitCode).toBe(1);
-      expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
-    }
-  }));
-
-  test('queue-micro (a non-string or empty key -> exit 1)', withDir(async (dir) => {
-    seed(dir);
-    for (const key of [7, '']) {
-      const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'Q', key }) });
-      expect(r.exitCode).toBe(1);
-      expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
-    }
-  }));
-
-  test('queue-micro (a stale non-"pending" row with the same question is not a dedup match)', withDir(async (dir) => {
-    seed(dir);
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({
-      pending: [{ id: 'MP-20260101-0', tier: 1, status: 'accepted', follow_up_count: 0, ts: '2026-01-01T00:00:00Z', question: 'Same question here' }],
-    }));
-    const out = await queue(dir, { tier: 1, question: 'Same question here' });
-    expect(out.status).toBe('queued');
-    expect(microFile(dir).pending).toHaveLength(2);
-  }));
-
-  test('queue-micro (on_resolve forces tier 1 and tags the event kind:ask)', withDir(async (dir) => {
-    seed(dir);
-    await queue(dir, { tier: 3, question: 'Bridged Q?', options: ['a', 'b'], on_resolve: '/skill accept {answer}' });
-    const entry = microFile(dir).pending[0];
-    expect(entry.tier).toBe(1);
-    expect(entry.options).toEqual(['a', 'b']);
-    expect(entry.on_resolve).toBe('/skill accept {answer}');
-    const ledger = fs.readFileSync(hermit(dir, 'state', 'proposal-metrics.jsonl'), 'utf-8').trim().split('\n').map(l => JSON.parse(l));
-    expect(ledger[0]).toMatchObject({ type: 'micro-queued', tier: 1, kind: 'ask' });
-  }));
-
-  test('queue-micro (preserves existing pending entries on write)', withDir(async (dir) => {
-    seed(dir);
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [{ id: 'MP-20260101-0', tier: 1, status: 'pending', follow_up_count: 0, ts: '2026-01-01T00:00:00Z', question: 'Old question' }] }));
-    await queue(dir, { tier: 1, question: 'New question' });
-    const pending = microFile(dir).pending;
-    expect(pending).toHaveLength(2);
-    expect(pending[0].id).toBe('MP-20260101-0');
-  }));
-
-  test('queue-micro (missing question -> exit 1, no write)', withDir(async (dir) => {
-    seed(dir);
-    const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1 }) });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'missing_question' });
-  }));
-
-  test('queue-micro (invalid JSON -> exit 1, no write)', withDir(async (dir) => {
-    seed(dir);
-    const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: 'not-json' });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_input' });
-  }));
-
-  test('queue-micro (corrupt existing file -> exit 1, refuses to overwrite)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"timezone":"UTC"}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[{"id":"MP-1"},]}');
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'New question' }) });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'queue_corrupt' });
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('queue-micro (parseable file with no `pending` key -> heals, other keys preserved)', withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), '{"timezone":"UTC"}');
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"active":null}');
-    const r = await runProposal(hermit(dir), ['queue-micro'], { stdin: JSON.stringify({ tier: 1, question: 'New question' }) });
-    expect(r.exitCode).toBe(0);
-    const micro = readJson(hermit(dir, 'state', 'micro-proposals.json'));
-    expect(micro.pending).toHaveLength(1);
-    expect(micro).toHaveProperty('active', null);
-  }));
-});
-
-// -------------------------------------------------------
-// proposal.ts micro (subprocess: resolve, issue 649 regression)
-// -------------------------------------------------------
-
-describe('proposal micro', () => {
-  function seed(dir: string, pending: any[]) {
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending }));
-  }
-  function microFile(dir: string): any {
-    return readJson(hermit(dir, 'state', 'micro-proposals.json'));
-  }
-  function ledger(dir: string): any[] {
-    return fs.readFileSync(hermit(dir, 'state', 'proposal-metrics.jsonl'), 'utf-8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
-  }
-  const entryA = { id: 'MP-20260101-0', tier: 1, status: 'pending', follow_up_count: 0, ts: '2026-01-01T00:00:00Z', question: 'Question A?' };
-  const entryB = { id: 'MP-20260101-1', tier: 1, status: 'pending', follow_up_count: 0, ts: '2026-01-01T00:00:01Z', question: 'Question B?' };
-
-  test('resolve (issue 649 regression: file stays parseable and holds the surviving entry after removal)', withDir(async (dir) => {
-    seed(dir, [entryA, entryB]);
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', entryA.id, '--action', 'approved']);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'resolved', id: entryA.id, action: 'approved' });
-    const raw = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    expect(() => JSON.parse(raw)).not.toThrow();
-    const micro = JSON.parse(raw);
-    expect(micro.pending).toHaveLength(1);
-    expect(micro.pending[0].id).toBe(entryB.id);
-  }));
-
-  test('resolve on a corrupt file -> exit 1, file byte-unchanged', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[{"id":"MP-1"},]}');
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', 'MP-1', '--action', 'approved']);
-    expect(r.exitCode).toBe(1);
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('resolve unknown id -> no_match, exit 0, no write', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', 'MP-does-not-exist', '--action', 'approved']);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_match' });
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('resolve --action answered --answer emits the ledger event shape', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', entryA.id, '--action', 'answered', '--answer', 'session task']);
-    expect(r.exitCode).toBe(0);
-    const events = ledger(dir);
-    expect(events[0]).toMatchObject({ type: 'micro-resolved', micro_id: entryA.id, action: 'answered', answer: 'session task', question: entryA.question });
-  }));
-
-  test('resolve on absent file -> no_match, exit 0', withDir(async (dir) => {
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', 'MP-anything', '--action', 'approved']);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ status: 'none', reason: 'no_match' });
-  }));
-
-  test('resolve with missing --action -> exit 1, file unchanged', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', entryA.id]);
-    expect(r.exitCode).toBe(1);
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('resolve with the <MP-id> omitted -> exit 1, never a silent no_match', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', '--action', 'approved']);
-    expect(r.exitCode).toBe(1);
-    expect(r.stdout).not.toContain('no_match');
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('unknown verb -> exit 1 even when the file is absent', withDir(async (dir) => {
-    const r = await runProposal(hermit(dir), ['micro', 'expire', 'MP-20260101-0']);
-    expect(r.exitCode).toBe(1);
-    expect(r.stdout).not.toContain('no_match');
-  }));
-
-  test('resolve with invalid --action -> exit 1, file unchanged', withDir(async (dir) => {
-    seed(dir, [entryA]);
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'resolve', entryA.id, '--action', 'bogus']);
-    expect(r.exitCode).toBe(1);
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-
-  test('brief-cycle buckets 0/1/2+ in one pass: verdict + single write + one expiry ledger line', withDir(async (dir) => {
-    const c0 = { id: 'MP-c0', tier: 1, status: 'pending', follow_up_count: 0, question: 'q0', options: ['a', 'b'] };
-    const c1 = { id: 'MP-c1', tier: 1, status: 'pending', follow_up_count: 1, question: 'q1' };
-    const c2 = { id: 'MP-c2', tier: 1, status: 'pending', follow_up_count: 2, question: 'q2' };
-    seed(dir, [c0, c1, c2]);
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    const verdict = JSON.parse(r.stdout.trim());
-    // `tier` is carried through — the brief renders "(tier N)" from the verdict alone.
-    expect(verdict.new).toEqual([{ id: 'MP-c0', tier: 1, question: 'q0', options: ['a', 'b'] }]);
-    expect(verdict.renudged).toEqual([{ id: 'MP-c1', tier: 1, question: 'q1', follow_up_count: 2 }]);
-    expect(verdict.expired).toEqual([{ id: 'MP-c2', question: 'q2' }]);
-    expect(verdict.dropped).toEqual([]);
-    // Queue: c0 bumped to 1 (issue 676 — first display now ages the entry), c1 bumped to 2, c2 removed.
-    const pending = microFile(dir).pending;
-    expect(pending.map((e: any) => e.id)).toEqual(['MP-c0', 'MP-c1']);
-    expect(pending.find((e: any) => e.id === 'MP-c0').follow_up_count).toBe(1);
-    expect(pending.find((e: any) => e.id === 'MP-c1').follow_up_count).toBe(2);
-    const events = ledger(dir);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'micro-resolved', micro_id: 'MP-c2', action: 'expired', question: 'q2' });
-  }));
-
-  test('brief-cycle lists only home-chat entries but ages every entry', withDir(async (dir) => {
-    const home = { id: 'MP-home', tier: 1, status: 'pending', follow_up_count: 0, question: 'qh', chat: 'discord:5' };
-    const group = { id: 'MP-group', tier: 1, status: 'pending', follow_up_count: 1, question: 'qg', chat: 'discord:9' };
-    seed(dir, [home, group]);
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: { discord: { enabled: true, default_chat_id: '5' } } }));
-    const verdict = JSON.parse((await runProposal(hermit(dir), ['micro', 'brief-cycle'])).stdout.trim());
-    expect(verdict.new.map((e: any) => e.id)).toEqual(['MP-home']);
-    expect(verdict.renudged).toEqual([]);
-    expect(microFile(dir).pending.find((e: any) => e.id === 'MP-group').follow_up_count).toBe(2);
-  }));
-
-  test('heartbeat pending-decision keys skip entries asked outside the home chat', withDir(async (dir) => {
-    const { deriveMicroPendingKeys } = await import('../scripts/lib/alert-state');
-    seed(dir, [
-      { id: 'MP-home', tier: 1, status: 'pending', question: 'qh', chat: 'discord:5' },
-      { id: 'MP-group', tier: 1, status: 'pending', question: 'qg', chat: 'discord:9' },
-      { id: 'MP-old', tier: 1, status: 'pending', question: 'qo' },
-    ]);
-    write(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: { discord: { enabled: true, default_chat_id: '5' } } }));
-    const out = deriveMicroPendingKeys(hermit(dir));
-    expect(out.items.map(i => i.key)).toEqual(['micro-proposal-pending:MP-home', 'micro-proposal-pending:MP-old']);
-  }));
-
-  test('brief-cycle on an all-count-0 queue bumps every entry to 1, no ledger', withDir(async (dir) => {
-    seed(dir, [entryA, entryB]);
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    const verdict = JSON.parse(r.stdout.trim());
-    expect(verdict.new).toHaveLength(2);
-    expect(verdict.renudged).toEqual([]);
-    expect(verdict.expired).toEqual([]);
-    expect(verdict.dropped).toEqual([]);
-    const pending = microFile(dir).pending;
-    expect(pending.map((e: any) => e.follow_up_count)).toEqual([1, 1]);
-    expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
-  }));
-
-  test('brief-cycle prunes entries whose status is not "pending", no ledger event, id reported in dropped', withDir(async (dir) => {
-    const resolved = { id: 'MP-r0', tier: 1, status: 'accepted', follow_up_count: 0, question: 'already resolved elsewhere' };
-    seed(dir, [entryA, resolved]);
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    const verdict = JSON.parse(r.stdout.trim());
-    expect(verdict.new).toEqual([{ id: entryA.id, tier: entryA.tier, question: entryA.question, options: undefined }]);
-    expect(verdict.dropped).toEqual(['MP-r0']);
-    const pending = microFile(dir).pending;
-    expect(pending.map((e: any) => e.id)).toEqual([entryA.id]);
-    expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
-  }));
-
-  test('brief-cycle on a queue of only stale-status rows prunes all of them, still writes, no ledger', withDir(async (dir) => {
-    const resolved = { id: 'MP-r0', tier: 1, status: 'resolved', follow_up_count: 0, question: 'stale' };
-    seed(dir, [resolved]);
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    const verdict = JSON.parse(r.stdout.trim());
-    expect(verdict).toEqual({ new: [], renudged: [], expired: [], dropped: ['MP-r0'] });
-    expect(microFile(dir).pending).toEqual([]);
-    expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
-  }));
-
-  test('brief-cycle survives a hand-edited null element instead of throwing', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'micro-proposals.json'), JSON.stringify({ pending: [null, entryA] }));
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    const verdict = JSON.parse(r.stdout.trim());
-    expect(verdict.new).toHaveLength(1);
-    expect(verdict.dropped).toEqual([null]);
-    expect(microFile(dir).pending.map((e: any) => e.id)).toEqual([entryA.id]);
-  }));
-
-  test('brief-cycle on an absent file -> empty verdict, exit 0, no write', withDir(async (dir) => {
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.trim())).toEqual({ new: [], renudged: [], expired: [], dropped: [] });
-    expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
-  }));
-
-  test('brief-cycle on a corrupt file -> exit 1, file byte-unchanged', withDir(async (dir) => {
-    write(hermit(dir, 'state', 'micro-proposals.json'), '{"pending":[{"id":"MP-1"},]}');
-    const before = fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8');
-    const r = await runProposal(hermit(dir), ['micro', 'brief-cycle']);
-    expect(r.exitCode).toBe(1);
-    expect(fs.readFileSync(hermit(dir, 'state', 'micro-proposals.json'), 'utf-8')).toBe(before);
-  }));
-});
-
-// -------------------------------------------------------
-// update-reflection-state.ts (subprocess — argv + file-write CLI contract)
-// -------------------------------------------------------
-
 describe('update-reflection-state', () => {
   /** Run the script against the workdir's state file and return the resulting JSON. */
   async function updateState(dir: string, payload: string) {
@@ -3070,10 +2284,10 @@ describe('update-reflection-state', () => {
     write(hermit(dir, 'state', 'reflection-state.json'),
       '{"last_reflection":"2026-04-01T00:00:00Z"}');
     const d = await updateState(dir,
-      '{"ran_with_candidates":true,"micro_proposals_queued":1}');
+      '{"ran_with_candidates":true,"proposals_created":1}');
     const c = d.counters;
     expect(c.total_runs).toBe(1);
-    expect(c.micro_proposals_queued).toBe(1);
+    expect(c.proposals_created).toBe(1);
     expect(c.last_output_at).not.toBeNull();
     expect(c).toHaveProperty('since');
   }));
@@ -3085,13 +2299,12 @@ describe('update-reflection-state', () => {
   }));
 
   // 11. last_sparse_nudge — new entry is merged, existing entries preserved
-  test('update-reflection-state (last_sparse_nudge merge)', withDir(async (dir) => {
+  test('update-reflection-state removes obsolete last_sparse_nudge', withDir(async (dir) => {
     write(hermit(dir, 'state', 'reflection-state.json'),
       '{"last_sparse_nudge":{"PROP-001":"2026-04-01T00:00:00Z"},"counters":{"total_runs":1}}');
     const d = await updateState(dir,
       '{"ran_with_candidates":false,"last_sparse_nudge":{"PROP-002":"2026-04-22T00:00:00Z"}}');
-    expect(d.last_sparse_nudge['PROP-001']).toBe('2026-04-01T00:00:00Z');
-    expect(d.last_sparse_nudge['PROP-002']).toBe('2026-04-22T00:00:00Z');
+    expect(d).not.toHaveProperty('last_sparse_nudge');
   }));
 
   // 11a. judge_suppress_by_code — first run initializes map and accumulates codes
@@ -3187,9 +2400,10 @@ describe('heartbeat-precheck', () => {
   // 16. EVALUATE — pending tier-1 micro-proposal
   test('heartbeat-precheck (EVALUATE: tier-1 micro-proposal pending)', withDir(async (dir) => {
     seedHeartbeat(dir, {
-      micro: '{"pending":[{"id":"MP-001","tier":1,"status":"pending","question":"Do X?"}]}',
+      micro: '{"pending":[]}',
       checklist: DEFAULT_CHECKLIST,
     });
+    mutateTask(hermit(dir), 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Question', done: 'Answered' }, '');
     expect(await precheckOut(dir)).toBe('EVALUATE');
   }));
 
@@ -3418,12 +2632,12 @@ describe('heartbeat-precheck (damper: clean-recheck cooldown)', () => {
   // PROP-NNN), so the count===6 suppression transition is the operator's FIRST notice that a
   // decision is waiting. Damping the five ticks in between would move that notice from ~5
   // ticks out to ~5 cooldown windows (>24h on the shipped 30m/6h defaults).
-  test('heartbeat-precheck (EVALUATE: unsuppressed proposal-pending alert overrides damper)', withDir(async (dir) => {
+  test('heartbeat-precheck (OK: an old alert cannot bypass the delivery budget)', withDir(async (dir) => {
     seedDamper(dir, {
       nowIso: NOW_ISO, cleanAgoMs: 1 * 3600000, cooldown: '6h',
-      alerts: { 'proposal-pending:PROP-042': { count: 2, suppressed: false, consecutive_clean: 0 } },
+      alerts: { 'decision-pending:PROP-042': { count: 2, suppressed: false, consecutive_clean: 0 } },
     });
-    expect(await precheckWithNow(dir, NOW_ISO)).toBe('EVALUATE');
+    expect(await precheckWithNow(dir, NOW_ISO)).toBe('OK');
   }));
 
   // …and it self-limits: once the ladder suppresses the entry the bypass stops, so a
@@ -3431,7 +2645,7 @@ describe('heartbeat-precheck (damper: clean-recheck cooldown)', () => {
   test('heartbeat-precheck (OK: suppressed proposal-pending alert stops bypassing the damper)', withDir(async (dir) => {
     seedDamper(dir, {
       nowIso: NOW_ISO, cleanAgoMs: 1 * 3600000, cooldown: '6h',
-      alerts: { 'proposal-pending:PROP-042': { count: 6, suppressed: true, consecutive_clean: 0 } },
+      alerts: { 'decision-pending:PROP-042': { count: 6, suppressed: true, consecutive_clean: 0 } },
       // Digest already sent today, so the suppressed-digest gate above the damper stays
       // quiet. precheck's digest gate reads the real wall-clock day (todayYMD takes no
       // HERMIT_NOW override), so stamp that day, not NOW_ISO's.
@@ -3981,7 +3195,7 @@ describe('reflect-precheck', () => {
   }));
 
   // 24. RUN — resolution_check due (accepted proposal + last_resolution_check > 7 days)
-  test('reflect-precheck (RUN: resolution_check due)', withDir(async (dir) => {
+  test('reflect-precheck ignores obsolete resolution_check', withDir(async (dir) => {
     const today = isoSec(new Date());
     seedReflect(dir, {
       counters: { total_runs: 5, empty_runs: 2, last_run_at: today, since: since30() },
@@ -3990,11 +3204,11 @@ describe('reflect-precheck', () => {
     write(hermit(dir, 'proposals', 'PROP-001.md'),
       '---\nstatus: accepted\naccepted_date: 2026-04-01\ntitle: Test\n---\nBody\n');
     const r = await runReflectPrecheck(dir);
-    expect(r.stdout).toContain('resolution_check');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'empty' });
   }));
 
   // 24b. RUN — resolution_check due via new-format proposal filename (PROP-NNN-slug-HHMMSS.md)
-  test('reflect-precheck (RUN: resolution_check due — new-format proposal filename)', withDir(async (dir) => {
+  test('reflect-precheck ignores accepted legacy proposal files', withDir(async (dir) => {
     const today = isoSec(new Date());
     seedReflect(dir, {
       counters: { total_runs: 5, empty_runs: 2, last_run_at: today, since: since30() },
@@ -4003,7 +3217,7 @@ describe('reflect-precheck', () => {
     write(hermit(dir, 'proposals', 'PROP-002-test-new-format-103612.md'),
       '---\nid: PROP-002-test-new-format-103612\nstatus: accepted\naccepted_date: 2026-04-01\ntitle: Test new format\n---\nBody\n');
     const r = await runReflectPrecheck(dir);
-    expect(r.stdout).toContain('resolution_check');
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'empty' });
   }));
 
   // 25. RUN: compute activity from a new task result
@@ -5401,11 +4615,11 @@ describe('search', () => {
       wd = setupWorkdir();
       const dir = wd.dir;
       fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
-      fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
+      fs.mkdirSync(hermit(dir, 'proposals', 'archive'), { recursive: true });
       write(hermit(dir, 'config.json'), '{}');
       write(hermit(dir, 'sessions', 'S-001-REPORT.md'),
         '---\nid: S-001\ndate: 2026-05-01T00:00:00+00:00\ntask: Set up deployment pipeline\n---\n## Completed\n- Configured deployment pipeline for staging.');
-      write(hermit(dir, 'proposals', 'PROP-001-deploy-check-120000.md'),
+      write(hermit(dir, 'proposals', 'archive', 'PROP-001-deploy-check-120000.md'),
         '---\nid: PROP-001\ntitle: Add deployment health check\nstatus: proposed\ndate: 2026-05-02T00:00:00+00:00\n---\nProposal: add a deployment health check.\n');
       out = await runSearch(dir, 'deployment');
     });
@@ -6165,103 +5379,6 @@ describe('session-check config validation', () => {
   });
 });
 
-
-describe('proposal micro match is read-only', () => {
-  const plain = { id: 'MP-plain', status: 'pending', tier: 1, question: 'Proceed?' };
-  const choices = { id: 'MP-options', status: 'pending', tier: 2, question: 'When should we ship?',
-    options: ['Ship now', 'Ship later', 'Cancel'], on_resolve: '/example {answer}' };
-  const match = (id: string, answer: string, tier: number, on_resolve: string | null) =>
-    ({ status: 'match', id, question: id === plain.id ? plain.question : choices.question, answer, tier, on_resolve });
-  const ambiguous = (reason: string, ...choices: [string, string[]][]) =>
-    ({ status: 'ambiguous', reason, choices: choices.map(([id, options]) => ({ id, options })) });
-  const none = (reason: string) => ({ status: 'none', reason });
-  const refused = { status: 'refused', reason: 'not_admin' };
-  const cases: { name: string; config?: object; pending: any[]; args: string[]; output: object }[] = [
-    { name: 'yes case insensitive', pending: [plain], args: ['--reply', 'YES'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'no case insensitive', pending: [plain], args: ['--reply', 'No'], output: match('MP-plain', 'no', 1, null) },
-    { name: 'explicit id', pending: [plain], args: ['MP-plain', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'unknown id', pending: [plain], args: ['MP-other', '--reply', 'yes'], output: none('no_match') },
-    { name: 'unknown answer', pending: [plain], args: ['--reply', 'perhaps'], output: none('no_match') },
-    { name: 'number', pending: [choices], args: ['--reply', '2'], output: match('MP-options', 'Ship later', 2, '/example {answer}') },
-    { name: 'id and number', pending: [choices], args: ['MP-options', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
-    { name: 'unique label prefix', pending: [choices], args: ['--reply', 'cAn'], output: match('MP-options', 'Cancel', 2, '/example {answer}') },
-    { name: 'full label', pending: [choices], args: ['--reply', 'ship NOW'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
-    { name: 'multi-label prefix', pending: [choices], args: ['--reply', 'ship'], output: ambiguous('multiple_labels', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'number too large', pending: [choices], args: ['--reply', '4'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'zero', pending: [choices], args: ['--reply', '0'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'negative number', pending: [choices], args: ['--reply', '-1'], output: ambiguous('number_out_of_range', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'yes against options', pending: [choices], args: ['--reply', 'yes'], output: ambiguous('options_require_choice', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'no against options', pending: [choices], args: ['--reply', 'NO'], output: ambiguous('options_require_choice', ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'no matching label', pending: [choices], args: ['--reply', 'unrelated'], output: none('no_match') },
-    { name: 'several without id', pending: [plain, choices], args: ['--reply', '2'], output: ambiguous('multiple_pending', ['MP-plain', ['yes', 'no']], ['MP-options', ['Ship now', 'Ship later', 'Cancel']]) },
-    { name: 'several with id', pending: [plain, choices], args: ['MP-options', '--reply', '3'], output: match('MP-options', 'Cancel', 2, '/example {answer}') },
-    { name: 'none pending', pending: [], args: ['--reply', 'yes'], output: none('no_pending') },
-    { name: 'resolved rows ignored', pending: [{ ...choices, status: 'answered' }, null, plain], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'only resolved rows', pending: [{ ...plain, status: 'approved' }], args: ['--reply', 'yes'], output: none('no_pending') },
-    { name: 'asking chat matches', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'member cannot answer the admin question', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
-    { name: 'unknown sender in a chat is not admin', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--reply', 'yes'], output: refused },
-    { name: 'requester answers their own question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'admin answers a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'admin', '--reply', 'no'], output: match('MP-plain', 'no', 1, null) },
-    { name: 'another member cannot answer a requester question', pending: [{ ...plain, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'other', '--reply', 'yes'], output: refused },
-    { name: 'member sees only their own question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
-    { name: 'member names the admin question', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:1', user: 'member' }], args: ['MP-plain', '--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
-    { name: 'listed operator is primary', config: { channels: { discord: { operators: ['lead'], allowed_users: ['admin', 'lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'lead', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'no named people keeps any sender answering', config: { operator_profile: 'non-technical', channels: { discord: { default_chat_id: '1' } } }, pending: [{ ...plain, chat: 'discord:1~5' }], args: ['--chat', 'discord:1~5', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'empty lists name nobody to check', config: { channels: { discord: { operators: [], allowed_users: [] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'anyone', '--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-    { name: 'operators alone name the admin', config: { channels: { discord: { operators: ['lead'] } } }, pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'discord:1', '--user', 'member', '--reply', 'yes'], output: refused },
-    { name: 'other chat sees nothing', pending: [{ ...plain, chat: 'discord:1' }], args: ['--chat', 'telegram:9', '--reply', 'yes'], output: none('no_pending') },
-    { name: 'unstamped entry hidden from a chat', pending: [plain], args: ['--chat', 'discord:1', '--reply', 'yes'], output: none('no_pending') },
-    { name: 'explicit id from another chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['MP-plain', '--chat', 'discord:2', '--reply', 'yes'], output: none('no_pending') },
-    { name: 'ambiguity only within the chat', pending: [{ ...plain, chat: 'discord:1' }, { ...choices, chat: 'discord:2' }], args: ['--chat', 'discord:2', '--user', 'admin', '--reply', '1'], output: match('MP-options', 'Ship now', 2, '/example {answer}') },
-    { name: 'terminal sees every chat', pending: [{ ...plain, chat: 'discord:1' }], args: ['--reply', 'yes'], output: match('MP-plain', 'yes', 1, null) },
-  ];
-  const defaultConfig = { channels: { discord: { allowed_users: ['admin', 'member', 'other'] } } };
-  for (const item of cases) test(item.name, withDir(async (dir) => {
-    write(hermit(dir, 'config.json'), JSON.stringify(item.config ?? defaultConfig));
-    const file = hermit(dir, 'state', 'micro-proposals.json');
-    const ledger = hermit(dir, 'state', 'proposal-metrics.jsonl');
-    const before = JSON.stringify({ pending: item.pending });
-    write(file, before);
-    write(ledger, '{"prior":true}\n');
-    const beforeStat = fs.statSync(file);
-    const result = await runProposal(hermit(dir), ['micro', 'match', ...item.args]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(JSON.stringify(item.output) + '\n');
-    expect(result.stderr).toBe('');
-    expect(fs.readFileSync(file, 'utf8')).toBe(before);
-    expect(fs.statSync(file).mtimeMs).toBe(beforeStat.mtimeMs);
-    expect(fs.statSync(file).ino).toBe(beforeStat.ino);
-    expect(fs.readFileSync(ledger, 'utf8')).toBe('{"prior":true}\n');
-  }));
-
-  test('missing file stays missing', withDir(async (dir) => {
-    const result = await runProposal(hermit(dir), ['micro', 'match', '--reply', 'yes']);
-    expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ status: 'none', reason: 'no_pending' });
-    expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
-    expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
-  }));
-
-  test('corrupt file fails loud without writes', withDir(async (dir) => {
-    const file = hermit(dir, 'state', 'micro-proposals.json');
-    write(file, '{broken');
-    const result = await runProposal(hermit(dir), ['micro', 'match', '--reply', 'yes']);
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toEqual({ error: 'queue_corrupt' });
-    expect(fs.readFileSync(file, 'utf8')).toBe('{broken');
-    expect(fs.existsSync(hermit(dir, 'state', 'proposal-metrics.jsonl'))).toBe(false);
-  }));
-
-  for (const args of [[], ['MP-plain'], ['--reply'], ['--bogus', 'yes'], ['MP-plain', '--reply', 'yes', 'extra'], ['--chat', 'discord:1'], ['--chat', 'nochat', '--reply', 'yes'], ['--chat', 'a:1', '--chat', 'b:2', '--reply', 'yes'], ['--user', 'admin', '--reply', 'yes'], ['--chat', 'a:1', '--user', 'x', '--user', 'y', '--reply', 'yes']]) {
-    test(`rejects malformed match args ${JSON.stringify(args)}`, withDir(async (dir) => {
-      const result = await runProposal(hermit(dir), ['micro', 'match', ...args]);
-      expect(result.exitCode).toBe(1);
-      expect(JSON.parse(result.stdout)).toEqual({ error: 'usage' });
-      expect(fs.existsSync(hermit(dir, 'state', 'micro-proposals.json'))).toBe(false);
-    }));
-  }
-});
 
 describe('hermitd-docker restart browser build argument', () => {
   for (const enabled of [false, true]) {

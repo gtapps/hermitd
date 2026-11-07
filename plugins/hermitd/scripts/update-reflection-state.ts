@@ -155,11 +155,10 @@ c.judge_downgrade = intOf(c.judge_downgrade);
 c.judge_suppress = intOf(c.judge_suppress);
 if (!c.judge_suppress_by_code || typeof c.judge_suppress_by_code !== 'object') c.judge_suppress_by_code = {};
 c.proposals_created = intOf(c.proposals_created);
-c.micro_proposals_queued = intOf(c.micro_proposals_queued);
+delete c.micro_proposals_queued;
 
 const ranWithCandidates = !!payload.ran_with_candidates;
 const proposalsCreated = intOf(payload.proposals_created);
-const microQueued = intOf(payload.micro_proposals_queued);
 
 c.total_runs += 1;
 c.last_run_at = now;
@@ -174,8 +173,7 @@ if (payload.judge_suppress_by_code && typeof payload.judge_suppress_by_code === 
   }
 }
 c.proposals_created += proposalsCreated;
-c.micro_proposals_queued += microQueued;
-c.last_output_at = (proposalsCreated + microQueued > 0) ? now : (c.last_output_at ?? null);
+c.last_output_at = (proposalsCreated > 0) ? now : (c.last_output_at ?? null);
 
 const judgeRun = {
   at: now,
@@ -237,18 +235,14 @@ if (!('since' in c)) c.since = null;
 
 const preserve = (key: string) => (key in payload) ? payload[key] : (state[key] ?? null);
 
-// Merge last_sparse_nudge map: payload may carry new PROP-NNN → ISO entries.
-const existingNudge = (state.last_sparse_nudge && typeof state.last_sparse_nudge === 'object') ? state.last_sparse_nudge : {};
-const payloadNudge = (payload.last_sparse_nudge && typeof payload.last_sparse_nudge === 'object') ? payload.last_sparse_nudge : {};
-const mergedNudge = { ...existingNudge, ...payloadNudge };
+delete state.last_sparse_nudge;
+delete state.last_resolution_check;
 
 const updated = {
   ...state,
   last_reflection: now,
-  last_resolution_check: preserve('last_resolution_check'),
   last_digest_at: preserve('last_digest_at'),
   last_behavior_digest_at: preserve('last_behavior_digest_at'),
-  last_sparse_nudge: Object.keys(mergedNudge).length > 0 ? mergedNudge : null,
   counters: c,
 };
 

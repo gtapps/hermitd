@@ -8,7 +8,7 @@ case this file's claude.ai-specific mechanics (tool-call shape, `force`, entitle
 TUI-only reachability) are replaced by that server's own protocol — see § Non-claude
 backend deviations. Gated per artifact type under `config.artifacts.*` (default **on** — the
 plugin's research-preview feature-defaults rule, except the weekly-review page, which is off; toggle a single page via
-`/hermit-settings artifact-dashboard|artifact-proposals|artifact-weekly-review`, or
+`/hermit-settings artifact-dashboard|artifact-weekly-review`, or
 disable Artifacts entirely via Claude Code's own `disableArtifact`,
 `CLAUDE_CODE_DISABLE_ARTIFACT`, or `permissions.deny`). Only reachable from the
 interactive TUI session (`hermitd-start`'s surface); absent under `claude -p`.
@@ -43,7 +43,7 @@ native `Artifact` tool, and the five steps below apply unchanged. Any other valu
 take the § Non-claude backend deviations after step 2, which defers entirely to that
 server's own MCP `instructions`.
 
-Every script-rendered artifact type (dashboard, proposals page, weekly review) follows
+Every script-rendered artifact type (dashboard and weekly review) follows
 the same five steps; only the render script, `<title>`, and `state/artifacts.json` key
 differ per type (called out in each subsection below):
 
@@ -125,12 +125,12 @@ latest brief, proposal queue, weekly evolution, and a compiled-docs index — re
 `state/last-brief.json` — see the file's header comment). `<title>` and the `<h1>` are
 both `<agent_name> — Dashboard` (`agent_name` falls back to `Hermit`), so a fleet
 operator can tell two hermits' tabs apart. The weekly and alert sections are omitted
-rather than rendered empty; pending-proposal alerts are left to the proposals card,
+rather than rendered empty; pending decisions are shown in the waiting section,
 which owns that surface, and still count in the "Needs you" tile.
 
 Refresh triggers: `brief` (`--morning`/`--evening`), `weekly-review`, `proposal-create`,
-`proposal-act`. `brief` and `weekly-review` append a `📎 <url>` line to their channel
-message when a URL is returned; `proposal-create`/`proposal-act` refresh silently — no
+the task apply procedure. `brief` and `weekly-review` append a `📎 <url>` line to their channel
+message when a URL is returned; proposal creation and task application refresh silently — no
 URL re-post.
 
 See `docs/config-reference.md#artifacts` for the config flag and privacy/entitlement
@@ -163,50 +163,14 @@ version-stamped cache path) lives in the skill that writes it, not in a core gat
 renderer composes from: `{state, theme_css, core_sections, updated_token}` — the same
 `DashboardState` the built-in page renders from, the live `artifact-theme.ts` stylesheet
 (so core theme fixes reach custom pages without regenerating them), the default cards
-as ready-to-embed HTML keyed `status`, `by_person`, `brief`, `proposals`, `weekly` and
+as ready-to-embed HTML keyed `status`, `by_person`, `brief`, `waiting`, `weekly` and
 `compiled_index`, and the hash placeholder. Every key in the payload, nested state
-included, is snake_case (`state.today_cost_usd`, `state.proposals.oldest_open_accepted`,
+included, is snake_case (`state.today_cost_usd`, `state.waiting.oldest_open_accepted`,
 `state.weekly.body_html`). A custom page may use all of it, some of it, or none.
-
-## Proposals page
-
-`config.artifacts.proposals`, state key `proposals`. Every open (`proposed`/`accepted`)
-proposal renders as a collapsed-by-default `<details class="proposal" id="prop-nnn">`
-(lowercased `PROP-NNN` prefix as the `id`) — a one-line summary (status
-chip, id, title, created-date) that expands to the full body on click, the same pattern
-the dashboard already uses for its proposals card. A heading above the list shows the open
-count (e.g. "3 Open"); deferred/resolved/dismissed proposals stay one-line history entries
-— the same "other" bucket the dashboard already computes. Rendered by
-`scripts/lib/proposals-page.ts` (reuses the dashboard's proposal loader, markdown
-converter, and CSS — no CSS changes were needed since `.proposal`/`.proposal-body` already
-existed for the dashboard's own `<details>`). `<title>` is `<agent_name> — Proposals`,
-matching the dashboard's tab convention. Deliberately
-omits proposal age-in-days (unlike the dashboard) — age is `Date.now()`-derived and would
-otherwise mint a new artifact version once a day even with zero activity; created-date
-is shown instead, keeping the hash purely activity-driven (the open count is likewise
-activity-driven, not date-driven, so it doesn't reintroduce that churn).
-
-The `id` is inert as a deep link, though: the claude.ai artifact viewer renders the page
-inside a sandboxed cross-origin iframe whose `src` carries no fragment — confirmed by
-navigating a published proposals page with `#prop-nnn` appended, where the top-level
-document held zero `prop-*` anchors and the iframe never received the fragment. The `id`
-stays in the markup anyway, since it's free and still resolves for a locally opened or
-remixed copy of the page.
-
-Refresh triggers: `proposal-create` (step 6), `proposal-act` (every accept/defer/
-dismiss/resolve flow, after its Respond step). `proposal-act` skips its refresh
-under `--no-artifacts`, as `proposal-create` does. Both refresh silently by default,
-matching the dashboard's existing no-URL-re-post convention — with one exception:
-when the refresh returns a URL, the flow that just created one or more proposals
-appends a single bare `📎 <url>` line to its own announcement, whether it created
-one proposal or several. No fragment, and no proposal id or title in the link text
-(`PROP-NNN` in an operator-facing message violates prompts/resident.md § Channel voice).
-When no URL is returned — the page is disabled, publish is unauthorized, or the
-publish failed — the line is omitted entirely and the rest of the message is unaffected.
 
 ## Localization
 
-The dashboard and proposals renderers read their fixed UI chrome (page titles, section
+The dashboard renderer read their fixed UI chrome (page titles, section
 headers, stat labels, empty states, age labels, the synthesized budget-alert line) from
 `scripts/lib/artifact-strings.ts` (`DEFAULT_STRINGS`, English). When
 `.hermit/state/artifact-strings.json` is present, `loadStrings()` overlays it
@@ -224,7 +188,7 @@ is not localized — format, not language.
 The two core-rendered HTML pages share one stylesheet and one set of markup helpers, both
 in `scripts/lib/artifact-theme.ts`. That file is the **only** place a re-sync against
 Claude Code's `artifact-design` skill needs to touch — `dashboard.ts` and
-`proposals-page.ts` contribute content, not styling. A hermit-local custom renderer
+the weekly renderer contribute content, not styling. A hermit-local custom renderer
 (§ Custom renderer) is outside that guarantee by design: it owns its own layout and may
 style the page however its operator wants. It is not cut off from core's design work,
 though — the `state dashboard` verb hands it the current stylesheet on every render, so a

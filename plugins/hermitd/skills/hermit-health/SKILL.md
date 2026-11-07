@@ -1,11 +1,11 @@
 ---
 name: hermit-health
 model: haiku
-description: "Show alert state, proposal queue depth, routine engagement, knowledge state, channel availability, plus fragile zones, stale accepted proposals, and recent learnings. Activates on messages like 'health check', 'how's the hermit', 'is anything broken', 'hermit health', 'system health', 'anything wrong', 'hermitd status', 'hermit brain', 'are routines running', 'what's stuck', 'any fragile zones', 'show me what's blocked', 'recent learnings', 'what have you learned lately', 'where are the weak spots', 'check knowledge', 'lint knowledge', 'knowledge health'."
+description: "Show alert state, pending task decisions, routine engagement, knowledge state, channel availability, plus fragile zones, long-waiting decisions, and recent learnings. Activates on messages like 'health check', 'how's the hermit', 'is anything broken', 'hermit health', 'system health', 'anything wrong', 'hermitd status', 'hermit brain', 'are routines running', 'what's stuck', 'any fragile zones', 'show me what's blocked', 'recent learnings', 'what have you learned lately', 'where are the weak spots', 'check knowledge', 'lint knowledge', 'knowledge health'."
 ---
 # Hermit Health
 
-Synthesize a compact "state of the hermit" snapshot in two halves: infrastructure (active alerts, proposal queue, routine engagement, knowledge state, channel readiness) and analysis (fragile zones, stale accepted proposals, recent learnings). Everything is read directly in main — this skill is on-demand and runner-free.
+Synthesize a compact "state of the hermit" snapshot in two halves: infrastructure (active alerts, pending decisions, routine engagement, knowledge state, channel readiness) and analysis (fragile zones, long-waiting decisions, recent learnings). Everything is read directly in main — this skill is on-demand and runner-free.
 
 ## Step 0 — Channel reply
 
@@ -15,12 +15,11 @@ If this skill was invoked from a channel-arrived message (the inbound prompt con
 
 Read the following (gracefully skip any file that doesn't exist). The sources are independent — read them concurrently:
 
-1. `.hermit/state/alert-state.json` — the `alerts` object, keyed by alert id (`checklist:*`, `proposal-pending:PROP-NNN`, `micro-proposal-pending:*`). Each entry has `text`, `count`, `first_seen`, `last_seen`, `suppressed`, `consecutive_clean`.
+1. `.hermit/state/alert-state.json` — the `alerts` object, keyed by alert id (`checklist:*`, `custom:*`). Each entry has `text`, `count`, `first_seen`, `last_seen`, `suppressed`, `consecutive_clean`.
 2. `.hermit/state/runtime.json` — `last_activity`, `session_id`.
-3. `.hermit/state/reflection-state.json` — `last_reflection` timestamp, `counters` (including `judge_suppress_by_code` map and run/output fields), and `queue` (pending micro-proposals and reflect candidates).
+3. `.hermit/state/reflection-state.json` — `last_reflection` timestamp, `counters` (including `judge_suppress_by_code` map and run/output fields), and run/output counters.
 4. `.hermit/config.json` — `routines` array (id, schedule, enabled); `channels` object (each channel's `default_chat_id`).
-5. `.hermit/proposals/PROP-*.md` — glob; count by `status` frontmatter field, and read `id`, `title`, `accepted_date`, `resolved_date`, `tags` for the stale-proposal and fragile-zone analysis.
-6. `.hermit/state/micro-proposals.json` — count entries with `status: "pending"`.
+5. `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --limit 20 --json` for open tasks and their pending decisions. Use `total` for the open count, describe only the returned sample, and report `omitted` rather than scanning more files. A proposal is a task with `kind: proposal`; authority, purpose and wait age come from its decision and record, never a separate queue.
 7. Glob counts: `.hermit/raw/**` (excluding `.archive/`), `.hermit/compiled/**`, `.hermit/raw/.archive/**`.
 8. `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task-report.ts .hermit --limit 5` for normalized recent task records: titles, outcomes, waiting reasons and lessons. Never read frozen session archives or the old live shell document.
 
@@ -37,7 +36,7 @@ Read the following (gracefully skip any file that doesn't exist). The sources ar
 - If `total_runs` is 0: show `no runs yet (since YYYY-MM-DD)` where the date is `counters.since`
 - Otherwise: `N runs, N empty | output: N proposals, N micro | since YYYY-MM-DD` where the date is `counters.since` — omit `| output: ...` if both `proposals_created` and `micro_proposals_queued` are 0
 
-**Micro:** Count entries with `status: "pending"` in `micro-proposals.json`. Omit this section entirely if count is zero.
+**Micro:** Count entries with `status: "pending"` in `pending decisions.json`. Omit this section entirely if count is zero.
 
 **Knowledge:** Report glob counts for raw (excl. archive), compiled, and archived files. Omit if all three are zero and the directories are missing. If the operator explicitly asked to check or lint knowledge ("check knowledge", "lint knowledge", "knowledge health"), also run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-lint.ts .hermit` and list its `findings` by type (`file`, `age` in days, `detail`) beneath the counts, each type with its fix from [reference.md](reference.md). It is read-only.
 
@@ -83,7 +82,7 @@ Reply in ≤1500 chars. Use exactly this section structure:
 (or: No fragile zones detected — no recurring cancelled or waiting tasks yet.)
 
 ### Stale proposals
-- PROP-NNN: [title] (accepted N days ago)
+- T-...: [title] (accepted N days ago)
 (or: No accepted proposals awaiting resolution.)
 
 ### Recent learnings

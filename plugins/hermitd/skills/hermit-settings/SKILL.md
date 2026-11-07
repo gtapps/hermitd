@@ -10,7 +10,6 @@ View or modify the hermit configuration for this project.
 ## Commands
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
-- `proposal-queue-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts queue-micro .hermit`
 
 ## Step 0 — Channel reply
 
@@ -18,7 +17,7 @@ If this skill was invoked from a channel-arrived message (the inbound prompt con
 
 Everyday settings apply through `settings-edit`. A static list in `scripts/settings-gate.ts` protects trust, disclosure, credentials, executable configuration, and existing guarded settings with Claude Code's native permission prompt. Protected writes ask in either direction. Parent replacements ask only when protected content changes; routine containers keep their existing precheck comparison. A No is the operator's answer: never retry or route around it, and never edit `config.json` directly. The channel plugin delivers the prompt to the operator's DM or the terminal pane.
 
-On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via the reply tool instead of waiting on terminal input — the branch proceeds as an over-channel exchange (ask, then act on the reply when it arrives), the same as any other channel conversation. **Never call `AskUserQuestion` on a channel-tagged turn** — it renders in the terminal, invisible to a remote operator. The one bounded ask in this skill (`quality-gate`, below) additionally queues a durable micro-proposal entry per `channel-responder` § Channel-safe ask bridge (schema: `reflect` § Queuing procedure), so it survives compaction or a session restart; free-form asks queue nothing.
+On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via the reply tool instead of waiting on terminal input — the branch proceeds as an over-channel exchange (ask, then act on the reply when it arrives), the same as any other channel conversation. **Never call `AskUserQuestion` on a channel-tagged turn** — it renders in the terminal, invisible to a remote operator. The one bounded ask in this skill (`quality-gate`, below) additionally queues a durable task input decision per `channel-responder` § Channel-safe ask bridge (schema: [channel-responder/questions.md](../channel-responder/questions.md)), so it survives compaction or a session restart; any free-form question that outlives the exchange also belongs to a task.
 
 ## Usage
 
@@ -117,7 +116,6 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `skills-notify` | `skills.notify` | enum | off / on / verbose; off, on, or verbose close replies | immediately |
 | `reflection` | `reflection.graduation_min_sessions` | integer | any; distinct sessions before a pattern becomes a proposal candidate | next reflect run |
 | `artifact-dashboard` | `artifacts.dashboard` | boolean | yes / no; status, proposal queue, weekly evolution | next refresh |
-| `artifact-proposals` | `artifacts.proposals` | boolean | yes / no; full text of open proposals | next refresh |
 | `artifact-weekly-review` | `artifacts.weekly_review` | boolean | yes / no; the compiled weekly report at a stable URL | next refresh |
 | `artifact-backend` | `artifacts.backend` | string | any; 'claude', or the name of a connected MCP artifact server | next refresh |
 
@@ -400,7 +398,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
 
 **Interactive (terminal) turn:** Ask the operator via `AskUserQuestion` to pick a tier. Show the current value in brackets if `quality_gate.tier` is set.
 
-Prompt: *"Quality-gate tier for accepted-proposal auto-implementations. Controls whether `/simplify` (cleanup pass) runs at step (e.5) of `/proposal-act`."*
+Prompt: *"Quality-gate tier for accepted-proposal auto-implementations. Controls whether `/simplify` (cleanup pass) runs at step (e.5) of [the shared apply procedure](../proposal-create/apply.md)."*
 
 Options:
 - **Budget** (default; recommended): `/simplify` never runs. Cheapest. No post-implementation cleanup.
@@ -409,7 +407,7 @@ Options:
 
 Run `settings-edit ... set quality_gate.tier <chosen>` (creates the `quality_gate` object if missing; a legacy `enabled` sibling is preserved untouched — skill behavior reads `tier` only).
 
-**Channel-tagged turn:** send the same prompt via the channel reply tool with the three tiers numbered (Budget/Balanced/Quality, same descriptions as above), AND queue a pending micro-proposal entry per `reflect` § Queuing procedure: `options: ["budget", "balanced", "quality"]`, `tier: 1`, `on_resolve: "/hermitd:hermit-settings quality-gate --answer {answer}"`. If invoked as `quality-gate --answer <tier>` (channel-responder resolving that entry), skip the ask and run `settings-edit ... set quality_gate.tier <tier>` directly, then confirm via channel.
+**Channel-tagged turn:** send the same prompt via the channel reply tool with the three tiers numbered (Budget/Balanced/Quality, same descriptions as above), AND queue a pending task input decision per [channel-responder/questions.md](../channel-responder/questions.md), using purpose input and admin authority: `options: ["budget", "balanced", "quality"]`, `authority: admin`, `decision.resume: "/hermitd:hermit-settings quality-gate --answer {answer}"`. If invoked as `quality-gate --answer <tier>` (channel-responder resolving that entry), skip the ask and run `settings-edit ... set quality_gate.tier <tier>` directly, then confirm via channel.
 
 Note: if you commit autonomous-implementation diffs through a skill that already runs `/simplify` before committing, consider **Budget** — any non-Budget tier here would run the cleanup pass twice per committed implementation.
 
@@ -424,8 +422,8 @@ Ask: "This hermit publishes status/proposal/weekly-review pages via Claude Code'
 [current: <artifacts.publish_authorized value>]"
 On answer "Authorize" (or "on"/"yes"): run `settings-edit ... set artifacts.publish_authorized true`. Reply: "Recorded: artifact publish authorized. The grant (permissions.allow `Artifact`) is applied automatically at next boot — `hermitd stop` then `hermitd-start` to apply now. No settings files were modified from this session."
 On answer "Bank first publishes" (or "off"/"no"/"decline"): run `settings-edit ... set artifacts.publish_authorized false`. Reply: "Recorded: publishing declined. The standing permission is removed at the next boot from every settings file this install wrote it to, not from this session. An undecided (`null`) flag leaves an existing entry alone. First publish of each enabled page must happen in an attended session (`docs/artifacts.md` § refresh procedure); refreshes then reuse the same URL without prompting."
-**Channel-tagged turn:** send the same prompt via the channel reply tool with the two options numbered, AND queue a pending micro-proposal entry per `reflect` § Queuing procedure: `options: ["authorize", "bank first publishes"]`, `tier: 1`, `on_resolve: "/hermitd:hermit-settings artifact-authorization --answer {answer}"`. Note in the message that "Bank first publishes" still needs a terminal session later to do the banking itself — only the decision travels over the channel.
-**Channel re-entry:** if invoked as `artifact-authorization --answer "<label>"` (channel-responder resolving a micro-proposal queued by `hermit-evolve`'s Step 10 deferred-migration relay), skip the Ask above and match `<label>` case-insensitively by prefix against `Authorize` / `Bank first publishes`, then run the matching `settings-edit` command and reply exactly as above. This branch is deliberately channel-reachable — the flag is a decision record, not a permission — so it does not raise the native prompt the rest of `artifacts.*` policy sits behind.
+**Channel-tagged turn:** send the same prompt via the channel reply tool with the two options numbered, AND queue a pending task input decision per [channel-responder/questions.md](../channel-responder/questions.md), using purpose input and admin authority: `options: ["authorize", "bank first publishes"]`, `authority: admin`, `decision.resume: "/hermitd:hermit-settings artifact-authorization --answer {answer}"`. Note in the message that "Bank first publishes" still needs a terminal session later to do the banking itself — only the decision travels over the channel.
+**Channel re-entry:** if invoked as `artifact-authorization --answer "<label>"` (channel-responder resolving a task input decision opened by `hermit-evolve`'s Step 10 deferred-migration relay), skip the Ask above and match `<label>` case-insensitively by prefix against `Authorize` / `Bank first publishes`, then run the matching `settings-edit` command and reply exactly as above. This branch is deliberately channel-reachable — the flag is a decision record, not a permission — so it does not raise the native prompt the rest of `artifacts.*` policy sits behind.
 
 ### 3. Write config
 

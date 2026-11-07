@@ -171,21 +171,6 @@ function hasCostSpikeRow(existingPatterns: Set<string>, date: string): boolean {
   return existingPatterns.has(costSpikeLabel(date));
 }
 
-function hasAcceptedProposals(stateDir: string) {
-  try {
-    const proposalsDir = path.join(stateDir, 'proposals');
-    const files = fs.readdirSync(proposalsDir).filter(f => /^PROP-\d+(?:-.+)?\.md$/.test(f));
-    return files.some(f => {
-      try {
-        const head = fs.readFileSync(path.join(proposalsDir, f), 'utf-8').slice(0, 1000);
-        return /^\s*status:\s*accepted\s*$/mi.test(head);
-      } catch { return false; }
-    });
-  } catch {
-    return false;
-  }
-}
-
 // Short-circuits cheaply: in_progress or missing lastRunAt require no I/O.
 function hasComputeActivity(stateDir: string, lastRunAt: string | null) {
   if (!lastRunAt) return true;
@@ -222,11 +207,6 @@ const phases: Record<string, boolean> = {};
 // Cheaper checks first: compute (short-circuits on in_progress/null lastRunAt),
 // then resolution_check (reads proposal files), then cost spike (reads cost log).
 if (hasComputeActivity(stateDir, lastRunAt)) phases.compute = true;
-
-const lastResolutionCheck = reflectionState.last_resolution_check ?? null;
-if (hasAcceptedProposals(stateDir) && daysSince(lastResolutionCheck) > 7) {
-  phases.resolution_check = true;
-}
 
 // Anchor cost-index resolution: a relative stateDir (real invocation passes
 // `.hermit`) would otherwise resolve against a drifted cwd and

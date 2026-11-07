@@ -15,8 +15,6 @@ execution:
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000002: {"rows":[{"id":"T-20261001-091400","handle":"store-chains-outreach","title":"Store chains outreach","listing":["active"],"waiting_on":null,"requester":"discord:100000000000000001","due":null,"owner":"resident"}],"total":1,"omitted":0}
-    - proposal-micro match: {"status":"none","reason":"no_pending"}
-    - proposal-list: {"total":0,"shown":0,"proposals":[]}
     - Earlier in this session, chat 400000000000000001 (you, 23:01): "Tomorrow's batch: 13 already approved, plus 12 last follow-ups to approve (Acme Steel, Birch Plastics, Cobalt Tools and 9 more). Reply 'approve' here and they go out tomorrow between 9:00 and 18:00."
     </system-reminder>
     <system-reminder>

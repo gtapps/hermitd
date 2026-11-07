@@ -76,5 +76,5 @@ See [Recommended Plugins](RECOMMENDED-PLUGINS.md) for plugins you can add yourse
 - **Talk to your hermit.** "What slowed you down?" / "Suggest improvements" — feedback feeds into the learning loop.
 - **After plugin updates**, run `/hermitd:hermit-evolve` to run dev migrations.
 - **Proposals have categories.** Dev-specific prefixes (`[missing-tests]`, `[tech-debt]`, `[dependency]`, `[tooling]`, `[architecture]`) keep things organized.
-- **"What should I be fixing?"** Run `/hermitd-dev:domain-brainstorm`. It reads git churn, manifest drift, and README coverage to surface at most 2 grounded improvement ideas as PROPs : no manual triage needed.
+- **"What should I be fixing?"** Run `/hermitd-dev:domain-brainstorm`. It reads git churn, manifest drift, and README coverage to surface at most 2 grounded improvement ideas as proposal tasks : no manual triage needed.
 - **Channel activation**: run `/hermitd:channel-setup` for messaging between operator and hermit.

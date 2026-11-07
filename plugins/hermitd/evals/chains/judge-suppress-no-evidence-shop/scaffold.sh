@@ -29,18 +29,54 @@ cat > '.hermit/config.json' <<'HERMIT_FIXTURE'
   "timezone": "Europe/Lisbon"
 }
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-021-unpaid-invoice-reminders-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100021.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-021-unpaid-invoice-reminders-100000
+id: T-20260814-100021
+type: task
 title: "Remind customers about invoices unpaid after 7 days"
-status: proposed
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Remind customers about invoices unpaid after 7 days"
+audience: operator
+status: open
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100021
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: admin
+waiting_since: 2026-10-01T09:00:00.000Z
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100021
+check: null
+last_worker: null
+kind: proposal
+decision: "{\"purpose\":\"consent\",\"authority\":\"admin\",\"generation\":1}"
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-021 — Remind customers about invoices unpaid after 7 days
+## Proposal
 
 ## Problem
 Wholesale invoices go unpaid for weeks because nobody chases them.
@@ -48,18 +84,54 @@ Wholesale invoices go unpaid for weeks because nobody chases them.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-024-weekly-sales-summary-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100024.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-024-weekly-sales-summary-100000
+id: T-20260814-100024
+type: task
 title: "Weekly sales summary to the channel"
-status: dismissed
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Weekly sales summary to the channel"
+audience: operator
+status: closed
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100024
+owner: resident
+closed_at: 2026-08-14T10:00:00+01:00
+closed_by: cancelled
+closed_actor: hermit
+closed_reason: dismissed
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100024
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-024 — Weekly sales summary to the channel
+## Proposal
 
 ## Problem
 No weekly overview of sales.
@@ -67,18 +139,54 @@ No weekly overview of sales.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-026-nightly-db-backup-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100026.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-026-nightly-db-backup-100000
+id: T-20260814-100026
+type: task
 title: "Back up the shop database nightly"
-status: resolved
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Back up the shop database nightly"
+audience: operator
+status: closed
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100026
+owner: resident
+closed_at: 2026-08-14T10:00:00+01:00
+closed_by: check
+closed_actor: hermit
+closed_reason: resolved
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100026
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: null
+approved_by: null
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-026 — Back up the shop database nightly
+## Proposal
 
 ## Problem
 The order database had no backup.
@@ -86,73 +194,60 @@ The order database had no backup.
 ## Proposed Solution
 See title.
 HERMIT_FIXTURE
-mkdir -p ".hermit/proposals"
-cat > '.hermit/proposals/PROP-028-low-stock-reorder-100000.md' <<'HERMIT_FIXTURE'
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20260814-100028.md' <<'HERMIT_FIXTURE'
 ---
-id: PROP-028-low-stock-reorder-100000
+id: T-20260814-100028
+type: task
 title: "Reorder alert when stock falls below 5 units"
-status: accepted
-source: auto-detected
 created: 2026-08-14T10:00:00+01:00
+summary: "Reorder alert when stock falls below 5 units"
+audience: operator
+status: open
+opened_at: 2026-08-14T10:00:00+01:00
+requester: agent
+handle: t-20260814-100028
+owner: resident
+closed_at: null
+closed_by: null
+closed_actor: null
+closed_reason: null
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: proposal:T-20260814-100028
+check: null
+last_worker: null
+kind: proposal
+decision: null
+approved_rev: 0
+approved_by: operator
+source: auto-detected
 category: improvement
-tags: []
+muted: false
+delegated: false
+tags: "[]"
+claims: []
+result_rev: 0
 ---
-# Proposal: PROP-028 — Reorder alert when stock falls below 5 units
+## Proposal
 
 ## Problem
 Popular teas sold out before anyone noticed.
 
 ## Proposed Solution
 See title.
-HERMIT_FIXTURE
-mkdir -p ".hermit/state"
-cat > '.hermit/state/proposals-index.json' <<'HERMIT_FIXTURE'
-{
-  "updated": "2026-10-01T08:00:00Z",
-  "count": 4,
-  "proposals": [
-    {
-      "id": "PROP-021-unpaid-invoice-reminders-100000",
-      "file": "PROP-021-unpaid-invoice-reminders-100000.md",
-      "status": "proposed",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Remind customers about invoices unpaid after 7 days",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-024-weekly-sales-summary-100000",
-      "file": "PROP-024-weekly-sales-summary-100000.md",
-      "status": "dismissed",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Weekly sales summary to the channel",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-026-nightly-db-backup-100000",
-      "file": "PROP-026-nightly-db-backup-100000.md",
-      "status": "resolved",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Back up the shop database nightly",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    },
-    {
-      "id": "PROP-028-low-stock-reorder-100000",
-      "file": "PROP-028-low-stock-reorder-100000.md",
-      "status": "accepted",
-      "source": "auto-detected",
-      "category": "improvement",
-      "title": "Reorder alert when stock falls below 5 units",
-      "created": "2026-08-14T10:00:00+01:00",
-      "tags": []
-    }
-  ]
-}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

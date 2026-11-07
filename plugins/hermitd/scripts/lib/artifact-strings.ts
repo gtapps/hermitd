@@ -22,8 +22,6 @@ export const DEFAULT_STRINGS = {
   // several hermits can tell two tabs apart — and so a hermit that *is* named
   // "Hermit" reads "Hermit — Dashboard", not "Hermit — Hermit Dashboard".
   dashboard_title: '{name} — Dashboard',
-  proposals_page_title: '{name} — Proposals',
-  proposals_page_header: 'Proposals',
   label_updated: 'updated',
 
   // Status card
@@ -53,17 +51,8 @@ export const DEFAULT_STRINGS = {
   brief_heading: 'Latest brief',
   brief_none: 'No brief yet.',
 
-  // Proposals card (dashboard)
-  proposals_heading: 'Proposals',
-  proposals_none_open: 'No open proposals.',
-  proposals_oldest_accepted: 'Oldest open accepted: {id}{age}',
-  proposals_since_accepted: ' ({age} since accepted)',
-
-  // Proposals page
-  proposals_history: 'History',
-  proposals_open_count: '{n} Open',
-  proposals_pill_open: 'open',
-  proposals_pill_decided: 'decided',
+  waiting_heading: 'Waiting on you',
+  waiting_none: 'Nothing waiting on you.',
 
   // Weekly card. No empty state: the card is omitted entirely when there is no
   // review, rather than spending a section on saying so.

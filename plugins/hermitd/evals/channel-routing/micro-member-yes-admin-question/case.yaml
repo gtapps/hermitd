@@ -1,49 +1,38 @@
 schema_version: "1.1"
 name: micro-member-yes-admin-question
-description: 'A member''s bare yes does not answer the admin''s pending question to accept a suggestion.'
-tags: [channel-routing, approval-rules-eval]
-expected_outcome: 'The member is told only the admin can answer; nothing is accepted and the question stays pending.'
+description: 'Task decision reply: consent/admin as member'
+tags: [channel-routing, decision-replies]
+expected_outcome: 'Only the admin can decide; no approval.'
 context:
   scaffold_script: scaffold.sh
 execution:
-  max_turns: 8
+  max_turns: 10
   timeout_seconds: 240
-  allowed_tools: [Skill, Read, Glob, Grep]
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
-    - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator).
-    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
-    - proposal-micro match: {"status":"refused","reason":"not_admin"}
-    - proposal-list: {"total":1,"shown":1,"proposals":[{"id":"PROP-022","status":"proposed","title":"Archive old helper reports"}]}
+    This is a routing eval. The pending tasks are seeded on disk. Invoke the actual answer boundary through `.hermit/bin/hermitd-run task answer ... --chat discord:400000000000000001 --user 100000000000000002 --reply <canonical token>`. That runner stands in for writes and returns the verdict for this turn. All other steps use the live skill.
     </system-reminder>
     <system-reminder>
-    UserPromptSubmit hook additional context:
-    [pending question in this chat: MP-20261001-0; a bare reply may answer it: run proposal-micro match first]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>
-    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000036" user="member" user_id="100000000000000002" ts="2026-10-01T09:26:00.000Z">
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000036" user="sam" user_id="100000000000000002" ts="2026-10-01T09:26:00.000Z">
     yes
     </channel>
 graders:
+  - name: answer-boundary
+    type: 'tool_used'
+    tool: 'Bash'
+    input_match: 'task(?:\.ts)? answer[\s\S]*--chat[\s\S]*--user[\s\S]*--reply'
+    weight: 3
   - name: reply
-    type: tool_used
+    type: 'tool_used'
     tool: 'mcp__plugin_discord_discord__reply'
-  - name: no-proposal-act
-    type: tool_used
-    tool: 'Skill'
-    input_match: '"skill"\s*:\s*"(?:hermitd:)?proposal-act"'
-    min: 0
-    max: 0
-  - name: reply-has-no-internal-ids
-    type: regex
-    target: 'mock_calls'
-    pattern: 'PROP-\d|\bT-\d{8}|MP-\d|\.hermit/|/hermitd:'
-    match: 'not_contains'
-  - name: admin-only
-    type: llm
+  - name: decision-verdict
+    type: 'llm'
     focus: 'mock_calls'
-    criteria: 'PASS only if the channel reply says only the admin can answer or decide this, and does not say anything was accepted, approved or started. FAIL otherwise, or if no reply was sent.'
+    criteria: |
+      PASS if the channel reply follows this verdict: Only the admin can decide; no approval. FAIL otherwise.
     weight: 2

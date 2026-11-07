@@ -15,7 +15,7 @@ execution:
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
     Candidate: Remind me to water the herbs on hot days
-    Tier: 1
+    Evidence label: small and reversible
     Evidence Source: scheduled-check/garden
     Evidence: The herbs wilted on two hot afternoons this month.
     Sessions: none

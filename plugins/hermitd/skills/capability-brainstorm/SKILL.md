@@ -74,7 +74,7 @@ Set the PROP frontmatter:
 - `tags: [capability-brainstorm, ideation]`
 
 `/hermitd:proposal-create` invokes `proposal-triage` internally. Parse its outcome:
-- `CREATE: <title>` — PROP file written, note the assigned PROP-NNN.
+- `CREATE: <title>` — proposal task opened, note its task id and handle.
 - `SUPPRESS: <title> — <code>` — record the suppression code. Don't retry.
 - `DUPLICATE: <title> — <PROP-ID>` — record the existing PROP-ID. Don't create.
 
@@ -91,14 +91,12 @@ Send one message per `prompts/resident.md` § Operator Notification (`channel-se
    _Grounding: <item 1>, <item 2>_
    _Friction: <one-sentence pain>_
    _Estimated effort: <hours|days>_
-   PROP-NNN created  ·  (or: suppressed — <code>  ·  or: duplicate of PROP-NNN)
+   T-... created  ·  (or: suppressed — <code>  ·  or: duplicate of T-...)
 
 2. **<short title>** — ...
 
-📎 <proposals page URL>
 ```
 
-The `📎` line is a single slot for the whole batch, not one per idea — omit it entirely when the proposals-page refresh returned no URL.
 
 If zero ideas were generated or all were suppressed/duplicated, the message is:
 ```
@@ -119,7 +117,7 @@ type: capability-brainstorm
 created: <ISO timestamp with timezone>
 tags: [capability-brainstorm, ideation]
 source: <interactive when the operator asked; routine when the capability-brainstorm routine fired>
-proposals_created: [PROP-NNN, ...]
+proposals_created: [T-..., ...]
 ---
 ```
 

@@ -3,7 +3,6 @@
 // field is already legible in the report body's evolution block and the
 // dashboard's weekly section). The Artifact tool renders .md directly — no HTML
 // renderer needed for this page, so unlike lib/dashboard.ts and
-// lib/proposals-page.ts this one has no render step, only a body extraction.
 //
 // Driven by `artifact.ts render weekly`. Throws on no-source/unreadable; the
 // caller turns that into the shared exit-1 path.

@@ -76,6 +76,12 @@ stall_next: null
 dedupe_key: null
 check: null
 last_worker: null
+kind: null
+decision: null
+approved_rev: null
+approved_by: null
+source: null
+category: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]
@@ -128,6 +134,12 @@ stall_next: null
 dedupe_key: null
 check: null
 last_worker: null
+kind: null
+decision: null
+approved_rev: null
+approved_by: null
+source: null
+category: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]

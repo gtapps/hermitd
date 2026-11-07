@@ -61,9 +61,15 @@ result_at: null
 stall_at: null
 stall_status: null
 stall_next: null
-dedupe_key: helper:PROP-044
+dedupe_key: helper:T-20260814-100044
 check: null
 last_worker: null
+kind: null
+decision: null
+approved_rev: null
+approved_by: null
+source: null
+category: null
 muted: false
 delegated: true
 tags: ["task","operator"]

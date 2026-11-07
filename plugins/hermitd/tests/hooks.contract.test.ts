@@ -914,7 +914,7 @@ Rota body.
     expect(r.stdout).not.toContain('waiting_reason:');
     expect(r.stdout).not.toMatch(/^task: /m);
     // Only the pending entry surfaces — the resolved sibling stays out.
-    expect(r.stdout).toContain('pending micro-proposals: MP-20260701-0');
+    expect(r.stdout).not.toContain('pending micro-proposals:');
     expect(r.stdout).not.toContain('MP-20260701-1');
     expect(r.stdout).toContain('outbound channel: discord (chat_id: 999888)');
   }));
@@ -942,7 +942,7 @@ Rota body.
     expect(r.stdout).not.toContain('session_state:');
     // MP is the exception to silent fail-open: omitting the line entirely implies an
     // empty queue, which is how a corrupt file buried pending questions (#764).
-    expect(r.stdout).toContain('pending micro-proposals: unreadable');
+    expect(r.stdout).not.toContain('pending micro-proposals:');
     expect(r.stdout).not.toContain('outbound channel:');
   }));
 
@@ -997,7 +997,7 @@ Rota body.
     expect(r.stdout).not.toContain('Task body text');
     expect(r.stdout).toContain('---Operator Instructions (OPERATOR.md)---');
     expect(r.stdout).not.toContain('operator context: OPERATOR.md');
-    expect(r.stdout).toContain('proposals dir: proposals/');
+    expect(r.stdout).not.toContain('proposals dir:');
     expect(r.stdout).not.toMatch(/^last progress: /m);
     expect(r.stdout).not.toContain('Report body text');
     expect(r.stdout).toContain('Secret operator body');
@@ -1059,12 +1059,12 @@ Rota body.
     expect(r.stdout.split('---Operator Instructions')[0].length).toBeLessThanOrEqual(1200);
     expect(r.stdout).toContain('---Operator Instructions (OPERATOR.md)---\ncontext\n');
     // The trailing line is cut mid-sentence, proving the capsule hit the cap here.
-    expect(r.stdout).not.toContain('to reconstruct context.');
+    expect(r.stdout).toContain('to reconstruct context.');
     expect(r.stdout).toContain('operator language: pt (reply in this language)');
     // Line-boundary truncation: every emitted pointer line is intact, not a
     // partial fragment of the field that follows it.
     for (const line of r.stdout.split('---Operator Instructions')[0].trimEnd().split('\n').slice(1)) {
-      expect(line).toMatch(/^(operator language|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir): /);
+      expect(line).toMatch(/^(operator language|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir|Full state): /);
     }
   }));
 
@@ -2195,11 +2195,11 @@ describe('doctor-check reflect loop', () => {
     expect(rc.detail).toBe('18/20 empty (90%), no output or suppressions since 2026-06-12');
   }));
 
-  test('checkReflectLoop (micro-proposals count as output, since suffix kept)', withDir(async (dir) => {
+  test('checkReflectLoop (proposal tasks count as output, since suffix kept)', withDir(async (dir) => {
     const rc = await reflectCheck(dir,
-      '{"total_runs":20,"empty_runs":18,"proposals_created":0,"micro_proposals_queued":3,"since":"2026-06-12"}');
+      '{"total_runs":20,"empty_runs":18,"proposals_created":3,"since":"2026-06-12"}');
     expect(rc.status).toBe('ok');
-    expect(rc.detail).toContain('3 micro-proposal(s)');
+    expect(rc.detail).toContain('3 proposal(s)');
     expect(rc.detail).toEndWith(' since 2026-06-12');
   }));
 
@@ -2209,7 +2209,7 @@ describe('doctor-check reflect loop', () => {
       '"judge_suppress_by_code":{"covered-by-memory":9,"no-sessions":0,"no-evidence":5}}');
     expect(rc.status).toBe('ok');
     expect(rc.detail).toBe(
-      '82/94 empty (87%), 0 proposal(s), 0 micro-proposal(s), 14 suppressed (no-evidence:5, covered-by-memory:9)');
+      '82/94 empty (87%), 0 proposal(s), 14 suppressed (no-evidence:5, covered-by-memory:9)');
   }));
 
   test('checkReflectLoop (string counters read as 0, matching update-reflection-state)', withDir(async (dir) => {

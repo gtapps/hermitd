@@ -295,20 +295,13 @@ describe('CLI contract', () => {
 
 // ------------------------------------------------------ single ownership
 
-describe('proposal-act delegates the decision (no second copy of the rubric)', () => {
-  const skill = ['SKILL.md', 'branches.md']
-    .map((f) => fs.readFileSync(path.join(import.meta.dir, '..', 'skills', 'proposal-act', f), 'utf8'))
-    .join('\n');
+describe('proposal apply delegates the quality decision', () => {
+  const skill = fs.readFileSync(path.join(import.meta.dir, '..', 'skills', 'proposal-create', 'apply.md'), 'utf8');
 
-  test('all three implementation paths route through the verb', () => {
-    // dispatched subagent, in-main e.5, and the queued queued record note.
-    expect(skill).toContain('- `proposal-quality-gate`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts quality-gate .hermit`');
-    const dispatch = skill.slice(skill.indexOf('**Dispatch (falsification gate'), skill.indexOf('**After the subagent returns**'));
-    const inline = skill.slice(skill.indexOf('e.5. **Quality gate.**'), skill.indexOf('e.6. **Verification gate**'));
-    const queued = skill.slice(skill.indexOf('## Queue a task'));
-    for (const branch of [dispatch, inline, queued]) expect(branch).toContain('`proposal-quality-gate` (Commands)');
-    expect(dispatch).toContain('Copy the absolute command');
-    expect(queued).toContain('into the note as an absolute command');
+  test('the shared apply procedure uses the deterministic quality gate', () => {
+    expect(skill).toContain('proposal.ts quality-gate');
+    expect(skill).toContain('--files-json');
+    expect(skill).toContain('focus_files');
   });
 
   test('the rubric is not restated in prose anywhere in the skill', () => {

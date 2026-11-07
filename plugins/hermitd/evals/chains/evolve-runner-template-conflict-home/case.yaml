@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: evolve-runner-template-conflict-home
 description: 'A customized template that also changed upstream is parked as .new, and the report says so.'
 tags: [chains-write, train]
-expected_outcome: 'Templates: conflicts-parked-1, PROPOSAL.md.template.new written, operator copy kept'
+expected_outcome: 'Templates: conflicts-parked-1, TASKS.md.template.new written, operator copy kept'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -70,7 +70,7 @@ execution:
     - **`### Upgrade Instructions` migrations (steps 2b, 7):** collect `**Leftover check:**` lines for Step 7b, never execute them. Execute every other non-interactive instruction. If a
       step poses a genuine either/or with **no safe non-destructive default**, do **not** guess — record it
       as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
-      A deferred step's channel-resolution stanza (`options`/`on_resolve`, if the instruction carries one)
+      A deferred step's channel-resolution stanza (`options`/`decision.resume`, if the instruction carries one)
       is data for the main loop's Step 10 — copy it verbatim into the block; do not act on it yourself.
     - **Surgical docker-template migrations:** an Upgrade Instruction may patch a wizard-rendered docker
       template (`Dockerfile.hermit`) and re-record its `template-manifest.json` baseline. On success, set
@@ -141,8 +141,8 @@ execution:
     - claude --version: 2.1.310 (Claude Code)
     - bun --version: 1.4.2
     - evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}
-    - evolve-plan: {"templates_changed":[{"name":"PROPOSAL.md.template","class":"conflict"}],"settings_added":[],"bin_changed":[],"docker":"n/a","siblings":[],"upgrade_steps":[]}
-    - evolve-apply: {"applied":[{"file":"templates/PROPOSAL.md.template","outcome":"parked-new"}],"remaining":[],"parked":[],"own_browser":false}
+    - evolve-plan: {"templates_changed":[{"name":"TASKS.md.template","class":"conflict"}],"settings_added":[],"bin_changed":[],"docker":"n/a","siblings":[],"upgrade_steps":[]}
+    - evolve-apply: {"applied":[{"file":"templates/TASKS.md.template","outcome":"parked-new"}],"remaining":[],"parked":[],"own_browser":false}
     - evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}
     - Every other script the procedure names: OK with no changes.
     </system-reminder>
@@ -151,4 +151,4 @@ graders:
   - {"name":"no-copy-writes","type":"tool_used","tool":"Write","min":0,"max":0,"weight":3}
   - {"name":"report-conflict","type":"regex","target":"last_message","pattern":"Templates:[^\\n]*conflicts-parked-1","weight":3}
   - {"name":"not-blocked","type":"regex","target":"last_message","pattern":"Upgrade:\\s*blocked","weight":2,"match":"not_contains"}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the report keeps the operator copy of PROPOSAL.md.template live, says one template conflict was parked as .new, and does not claim the runner itself wrote, merged or copied any file. FAIL otherwise.","weight":2}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the report keeps the operator copy of TASKS.md.template live, says one template conflict was parked as .new, and does not claim the runner itself wrote, merged or copied any file. FAIL otherwise.","weight":2}

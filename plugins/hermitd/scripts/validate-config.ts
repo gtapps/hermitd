@@ -818,9 +818,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (config.artifacts.dashboard !== undefined && typeof config.artifacts.dashboard !== 'boolean') {
         errors.push('artifacts.dashboard: must be a boolean');
       }
-      if (config.artifacts.proposals !== undefined && typeof config.artifacts.proposals !== 'boolean') {
-        errors.push('artifacts.proposals: must be a boolean');
-      }
+
       if (config.artifacts.weekly_review !== undefined && typeof config.artifacts.weekly_review !== 'boolean') {
         errors.push('artifacts.weekly_review: must be a boolean');
       }

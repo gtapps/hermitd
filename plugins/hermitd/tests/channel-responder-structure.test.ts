@@ -21,7 +21,7 @@ const approvals = fs.readFileSync(path.join(path.dirname(SKILL_PATH), 'approvals
 // records a 20,000-character rendered retention limit; leave room for growth.
 // The Commands block costs ~700 rendered chars.
 // channel-responder carries the chat-boundary and sign-in-link rules every reply needs, so its cap is higher.
-for (const [name, budget] of [['channel-responder', 19_500], ['task', 18_500], ['proposal-act', 18_500]] as const) {
+for (const [name, budget] of [['channel-responder', 19_500], ['task', 18_500], ['proposal-create', 18_500]] as const) {
   test(`${name} fits the rendered retention budget`, () => {
     const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md'), 'utf-8');
     const rendered = text.replaceAll('${CLAUDE_PLUGIN_ROOT}', '/' + 'p'.repeat(99));
@@ -66,22 +66,17 @@ test('responder branches on every hook annotation the prompt stages emit', () =>
   expect(annotations.filter((a) => !skill.includes(a))).toEqual([]);
 });
 
-// A bare "clear" must not fall into the micro matcher (which would ask for
-// clarification or list MP ids), and must resolve only what the message listed.
-test('clear of already-done items precedes the micro answer and never guesses', () => {
-  expect(skill).toContain('then a done-items clear, then a pending micro answer');
+test('already-done replies target only the preceding explicit records', () => {
   expect(skill).toContain('§ Already-done items');
   expect(approvals).toContain('## Already-done items');
-  expect(approvals).toContain('`digest_done`');
-  expect(approvals).toContain('--action answered --answer "already done"');
-  expect(approvals).toContain('resolve nothing');
+  expect(approvals).toContain('Never guess targets');
+  expect(approvals).toContain('reason `already done`');
+  expect(approvals).toContain('do not bypass pending consent');
 });
 
-// Channel-safe approvals: the micro-proposal resolver's reply grammar.
-test('resolver accepts numbered and label replies', () => {
-  expect(approvals).toContain('match [<MP-id>] --chat <sourceKey>:<chat_id> --user <user_id> --reply');
-  expect(approvals).toContain("`refused`: a question is pending in this chat, but it is the admin's to answer.");
-  expect(skill).toContain("live turn with § Micro-approval response's `match` call");
-  expect(approvals).toContain('`match`: use the returned `id`, `question`, `answer`, `tier` and `on_resolve`');
-  expect(approvals).toContain('`ambiguous`: list the `choices`');
+test('one answer route accepts tokens, numbers and labels and respects authority', () => {
+  expect(skill.slice(0, 20000)).toContain('task answer [<id>] --chat <key> --user <sender-id> --reply <token>');
+  expect(approvals).toContain('task answer [<task-id>] --chat <key> --user <sender-id> --reply');
+  for (const status of ['match', 'ambiguous', 'refused', 'stale', 'none/no_pending']) expect(approvals).toContain(status);
+  expect(approvals).toContain('Input "no" is an answer');
 });

@@ -8,9 +8,6 @@ description: Handles inbound messages tagged <channel source=...> from Claude Co
 When a message arrives via a channel:
 ## Commands
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
-- `proposal-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts list .hermit`
-- `proposal-micro`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts micro .hermit`
-- `proposal-resolve-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/proposal.ts resolve-id .hermit`
 - `routines-health`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts health .hermit`
 - `settings-get-routines`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`
 
@@ -41,7 +38,7 @@ Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<ch
 
 Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and the §1d `record-operator-action.ts --force` call after authorization; role checks excepted. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
-Apply **Micro-approval response** before treating a bare yes/ok/no as task confirmation. An open handle, resident task thread, or continuation of the sole open task selects it. For an ambiguous continuation or confirmation, ask once naming the tasks and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
+Route every reply to a pending task decision through `task answer [<id>] --chat <key> --user <sender-id> --reply <token>`; map meaning in any language to yes, no, a number or an option label. Read [approvals.md](approvals.md) § Answering a wait for its match, ambiguity, refusal and stale outcomes. Never bypass the script with a clear-wait note or a close. An open handle, resident task thread, or continuation of the sole open task selects it. For an ambiguous continuation or confirmation, ask once naming the tasks and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
 
 ## 1c. Check Authorization
 
@@ -72,7 +69,7 @@ Setup pairing, else the first eligible inbound reply, seeds `channels.<channel>.
 
 First apply `reference.md` § Standing role.
 
-Precedence: hook-classified commands, then a done-items clear, then a pending micro answer, then an annotated task thread, then a selected-task continuation, then general classification.
+Precedence: hook-classified commands, then a done-items clear, then a task decision answer, then an annotated task thread, then a selected-task continuation, then general classification.
 
 Invoke `/hermitd:task` for an assignment at or above the TASKS.md threshold, any message in an annotated task thread, a confirmation, cancel or changed definition of done for a selected record, a `[conversation command: ...]` annotation, or a `WORKER <task-id> ...` completion.
 Acknowledge first through the channel.
@@ -112,9 +109,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Clear** of "Looks already done": `approvals.md` § Already-done items.
 
-- **Micro-approval response** ("yes", "no", "MP-… yes/no", "MP-… <number>", "MP-… <label>", a bare number, or a bare label): with a `[pending question` line, read `approvals.md` § Micro-approval response. Else keep classifying (**Proposal approval** next).
-
-- **Proposal approval** ("accept PROP-", "approve PROP-", proposal numbers, `#N`, or yes/later/no in any language): when no pending micro answer claimed the reply, read `approvals.md` § Proposal approval. A bare one not confirming a task (§1) or answering you: with exactly one open suggestion and in a home chat, apply it through `/hermitd:proposal-act`, even with no question open; otherwise act on none and ask which by number, not title (`PROP-014` is #14).
+- **Answering a wait**: use [approvals.md](approvals.md) § Answering a wait and `task answer`. A proposal and a question use this same route; there is no separate precedence or suggestion-number route.
 
 - **Settings change request** ("change the model", "add a routine", "turn off the heartbeat" — anything that alters `.hermit/config.json`)
   - Route every config write through `/hermitd:hermit-settings` and `.hermit/bin/hermitd-run settings-edit …`. Never Edit or Write `config.json`, from any turn origin. `settings-gate` raises native permission prompts for asked paths.
@@ -151,7 +146,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - If you can't handle it, say so and suggest the operator's next step
 - `!release` uses the same trusted-controller gate and releases human browser control only. It keeps the task claim; acknowledge whether anything was held.
 
-- **Channel voice:** no internal IDs (PROP-NNN, T-..., MP-…), no token counts or cost-log jargon, no slash commands, no file paths, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`, `!release`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
+- **Channel voice:** no internal IDs (task ids), no token counts or cost-log jargon, no slash commands, no file paths, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`, `!release`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
 - **Sign-in links:** never repeat a pasted callback address.
 - **Chat boundary:** each chat's messages, tasks and decisions belong to it, even though this session holds them all: repeat them in the chat you reply in only if its readers could already read them, and on a non-technical install never carry maintainer-chat content into a client chat. Resolve a reference or bare go-ahead against this chat's own latest exchange first; reach into another chat only when this chat holds no candidate, and then name it and ask, never acting on it from here.
 
@@ -169,9 +164,4 @@ For proactive notifications, read `outbound.md` before composing or sending.
 
 ## 6. Channel-safe ask bridge
 
-Apply to every skill's decision point on a channel-tagged turn (`<channel source="...">`), including `proposal-act` and `hermit-settings`.
-
-- **(a) Conversational side**: send the question through the channel reply tool.
-- **(b) Durable side, bounded asks only**: also queue asks with 2-4 options, including yes/no, via `proposal.ts queue-micro` (reflect's § Micro-approval queuing). Set `options` to the labels (omit for yes/no), `tier: 1`, `on_resolve` to the skill invocation with an `{answer}` placeholder, `chat` to this chat's `<sourceKey>:<chat_id>`, and `user` to the sender's `user_id` only for a question about their own request.
-- **Whichever surface answers first resolves it.** Check an answer in the asking skill's live turn with § Micro-approval response's `match` call; on `match`, act on it and resolve the entry with `proposal-micro` (Commands) and arguments `resolve <id> --action answered --answer "<selected label>"`. Later answers use § Micro-approval response and `on_resolve`.
-- **Never call `AskUserQuestion` on a channel-tagged turn.** Its terminal UI is invisible to the remote operator.
+Apply to every skill's decision point on a channel-tagged turn (`<channel source="...">`). Send questions through the reply tool. When a question outlives the turn, read [questions.md](questions.md) and open or block a task with an input decision and `decision.resume` naming the existing procedure. Even an answer in the live turn goes through `task answer`; a later answer follows the same path. Never call AskUserQuestion on a channel-tagged turn.

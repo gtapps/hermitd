@@ -3,5 +3,4 @@
 <!-- Keep under 10 items. Move periodic checks to routines (/hermit-settings routines). -->
 
 ## Standing Checks
-- Review `proposals/` for any with `status: proposed` needing operator review. Skip `accepted` (operator-owned, implementation underway), `resolved`, `deferred`, and `dismissed`.
 - Read `state/doctor-report.json` → the `credential-expiry` check; if its status is warn or fail, tell the operator which credential needs re-auth and name the plugin's reauth skill from the report detail.

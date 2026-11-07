@@ -3,7 +3,7 @@ process.stdout.on('error', () => {});
 
 // PreToolUse hook (matcher "AskUserQuestion") — binds the last unbound
 // synchronous-ask path on unattended sessions, denying the call with a redirect
-// to the channel reply tool and the micro-proposal bridge. PROP-017 covers hermit-owned
+// to the channel reply tool and the durable task-question bridge. PROP-017 covers hermit-owned
 // skills cooperatively (Step-0 marker + static contract test); this gate
 // binds everything else — built-ins, other plugins' skills, spontaneous
 // model-initiated questions — the caller surface that grows with every
@@ -42,16 +42,15 @@ import { channelLikelyDown } from './lib/channel-health';
 import { resolve as resolveOutboundChannel } from './resolve-outbound-channel';
 import { runHook } from './lib/hook-input';
 
-const proposalPath = "'" + `${import.meta.dir}/proposal.ts`.replaceAll("'", "'\\''") + "'";
+const taskPath = "'" + `${import.meta.dir}/task.ts`.replaceAll("'", "'\\''") + "'";
 const REDIRECT_REASON =
-  'No interactive operator on this surface (always-on channel session). Do not retry ' +
-  'AskUserQuestion. Instead: (1) send the question via the channel reply tool; (2) queue it ' +
-  'durably by running `bun ' + proposalPath + ' queue-micro ' +
-  '.hermit` with a heredoc payload {"tier":1,"question":"...","options":[...],"chat":"<sourceKey>:<chat_id>"} ' +
-  '(chat: the asking chat) — ' +
-  'never hand-edit state/micro-proposals.json; (3) continue other work — the answer arrives as a ' +
-  'channel message. If a human operator is in fact attending this terminal, they can relaunch ' +
-  'with HERMIT_ASK_GATE=off to disable this gate for that session.';
+  'No interactive operator on this surface (always-on channel session). Do not retry AskUserQuestion. ' +
+  'Send the question through the channel reply tool, then persist it with `bun ' + taskPath +
+  ' open .hermit --title "<question>" --done "Answer recorded" --requester agent --conversation "<chat>" ' +
+  '--waiting-on admin --decision \'{"purpose":"input","authority":"admin","generation":1,"resume":"<owning procedure>"}\'`. ' +
+  'For an existing task use task block --waiting-on --decision with its status and next step. ' +
+  'Answers go through task answer --chat --user; continue other work while waiting. ' +
+  'An attending terminal operator may relaunch with HERMIT_ASK_GATE=off for that session.';
 
 function main(payload: any): void {
   const toolName = payload && typeof payload.tool_name === 'string' ? payload.tool_name : '';

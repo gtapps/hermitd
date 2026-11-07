@@ -2,7 +2,6 @@
 // (dashboard, proposals). Everything a re-sync against Claude Code's
 // `artifact-design` skill needs to touch lives in this file: the palette, the
 // type scale, the layout, and the small markup helpers the renderers compose.
-// `dashboard.ts` and `proposals-page.ts` contribute content, not styling.
 //
 // Why a module and not a CSS const inside dashboard.ts: the previous sheet
 // hand-wrote its token set four times (bare :root, the dark media query, and

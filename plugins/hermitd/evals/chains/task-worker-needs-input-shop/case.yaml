@@ -36,7 +36,7 @@ execution:
 
     Delivery failures, degraded legs, and status handling: `skills/channel-responder/outbound.md`.
 
-    **Channel voice.** No internal IDs (PROP-NNN, T-..., MP-…), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`) may be named when the operator asks how to control you.
+    **Channel voice.** No internal IDs (T-...), no token counts, slash commands, file paths, or cron strings; plain language with the one next step the operator can do from chat. Terminal/maintainer output is exempt. One exception: the channel control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`) may be named when the operator asks how to control you.
 
     **Language & audience.** Compose channel messages and push notifications in the operator's configured `language` (`config.json`); when unset, match the language the operator writes in. The `maintainer` key of the `--notice` payload supplements the `client` key, never replaces it: it carries the detail the operator's chat shouldn't get (spend figures, internal IDs, commands, diagnostics), and the script routes it — never a reply tool. Where both audiences resolve to one chat the script sends client text, a blank line, then maintainer text together. Keep only technical detail in `maintainer`; neither part repeats the other. Any notice asking for a decision, a reply, or action — heartbeat findings, inbox items, pending proposals — must carry a plain-language `client` leg unless a skill mandates a maintainer-only one; a `maintainer`-only payload is for FYI diagnostics and spend only.
 
@@ -79,7 +79,6 @@ execution:
     <system-reminder>
     Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
-    - proposal-micro match: {"status":"none","reason":"no_pending"}
     - conversation.ts thread-open: {"key":"discord:700000000000000001","chat_id":"700000000000000001"}
     - task.ts open: {"id":"T-20261021-090000","handle":"reprice-the-best-selling-teas","created":true,"open_count":1,"queued":false}
     - task.ts note, task.ts block: OK

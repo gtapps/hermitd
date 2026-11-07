@@ -14,6 +14,7 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
+    Proposal task digest: {"ok":true,"proposals":[{"id":"T-20260814-100021","status":"open","title":"Remind customers about invoices unpaid after 7 days","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100024","status":"cancelled","title":"Weekly sales summary to the channel","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100026","status":"completed","title":"Back up the shop database nightly","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100028","status":"open","title":"Reorder alert when stock falls below 5 units","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]}]}
     Title: Auto-reply to tracking questions
     Evidence Source: archived-session
     Evidence: One customer emailed twice about a tracking number on 12 September, in one session.

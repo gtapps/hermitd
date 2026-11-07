@@ -1,6 +1,6 @@
 ---
 name: reflection-judge
-description: Post-processes reflect candidates — validates that cross-session evidence citations actually exist in normalized task records before proposals or micro-approvals are queued. Returns ACCEPT | DOWNGRADE:<new-tier> | SUPPRESS per observation.
+description: Post-processes reflect candidates — validates that cross-session evidence citations actually exist in normalized task records before admin-decided proposal tasks are opened. Returns ACCEPT or SUPPRESS per observation.
 model: sonnet
 effort: medium
 tools:
@@ -24,7 +24,6 @@ The caller passes an `Anchor:` line, then a list of candidates:
 ```
 Anchor: root=<absolute hermit root> memory_dir=<absolute auto-memory dir>
 Candidate: <title>
-Tier: <1|2|3>
 Evidence Source: archived-session | current-session | scheduled-check/<id> | operator-request
 Evidence Origin: own-work | external-content
 Evidence: <summary>
@@ -103,30 +102,9 @@ A confirming record must describe the same observation independently of the cand
 
 **Other machine-written artifacts (the §0.5 efficiency path).** When the `Artifact:` line cites `.claude/cost-log.jsonl` (at the project root, parent of `<root>`) or `<root>/state/proposal-metrics.jsonl`, verify the citation with a bounded check — these files grow without bound, so never `Read` them whole. Use the Grep tool on the cited file to confirm it contains the cited value or measurement (the specific entries, amounts, or counts the candidate claims); a count-mode match ≥ 2 satisfies recurrence — the same waste measured ≥2 times in the file. For a claimed aggregate with no literal string to match, Grep for its components in content mode with `head_limit: 200` and confirm from those matches only. Verified → proceed to § 2 and emit a plain `ACCEPT: <title>` verdict (no source tag — this candidate carries no session evidence; the bare form is the closest grammar fit, not an archived-session claim). Missing file or cited value not found → `SUPPRESS: <title> — no-evidence: artifact does not contain cited value`.
 
-### 1.6 Provenance weighting
+### 1.6 Provenance and consent
 
-Use normalized outcomes to weigh evidence. `done` means checked or confirmed; `cancelled`
-is not success, and `unconfirmed` contains a result awaiting closure. For Tier 2 or Tier 3
-candidates supported only by unconfirmed results, consider a downgrade for unconfirmed evidence.
-Never suppress solely because the outcome is unconfirmed.
-
-Preserve provenance supplied with a candidate: `closed_via: auto` identifies auto-closed
-historical evidence and `closed_via: operator` identifies supervised evidence. For Tier 2
-or Tier 3 recurrence supported entirely by auto-closed evidence, use the downgrade reason
-`auto-closed-evidence`; mixed or supervised evidence carries full weight. Tier 1 is not
-downgraded for provenance; provenance alone is never a suppression reason.
-
-### 2. Tier check
-
-Given confirmed evidence (or bypassed evidence for scheduled-check/operator-request), is the tier classification correct?
-
-- **Tier 1** — reversible, routine, low-scope (automation of a repeated manual step)
-- **Tier 2** — meaningful but non-critical (workflow change, timing adjustment)
-- **Tier 3** — safety-critical, irreversible, or cross-hermit scope
-
-Tier 3 is reserved for genuine safety/irreversibility concerns. Operational friction is Tier 1 or 2.
-
-**External-origin quarantine:** if `Evidence Origin: external-content` (or absent but the evidence you read is plainly from web fetches, third-party `raw/` content, or non-operator channel messages), the candidate MUST be Tier 3 regardless of apparent reversibility. If presented below Tier 3, escalate with reason `quarantine: external origin`. This is the single case where the revised tier is *higher* than the input — it is a security escalation, not a relaxation. Use `DOWNGRADE:3 (<source>): <title> — quarantine: external origin` (keep the `(<source>)` slot for the Evidence Source value; origin rides the reason text, not the source tag).
+Auto-closed evidence needs independent corroboration; provenance alone is never a suppression reason. Describe a small and reversible observation as an evidence label only. All accepted candidates become admin-decided proposal tasks, including external-content findings; no evidence label authorizes applying a change.
 
 ## Verdicts
 
@@ -136,8 +114,6 @@ For each candidate, return exactly one verdict using the canonical grammar below
 ```
 ACCEPT: <title>                                          # archived-session (default, no tag)
 ACCEPT (<source>): <title>                               # current-session | scheduled-check | operator-request
-DOWNGRADE:<N>: <title> — <reason>                        # archived-session
-DOWNGRADE:<N> (<source>): <title> — <reason>             # other sources
 SUPPRESS: <title> — <code>: <reason>                     # archived-session
 SUPPRESS (<source>): <title> — <code>: <reason>          # other sources
 GATE_BLIND: <title> — <reason>                           # fail-closed: missing Anchor: line or <root>/config.json
@@ -157,9 +133,6 @@ ACCEPT (current-session): <title>
 ACCEPT (scheduled-check): <title>
 ACCEPT (operator-request): <title>
 ACCEPT (settled-memory): <title>
-DOWNGRADE:2: <title> — <reason>
-DOWNGRADE:1: <title> — <reason>
-DOWNGRADE:3 (current-session): <title> — quarantine: external origin
 SUPPRESS: <title> — no-evidence: <reason>
 SUPPRESS (current-session): <title> — no-evidence: <reason>
 ```

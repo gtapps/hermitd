@@ -93,8 +93,8 @@ claude plugin update hermitd-homeassistant@hermitd --scope local
 The hermit watches your house every day — integration drops, automation errors, safety drift, usage patterns you haven't automated yet. When something crosses the three-condition rule (repeated + meaningful + actionable), it writes a proposal:
 
 ```
-/hermitd:proposal-list                   # see what it found
-/hermitd:proposal-act accept PROP-003    # make it the next thing to work on
+/hermitd:task                            # see pending decisions
+Tell Hermit which task to approve        # admin consent through task answer
 ```
 
 Accept one and the hermit picks it up during idle time. Reject, defer, dismiss — you're always in control.

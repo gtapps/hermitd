@@ -1,6 +1,6 @@
 ---
 name: proposal-triage
-description: "Pre-creation gate for proposals — deduplicates, cross-references OPERATOR.md/compiled, and applies the three-condition rule. Accepts one or more candidates in a single call (a single candidate is a batch of one). Returns one verdict per candidate, matched by title: CREATE: <title> | SUPPRESS: <title> — <code>: <reason> (\"<excerpt>\") | DUPLICATE: <title> — <PROP-ID>: <reason>, plus additive metadata lines. Call before proposal-create and before queuing micro-proposals in reflect."
+description: "Pre-creation gate for proposals — deduplicates, cross-references OPERATOR.md/compiled, and applies the three-condition rule. Accepts one or more candidates in a single call (a single candidate is a batch of one). Returns one verdict per candidate, matched by title: CREATE: <title> | SUPPRESS: <title> — <code>: <reason> (\"<excerpt>\") | DUPLICATE: <title> — <task-id>: <reason>, plus additive metadata lines. Call before proposal-create and for reflect candidates."
 model: haiku
 effort: low
 tools:
@@ -34,9 +34,9 @@ Artifact: <machine-written state file> — <cited value/pattern>   (optional)
 
 `Artifact:` is optional. A valid artifact is a **machine-written state file** only (`.claude/cost-log.jsonl`, `state/proposal-metrics.jsonl`, `state/observations.jsonl`); `reflection-judge` has already verified it upstream. It decides the Step 1.5 ledger exemption and Step 4 condition 1.
 
-`Evidence Origin:` is optional. Default: `own-work`. External-content candidates are quarantined to Tier 3 upstream by `reflection-judge` and `reflect`; triage is not the primary gate for this control. Emit `origin: external-content` as additive metadata when present, for audit.
+`Evidence Origin:` is optional. Default: `own-work`. External-content candidates require admin consent upstream by `reflection-judge` and `reflect`; triage is not the primary gate for this control. Emit `origin: external-content` as additive metadata when present, for audit.
 
-Steps 1–3's file reads are batch-invariant — the same universe of files (`<root>/state/proposals-index.json`, the operator's `MEMORY.md` index at `<memory_dir>`, `<root>/OPERATOR.md`, `<root>/compiled/*.md`) applies to every candidate in the batch. Grep, Glob and Read each source once per dispatch, then check every candidate's title/keywords against that cached set — do not re-Grep, re-Glob or re-Read the same source per candidate. Evaluate each candidate independently through Steps 1–4 against the cached reads; reason about all candidates in thinking, then emit one verdict block per candidate in Output.
+Steps 1–3's file reads are batch-invariant — the same universe of files (the task digest returned by `proposal.ts anchor`, the operator's `MEMORY.md` index at `<memory_dir>`, `<root>/OPERATOR.md`, `<root>/compiled/*.md`) applies to every candidate in the batch. Grep, Glob and Read each source once per dispatch, then check every candidate's title/keywords against that cached set — do not re-Grep, re-Glob or re-Read the same source per candidate. Evaluate each candidate independently through Steps 1–4 against the cached reads; reason about all candidates in thinking, then emit one verdict block per candidate in Output.
 
 ## Your private memory
 
@@ -52,19 +52,9 @@ Before Step 1: if the first line of the input does not match `^Anchor: root=/`, 
 
 ## Step 1 — Deduplication
 
-- Grep `<root>/state/proposals-index.json` (content mode, candidate title keywords, a few lines of leading context so `id`, `file` and `status` accompany a `title` hit since the index is one field per line, bounded `head_limit`). Read only matched proposals at `<root>/proposals/<file>`. No index file means no proposals.
+Read the bounded proposal-task digest from `proposal.ts anchor`. An inventory error is blindness, never an empty universe. Read only the matched task record's `## Proposal` section when its title and summary warrant it. Match problem statements, not shared integrations or implementation surfaces.
 
-**Same problem** means the problem statements match — not just that two proposals share an integration, API, data store, or implementation surface. Shared infrastructure alone is not grounds for suppression.
-
-If a proposal with the same problem exists and its status is `proposed`, `deferred`, or `dismissed`:
-- Return: `DUPLICATE: <title> — <PROP-ID>: <one-line reason why they match>` (see Output for the full grammar)
-- Stop evaluating this candidate. Continue with any remaining candidates in the batch.
-
-If a proposal with the same problem exists but its status is `accepted` or `resolved`:
-- Record its PROP-ID as the `closest_prop` metadata — do not return `DUPLICATE`.
-- Continue to Step 1.5.
-
-Note the nearest near-miss PROP-ID even if no exact duplicate is found — it goes into `closest_prop` metadata.
+An open proposal or a cancelled proposal for the same problem is a duplicate; cancellation latches dismissal. Return `DUPLICATE: <title> — <task-id>: <reason>`. Completed proposals are background, not a blocker. Record the nearest match as `closest_prop` and continue through the remaining gates when it is not a duplicate.
 
 ## Step 1.5 — Operator memory cross-reference
 
@@ -101,13 +91,13 @@ Verdict line is exactly one of:
 
 - `CREATE: <title>` — applicable conditions pass, no duplicate
 - `SUPPRESS: <title> — <code>: <one sentence reason> ("<quoted excerpt from candidate evidence that triggered the call>")` where `<code>` is one of: `weak-recurrence` (failed #1), `weak-consequence` (failed #2), `not-actionable` (failed #3), `covered-by-memory` (matched in Step 1.5)
-- `DUPLICATE: <title> — <PROP-ID>: <one-line reason>`
+- `DUPLICATE: <title> — <task-id>: <one-line reason>`
 - `GATE_BLIND: <title> — <reason>` — fail-closed: the `Anchor:` line was missing or `<root>/config.json` was absent. Stop; do not emit CREATE/SUPPRESS/DUPLICATE for that candidate.
 
 Then optionally one or more metadata lines for that candidate (one key:value per line, in any order, omit fields that don't apply — never emit null or empty reassurance fields):
 
 ```
-closest_prop: <PROP-ID>
+closest_prop: <task-id>
 aligned: false
 operator_excerpt: "<quoted line>"
 overlap_compiled: <filename>

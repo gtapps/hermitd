@@ -79,7 +79,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   if (gate === 'triage') {
     const create = verdictLine.match(/^CREATE:\s*.+$/);
     const suppress = verdictLine.match(/^SUPPRESS:\s*.+?—\s*((?:weak-recurrence|weak-consequence|not-actionable|covered-by-memory)(?![\w-])|[a-z-]+(?=:))/);
-    const duplicate = verdictLine.match(/^DUPLICATE:\s*.+?—\s*(PROP-[\w-]+)(?::|$)/);
+    const duplicate = verdictLine.match(/^DUPLICATE:\s*.+?—\s*((?:T-\d{8}-\d{6}(?:-[a-z0-9])?|PROP-[\w-]+))(?::|$)/);
 
     if (create) {
       appendJsonlLine(ledger, JSON.stringify({ ts: utcISOStamp(), type: 'triage-verdict', verdict: 'CREATE', caller, evidence_source: evidenceSource, tags }));

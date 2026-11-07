@@ -46,13 +46,14 @@ export function projectStatus(project: string) {
     runtime: runtime.runtime_mode ?? (docker ? 'docker' : 'tmux'), transport,
     execution: execution.state,
     age: execution.at ? Math.max(0, Math.floor((Date.now() - Date.parse(execution.at)) / 1000)) : null,
-    open: records.filter(r => r.status === 'open').length, waiting: records.filter(r => r.status === 'open' && r.waiting_on).length,
+    open: records.filter(r => r.status === 'open').length, waiting: records.filter(r => r.status === 'open' && r.waiting_on && r.requester !== 'agent').length,
+    agent_waiting: records.filter(r => r.status === 'open' && r.waiting_on && r.requester === 'agent').length,
     working_on: currentWork(records)?.title ?? null,
   };
 }
 export function renderStatus(rows: Record<string, unknown>[], json = false): string {
   if (json) return JSON.stringify(rows.length === 1 ? rows[0] : rows);
-  const columns = ['name', 'runtime', 'transport', 'execution', 'age', 'open', 'waiting', 'working_on', 'state', 'registered'];
+  const columns = ['name', 'runtime', 'transport', 'execution', 'age', 'open', 'waiting', 'agent_waiting', 'working_on', 'state', 'registered'];
   const cells = [columns.map(c => c === 'working_on' ? 'WORKING ON' : c.toUpperCase()), ...rows.map(row => columns.map(c => String(row[c] ?? '-').replace(/[\r\n\t\x1b]/g, ' ')))];
   const widths = columns.map((_, i) => Math.max(...cells.map(row => Bun.stringWidth(row[i]))));
   return cells.map(row => row.map((cell, i) => cell + ' '.repeat(widths[i] - Bun.stringWidth(cell))).join('  ').trimEnd()).join('\n');

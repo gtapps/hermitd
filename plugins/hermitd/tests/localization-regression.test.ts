@@ -21,8 +21,7 @@ describe('en catalog byte-identity', () => {
     expect(m.t('status_working_on', { task: 'T', age: 'A' })).toBe('Working on T (opened A).');
     expect(m.t('status_working')).toBe('Working.');
     expect(m.t('status_idle')).toBe('Idle.');
-    expect(m.t('status_one_approval', { id: 'ID' })).toBe('1 approval waiting (reply "ID yes/no").');
-    expect(m.t('status_n_approvals', { n: 3 })).toBe('3 approvals waiting.');
+    expect(m.t('status_decisions_count', { n: 3, decider: 'admin' })).toBe('3 waiting on admin.');
     expect(m.t('status_next_routine', { hh: '08', mm: '30', id: 'reflect' })).toBe('Next routine: 08:30 (reflect).');
     expect(m.t('status_all_quiet')).toBe('All quiet — nothing in progress, nothing waiting.');
   });

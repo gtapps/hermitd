@@ -21,15 +21,15 @@ execution:
     # Verificações da casa
 
     ## Sempre
-    - Rever `proposals/` com `status: proposed` à espera da minha decisão. Ignorar `accepted`, `resolved`, `deferred` e `dismissed`.
+    - As decisões pendentes são entregues pelos scripts, com orçamento de duas entregas confirmadas por geração.
 
     ## Casa
     - Porta da frente destrancada depois das 23h [ask]
     - Temperatura do congelador acima de -15 °C [ask]
     --- ha-states (Home Assistant, now) ---
     [{"entity_id":"lock.front_door","state":"unlocked","last_changed":"2026-10-01T13:05:00+01:00"},{"entity_id":"sensor.freezer_temperature","state":"-11.2","unit":"°C","last_changed":"2026-10-01T14:21:00+01:00"}]
-    --- proposals/ (frontmatter only) ---
-    - PROP-007-rega-automatica-090000.md: status: proposed, title: Rega automática ao amanhecer
+    --- task decisions ---
+    T-20261001-090000: consent/admin, generation 1, delivered 2; Rega automática ao amanhecer
     </system-reminder>
     Read `spec/heartbeat-reference.md` for the complete evaluation instructions. Execute the evaluation steps in that file against `.hermit/` in the current project directory, using the file paths described there. Return the JSON object exactly as specified in reference.md § Return Schema (no prose). Do NOT write any files or send any notifications — the calling session handles all writes and notifications.
 graders:

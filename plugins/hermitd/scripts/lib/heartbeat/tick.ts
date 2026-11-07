@@ -1,3 +1,4 @@
+import { pendingDecisions, deliveryDue } from '../decisions';
 // One deterministic heartbeat tick: verdict, budget notifications and queued records.
 // The skill delivers notifications and acknowledges successful delivery; composing
 // a notice never consumes it or changes the resident's execution state.
@@ -7,9 +8,9 @@ import { pendingQueue, type QueueNotice } from './queue';
 export { acknowledgeQueue } from './queue';
 import { sweepBrowserLease } from '../browser-lease';
 import { readSettledConfig } from '../config-read';
-import { readMergedAlerts, readAlertState, alertStatePath, activeSuppressedEntries, isStructuredKey } from '../alert-state';
+import { readMergedAlerts } from '../alert-state';
 import { isPaused } from '../pause';
-import { resolveHermitNowMs, todayYMD } from '../time';
+import { resolveHermitNowMs } from '../time';
 import { loadMessages } from '../messages';
 
 type Json = any;
@@ -34,19 +35,15 @@ type TickResult = {
 const DECISION_REFRESH_LIMIT = 5;
 
 /**
- * Pending decisions today's digest will repeat, oldest first, for the evaluator to
- * re-check before they are asked again. Same selection as the digest itself, so the
+ * Pending decisions with a delivery attempt due, oldest first, for the evaluator to
+ * re-check before they are asked again. Same selection as the precheck wake, so the
  * list cannot drift from it; `text` keeps the internal id the check needs.
  */
-function dueDecisionItems(hermitDir: string, timezone: string, nowMs: number): DecisionItem[] {
-  const r = readAlertState(alertStatePath(hermitDir));
-  if (r.kind !== 'ok') return [];
-  if (r.value.last_digest_date === todayYMD(timezone, new Date(nowMs))) return [];
-  return activeSuppressedEntries(r.value.alerts)
-    .filter(([k]) => isStructuredKey(k))
-    .sort(([, a], [, b]) => String(a.first_seen ?? '').localeCompare(String(b.first_seen ?? '')))
-    .slice(0, DECISION_REFRESH_LIMIT)
-    .map(([key, e]) => ({ key, text: typeof e.text === 'string' ? e.text : '' }));
+function dueDecisionItems(hermitDir: string, nowMs: number): DecisionItem[] {
+  const inventory = pendingDecisions(hermitDir);
+  if (!inventory.ok) return [];
+  return inventory.records.filter(row => deliveryDue(row, nowMs)).slice(0, DECISION_REFRESH_LIMIT)
+    .map(({ task, decision }) => ({ key: `${task.id}:${decision.generation}`, text: task.title }));
 }
 
 /** The snake_case token for a precheck reason, e.g. `HEARTBEAT.md missing` → `heartbeat_md_missing`. */
@@ -122,7 +119,7 @@ export async function run(args: string[]): Promise<void> {
       if (result.status === 'evaluate') {
         const queue = pendingQueue(hermitDir, nowMs);
         if (queue) result.notifications.queue = queue;
-        const due = dueDecisionItems(hermitDir, config.timezone ?? 'UTC', nowMs);
+        const due = dueDecisionItems(hermitDir, nowMs);
         if (due.length > 0) result.decision_refresh = due;
       }
     }

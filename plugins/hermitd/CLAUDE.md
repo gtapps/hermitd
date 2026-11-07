@@ -17,7 +17,7 @@ The shipped hermit is main-as-orchestrator: the long-lived main session delegate
 Installed state lives in the target project's `.hermit/`:
 
 - `tasks/T-*.md` commitments, maintained through `scripts/task.ts`
-- `proposals/PROP-NNN-<slug>-HHMMSS.md`
+- A proposal is a task the agent opened, waiting on a decider. `proposals/archive/` holds imported history.
 - `state/` machine state: runtime, alert and reflection state, metrics JSONL, monitor registry
 - `raw/` domain inputs and `compiled/` durable domain outputs (injected at session start). Both flat, no subdirectories; `raw/.archive/` holds expired artifacts. Contract: [plugin-hermit-storage](docs/plugin-hermit-storage.md).
 - `knowledge-schema.md`, `config.json`, and `OPERATOR.md` (operator-curated; the hermit edits OPERATOR.md only on operator request, behind the native approval prompt under Standard, and proposes a diff under Hardened)

@@ -102,7 +102,6 @@ const HERMIT_ALLOW = [
   'Bash(bun */scripts/proposal.ts*)',
   'Bash(bun */scripts/generate-summary.ts*)',
   'Bash(bun */scripts/update-reflection-state.ts*)',
-  'Bash(bun */scripts/apply-reflection-actions.ts*)',
   'Bash(bun */scripts/transcript-digest.ts*)',
   'Bash(bun */scripts/setup-token-mint.ts*)',
   'Bash(bun */scripts/routines.ts tz-shift*)',
@@ -164,6 +163,8 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run task note *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
+  'Bash(.hermit/bin/hermitd-run task answer *)',
+  'Bash(.hermit/bin/hermitd-run task cancel *)',
   // Role-proposal replies arrive on ordinary chat turns, sealed for the same
   // reason; snapshot and commit stay with the routine's own script path.
   'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',
@@ -249,6 +250,7 @@ const HERMIT_ALLOW = [
 // an entry still in HERMIT_ALLOW — this registry is what makes a deletion or a respelling
 // reach already-hatched hermits.
 const HERMIT_OBSOLETE = [
+  'Bash(bun */scripts/apply-reflection-actions.ts*)',
   'Bash(.hermit/bin/hermitd-run domain-hatch sync-block *)',
   // Only the house brief called these; it no longer reads tasks or micro-proposals.
   'Bash(.hermit/bin/hermitd-run task list *)',

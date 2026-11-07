@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import { pendingDecisions, readDeliveryBudget } from './decisions';
+import { acquireLockWithWait, releaseLock } from './lockfile';
+import { writeFileAtomic } from './md-write';
 // channel-send.ts — the first script-owned (non-model) channel send.
 //
 // Resolves the eligible outbound channel (resolve-outbound-channel.ts's
@@ -27,6 +31,7 @@ import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
 import { loadMessages } from './messages';
+import { resolveHermitNowMs } from './time';
 
 type Json = any;
 
@@ -319,6 +324,7 @@ export interface OperatorNotice {
   timeoutMs?: number;
   /** The routine whose fire sends this notice; its `chat`, when set, takes the client leg. */
   routine?: string;
+  decision?: { task: string; generation: number };
   /** The watch whose events send this notice; its registry `chat` takes the client leg. */
   watch?: string;
   /** The caller is a model session that can send the client text through the channel's reply tool. */
@@ -358,7 +364,7 @@ export function appendMaintainerFindings(
  * physical-target merge (same chat ⇒ both texts together), missing/failed
  * maintainer fallback, sensitive-log handling, and Findings append. Never throws.
  */
-export async function sendOperatorNotice(hermitDir: string, notice: OperatorNotice): Promise<OperatorNoticeResult> {
+async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice, decisionChat?: string | null): Promise<OperatorNoticeResult> {
   const out: OperatorNoticeResult = {};
   const config: Json = readSettledConfig(hermitDir);
   const channels = config.channels;
@@ -367,7 +373,9 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   const nonTechnical = config.operator_profile === 'non-technical';
   // A routine's or watch's own chat takes the client leg; the maintainer leg keeps
   // the home routing, so technical detail never reaches a team chat.
-  const owned = notice.routine
+  const owned = decisionChat
+    ? { id: decisionChat.split(':')[0], chat_id: decisionChat.slice(decisionChat.indexOf(':') + 1) }
+    : notice.routine
     ? ownedTarget(config.routines, notice.routine)
     : notice.watch
       // A config watch's chat is read live from config.json, like a routine's;
@@ -460,4 +468,40 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
   }
 
   return out;
+}
+
+// The send owns confirmation and counting; composing or reading a decision never
+// spends its budget. Hold the budget lock through delivery to bound concurrent sends.
+export async function sendOperatorNotice(hermitDir: string, notice: OperatorNotice): Promise<OperatorNoticeResult> {
+  if (!notice.decision) return deliverOperatorNotice(hermitDir, notice);
+  const lock = path.join(hermitDir, 'state', 'decision-deliveries.lock');
+  try { fs.mkdirSync(path.dirname(lock), { recursive: true }); } catch { return { client: { ok: false, error: 'decision_budget_unavailable' } }; }
+  if (!acquireLockWithWait(lock, 2000)) return { client: { ok: false, error: 'decision_budget_busy' } };
+  try {
+    const inventory = pendingDecisions(hermitDir);
+    if (!inventory.ok) return { client: { ok: false, error: 'decision_inventory_unavailable' } };
+    const pending = inventory.records.find(row => row.task.id === notice.decision!.task && row.decision.generation === notice.decision!.generation);
+    if (!pending) return { client: { ok: false, error: 'stale_decision' } };
+    if (pending.delivered >= 2) return { client: { ok: false, error: 'decision_budget_spent' } };
+    // Stamp the attempt before sending, so a failed or refused attempt still waits
+    // a day before the heartbeat wakes for this generation again.
+    const budgetPath = path.join(hermitDir, 'state', 'decision-deliveries.json');
+    const key = `${pending.task.id}:${pending.decision.generation}`;
+    const budget = readDeliveryBudget(hermitDir);
+    budget[key] = { delivered: pending.delivered, attempted_at: new Date(resolveHermitNowMs()).toISOString() };
+    writeFileAtomic(budgetPath, JSON.stringify(budget) + '\n');
+    const admin = pending.decision.authority === 'admin';
+    const text = notice.maintainer?.text ?? notice.client;
+    if (!text || (!admin && !pending.task.conversation)) return { client: { ok: false, error: 'decision_destination_missing' } };
+    const result = await deliverOperatorNotice(hermitDir, { ...notice, routine: undefined, watch: undefined, relay: false,
+      client: admin ? undefined : text,
+      maintainer: admin ? { text, fallback: 'primary' } : undefined,
+    }, admin ? null : pending.task.conversation);
+    if (admin ? result.maintainer?.delivered && result.maintainer.route !== 'findings' : result.client?.ok) {
+      budget[key] = { ...budget[key], delivered: pending.delivered + 1 };
+      writeFileAtomic(budgetPath, JSON.stringify(budget) + '\n');
+    }
+    return result;
+  } catch { return { client: { ok: false, error: 'decision_delivery_failed' } }; }
+  finally { releaseLock(lock); }
 }
