@@ -9,26 +9,31 @@
  * path and never enters the calling context.
  *
  * Usage: bun collect-evidence.ts [--hermit-dir DIR] [--out FILE]
- *                                [--from PROP-NNN] [--status proposed,deferred]
+ *                                [--from PROP-NNN] [--status proposed,accepted]
  *
  * --from narrows the audit to proposals numbered NNN and up; --status to the
  * listed open statuses. Both scope the bundle itself, so the evidence floor
  * moves with them and the subagent never sees out-of-scope proposals.
- * --hermit-dir is the state folder holding proposals/ and tasks/ (default:
- * <repo>/.hermit). A checkout whose .hermit is a projection has no proposals/,
- * so pass the real one.
+ * --hermit-dir is the state folder holding tasks/ (default: <repo>/.hermit).
+ * A checkout whose .hermit is a projection has no tasks/, so pass the real one.
+ * Proposals are task records with kind: proposal. Legacy ids survive as the
+ * dedupe key proposal:PROP-NNN; newer ones are identified by their T- id.
+ * --status takes proposed (awaiting consent) and accepted (approved, not closed).
  *
  * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>|<task-count>
  *         NONE|no-open-proposals
- * A missing proposals/ folder is an error: message on stderr, exit 1.
+ * A missing tasks/ folder, or legacy proposals/*.md not yet imported by
+ * `proposal.ts migrate`, is an error: message on stderr, exit 1.
  */
 
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { readTaskInventory } from "../../../../plugins/hermitd/scripts/lib/tasks";
+import { readTaskReports } from "../../../../plugins/hermitd/scripts/lib/task-report";
 
-const OPEN_STATUSES = new Set(["proposed", "deferred", "accepted"]);
+const OPEN_STATUSES = new Set(["proposed", "accepted"]);
 const EXCERPT_CHARS = 700;
 const BULLET_CHARS = 500;
 
@@ -55,7 +60,7 @@ const outPath = arg(
 
 type Proposal = {
   id: string;
-  file: string;
+  task: string;
   title: string;
   status: string;
   created: string;
@@ -64,24 +69,10 @@ type Proposal = {
   excerpt: string;
 };
 
-/** Frontmatter here is flat scalars written by proposal.ts — a line reader is
- *  sufficient and avoids a YAML dependency in a repo that ships none. */
-function frontmatter(text: string): Record<string, string> {
-  const end = text.indexOf("\n---", 4);
-  if (!text.startsWith("---") || end === -1) return {};
-  const out: Record<string, string> = {};
-  for (const line of text.slice(4, end).split("\n")) {
-    const m = line.match(/^([a-z_]+):\s*(.*)$/);
-    if (m) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
-  }
-  return out;
-}
-
 /** The Problem section states what the proposal wants changed, which is what a
  *  changelog bullet would echo. Context is the fallback; it describes the
  *  incident rather than the fix, so it matches less cleanly. */
-function excerpt(text: string): string {
-  const body = text.slice(text.indexOf("\n---", 4) + 4);
+function excerpt(body: string): string {
   for (const heading of ["## Problem", "## Proposed Solution", "## Context"]) {
     const i = body.indexOf(heading);
     if (i === -1) continue;
@@ -92,31 +83,42 @@ function excerpt(text: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, EXCERPT_CHARS);
 }
 
-const proposalsDir = join(hermitDir, "proposals");
-if (!existsSync(proposalsDir)) {
+if (!existsSync(join(hermitDir, "tasks"))) {
   console.error(
-    `no proposals folder at ${proposalsDir}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+    `no tasks folder at ${join(hermitDir, "tasks")}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+  );
+  process.exit(1);
+}
+const legacyDir = join(hermitDir, "proposals");
+if (existsSync(legacyDir) && readdirSync(legacyDir).some((n) => n.endsWith(".md"))) {
+  console.error(
+    `unmigrated proposal files in ${legacyDir}; run: bun plugins/hermitd/scripts/proposal.ts migrate ${hermitDir}`,
   );
   process.exit(1);
 }
 
+const inventory = readTaskInventory(hermitDir);
+if (!inventory.ok) {
+  console.error(`task inventory unreadable at ${hermitDir}`);
+  process.exit(1);
+}
+
 const open: Proposal[] = [];
-for (const name of readdirSync(proposalsDir).sort()) {
-  if (!name.endsWith(".md")) continue;
-  const text = readFileSync(join(proposalsDir, name), "utf8");
-  const fm = frontmatter(text);
-  if (!statuses.has(fm.status)) continue;
-  const id = (fm.id || basename(name, ".md")).replace(/-\d{6}$/, "").slice(0, 8);
-  if (Number(id.replace(/\D/g, "")) < minId) continue;
+for (const t of inventory.records.sort((a, b) => a.created.localeCompare(b.created))) {
+  if (t.kind !== "proposal" || t.status !== "open") continue;
+  const status = t.approved_rev === null ? "proposed" : "accepted";
+  if (!statuses.has(status)) continue;
+  const legacy = t.dedupe_key?.match(/^proposal:(PROP-\d+)$/)?.[1];
+  if (legacy && Number(legacy.replace(/\D/g, "")) < minId) continue;
   open.push({
-    id,
-    file: name,
-    title: fm.title || "(untitled)",
-    status: fm.status,
-    created: (fm.created || "").slice(0, 10),
-    category: fm.category || "",
-    tags: fm.tags || "",
-    excerpt: excerpt(text),
+    id: legacy ?? t.id,
+    task: t.id,
+    title: t.title || "(untitled)",
+    status,
+    created: t.created.slice(0, 10),
+    category: t.category || "",
+    tags: Array.isArray(t.tags) ? t.tags.filter((x) => x !== "task").join(",") : String(t.tags ?? ""),
+    excerpt: excerpt(t.body),
   });
 }
 
@@ -136,22 +138,7 @@ const cutoff = open
 
 /** task-report.ts owns the task file format and exposes closed_reason. A record
  *  titled or closed with a PROP id is often the clearest sign it shipped. */
-type TaskRow = {
-  title: string;
-  closed_reason: string | null;
-  closed_at: string | null;
-  outcome: string;
-  source_path: string;
-};
-
-const taskScript = join(repoRoot, "plugins", "hermitd", "scripts", "task-report.ts");
-const taskRows: TaskRow[] = (
-  JSON.parse(
-    execFileSync("bun", [taskScript, hermitDir, "--recent", "--limit", "100000"], {
-      maxBuffer: 64 * 1024 * 1024,
-    }).toString(),
-  ).rows as TaskRow[]
-).filter(
+const taskRows = readTaskReports(hermitDir).filter(
   (t) =>
     t.closed_at &&
     t.closed_at.slice(0, 10) >= cutoff &&
@@ -227,7 +214,7 @@ for (const p of open) {
   );
   lines.push(
     `### ${p.id} — ${p.title}`,
-    `status: ${p.status} | created: ${p.created} | age: ${age}d | category: ${p.category} | tags: ${p.tags}`,
+    `task: ${p.task} | status: ${p.status} | created: ${p.created} | age: ${age}d | category: ${p.category} | tags: ${p.tags}`,
     "",
     p.excerpt,
     "",
