@@ -1,6 +1,6 @@
 ---
 name: stale-proposals
-description: "Audit this repository's local proposal queue for stale entries: proposals still marked proposed, deferred, or accepted even though the work already shipped, plus old proposals whose subject has become inert. Reconcile proposals against plugin changelogs and first-parent Git history, automatically resolve only unambiguous shipped matches, and ask before any weak-match, aged, dismissal, or deferral decision. Use when the user asks to check, reconcile, clean up, prune, or find stale proposals; asks whether proposal work already shipped; is confused why an old PROP remains open; or wants to stop heartbeat from repeatedly surfacing obsolete proposal-pending items. Supports a report-only no-apply mode."
+description: "Audit this repository's local proposal queue for stale entries: proposals still open as a proposal task (awaiting consent or approved) even though the work already shipped, plus old proposals whose subject has become inert. Reconcile proposals against plugin changelogs and first-parent Git history, automatically resolve only unambiguous shipped matches, and ask before any weak-match, aged, or dismissal decision. Use when the user asks to check, reconcile, clean up, prune, or find stale proposals; asks whether proposal work already shipped; is confused why an old PROP remains open; or wants to stop heartbeat from repeatedly surfacing obsolete proposal-pending items. Supports a report-only no-apply mode."
 ---
 
 # Stale Proposals
@@ -22,14 +22,14 @@ From the repository root, run:
 bun .agents/skills/stale-proposals/scripts/collect-evidence.ts [--hermit-dir <hermit-dir>]
 ```
 
-`<hermit-dir>` is the state folder that holds `proposals/` and `tasks/`. It defaults to `<repo>/.hermit`, which is only right in the resident's own checkout. In a checkout whose `.hermit` is a projection (a core checkout under a resident workspace, a worktree), pass the resident's absolute `.hermit` path. Use that same path in Steps 3 and 4.
+`<hermit-dir>` is the state folder that holds `tasks/`; a proposal is a task record with `kind: proposal` (see `plugins/hermitd/docs/task-records.md`), and migrated ones keep their `PROP-NNN` id as dedupe key `proposal:PROP-NNN`. It defaults to `<repo>/.hermit`, which is only right in the resident's own checkout. In a checkout whose `.hermit` is a projection (a core checkout under a resident workspace, a worktree), pass the resident's absolute `.hermit` path. Use that same path in Steps 3 and 4.
 
 The script prints one of:
 
 - `OK|<bundle-path>|<open>|<bullets>|<commits>|<cutoff>|<tasks>`
 - `NONE|no-open-proposals`
 
-For `NONE|no-open-proposals`, report `Queue is clean — no open proposals.` and stop. A non-zero exit means the proposals folder is missing: report the stderr message and stop. It is a wrong path, never a clean queue. The bundle also lists closed task records that name a PROP id.
+For `NONE|no-open-proposals`, report `Queue is clean — no open proposals.` and stop. A non-zero exit means a wrong path or an unmigrated state folder: report the stderr message and stop, never treat it as a clean queue. Unmigrated means `proposals/*.md` still exist; the user runs `proposal.ts migrate <hermit-dir>` once, this skill does not. The bundle also lists closed task records that name a PROP id.
 
 Do not read the evidence bundle in the main session. It can be tens of thousands of tokens and exists specifically to keep that corpus isolated.
 
@@ -39,14 +39,14 @@ Spawn one worker agent with a fresh context (`fork_turns: "none"` when supported
 
 Use this contract verbatim, substituting the real path:
 
-> Read the evidence bundle at `<path>`. It lists open proposals, then CHANGELOG bullets, then first-parent commits.
+> Read the evidence bundle at `<path>`. It lists open proposals (each headed by its `PROP-NNN` or `T-` id), then CHANGELOG bullets, closed task records, then first-parent commits.
 >
 > For each open proposal, decide whether the thing it asked for has already shipped. Emit exactly one line per proposal, and nothing else:
 >
-> - `SHIPPED-STRONG|<PROP-ID>|<plugin> <version> / <commit or "changelog">|<one sentence: what the evidence says, in the changelog's own words>`
-> - `SHIPPED-WEAK|<PROP-ID>|<evidence ref>|<one sentence: what matches and what you could not confirm>`
-> - `AGED|<PROP-ID>|<age in days>|<one sentence: why nothing has moved on this>`
-> - `OPEN|<PROP-ID>`
+> - `SHIPPED-STRONG|<ID>|<plugin> <version> / <commit or "changelog">|<one sentence: what the evidence says, in the changelog's own words>`
+> - `SHIPPED-WEAK|<ID>|<evidence ref>|<one sentence: what matches and what you could not confirm>`
+> - `AGED|<ID>|<age in days>|<one sentence: why nothing has moved on this>`
+> - `OPEN|<ID>`
 >
 > **STRONG requires all three:** the evidence names the same component the proposal targets; it describes the same behavior change the proposal asked for; and no distinct part of the proposal's ask is left unaddressed. A proposal asking for three things where the changelog delivers two is **WEAK**, not strong — partial delivery is the single most likely way this audit closes live work by mistake, so when you notice yourself arguing for why a gap "probably doesn't matter," that is WEAK.
 >
@@ -66,41 +66,35 @@ Reject malformed lines or missing proposal IDs instead of guessing.
 
 Skip this step in report-only mode.
 
-For each `SHIPPED-STRONG` verdict, resolve the proposal ID to a filename. The filename lookup happens before mutation; an ambiguous or missing ID moves into Step 4.
+Only a proposal still awaiting consent (`status: proposed` in the bundle) is auto-resolved: closing an approved one needs a named user identity, so a `SHIPPED-STRONG` on an `accepted` proposal joins the Step 4 list.
+
+The bundle's `task:` line gives the task id. Record the evidence, then decline consent through the local answer path, which is how `task.ts` closes a pending proposal from the terminal (`plugins/hermitd/docs/task-records.md` § Proposals and durable questions):
 
 ```bash
-bun plugins/hermitd/scripts/proposal.ts resolve-id <hermit-dir> "<PROP-ID>"
+bun plugins/hermitd/scripts/task.ts note <hermit-dir> <task-id> --decision <<'HERMIT_NOTE'
+Resolved @now: shipped in <plugin> <version>. <evidence sentence>
+HERMIT_NOTE
+
+bun plugins/hermitd/scripts/task.ts answer <hermit-dir> <task-id> --local --reply no
 ```
 
-For an unambiguous filename, resolve it with the `resolve` verb, which writes the metrics rows and the patch together and records the accept first when the proposal was still `proposed`:
+Replace `@now` with the current date. The note makes the automatic resolution auditable. A shipped proposal closes as cancelled (the record's closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. The answer needs the harness permission prompt and is refused under bypass mode, so a refusal means leave it for Step 4 and say so.
 
-```bash
-bun plugins/hermitd/scripts/proposal.ts resolve <hermit-dir> <filename> --stdin <<'HERMIT_PATCH'
-Decision: Resolved on @now — shipped in <plugin> <version>. <evidence sentence>
-HERMIT_PATCH
-```
+`answer` prints `{"status":"match",...}` on success. Any other status (`none`, `refused`, `ambiguous`, `stale`), or `{"error":...}`, means nothing was closed: report it, move that proposal to Step 4, and continue. A `note` already written stays as a harmless record.
 
-The evidence in the Decision line makes the automatic resolution auditable.
+## Step 4 — Ask about the rest
 
-- `proposal.ts resolve-id` returning `AMBIGUOUS` or `NONE`: do not guess; move the item to Step 4.
-- `proposal.ts` returning `ERROR|<reason>`: nothing was patched; report the failure and continue.
-
-## Step 4 — Ask about weak and aged proposals
-
-Present `SHIPPED-WEAK` first, then `AGED`. Ask the user in one concise round whether to resolve, dismiss, defer, or leave each item open. Separate items when one group clearly needs different decisions.
+Present `SHIPPED-WEAK` first, then `AGED`, then any `accepted` `SHIPPED-STRONG`. Ask the user in one concise round whether to resolve, dismiss, or leave each item open. Separate items when one group clearly needs different decisions.
 
 Stop and wait for the response. Do not interpret the original audit request as approval for these mutations.
 
-Apply confirmed choices against the same `<hermit-dir>` as Step 1. Before applying one, read the current matching flow in `plugins/hermitd/skills/proposal-act/SKILL.md`; that file is the repository contract for proposal status fields, metrics ordering, decision text, and dashboard refresh behavior.
+Apply confirmed choices with `task.ts` against the same `<hermit-dir>` as Step 1. Both resolve and dismiss close the record as cancelled; the Decision note carries the difference:
 
-At minimum, preserve these invariants:
-
-- **Resolve:** append a `resolved` metrics event before patching; set `status=resolved` and `resolved_date=@now`; do not set `dismissed_date`.
-- **Dismiss:** if `responded` is false, append the first-response `responded` event before patching and set `responded=true`; set `status=dismissed`, `dismissed_date=@now`, and `resolved_date=@now`.
-- **Defer:** if `responded` is false, append the first-response `responded` event before patching and set `responded=true`; set `status=deferred` and `deferred_date=@now`; do not set `resolved_date`.
+- **Awaiting consent:** `note --decision` with the user's choice and reason (for resolve, as Step 3), then `answer <task-id> --local --reply no`.
+- **Accepted:** `cancel <task-id> --actor <source>:<user-id> --chat <chat-key> --user <user-id> --reason-stdin` with the reason on stdin, using the user's own identity from this conversation. A terminal-only session has none: report the task id and leave it open.
 - **Leave open:** make no changes.
 
-Record the user's choice and reason in the Decision line where the current contract calls for one. Treat only family-wide dismissal preferences as durable feedback; proposal-specific reasons are not standing policy.
+Treat only family-wide dismissal preferences as durable feedback; proposal-specific reasons are not standing policy.
 
 ## Step 5 — Report the delta
 
