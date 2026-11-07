@@ -9,21 +9,25 @@
  * worker by path and never enters the calling context.
  *
  * Usage: bun collect-evidence.ts [--hermit-dir DIR] [--out FILE]
- * --hermit-dir is the state folder holding proposals/ and tasks/ (default:
- * <repo>/.hermit). A checkout whose .hermit is a projection has no proposals/,
- * so pass the real one.
+ * --hermit-dir is the state folder holding tasks/ (default: <repo>/.hermit).
+ * A checkout whose .hermit is a projection has no tasks/, so pass the real one.
+ * Proposals are task records with kind: proposal. Legacy ids survive as the
+ * dedupe key proposal:PROP-NNN; newer ones are identified by their T- id.
  *
  * Prints: OK|<out-path>|<open-count>|<bullet-count>|<commit-count>|<cutoff>|<task-count>
  *         NONE|no-open-proposals
- * A missing proposals/ folder is an error: message on stderr, exit 1.
+ * A missing tasks/ folder, or legacy proposals/*.md not yet imported by
+ * `proposal.ts migrate`, is an error: message on stderr, exit 1.
  */
 
 import { basename, join, resolve } from 'node:path';
-import { execFileSync, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { readTaskInventory } from '../../../../plugins/hermitd/scripts/lib/tasks';
+import { readTaskReports } from '../../../../plugins/hermitd/scripts/lib/task-report';
 
-const OPEN_STATUSES = new Set(['proposed', 'deferred', 'accepted']);
+const OPEN_STATUSES = new Set(['proposed', 'accepted']);
 const EXCERPT_CHARS = 700;
 const BULLET_CHARS = 500;
 
@@ -41,7 +45,7 @@ const outPath = arg(
 
 type Proposal = {
   id: string;
-  file: string;
+  task: string;
   title: string;
   status: string;
   created: string;
@@ -50,25 +54,9 @@ type Proposal = {
   excerpt: string;
 };
 
-/** Parse the flat scalar frontmatter written by proposal.ts without adding a
- * YAML dependency to a repository that intentionally ships none. */
-function frontmatter(text: string): Record<string, string> {
-  const end = text.indexOf('\n---', 4);
-  if (!text.startsWith('---') || end === -1) return {};
-  const out: Record<string, string> = {};
-  for (const line of text.slice(4, end).split('\n')) {
-    const match = line.match(/^([a-z_]+):\s*(.*)$/);
-    if (match) {
-      out[match[1]] = match[2].trim().replace(/^["']|["']$/g, '');
-    }
-  }
-  return out;
-}
-
 /** Prefer the Problem section because it states what a shipped changelog entry
  * should answer. Fall back through Proposed Solution and Context. */
-function excerpt(text: string): string {
-  const body = text.slice(text.indexOf('\n---', 4) + 4);
+function excerpt(body: string): string {
   for (const heading of ['## Problem', '## Proposed Solution', '## Context']) {
     const i = body.indexOf(heading);
     if (i === -1) continue;
@@ -79,29 +67,39 @@ function excerpt(text: string): string {
   return body.replace(/\s+/g, ' ').trim().slice(0, EXCERPT_CHARS);
 }
 
-const proposalsDir = join(hermitDir, 'proposals');
-if (!existsSync(proposalsDir)) {
+if (!existsSync(join(hermitDir, 'tasks'))) {
   console.error(
-    `no proposals folder at ${proposalsDir}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+    `no tasks folder at ${join(hermitDir, 'tasks')}; pass --hermit-dir <state dir> (this checkout's .hermit may be a projection)`,
+  );
+  process.exit(1);
+}
+const legacyDir = join(hermitDir, 'proposals');
+if (existsSync(legacyDir) && readdirSync(legacyDir).some((name) => name.endsWith('.md'))) {
+  console.error(
+    `unmigrated proposal files in ${legacyDir}; run: bun plugins/hermitd/scripts/proposal.ts migrate ${hermitDir}`,
   );
   process.exit(1);
 }
 
+const inventory = readTaskInventory(hermitDir);
+if (!inventory.ok) {
+  console.error(`task inventory unreadable at ${hermitDir}`);
+  process.exit(1);
+}
+
 const open: Proposal[] = [];
-for (const name of readdirSync(proposalsDir).sort()) {
-  if (!name.endsWith('.md')) continue;
-  const text = readFileSync(join(proposalsDir, name), 'utf8');
-  const fm = frontmatter(text);
-  if (!OPEN_STATUSES.has(fm.status)) continue;
+for (const task of inventory.records.sort((x, y) => x.created.localeCompare(y.created))) {
+  if (task.kind !== 'proposal' || task.status !== 'open') continue;
+  const legacy = task.dedupe_key?.match(/^proposal:(PROP-\d+)$/)?.[1];
   open.push({
-    id: (fm.id || basename(name, '.md')).replace(/-\d{6}$/, '').slice(0, 8),
-    file: name,
-    title: fm.title || '(untitled)',
-    status: fm.status,
-    created: (fm.created || '').slice(0, 10),
-    category: fm.category || '',
-    tags: fm.tags || '',
-    excerpt: excerpt(text),
+    id: legacy ?? task.id,
+    task: task.id,
+    title: task.title || '(untitled)',
+    status: task.approved_rev === null ? 'proposed' : 'accepted',
+    created: task.created.slice(0, 10),
+    category: task.category || '',
+    tags: Array.isArray(task.tags) ? task.tags.filter((tag) => tag !== 'task').join(',') : String(task.tags ?? ''),
+    excerpt: excerpt(task.body),
   });
 }
 
@@ -115,24 +113,9 @@ const cutoff = open
   .filter(Boolean)
   .sort()[0];
 
-type TaskRow = {
-  title: string;
-  closed_reason: string | null;
-  closed_at: string | null;
-  outcome: string;
-  source_path: string;
-};
-
 // task-report.ts owns the task file format and exposes closed_reason. A record
 // titled or closed with a PROP id is often the clearest sign it shipped.
-const taskScript = join(repoRoot, 'plugins', 'hermitd', 'scripts', 'task-report.ts');
-const taskRows: TaskRow[] = (
-  JSON.parse(
-    execFileSync('bun', [taskScript, hermitDir, '--recent', '--limit', '100000'], {
-      maxBuffer: 64 * 1024 * 1024,
-    }).toString(),
-  ).rows as TaskRow[]
-).filter(
+const taskRows = readTaskReports(hermitDir).filter(
   (task) =>
     task.closed_at &&
     task.closed_at.slice(0, 10) >= cutoff &&
@@ -209,7 +192,7 @@ for (const proposal of open) {
   );
   lines.push(
     `### ${proposal.id} — ${proposal.title}`,
-    `status: ${proposal.status} | created: ${proposal.created} | age: ${age}d | category: ${proposal.category} | tags: ${proposal.tags}`,
+    `task: ${proposal.task} | status: ${proposal.status} | created: ${proposal.created} | age: ${age}d | category: ${proposal.category} | tags: ${proposal.tags}`,
     '',
     proposal.excerpt,
     '',
