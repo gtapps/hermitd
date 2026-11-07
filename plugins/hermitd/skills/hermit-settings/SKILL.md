@@ -47,8 +47,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings skills-notify: off, on, or verbose learning notifications
 /hermitd:hermit-settings reflection       — tune graduation threshold (graduation_min_sessions)
 /hermitd:hermit-settings push-notifications — toggle PushNotification doorbell (fires when no channel is enabled or a configured channel is unreachable)
-/hermitd:hermit-settings artifact-dashboard — toggle the Hermit Dashboard artifact (single-URL status/proposals/weekly-evolution page)
-/hermitd:hermit-settings artifact-proposals — toggle the Proposals-page artifact (full-text open-proposal page)
+/hermitd:hermit-settings artifact-dashboard — toggle the Hermit Dashboard artifact (single-URL status/waiting/weekly-evolution page)
 /hermitd:hermit-settings artifact-weekly-review — toggle the Weekly-review artifact (stable-URL passthrough of the compiled weekly report)
 /hermitd:hermit-settings artifact-authorization — record the unattended Artifact publish decision (applied by hermitd-start at boot, not from this session)
 /hermitd:hermit-settings artifact-backend — where pages publish: `claude` (default), or the name of a connected MCP artifact server you registered yourself

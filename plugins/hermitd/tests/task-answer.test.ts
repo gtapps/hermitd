@@ -202,3 +202,49 @@ test('a plain wait clears without a decider, and a proposal may block on a non-d
     expect(f.read(id).waiting_on).toBeNull();
   } finally { f.cleanup(); }
 });
+
+
+for (const conversation of [chat, undefined]) test('local answer acts as operator, conversation=' + conversation, () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord(consent, { conversation });
+    expect(mutateTask(f.dir, 'answer', id, { local: true, reply: 'yes' }, '')).toMatchObject({ status: 'match', id });
+    expect(f.read(id)).toMatchObject({ approved_by: 'operator', approved_rev: '0', waiting_on: null });
+  } finally { f.cleanup(); }
+});
+
+test('local answer handles chat authority, ambiguity, unknown ids and conflicting flags', async () => {
+  const f = fixture(); try {
+    const a = f.openRecord({ purpose: 'input', authority: 'chat', generation: 1 }, { kind: false });
+    f.openRecord();
+    expect(mutateTask(f.dir, 'answer', undefined, { local: true, reply: 'yes' }, '')).toMatchObject({ status: 'ambiguous', reason: 'multiple_pending' });
+    expect(mutateTask(f.dir, 'answer', 'T-20000101-000000', { local: true, reply: 'yes' }, '')).toMatchObject({ status: 'none', reason: 'no_match' });
+    expect(mutateTask(f.dir, 'answer', a.id, { local: true, reply: 'yes' }, '')).toMatchObject({ status: 'match' });
+    expect(f.read(a.id).body).toContain('operator: yes');
+    const result = await f.run('answer', ['--local', '--chat', chat, '--reply', 'yes']);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({ error: 'invalid_arguments' });
+  } finally { f.cleanup(); }
+});
+
+
+test('id-less thread answers exclude null-conversation decisions but explicit ids can match', () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    const flags = { chat: 'discord:th', user: 'admin', reply: 'yes' };
+    expect(mutateTask(f.dir, 'answer', undefined, flags, '', true)).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(mutateTask(f.dir, 'answer', id, flags, '', true)).toMatchObject({ status: 'match', id });
+  } finally { f.cleanup(); }
+});
+
+for (const key of ['slack:home~t1', 'discord:th']) test('CLI classifies id-less answer thread ' + key, async () => {
+  const f = fixture(); try {
+    f.put('config.json', { channels: {
+      discord: { operators: ['admin'] },
+      slack: { operators: ['admin'], attributes: { thread_id: 'thread_ts' } },
+    } });
+    f.put('state/channel-chats.json', { discord: { chats: { th: { type: 11, parent_id: 'parent', fetched_at: new Date().toISOString() } } } });
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    expect(await f.ok('answer', ['--chat', key, '--user', 'admin', '--reply', 'yes'])).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(await f.ok('answer', [id, '--chat', key, '--user', 'admin', '--reply', 'yes'])).toMatchObject({ status: 'match', id });
+  } finally { f.cleanup(); }
+});

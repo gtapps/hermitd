@@ -48,7 +48,7 @@ Handle wrapper results before continuing:
 | Result | Action |
 |---|---|
 | `installing` | Rerun after one minute, at most three tries, then report that installation is still pending. |
-| `disabled` | The operator turned the managed browser off. Say the page needs a browser, that the agent's browser is off, and that `/hermitd:hermit-settings browser` turns it on; change it only if asked. |
+| `disabled` | Say the page needs a browser, the agent's browser is off, and the agent can turn it on when asked. It takes effect after the next restart, or the next update on Docker. Change it only when asked. |
 | `browser_install_failed:<detail>` | Report the download or prerequisite failure; ask the operator to run `hermitd run browser-host`. Do not install packages from the task. |
 | `browser_sandbox_blocked` | Relay both fixes in the detail: terminal `hermitd run browser-host`, and the `bun */scripts/browser-agent.ts *` line in `sandbox.excludedCommands`. Never disable Chrome’s sandbox. |
 | `takeover_unsupported` | macOS has no phone takeover. Use configured Claude in Chrome for the operator’s account or report the blocker. |

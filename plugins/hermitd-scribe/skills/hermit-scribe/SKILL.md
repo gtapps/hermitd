@@ -1,6 +1,6 @@
 ---
 name: hermit-scribe
-description: File a GitHub issue or post a comment on an existing issue via a GitHub App bot identity. Use when the operator says "file as a GH issue", "open an issue for T-YYYYMMDD-HHMMSS", "report this to the tracker", "add a comment to issue #NNN", "comment on #NNN", "reply to issue #NNN", or similar. Requires HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HERMIT_GH_APP_KEY_FILE in env.
+description: File a GitHub issue or post a comment on an existing issue via a GitHub App bot identity. Use when the operator says "file as a GH issue", "open an issue for T-YYYYMMDD-HHMMSS, a task handle or PROP-NNN", "report this to the tracker", "add a comment to issue #NNN", "comment on #NNN", "reply to issue #NNN", or similar. Requires HERMIT_GH_APP_ID, HERMIT_GH_APP_INSTALL_ID, HERMIT_GH_APP_KEY_FILE in env.
 ---
 
 # hermit-scribe
@@ -11,6 +11,8 @@ Files a GitHub issue or posts a comment on an existing issue via a configured Gi
 
 Activate when the operator says:
 - "file T-YYYYMMDD-HHMMSS as a GH issue"
+- "file <task handle> as a GH issue"
+- "file PROP-NNN as a GH issue"
 - "open an issue for this"
 - "report this to the tracker"
 - "file a GH issue for [description]"
@@ -26,10 +28,10 @@ Activate when the operator says:
 
 **Step 1: resolve content.**
 
-If the operator named a proposal (`T-YYYYMMDD-HHMMSS`):
-1. Locate the task record using core `task list --id <task-id>` and read that record.
-2. Read task metadata: `id`, `title`, `category`. Treat an absent `session` as unknown.
-3. Read the `## Proposal` section, including its Context, Problem, Proposed Solution and Impact content when present.
+If the operator named a T-id, a task handle or an older `PROP-NNN` id:
+1. Run `.hermit/bin/hermitd-run task list .hermit --all --json`, appending `--id <T-id>`, `--handle <handle>` or `--dedupe-key proposal:PROP-NNN` as appropriate. For an older proposal id, retry it zero-padded to three digits. No row: stop. Several rows: list them and ask which one.
+2. Read `.hermit/tasks/<id>.md` for `id`, `title`, `category` and `dedupe_key`.
+3. Read the `## Proposal` section through the end of the file or a trailing `## Lessons` heading. For migrated records, exclude the leading `---` frontmatter block inside that section from the draft, retaining its metadata for dedup below. Include Context, Problem, Proposed Solution and Impact when present.
 4. Derive the Conventional-Commits type, scope, and labels. Write the **raw** (pre-translation) frontmatter `title` and proposal body to temp files, then run:
 
    ```bash
@@ -75,8 +77,12 @@ Run:
 bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --check {id}
 ```
 
-- `status` `exists` → an issue already exists for this proposal. Show its `url` to the operator and ask whether to skip filing or proceed anyway.
-- `status` `none` → no existing issue. Continue.
+For migrated records whose `dedupe_key` is `proposal:PROP-NNN`, also run:
+```bash
+bun "${CLAUDE_SKILL_DIR}/file-issue.ts" --check PROP-NNN
+```
+
+Treat the proposal as filed if either check returns `exists`, the migrated frontmatter has a `gh_issue:` URL, or `## Decisions` holds a `GitHub issue:` note. Show all known issue URLs and ask whether to skip filing or proceed anyway. Only continue without asking when none of these signals exists.
 
 **Step 3: sanitize.**
 
@@ -93,7 +99,7 @@ Parse the response: split on the `<<<HERMIT_SCRIBE_BODY>>>` line. Everything bef
 For proposal-backed issues, append the footer to the cleaned body now — after sanitization, never before it, since the footer is skill-generated protocol that `--check` matches on, not operator content:
 ```
 ---
-*Filed via hermit-scribe · proposal={id} · session={session}*
+*Filed via hermit-scribe · proposal={id}*
 ```
 
 **Step 4: operator preview.**
@@ -141,7 +147,11 @@ On success it prints `{"url":...}`, the issue URL; on failure, `{"error":...}`.
 **Step 7: back-write and report.**
 
 On success:
-1. Record the filed URL through core `task note <id> --decision "GitHub issue: {url}"`. Skip this step for ad-hoc issues.
+1. For proposal-backed issues, record the URL as a stdin decision note, substituting the literal URL:
+   ```bash
+   printf 'GitHub issue: %s\n' '{url}' | .hermit/bin/hermitd-run task note .hermit {id} --decision
+   ```
+   On `refused` or `not_open`, report the URL only. Skip this step for ad-hoc issues.
 2. Output `Filed: {url}`.
 
 On error, surface the `error`; the token names its cause. Two need a hint:
@@ -195,7 +205,7 @@ On success it prints `{"url":...}`, the comment URL; on failure, `{"error":...}`
 
 **Step 6: report.**
 
-On success: output `Commented: {url}`. No back-write to any proposal frontmatter.
+On success: output `Commented: {url}`. No back-write to any task record.
 
 On error, surface the `error` (same causes as filing).
 

@@ -3,21 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listProposalFiles, parseFrontmatter } from '../frontmatter';
 import { readSettledConfig } from '../config-read';
-import { importTaskRecords, type TaskImport } from '../tasks';
+import { importTaskRecords, readTaskInventory, type TaskImport } from '../tasks';
 import { homeChatKey } from '../home-chat';
 import { isKey } from '../conversation-key';
 import { alertStatePath, readAlertState, writeAlertState } from '../alert-state';
 import { acquireLockWithWait, releaseLock } from '../lockfile';
 
-export type MigrationReceipt = { imported: number; enriched: number; archived: number; alerts_dropped: number; skipped: { source: string; reason: string }[] };
+export type MigrationReceipt = { imported: number; linked: number; archived: number; alerts_dropped: number; skipped: { source: string; reason: string }[] };
 const statuses = new Set(['proposed', 'deferred', 'dismissed', 'accepted', 'resolved']);
 export function migrate(dir: string): MigrationReceipt | { error: string } {
-  const receipt: MigrationReceipt = { imported: 0, enriched: 0, archived: 0, alerts_dropped: 0, skipped: [] };
+  const receipt: MigrationReceipt = { imported: 0, linked: 0, archived: 0, alerts_dropped: 0, skipped: [] };
   const proposalDir = path.join(dir, 'proposals');
   const files = listProposalFiles(proposalDir);
   if (!files.ok) return { error: 'proposals_unreadable' };
   const sources: TaskImport[] = [];
   const paths = new Map<string, string>();
+  const resolved: string[] = [];
   const skip = (source: string, reason: string) => receipt.skipped.push({ source, reason });
   const idCounts = new Map<string, number>();
   for (const file of files.files) {
@@ -34,13 +35,15 @@ export function migrate(dir: string): MigrationReceipt | { error: string } {
       if (!statuses.has(fm.status)) { skip(file, 'unknown_status'); continue; }
       if (fm.tags !== undefined && (!Array.isArray(fm.tags) || fm.tags.some((tag: unknown) => typeof tag !== 'string'))) { skip(file, 'invalid_tags'); continue; }
       const key = `proposal:${legacy}`;
+      paths.set(key, path.join(proposalDir, file));
+      if (fm.status === 'resolved') { resolved.push(key); continue; }
+      const skillDraft = ['proposed', 'deferred'].includes(fm.status) && /^## Skill Draft\b/m.test(content) && !/^## Config\b/m.test(content);
       sources.push({ key, title: fm.title, created: new Date(fm.created).toISOString(), body: content,
-        status: fm.status, source: typeof fm.source === 'string' ? fm.source : null,
+        status: skillDraft ? 'dismissed' : fm.status, source: typeof fm.source === 'string' ? fm.source : null,
         category: typeof fm.category === 'string' ? fm.category : null, tags: JSON.stringify(fm.tags ?? []),
         closedAt: fm.resolved_date && Number.isFinite(Date.parse(fm.resolved_date)) ? new Date(fm.resolved_date).toISOString() : null,
-        reason: typeof fm.reason === 'string' ? fm.reason : fm.status === 'dismissed' ? 'Dismissed before migration; see original decision in Proposal.' : 'Resolved before migration.',
+        reason: skillDraft ? 'Close-time learned skills replace standalone skill drafts.' : typeof fm.reason === 'string' ? fm.reason : fm.status === 'dismissed' ? 'Dismissed before migration; see original decision in Proposal.' : 'Resolved before migration.',
       });
-      paths.set(key, path.join(proposalDir, file));
     } catch { skip(file, 'unreadable_proposal'); }
   }
   const microPath = path.join(dir, 'state', 'micro-proposals.json');
@@ -73,10 +76,13 @@ export function migrate(dir: string): MigrationReceipt | { error: string } {
   let results: ReturnType<typeof importTaskRecords>;
   try { results = importTaskRecords(dir, sources); }
   catch (error: any) { return { error: `import_failed:${error.message}` }; }
+  const inventory = readTaskInventory(dir);
+  if (!inventory.ok) return { error: 'import_failed:inventory_read_failed' };
+  for (const key of resolved) results.push({ key, ...(inventory.records.some(record => record.dedupe_key === key) ? { action: 'linked' as const } : {}) });
   for (const result of results) {
     if (result.error) { skip(result.key, result.error); continue; }
     if (result.action === 'imported') receipt.imported++;
-    if (result.action === 'enriched') receipt.enriched++;
+    if (result.action === 'linked') receipt.linked++;
     const sourcePath = paths.get(result.key);
     if (sourcePath) {
       try {

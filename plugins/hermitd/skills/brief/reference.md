@@ -4,7 +4,7 @@ Return structured JSON for the calling skill to compose and deliver.
 
 ## Inputs
 
-The caller supplies `plugin_root` (absolute) and `mode` (`morning`, `evening`, `daily`), plus the exact selector arguments (`--routine <id>`, `--chat <key>`, or none).
+The caller supplies `plugin_root` (absolute) and `mode` (`morning`, `evening`, `daily`), plus the exact selector arguments (`--routine <id>`, `--chat <key>`, or `--agent` for terminal and Remote Control).
 
 Run `brief-digest` (Commands) once, appending the mode and supplied selector. Keep the project root as the working directory; `plugin_root` locates the script, while `.hermit` is the project's state directory. This is the only task, duty and decision data read. Do not open task files or old proposal archives, caches or frozen session archives to supplement it. Only when the digest has `agent_steps: true`, for morning priorities also read `.hermit/OPERATOR.md` if present.
 

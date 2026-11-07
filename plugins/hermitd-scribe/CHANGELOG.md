@@ -3,8 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Proposal and question workflows use task records and require hermitd 1.4.28.
-
+- Proposal-backed issues are filed from task records (`file T-... as a GH issue`, or a task handle or older proposal id) and the issue URL is recorded as a task note. Requires hermitd 1.4.28.
 
 ## [0.1.11] - 2026-10-19
 

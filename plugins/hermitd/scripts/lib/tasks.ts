@@ -164,14 +164,14 @@ export function readTaskInventory(dir: string): { ok: true; records: Task[] } | 
 
 export type TaskImport = {
   key: string; title: string; created: string; body: string;
-  status: 'proposed' | 'deferred' | 'dismissed' | 'accepted' | 'resolved' | 'question';
+  status: 'proposed' | 'deferred' | 'dismissed' | 'accepted' | 'question';
   source?: string | null; category?: string | null; tags?: string | null;
   closedAt?: string | null; reason?: string; conversation?: string | null; requester?: string; decision?: Decision;
 };
 
 // Migration uses the same writer lock as every ordinary record mutation. IDs
 // use the import instant, independently of preserved historical record dates.
-export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: string; action?: 'imported' | 'enriched' | 'existing'; error?: string }[] {
+export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: string; action?: 'imported' | 'linked'; error?: string }[] {
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
   if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
@@ -179,24 +179,20 @@ export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: str
     const inventory = readTaskInventory(dir);
     if (!inventory.ok) throw new Error('inventory_read_failed');
     const records = inventory.records;
-    const results: { key: string; action?: 'imported' | 'enriched' | 'existing'; error?: string }[] = [];
+    const results: { key: string; action?: 'imported' | 'linked'; error?: string }[] = [];
     let idTime = Date.now();
     const budgetPath = path.join(dir, 'state', 'decision-deliveries.json');
     const budgets = readJson(budgetPath) ?? {};
     for (const input of inputs) {
-      const matches = records.filter(record => record.dedupe_key === input.key);
-      if (matches.length > 1) { results.push({ key: input.key, error: 'conflicting_tasks' }); continue; }
-      const existing = matches[0];
-      if (existing && existing.body.includes('## Proposal\n' + input.body)) {
-        results.push({ key: input.key, action: 'existing' }); continue;
+      if (records.some(record => record.dedupe_key === input.key)) {
+        results.push({ key: input.key, action: 'linked' }); continue;
       }
-      if (existing && input.status !== 'accepted') { results.push({ key: input.key, error: 'conflicting_task' }); continue; }
-      let id = existing?.id;
+      let id: string | undefined;
       while (!id) {
         try { id = allocateTaskId(records.map(record => record.id), new Date(idTime).toISOString()); }
         catch (error: any) { if (error.message !== 'id_collision') throw error; idTime += 1000; }
       }
-      const record: Task = existing ? structuredClone(existing) : {
+      const record: Task = {
         ...nullableDefaults(),
         id, type: 'task', title: input.title, created: input.created, opened_at: input.created,
         summary: input.title, audience: input.conversation ?? 'operator', status: 'open', requester: input.requester ?? 'agent',
@@ -207,25 +203,20 @@ export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: str
       record.source = input.source ?? null; record.category = input.category ?? null;
       record.tags = input.tags ?? null; record.approver = null; record.dedupe_key = input.key;
       record.body += '\n## Proposal\n' + input.body;
-      if (!existing) record.conversation = input.conversation ?? null;
+      record.conversation = input.conversation ?? null;
       const decision: Decision = input.decision ?? { purpose: 'consent', authority: 'admin', generation: 1 };
       record.decision = JSON.stringify(decision);
       record.waiting_on = decision.authority; record.waiting_since = input.created;
-      if (input.status === 'accepted') {
-        record.approved_rev = String(record.result_rev); record.approved_by = 'migration';
-        if (record.result) { record.decision = JSON.stringify({ purpose: 'result', authority: 'admin', generation: 1 }); record.waiting_on = 'admin'; }
-        else { record.waiting_on = null; record.waiting_since = null; }
-      }
-      if (input.status === 'dismissed' || input.status === 'resolved') finish(record, input.status === 'dismissed' ? 'cancelled' : 'confirmed', 'migration', input.reason ?? input.status, input.closedAt ?? input.created);
+      if (input.status === 'dismissed') finish(record, 'cancelled', 'migration', input.reason ?? input.status, input.closedAt ?? input.created);
       const encoded = encodeTask(record);
       fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
       const target = path.join(dir, 'tasks', id + '.md');
       writeFileAtomic(target, encoded);
       if (encodeTask(decodeTask(fs.readFileSync(target, 'utf8'))) !== encoded) throw new Error('import_verification_failed');
-      if (existing) records[records.indexOf(existing)] = record; else records.push(record);
+      records.push(record);
       budgets[`${id}:${decision.generation}`] = 2;
       writeFileAtomic(budgetPath, JSON.stringify(budgets) + '\n');
-      results.push({ key: input.key, action: existing ? 'enriched' : 'imported' });
+      results.push({ key: input.key, action: 'imported' });
     }
     return results;
   } finally { releaseLock(lock); }
@@ -331,9 +322,11 @@ function reviewCallsReached(dir: string, record: Task): boolean {
   return ids.size >= REVIEW_CALLS;
 }
 
-function pendingDecision(record: Task): Decision | null {
+export function pendingDecision(record: Task): Decision | null {
   return record.status === 'open' && record.waiting_on && record.decision ? decodeDecision(record.decision) : null;
 }
+
+export const agentQuestion = (r: Task) => r.requester === 'agent' && pendingDecision(r) !== null;
 
 function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decision): boolean {
   const chat = flag(flags, 'chat');
@@ -357,19 +350,20 @@ function startConsent(record: Task, now: string, generation = 0): void {
   record.waiting_since = now;
 }
 
-function answerTask(dir: string, records: Task[], id: string | undefined, flags: TaskFlags, now: string): { record?: Task; verdict: Record<string, unknown>; event?: Record<string, unknown> } {
-  const chat = required(flags, 'chat');
-  required(flags, 'user');
-  checkKey(chat);
+function answerTask(dir: string, records: Task[], id: string | undefined, flags: TaskFlags, now: string, threadConversation: boolean): { record?: Task; verdict: Record<string, unknown>; event?: Record<string, unknown> } {
+  const local = flags.local === true;
+  if (local && ('chat' in flags || 'user' in flags)) throw new Error('invalid_arguments');
+  const chat = local ? null : required(flags, 'chat');
+  if (!local) { required(flags, 'user'); checkKey(chat!); }
   const reply = required(flags, 'reply').toLowerCase();
   const candidates = records.filter(record => {
     const decision = pendingDecision(record);
-    return decision && (record.conversation === chat || (record.conversation === null && decision.authority === 'admin' && canDecide(dir, record, flags, decision)));
+    return decision && (local || record.conversation === chat || (record.conversation === null && (!threadConversation || id !== undefined) && decision.authority === 'admin' && canDecide(dir, record, flags, decision)));
   });
-  if (!candidates.length) return { verdict: { status: 'none', reason: 'no_pending' } };
+  if (!candidates.length) return { verdict: { status: 'none', reason: local && id ? 'no_match' : 'no_pending' } };
   const target = id ? candidates.find(record => record.id === id) : undefined;
   if (id && !target) return { verdict: { status: 'none', reason: 'no_match' } };
-  const permitted = candidates.filter(record => canDecide(dir, record, flags, pendingDecision(record)!));
+  const permitted = local ? candidates : candidates.filter(record => canDecide(dir, record, flags, pendingDecision(record)!));
   if (!permitted.length || (target && !permitted.includes(target))) return { verdict: { status: 'refused', reason: 'not_decider' } };
   const ambiguous = (reason: string, choices: Task[]) => ({ verdict: { status: 'ambiguous', reason, choices: choices.map(record => ({ id: record.id, options: pendingDecision(record)!.options ?? ['yes', 'no'] })) } });
   if (!id && permitted.length > 1) return ambiguous('multiple_pending', permitted);
@@ -397,7 +391,7 @@ function answerTask(dir: string, records: Task[], id: string | undefined, flags:
       answer = matches[0];
     }
   }
-  const actor = required(flags, 'user');
+  const actor = local ? 'operator' : required(flags, 'user');
   let event: Record<string, unknown> | undefined;
   if (decision.purpose === 'consent') {
     if (answer !== 'yes' && answer !== 'no') return { verdict: { status: 'none', reason: 'no_match' } };
@@ -429,7 +423,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     let digest: unknown;
     let progress = true;
     if (verb === 'answer') {
-      const answered = answerTask(dir, records, id, flags, now);
+      const answered = answerTask(dir, records, id, flags, now, threadConversation);
       if (answered.record) {
         writeFileAtomic(path.join(dir, 'tasks', answered.record.id + '.md'), encodeTask(answered.record));
         if (answered.event) {
@@ -448,7 +442,6 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const dedupe = flag(flags, 'dedupe-key') ?? null;
       const existing = dedupe && records.find(r => (r.status === 'open' || (flags.kind === 'proposal' && r.kind === 'proposal' && r.closed_by === 'cancelled')) && r.dedupe_key === dedupe);
       if (existing) return openDigest(existing, records, false);
-      if (threadConversation && records.some(r => r.status === 'open' && r.conversation === conversation)) throw new Error('thread_busy');
       checkOwnerAvailable(records, owner);
       const title = required(flags, 'title');
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'task';
@@ -480,6 +473,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         record.waiting_on = 'admin';
         record.waiting_since = now;
       }
+      if (threadConversation && !agentQuestion(record) && records.some(r => r.status === 'open' && r.conversation === conversation && !agentQuestion(r))) throw new Error('thread_busy');
       if (record.waiting_on !== null) progress = false;
       if (flags['body-stdin']) record.body += '\n## Proposal\n' + input;
       record.check = checkFlag(flags);

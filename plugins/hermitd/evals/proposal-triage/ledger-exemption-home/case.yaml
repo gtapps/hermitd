@@ -14,7 +14,6 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
-    Proposal task digest: {"ok":true,"proposals":[{"id":"T-20260814-100004","status":"completed","title":"Notify when the washing machine finishes","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100009","status":"open","title":"Skip garden irrigation when rain is forecast","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100011","status":"cancelled","title":"Daily energy usage report in the morning brief","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100013","status":"open","title":"Send household notices in Portuguese","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]},{"id":"T-20260814-100015","status":"open","title":"Auto-lock the front door at midnight","source":"auto-detected","category":"improvement","created":"2026-08-14T10:00:00+01:00","tags":[]}]}
     Title: Notify when the freezer door is left open
     Evidence Source: archived-session
     Evidence: The freezer door was left open for more than 10 minutes five times last week and food partly thawed once.

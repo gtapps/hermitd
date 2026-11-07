@@ -64,9 +64,9 @@ Set task metadata: `source: auto-detected`, `category: improvement`, `tags: [cap
 Provenance is carried by those `tags`, which `proposal-create` writes onto both the `triage-verdict` row and the proposal task metadata. The cost: these proposals share core `capability-brainstorm`'s kill-criteria segment, so the numbers are combined rather than per-skill.
 
 `/hermitd:proposal-create` invokes `proposal-triage` internally. Parse its outcome:
-- `CREATE: <task handle>`: proposal task opened; record its T- id.
-- `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
-- `DUPLICATE: <task handle>`: record the existing task id. Don't create.
+- `CREATE: <title> — <task-id> (<handle>)`: proposal task opened; record its T- id.
+- `SUPPRESS: <title> — <code>: <reason>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <task-id>: <reason>`: record the existing task id. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/proposal-create` handles it.
 

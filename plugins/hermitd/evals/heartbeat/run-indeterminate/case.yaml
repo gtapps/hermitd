@@ -66,7 +66,7 @@ execution:
     - Delegation: delegate when a sub-step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict; it returns a verdict plus optional `operator_message`, main owns operator contact (§ Operator Notification).
     - Before saying an action of yours did not happen, check task records, `/hermitd:recall` and any action log your project instructions name. Finding no record leaves it unverified, not disproved.
     - OPERATOR.md is operator-curated. Edit it only when the operator asks for the change, and only with Edit/Write so the native approval prompt fires; never write it through the shell, a script or a copy. If the edit is denied or the prompt is unavailable, propose a minimal diff instead. In always-on mode flag stale or contradictory context via channel.
-    - Proposals: improvements outside the authorized task follow `/hermitd:reflect`'s tier gates; full proposals use `/proposal-create` → operator accepts → implement. Authorized work and trivial fixes need no new proposal. **Never hand-write `proposals/PROP-*.md` files**: always invoke the skill.
+    - Proposals: improvements outside the authorized task go through `/hermitd:proposal-create`; implement one only after admin consent is recorded on its task. Authorized work and trivial fixes need no new proposal.
     - Tasks: record multi-step work through `task.ts note` on the open record. Never write task files directly.
     - Precedence: an operator statement in memory, then OPERATOR.md, then these defaults.
 

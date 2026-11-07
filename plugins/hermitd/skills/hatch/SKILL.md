@@ -559,7 +559,7 @@ No `AskUserQuestion` — enabling or disabling `sandbox.*` is entirely the opera
 
 ### 9c. Artifact publish permission
 
-Skip this step entirely if `artifacts.dashboard`, `artifacts.proposals`, and `artifacts.weekly_review` are all `false` in the config just written (Step 5) — nothing to authorize.
+Skip this step entirely if `artifacts.dashboard` and `artifacts.weekly_review` are both `false` in the config just written (Step 5) — nothing to authorize.
 
 Otherwise, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> artifact-allow` (same target-file resolution as Step 8; additive merge, never removes existing entries). This adds `Artifact` to `permissions.allow` so unattended sessions never stall on the first-publish permission ask — a headless "ask" is an effective deny, which would otherwise silently no-op every artifact refresh. No prompt: it follows the same opt-out model as the feature itself (default-on, disable any page via `/hermit-settings`), and rides Claude Code's own governed Artifacts path (org toggle, RBAC, retention, audit log).
 

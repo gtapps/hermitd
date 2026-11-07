@@ -1,6 +1,8 @@
 // Pending decisions and their confirmed-delivery budget. Reads fail closed.
 import fs from 'node:fs';
 import path from 'node:path';
+import { acquireLockWithWait, releaseLock } from './lockfile';
+import { writeFileAtomic } from './md-write';
 import { readTaskInventory, decodeDecision, type Task, type Decision } from './tasks';
 export type PendingDecision = { task: Task; decision: Decision; delivered: number; attempted_at: string | null };
 // A budget entry is a bare confirmed-delivery count, or that count with the last attempt stamp.
@@ -37,4 +39,21 @@ export function pendingDecisions(dir: string): { ok: true; records: PendingDecis
       return { task, decision, delivered: entry?.delivered ?? 0, attempted_at: entry?.attempted_at ?? null };
     }) };
   } catch { return { ok: false }; }
+}
+
+
+/** Stamp evaluation attempts without spending confirmed-delivery counts. */
+export function recordDecisionAttempts(dir: string, keys: string[], nowMs: number): boolean {
+  const lock = path.join(dir, 'state', 'decision-deliveries.lock');
+  try {
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    if (!acquireLockWithWait(lock, 2000)) return false;
+  } catch { return false; }
+  try {
+    const budget = readDeliveryBudget(dir);
+    for (const key of keys) budget[key] = { delivered: budget[key]?.delivered ?? 0, attempted_at: new Date(nowMs).toISOString() };
+    writeFileAtomic(path.join(dir, 'state', 'decision-deliveries.json'), JSON.stringify(budget) + '\n');
+    return true;
+  } catch { return false; }
+  finally { releaseLock(lock); }
 }

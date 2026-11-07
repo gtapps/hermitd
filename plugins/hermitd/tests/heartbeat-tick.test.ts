@@ -235,10 +235,13 @@ describe('heartbeat tick', () => {
     const hermit = fixture();
     const ids: string[] = [];
     for (let index = 0; index < 7; index++) ids.push((mutateTask(hermit, 'open', undefined, { requester: 'agent', kind: 'proposal', title: `Proposal ${index}`, done: 'Done' }, '') as { id: string }).id);
+    write(hermit, 'state/decision-deliveries.json', { [ids[0] + ':1']: 1 });
     const out = await tick(hermit);
     expect(out.status).toBe('evaluate');
     expect(out.decision_refresh.map((row: any) => row.key)).toEqual(ids.slice(0, 5).map(id => id + ':1'));
-    write(hermit, 'state/decision-deliveries.json', Object.fromEntries(ids.map(id => [id + ':1', 2])));
+    const budget = JSON.parse(fs.readFileSync(path.join(hermit, 'state/decision-deliveries.json'), 'utf8'));
+    for (const [index, id] of ids.slice(0, 5).entries()) expect(budget[id + ':1']).toEqual({ delivered: index === 0 ? 1 : 0, attempted_at: new Date(NOW_MS).toISOString() });
+    expect((await tick(hermit)).decision_refresh.map((row: any) => row.key)).toEqual(ids.slice(5).map(id => id + ':1'));
     expect((await tick(hermit)).decision_refresh).toBeUndefined();
   });
 });

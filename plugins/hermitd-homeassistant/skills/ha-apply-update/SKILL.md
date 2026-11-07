@@ -14,7 +14,16 @@ Invoked by the proposal task apply procedure after admin consent for a `[ha-upda
 ## Steps
 
 1. **Read the flag**: check `ha_update_auto_apply` in `.hermit/config.json`.
-   - **Absent or `false`**: this is advisory-only. Resolve the proposal — tell the operator the update is available and where (`Settings → System → Updates` in the HA UI), and stop. Do not call `update.install`.
+   - **Absent or `false`**: this is advisory-only. Tell the operator the update is available in `Settings → System → Updates` in the HA UI. Do not call `update.install`. Attach a read-only check to the proposal task and stop:
+     - Individual update (substitute its literal entity id):
+       ```bash
+       printf 'Waiting for the operator to update in Home Assistant.\n' | .hermit/bin/hermitd-run task note .hermit <task-id> --check 'out=$(ha-agent-lab ha updates) && [[ $out == *\"hacs_pending\"* && $out != *\"<entity_id>\"* ]]'
+       ```
+     - Aggregated HACS proposal:
+       ```bash
+       printf 'Waiting for the operator to update HACS in Home Assistant.\n' | .hermit/bin/hermitd-run task note .hermit <task-id> --check 'out=$(ha-agent-lab ha updates) && [[ $out == *\"hacs_pending\":0[,}]* ]]'
+       ```
+     The check closes the task once HA no longer lists the update. It stays failing while HA is unreachable or skipped, or the binary is missing.
    - **`true`**: show the entity and target version, then continue.
 
 2. **Branch on tier** (from the proposal body). The `addon` vs `hacs` split is defined by the native backup capability: `ha-update-check` tiers an entity `addon` precisely when it advertises HA's BACKUP update feature, so `backup:true` is always valid for an `addon` proposal, and a `hacs` entity is one that can't back itself up (hence the separate full-backup step).

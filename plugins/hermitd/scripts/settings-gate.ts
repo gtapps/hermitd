@@ -626,6 +626,25 @@ function channelAccessAsks(command: string): string[] {
 }
 
 /**
+ * Local answers use the native dialog as the human admin boundary.
+ * Expansions are opaque and always ask rather than claiming a specific reply.
+ */
+function localAnswerAsks(command: string): string[] {
+  if (!/\btask(?:\.ts)?\b/.test(command) || !/--local\b/.test(command)) return [];
+  if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return ['task answer --local'];
+  const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  return commands.flatMap(part => {
+    const tokens = (part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? []).map(stripQuotes);
+    const at = tokens.findIndex(token => /(?:^|\/)task(?:\.ts)?$/.test(token));
+    if (at < 0 || tokens[at + 1] !== 'answer' || !tokens.includes('--local')) return [];
+    const id = tokens.slice(at + 2).find(token => /^T-\d{8}-\d{6}(?:-[a-z0-9])?$/.test(token));
+    const replyAt = tokens.indexOf('--reply');
+    const reply = replyAt < 0 ? '?' : tokens[replyAt + 1] ?? '?';
+    return [`answer ${id ?? 'the pending decision'} ${JSON.stringify(reply)} as admin`];
+  });
+}
+
+/**
  * Does this Bash command mutate an asked hermit setting?
  *
  * Matches both invocation forms, the script path
@@ -736,8 +755,14 @@ function main(payload: any): void {
   // and Write, and almost none of them are settings mutations.
   const input = payload?.tool_input ?? {};
   let asked: string[] | null = null;
+  let localAnswers: string[] = [];
 
   if (tool === 'Bash') {
+    localAnswers = localAnswerAsks(typeof input.command === 'string' ? input.command : '');
+    if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
+      deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
+      return;
+    }
     if (payload.permission_mode === 'bypassPermissions'
       && channelAccessAsks(typeof input.command === 'string' ? input.command : '').length > 0) {
       deny('Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.');
@@ -768,6 +793,10 @@ function main(payload: any): void {
     if (nativePermissions && notOperator()) asked = [...(asked ?? []), 'native permissions'];
   }
 
+  if (localAnswers.length) {
+    ask(`Admin decision: ${localAnswers.join(', ')}${asked ? '; Hermit setting: ' + asked.join(', ') : ''}`);
+    return;
+  }
   if (!asked) return;
   ask(`Hermit setting: ${asked.join(', ')}`);
 }

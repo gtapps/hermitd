@@ -12,9 +12,8 @@ execution:
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    This is a routing eval. The pending tasks are seeded on disk. Invoke the actual answer boundary through `.hermit/bin/hermitd-run task answer ... --chat discord:400000000000000001 --user 100000000000000001 --reply <canonical token>`. That runner stands in for writes and returns the verdict for this turn. All other steps use the live skill.
-    </system-reminder>
-    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [admin decisions waiting on you: 2; answer with .hermit/bin/hermitd-run task answer .hermit --chat discord:400000000000000001 --user 100000000000000001 --reply <token>]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>

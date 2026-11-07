@@ -1130,9 +1130,32 @@ test('browser migration retains Chrome only when its auth permits it', async () 
 test('task-decisions migration drops only the removed artifact key and is idempotent', async () => {
   const dir = freshDir();
   const file = seedConfig(dir, { agent_name: 'Atlas', artifacts: { dashboard: true, proposals: true, weekly_review: false }, custom: 'keep' });
+  const artifacts = path.join(dir, '.hermit', 'state', 'artifacts.json');
+  fs.mkdirSync(path.dirname(artifacts), { recursive: true });
+  fs.writeFileSync(artifacts, JSON.stringify({ dashboard: { id: 'keep' }, proposals: { id: 'old' } }));
   for (let pass = 0; pass < 2; pass++) {
     const result = await runScript('settings-edit.ts', { cwd: dir, env: { AGENT_DIR: path.join(dir, '.hermit') }, args: [file, 'migrate', 'task-decisions'] });
     expect(result.exitCode).toBe(0);
     expect(readConfig(file)).toEqual({ agent_name: 'Atlas', artifacts: { dashboard: true, weekly_review: false }, custom: 'keep' });
+    expect(JSON.parse(fs.readFileSync(artifacts, 'utf8'))).toEqual({ dashboard: { id: 'keep' } });
+    expect(result.stdout.includes('The proposals page is no longer updated')).toBe(pass === 0);
+  }
+});
+
+
+test('task-decisions leaves missing and unparseable artifact files untouched', async () => {
+  for (const content of [null, '{broken']) {
+    const dir = freshDir();
+    const file = seedConfig(dir, { agent_name: 'Atlas' });
+    const artifacts = path.join(dir, '.hermit', 'state', 'artifacts.json');
+    if (content !== null) {
+      fs.mkdirSync(path.dirname(artifacts), { recursive: true });
+      fs.writeFileSync(artifacts, content);
+    }
+    const result = await runScript('settings-edit.ts', { cwd: dir, env: { AGENT_DIR: path.join(dir, '.hermit') }, args: [file, 'migrate', 'task-decisions'] });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('The proposals page');
+    if (content === null) expect(fs.existsSync(artifacts)).toBe(false);
+    else expect(fs.readFileSync(artifacts, 'utf8')).toBe(content);
   }
 });

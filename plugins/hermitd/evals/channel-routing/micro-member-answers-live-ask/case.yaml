@@ -12,9 +12,9 @@ execution:
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     <system-reminder>
-    This is a routing eval. The pending tasks are seeded on disk. Invoke the actual answer boundary through `.hermit/bin/hermitd-run task answer ... --chat discord:400000000000000001 --user 100000000000000002 --reply <canonical token>`. That runner stands in for writes and returns the verdict for this turn. All other steps use the live skill. The question is how often reports should run; choices daily or weekly.
-    </system-reminder>
-    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [open tasks in this chat: total=1 omitted=0; t-20261001-090000 T-20261001-090000 "How often should reports run: daily or weekly?" owner=resident state=waiting on requester] a message continuing one of these steers it; new work opens its own task; if unsure which, ask once naming them.
+    [waiting task T-20261001-090000 actor=discord:100000000000000002; commands (use the row's id, revision and actor): .hermit/bin/hermitd-run task block .hermit <id> --result-stdin; wait answered: .hermit/bin/hermitd-run task answer .hermit <id> --chat <chat> --user <user> --reply <token>; legacy wait: .hermit/bin/hermitd-run task note .hermit <id> --clear-waiting --chat <chat> --user <user>; nothing is owed when this message does not change the task]
     [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
     Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
     </system-reminder>

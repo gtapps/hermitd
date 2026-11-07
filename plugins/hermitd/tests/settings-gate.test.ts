@@ -900,3 +900,34 @@ test('browser-default-on migration requests permission for the protected browser
   const dir = fixture();
   expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command: cmd('migrate browser-default-on') } }), dir)).stdout, 'Hermit setting: browser');
 });
+
+
+for (const mode of ['bypassPermissions', 'auto', 'default']) {
+  for (const command of [
+    'bun /p/scripts/task.ts answer .hermit T-20261101-120000 --local --reply yes',
+    '.hermit/bin/hermitd-run task answer .hermit T-20261101-120000 --local --reply yes',
+    'hermitd run task answer .hermit T-20261101-120000 --local --reply yes',
+  ]) test('local decision answer gate ' + mode + ': ' + command, async () => {
+    const dir = fixture();
+    const r = await runGate(payload({ dir, tool: 'Bash', permission_mode: mode, input: { command } }), dir);
+    expect(r.exitCode).toBe(0);
+    const output = JSON.parse(r.stdout).hookSpecificOutput;
+    expect(output.permissionDecision).toBe(mode === 'bypassPermissions' ? 'deny' : 'ask');
+    expect(output.permissionDecisionReason).toBe(mode === 'bypassPermissions'
+      ? 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.'
+      : 'Admin decision: answer T-20261101-120000 "yes" as admin');
+  });
+}
+
+test('local answer fallbacks, mixed settings and ordinary channel answers', async () => {
+  const dir = fixture();
+  for (const command of [
+    'task answer .hermit --chat discord:home --user admin --reply yes',
+    'task list .hermit --open',
+  ]) expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir));
+  for (const [command, reason] of [
+    ['task "$V" --local', 'Admin decision: task answer --local'],
+    ['task answer .hermit --local --reply "yes please"', 'Admin decision: answer the pending decision "yes please" as admin'],
+    ['task answer .hermit --local --reply yes && ' + cmd('set voice friendly'), 'Admin decision: answer the pending decision "yes" as admin; Hermit setting: voice'],
+  ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
+});

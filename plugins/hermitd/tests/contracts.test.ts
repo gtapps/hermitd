@@ -1664,6 +1664,7 @@ describe('gate-agent memory contract', () => {
   // Consumer half of proposal.ts's `Anchor:` line. A relative `.hermit/` path in
   // a gate resolves to a worktree projection with no state/, so dedup sees nothing.
   test('gate agents read the Anchor: line, fail closed as GATE_BLIND, and never use a relative .hermit/ path', () => {
+    expect(read(path.join(AGENTS, 'proposal-triage.md'))).toContain('<root>/state/proposal-digest.json');
     for (const name of GATE_AGENTS) {
       const body = read(path.join(AGENTS, `${name}.md`));
       expect(body).toContain('Anchor:');
@@ -3224,7 +3225,7 @@ describe('proposal-triage batch contract', () => {
 
   test('capability-brainstorm/SKILL.md parses proposal-create outcome with the title-tagged grammar', () => {
     expect(brainstorm).toContain('CREATE: <title>');
-    expect(brainstorm).toContain('DUPLICATE: <title> — <PROP-ID>');
+    expect(brainstorm).toContain('DUPLICATE: <title> — <task-id>');
   });
 });
 

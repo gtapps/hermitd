@@ -7,7 +7,7 @@ import { conversationKey, checkKey } from './lib/conversation-key';
 import { isTrustedController, allowedUserIds } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { createThread, isGuildChannelType, isThreadChannelType, lookupChat } from './lib/channel-chats';
-import { threadRecords } from './lib/tasks';
+import { threadRecords, agentQuestion } from './lib/tasks';
 import { conversationHistory } from './lib/channel-log';
 import { readSettledConfig } from './lib/config-read';
 import { emit, emitJson, exitError, failJson, printJson } from './lib/cli';
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         // of its own; DMs and existing threads are their own thread.
         const chat = await lookupChat(dir, config, opts.chat_id, true);
         if (!chat) throw new Error('lookup_failed');
-        if (isThreadChannelType(chat) && threadRecords(dir).some(record => record.conversation === conversationKey(opts.source, chatId))) {
+        if (isThreadChannelType(chat) && threadRecords(dir).some(record => !agentQuestion(record) && record.conversation === conversationKey(opts.source, chatId))) {
           const parent = chat.parent_id ? await lookupChat(dir, config, chat.parent_id, true) : null;
           printJson(isGuildChannelType(parent)
             ? { status: 'thread_busy', chat_id: chat.parent_id }
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
       }
       const key = conversationKey(opts.source, chatId, thread);
       checkKey(key);
-      if (thread && threadRecords(dir).some(record => record.conversation === key)) {
+      if (thread && threadRecords(dir).some(record => !agentQuestion(record) && record.conversation === key)) {
         printJson({ status: 'thread_busy', chat_id: chatId });
         return;
       }

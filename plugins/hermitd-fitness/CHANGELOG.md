@@ -3,8 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- Proposal and question workflows use task records and require hermitd 1.4.28.
-
+- Domain brainstorm reports proposal task ids. Requires hermitd 1.4.28.
 
 ## [0.2.9] - 2026-10-25
 

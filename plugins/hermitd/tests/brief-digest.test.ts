@@ -21,8 +21,12 @@ async function seed(f: ReturnType<typeof taskFixture>) {
 test('empty install and CLI mode and argument contracts', async () => {
   const f = taskFixture();
   try {
+    const missing = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, 'morning'] });
+    expect(missing.exitCode).toBe(0);
+    expect(JSON.parse(missing.stdout)).toEqual({ status: 'needs_selector' });
+    await expect(briefContext(f.dir, {})).rejects.toThrow('needs_selector');
     for (const mode of ['morning', 'evening', 'daily'] as BriefMode[]) {
-      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, mode] });
+      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, mode, '--agent'] });
       expect(result.exitCode).toBe(0);
       const row = JSON.parse(result.stdout);
       expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'agent_steps', 'latest', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'agent_steps', 'records', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted']);
@@ -46,18 +50,18 @@ test('local day selection, newest latest, all owners in records and recent decis
     base.body = '## Decisions\n- 2026-10-20T11:00:00Z telegram:actor: Keep this\n- invalid No stamp\n- 2026-10-18T11:00:00Z actor: Old\n';
     save(f.dir, base);
     f.put('config.json', { timezone: 'Europe/Lisbon' });
-    const local = await briefDigest(f.dir, 'evening', reference);
+    const local = await briefDigest(f.dir, 'evening', reference, { agent: true });
     if (!('records' in local)) throw new Error('Expected evening records');
     expect(local.records).toHaveLength(1);
     expect(local.records![0].id).toBe(base.id);
     expect(local.records![0]).not.toHaveProperty('decisions');
     expect(local.open[0].state).toBe('delegated');
     f.put('config.json', { timezone: 'UTC' });
-    const daily = await briefDigest(f.dir, 'daily', reference);
+    const daily = await briefDigest(f.dir, 'daily', reference, { agent: true });
     if (!('records' in daily)) throw new Error('Expected daily records');
     expect(daily.records).toEqual([]);
     expect(local.decisions).toEqual([{ task_title: base.title, text: 'telegram:actor: Keep this' }]);
-    const morning = await briefDigest(f.dir, 'morning', reference);
+    const morning = await briefDigest(f.dir, 'morning', reference, { agent: true });
     if (!('latest' in morning)) throw new Error('Expected morning latest');
     expect(morning.latest?.id).toBe(base.id);
   } finally { f.cleanup(); }
@@ -77,7 +81,7 @@ test('open includes more than twenty resident rows with each state and includes 
       if (i === 25) row.owner = 'helper:research';
       save(f.dir, row);
     }
-    const digest = await briefDigest(f.dir, 'evening', reference);
+    const digest = await briefDigest(f.dir, 'evening', reference, { agent: true });
     expect(digest.open).toHaveLength(27);
     expect(digest.open.find(row => row.id.endsWith('-0'))?.state).toBe('finishing');
     expect(digest.open.find(row => row.id.endsWith('-1'))?.state).toBe('unconfirmed');
@@ -98,7 +102,7 @@ test('clips safely, excludes long evidence and counts truncated-result lessons',
     row.closed_reason = 'c'.repeat(500);
     row.body = `## Lessons\n- useful\n- ${'l'.repeat(401)}\n\n## Decisions\n- 2026-10-20T11:00:00Z actor: ${'d'.repeat(401)}\n`;
     save(f.dir, row);
-    const digest = await briefDigest(f.dir, 'daily', reference);
+    const digest = await briefDigest(f.dir, 'daily', reference, { agent: true });
     if (!('records' in digest)) throw new Error('Expected daily records');
     expect(digest.records![0]).toMatchObject({ title: 'x'.repeat(199), result_truncated: true, lessons: [] });
     expect(digest.records![0].result).toHaveLength(4000);
@@ -121,8 +125,12 @@ test('all oversized sections pack below exact stdout ceiling including escaped c
         body: `## Lessons\n- ${'l'.repeat(390)}\n\n## Decisions\n- 2026-10-20T11:00:00Z actor: ${'d'.repeat(390)}\n` });
       fs.writeFileSync(path.join(f.dir, 'proposals', `PROP-${i}.md`), `---\nstatus: proposed\nsource: auto-detected\ntitle: ${'p'.repeat(500)}\n---\n`);
     }
+    const missing = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, 'morning'] });
+    expect(missing.exitCode).toBe(0);
+    expect(JSON.parse(missing.stdout)).toEqual({ status: 'needs_selector' });
+    await expect(briefContext(f.dir, {})).rejects.toThrow('needs_selector');
     for (const mode of ['morning', 'evening', 'daily'] as BriefMode[]) {
-      const row = await briefDigest(f.dir, mode, reference);
+      const row = await briefDigest(f.dir, mode, reference, { agent: true });
       expect(Buffer.byteLength(JSON.stringify(row) + '\n')).toBeLessThanOrEqual(25000);
       expect(row.omitted.clipped).toBeGreaterThan(0);
       expect(row.omitted.open).toBeGreaterThan(0);
@@ -144,7 +152,7 @@ test('morning latest omits lessons without reporting them as left out', async ()
     const row = await seed(f);
     row.body = '## Lessons\n- useful\n';
     save(f.dir, row);
-    const digest = await briefDigest(f.dir, 'morning', reference);
+    const digest = await briefDigest(f.dir, 'morning', reference, { agent: true });
     if (!('latest' in digest)) throw new Error('Expected morning latest');
     expect(digest.latest?.lessons).toEqual([]);
     expect(digest.omitted.lessons).toBe(0);
@@ -158,7 +166,7 @@ test('packing shortens a result whose lessons are gone before dropping its recor
     for (let i = 0; i < 8; i++) {
       save(f.dir, { ...base, id: `T-20261020-${String(100001 + i).padStart(6, '0')}`, result: 'r'.repeat(3900), body: '## Lessons\n- useful\n' });
     }
-    const digest = await briefDigest(f.dir, 'evening', reference);
+    const digest = await briefDigest(f.dir, 'evening', reference, { agent: true });
     if (!('records' in digest)) throw new Error('Expected evening records');
     expect(digest.omitted.records).toBe(0);
     expect(digest.records).toHaveLength(9);
@@ -177,7 +185,7 @@ test('delegated results and waits retain actionable states', async () => {
       [2, 'worker:abcdef12', null, 'operator', null],
       [3, 'helper:research', 'Ready', null, 'true'],
     ] as const) save(f.dir, { ...base, id: `T-20261020-10000${i}`, owner, result, waiting_on, check });
-    const digest = await briefDigest(f.dir, 'morning', reference);
+    const digest = await briefDigest(f.dir, 'morning', reference, { agent: true });
     expect(digest.open.filter(row => row.id !== base.id).map(row => row.state)).toEqual(['unconfirmed', 'waiting', 'finishing']);
   } finally { f.cleanup(); }
 });
@@ -207,7 +215,11 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     if (!('latest' in morning)) throw new Error('Expected morning latest');
     expect(morning.latest?.id).toBe('T-20261020-100000');
     expect(morning.decisions_pending).toEqual([]);
-    expect((await briefDigest(f.dir, 'morning', reference)).scope).toBe('agent');
+    const decision = { ...base, id: 'T-20261020-100010', conversation: 'discord:group', audience: 'discord:group', decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 }), waiting_on: 'admin' };
+    save(f.dir, decision);
+    save(f.dir, { ...decision, id: 'T-20261020-100011', conversation: null, audience: 'operator' });
+    expect((await briefDigest(f.dir, 'morning', reference, { chat: 'discord:group' })).decisions_pending.map(row => row.id)).toEqual([decision.id]);
+    expect((await briefDigest(f.dir, 'morning', reference, { agent: true })).scope).toBe('agent');
     expect((await briefDigest(f.dir, 'morning', reference, { routine: 'home' })).scope).toBe('agent');
     for (const args of [['context', '--routine', 'group'], ['context', '--chat', 'discord:group']]) {
       const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });

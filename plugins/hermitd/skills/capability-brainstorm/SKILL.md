@@ -1,6 +1,6 @@
 ---
 name: capability-brainstorm
-description: Monthly routine plus on-demand hermit-voice brainstorm — synthesizes memory, capabilities, recent artifacts, and codebase shape into at most 2 capability ideas, each gated by proposal-triage before becoming a PROP. Runs on the capability-brainstorm routine and when the operator asks to brainstorm capabilities or ideate, e.g. "brainstorm capabilities", "what could you be doing for me?", "any capability ideas?".
+description: Monthly routine plus on-demand hermit-voice brainstorm — synthesizes memory, capabilities, recent artifacts, and codebase shape into at most 2 capability ideas, each gated by proposal-triage before becoming a proposal task. Runs on the capability-brainstorm routine and when the operator asks to brainstorm capabilities or ideate, e.g. "brainstorm capabilities", "what could you be doing for me?", "any capability ideas?".
 ---
 
 Record notes only inside an open record's turn, using `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id>` with the note on stdin. Otherwise skip record notes. Never edit a task file directly.
@@ -68,15 +68,15 @@ Evidence Source: capability-brainstorm
 Evidence: <one-paragraph summary: friction + grounding items>
 ```
 
-Set the PROP frontmatter:
+Set the proposal task metadata:
 - `source: auto-detected`
 - `category: capability`
 - `tags: [capability-brainstorm, ideation]`
 
 `/hermitd:proposal-create` invokes `proposal-triage` internally. Parse its outcome:
-- `CREATE: <title>` — proposal task opened, note its task id and handle.
-- `SUPPRESS: <title> — <code>` — record the suppression code. Don't retry.
-- `DUPLICATE: <title> — <PROP-ID>` — record the existing PROP-ID. Don't create.
+- `CREATE: <title> — <task-id> (<handle>)`: proposal task opened, note its task id and handle.
+- `SUPPRESS: <title> — <code>: <reason>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <task-id>: <reason>`: record the existing task id. Don't create.
 
 Do NOT invoke `proposal-triage` directly in this skill — `/hermitd:proposal-create` already does it.
 
@@ -105,7 +105,7 @@ If zero ideas were generated or all were suppressed/duplicated, the message is:
 
 ## 5. Write compiled artifact (non-empty runs only)
 
-If ≥1 PROP was created (not suppressed/duplicate), write:
+If ≥1 proposal task was created (not suppressed/duplicate), write:
 
 `.hermit/compiled/capability-brainstorm-YYYY-MM-DD-HHMM.md`
 

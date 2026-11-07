@@ -62,9 +62,9 @@ Evidence: <one paragraph: gap sentence + named grounding items>
 Set task metadata: `source: auto-detected`, `category: improvement`, `tags: [capability-brainstorm]`.
 
 Parse the outcome `/hermitd:proposal-create` returns:
-- `CREATE: <task handle>`: proposal task opened; record its T- id.
-- `SUPPRESS: <title> — <code>`: record the suppression code. Don't retry.
-- `DUPLICATE: <task handle>`: record the existing task id. Don't create.
+- `CREATE: <title> — <task-id> (<handle>)`: proposal task opened; record its T- id.
+- `SUPPRESS: <title> — <code>: <reason>`: record the suppression code. Don't retry.
+- `DUPLICATE: <title> — <task-id>: <reason>`: record the existing task id. Don't create.
 
 Do NOT invoke `proposal-triage` directly — `/hermitd:proposal-create` handles it.
 

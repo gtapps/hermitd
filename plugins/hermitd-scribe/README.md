@@ -11,7 +11,7 @@ Files GitHub issues via a configured GitHub App so they're attributed to a bot i
 
 ## Install
 
-Requires `hermitd` ≥1.4.17. Upgrade core with `/hermitd:hermit-evolve` before installing or running this plugin.
+Requires `hermitd` ≥1.4.28. Upgrade core with `/hermitd:hermit-evolve` before installing or running this plugin.
 
 ```bash
 claude plugin install hermitd-scribe --marketplace gtapps/hermitd --scope local
@@ -56,10 +56,12 @@ Trigger phrases:
 
 - `file T-20261106-090000 as a GH issue`
 - `open an issue for T-20261106-100000`
+- `file <task handle> as a GH issue`
+- `file PROP-NNN as a GH issue`
 - `report this to the tracker`
 - `file a GH issue for [description]`
 
-For proposal-backed issues: the skill reads the task record metadata (`id`, `title`, `category`) and its `## Proposal` section, then builds a Conventional Commits title (`<type>(<scope>): <title>`, e.g. `feat(homeassistant): integrate HA History API`). Type is derived from `category` (`bug` → `fix`, `infrastructure`/`investigation` → `chore`, otherwise → `feat`); the recognized scope vocabulary is derived from the keys of `_hermit_versions` in `.hermit/config.json`, scanned against explicit mentions in the proposal text first (`plugins/<slug>/` paths or whole-word slug occurrences), falling back to the lone activated fleet hermit when no explicit target appears, with the `hermitd-` prefix stripped. Scope is omitted when signals are absent or ambiguous. The body is translated to English at the GitHub boundary (technical identifiers, code, and frontmatter are preserved verbatim); a `Filed via hermit-scribe · proposal={id} · session={session}` footer is appended after sanitization.
+For proposal-backed issues: the skill resolves a T-id, task handle or older proposal id through `.hermit/bin/hermitd-run task list .hermit --all --json` with `--id`, `--handle` or `--dedupe-key proposal:PROP-NNN` (retrying older ids zero-padded to three digits). No match stops; several matches are listed for selection. It reads `.hermit/tasks/<id>.md` metadata (`id`, `title`, `category`, `dedupe_key`) and its `## Proposal` section through the end or a trailing `## Lessons` heading, excluding migrated frontmatter from the draft, then builds a Conventional Commits title (`<type>(<scope>): <title>`, e.g. `feat(homeassistant): integrate HA History API`). Type is derived from `category` (`bug` → `fix`, `infrastructure`/`investigation` → `chore`, otherwise → `feat`); the recognized scope vocabulary is derived from the keys of `_hermit_versions` in `.hermit/config.json`, scanned against explicit mentions in the proposal text first (`plugins/<slug>/` paths or whole-word slug occurrences), falling back to the lone activated fleet hermit when no explicit target appears, with the `hermitd-` prefix stripped. Scope is omitted when signals are absent or ambiguous. The body is translated to English at the GitHub boundary (technical identifiers, code, and frontmatter are preserved verbatim); a `Filed via hermit-scribe · proposal={id}` footer is appended after sanitization.
 
 For ad-hoc issues: supply title and body directly. The operator's title is passed through verbatim (no CC enforcement); translation and sanitization still apply.
 
@@ -67,7 +69,7 @@ All issues get the `hermit-filed` label. Proposal-backed issues also receive a t
 
 ### Dedup
 
-Before filing, the skill runs `--check {id}` automatically. If a matching issue already exists (matched by `proposal={id}` in the footer), the skill shows the existing URL and asks whether to skip or proceed. Re-filing after overriding writes the new URL into the proposal's `gh_issue:` field (latest wins). The footer is appended once sanitization is done, since the sanitizer would otherwise redact the proposal id as operator-project detail and break this match.
+Before filing, the skill checks both `--check {T-id}` and, for migrated records, `--check PROP-NNN`. An existing footer match, migrated `gh_issue:` URL, or `GitHub issue:` note in `## Decisions` means it was filed: the skill shows the URLs and asks whether to skip or proceed. After filing it records the literal URL with `printf 'GitHub issue: %s\n' '{url}' | .hermit/bin/hermitd-run task note .hermit {id} --decision`, preserving previous notes. If the record refuses the note or is no longer open, it reports the URL only. The footer is appended after sanitization so dedup provenance survives.
 
 ### Privacy sanitization
 

@@ -79,7 +79,7 @@ Periodic plugin checks are ordinary routines. For example, a weekly check uses `
 - Reflection runs at task boundaries, on the `reflect` schedule, and at end of day. If you're closing sessions before finishing work, reflection may not trigger.
 - Check the `reflect` routine is enabled (`/hermitd:hermit-settings routines`).
 - If you just started using Hermit, give it a few sessions to build up memory. Proposals come from patterns, and patterns take repetition.
-- Check proposals exist: `ls .hermit/proposals/PROP-*.md`
+- Check proposal task records: `.hermit/bin/hermitd-run task list .hermit --all --json`; pending decisions appear in the dashboard waiting section.
 
 ## Agent Ignoring OPERATOR.md
 
@@ -138,6 +138,12 @@ Reflect checks dismissed and deferred proposals before creating new ones. If you
 Check `context_hygiene.clear.enabled` and the watchdog tick. A standalone clear waits for the token floor, matching idle execution identity, at least 60 seconds idle, no running task worker and an idle/shell registry entry. Unknown or busy observations deliberately defer it. Inspect `state/watchdog-events.jsonl` for `clear:<reason>` fires and their `context-clear-result`. A `mod-not-loaded` outcome means the core mod has not loaded for the resident session; doctor's `harness-mod` check says so. Doctor's watchdog line shows the last tick's `standalone-clear/<outcome>`, naming the guard that deferred it.
 
 Open tasks do not need closing to permit a safe clear. Their progress and lessons survive in their records. Compaction remains a separate summarizing mechanism.
+
+## Agent Confused or Looping
+
+From a connected chat, `!clear` starts a clean conversation. In a worker task thread it restarts that worker. From the terminal, use `hermitd restart --fresh`; plain `hermitd restart` keeps the conversation.
+
+See [security](security.md) and [always-on operations](always-on-ops.md) for access and recovery details.
 
 ## Docker Build Fails
 

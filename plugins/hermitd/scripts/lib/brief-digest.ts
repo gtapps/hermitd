@@ -11,10 +11,12 @@ import { homeChatKey } from './home-chat';
 
 export type BriefMode = 'morning' | 'evening' | 'daily';
 
-export interface BriefSelector { routine?: string; chat?: string }
+export interface BriefSelector { routine?: string; chat?: string; agent?: true }
 
 export function briefDestination(config: any, selector: BriefSelector): string | null {
-  if (selector.routine && selector.chat) throw new Error('invalid_arguments');
+  const count = Number(selector.routine !== undefined) + Number(selector.chat !== undefined) + Number(selector.agent === true);
+  if (count === 0) throw new Error('needs_selector');
+  if (count !== 1) throw new Error('invalid_arguments');
   if (selector.chat !== undefined) {
     if (!isKey(selector.chat)) throw new Error('invalid_key');
     return selector.chat;
@@ -32,14 +34,14 @@ function agentSteps(config: any, scope: unknown, destination: string | null): bo
   return scope === null || (destination !== null && destination.split('~')[0] === homeChatKey(config.channels));
 }
 
-export async function briefContext(dir: string, selector: BriefSelector = {}) {
+export async function briefContext(dir: string, selector: BriefSelector) {
   const config = readSettledConfig(dir);
   const destination = briefDestination(config, selector);
   const { scope } = await briefVisibility(dir, config, destination, []);
   return { scope: scope === null ? 'agent' : 'chat', agent_steps: agentSteps(config, scope, destination), destination };
 }
 
-export async function briefDigest(dir: string, mode: BriefMode, reference = new Date(), selector: BriefSelector = {}) {
+export async function briefDigest(dir: string, mode: BriefMode, reference = new Date(), selector: BriefSelector) {
   const tasks = readTasks(dir);
   const reports = tasks.map(record => taskReport(dir, record));
   const config = readSettledConfig(dir);
@@ -102,7 +104,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
   const duties = (agent_steps ? dutyRows(dir) : []).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'string' ? clip(value) : value])));
   const pending = pendingDecisions(dir);
   if (!pending.ok) throw new Error('decision_inventory_unreadable');
-  const decisions_pending = pending.records.filter(({ task, decision }) => decision.authority === 'admin' ? agent_steps : visible.has(task.id))
+  const decisions_pending = pending.records.filter(({ task, decision }) => task.conversation === null && decision.authority === 'admin' ? agent_steps : visible.has(task.id))
     .map(({ task, decision }) => ({ id: task.id, title: clip(task.title), purpose: decision.purpose, authority: decision.authority, generation: decision.generation, options: decision.options?.map(option => clip(option)), resume: decision.resume ? clip(decision.resume) : null }));
   const digest = { mode, today: selected.today, scope, agent_steps, ...(mode === 'morning' ? { latest } : { records }), decisions_pending, open, decisions, duties, omitted };
   const bytes = () => Buffer.byteLength(JSON.stringify(digest) + '\n');

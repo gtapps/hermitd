@@ -1,7 +1,7 @@
-import { pendingDecisions, deliveryDue } from '../decisions';
+import { pendingDecisions, deliveryDue, recordDecisionAttempts } from '../decisions';
 // One deterministic heartbeat tick: verdict, budget notifications and queued records.
-// The skill delivers notifications and acknowledges successful delivery; composing
-// a notice never consumes it or changes the resident's execution state.
+// The tick stamps decision evaluation attempts; the skill delivers notifications
+// and acknowledges successful delivery without changing resident execution state.
 
 import { runPrecheck } from './precheck';
 import { pendingQueue, type QueueNotice } from './queue';
@@ -120,7 +120,7 @@ export async function run(args: string[]): Promise<void> {
         const queue = pendingQueue(hermitDir, nowMs);
         if (queue) result.notifications.queue = queue;
         const due = dueDecisionItems(hermitDir, nowMs);
-        if (due.length > 0) result.decision_refresh = due;
+        if (due.length > 0 && recordDecisionAttempts(hermitDir, due.map(row => row.key), nowMs)) result.decision_refresh = due;
       }
     }
   } catch { /* fail-open: the status still ships, minus the bookkeeping */ }

@@ -257,7 +257,7 @@ if ($cmd === '' || $cmd === '--help' || $cmd === 'help') {
       server-log <server> <key>   Read a server log by key (keys are hyphenated: nginx-error, nginx-access; 'php' auto-resolves to php-<major>.<minor>)
       site-log <server> <site> <type>  Read a site log (type: application, nginx-access, nginx-error)
       background-process-log <server> <process-id>  Fetch a background process's log output
-      deploy-history <server> <site>          List recent deployments
+      deploy-history <server> <site>          List the 20 most recent deployments
       deploy-log <server> <site> <deploy-id>  Fetch a specific deployment log
       deploy-status <server-id> <site-id> <deploy-id>  Print a deployment's status (raw IDs)
       deploy-watch <server-id> <site-id> <deploy-id>   Poll a deployment until terminal; emits a single TERMINAL line
@@ -566,9 +566,10 @@ if ($cmd === 'deploy-history') {
     $server      = resolveServer($forge, $org, $positional[0]);
     $site        = resolveSite($forge, $org, $server, $positional[1]);
     $rows        = [];
-    foreach (allPages($forge->deployments($org, $server->id, $site->id)) as $d) {
+    foreach ($forge->deployments($org, $server->id, $site->id)->lazy() as $d) {
         $commitMsg = $d->commit->message ?? null;
         $rows[] = ['id' => $d->id, 'status' => $d->status, 'commit' => $commitMsg === null ? null : substr($commitMsg, 0, 60)];
+        if (count($rows) === 20) break;
     }
     emit(['deployments' => $rows]);
 }
@@ -652,7 +653,7 @@ if ($cmd === 'deploy-status') {
 // ---------------------------------------------------------------------------
 // deploy-watch <server-id> <site-id> <deploy-id>
 //
-// Polls deployment status until terminal or timeout (180 x 5s ~= 15 min),
+// Polls until terminal, 180 polls, or the 15-minute deadline,
 // echoing only on change. Emits one TERMINAL line and exits 0. The TERMINAL
 // line carries only numeric IDs — Forge server names can contain spaces,
 // which would break the space-delimited fields.
@@ -662,7 +663,8 @@ if ($cmd === 'deploy-watch') {
     [$serverId, $siteId, $deployId] = $positional;
     $prev    = null;
     $prevErr = null;
-    for ($n = 0; $n < 180; $n++) {
+    $deadline = time() + 900;
+    for ($n = 0; $n < 180 && time() < $deadline; $n++) {
         try {
             $d  = $forge->deployment($org, (int)$serverId, (int)$siteId, (int)$deployId);
             $st = $d->status ?? 'unknown';

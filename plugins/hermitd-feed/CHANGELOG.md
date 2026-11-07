@@ -1,11 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Changed
-- Proposal and question workflows use task records and require hermitd 1.4.28.
-
-
 ## [0.2.7] - 2026-10-25
 
 ### Changed

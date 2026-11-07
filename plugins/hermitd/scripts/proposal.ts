@@ -78,15 +78,24 @@ export function verbCreate(stateDir: string, stdin: string): Verdict {
 
 export function proposalDigest(root: string): Verdict {
   const inventory = readTaskInventory(root);
-  if (!inventory.ok) return { error: 'inventory_read_failed' };
+  const file = path.join(root, 'state', 'proposal-digest.json');
+  if (!inventory.ok) {
+    try { fs.rmSync(file, { force: true }); } catch { /* inventory failure stays explicit */ }
+    return { error: 'inventory_read_failed' };
+  }
   const records = inventory.records.filter(record => record.kind === 'proposal');
-  return { root, memory_dir: memoryDirFor(path.dirname(root)), total: records.length, omitted: Math.max(0, records.length - 50),
+  const digest = { total: records.length, omitted: Math.max(0, records.length - 50),
     proposals: records.slice(-50).map(record => ({
       id: record.id, handle: record.handle, title: record.title, source: record.source, category: record.category,
       tags: record.tags, status: record.status, closed_by: record.closed_by, reason: record.closed_reason,
       summary: record.summary, proposal: record.body.slice(0, 1200),
     })),
   };
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    writeFileAtomic(file, JSON.stringify(digest) + '\n');
+  } catch { return { error: 'digest_write_failed' }; }
+  return { root, memory_dir: memoryDirFor(path.dirname(root)) };
 }
 
 const ROUTINE_REQUIRED_FIELDS = ['id', 'schedule', 'skill', 'enabled'];

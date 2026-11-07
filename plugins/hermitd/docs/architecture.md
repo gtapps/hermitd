@@ -32,7 +32,7 @@ A Claude Code plugin that turns any Claude Code instance into a self-improving p
                                  |
  +-------------------------------v----------------------------------+
  |                    LAYER 5: REPO ARTIFACTS                       |
- |   CLAUDE.md - OPERATOR.md - TASKS.md - tasks/ - proposals/        |
+ |   CLAUDE.md - OPERATOR.md - TASKS.md - tasks/        |
  +-----------------------------------------------------------------+
 ```
 
@@ -121,7 +121,7 @@ The plugin manifest registers 16 shared hooks. The four resident-only hooks (`pa
 | Subagent cost | SubagentStop | Captures async-dispatched subagent token cost from the subagent transcript |
 | PreCompact stamp | PreCompact | Marks the resident execution unknown and stamps its context reset |
 | Pause gate | PreToolUse `*` (launch overlay) | Binding pause/stop/resume gate: while `state/pause.json` says paused, denies every tool call except channel `reply` and PushNotification |
-| Ask gate | PreToolUse `AskUserQuestion` (launch overlay) | Denies AskUserQuestion on unattended sessions with a redirect to the channel reply tool and the micro-proposal bridge |
+| Ask gate | PreToolUse `AskUserQuestion` (launch overlay) | Denies AskUserQuestion on unattended sessions with a redirect to the channel reply tool and a task record holding an admin `input` decision, answered with `task answer` |
 | PermissionDenied notify | PermissionDenied `*` (launch overlay) | Maintainer diagnostic (tool + reason), one 30-min window per tool with a suppressed count; maintainer chat, else primary chat on a technical profile, else Findings; no client message |
 | Component privacy | PostToolUse `Edit\|Write` (launch overlay) | Keeps a hermit-created skill or agent private to this install when the operator chose gitignored hatch outputs |
 
@@ -151,7 +151,7 @@ hermitd/
 your-project/
 ├── .hermit/
 │   ├── tasks/T-*.md
-│   ├── proposals/PROP-NNN.md
+│   ├── tasks/T-YYYYMMDD-HHMMSS.md  (work and proposals)
 │   ├── compiled/review-weekly-YYYY-Www.md  # Weekly review reports (weekly-review.ts; type: review)
 │   ├── state/                        # Runtime observations (agent-owned, not operator-configured)
 │   │   ├── runtime.json              # Process stamp (config_dir, env_auth, inbox_socket, session_pid, peer_name); execution is state/execution.json
@@ -224,7 +224,7 @@ Task mutations and imports share `state/tasks.lock`. Decision sends own `state/d
 Per-file update policies for managed files under `.hermit/`:
 
 - **bot-owned-overwrite**: `state/` runtime files, `config.json` keys added by upgrade — written by the hermit, overwritten on upgrade with no review.
-- **operator-owned-never**: `OPERATOR.md`, `HEARTBEAT.md`, `sessions/`, `proposals/` — hermit never overwrites.
+- **operator-owned-never**: `OPERATOR.md`, `HEARTBEAT.md`, `sessions/`, archived proposals, hermit never overwrites.
 - **managed-with-merge-gate** (`templates/`): on upgrade, classified against `template-manifest.json` baseline; conflicts parked as `.new` for operator review; `customized-kept` files left untouched.
 - **boot-critical-replace** (`bin/`): conflicts replace with the upstream version (`chmod +x`); operator's copy preserved as `.bak`; stale wrappers can dead-end the hermit so keeping them is never safe.
 

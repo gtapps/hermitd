@@ -428,6 +428,21 @@ describe('channel-status-responder', () => {
     }
   });
 
+  test('status names this chat work instead of a runnable agent-wide decision', async () => {
+    const stub = startHttpStub();
+    const wd = setupChannelWorkdir();
+    try {
+      const dir = hermit(wd.dir);
+      const decision = mutateTask(dir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Global proposal', done: 'Done' }, '') as { id: string };
+      expect(mutateTask(dir, 'answer', decision.id, { chat: 'telegram:12345', user: 'u1', reply: 'yes' }, '')).toMatchObject({ status: 'match' });
+      await openTask(wd, 'Chat assignment');
+      await run(wd, '!status', stub.url);
+      const text = stub.requests[0].body.text as string;
+      expect(text).toContain('Chat assignment');
+      expect(text).not.toContain('Global proposal');
+    } finally { stub.stop(); wd.cleanup(); }
+  });
+
   test('counts only approvals for this chat, treating chat-less entries as home', async () => {
     const stub = startHttpStub();
     const wd = setupChannelWorkdir();
