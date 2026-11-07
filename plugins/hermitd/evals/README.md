@@ -103,7 +103,7 @@ One case per agent chain that runs together in production, plus the rules a chai
 | `watch-relay-live-entry-shop`, `watch-relay-unknown-sender-shop` | helper `GUEST_REPORT` → watch | verbatim relay to the operator; no reply for an unknown sender |
 | `evolve-runner-template-conflict-home` | evolve-runner (standalone body) | a template conflict is parked as `.new` and reported |
 
-Resident cases append the resident prompt hermitd-start launches with and set `EVAL_HERMIT_RESIDENT=1`. Cases that write files are tagged `chains-write` and need `--allow-tools Write SendMessage` (`task-answer-waiting-record-shop` grades a `SendMessage` to the last worker, and an ungranted tool is withheld), which applies to the whole run, so run that tag on its own; `--tag train` also selects them. Known gaps on a host where Bash cannot run in eval runs: the worker reaching `done`, the helper launch, and a real `evolve-runner` dispatch (its first steps run `claude --version` and `bun --version`), so `evolve-runner-template-conflict-home` runs the agent body directly. `task-worker-needs-input-shop` ends `needs-input` because the worker cannot run `task.ts`; it changes meaning once Bash works. Hand copies in the stand-ins: the `proposal-gate` verdict mapping, `conversation.ts thread-open` (it calls the Discord API), the watch registry and the task-report rows. `task.ts list`, `task.ts open`, the task cases' UserPromptSubmit context and the resident prompt are produced by the real code at generation time.
+Resident cases append the resident prompt hermitd-start launches with and set `EVAL_HERMIT_RESIDENT=1`. Cases that write files are tagged `chains-write` and need `--allow-tools Write SendMessage Bash` (`task-answer-waiting-record-shop` grades a `SendMessage` to the last worker, `two-concurrent-dm-tasks` grades its close through a `.hermit/bin/hermitd-run` stub that returns the real `task.ts` output per verb and record id, and an ungranted tool is withheld), which applies to the whole run, so run that tag on its own; `--tag train` also selects them. Known gaps on a host where Bash cannot run in eval runs: the worker reaching `done`, the helper launch, and a real `evolve-runner` dispatch (its first steps run `claude --version` and `bun --version`), so `evolve-runner-template-conflict-home` runs the agent body directly. `task-worker-needs-input-shop` ends `needs-input` because the worker cannot run `task.ts`; it changes meaning once Bash works. Hand copies in the stand-ins: the `proposal-gate` verdict mapping, `conversation.ts thread-open` (it calls the Discord API), the watch registry and the task-report rows. `task.ts list`, `task.ts open`, the task cases' UserPromptSubmit context and the resident prompt are produced by the real code at generation time.
 
 `_generators/` holds the Bun scripts that write the heartbeat, proposal-triage, chains and brief run suites (`bun evals/_generators/gen-<suite>.ts` from the plugin root, with `<suite>` one of `heartbeat`, `triage`, `chains`, `brief`); `lib.ts` holds the helpers they share with each other and with the drift test, and `gen-chains.ts` reuses the triage fixtures from `gen-triage.ts`. Edit a generator and regenerate rather than hand-editing many `case.yaml` files, then check that `git diff evals/` shows only the change you meant.
 
@@ -122,10 +122,13 @@ From the repo root:
 ```bash
 CLAUDE_CODE_EFFORT_LEVEL=low claude plugin eval plugins/hermitd --tag channel-routing --ablation none \
   --model sonnet --runs 3 -j 3 --scaffold --max-cost-usd 14 --no-publish
-claude plugin eval plugins/hermitd --tag chains-write --allow-tools Write SendMessage --ablation none \
+claude plugin eval plugins/hermitd --tag decision-replies --allow-tools Bash --ablation none \
+  --model sonnet --runs 3 -j 3 --scaffold --max-cost-usd 6 --no-publish
+claude plugin eval plugins/hermitd --tag chains-write --allow-tools Write SendMessage Bash --ablation none \
   --model sonnet --runs 3 --scaffold --max-cost-usd 5 --no-publish
 ```
 
+- `decision-replies` cases call `task answer` through Bash, and a grant covers the whole run, so run that tag on its own with `--allow-tools Bash`. The `channel-routing` run above fails every one of them.
 - `--ablation none`: a no-plugin arm has no routing rules to compare, and the default two-arm mode drops `tool_used: Skill` graders from the score.
 - Measured on 2026-10-01, one run per case over all 33 cases: sonnet about $3.70, opus about $7.40.
 - Hillclimb on sonnet with both tags; confirm the kept wording on opus before merging. Always-on agents do not run on haiku.

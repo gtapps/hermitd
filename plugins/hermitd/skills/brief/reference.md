@@ -12,7 +12,7 @@ For `agent_steps: false`, keep `duties` and `operator_priorities` empty. `decisi
 
 Use the digest's `duties` for requested and observed duties, returning any discrepancy in `findings`; a `skipped-precheck` `last_event` is healthy (the routine ran its precheck and had nothing to do), not a discrepancy. `last_woke` moves only when a run completes cleanly, so an old `last_woke` beside a recent `skipped-precheck` is healthy, and beside a recent `failed-*` event is a discrepancy. Return each duty as one line with its name, requested settings and observed liveness in `duties`.
 
-Open, waiting and queued items come only from the digest's `open` rows returned in this run. Never take them from an earlier brief (`state/last-brief.json`, `compiled/brief-*`). A `result_truncated` result is an excerpt, never complete evidence. Return the digest's `omitted` counts unchanged so main can say when items were left out; do not recover omitted data with more reads.
+Open, waiting and queued items come only from the digest's `open` rows returned in this run. Never take them from an earlier brief (`state/last-brief.json`, `compiled/brief-*`). A `result_truncated` result is an excerpt, never complete evidence. Return the digest's `omitted` counts unchanged so main can say when items were left out; do not recover omitted data with more reads. With `scope: "chat"`, `omitted.open` counts other chats' work: do not chase it, and name only the work in the digest.
 
 ## Per-mode instructions
 

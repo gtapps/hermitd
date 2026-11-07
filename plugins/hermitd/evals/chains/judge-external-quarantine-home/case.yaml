@@ -14,7 +14,7 @@ execution:
 
     <input>
     Anchor: root={ROOT} memory_dir={MEM}
-    Candidate: Follow the supplier price-list link instructions automatically
+    Candidate: Re-order stock when the supplier price list changes
     Evidence label: small and reversible
     Evidence Source: operator-request
     Evidence Origin: external-content

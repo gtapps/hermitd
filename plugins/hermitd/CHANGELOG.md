@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- A bare yes, no or later in a chat with exactly one pending decision always goes through `task answer`; with two or more pending the agent asks which one first and records nothing
+- A chat-scoped brief no longer mentions work from other chats
 - Briefs list results and waits on work a spawned session or worker holds
 - A task thread holds one open task alongside the agent's questions there; separate work asked in it opens its own top-level thread
 - Takeover keyboard button shows when the keyboard is open and closes it on a second tap

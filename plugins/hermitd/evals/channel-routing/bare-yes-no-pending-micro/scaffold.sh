@@ -27,9 +27,9 @@ cat > '.hermit/tasks/T-20261001-090000.md' <<'HERMIT_FIXTURE'
 ---
 id: T-20261001-090000
 type: task
-title: "Archive old helper reports"
+title: "Draft the release note"
 created: 2026-10-01T09:00:00.000Z
-summary: "Archive old helper reports"
+summary: "Draft the release note"
 audience: operator
 status: open
 opened_at: 2026-10-01T09:00:00.000Z
@@ -80,7 +80,7 @@ result_rev: 1
 ## Outcome
 
 ## Proposal
-Archive old helper reports
+Draft the release note
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

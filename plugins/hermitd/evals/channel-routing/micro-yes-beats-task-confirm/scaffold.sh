@@ -27,9 +27,9 @@ cat > '.hermit/tasks/T-20261001-090000.md' <<'HERMIT_FIXTURE'
 ---
 id: T-20261001-090000
 type: task
-title: "How often should reports run: daily or weekly?"
+title: "Should the reports run weekly?"
 created: 2026-10-01T09:00:00.000Z
-summary: "How often should reports run: daily or weekly?"
+summary: "Should the reports run weekly?"
 audience: operator
 status: open
 opened_at: 2026-10-01T09:00:00.000Z
@@ -80,7 +80,7 @@ result_rev: 0
 ## Outcome
 
 ## Proposal
-How often should reports run: daily or weekly?
+Should the reports run weekly?
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
@@ -91,7 +91,7 @@ cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
 # Answer boundary stand-in; no other script is mocked.
 if [ "$1" = task ] && [ "$2" = answer ]; then
 cat <<'ANSWER'
-{"status":"match","id":"T-20261001-090000","purpose":"input","reply":"weekly"}
+{"status":"match","id":"T-20261001-090000","purpose":"input","reply":"yes"}
 ANSWER
 else
   echo '{"status":"ok"}'

@@ -51,7 +51,7 @@ Every mode uses `brief-digest` for bounded task, duty and pending-decision data.
 ```
 <!-- brief-eval-schema:end -->
 
-Compose `runner.waiting` entries in the operator's language from `title`, `state` and `waiting_on`: `finishing` means nothing is needed from the operator; `unconfirmed` means a result awaits confirmation, from `waiting_on` when set; `waiting` means work needs the named party. For every routine brief, say plainly when `runner.omitted` has non-zero counts, including clipped text and items left out.
+Compose `runner.waiting` entries in the operator's language from `title`, `state` and `waiting_on`: `finishing` means nothing is needed from the operator; `unconfirmed` means a result awaits confirmation, from `waiting_on` when set; `waiting` means work needs the named party. For every routine brief, say plainly when `runner.omitted` has non-zero counts, including clipped text and items left out. When `scope` is `chat`, `omitted.open` counts work that belongs to other chats: never mention it, and never read task records, `TASKS.md`, memory or the channel log to find it. A chat-scoped brief names only the work the digest returned.
 
 ## Flags
 
