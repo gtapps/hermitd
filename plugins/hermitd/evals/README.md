@@ -122,10 +122,13 @@ From the repo root:
 ```bash
 CLAUDE_CODE_EFFORT_LEVEL=low claude plugin eval plugins/hermitd --tag channel-routing --ablation none \
   --model sonnet --runs 3 -j 3 --scaffold --max-cost-usd 14 --no-publish
+claude plugin eval plugins/hermitd --tag decision-replies --allow-tools Bash --ablation none \
+  --model sonnet --runs 3 -j 3 --scaffold --max-cost-usd 6 --no-publish
 claude plugin eval plugins/hermitd --tag chains-write --allow-tools Write SendMessage --ablation none \
   --model sonnet --runs 3 --scaffold --max-cost-usd 5 --no-publish
 ```
 
+- `decision-replies` cases call `task answer` through Bash, and a grant covers the whole run, so run that tag on its own with `--allow-tools Bash`. The `channel-routing` run above fails every one of them.
 - `--ablation none`: a no-plugin arm has no routing rules to compare, and the default two-arm mode drops `tool_used: Skill` graders from the score.
 - Measured on 2026-10-01, one run per case over all 33 cases: sonnet about $3.70, opus about $7.40.
 - Hillclimb on sonnet with both tags; confirm the kept wording on opus before merging. Always-on agents do not run on haiku.

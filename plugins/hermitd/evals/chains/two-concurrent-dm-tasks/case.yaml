@@ -106,4 +106,4 @@ execution:
 graders:
   - {"name":"two-reports","type":"tool_used","tool":"mcp__plugin_discord_discord__reply","min":2,"weight":2}
   - {"name":"rubric","type":"llm","criteria":"PASS only if the invoice report for T-20261021-090000-0 is sent before the domain report for T-20261021-090000, each using its own task-scoped placeholder (the supplied relay output labels it) or the exact supplied labeled text, then the confirmation closes renew-domain alone and leaves review-invoice open. FAIL if either report is lost, mislabeled, assigned to the other task, or both tasks are closed.","weight":2,"focus":"mock_calls"}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the final channel response says the domain task is closed and the invoice task is still awaiting approval, without internal task ids.","weight":2,"focus":"mock_calls"}
+  - {"name":"rubric-final-reply","type":"llm","criteria":"PASS if the final channel response says the domain task is closed and the invoice task is still awaiting approval, without internal task ids.","weight":2,"focus":"mock_calls"}

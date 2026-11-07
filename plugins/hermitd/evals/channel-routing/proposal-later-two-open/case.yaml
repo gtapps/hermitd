@@ -21,11 +21,6 @@ execution:
     later
     </channel>
 graders:
-  - name: answer-boundary
-    type: 'tool_used'
-    tool: 'Bash'
-    input_match: 'task(?:\.ts)? answer[\s\S]*--chat[\s\S]*--user[\s\S]*--reply'
-    weight: 3
   - name: reply
     type: 'tool_used'
     tool: 'mcp__plugin_discord_discord__reply'
