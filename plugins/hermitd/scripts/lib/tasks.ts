@@ -377,9 +377,13 @@ function answerTask(dir: string, records: Task[], id: string | undefined, flags:
   const decision = pendingDecision(record)!;
   if (flags.generation !== undefined && Number(flags.generation) !== decision.generation) return { verdict: { status: 'stale' } };
   let answer: string;
+  // An exact label wins over yes/no, number and prefix readings of the same reply.
+  const exact = decision.options?.find(label => label.toLowerCase() === reply);
   if (decision.options === undefined) {
     if (reply !== 'yes' && reply !== 'no') return { verdict: { status: 'none', reason: 'no_match' } };
     answer = reply;
+  } else if (exact !== undefined) {
+    answer = exact;
   } else {
     if (reply === 'yes' || reply === 'no') return ambiguous('options_require_choice', [record]);
     if (/^[+-]?\d+$/.test(reply)) {

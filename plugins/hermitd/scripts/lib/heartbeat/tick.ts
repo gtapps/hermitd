@@ -8,9 +8,9 @@ import { pendingQueue, type QueueNotice } from './queue';
 export { acknowledgeQueue } from './queue';
 import { sweepBrowserLease } from '../browser-lease';
 import { readSettledConfig } from '../config-read';
-import { readMergedAlerts, readAlertState, alertStatePath, activeSuppressedEntries, isStructuredKey } from '../alert-state';
+import { readMergedAlerts } from '../alert-state';
 import { isPaused } from '../pause';
-import { resolveHermitNowMs, todayYMD } from '../time';
+import { resolveHermitNowMs } from '../time';
 import { loadMessages } from '../messages';
 
 type Json = any;

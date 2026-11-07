@@ -67,6 +67,10 @@ test('matching preserves all ambiguity reasons and supports numbers and labels',
     expect(f.answer(id, '2')).toMatchObject({ status: 'match', answer: 'Alpine' });
     const second = f.openRecord(decision, { kind: false });
     expect(f.answer(second.id, 'bet')).toMatchObject({ status: 'match', answer: 'Beta' });
+    const labelled = f.openRecord({ ...decision, options: ['Yes', 'Later', 'Later today'] }, { kind: false });
+    expect(f.answer(labelled.id, 'yes')).toMatchObject({ status: 'match', answer: 'Yes' });
+    const prefixed = f.openRecord({ ...decision, options: ['Yes', 'Later', 'Later today'] }, { kind: false });
+    expect(f.answer(prefixed.id, 'later')).toMatchObject({ status: 'match', answer: 'Later' });
     f.openRecord(); f.openRecord();
     expect(f.answer(undefined)).toMatchObject({ status: 'ambiguous', reason: 'multiple_pending' });
   } finally { f.cleanup(); }

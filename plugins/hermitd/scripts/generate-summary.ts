@@ -62,7 +62,6 @@ try {
 // Read proposal metrics
 let proposalsCreated = 0;
 let proposalsResponded = 0;
-let proposalsResolved = 0;
 const proposalSource: Record<string, string> = {}; // proposal_id -> source (for cross-referencing accepts by source)
 const createdBySource: Record<string, number> = {}; // source -> count
 const acceptedBySource: Record<string, number> = {}; // source -> count
@@ -84,7 +83,6 @@ try {
           acceptedBySource[src] = (acceptedBySource[src] || 0) + 1;
         }
       }
-      if (event.type === 'resolved') proposalsResolved++;
       // Bridged asks (kind:"ask") are bounded 2-4-way asks, not yes/no approval
       // decisions — exclude them from the approval-rate denominator. They still
       // emit micro-queued so reflect's per-day ID counter stays correct.
@@ -109,7 +107,7 @@ const fmtRateStr = (rate: number | null) => rate !== null ? `${rate}%` : 'no dat
 
 const pending = pendingDecisions(path.dirname(stateDir));
 if (!pending.ok) throw new Error('decision_inventory_unreadable');
-proposalsResolved = readTasks(path.dirname(stateDir)).filter(record => record.kind === 'proposal' && record.status === 'closed' && record.closed_by !== 'cancelled').length;
+const proposalsResolved = readTasks(path.dirname(stateDir)).filter(record => record.kind === 'proposal' && record.status === 'closed' && record.closed_by !== 'cancelled').length;
 const decisionsPending = pending.records.length;
 
 const responseRate = proposalsCreated > 0

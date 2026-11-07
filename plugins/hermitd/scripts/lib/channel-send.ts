@@ -363,7 +363,7 @@ export function appendMaintainerFindings(
  * physical-target merge (same chat ⇒ both texts together), missing/failed
  * maintainer fallback, sensitive-log handling, and Findings append. Never throws.
  */
-async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice): Promise<OperatorNoticeResult> {
+async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice, decisionChat?: string | null): Promise<OperatorNoticeResult> {
   const out: OperatorNoticeResult = {};
   const config: Json = readSettledConfig(hermitDir);
   const channels = config.channels;
@@ -372,10 +372,7 @@ async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice):
   const nonTechnical = config.operator_profile === 'non-technical';
   // A routine's or watch's own chat takes the client leg; the maintainer leg keeps
   // the home routing, so technical detail never reaches a team chat.
-  const decisions = notice.decision ? pendingDecisions(hermitDir) : null;
-  const pending = decisions?.ok ? decisions.records.find(row => row.task.id === notice.decision?.task && row.decision.generation === notice.decision.generation) : null;
-  const decisionChat = pending?.task.conversation;
-  const owned = pending && pending.decision.authority !== 'admin' && decisionChat
+  const owned = decisionChat
     ? { id: decisionChat.split(':')[0], chat_id: decisionChat.slice(decisionChat.indexOf(':') + 1) }
     : notice.routine
     ? ownedTarget(config.routines, notice.routine)
@@ -491,7 +488,7 @@ export async function sendOperatorNotice(hermitDir: string, notice: OperatorNoti
     const result = await deliverOperatorNotice(hermitDir, { ...notice, routine: undefined, watch: undefined, relay: false,
       client: admin ? undefined : text,
       maintainer: admin ? { text, fallback: 'primary' } : undefined,
-    });
+    }, admin ? null : pending.task.conversation);
     if (admin ? result.maintainer?.delivered && result.maintainer.route !== 'findings' : result.client?.ok) {
       const budget = readDeliveryBudget(hermitDir);
       budget[`${pending.task.id}:${pending.decision.generation}`] = pending.delivered + 1;

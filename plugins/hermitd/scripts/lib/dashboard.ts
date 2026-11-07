@@ -433,7 +433,7 @@ export function proposalLabel(p: ProposalRow, meta: string[]): string {
 }
 
 function renderWaiting(state: DashboardState): string {
-  const rows = state.waiting.map(row => railRow({ tone: 'warn', title: `From the agent: ${row.title}. Waiting on ${row.authority === 'admin' ? 'you' : row.authority}.`,
+  const rows = state.waiting.map(row => railRow({ tone: 'warn', title: `From the agent: ${escapeHtml(row.title)}. Waiting on ${row.authority === 'admin' ? 'you' : row.authority}.`,
     meta: [row.purpose, ...(row.options ?? [])].map(escapeHtml) }));
   return card(state.strings.waiting_heading, rows.length ? rows.join('') : `<p class="muted">${state.strings.waiting_none}</p>`);
 }
