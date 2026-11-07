@@ -1,7 +1,7 @@
 schema_version: "1.1"
 name: thread-waiting-answer
 description: 'In a real thread: an answer to a waiting record in its thread goes through task answer.'
-tags: [channel-routing, heldout]
+tags: [channel-routing, decision-replies, heldout]
 expected_outcome: 'The answer is recorded through task answer.'
 context:
   scaffold_script: scaffold.sh
