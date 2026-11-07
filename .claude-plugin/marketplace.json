@@ -11,7 +11,7 @@
       "name": "hermitd",
       "source": "./plugins/hermitd",
       "description": "Your own local Claude Tag, in the Claude app, Discord, Telegram, or a custom Claude Code channel.",
-      "version": "1.4.27",
+      "version": "1.4.28",
       "category": "productivity",
       "author": {
         "name": "gtapps",
@@ -32,7 +32,7 @@
       "name": "hermitd-dev",
       "source": "./plugins/hermitd-dev",
       "description": "Git safeguards, debugging, and merge-conflict resolution for your Hermit.",
-      "version": "0.4.25",
+      "version": "0.4.26",
       "category": "development",
       "author": {
         "name": "gtapps",
@@ -52,7 +52,7 @@
       "name": "hermitd-homeassistant",
       "source": "./plugins/hermitd-homeassistant",
       "description": "Build, manage, monitor, and troubleshoot your Home Assistant setup with Hermit.",
-      "version": "0.4.27",
+      "version": "0.4.28",
       "category": "home-automation",
       "author": {
         "name": "gtapps",
@@ -72,7 +72,7 @@
       "name": "hermitd-fitness",
       "source": "./plugins/hermitd-fitness",
       "description": "Fitness coaching for Hermit, with read-only Strava access, activity analysis, training plans, and recovery flags.",
-      "version": "0.2.9",
+      "version": "0.2.10",
       "category": "fitness",
       "author": {
         "name": "gtapps",
@@ -114,7 +114,7 @@
       "name": "hermitd-laravel-forge",
       "source": "./plugins/hermitd-laravel-forge",
       "description": "Manage Laravel Forge servers, sites, deployments, and logs with Hermit, with approval before changes.",
-      "version": "0.0.23",
+      "version": "0.0.24",
       "category": "development",
       "author": {
         "name": "gtapps",
@@ -136,7 +136,7 @@
       "name": "hermitd-scribe",
       "source": "./plugins/hermitd-scribe",
       "description": "A GitHub App Bot for Hermit that turns proposals and reports into issues, with privacy checks and approval before publishing.",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "category": "maintainer",
       "author": {
         "name": "gtapps",

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.12] - 2026-11-07
 
 ### Changed
 - Proposal-backed issues are filed from task records (`file T-... as a GH issue`, or a task handle or older proposal id) and the issue URL is recorded as a task note. Requires hermitd 1.4.28.
