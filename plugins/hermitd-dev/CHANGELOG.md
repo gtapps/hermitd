@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.26] - 2026-11-07
 
 ### Changed
 - Domain brainstorm reports proposal task ids. Requires hermitd 1.4.28.

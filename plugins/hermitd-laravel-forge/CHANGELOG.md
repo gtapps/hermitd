@@ -1,6 +1,6 @@
 # Changelog — laravel-forge-hermit
 
-## [Unreleased]
+## [0.0.24] - 2026-11-07
 
 ### Changed
 - `forge.php deploy-history` lists at most 20 deployments.

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.28] - 2026-11-07
 
 ### Changed
 - Approving an update proposal runs `/hermitd-homeassistant:ha-apply-update`; an advisory update closes once Home Assistant no longer lists it. Requires hermitd 1.4.28.
