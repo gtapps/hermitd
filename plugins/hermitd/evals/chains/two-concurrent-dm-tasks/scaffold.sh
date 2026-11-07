@@ -29,6 +29,57 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 
 Runs a small online tea shop alone. Prefers short messages.
 HERMIT_FIXTURE
+mkdir -p ".hermit/bin"
+cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
+#!/usr/bin/env bash
+# hermitd-run stand-in: what the real task.ts printed at generation time, per verb and record id.
+verb="$2"; id=""
+for a in "$@"; do case "$a" in T-*) id="$a";; esac; done
+[ "$1" = task ] || { echo OK; exit 0; }
+case "$verb${id:+ $id}" in
+  'list') cat <<'OUT'
+{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
+OUT
+  ;;
+  'note T-20261021-090000-0') cat <<'OUT'
+{"id":"T-20261021-090000-0","result_rev":0}
+OUT
+  ;;
+  'block T-20261021-090000-0') cat <<'OUT'
+{"id":"T-20261021-090000-0","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
+OUT
+  ;;
+  'note T-20261021-090000') cat <<'OUT'
+{"id":"T-20261021-090000","result_rev":0}
+OUT
+  ;;
+  'block T-20261021-090000') cat <<'OUT'
+{"id":"T-20261021-090000","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
+OUT
+  ;;
+  'answer T-20261021-090000') cat <<'OUT'
+{"status":"none","reason":"no_pending"}
+OUT
+  ;;
+  'answer T-20261021-090000-0') cat <<'OUT'
+{"status":"none","reason":"no_pending"}
+OUT
+  ;;
+  'answer') cat <<'OUT'
+{"status":"none","reason":"no_pending"}
+OUT
+  ;;
+  'close T-20261021-090000') cat <<'OUT'
+{"id":"T-20261021-090000","closed_by":"confirmed","result_rev":1,"next_queued":null,"next":"before the close reply, read .hermit/guides/learn.md"}
+OUT
+  ;;
+  'close T-20261021-090000-0') cat <<'OUT'
+{"id":"T-20261021-090000-0","closed_by":"confirmed","result_rev":1,"next_queued":null,"next":"before the close reply, read .hermit/guides/learn.md"}
+OUT
+  ;;
+  *) echo OK ;;
+esac
+HERMIT_FIXTURE
 mkdir -p ".hermit/helper-reports"
 cat > '.hermit/helper-reports/domain12.md' <<'HERMIT_FIXTURE'
 The domain renewal comparison is ready for approval.
@@ -160,3 +211,4 @@ HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
 HERMIT_FIXTURE
+chmod +x .hermit/bin/hermitd-run

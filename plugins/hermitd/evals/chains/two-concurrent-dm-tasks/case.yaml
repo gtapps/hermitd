@@ -8,7 +8,7 @@ context:
 execution:
   max_turns: 30
   timeout_seconds: 900
-  allowed_tools: [Skill, Read, Glob, Grep]
+  allowed_tools: [Skill, Bash, Read, Glob, Grep]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   append_system_prompt: |
     ## Session Discipline (hermitd)
@@ -76,24 +76,15 @@ execution:
     - Secrets: never put API keys, tokens, passwords or credentials in records, reports or proposals.
     - Files in the operator's project follow that project's own conventions.
   prompt: |
-    Process these queued completions in order before handling the final channel confirmation. The script and relay outputs below are stand-ins as described in the turn context. Deliver each report through its own task-scoped placeholder; the relay outputs show the delivered labels.
+    Process these queued completions in order before handling the final channel confirmation. The relay outputs below are stand-ins for the delivery hook. Deliver each report through its own task-scoped placeholder; the relay outputs show the delivered labels.
 
     Worker b1b2c3d4: WORKER T-20261021-090000-0 done invoice12
-    - task.ts note .hermit T-20261021-090000-0 --owner resident: {"id":"T-20261021-090000-0","result_rev":0}
     - Relay substitution at delivery for T-20261021-090000-0: {"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"chat_id":"400000000000000001","text":"review-invoice · Review invoice: The invoice discrepancy review is ready for approval.\n"}}}
-    - task.ts block .hermit T-20261021-090000-0 --result-stdin: {"id":"T-20261021-090000-0","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
     Worker a1b2c3d4: WORKER T-20261021-090000 done domain12
-    - task.ts note .hermit T-20261021-090000 --owner resident: {"id":"T-20261021-090000","result_rev":0}
     - Relay substitution at delivery for T-20261021-090000: {"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"chat_id":"400000000000000001","text":"renew-domain · Renew domain: The domain renewal comparison is ready for approval.\n"}}}
-    - task.ts block .hermit T-20261021-090000 --result-stdin: {"id":"T-20261021-090000","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
-    - Confirmation of T-20261021-090000, task.ts answer .hermit T-20261021-090000 --chat discord:400000000000000001 --user 100000000000000001 --reply yes --result-rev 1: {"status":"none","reason":"no_pending"}
-    - After the answer receipt, only after both reports, task.ts close .hermit T-20261021-090000 --by confirmed --actor discord:100000000000000001 --result-rev 1 --reason-stdin: {"id":"T-20261021-090000","closed_by":"confirmed","result_rev":1,"next_queued":null,"next":"before the close reply, read .hermit/guides/learn.md"}
-    - Open records after that close: {"rows":[{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["unconfirmed"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":1,"owner":"resident","last_worker":"b1b2c3d4","delegated":true,"result":"The invoice discrepancy review is ready for approval.","waiting_on":"discord:100000000000000001","closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":1,"omitted":0}
 
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
-    - This is a Discord DM with two running tasks, not a real thread.
-    - task.ts list --open --conversation discord:400000000000000001: {"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
+    Hermit state for this turn: this is a Discord DM with two running tasks, not a real thread. Hermit scripts run through `.hermit/bin/hermitd-run <verb> ...` (for example `.hermit/bin/hermitd-run task note .hermit <id> ...`). In this session the Bash tool appends `Exit code 1` and a read-only cwd error to every call; the stdout before them is the real result. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -106,5 +97,7 @@ execution:
     </channel>
 graders:
   - {"name":"two-reports","type":"tool_used","tool":"mcp__plugin_discord_discord__reply","min":2,"weight":2}
-  - {"name":"rubric","type":"llm","criteria":"PASS only if the invoice report for T-20261021-090000-0 is sent before the domain report for T-20261021-090000, each using its own task-scoped placeholder (the supplied relay output labels it) or the exact supplied labeled text, then the confirmation closes renew-domain alone and leaves review-invoice open. FAIL if either report is lost, mislabeled, assigned to the other task, or both tasks are closed.","weight":2,"focus":"mock_calls"}
-  - {"name":"rubric-final-reply","type":"llm","criteria":"PASS if the final channel response says the domain task is closed and the invoice task is still awaiting approval, without internal task ids.","weight":2,"focus":"mock_calls"}
+  - {"name":"confirms-domain","type":"tool_used","tool":"Bash","input_match":"task(?:\\.ts)? (?:close|answer)[^\\n]*T-20261021-090000(?![-\\d])","weight":3}
+  - {"name":"invoice-stays-open","type":"tool_used","tool":"Bash","input_match":"task(?:\\.ts)? close[^\\n]*T-20261021-090000-0","min":0,"max":0,"weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS only if the invoice report is sent before the domain report, each as its own reply in one of two forms: the placeholder `[[helper-report T-20261021-090000-0 invoice12]]` or the labeled text \"review-invoice · Review invoice: The invoice discrepancy review is ready for approval.\" for the invoice, and `[[helper-report T-20261021-090000 domain12]]` or the labeled text \"renew-domain · Renew domain: The domain renewal comparison is ready for approval.\" for the domain. FAIL if either report is missing, mislabeled, or carries the other task's placeholder or text. A `[[helper-report <id> <report>]]` reply is a delivered report: the delivery hook replaces it with that report's labeled text before it reaches the operator, so its id never reaches them.","weight":2,"focus":"mock_calls"}
+  - {"name":"rubric-final-reply","type":"llm","criteria":"Judge only the last reply call, which answers the operator's confirmation; earlier replies are the delivered reports. PASS if it says the domain task is closed and the invoice task is still awaiting approval, without internal task ids (T-...). FAIL otherwise. A `[[helper-report <id> <report>]]` reply is a delivered report: the delivery hook replaces it with that report's labeled text before it reaches the operator, so its id never reaches them.","weight":2,"focus":"mock_calls"}
