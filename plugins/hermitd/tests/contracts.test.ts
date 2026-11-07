@@ -37,7 +37,7 @@ const TEMPLATES = path.join(PLUGIN_ROOT, 'state-templates');
 
 const read = (p: string) => fs.readFileSync(p, 'utf-8');
 const readJson = (p: string) => JSON.parse(read(p));
-// proposal-act's action procedures live in branches.md; assert against the combined surface.
+// Proposal application (re-check, install, quality and verification gates) lives in proposal-create/apply.md.
 const PROPOSAL_ACT = read(path.join(SKILLS, 'proposal-create', 'apply.md'));
 
 // ---------- tempdir harness (port of _TempDirTest, no chdir needed: cwd is
@@ -2141,13 +2141,10 @@ describe('capability-brainstorm delegation contract', () => {
 });
 
 // ============================================================
-// proposal-act dispatch contract (TestProposalActDispatchContract)
+// Shared proposal application contract
 //
-// Step (e) dispatches the WHOLE implementation tail (implement → quality gate →
-// verification) to general-purpose when the falsification gate returned PROCEED and
-// there is no in-main skill handler. Main only resolves + notifies on a verified
-// return. The dispatch prompt is the contract — guard its key invariants so they
-// can't silently drift.
+// The resident and task-worker both run proposal-create/apply.md for kind=proposal
+// records: re-check, quality gate and verification, with no nested dispatch.
 // ============================================================
 
 describe('shared proposal application contract', () => {

@@ -16,8 +16,6 @@ execution:
     - config.json: operator_profile=technical; language unset; channels.discord.allowed_users=["100000000000000001"] (first entry is the primary operator).
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
     - Recent exchange: Requester asked why the shop was slow; agent answered that the current context did not show a cause. No task was opened for that initial question.
-    - proposal-micro match: {"status":"none","reason":"no_pending"}
-    - proposal-list: {"total":0,"shown":0,"proposals":[]}
     - conversation.ts thread-open: {"key":"discord:700000000000000001","chat_id":"700000000000000001"}
     - task.ts open: {"id":"T-20261001-093000","handle":"<slug of the --title>","created":true,"open_count":1,"queued":false}
     - task.ts note, task.ts block: OK
