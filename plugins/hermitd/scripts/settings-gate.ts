@@ -201,6 +201,37 @@ export function turnConversation(payload: Json): RoutineOrigin {
   }
 }
 
+type SenderClaim = { key: string; user: string };
+
+function turnChannelSenders(payload: Json): SenderClaim[] | null {
+  try {
+    const tPath = transcriptPath(payload);
+    if (!tPath) return null;
+    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
+    const prompt = turnPromptText(lines, lines.length);
+    if (!prompt.boundaryFound) return null;
+    const config = readConfigRaw(hermitDir());
+    const senders: SenderClaim[] = [];
+    const add = (text: string) => {
+      const env = parseChannelEnvelope(text, config);
+      if (env?.userId) senders.push({ key: conversationKey(env.sourceKey, env.chatId, env.thread), user: env.userId });
+    };
+    add(prompt.text);
+    for (const line of lines.slice(prompt.index + 1)) {
+      let entry: Json;
+      try { entry = JSON.parse(line); } catch { continue; }
+      const attachment = entry?.attachment;
+      if (entry?.type === 'attachment' && attachment?.type === 'queued_command'
+          && attachment.origin?.kind === 'channel' && typeof attachment.prompt === 'string') {
+        add(attachment.prompt);
+      }
+    }
+    return senders;
+  } catch {
+    return null;
+  }
+}
+
 /** `routines`, or one routine and any of its fields: `routines.<n>[.<field>]`. */
 const ROUTINE_PATH = /^routines(?:\.(\d+)(?:\..+)?)?$/;
 
@@ -646,6 +677,44 @@ function localAnswerAsks(command: string): string[] {
   return labels.length ? labels : ['task answer --local'];
 }
 
+/** Quoting cannot hide a task decision call that names, or could be fed, a sender. */
+function claimsSender(text: string): boolean {
+  const plain = text.replace(/['"\\]/g, '');
+  return /\btask(?:\.ts)?\s+(?:answer|close|cancel|note)\b/.test(plain) && /--user\b|--chat\b|\bxargs\b/.test(plain);
+}
+
+function taskSenderClaims(command: string): SenderClaim[] | null {
+  if (!claimsSender(command)) return [];
+  const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  // Only expansions that can reach a task invocation or a --user flag are opaque; piped text such as `echo "$5"` is not.
+  if (commands.some(part => /\btask(?:\.ts)?\b|--user\b/.test(part.replace(/['"\\]/g, ''))
+    && SHELL_EXPANDS.test(part.replace(/'[^']*'/g, '')))) return null;
+  const claims: SenderClaim[] = [];
+  for (const part of commands) {
+    if (!claimsSender(part)) continue;
+    const raw = part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? [];
+    // A quoted heredoc delimiter (`<<'EOF'`) is a redirection, not a spliced word.
+    if (raw.some(token => !/^(?:'[^']*'|"[^"]*"|[^\s'"\\]+|\d*<<-?(?:'\w+'|"\w+"))$/.test(token))) return null;
+    const tokens = raw.map(stripQuotes);
+    const taskIndexes = tokens.flatMap((token, index) => /(?:^|\/)task(?:\.ts)?$/.test(token) ? [index] : []);
+    if (!taskIndexes.length) return null;
+    // xargs, or a --chat with no visible --user, can hand task.ts a sender this text never shows.
+    if (tokens.slice(0, taskIndexes[0]).some(token => /(?:^|\/)xargs$/.test(token))) return null;
+    for (let i = 0; i < taskIndexes.length; i++) {
+      const args = tokens.slice(taskIndexes[i] + 1, taskIndexes[i + 1]);
+      const chat = args.indexOf('--chat');
+      const user = args.indexOf('--user');
+      if (chat < 0) continue;
+      if (user < 0) return null;
+      const key = args[chat + 1];
+      const sender = args[user + 1];
+      if (!key || !sender || key.startsWith('--') || sender.startsWith('--')) return null;
+      claims.push({ key, user: sender });
+    }
+  }
+  return claims;
+}
+
 /**
  * Does this Bash command mutate an asked hermit setting?
  *
@@ -760,7 +829,19 @@ function main(payload: any): void {
   let localAnswers: string[] = [];
 
   if (tool === 'Bash') {
-    localAnswers = localAnswerAsks(typeof input.command === 'string' ? input.command : '');
+    const command = typeof input.command === 'string' ? input.command : '';
+    const claims = taskSenderClaims(command);
+    if (!claims) {
+      deny('The task call\'s --chat/--user claim could not be read; rerun it as one plain task command with literal values.');
+      return;
+    }
+    const senders = claims.length ? turnChannelSenders(payload) : [];
+    if (!senders || claims.some(claim =>
+      !senders.some(sender => sender.key === claim.key && sender.user === claim.user))) {
+      deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
+      return;
+    }
+    localAnswers = localAnswerAsks(command);
     if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
       deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
       return;
