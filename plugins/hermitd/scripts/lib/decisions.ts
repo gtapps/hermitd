@@ -17,7 +17,7 @@ export function readDeliveryBudget(dir: string): Record<string, BudgetEntry> {
   const out: Record<string, BudgetEntry> = {};
   for (const [key, entry] of Object.entries(value as Record<string, any>)) {
     if (validCount(entry)) { out[key] = { delivered: entry, attempted_at: null }; continue; }
-    if (!entry || typeof entry !== 'object' || !validCount(entry.delivered) || typeof entry.attempted_at !== 'string') throw new Error('invalid_decision_budget');
+    if (!entry || typeof entry !== 'object' || !validCount(entry.delivered) || (entry.attempted_at !== null && typeof entry.attempted_at !== 'string')) throw new Error('invalid_decision_budget');
     out[key] = { delivered: entry.delivered, attempted_at: entry.attempted_at };
   }
   return out;

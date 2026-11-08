@@ -6,6 +6,11 @@
 
 - Chat decisions, closes, cancels and clear-waits naming a sender are refused unless that sender wrote in the current turn
 
+### Fixed
+
+- Decision reminders and decision reads no longer fail with `decision_inventory_unavailable` after imported delivery counts are rewritten with an empty attempt stamp
+- Proposal migration no longer resets decision reminder counts when the delivery budget file is unreadable or being written by a send
+
 ## [1.4.28] - 2026-11-07
 
 ### Added

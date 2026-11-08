@@ -17,6 +17,7 @@ import { collectToolUseIds, costLogPath, transcriptDirFor } from './cc-compat';
 import { isPrimaryOperator, isAllowedSender } from './channel-auth';
 import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
+import { readDeliveryBudget } from './decisions';
 
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
@@ -175,6 +176,9 @@ export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: str
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
   if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
+  // The budget lock nests inside the task lock; budget-lock holders never take the task lock.
+  const budgetLock = path.join(dir, 'state', 'decision-deliveries.lock');
+  if (!acquireLockWithWait(budgetLock, 2000)) { releaseLock(lock); throw new Error('decision_budget_busy'); }
   try {
     const inventory = readTaskInventory(dir);
     if (!inventory.ok) throw new Error('inventory_read_failed');
@@ -182,7 +186,7 @@ export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: str
     const results: { key: string; action?: 'imported' | 'linked'; error?: string }[] = [];
     let idTime = Date.now();
     const budgetPath = path.join(dir, 'state', 'decision-deliveries.json');
-    const budgets = readJson(budgetPath) ?? {};
+    const budgets = readDeliveryBudget(dir);
     for (const input of inputs) {
       if (records.some(record => record.dedupe_key === input.key)) {
         results.push({ key: input.key, action: 'linked' }); continue;
@@ -214,12 +218,12 @@ export function importTaskRecords(dir: string, inputs: TaskImport[]): { key: str
       writeFileAtomic(target, encoded);
       if (encodeTask(decodeTask(fs.readFileSync(target, 'utf8'))) !== encoded) throw new Error('import_verification_failed');
       records.push(record);
-      budgets[`${id}:${decision.generation}`] = 2;
+      budgets[`${id}:${decision.generation}`] = { delivered: 2, attempted_at: null };
       writeFileAtomic(budgetPath, JSON.stringify(budgets) + '\n');
       results.push({ key: input.key, action: 'imported' });
     }
     return results;
-  } finally { releaseLock(lock); }
+  } finally { releaseLock(budgetLock); releaseLock(lock); }
 }
 
 export function allocateTaskId(ids: string[], now: string): string {

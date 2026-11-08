@@ -185,7 +185,7 @@ No `package.json`, no `node_modules`, no build step.
 
 #### state/ ownership model
 
-Task mutations and imports share `state/tasks.lock`. Decision sends own `state/decision-deliveries.json` under its separate send lock. Other state files retain their documented owners.
+Task mutations and imports share `state/tasks.lock`. Every writer of `state/decision-deliveries.json` (decision sends, attempt stamps, imports) holds `state/decision-deliveries.lock`; imports take it inside the task lock. Other state files retain their documented owners.
 
 **The single-session guarantee does not extend to hooks.** Claude Code does not serialise hook invocations: one assistant turn issuing parallel tool calls spawns several hook processes that run concurrently (probed 2026-08-28 — four denials, four pids, every `START` before the first `END`). A hook that owns a state file therefore cannot rely on the rule above, and must either append rather than read-modify-write (`lib/denial-log.ts`) or take the advisory lock (`lib/lockfile.ts`, as `permission-denied-notify.ts` does).
 

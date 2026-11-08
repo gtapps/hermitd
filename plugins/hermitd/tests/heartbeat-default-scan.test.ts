@@ -17,7 +17,7 @@ import path from 'node:path';
 
 import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { pendingDecisions } from '../scripts/lib/decisions';
+import { pendingDecisions, readDeliveryBudget, recordDecisionAttempts } from '../scripts/lib/decisions';
 import { mutateTask } from '../scripts/lib/tasks';
 import { taskFixture } from './helpers/tasks';
 import { startHttpStub } from './helpers/http-stub';
@@ -212,6 +212,18 @@ describe('pending decision delivery budget', () => {
       await f.send(stub.url);
       expect(stub.requests[0].body.chat_id).toBe('team');
       expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 1 }] });
+    } finally { stub.stop(); f.cleanup(); }
+  });
+  test('legacy numeric budget entries stay readable after attempt stamps and sends rewrite the file', async () => {
+    const f = decisionFixture(); const stub = startHttpStub();
+    try {
+      // Imported history writes bare counts; earlier rewrites left `attempted_at: null` objects.
+      f.put('state/decision-deliveries.json', { 'T-20260101-000000:1': 2, 'T-20260101-000001:1': { delivered: 2, attempted_at: null } });
+      expect(recordDecisionAttempts(f.dir, [`${f.id}:1`], Date.now())).toBe(true);
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 0 }] });
+      expect(JSON.parse((await f.send(stub.url)).stdout).status).toBe('delivered');
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 1 }] });
+      expect(readDeliveryBudget(f.dir)).toMatchObject({ 'T-20260101-000000:1': { delivered: 2, attempted_at: null }, 'T-20260101-000001:1': { delivered: 2, attempted_at: null } });
     } finally { stub.stop(); f.cleanup(); }
   });
   test('a new generation gets a fresh budget and stale sends are refused', async () => {
