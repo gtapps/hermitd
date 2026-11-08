@@ -1032,8 +1032,13 @@ describe('task sender binding', () => {
     expectOpaque(await gate(`task answer .hermit --chat discord:100 --us'er' admin --reply yes`, entries));
     expectSilent(await gate('systemctl --user restart hermitd-watchdog && tail task.log', null));
     expectSilent(await gate('task list .hermit --open', null));
-    expectSilent(await gate('task answer .hermit --chat discord:100 --reply yes', null));
+    expectOpaque(await gate('task answer .hermit --chat discord:100 --reply yes', entries));
+    expectOpaque(await gate('printf -- "--user\\nmember\\n" | xargs task answer .hermit --chat discord:100 --reply yes', entries));
+    expectOpaque(await gate('xargs -a f .hermit/bin/hermitd-run task answer .hermit --reply yes', entries));
+    expectOpaque(await gate(`bash -c 'task answer .hermit --chat discord:100 --reply yes $(cat f)'`, entries));
     expectSilent(await gate('task answer .hermit --user admin --reply yes', null));
+    expectSilent(await gate('git commit -m "bind task --user claims"', null));
+    expectSilent(await gate('later add .hermit --claim "task done" --chat discord:100 --remind --due 2026-11-09T09:00:00Z --origin hermit', null));
     expectSilent(await gate('echo --chat discord:100 --user admin', null));
   });
 

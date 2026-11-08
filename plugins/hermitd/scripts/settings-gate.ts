@@ -677,10 +677,10 @@ function localAnswerAsks(command: string): string[] {
   return labels.length ? labels : ['task answer --local'];
 }
 
-/** Quoting cannot hide a task `--user` claim from this prefilter. */
+/** Quoting cannot hide a task decision call that names, or could be fed, a sender. */
 function claimsSender(text: string): boolean {
   const plain = text.replace(/['"\\]/g, '');
-  return /\btask(?:\.ts)?\b/.test(plain) && /--user\b/.test(plain);
+  return /\btask(?:\.ts)?\s+(?:answer|close|cancel|note)\b/.test(plain) && /--user\b|--chat\b|\bxargs\b/.test(plain);
 }
 
 function taskSenderClaims(command: string): SenderClaim[] | null {
@@ -698,11 +698,14 @@ function taskSenderClaims(command: string): SenderClaim[] | null {
     const tokens = raw.map(stripQuotes);
     const taskIndexes = tokens.flatMap((token, index) => /(?:^|\/)task(?:\.ts)?$/.test(token) ? [index] : []);
     if (!taskIndexes.length) return null;
+    // xargs, or a --chat with no visible --user, can hand task.ts a sender this text never shows.
+    if (tokens.slice(0, taskIndexes[0]).some(token => /(?:^|\/)xargs$/.test(token))) return null;
     for (let i = 0; i < taskIndexes.length; i++) {
       const args = tokens.slice(taskIndexes[i] + 1, taskIndexes[i + 1]);
       const chat = args.indexOf('--chat');
       const user = args.indexOf('--user');
-      if (chat < 0 || user < 0) continue;
+      if (chat < 0) continue;
+      if (user < 0) return null;
       const key = args[chat + 1];
       const sender = args[user + 1];
       if (!key || !sender || key.startsWith('--') || sender.startsWith('--')) return null;
