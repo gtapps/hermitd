@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Chat decisions, closes, cancels and clear-waits naming a sender are refused unless that sender wrote in the current turn
+
 ## [1.4.28] - 2026-11-07
 
 ### Added

@@ -201,6 +201,37 @@ export function turnConversation(payload: Json): RoutineOrigin {
   }
 }
 
+type SenderClaim = { key: string; user: string };
+
+function turnChannelSenders(payload: Json): SenderClaim[] | null {
+  try {
+    const tPath = transcriptPath(payload);
+    if (!tPath) return null;
+    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
+    const prompt = turnPromptText(lines, lines.length);
+    if (!prompt.boundaryFound) return null;
+    const config = readConfigRaw(hermitDir());
+    const senders: SenderClaim[] = [];
+    const add = (text: string) => {
+      const env = parseChannelEnvelope(text, config);
+      if (env?.userId) senders.push({ key: conversationKey(env.sourceKey, env.chatId, env.thread), user: env.userId });
+    };
+    add(prompt.text);
+    for (const line of lines.slice(prompt.index + 1)) {
+      if (!line.trim()) continue;
+      const entry = JSON.parse(line);
+      const attachment = entry?.attachment;
+      if (entry?.type === 'attachment' && attachment?.type === 'queued_command'
+          && attachment.origin?.kind === 'channel' && typeof attachment.prompt === 'string') {
+        add(attachment.prompt);
+      }
+    }
+    return senders;
+  } catch {
+    return null;
+  }
+}
+
 /** `routines`, or one routine and any of its fields: `routines.<n>[.<field>]`. */
 const ROUTINE_PATH = /^routines(?:\.(\d+)(?:\..+)?)?$/;
 
@@ -646,6 +677,40 @@ function localAnswerAsks(command: string): string[] {
   return labels.length ? labels : ['task answer --local'];
 }
 
+/** Quoting cannot hide a task `--user` claim from this prefilter. */
+function claimsSender(text: string): boolean {
+  const plain = text.replace(/['"\\]/g, '');
+  return /\btask(?:\.ts)?\b/.test(plain) && /--user\b/.test(plain);
+}
+
+function taskSenderClaims(command: string): SenderClaim[] | null {
+  if (!claimsSender(command)) return [];
+  if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return null;
+  const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  const claims: SenderClaim[] = [];
+  let found = false;
+  for (const part of commands) {
+    if (!claimsSender(part)) continue;
+    const raw = part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? [];
+    if (raw.some(token => !/^(?:'[^']*'|"[^"]*"|[^\s'"\\]+)$/.test(token))) return null;
+    const tokens = raw.map(stripQuotes);
+    const taskIndexes = tokens.flatMap((token, index) => /(?:^|\/)task(?:\.ts)?$/.test(token) ? [index] : []);
+    if (!taskIndexes.length) return null;
+    found = true;
+    for (let i = 0; i < taskIndexes.length; i++) {
+      const args = tokens.slice(taskIndexes[i] + 1, taskIndexes[i + 1]);
+      const chat = args.indexOf('--chat');
+      const user = args.indexOf('--user');
+      if (chat < 0 || user < 0) continue;
+      const key = args[chat + 1];
+      const sender = args[user + 1];
+      if (!key || !sender || key.startsWith('--') || sender.startsWith('--')) return null;
+      claims.push({ key, user: sender });
+    }
+  }
+  return found ? claims : null;
+}
+
 /**
  * Does this Bash command mutate an asked hermit setting?
  *
@@ -760,7 +825,15 @@ function main(payload: any): void {
   let localAnswers: string[] = [];
 
   if (tool === 'Bash') {
-    localAnswers = localAnswerAsks(typeof input.command === 'string' ? input.command : '');
+    const command = typeof input.command === 'string' ? input.command : '';
+    const claims = taskSenderClaims(command);
+    const senders = claims?.length ? turnChannelSenders(payload) : [];
+    if (!claims || !senders || claims.some(claim =>
+      !senders.some(sender => sender.key === claim.key && sender.user === claim.user))) {
+      deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
+      return;
+    }
+    localAnswers = localAnswerAsks(command);
     if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
       deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
       return;

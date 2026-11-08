@@ -921,14 +921,120 @@ for (const mode of ['bypassPermissions', 'auto', 'default']) {
 
 test('local answer fallbacks, mixed settings and ordinary channel answers', async () => {
   const dir = fixture();
-  for (const command of [
-    'task answer .hermit --chat discord:home --user admin --reply yes',
-    'task list .hermit --open',
-  ]) expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir));
+  const channel = path.join(dir, 'channel.jsonl');
+  fs.writeFileSync(channel, JSON.stringify({
+    type: 'user', message: { content: '<channel source="discord" chat_id="home" user_id="admin">yes</channel>' },
+  }) + '\n');
+  const answer = JSON.parse(payload({ dir, tool: 'Bash', input: {
+    command: 'task answer .hermit --chat discord:home --user admin --reply yes',
+  } }));
+  expectSilent(await runGate(JSON.stringify({ ...answer, transcript_path: channel }), dir));
+  expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command: 'task list .hermit --open' } }), dir));
   for (const [command, reason] of [
     ['task "$V" --local', 'Admin decision: task answer --local'],
     ["bash -c 'hermitd-run task answer .hermit --local --reply yes'", 'Admin decision: task answer --local'],
     ['task answer .hermit --local --reply "yes please"', 'Admin decision: answer the pending decision "yes please" as admin'],
     ['task answer .hermit --local --reply yes && ' + cmd('set voice friendly'), 'Admin decision: answer the pending decision "yes" as admin; Hermit setting: voice'],
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
+});
+
+describe('task sender binding', () => {
+  const channel = (user: string, chat = '100', extra = '') =>
+    `<channel source="plugin:discord:discord" chat_id="${chat}" user_id="${user}"${extra}>yes</channel>`;
+  const opener = (content: string, origin: any = { kind: 'channel' }) =>
+    ({ type: 'user', origin, message: { content } });
+  const queued = (prompt: string, origin: any = { kind: 'channel', server: 'discord' }) =>
+    ({ type: 'attachment', attachment: { type: 'queued_command', commandMode: 'prompt', origin, prompt } });
+  const answer = (user: string, chat = 'discord:100', runner = 'task') =>
+    `${runner} answer .hermit --chat ${chat} --user ${user} --reply yes`;
+
+  async function gate(command: string, entries: any[] | null, mode = 'default', config: any = {}) {
+    const dir = fixture({ channels: { discord: { allowed_users: ['admin', 'member'], ...config } } });
+    const base = JSON.parse(payload({ dir, tool: 'Bash', permission_mode: mode, input: { command } }));
+    const transcript = path.join(dir, 'turn.jsonl');
+    if (entries) fs.writeFileSync(transcript, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
+    return runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
+  }
+
+  function expectDeny(result: { exitCode: number; stdout: string }) {
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout).hookSpecificOutput;
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason).toContain('must reply themselves');
+  }
+
+  test('channel opener binds the claimed sender and chat in every permission mode', async () => {
+    for (const mode of ['default', 'auto', 'bypassPermissions']) {
+      expectSilent(await gate(answer('admin'), [opener(channel('admin'))], mode));
+      expectDeny(await gate(answer('member'), [opener(channel('admin'))], mode));
+      expectDeny(await gate(answer('admin', 'discord:999'), [opener(channel('admin'))], mode));
+    }
+  });
+
+  for (const [label, command, entries] of [
+    ['different sender', answer('member'), [opener(channel('admin'))]],
+    ['terminal opener', answer('admin'), [opener('yes', { kind: 'human' })]],
+    ['wake with another sender', answer('admin'), [
+      opener('<task-notification>go</task-notification>', { kind: 'task-notification' }), queued(channel('member')),
+    ]],
+    ['missing transcript', answer('admin'), null],
+    ['different chat', answer('admin', 'discord:999'), [opener(channel('admin'))]],
+    ['shell invocation', `bash -c '.hermit/bin/hermitd-run ${answer('admin')}'`, [opener(channel('admin'))]],
+  ] as const) {
+    test(`rejects ${label}`, async () => { expectDeny(await gate(command, entries ? [...entries] : null)); });
+  }
+
+  test('queued channel senders join the opener without replacing it', async () => {
+    const entries = [opener(channel('admin')), queued(channel('member'))];
+    expectSilent(await gate(answer('admin'), entries));
+    expectSilent(await gate(answer('member'), entries));
+    expectDeny(await gate(answer('member'), [opener(channel('admin')), queued(channel('member'), { kind: 'human' })]));
+    expectDeny(await gate(answer('member'), [opener(channel('admin')), { ...queued(channel('member')), type: 'user' }]));
+  });
+
+  test('terminal, wake, missing and truncated turns never invent a sender', async () => {
+    expectDeny(await gate(answer('admin'), [opener('yes', { kind: 'human' })]));
+    const wake = opener('<task-notification>go</task-notification>', { kind: 'task-notification' });
+    expectSilent(await gate(answer('member'), [wake, queued(channel('member'))]));
+    expectDeny(await gate(answer('admin'), [wake, queued(channel('member'))]));
+    expectDeny(await gate(answer('admin'), null));
+    expectDeny(await gate(answer('admin'), [queued(channel('admin'))]));
+    expectDeny(await gate(answer('admin'), [opener(channel('admin')), { type: 'assistant', text: 'x'.repeat(512 * 1024) }]));
+  });
+
+  test('task command forms bind every claimed sender', async () => {
+    const entries = [opener(channel('admin'))];
+    for (const runner of ['task', 'bun /p/scripts/task.ts', '.hermit/bin/hermitd-run task', 'hermitd run task']) {
+      expectSilent(await gate(answer('admin', 'discord:100', runner), entries));
+      expectDeny(await gate(answer('member', 'discord:100', runner), entries));
+    }
+    for (const verb of ['close', 'cancel', 'note']) {
+      const suffix = verb === 'note' ? ' --clear-waiting' : '';
+      expectSilent(await gate(`task ${verb} .hermit T-20261101-120000 --chat discord:100 --user admin${suffix}`, entries));
+      expectDeny(await gate(`task ${verb} .hermit T-20261101-120000 --chat discord:100 --user member${suffix}`, entries));
+    }
+    expectDeny(await gate(`${answer('admin')} && ${answer('member')}`, entries));
+    expectSilent(await gate(`${answer('admin')} && ${answer('admin')}`, entries));
+  });
+
+  test('opaque task commands deny and unrelated commands do not need a transcript', async () => {
+    const entries = [opener(channel('admin'))];
+    expectDeny(await gate(`bash -c '.hermit/bin/hermitd-run ${answer('admin')}'`, entries));
+    expectDeny(await gate('task answer .hermit --chat discord:100 --user "$USER" --reply yes', entries));
+    expectDeny(await gate(`ta'sk' answer .hermit --chat discord:100 --user admin --reply yes`, entries));
+    expectDeny(await gate(`task answer .hermit --chat discord:100 --us'er' admin --reply yes`, entries));
+    expectSilent(await gate('task list .hermit --open', null));
+    expectSilent(await gate('task answer .hermit --chat discord:100 --reply yes', null));
+    expectSilent(await gate('task answer .hermit --user admin --reply yes', null));
+    expectSilent(await gate('echo --chat discord:100 --user admin', null));
+  });
+
+  test('mapped thread and canonical user id identify the exact pair', async () => {
+    const config = { attributes: { thread_id: 'thread_ts' } };
+    const entries = [opener(channel('admin', '100', ' thread_ts="T1" user="member"'))];
+    expectSilent(await gate(answer('admin', 'discord:100~T1'), entries, 'default', config));
+    expectDeny(await gate(answer('admin', 'discord:100'), entries, 'default', config));
+    expectDeny(await gate(answer('member', 'discord:100~T1'), entries, 'default', config));
+    expectDeny(await gate(answer('admin'), [opener(channel('admin', '100', ' user_id="admin"'))]));
+  });
 });
