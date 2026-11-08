@@ -143,6 +143,7 @@ No `config.json` changes required.
    - Executable steps state the outcome plus constraints the model cannot infer; name migration verbs and required arguments exactly. Operator-dependent file or intent decisions belong to the evolve model. Each entry is self-contained and never references another entry.
    - Each executable step is a single action. Split independent outcomes into separate numbered steps.
    - No passive voice, no rationale clauses. If an operator needs to understand *why*, that belongs in the Changed bullet above, not here.
+   - When a step follows an existing procedure (evolve reference §5d, a linked skill), name it by path and section and stop; do not restate its fallbacks, preservation rules or refusal handling.
    - Include what `hermit-evolve` does NOT need to touch only if omission would cause it to act destructively. Otherwise silence.
    - Close with `No config.json changes required.` if true — it's the most common case and operators scan for it.
 
