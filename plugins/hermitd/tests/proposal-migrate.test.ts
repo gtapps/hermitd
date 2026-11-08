@@ -31,7 +31,7 @@ test('all legacy statuses map correctly, retain dates, archive after verificatio
       }
       if (status === 'dismissed') expect(record).toMatchObject({ closed_by: 'cancelled', closed_reason: 'Not useful' });
     }
-    expect(Object.values(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/decision-deliveries.json'), 'utf8')))).toEqual([2, 2, 2, 2]);
+    expect(Object.values(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/decision-deliveries.json'), 'utf8')))).toEqual(Array(4).fill({ delivered: 2, attempted_at: null }));
     expect(fs.existsSync(path.join(f.dir, 'state/proposals-index.json'))).toBe(false);
     expect(migrate(f.dir)).toEqual({ imported: 0, linked: 0, archived: 0, alerts_dropped: 0, skipped: [] });
     const dismissed = records.find(record => record.closed_by === 'cancelled')!;
@@ -82,6 +82,23 @@ for (const status of ['proposed', 'deferred']) for (const config of [false, true
     } finally { f.cleanup(); }
   });
 }
+
+test('an unreadable or busy delivery budget refuses the import and leaves the budget untouched', () => {
+  const f = taskFixture(); try {
+    proposal(f.dir, 1);
+    const budget = path.join(f.dir, 'state/decision-deliveries.json');
+    fs.mkdirSync(path.dirname(budget), { recursive: true });
+    fs.writeFileSync(budget, '{"T-20260101-000000:1": 2');
+    expect(migrate(f.dir)).toMatchObject({ error: expect.stringMatching(/^import_failed:/) });
+    expect(fs.readFileSync(budget, 'utf8')).toBe('{"T-20260101-000000:1": 2');
+    f.put('state/decision-deliveries.json', { 'T-20260101-000000:1': 2 });
+    // A live foreign holder: the lock treats this process's own pid as stale.
+    fs.writeFileSync(path.join(f.dir, 'state/decision-deliveries.lock'), String(process.ppid));
+    expect(migrate(f.dir)).toEqual({ error: 'import_failed:decision_budget_busy' });
+    expect(JSON.parse(fs.readFileSync(budget, 'utf8'))).toEqual({ 'T-20260101-000000:1': 2 });
+    expect(readTasks(f.dir)).toEqual([]);
+  } finally { f.cleanup(); }
+});
 
 test('corrupt sources stay untouched and prevent final queue/index removal', () => {
   const f = taskFixture(); try {
