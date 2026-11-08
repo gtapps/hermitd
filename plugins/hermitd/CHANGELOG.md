@@ -5,6 +5,7 @@
 ### Changed
 
 - Chat decisions, closes, cancels and clear-waits naming a sender are refused unless that sender wrote in the current turn
+- Routine fires pass `--routine` on every notice, so a skill's notice reaches the routine's chat without checking for one
 
 ### Fixed
 
