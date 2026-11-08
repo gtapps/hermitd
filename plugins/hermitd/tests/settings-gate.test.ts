@@ -956,12 +956,13 @@ describe('task sender binding', () => {
     return runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
   }
 
-  function expectDeny(result: { exitCode: number; stdout: string }) {
+  function expectDeny(result: { exitCode: number; stdout: string }, reason = 'must reply themselves') {
     expect(result.exitCode).toBe(0);
     const output = JSON.parse(result.stdout).hookSpecificOutput;
     expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason).toContain('must reply themselves');
+    expect(output.permissionDecisionReason).toContain(reason);
   }
+  const expectOpaque = (result: { exitCode: number; stdout: string }) => expectDeny(result, 'could not be read');
 
   test('channel opener binds the claimed sender and chat in every permission mode', async () => {
     for (const mode of ['default', 'auto', 'bypassPermissions']) {
@@ -979,7 +980,6 @@ describe('task sender binding', () => {
     ]],
     ['missing transcript', answer('admin'), null],
     ['different chat', answer('admin', 'discord:999'), [opener(channel('admin'))]],
-    ['shell invocation', `bash -c '.hermit/bin/hermitd-run ${answer('admin')}'`, [opener(channel('admin'))]],
   ] as const) {
     test(`rejects ${label}`, async () => { expectDeny(await gate(command, entries ? [...entries] : null)); });
   }
@@ -1015,14 +1015,22 @@ describe('task sender binding', () => {
     }
     expectDeny(await gate(`${answer('admin')} && ${answer('member')}`, entries));
     expectSilent(await gate(`${answer('admin')} && ${answer('admin')}`, entries));
+    for (const user of ['admin', 'member']) {
+      const close = `task close .hermit T-20261101-120000 --chat discord:100 --user ${user} --reason-stdin`;
+      const expectation = user === 'admin' ? expectSilent : expectDeny;
+      expectation(await gate(`${close} <<'EOF'\nPaid $40\nEOF`, entries));
+      expectation(await gate(`echo "Paid $40" | ${close}`, entries));
+    }
+    expectOpaque(await gate('set -- --user admin; task answer .hermit --chat discord:100 --reply yes "$@"', entries));
   });
 
   test('opaque task commands deny and unrelated commands do not need a transcript', async () => {
     const entries = [opener(channel('admin'))];
-    expectDeny(await gate(`bash -c '.hermit/bin/hermitd-run ${answer('admin')}'`, entries));
-    expectDeny(await gate('task answer .hermit --chat discord:100 --user "$USER" --reply yes', entries));
-    expectDeny(await gate(`ta'sk' answer .hermit --chat discord:100 --user admin --reply yes`, entries));
-    expectDeny(await gate(`task answer .hermit --chat discord:100 --us'er' admin --reply yes`, entries));
+    expectOpaque(await gate(`bash -c '.hermit/bin/hermitd-run ${answer('admin')}'`, entries));
+    expectOpaque(await gate('task answer .hermit --chat discord:100 --user "$USER" --reply yes', entries));
+    expectOpaque(await gate(`ta'sk' answer .hermit --chat discord:100 --user admin --reply yes`, entries));
+    expectOpaque(await gate(`task answer .hermit --chat discord:100 --us'er' admin --reply yes`, entries));
+    expectSilent(await gate('systemctl --user restart hermitd-watchdog && tail task.log', null));
     expectSilent(await gate('task list .hermit --open', null));
     expectSilent(await gate('task answer .hermit --chat discord:100 --reply yes', null));
     expectSilent(await gate('task answer .hermit --user admin --reply yes', null));

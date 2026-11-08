@@ -218,8 +218,8 @@ function turnChannelSenders(payload: Json): SenderClaim[] | null {
     };
     add(prompt.text);
     for (const line of lines.slice(prompt.index + 1)) {
-      if (!line.trim()) continue;
-      const entry = JSON.parse(line);
+      let entry: Json;
+      try { entry = JSON.parse(line); } catch { continue; }
       const attachment = entry?.attachment;
       if (entry?.type === 'attachment' && attachment?.type === 'queued_command'
           && attachment.origin?.kind === 'channel' && typeof attachment.prompt === 'string') {
@@ -685,18 +685,19 @@ function claimsSender(text: string): boolean {
 
 function taskSenderClaims(command: string): SenderClaim[] | null {
   if (!claimsSender(command)) return [];
-  if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return null;
   const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  // Only expansions that can reach a task invocation or a --user flag are opaque; piped text such as `echo "$5"` is not.
+  if (commands.some(part => /\btask(?:\.ts)?\b|--user\b/.test(part.replace(/['"\\]/g, ''))
+    && SHELL_EXPANDS.test(part.replace(/'[^']*'/g, '')))) return null;
   const claims: SenderClaim[] = [];
-  let found = false;
   for (const part of commands) {
     if (!claimsSender(part)) continue;
     const raw = part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? [];
-    if (raw.some(token => !/^(?:'[^']*'|"[^"]*"|[^\s'"\\]+)$/.test(token))) return null;
+    // A quoted heredoc delimiter (`<<'EOF'`) is a redirection, not a spliced word.
+    if (raw.some(token => !/^(?:'[^']*'|"[^"]*"|[^\s'"\\]+|\d*<<-?(?:'\w+'|"\w+"))$/.test(token))) return null;
     const tokens = raw.map(stripQuotes);
     const taskIndexes = tokens.flatMap((token, index) => /(?:^|\/)task(?:\.ts)?$/.test(token) ? [index] : []);
     if (!taskIndexes.length) return null;
-    found = true;
     for (let i = 0; i < taskIndexes.length; i++) {
       const args = tokens.slice(taskIndexes[i] + 1, taskIndexes[i + 1]);
       const chat = args.indexOf('--chat');
@@ -708,7 +709,7 @@ function taskSenderClaims(command: string): SenderClaim[] | null {
       claims.push({ key, user: sender });
     }
   }
-  return found ? claims : null;
+  return claims;
 }
 
 /**
@@ -827,8 +828,12 @@ function main(payload: any): void {
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
     const claims = taskSenderClaims(command);
-    const senders = claims?.length ? turnChannelSenders(payload) : [];
-    if (!claims || !senders || claims.some(claim =>
+    if (!claims) {
+      deny('The task call\'s --chat/--user claim could not be read; rerun it as one plain task command with literal values.');
+      return;
+    }
+    const senders = claims.length ? turnChannelSenders(payload) : [];
+    if (!senders || claims.some(claim =>
       !senders.some(sender => sender.key === claim.key && sender.user === claim.user))) {
       deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
       return;
