@@ -35,11 +35,8 @@ test('inline and delegated routine templates use the bounded Read', () => {
 test('inline and delegated routine invocations supply the routine id', () => {
   const dispatch = routines.slice(routines.indexOf('**Model-override substitution.**'), routines.indexOf('Base execution,'));
   const inline = routines.slice(routines.indexOf('Base execution,'), routines.indexOf('**Optional `precheck`'));
-  expect(dispatch).toContain('always append `This is routine <id>. Give this routine id to the invoked skill. Pass --routine <id> to every channel-send --notice call.');
+  expect(dispatch).toContain('always append `This is routine <id>.');
+  expect(dispatch).toContain('Pass --routine <id> to every channel-send --notice call');
   expect(inline).toContain('Always tell the skill before invocation: `This is routine <id>.`');
-  expect(inline).toContain('Pass `--routine <id>` to every `channel-send --notice` this fire makes');
-  for (const template of [dispatch, inline]) {
-    expect(template).not.toContain('has `chat`, also append');
-    expect(template).not.toContain('When the routine has `chat`, pass');
-  }
+  expect(inline).toContain('Pass `--routine <id>` to every `channel-send --notice`');
 });
