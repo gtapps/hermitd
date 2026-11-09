@@ -53,7 +53,7 @@ for (const authority of ['requester', 'chat', 'admin']) test(`admin answers ${au
 test('consent no cancels with a reason and an unscoped admin decision is admin-only', () => {
   const f = fixture(); try {
     const { id } = f.openRecord(consent, { conversation: undefined });
-    expect(f.answer(id, 'no', 'member')).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(f.answer(id, 'no', 'member')).toEqual({ status: 'refused', reason: 'not_decider' });
     expect(f.answer(id, 'no')).toMatchObject({ status: 'match' });
     expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'cancelled', closed_reason: 'Consent declined: no' });
   } finally { f.cleanup(); }
@@ -86,7 +86,7 @@ test('pending consent cannot be bypassed through clear-wait, check, close, cance
       ['close', { by: 'confirmed', actor: 'admin', 'reason-stdin': true, chat, user: 'admin' }],
       ['cancel', { actor: 'admin', 'reason-stdin': true, chat, user: 'admin' }],
       ['block', { 'result-stdin': true }],
-    ] as const) expect(() => mutateTask(f.dir, verb, id, flags, 'Bypass')).toThrow('not_decider');
+    ] as const) expect(() => mutateTask(f.dir, verb, id, flags, 'Bypass')).toThrow('consent_required');
     expect(f.text(id)).toBe(before);
   } finally { f.cleanup(); }
 });
@@ -232,7 +232,20 @@ test('id-less thread answers exclude null-conversation decisions but explicit id
     const { id } = f.openRecord(consent, { conversation: undefined });
     const flags = { chat: 'discord:th', user: 'admin', reply: 'yes' };
     expect(mutateTask(f.dir, 'answer', undefined, flags, '', true)).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(mutateTask(f.dir, 'answer', id, { ...flags, user: 'member' }, '', true)).toEqual({ status: 'refused', reason: 'not_decider' });
     expect(mutateTask(f.dir, 'answer', id, flags, '', true)).toMatchObject({ status: 'match', id });
+    mutateTask(f.dir, 'note', id, { check: 'true' }, '');
+    mutateTask(f.dir, 'check-result', id, { 'result-rev': String(f.read(id).result_rev), exit: '0', 'output-stdin': true }, 'Merged');
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'check', approved_by: 'admin' });
+  } finally { f.cleanup(); }
+});
+
+test('without named operators, a thread cannot prove the admin and says so', () => {
+  const f = fixture(); try {
+    f.put('config.json', { channels: { discord: { default_chat_id: 'home' } } });
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true)).toEqual({ status: 'refused', reason: 'not_decider' });
+    expect(f.answer(id)).toMatchObject({ status: 'match', id });
   } finally { f.cleanup(); }
 });
 

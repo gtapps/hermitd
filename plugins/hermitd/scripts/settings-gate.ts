@@ -830,7 +830,10 @@ function main(payload: any): void {
 
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
-    const claims = taskSenderClaims(command);
+    // Quoted heredoc bodies are stdin data: a note that mentions a decision call answers nothing.
+    // Only a command that could reach task.ts pays for the scan (quotes cannot hide the name).
+    const taskText = /\btask(?:\.ts)?\b/.test(command.replace(/['"\\]/g, '')) ? literalShellText(command) : '';
+    const claims = taskSenderClaims(taskText);
     if (!claims) {
       deny('The task call\'s --chat/--user claim could not be read; rerun it as one plain task command with literal values.');
       return;
@@ -841,7 +844,7 @@ function main(payload: any): void {
       deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
       return;
     }
-    localAnswers = localAnswerAsks(command);
+    localAnswers = localAnswerAsks(taskText);
     if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
       deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
       return;

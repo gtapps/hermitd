@@ -938,6 +938,20 @@ test('local answer fallbacks, mixed settings and ordinary channel answers', asyn
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
 });
 
+test('quoted heredoc bodies that only mention a decision call are data', async () => {
+  const dir = fixture();
+  for (const body of ['closing needed `task answer --local` and a prompt', 'the agent ran git config --local for the task',
+    'refused `task answer --chat <key> --user <id>` with not_decider']) {
+    for (const head of ['bun /p/scripts/proposal.ts create .hermit --title X', 'bun /p/scripts/task.ts note .hermit T-20261101-120000 --decision --actor hermit']) {
+      expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command: `${head} <<'EOF'\n${body}\nEOF` } }), dir));
+    }
+  }
+  for (const command of [
+    "bash <<'EOF'\nbun /p/scripts/task.ts answer .hermit T-20261101-120000 --local --reply yes\nEOF",
+    'bun /p/scripts/task.ts note .hermit T-20261101-120000 <<EOF\n`task answer --local --reply yes`\nEOF',
+  ]) expect(JSON.parse((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+});
+
 describe('task sender binding', () => {
   const channel = (user: string, chat = '100', extra = '') =>
     `<channel source="plugin:discord:discord" chat_id="${chat}" user_id="${user}"${extra}>yes</channel>`;

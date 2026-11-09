@@ -13,7 +13,7 @@ Read `.hermit/TASKS.md` first for record threshold, wording and confirmation pol
 
 ## Intake
 Terminal/Remote Control: `task answer <id> --local --reply yes`, confirmed by Claude Code's prompt; refused in bypass. Never pass `--local` on a channel turn.
-Decision replies: `task answer [<id>] --chat <key> --user <sender-id> --reply <token>` first. In any language, map to yes, no, a number or label. Respect `not_decider`, `stale` and `ambiguous`. Input resumes `decision.resume`. Before task steering, run `task.ts list .hermit --open --conversation <sourceKey>:<chat_id>`. Select via the task thread or hook's open-tasks line; on ambiguity, ask once naming candidates. Questions open nothing.
+Decision replies: `task answer [<id>] --chat <key> --user <sender-id> --reply <token>` first. In any language, map to yes, no, a number or label. Respect `not_decider`, `consent_required`, `stale` and `ambiguous`. Input resumes `decision.resume`. Before task steering, run `task.ts list .hermit --open --conversation <sourceKey>:<chat_id>`. Select via the task thread or hook's open-tasks line; on ambiguity, ask once naming candidates. Questions open nothing.
 
 Use `open --title ... --requester <sourceKey>:<user_id> --done ...` for assignments. Pass requester display name, origin message id, conversation, due date and explicitly named approver when available. A record's `--card` stays with the resident, which also hands it to a worker and takes it back with `note <id> --owner worker:<agentId>` / `--owner resident`; a worker never opens or closes a record itself. Resident readiness is handled by `/hermitd:resident-start`. Work whose definition of done the agent can observe gets a check, at `open` when the predicate is already known, otherwise with `note <id> --check` once the inputs have been read.
 
@@ -34,7 +34,7 @@ Inspect each command's result. If delivery or recording fails, report what remai
 
 ## Applying proposal tasks
 
-At intake, a runnable `kind: proposal` record follows [proposal-create/apply.md](../proposal-create/apply.md). The resident can apply a one-line configuration edit; use `hermitd:task-worker` for larger work. Never open another task to implement it. A `done` worker response with a passing executable check closes through `task-check.ts`; authored content posts `block --result-stdin` on this record, opening an admin result decision. For `needs-input`, REJECT opens a new `consent` decision with the evidence; an unsettled implementation choice opens an `input` decision with options and `resume` naming the procedure. Pass `--decision` JSON to `block`, plus status and next step for an unfinished wait. Proposal waits name the decision authority, never the requester `agent`.
+At intake, a `kind: proposal` record follows [proposal-create/apply.md](../proposal-create/apply.md), which also says when an instruction is its consent. The resident can apply a one-line configuration edit; use `hermitd:task-worker` for larger work. Never open another task to implement it. A `done` worker response with a passing executable check closes through `task-check.ts`; authored content posts `block --result-stdin` on this record, opening an admin result decision. For `needs-input`, REJECT opens a new `consent` decision with the evidence; an unsettled implementation choice opens an `input` decision with options and `resume` naming the procedure. Pass `--decision` JSON to `block`, plus status and next step for an unfinished wait.
 
 ## Channel task procedures
 
