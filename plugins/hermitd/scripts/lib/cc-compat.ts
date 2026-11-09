@@ -720,6 +720,30 @@ function transcriptDirFor(projectRoot: string, configDir?: string): string {
   return path.join(configDir ?? defaultConfigDir(), 'projects', transcriptPathKey(projectRoot));
 }
 
+/** Refuse derivations Claude Code may key elsewhere; never guess another memory directory. */
+export function resolvedMemoryDir(dir: string): string | null {
+  const root = path.dirname(dir);
+  if (process.env.CLAUDE_CODE_PROJECT_DIR_NAME) return null;
+  let ancestor = root;
+  while (true) {
+    const git = path.join(ancestor, '.git');
+    if (fs.existsSync(git)) {
+      if (ancestor !== root || !fs.statSync(git).isDirectory()) return null;
+      break;
+    }
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  const configDir = defaultConfigDir();
+  for (const file of [path.join(configDir, 'settings.json'), path.join(root, '.claude', 'settings.json'),
+    path.join(root, '.claude', 'settings.local.json'), path.join(dir, 'claude-settings.json')]) {
+    try {
+      if (JSON.parse(fs.readFileSync(file, 'utf8')).autoMemoryDirectory) return null;
+    } catch (error: any) { if (error.code !== 'ENOENT') return null; }
+  }
+  return memoryDirFor(root);
+}
 /**
  * The auto-memory directory for a project root: `memory/` inside the project's
  * transcript directory. One derivation, so callers never re-key the path by hand.

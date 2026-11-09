@@ -17,7 +17,7 @@ import path from 'node:path';
 
 import { runScript } from './helpers/run';
 import { setupWorkdir, type Workdir } from './helpers/workdir';
-import { unconsolidated, logMessage } from '../scripts/lib/channel-log';
+import { rows as channelRows, logMessage } from '../scripts/lib/channel-log';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
@@ -186,7 +186,7 @@ describe('channel-reply-reminder', () => {
   test('plugin-qualified source — episodic capture logs the bare channel key', withDir(async (dir) => {
     const r = await run('<channel source="plugin:discord:discord" chat_id="1" user="U1">hello there</channel>', dir);
     expect(r.exitCode).toBe(0);
-    const { rows } = unconsolidated(hermit(dir));
+    const { rows } = channelRows(hermit(dir));
     expect(rows.length).toBe(1);
     expect(rows[0].source).toBe('discord');
     expect(rows[0].text).toBe('hello there');
@@ -196,7 +196,7 @@ describe('channel-reply-reminder', () => {
     const r = await run('<channel source="plugin:discord:discord" chat_id="1" user="STRANGER">hello there</channel>', dir);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain('mcp__plugin_discord_discord__reply'); // reminder is not gated by allowlist
-    const { rows } = unconsolidated(hermit(dir));
+    const { rows } = channelRows(hermit(dir));
     expect(rows.length).toBe(0); // capture is gated by isAllowedSender
   }));
 
@@ -209,7 +209,7 @@ describe('channel-reply-reminder', () => {
       dir,
     );
     expect(r.exitCode).toBe(0);
-    const { rows } = unconsolidated(hermit(dir));
+    const { rows } = channelRows(hermit(dir));
     expect(rows.length).toBe(1);
     expect(rows[0].text).toBe('hello there');
     expect(rows[0].sender).toBe('display-name');
@@ -221,7 +221,7 @@ describe('channel-reply-reminder', () => {
       dir,
     );
     expect(r.exitCode).toBe(0);
-    const { rows } = unconsolidated(hermit(dir));
+    const { rows } = channelRows(hermit(dir));
     expect(rows.length).toBe(0);
   }, ID_ALLOWLIST));
 });
@@ -236,10 +236,10 @@ describe('passive capture', () => {
       logMessage(hermit(dir), { source: 'discord', chat_id: '1', direction: 'in', sender_id: 'U1', text: 'previous chatter' });
       const r = await run('<channel source="plugin:discord:discord" chat_id="1" user="U1"><@123> new message</channel>', dir);
       expect(r.exitCode).toBe(0);
-      expect(unconsolidated(hermit(dir)).rows).toHaveLength(logging ? 1 : 2);
+      expect(channelRows(hermit(dir)).rows).toHaveLength(logging ? 1 : 2);
       expect(r.stdout.includes('Earlier messages in this chat')).toBe(!logging);
       await run('<channel source="telegram" chat_id="2" user="U1">other channel</channel>', dir);
-      expect(unconsolidated(hermit(dir)).rows.some(row => row.source === 'telegram')).toBe(logging);
+      expect(channelRows(hermit(dir)).rows.some(row => row.source === 'telegram')).toBe(logging);
     }, config('discord', { log_chats: !logging }, logging)));
   }
   const prompt = (body: string, user = 'U1', source = 'discord', chat = '1') =>
@@ -257,7 +257,7 @@ describe('passive capture', () => {
     test(`capture ${user} ${body}`, withDir(async dir => {
       const r = await run(prompt(body, user), dir);
       expect(r.exitCode).toBe(0);
-      expect(unconsolidated(hermit(dir)).rows.map(row => row.text)).toEqual([body]);
+      expect(channelRows(hermit(dir)).rows.map(row => row.text)).toEqual([body]);
       if (block) blocked(r.stdout);
       else { expect(r.stdout).toContain('[channel reply reminder]'); expect(r.stdout).not.toContain('"decision":"block"'); }
     }, config()));
@@ -285,7 +285,7 @@ describe('passive capture', () => {
       expect(first.stdout).not.toContain('Sub' + 'stantive');
       blocked((await run(prompt('<@&789> hello'), dir, env)).stdout);
       expect(requests).toEqual(['/channels/1', '/guilds/guild/members/123']);
-      expect(unconsolidated(hermit(dir)).rows.length).toBe(2);
+      expect(channelRows(hermit(dir)).rows.length).toBe(2);
     } finally { server.stop(true); }
   }, config()));
 
@@ -324,7 +324,7 @@ describe('passive capture', () => {
   test('unlisted non-allowed chat keeps its reminder and skips capture', withDir(async dir => {
     const r = await run(prompt('plain', 'STRANGER', 'telegram', 'other'), dir);
     expect(r.stdout).toContain('[channel reply reminder]');
-    expect(unconsolidated(hermit(dir)).rows.length).toBe(0);
+    expect(channelRows(hermit(dir)).rows.length).toBe(0);
   }, config('telegram')));
 
   test('disabled logging still blocks without creating a database', withDir(async dir => {

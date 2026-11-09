@@ -63,7 +63,7 @@ test('optional channel plugin, send script and attribute mappings validate', () 
     chat_id: 'channel_id', message_id: 'ts', user_id: 'user', user: 'user_name', thread_id: 'thread_ts', mentioned: 'event=mention',
   } })).toEqual([]);
   for (const plugin of [null, 1, '', 'a@b', 'a b']) expect(errors({ plugin }).some(e => e.includes('.plugin'))).toBe(true);
-  for (const send_script of [null, 1, '', '/tmp/send', '../send', 'reflect', 'doctor', 'later']) {
+  for (const send_script of [null, 1, '', '/tmp/send', '../send', 'reflect', 'doctor', 'later', 'dream']) {
     expect(errors({ send_script }).some(e => e.includes('.send_script'))).toBe(true);
   }
   for (const attributes of [null, [], 'chat_id']) expect(errors({ attributes }).some(e => e.includes('.attributes'))).toBe(true);

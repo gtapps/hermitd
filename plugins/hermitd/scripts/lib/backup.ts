@@ -50,6 +50,7 @@ const SECRET_NAME_RES: RegExp[] = [
 
 // The operator's verbatim DM log. docs/security.md states it is never committed;
 // backup honors that in every mode regardless of the gitignore.
+const DREAM_RUN_RE = /(?:^|\/)\.hermit\/state\/dream(?:\/|$)/;
 const CHANNEL_LOG_RE = /^channel-log\.sqlite(-wal|-shm)?$/;
 
 // Transient or self-referential, and excluded for the same reason: committing
@@ -73,6 +74,7 @@ export function scanRefusedPaths(root: string, relPaths: string[]): RefusedPath[
     const segments = rel.split('/');
     const base = segments[segments.length - 1] ?? '';
     if (segments.includes('.claude.local')) { out.push({ path: rel, reason: 'secret-filename' }); continue; }
+    if (DREAM_RUN_RE.test(rel)) { out.push({ path: rel, reason: 'dream-run' }); continue; }
     if (CHANNEL_LOG_RE.test(base)) { out.push({ path: rel, reason: 'channel-log' }); continue; }
     if (TRANSIENT_RE.test(base) || segments.some(s => QUEUE_DIR_RE.test(s))) { out.push({ path: rel, reason: 'transient' }); continue; }
     if (SECRET_NAME_RES.some(re => re.test(base))) { out.push({ path: rel, reason: 'secret-filename' }); continue; }
@@ -409,7 +411,7 @@ export function syncMirror(root: string, mirror: string, refused: RefusedPath[])
       recursive: true,
       dereference: false,
       filter: (from) => {
-        if (refusedAbs.has(from)) return false;
+        if (refusedAbs.has(from) || DREAM_RUN_RE.test(path.relative(root, from).split(path.sep).join('/'))) return false;
         const base = path.basename(from);
         if (base === '.git' || CHANNEL_LOG_RE.test(base) || TRANSIENT_RE.test(base) || QUEUE_DIR_RE.test(base)) return false;
         try { if (fs.statSync(from).isDirectory() && fs.existsSync(path.join(from, '.git'))) return false; } catch { /* ignore */ }
@@ -441,6 +443,7 @@ const GITIGNORE_ALWAYS = [
   '.env',
   '.env.*',
   '.hermit/state/channel-log.sqlite*',
+  '.hermit/state/dream/',
 ];
 
 export function hasWorkspaceMarker(root: string): boolean {

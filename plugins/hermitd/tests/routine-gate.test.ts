@@ -523,3 +523,36 @@ test('project scripts reject a symlink outside the project', withDir((dir) => {
     fs.rmSync(outside, { recursive: true });
   }
 }));
+
+describe('dream builtin', () => {
+  test('name resolves as a builtin', () => {
+    expect(validatePrecheckValue('dream')).toBeNull();
+    expect(resolveGate('dream', '/tmp')).toEqual({ kind: 'builtin', name: 'dream' });
+  });
+  test('heartbeat skips, recent operator skips, idle evidence wakes', withDir(async (root) => {
+    const { dreamGate } = await import('../scripts/dream');
+    const { transcriptDirFor } = await import('../scripts/lib/cc-compat');
+    const dir = hermit(root), config = path.join(root, 'cc');
+    fs.mkdirSync(path.join(root, '.git'));
+    for (const file of [path.join(config, 'settings.json'), path.join(root, '.claude/settings.json'), path.join(root, '.claude/settings.local.json'), path.join(dir, 'claude-settings.json')]) {
+      fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '{}');
+    }
+    const previous = process.env.CLAUDE_CONFIG_DIR;
+    const previousName = process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    process.env.CLAUDE_CONFIG_DIR = config; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    try {
+      const transcripts = transcriptDirFor(root); fs.mkdirSync(transcripts, { recursive: true });
+      const now = Date.now();
+      const input = (text: string) => fs.writeFileSync(path.join(transcripts, 'one.jsonl'), JSON.stringify({ type: 'user', timestamp: new Date(now - 1000).toISOString(), message: { content: text } }) + '\n');
+      input('HEARTBEAT_EVALUATE'); expect(dreamGate(dir, now)).toBe('SKIP');
+      input('durable fact');
+      fs.writeFileSync(path.join(dir, 'state/last-operator-action.json'), JSON.stringify({ at: new Date(now - 3_600_000).toISOString() }));
+      expect(dreamGate(dir, now)).toBe('SKIP');
+      fs.writeFileSync(path.join(dir, 'state/last-operator-action.json'), JSON.stringify({ at: new Date(now - 3 * 3_600_000).toISOString() }));
+      expect(dreamGate(dir, now)).toBe('WAKE');
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previous;
+      if (previousName === undefined) delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; else process.env.CLAUDE_CODE_PROJECT_DIR_NAME = previousName;
+    }
+  }));
+});

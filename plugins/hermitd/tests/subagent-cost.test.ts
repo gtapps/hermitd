@@ -392,3 +392,24 @@ describe('subagent-cost: same requestId billed once', () => {
     expect(rows[0].input_tokens).toBe(100);
   });
 });
+
+import { freshDirFactory } from './helpers/workdir';
+const dreamDirs = freshDirFactory('dream-stops-');
+afterAll(dreamDirs.cleanup);
+describe('dream completion stops', () => {
+  for (const [type, running, expected] of [
+    ['hermitd:dream-analyzer', true, true], ['general-purpose', true, false], ['hermitd:dream-organizer', false, false],
+  ] as const) test(`${type}, running=${running}`, async () => {
+    const root = dreamDirs.freshDir(), dir = path.join(root, '.hermit'), run = path.join(dir, 'state/dream/run');
+    fs.mkdirSync(run, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'state/dream.json'), JSON.stringify({ window_start: '2026-01-01', running: running ? { run_dir: run, started_at: new Date().toISOString() } : null }));
+    const result = await runScript('subagent-cost.ts', { cwd: root, env: { AGENT_DIR: dir }, stdin: JSON.stringify({ agent_type: type, agent_id: 'nested-worker' }) });
+    expect(result.exitCode).toBe(0);
+    expect(fs.existsSync(path.join(run, 'agents.jsonl'))).toBe(expected);
+    if (expected) {
+      const row = JSON.parse(fs.readFileSync(path.join(run, 'agents.jsonl'), 'utf8'));
+      expect(row.agent_id).toBe('nested-worker'); expect(row.agent_type).toBe(type); expect(Date.parse(row.at)).not.toBeNaN();
+    }
+    expect(fs.existsSync(path.join(root, '.claude/cost-log.jsonl'))).toBe(false);
+  });
+});

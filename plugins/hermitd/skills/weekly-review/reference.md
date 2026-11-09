@@ -3,8 +3,7 @@
 This file is the instruction spec for the isolated-context subagent dispatched by SKILL.md step 3.
 For **this** spec the subagent reads only files (no inherited session context) and returns structured
 JSON; the calling main session composes the channel summary from what it returns, and this spec asks
-for no writes. That is scoped to this file only — `consolidation-reference.md` is dispatched in the
-same call and carries its own filing instructions, which this paragraph does not override.
+for no writes.
 
 ## Inputs (read fresh — do not reuse cached values)
 

@@ -1833,7 +1833,7 @@ describe('weekly-review delegation contract', () => {
     expect(skill).not.toMatch(/render (weekly_review|weekly-review)/);
   });
 
-  // One dispatch covers both specs: a second one costs another CLAUDE.md
+  // A second dispatch costs another CLAUDE.md
   // re-seed plus two more main turns at full resident context.
   test('SKILL.md dispatches the runner exactly once', () => {
     // Count every phrasing a re-split could use ("Dispatch"/"dispatch"/"invoke"
@@ -1841,34 +1841,7 @@ describe('weekly-review delegation contract', () => {
     // sibling skills already use "invoke" (skills/brief/SKILL.md).
     const hits = skill.match(/`hermitd:skill-eval-runner`/g) || [];
     expect(hits.length).toBe(1);
-    expect(skill).toContain('skills/weekly-review/consolidation-reference.md');
   });
-});
-
-// ============================================================
-// weekly-review consolidation delegation contract (PROP-010)
-//
-// weekly-review folds channel-log consolidation into its single
-// skill-eval-runner dispatch, and the runner files its own candidates in that
-// isolated context (the main session only marks, prunes, and logs the receipt).
-// Guards against: losing the fully-qualified agent reference and
-// producer/consumer schema drift between consolidation-reference.md and SKILL.md.
-// ============================================================
-
-describe('weekly-review consolidation delegation contract', () => {
-  const skill = read(path.join(SKILLS, 'weekly-review', 'SKILL.md'));
-  const refFile = read(path.join(SKILLS, 'weekly-review', 'consolidation-reference.md'));
-
-  test('SKILL.md dispatches skill-eval-runner fully-qualified with consolidation-reference.md', () => {
-    expect(skill).toContain('hermitd:skill-eval-runner');
-    expect(skill).toContain('skills/weekly-review/consolidation-reference.md');
-  });
-
-  test('schema block is byte-identical in consolidation-reference.md and SKILL.md', () => {
-    const block = (text: string) => extractBlock(text, '<!-- weekly-review-consolidation-schema:start -->', '<!-- weekly-review-consolidation-schema:end -->');
-    expect(block(refFile)).toBe(block(skill));
-  });
-
 });
 
 // Pinned scripts refuse any state dir but `.hermit`, and skills fail open on that

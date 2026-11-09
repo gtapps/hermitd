@@ -448,3 +448,16 @@ describe('weekly learned-skill retirement', () => {
     expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name))).toBe(true);
   }));
 });
+
+test('weekly dream digest counts only this week and tolerates malformed rows', withHermitDir(async (dir) => {
+  const at = new Date().toISOString();
+  fs.writeFileSync(path.join(dir, 'state/dream-log.jsonl'), [
+    JSON.stringify({ at, status: 'complete', changes: 3 }),
+    JSON.stringify({ at, status: 'restored', changes: 2 }),
+    JSON.stringify({ at: '2000-01-01T00:00:00Z', status: 'complete', changes: 99 }),
+    '{partial', '',
+  ].join('\n'));
+  const result = await runScript('weekly-review.ts', { args: [dir], env: { AGENT_DIR: dir } });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).dream).toEqual({ runs: 2, restores: 1, changes: 5 });
+}));

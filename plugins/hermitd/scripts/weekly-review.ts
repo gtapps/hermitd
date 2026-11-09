@@ -72,6 +72,21 @@ weekStart.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (currentWeek - 1) * 7);
 const weekEnd = new Date(weekStart);
 weekEnd.setUTCDate(weekStart.getUTCDate() + 7); // exclusive
 
+// Bounded digest for the operator; raw dream receipts never enter model context.
+const dream = { runs: 0, restores: 0, changes: 0 };
+try {
+  const lines = fs.readFileSync(path.join(hermitDir, 'state/dream-log.jsonl'), 'utf8').split('\n');
+  for (const line of lines) {
+    let row: Json;
+    try { row = JSON.parse(line); } catch { continue; }
+    const at = new Date(row.at);
+    if (!(at >= weekStart && at < weekEnd)) continue;
+    dream.runs++;
+    if (row.status === 'restored' || row.status === 'abandoned') dream.restores++;
+    if (Number.isFinite(row.changes) && row.changes >= 0) dream.changes += row.changes;
+  }
+} catch { /* No dream history yet. */ }
+
 // Task reports are the only work-record input; frozen archives are not read.
 const reports = readTaskReports(hermitDir);
 const allSessions = reports.filter(record => record.closed_at !== null).map(record => ({
@@ -578,7 +593,7 @@ fs.mkdirSync(compiledDir, { recursive: true });
 
 const reviewPath = path.join(compiledDir, `review-weekly-${weekKey}.md`);
 fs.writeFileSync(reviewPath, report, 'utf8');
-printJson({ path: reviewPath, knowledge_findings: knowledgeFindings, usage_docs: autoArchived.length + untouchedDocs.length });
+printJson({ path: reviewPath, knowledge_findings: knowledgeFindings, usage_docs: autoArchived.length + untouchedDocs.length, dream });
 
 // --- Compact the usage ledger: keep events <180d, plus the single newest
 // event per stale kind:name pair (preserves last-used forever), plus the

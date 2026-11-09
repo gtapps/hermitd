@@ -83,7 +83,7 @@ produce a report.
    skip still counts as a run in `routines.ts health`. `WAKE`, a non-zero exit, unparseable output,
    or the timeout (`precheck_timeout_s`, default 30s, max 300) all fire the routine exactly as an
    ungated one would; a failure stamps `precheck-error` with the reason, and the `routine-precheck`
-   doctor check surfaces a gate that has never succeeded. Three builtins ship: `"precheck": "reflect"` (cadence), `"precheck": "doctor"` (findings owed to the operator), and `"precheck": "later"` (due claims or open records with results and checks).
+   doctor check surfaces a gate that has never succeeded. Four builtins ship: `"precheck": "reflect"` (cadence), `"precheck": "doctor"` (findings owed to the operator), `"precheck": "later"` (due claims or open records with results and checks), and `"precheck": "dream"` (eligible transcripts after two idle hours).
 
    Rules for the script: **verdict only** — nothing it prints reaches the session, so a gate that
    found work hands nothing over; the skill re-queries its own source using the `ROUTINE_LAST_FIRED`

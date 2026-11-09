@@ -7,8 +7,7 @@ import { sha256 as hash } from './hash';
 import { allowedUserIds, chatInstructions } from './channel-auth';
 import { lookupChat } from './channel-chats';
 import { roleReviewHistory, type ReviewRow } from './channel-log';
-import { memoryDirFor } from './cc-compat';
-import { defaultConfigDir } from './setup-token';
+import { resolvedMemoryDir } from './cc-compat';
 import { readSettledConfig } from './config-read';
 import { writeFileAtomic } from './md-write';
 
@@ -64,30 +63,6 @@ function owner(config: Json, id: string): { chat: string; source: string; chatId
   return { chat, source: chat.slice(0, at), chatId: chat.slice(at + 1) };
 }
 
-/** Refuse derivations Claude Code may key elsewhere; never guess another memory directory. */
-function resolvedMemoryDir(dir: string): string | null {
-  const root = path.dirname(dir);
-  if (process.env.CLAUDE_CODE_PROJECT_DIR_NAME) return null;
-  let ancestor = root;
-  while (true) {
-    const git = path.join(ancestor, '.git');
-    if (fs.existsSync(git)) {
-      if (ancestor !== root || !fs.statSync(git).isDirectory()) return null;
-      break;
-    }
-    const parent = path.dirname(ancestor);
-    if (parent === ancestor) break;
-    ancestor = parent;
-  }
-  const configDir = defaultConfigDir();
-  for (const file of [path.join(configDir, 'settings.json'), path.join(root, '.claude', 'settings.json'),
-    path.join(root, '.claude', 'settings.local.json'), path.join(dir, 'claude-settings.json')]) {
-    try {
-      if (JSON.parse(fs.readFileSync(file, 'utf8')).autoMemoryDirectory) return null;
-    } catch (error: any) { if (error.code !== 'ENOENT') return null; }
-  }
-  return memoryDirFor(root);
-}
 function pinnedRoles(memory: string, chat: string): Target[] {
   let index: string;
   try { index = fs.readFileSync(path.join(memory, 'MEMORY.md'), 'utf8'); }

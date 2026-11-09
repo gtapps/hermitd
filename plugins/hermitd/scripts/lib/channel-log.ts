@@ -6,11 +6,11 @@
  * needs sqlite, it goes through this file's exports, never a direct import.
  *
  * Storage: <hermitDir>/state/channel-log.sqlite (WAL). Created lazily on the
- * first logMessage() call — read paths (searchLog/unconsolidated/prune) never
+ * first logMessage() call — read paths (searchLog/rows/prune) never
  * create the file, so a hermit with no channel traffic never gets one.
  *
  * Schema:
- *   messages(id, ts, source, chat_id, direction, sender, sender_id, message_id, text, consolidated_at)
+ *   messages(id, ts, source, chat_id, direction, sender, sender_id, message_id, text)
  *   messages_fts — external-content FTS5 index over messages.text, kept in
  *     sync by AFTER INSERT/DELETE triggers (external-content tables do not
  *     auto-sync).
@@ -51,7 +51,6 @@ interface ChannelRow {
   sender_id: string | null;
   message_id: string | null;
   text: string;
-  consolidated_at: string | null;
 }
 
 function dbPath(hermitDir: string): string {
@@ -110,8 +109,7 @@ function ensureSchema(db: Json): void {
       sender TEXT,
       sender_id TEXT,
       message_id TEXT,
-      text TEXT NOT NULL,
-      consolidated_at TEXT
+      text TEXT NOT NULL
     )
   `);
   db.run(`
@@ -129,11 +127,15 @@ function ensureSchema(db: Json): void {
       INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text);
     END
   `);
-  db.run('CREATE INDEX IF NOT EXISTS messages_consolidated_idx ON messages(consolidated_at)');
+  db.run('DROP INDEX IF EXISTS messages_consolidated_idx');
   db.run('CREATE INDEX IF NOT EXISTS messages_ts_idx ON messages(ts)');
   // Schema drift is handled only here (first precedent in the repo): a DB
   // created without sender_id gains the column on the next logMessage() call.
   const columns = db.query('PRAGMA table_info(messages)').all() as Array<{ name: string }>;
+  if (columns.some(c => c.name === 'consolidated_at')) {
+    try { db.run('ALTER TABLE messages DROP COLUMN consolidated_at'); }
+    catch (error: any) { if (!/no such column/i.test(error?.message || '')) throw error; }
+  }
   if (!columns.some((c) => c.name === 'sender_id')) {
     try {
       db.run('ALTER TABLE messages ADD COLUMN sender_id TEXT');
@@ -242,7 +244,7 @@ function searchLog(hermitDir: string, terms: string[], opts?: Json): ChannelRow[
 
       return db
         .query(
-          `SELECT m.id, m.ts, m.source, m.chat_id, m.direction, m.sender, m.message_id, m.text, m.consolidated_at
+          `SELECT m.id, m.ts, m.source, m.chat_id, m.direction, m.sender, m.message_id, m.text
            FROM messages_fts f JOIN messages m ON m.id = f.rowid
            WHERE messages_fts MATCH ?${sinceIso ? ' AND m.ts >= ?' : ''}${scopeSql}
            ORDER BY rank LIMIT ?`
@@ -259,20 +261,20 @@ function searchLog(hermitDir: string, terms: string[], opts?: Json): ChannelRow[
 }
 
 /**
- * Rows not yet distilled into the curated tiers. Absent DB → { ok:true, rows:[] }
+ * All channel rows, oldest first. Absent DB → { ok:true, rows:[] }
  * (nothing to do, not a failure). Real errors → { ok:false, error }.
  */
-function unconsolidated(hermitDir: string, beforeTs?: string): { ok: boolean; rows: ChannelRow[]; error?: string } {
+function rows(hermitDir: string, beforeTs?: string): { ok: boolean; rows: ChannelRow[]; error?: string } {
   if (!dbExists(hermitDir)) return { ok: true, rows: [] };
   try {
     const db = openDb(hermitDir, { readonly: true });
     try {
       const rows = beforeTs
         ? (db
-            .query('SELECT * FROM messages WHERE consolidated_at IS NULL AND ts < ? ORDER BY ts ASC')
+            .query('SELECT * FROM messages WHERE ts < ? ORDER BY ts ASC')
             .all(beforeTs) as ChannelRow[])
         : (db
-            .query('SELECT * FROM messages WHERE consolidated_at IS NULL ORDER BY ts ASC')
+            .query('SELECT * FROM messages ORDER BY ts ASC')
             .all() as ChannelRow[]);
       return { ok: true, rows };
     } finally {
@@ -286,10 +288,7 @@ function unconsolidated(hermitDir: string, beforeTs?: string): { ok: boolean; ro
 /**
  * Inbound rows at or after `sinceIso`, oldest first. Absent DB → [].
  *
- * Deliberately ignores consolidation state, unlike unconsolidated(): this is
- * for flows that poll the channel for one specific operator reply (the re-auth
- * relay waiting on an ack or a login code), where a row already distilled by
- * weekly-review is still a perfectly valid answer.
+ * For flows polling for an operator reply, bounded by time and row count.
  */
 function inboundSince(hermitDir: string, sinceIso: string, limit = 50): ChannelRow[] {
   if (!dbExists(hermitDir)) return [];
@@ -359,35 +358,9 @@ function unaddressedSince(
 }
 
 /**
- * Stamp consolidated_at on the given row ids. Absent DB → ok:true no-op
- * (nothing to mark). Called only after the caller has successfully applied
- * the distilled writes (memory/compiled) — see weekly-review's consolidation
- * step, which owns that ordering.
- */
-function markConsolidated(hermitDir: string, ids: number[]): { ok: boolean; error?: string } {
-  if (!ids || ids.length === 0) return { ok: true };
-  if (!dbExists(hermitDir)) return { ok: true };
-  try {
-    const db = openDb(hermitDir, { busyTimeoutMs: CLI_BUSY_TIMEOUT_MS });
-    try {
-      const ts = new Date().toISOString();
-      const placeholders = ids.map(() => '?').join(',');
-      db.query(`UPDATE messages SET consolidated_at = ? WHERE id IN (${placeholders})`).run(ts, ...ids);
-      return { ok: true };
-    } finally {
-      db.close();
-    }
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-}
-
-/**
- * Prune old CONSOLIDATED rows only (already promoted into curated tiers).
- * Unreviewed rows are retained regardless of age — they are the recall
- * substrate consolidation hasn't gotten to yet, and deleting them would
- * silently destroy the thing this feature exists to preserve.
- * Absent DB → ok:true, deleted:0 (nothing to do).
+ * Prune rows older than the retention cutoff, regardless of review history.
+ * Dream evidence comes from transcripts, independently of channel-log retention.
+ * Absent DB returns ok:true, deleted:0.
  */
 function prune(hermitDir: string, retentionDays: number): { ok: boolean; deleted: number; error?: string } {
   if (!dbExists(hermitDir)) return { ok: true, deleted: 0 };
@@ -398,9 +371,9 @@ function prune(hermitDir: string, retentionDays: number): { ok: boolean; deleted
       // Count first: DELETE's .changes is inflated by the AFTER DELETE trigger's
       // own writes into the FTS5 shadow tables, so it isn't the real row count.
       const { n } = db
-        .query('SELECT COUNT(*) AS n FROM messages WHERE consolidated_at IS NOT NULL AND consolidated_at < ?')
+        .query('SELECT COUNT(*) AS n FROM messages WHERE ts < ?')
         .get(cutoff) as { n: number };
-      db.query('DELETE FROM messages WHERE consolidated_at IS NOT NULL AND consolidated_at < ?').run(cutoff);
+      db.query('DELETE FROM messages WHERE ts < ?').run(cutoff);
       return { ok: true, deleted: n };
     } finally {
       db.close();
@@ -435,7 +408,7 @@ function conversationHistory(
   } catch { return []; }
 }
 
-export { logMessage, searchLog, unconsolidated, inboundSince, unaddressedSince, conversationHistory, markConsolidated, prune, dbExists, dbPath, isLoggingEnabled };
+export { logMessage, searchLog, rows, inboundSince, unaddressedSince, conversationHistory, prune, dbExists, dbPath, isLoggingEnabled };
 export type { LogInput, ChannelRow };
 
 

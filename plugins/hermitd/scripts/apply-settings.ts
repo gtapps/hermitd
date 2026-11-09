@@ -103,6 +103,7 @@ const HERMIT_ALLOW = [
   'Bash(bun */scripts/generate-summary.ts*)',
   'Bash(bun */scripts/update-reflection-state.ts*)',
   'Bash(bun */scripts/transcript-digest.ts*)',
+  'Bash(bun */scripts/dream.ts*)',
   'Bash(bun */scripts/setup-token-mint.ts*)',
   'Bash(bun */scripts/routines.ts tz-shift*)',
   // Monitor evaluates its subprocess command against command permissions.
@@ -191,6 +192,10 @@ const HERMIT_ALLOW = [
   // (--notice/--tier), not verbs. That is only safe because channel-send.ts now
   // pins its own state dir: the grant confers exactly what the existing
   // `Bash(bun */scripts/channel-send.ts*)` entry already confers, and no more.
+  // Dream's state root is pinned by the script; literal routes also work in auto mode.
+  'Bash(.hermit/bin/hermitd-run dream export *)',
+  'Bash(.hermit/bin/hermitd-run dream finish *)',
+  'Bash(.hermit/bin/hermitd-run dream undo *)',
   'Bash(.hermit/bin/hermitd-run channel-send *)',
   'Bash(.hermit/bin/hermitd-run brief-digest .hermit *)',
   'Bash(.hermit/bin/hermitd-run observations observe *)',

@@ -237,7 +237,7 @@ describe('routine model defaults', () => {
   });
 
   test('no other default routine carries a model field', () => {
-    const ALLOWED_WITH_MODEL = new Set(['daily-auto-close', 'hermitd:doctor']);
+    const ALLOWED_WITH_MODEL = new Set(['daily-auto-close', 'hermitd:doctor', 'hermitd:dream']);
     const withModel = routines.filter((r: any) => !ALLOWED_WITH_MODEL.has(r.id) && r.model !== undefined);
     expect(withModel).toEqual([]);
   });

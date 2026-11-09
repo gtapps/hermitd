@@ -20,6 +20,7 @@ import { sha256 } from './hash';
 import { readJson } from './cli';
 
 export const EN = {
+  dream_restored: 'The nightly dream failed validation. I restored the memory and topic pages and kept the window for a retry.',
   // Pause reason, fills {label} in the paused lines below.
   pause_reason_budget: 'a budget cap',
   pause_reason_watchdog: 'the watchdog',

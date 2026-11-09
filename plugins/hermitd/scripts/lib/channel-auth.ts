@@ -26,6 +26,14 @@ export function channelEntry(config: Json, source: string): Json {
   return Object.prototype.hasOwnProperty.call(channels, key) ? channels[key] : undefined;
 }
 
+/** Audience shared by channel-log rows and transcript exports. */
+export function rowAudience(config: Json, sourceKey: string, chatId: string | number): string {
+  const shared = channelEntry(config, sourceKey)?.shared_chats;
+  return Array.isArray(shared) && shared.map(String).includes(String(chatId))
+    ? 'shared'
+    : `${sourceKey}:${String(chatId)}`;
+}
+
 /** The hermit's own account on a channel. Either field is null when the entry,
  *  the field, or the config itself is missing or malformed. */
 export interface ChannelBotIdentity {

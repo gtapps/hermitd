@@ -336,3 +336,12 @@ describe('backup status', () => {
     expect(git(f.root, 'rev-parse', 'HEAD').trim()).toBe(head);
   });
 });
+
+for (const mode of ['workspace', 'mirror']) test(`${mode} backup excludes every dream run file`, async () => {
+  const f = fixture({ mode });
+  write(f.root, '.hermit/state/dream/run/inputs/one.txt', 'transcript ground truth');
+  write(f.root, '.hermit/state/dream/run/before/memory/fact.md', 'private fact');
+  const result = await run(f); expect(result.exitCode).toBe(0);
+  const repo = mode === 'workspace' ? f.root : path.join(f.configDir, 'hermit-backups', f.key);
+  expect(committedFiles(repo).some(file => file.includes('/state/dream/'))).toBe(false);
+});

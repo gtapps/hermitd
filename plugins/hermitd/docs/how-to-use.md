@@ -343,7 +343,7 @@ Most common actions auto-trigger from natural language — just say what you mea
 | **Tasks**      | `resident-start`, `task`                        |
 | **Status**     | `brief`                                                            |
 | **Monitoring** | `watch`, `heartbeat`                                               |
-| **Learning**   | `proposal-create`, `reflect`      |
+| **Learning**   | `proposal-create`, `reflect`, `dream`      |
 | **Config**     | `hermit-settings`, `hatch`, `hermit-evolve`                        |
 | **Docker**     | `docker-customize`; `docker-setup`, `docker-security` (type the last two; they never auto-trigger) |
 | **Channels**   | `channel-responder`, `voice-notes`                                 |

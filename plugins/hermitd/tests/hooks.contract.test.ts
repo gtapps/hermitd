@@ -19,7 +19,7 @@ import { runScript, PLUGIN_ROOT, MONOREPO_ROOT } from './helpers/run';
 import { setupWorkdir, setupGitWorkdir, fixturesDir } from './helpers/workdir';
 import { triggerPrompt } from './helpers/transcript';
 import { cidrOverlap } from '../scripts/doctor-check';
-import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
+import { rows as channelRows, dbExists } from '../scripts/lib/channel-log';
 import { markGuest } from '../scripts/lib/guest-marker';
 import { composeBudgetMessage } from '../scripts/cost-tracker';
 
@@ -315,7 +315,7 @@ describe('channel-hook', () => {
       stdin: '{"tool_name":"mcp__discord__reply","tool_input":{"chat_id":"999","text":"hi from bot"}}', cwd: dir,
     });
     expect(r.exitCode).toBe(0);
-    const rows = unconsolidated(hermit(dir)).rows;
+    const rows = channelRows(hermit(dir)).rows;
     expect(rows.length).toBe(1);
     expect(rows[0]).toMatchObject({ source: 'discord', chat_id: '999', direction: 'out', text: 'hi from bot' });
   }));
@@ -327,7 +327,7 @@ describe('channel-hook', () => {
         const r = await runScript('channel-hook.ts', { stdin: JSON.stringify({ tool_name: `mcp__${source}__reply`, tool_input: { chat_id: '999', text: 'hello' } }), cwd: dir });
         expect(r.exitCode).toBe(0);
       }
-      expect(unconsolidated(hermit(dir)).rows.map(row => row.source)).toEqual([logging ? 'telegram' : 'discord']);
+      expect(channelRows(hermit(dir)).rows.map(row => row.source)).toEqual([logging ? 'telegram' : 'discord']);
     }));
   }
 
@@ -1369,7 +1369,7 @@ describe('channel-reply-reminder', () => {
   test('channel-reply-reminder (capture: no config -> accept-all, message logged with full fields)', withDir(async (dir) => {
     const r = await run('<channel source="discord" chat_id="123" message_id="M1" user="U1" ts="2024-01-01T00:00:00.000Z">hello world</channel>', dir);
     expect(r.stdout).toContain('mcp__plugin_discord_discord__reply'); // reminder still fires
-    const rows = unconsolidated(hermit(dir)).rows;
+    const rows = channelRows(hermit(dir)).rows;
     expect(rows.length).toBe(1);
     expect(rows[0]).toMatchObject({
       source: 'discord', chat_id: '123', direction: 'in', sender: 'U1', message_id: 'M1',
@@ -1381,19 +1381,19 @@ describe('channel-reply-reminder', () => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":["ALLOWED_ID"]}}}');
     const r = await run('<channel source="discord" chat_id="123" user="INTRUDER">nope</channel>', dir);
     expect(r.stdout).toContain('mcp__plugin_discord_discord__reply');
-    expect(unconsolidated(hermit(dir)).rows.length).toBe(0);
+    expect(channelRows(hermit(dir)).rows.length).toBe(0);
   }));
 
   test('channel-reply-reminder (capture: allowed_users set, sender listed -> logged)', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":["ALLOWED_ID"]}}}');
     await run('<channel source="discord" chat_id="123" user="ALLOWED_ID">yep</channel>', dir);
-    expect(unconsolidated(hermit(dir)).rows.length).toBe(1);
+    expect(channelRows(hermit(dir)).rows.length).toBe(1);
   }));
 
   test('channel-reply-reminder (capture: allowed_users holds platform ids, envelope carries user_id -> logged, sender keeps the display name)', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":["ALLOWED_ID"]}}}');
     await run('<channel source="discord" chat_id="123" message_id="M1" user="display-name" user_id="ALLOWED_ID" ts="2024-01-01T00:00:00.000Z">yep</channel>', dir);
-    const rows = unconsolidated(hermit(dir)).rows;
+    const rows = channelRows(hermit(dir)).rows;
     expect(rows.length).toBe(1);
     expect(rows[0]).toMatchObject({
       source: 'discord', chat_id: '123', direction: 'in', sender: 'display-name', message_id: 'M1',
@@ -1404,13 +1404,13 @@ describe('channel-reply-reminder', () => {
   test('channel-reply-reminder (capture: display name mimics an allowlisted id, user_id does not match -> no log)', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":["ALLOWED_ID"]}}}');
     await run('<channel source="discord" chat_id="123" user="ALLOWED_ID" user_id="INTRUDER">nope</channel>', dir);
-    expect(unconsolidated(hermit(dir)).rows.length).toBe(0);
+    expect(channelRows(hermit(dir)).rows.length).toBe(0);
   }));
 
   test('channel-reply-reminder (capture: allowed_users=[] lockdown -> never logged, even with a user id)', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":[]}}}');
     await run('<channel source="discord" chat_id="123" user="ANYONE">no</channel>', dir);
-    expect(unconsolidated(hermit(dir)).rows.length).toBe(0);
+    expect(channelRows(hermit(dir)).rows.length).toBe(0);
   }));
 
   for (const logging of [true, false]) {
@@ -1420,7 +1420,7 @@ describe('channel-reply-reminder', () => {
         const r = await run(`<channel source="${source}" chat_id="123" user="U1">hello</channel>`, dir);
         expect(r.exitCode).toBe(0);
       }
-      expect(unconsolidated(hermit(dir)).rows.map(row => row.source)).toEqual([logging ? 'telegram' : 'discord']);
+      expect(channelRows(hermit(dir)).rows.map(row => row.source)).toEqual([logging ? 'telegram' : 'discord']);
     }));
   }
 
@@ -1486,7 +1486,7 @@ describe('doctor-check', () => {
       .map((entry: any) => entry.matcher);
     expect(skillLintMatchers).toEqual(['Bash|Edit|Write']);
     expect(names.sort()).toEqual([
-      'skill-guard', 'skill-lint', 'mcp-auth-gate', 'mcp-auth-gate',
+      'skill-guard', 'skill-lint', 'dream-fence', 'mcp-auth-gate', 'mcp-auth-gate',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',
       'helper-report-relay', 'helper-report-relay', 'channel-responder-invoked',
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',

@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.1",
+  "name": "dream-cookbook-lead",
+  "description": "Nightly dream: cookbook-lead",
+  "tags": [
+    "dream"
+  ],
+  "context": {
+    "scaffold_script": "scaffold.sh"
+  },
+  "execution": {
+    "model": "sonnet",
+    "max_turns": 100,
+    "timeout_seconds": 1800,
+    "allowed_tools": [
+      "Skill",
+      "Agent",
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "Bash"
+    ],
+    "prompt": "Invoke /hermitd:dream. For this isolated eval, script IO has recorded stand-ins because the eval sandbox disallows mutating Bash. Use Read(export-ready.json) as the exact output of dream.ts export; for finish treat the supplied stdin as recorded and the command output as {\"status\":\"complete\",\"changes\":3,\"complete\":true}. Do not run a shell or read transcript contents in the lead. All analyzer and organizer dispatches, file reads, writes and waits run for real, using the paths in the export result. Return the skill's one-line status."
+  },
+  "graders": [
+    {
+      "name": "all-inputs-dispatched",
+      "type": "tool_used",
+      "tool": "Agent",
+      "input_match": "hermitd:dream-analyzer",
+      "min": 11,
+      "max": 11
+    },
+    {
+      "name": "two-organizers",
+      "type": "tool_used",
+      "tool": "Agent",
+      "input_match": "hermitd:dream-organizer",
+      "min": 2,
+      "max": 2
+    },
+    {
+      "name": "fact-retention",
+      "type": "llm",
+      "focus": {
+        "source": "file",
+        "path": "memory/facts.md"
+      },
+      "criteria": "PASS if the final file retains Python 3.11 as the minimum, standard-library-only including unittest, and local standard time year-round without daylight-saving handling. A pointer to a merged file may replace it only if the trace actually verifies that all these facts landed there. FAIL for silent loss or treating an unanswered TODO as an adopted decision."
+    },
+    {
+      "name": "lead-finished",
+      "type": "regex",
+      "target": {
+        "source": "file",
+        "path": "memory/MEMORY.md"
+      },
+      "pattern": "\\[.*\\]\\(.*\\.md\\)"
+    }
+  ]
+}

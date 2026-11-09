@@ -48,7 +48,8 @@ export type GateVerdict = {
 export const BUILTIN_REFLECT = 'reflect';
 export const BUILTIN_DOCTOR = 'doctor';
 export const BUILTIN_LATER = 'later';
-const BUILTINS = new Set([BUILTIN_REFLECT, BUILTIN_DOCTOR, BUILTIN_LATER]);
+export const BUILTIN_DREAM = 'dream';
+const BUILTINS = new Set([BUILTIN_REFLECT, BUILTIN_DOCTOR, BUILTIN_LATER, BUILTIN_DREAM]);
 export const DEFAULT_GATE_TIMEOUT_S = 30;
 export const MAX_GATE_TIMEOUT_S = 300;
 /** Verdict is one short line; anything past this is a misbehaving gate, not a payload. */
@@ -61,7 +62,7 @@ const MAX_GATE_STDOUT = 4096;
  * root is not necessarily known.
  */
 export function validatePrecheckValue(value: unknown): string | null {
-  if (typeof value !== 'string') return 'must be a string ("reflect", "doctor", "later", or a project-relative script path)';
+  if (typeof value !== 'string') return 'must be a string ("reflect", "doctor", "later", "dream", or a project-relative script path)';
   const raw = value.trim();
   if (!raw) return 'must not be empty';
   if (BUILTINS.has(raw)) return null;
@@ -332,6 +333,7 @@ export function runGate(routine: Json, hermitDir: string, mark: string): GateVer
     if (resolved.name === BUILTIN_REFLECT) return runReflectGate(hermitDir, routine.id, timeoutMs, mark);
     if (resolved.name === BUILTIN_DOCTOR) return runDoctorGate(hermitDir, timeoutMs);
     if (resolved.name === BUILTIN_LATER) return runLaterGate(hermitDir, timeoutMs);
+    if (resolved.name === BUILTIN_DREAM) return skipWakeVerdict(spawnBuiltinScript(hermitDir, 'dream.ts', ['gate', path.resolve(hermitDir)], timeoutMs));
     return { verdict: 'error', detail: 'unknown-builtin' };
   }
 
