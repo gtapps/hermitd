@@ -126,7 +126,11 @@ latest brief, proposal queue, weekly evolution, and a compiled-docs index — re
 both `<agent_name> — Dashboard` (`agent_name` falls back to `Hermit`), so a fleet
 operator can tell two hermits' tabs apart. The weekly and alert sections are omitted
 rather than rendered empty; pending decisions are shown in the waiting section,
-which owns that surface, and still count in the "Needs you" tile.
+which owns that surface, and still count in the "Needs you" tile. Each waiting row
+shows the title and answer options; a proposal row expands to its `## Problem` and
+`## Proposed Solution` sections, rendered as written. On an `operator_profile:
+"non-technical"` install the page leaves out the spend and token tiles, the alert
+text (the count stays) and the proposal sections.
 
 Refresh triggers: `brief` (`--morning`/`--evening`), `weekly-review`, `proposal-create`,
 the task apply procedure. `brief` and `weekly-review` append a `📎 <url>` line to their channel
@@ -164,8 +168,9 @@ renderer composes from: `{state, theme_css, core_sections, updated_token}` — t
 `DashboardState` the built-in page renders from, the live `artifact-theme.ts` stylesheet
 (so core theme fixes reach custom pages without regenerating them), the default cards
 as ready-to-embed HTML keyed `status`, `by_person`, `brief`, `waiting`, `weekly` and
-`compiled_index`, and the hash placeholder. Every key in the payload, nested state
-included, is snake_case (`state.today_cost_usd`, `state.waiting.oldest_open_accepted`,
+`compiled_index` (`by_person` is offered here only; the built-in page leaves it out),
+and the hash placeholder. Every key in the payload, nested state
+included, is snake_case (`state.today_cost_usd`, `state.waiting[].details_html`,
 `state.weekly.body_html`). A custom page may use all of it, some of it, or none.
 
 ## Localization

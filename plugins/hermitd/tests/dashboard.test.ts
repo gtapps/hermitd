@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { mutateTask } from '../scripts/lib/tasks';
-import { loadDashboardState, renderDashboard, mdToHtml, escapeHtml } from '../scripts/lib/dashboard';
+import { loadDashboardState, renderDashboard, mdToHtml, escapeHtml, proposalDetails } from '../scripts/lib/dashboard';
 
 // ---------- fixture scaffolding ----------
 
@@ -196,7 +196,7 @@ describe('loadDashboardState', () => {
     const { id } = mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '') as { id: string };
     writeStaleIndex(hermitDir, [{ id: 'PROP-999-old', file: 'old.md', title: 'Obsolete' }]);
     const state = loadDashboardState(hermitDir);
-    expect(state.waiting).toEqual([{ id, title: 'Review configuration', authority: 'admin', purpose: 'consent', generation: 1, options: undefined, since: expect.any(String) }]);
+    expect(state.waiting).toEqual([{ id, title: 'Review configuration', authority: 'admin', purpose: 'consent', generation: 1, options: undefined, since: expect.any(String), details_html: '' }]);
     expect('proposals' in state).toBe(false);
   }));
 
@@ -399,6 +399,62 @@ describe('renderDashboard', () => {
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).toContain('Waiting on you');
     expect(html).toContain('From the agent: Review configuration. Waiting on you.');
+    expect(html).not.toContain('consent');
+    expect(html).not.toContain('<details class="proposal">');
+  }));
+
+  const PROPOSAL_BODY = [
+    '## Context', 'Seen in the logs.', '', '## Problem', 'The page hides **detail**.', '',
+    '## Proposed Solution (v1 plan)', '- Render the sections', '', '## Impact', 'Smaller pages.', '',
+  ].join('\n');
+
+  test('a proposal expands to its Problem and Proposed Solution sections only', withHermitDir(hermitDir => {
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Show detail', done: 'Verified', 'body-stdin': true }, PROPOSAL_BODY);
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).toContain('<details class="proposal"><summary><p class="rail-title">From the agent: Show detail. Waiting on you.</p></summary>');
+    expect(html).toContain('<h3>Problem</h3>');
+    expect(html).toContain('The page hides <strong>detail</strong>.');
+    expect(html).toContain('<h3>Proposed Solution (v1 plan)</h3>');
+    expect(html).toContain('<li>Render the sections</li>');
+    expect(html).not.toContain('Seen in the logs.');
+    expect(html).not.toContain('Smaller pages.');
+  }));
+
+  test('proposalDetails reads headings only inside the Proposal section', () => {
+    expect(proposalDetails('## Progress\n## Problem\nnot this\n')).toBe('');
+    expect(proposalDetails('## Problem\nnot this\n## Proposal\n## Problem\nthis\n## References\nno')).toBe('### Problem\nthis');
+  });
+
+  test('a non-technical install hides spend, alert text and proposal detail', withHermitDir(hermitDir => {
+    fs.writeFileSync(path.join(hermitDir, 'config.json'), JSON.stringify({ operator_profile: 'non-technical' }));
+    writeTodayCost(hermitDir, 1.23, 4567);
+    writeJson(hermitDir, 'state/alert-state.json', { alerts: { 'watchdog:x': { text: 'Watchdog restarted the process', timestamp: '2026-07-05T08:00:00Z' } } });
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Show detail', done: 'Verified', 'body-stdin': true }, PROPOSAL_BODY);
+    const state = loadDashboardState(hermitDir);
+    expect(state.waiting[0].details_html).toBe('');
+    const { html } = renderDashboard(state);
+    expect(html).not.toContain('$1.23');
+    expect(html).not.toContain('Spent today');
+    expect(html).not.toContain('Tokens');
+    expect(html).not.toContain('Watchdog restarted the process');
+    expect(html).toContain('Needs you');
+    expect(html).toContain('From the agent: Show detail. Waiting on you.');
+    expect(html).not.toContain('<details class="proposal">');
+    expect(html).not.toContain('The page hides');
+  }));
+
+  test('a technical install keeps spend and alert text', withHermitDir(hermitDir => {
+    writeTodayCost(hermitDir, 1.23, 4567);
+    writeJson(hermitDir, 'state/alert-state.json', { alerts: { 'watchdog:x': { text: 'Watchdog restarted the process', timestamp: '2026-07-05T08:00:00Z' } } });
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).toContain('$1.23');
+    expect(html).toContain('Watchdog restarted the process');
+  }));
+
+  test('the default page leaves out the by-person card', withHermitDir(hermitDir => {
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '');
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).not.toContain('By person');
   }));
 
   test('shows placeholder copy for empty proposals and alerts', withHermitDir((hermitDir) => {

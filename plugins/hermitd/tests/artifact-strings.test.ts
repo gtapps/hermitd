@@ -117,7 +117,7 @@ describe('renderers honor the overlay', () => {
 
     // English chrome must be gone (all masked to x-runs)...
     for (const phrase of ['Status', 'No active alerts.', 'Nothing waiting on you.', 'Latest brief',
-                          'No brief yet.', 'Compiled docs', 'Dashboard']) {
+                          'No brief yet.', 'Compiled docs', 'Dashboard', 'Execution', 'Open tasks']) {
       expect(html, phrase).not.toContain(phrase);
     }
     // ...replaced by the masked chrome, with the {name} placeholder still filled from config.
