@@ -1237,13 +1237,14 @@ describe('channel-send rate limits', () => {
       expect(r.elapsed).toBeLessThan(3000);
     }, 20000);
 
-    // A shared deadline ends near 3000 ms; a fresh retry budget would end past 4500 ms.
+    // A shared deadline ends near 4000 ms; a fresh retry budget would end past 5500 ms.
+    // The wide budget keeps a slow runner from ending at the 429 before the retry fits.
     test(`${platform}: retry shares the original timeout`, async () => {
-      const r = await exercise(platform, [{ ...limited(platform, 1), delayMs: 500 }, { delayMs: 10_000 }], { timeoutMs: 3000 });
+      const r = await exercise(platform, [{ ...limited(platform, 1), delayMs: 500 }, { delayMs: 10_000 }], { timeoutMs: 4000 });
+      expect(r.requests).toHaveLength(2); // the retry fit in the budget
       expect(r.result).toEqual({ ok: false, error: 'request timeout' });
-      expect(r.requests).toHaveLength(2);
       // The second attempt inherits the first attempt's deadline instead of a fresh one.
-      expect(r.elapsed).toBeLessThan(4000);
+      expect(r.elapsed).toBeLessThan(5000);
       expect(r.rows).toHaveLength(0);
     }, 20000);
 
