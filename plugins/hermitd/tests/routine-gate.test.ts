@@ -197,7 +197,8 @@ describe('routine gate — timeout and process hygiene', () => {
         timeout ? 'sleep 30' : 'echo SKIP',
         '',
       ].join('\n'));
-      writeConfig(dir, [ROUTINE({ precheck: rel, precheck_timeout_s: 1 })]);
+      // Only the timeout case needs the 1s bound; the exit case gets room for bash startup under load.
+      writeConfig(dir, [ROUTINE({ precheck: rel, precheck_timeout_s: timeout ? 1 : 10 })]);
       writeSchedule(dir, PRIMED);
       const r = await runDue(dir);
       expect(r.exitCode).toBe(0);
