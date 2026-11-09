@@ -28,6 +28,11 @@ test('dream workers write memory and only topic pages; other callers are silent'
     const result = await f.run(payload); expect(result.exitCode).toBe(0); expect(result.stdout).toContain('"permissionDecision":"deny"');
   }
 });
+test('a write larger than the hook input cap outside the dream is not denied', async () => {
+  const f = fixture();
+  const result = await f.run({ agent_type: 'other', tool_name: 'Write', tool_input: { file_path: path.join(f.root, 'big'), content: 'x'.repeat(2 * 1024 * 1024) } });
+  expect(result.exitCode).toBe(0); expect(result.stdout).toBe('');
+});
 test('symlinks and dangling symlink parents cannot escape', async () => {
   const f = fixture();
   fs.symlinkSync(f.root, path.join(f.memory, 'escape'));

@@ -89,7 +89,8 @@ export function eligibleEntries(dir: string, windowStart: string, runStart: stri
         turn.entries.push({ entry, session: file.session, agent: file.agent, audience: turn.entries[0].audience });
       }
       const result = entry.toolUseResult;
-      if (turn && result?.status === 'async_launched' && typeof result.agentId === 'string') {
+      // Synchronous Agent results carry agentId too; link both so audience and exclusion inherit.
+      if (turn && typeof result?.agentId === 'string') {
         turn.launches.push(result.agentId);
         parents.set(result.agentId, turn);
       }
@@ -221,7 +222,9 @@ function validation(run: string, manifest: Manifest, changes: Change[]): string[
     const fm = parseFrontmatter(text);
     const after = current.get(key);
     const afterFm = after === undefined ? null : parseFrontmatter(after);
-    if ((fm?.audience ?? undefined) !== (afterFm?.audience ?? undefined)) failures.push('audience');
+    // A retired stub is exactly `MOVED TO [[slug]]` with no frontmatter; absent audience means shared.
+    const retired = after !== undefined && /^MOVED TO \[\[[^\]]+\]\]\s*$/.test(after);
+    if (!retired && (fm?.audience ?? 'shared') !== (afterFm?.audience ?? 'shared')) failures.push('audience');
     const tags = fm?.tags;
     if (Array.isArray(tags) && tags.includes('foundational')) {
       const kept = new Set(facts(after ?? ''));
@@ -267,7 +270,11 @@ export function finishDream(dir: string, result: Json): Json {
 }
 export function undoDream(dir: string): Json {
   const root = path.join(dir, 'state/dream');
-  const run = names(root).sort().reverse().map(name => path.join(root, name)).find(run => fs.existsSync(path.join(run, 'finished.json')));
+  // A restored or abandoned run already left its targets as they were; undo the last run that kept changes.
+  const run = names(root).sort().reverse().map(name => path.join(root, name)).find(run => {
+    try { return !['restored', 'abandoned'].includes(readJson(path.join(run, 'finished.json')).status); }
+    catch (error: any) { if (error.code === 'ENOENT') return false; throw error; }
+  });
   if (!run) return { status: 'empty', restored: [], conflicts: [] };
   const manifest: Manifest = readJson(path.join(run, 'manifest.json'));
   const changes: Change[] = readJson(path.join(run, 'changes.json'));
@@ -297,9 +304,12 @@ export function exportDream(dir: string, now = Date.now()): Json {
   const entries = eligibleEntries(dir, value.window_start, started);
   if (!entries.length) return { status: 'empty' };
   const compiled = path.join(dir, 'compiled');
+  let files: Record<string, string>;
+  try { files = targetFiles(memory, compiled); }
+  catch (error: any) { if (error.message === 'dream_symlink_target') return { status: 'skipped', reason: 'symlink_target' }; throw error; }
   const run = path.join(dir, 'state/dream', started);
   fs.mkdirSync(path.join(run, 'inputs'), { recursive: true, mode: 0o700 });
-  const manifest: Manifest = { memory_dir: memory, compiled_dir: compiled, files: targetFiles(memory, compiled) };
+  const manifest: Manifest = { memory_dir: memory, compiled_dir: compiled, files };
   for (const key of Object.keys(manifest.files)) {
     const before = path.join(run, 'before', key);
     fs.mkdirSync(path.dirname(before), { recursive: true, mode: 0o700 });
@@ -319,17 +329,24 @@ export function exportDream(dir: string, now = Date.now()): Json {
   for (const entry of entries) {
     const text = render(entry, memory, compiled, tools);
     const byteLength = Buffer.byteLength(text);
-    if (total + byteLength > NIGHT_MAX_BYTES) { pending = true; break; }
-    // Split only on codepoint boundaries; all emitted inputs respect the byte bound.
+    // The first entry always exports, so one oversized entry cannot hold the window forever.
+    if (total && total + byteLength > NIGHT_MAX_BYTES) { pending = true; break; }
+    // Start a fresh input at an entry boundary; split only an entry larger than one input,
+    // on codepoint boundaries, repeating its header so every input opens with an audience.
+    if (chunk && chunkBytes + byteLength > INPUT_MAX_BYTES) flush();
+    const head = text.slice(0, text.indexOf('\n', text.indexOf('\nAUDIENCE: ') + 1) + 1);
     for (const character of text) {
       const size = Buffer.byteLength(character);
-      if (chunkBytes + size > INPUT_MAX_BYTES) flush();
+      if (chunkBytes + size > INPUT_MAX_BYTES) { flush(); chunk = head; chunkBytes = Buffer.byteLength(head); }
       chunk += character; chunkBytes += size;
     }
     total += byteLength;
     windowEnd = entry.entry.timestamp;
   }
   flush();
+  // Without pending work every entry at windowEnd was exported; start after it so the
+  // gate does not wake again on the same boundary entry.
+  if (!pending && windowEnd !== value.window_start) windowEnd = new Date(Date.parse(windowEnd) + 1).toISOString();
   writeFileAtomic(path.join(run, 'export.json'), JSON.stringify({ window_end: windowEnd, inputs, pending }) + '\n', 0o600);
   value.running = { run_dir: run, started_at: started };
   saveState(dir, value);
@@ -353,5 +370,5 @@ if (import.meta.main) {
   else if (verb === 'export') console.log(JSON.stringify(exportDream(dir)));
   else if (verb === 'finish' && process.argv.includes('--result-stdin')) console.log(JSON.stringify(finishDream(dir, JSON.parse(await Bun.stdin.text()))));
   else if (verb === 'undo') console.log(JSON.stringify(undoDream(dir)));
-  else { console.error('usage: dream.ts export|finish|undo <hermitDir>'); process.exitCode = 1; }
+  else { console.log(JSON.stringify({ error: 'usage:dream.ts gate|export|finish --result-stdin|undo <hermitDir>' })); process.exitCode = 1; }
 }

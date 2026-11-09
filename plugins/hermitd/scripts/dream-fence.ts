@@ -25,7 +25,9 @@ function inside(file: string, root: string): boolean {
   return !!relative && !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative);
 }
 async function main(): Promise<void> {
-  const payload = await readHookInput();
+  // Uncapped: every Edit/Write in every session passes here, and agent_type is only
+  // known after parsing, so a capped read would deny large writes outside the dream.
+  const payload = await readHookInput(Number.MAX_SAFE_INTEGER);
   if (!payload || payload === OVERSIZE || typeof payload !== 'object') { deny('Cannot inspect dream write payload'); return; }
   if (typeof payload.agent_type !== 'string' || !payload.agent_type.startsWith('hermitd:dream-')) return;
   if (!['Write', 'Edit'].includes(payload.tool_name) || typeof payload.tool_input?.file_path !== 'string') { deny('Cannot inspect dream write target'); return; }

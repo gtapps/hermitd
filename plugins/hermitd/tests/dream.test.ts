@@ -119,6 +119,26 @@ describe('dream export', () => {
     const exported = JSON.parse(fs.readFileSync(path.join(out.run_dir, 'export.json'), 'utf8'));
     expect(exported.window_end).toBe(at(7));
   });
+  test('synchronous launches inherit the private audience and one oversized entry still exports', () => {
+    const f = fixture();
+    f.lines('one.jsonl', [user('<channel source="discord" chat_id="99">private</channel>'),
+      { ...agent('launched', 1), toolUseResult: { status: 'completed', agentId: 's' } }]);
+    f.lines('one/subagents/agent-s.jsonl', [user('sub task', 2), agent('y'.repeat(NIGHT_MAX_BYTES + 10), 3)]);
+    const out = f.run(); const text = f.text(out);
+    expect(text).toContain('AUDIENCE: discord:99\nUSER: sub task');
+    expect(text).not.toContain('AUDIENCE: shared');
+    for (const file of out.inputs) expect(fs.readFileSync(file, 'utf8')).toMatch(/^SESSION one\n(?:=== .*\n)?AUDIENCE: discord:99\n/);
+    expect(out.pending).toBe(true);
+    const g = fixture(); g.lines('one.jsonl', [user('z'.repeat(NIGHT_MAX_BYTES + 10), 3)]);
+    const big = g.run(); expect(big.pending).toBe(false); expect(big.inputs.length).toBeGreaterThan(1);
+    for (const file of big.inputs) expect(fs.readFileSync(file, 'utf8')).toMatch(/^SESSION one\nAUDIENCE: shared\n/);
+  });
+  test('a symlinked memory target skips without creating a run', () => {
+    const f = fixture(); fs.symlinkSync(f.root, path.join(f.memory, 'link.md'));
+    f.lines('one.jsonl', [user('hello')]);
+    expect(f.run()).toEqual({ status: 'skipped', reason: 'symlink_target' });
+    expect(fs.existsSync(path.join(f.dir, 'state/dream'))).toBe(false);
+  });
 });
 
 import { finishDream, undoDream } from '../scripts/dream';
@@ -165,7 +185,7 @@ describe('dream finish and undo', () => {
   test('whitespace changes keep facts, all stops advance the window and finish is idempotent', () => {
     const f = prepare(); fs.writeFileSync(path.join(f.memory, 'fact.md'), ' First   fact \nSecond fact\nThird fact\nFourth fact\n');
     f.stops(); expect(f.finish().status).toBe('complete');
-    expect(f.readState().window_start).toBe(at(1));
+    expect(f.readState().window_start).toBe(at(2));
     expect(f.readState().running).toBeNull(); expect(f.finish()).toEqual({ status: 'noop' });
     expect(fs.existsSync(path.join(f.out.run_dir, 'inputs'))).toBe(false);
     expect(fs.readFileSync(path.join(f.dir, 'state/dream-log.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
@@ -192,5 +212,20 @@ describe('dream finish and undo', () => {
     for (let i = 0; i < 8; i++) fs.mkdirSync(path.join(f.dir, 'state/dream', `2026-01-0${i + 1}T00:00:00.000Z`));
     f.stops(); f.finish();
     expect(fs.readdirSync(path.join(f.dir, 'state/dream'))).toHaveLength(7);
+  });
+  test('a retired topic stub and a legacy page gaining audience shared both validate', () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-old.md'), '---\naudience: discord:1\n---\nMerged fact\n');
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-new.md'), '---\naudience: discord:1\n---\nOther fact\n');
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-legacy.md'), 'Legacy fact\n');
+    f.lines('one.jsonl', [user('evidence'), agent('reply')]);
+    const out = f.run();
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-new.md'), '---\naudience: discord:1\n---\nOther fact\nMerged fact\n');
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-old.md'), 'MOVED TO [[topic-new]]');
+    fs.writeFileSync(path.join(f.dir, 'compiled/topic-legacy.md'), '---\naudience: shared\n---\nLegacy fact\n');
+    fs.writeFileSync(path.join(out.run_dir, 'agents.jsonl'), [{ agent_id: 'a', agent_type: 'hermitd:dream-analyzer' },
+      { agent_id: 'o1', agent_type: 'hermitd:dream-organizer' }, { agent_id: 'o2', agent_type: 'hermitd:dream-organizer' }].map(r => JSON.stringify(r)).join('\n') + '\n');
+    expect(finishDream(f.dir, {}).status).toBe('complete');
+    expect(f.run()).toEqual({ status: 'empty' });
   });
 });
