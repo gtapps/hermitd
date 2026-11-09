@@ -4,8 +4,8 @@
 
 ### Changed
 
-- Dashboard waiting rows expand to the proposal's Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)
-- Non-technical installs see no spend, token or alert text on the dashboard, only the counts and proposal titles
+- Dashboard waiting rows expand to the proposal's Context, Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)
+- Non-technical installs see no spend, token or alert text on the built-in dashboard, only the counts and proposal titles; proposal text and by-person costs are withheld from custom renderers too
 - Remaining dashboard labels (execution, open tasks, the waiting line, by-person headings) come from the translatable strings table
 
 ### Upgrade Instructions

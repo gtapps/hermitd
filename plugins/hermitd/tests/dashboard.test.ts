@@ -408,21 +408,27 @@ describe('renderDashboard', () => {
     '## Proposed Solution (v1 plan)', '- Render the sections', '', '## Impact', 'Smaller pages.', '',
   ].join('\n');
 
-  test('a proposal expands to its Problem and Proposed Solution sections only', withHermitDir(hermitDir => {
+  test('a proposal expands to its Context, Problem and Proposed Solution sections only', withHermitDir(hermitDir => {
     mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Show detail', done: 'Verified', 'body-stdin': true }, PROPOSAL_BODY);
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).toContain('<details class="proposal"><summary><p class="rail-title">From the agent: Show detail. Waiting on you.</p></summary>');
+    expect(html).toContain('<h3>Context</h3>');
+    expect(html).toContain('Seen in the logs.');
     expect(html).toContain('<h3>Problem</h3>');
     expect(html).toContain('The page hides <strong>detail</strong>.');
     expect(html).toContain('<h3>Proposed Solution (v1 plan)</h3>');
     expect(html).toContain('<li>Render the sections</li>');
-    expect(html).not.toContain('Seen in the logs.');
     expect(html).not.toContain('Smaller pages.');
   }));
 
   test('proposalDetails reads headings only inside the Proposal section', () => {
     expect(proposalDetails('## Progress\n## Problem\nnot this\n')).toBe('');
     expect(proposalDetails('## Problem\nnot this\n## Proposal\n## Problem\nthis\n## References\nno')).toBe('### Problem\nthis');
+  });
+
+  test('proposalDetails ignores headings inside code fences and demotes nested headings', () => {
+    const body = '## Proposal\n## Proposed Solution\n### Step\n```md\n## Notes\n```\nafter\n## Impact\nno';
+    expect(proposalDetails(body)).toBe('### Proposed Solution\n#### Step\n```md\n## Notes\n```\nafter');
   });
 
   test('a non-technical install hides spend, alert text and proposal detail', withHermitDir(hermitDir => {

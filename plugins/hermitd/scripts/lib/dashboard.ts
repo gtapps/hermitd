@@ -116,24 +116,34 @@ function loadTodayCost(hermitDir: string, timezone: string): { cost_usd: number;
   };
 }
 
-/** The Problem and Proposed Solution sections of a proposal record, as written, with
- *  headings demoted one level to sit under the card heading. Only headings after
- *  `## Proposal` count: that section holds the proposal-create layout, whose fixed
- *  headings are the structure; the text itself is never interpreted. "" when absent. */
+/** The Context, Problem and Proposed Solution sections of a proposal record, as written,
+ *  with headings demoted one level to sit under the card heading. Context stays because
+ *  an external-content proposal carries its injection warning there. Only headings after
+ *  `## Proposal`, outside code fences, count: that section holds the proposal-create
+ *  layout, whose fixed headings are the structure; the text itself is never interpreted.
+ *  "" when absent. */
 export function proposalDetails(body: string): string {
   const lines = body.replace(/\r\n/g, '\n').split('\n');
   const start = lines.findIndex(line => /^## Proposal\s*$/.test(line));
   if (start < 0) return '';
   const out: string[] = [];
   let keep = false;
+  let fenced = false;
   for (const line of lines.slice(start + 1)) {
-    if (/^## /.test(line)) keep = /^## (Problem|Proposed Solution)\b/.test(line);
-    if (keep) out.push(line.replace(/^## /, '### '));
+    if (/^```/.test(line.trim())) fenced = !fenced;
+    else if (!fenced && /^## /.test(line)) keep = /^## (Context|Problem|Proposed Solution)\b/.test(line);
+    if (keep) out.push(fenced ? line : line.replace(/^(#{2,3}) /, '#$1 '));
   }
   return out.join('\n').trim();
 }
 
-/** `withDetails` is false on a non-technical install, so proposal text never enters the
+/** A client-facing install: spend figures, raw alert text and proposal detail stay out
+ *  of view (docs/security.md § Tiered disclosure), leaving the counts. */
+function clientFacing(operatorProfile: string): boolean {
+  return operatorProfile === 'non-technical';
+}
+
+/** `withDetails` is false on a client-facing install, so proposal text never enters the
  *  state handed to custom renderers either. */
 export function loadWaiting(hermitDir: string, withDetails = true): DashboardState['waiting'] {
   const inventory = pendingDecisions(hermitDir);
@@ -269,7 +279,7 @@ export function loadDashboardState(hermitDir: string): DashboardState {
     today_tokens: today.tokens,
     operator_profile: config.operator_profile,
     alerts,
-    waiting: loadWaiting(hermitDir, config.operator_profile !== 'non-technical'),
+    waiting: loadWaiting(hermitDir, !clientFacing(config.operator_profile)),
     weekly: loadWeekly(hermitDir),
     last_brief: loadLastBrief(hermitDir),
     compiled_index: loadCompiledIndex(hermitDir),
@@ -418,11 +428,9 @@ function executionDisplay(state: DashboardState): { label: string; tone: 'acc' |
   return { label: state.strings.session_unknown, tone: 'acc' };
 }
 
-// A non-technical install is client-facing: spend figures and raw alert text stay off
-// the page (docs/security.md § Tiered disclosure), leaving the counts. Proposal detail
-// is withheld earlier, in loadWaiting.
+// Proposal detail is withheld earlier, in loadWaiting.
 function technical(state: DashboardState): boolean {
-  return state.operator_profile !== 'non-technical';
+  return !clientFacing(state.operator_profile);
 }
 
 function renderStatus(state: DashboardState): string {
@@ -520,7 +528,7 @@ function renderByPerson(state: DashboardState): string {
   const s = state.strings;
   const groups = (state.by_person ?? []).map(person => {
     const sections = ([[s.by_person_promised, person.promised], [s.by_person_late, person.late], [s.by_person_waiting, person.waiting]] as const).map(([title, rows]) =>
-      `<h3>${title}</h3><ul>${rows.map(row => `<li>${escapeHtml(row.handle)}: ${escapeHtml(row.title)} (${row.due ? escapeHtml(row.due) : s.by_person_no_due}) ${escapeHtml(row.listing.join(', '))} $${row.cost_usd.toFixed(4)}</li>`).join('')}</ul>`).join('');
+      `<h3>${title}</h3><ul>${rows.map(row => `<li>${escapeHtml(row.handle)}: ${escapeHtml(row.title)} (${row.due ? escapeHtml(row.due) : s.by_person_no_due}) ${escapeHtml(row.listing.join(', '))}${technical(state) ? ` $${row.cost_usd.toFixed(4)}` : ''}</li>`).join('')}</ul>`).join('');
     return `<article><h2>${escapeHtml(person.identity)}${person.name ? ` (${escapeHtml(person.name)})` : ''}</h2>${sections}</article>`;
   });
   return `<section class="card"><h2>${s.by_person_heading}</h2>${groups.join('') || `<p>${s.by_person_none}</p>`}</section>`;

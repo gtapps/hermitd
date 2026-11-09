@@ -127,10 +127,11 @@ both `<agent_name> — Dashboard` (`agent_name` falls back to `Hermit`), so a fl
 operator can tell two hermits' tabs apart. The weekly and alert sections are omitted
 rather than rendered empty; pending decisions are shown in the waiting section,
 which owns that surface, and still count in the "Needs you" tile. Each waiting row
-shows the title and answer options; a proposal row expands to its `## Problem` and
-`## Proposed Solution` sections, rendered as written. On an `operator_profile:
-"non-technical"` install the page leaves out the spend and token tiles, the alert
-text (the count stays) and the proposal sections.
+shows the title and answer options; a proposal row expands to its `## Context`,
+`## Problem` and `## Proposed Solution` sections, rendered as written. On an
+`operator_profile: "non-technical"` install the page leaves out the spend and token
+tiles and the alert text (the count stays); the state also carries no proposal
+sections and the `by_person` card no per-task cost.
 
 Refresh triggers: `brief` (`--morning`/`--evening`), `weekly-review`, `proposal-create`,
 the task apply procedure. `brief` and `weekly-review` append a `📎 <url>` line to their channel
