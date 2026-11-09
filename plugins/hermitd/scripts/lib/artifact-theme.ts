@@ -151,6 +151,14 @@ body { margin: 0; background: var(--bg); color: var(--fg); }
 .proposal-history { list-style: none; margin: 0; padding: 0; }
 .proposal-history li { padding: 7px 0; border-top: 1px solid var(--border); font-size: 14px; }
 .proposal-history li:first-child { border-top: none; }
+.doc-tools { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+.doc-tools[hidden], .doc-list li[hidden], .doc-empty[hidden] { display: none; }
+.doc-search { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; font-size: 16px; color: var(--fg); background: var(--raised); border: 1px solid var(--border); border-radius: 8px; }
+.doc-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.doc-type { min-height: 36px; padding: 4px 12px; font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.doc-type[aria-pressed="true"] { background: var(--chip-acc-bg); color: var(--chip-acc-fg); border-color: transparent; }
+.doc-list li { overflow-wrap: anywhere; }
+.doc-summary { margin: 3px 0 0; font-size: 14px; }
 .evolution { list-style: none; margin: 0 0 12px; padding: 0; }
 .evolution li { padding: 3px 0; }
 .weekly-body summary { cursor: pointer; color: var(--accent); font-size: 13px; width: fit-content; }
