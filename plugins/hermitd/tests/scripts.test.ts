@@ -34,7 +34,7 @@ import { costIndexPath, readCostIndex, updateCostIndex } from '../scripts/lib/co
 import * as pricing from '../scripts/lib/pricing';
 import { calculateCost } from '../scripts/lib/pricing';
 import { search } from '../scripts/lib/search';
-import { logMessage, searchLog, unconsolidated, unaddressedSince, markConsolidated, prune, dbExists } from '../scripts/lib/channel-log';
+import { logMessage, searchLog, rows as channelRows, unaddressedSince, prune, dbExists } from '../scripts/lib/channel-log';
 
 // ---------- small local helpers ----------
 
@@ -4844,7 +4844,7 @@ describe('channel-log', () => {
         text: 'id-omitted inbound',
       });
       expect(omitted.ok).toBe(true);
-      const { rows } = unconsolidated(hermitPath);
+      const { rows } = channelRows(hermitPath);
       expect(rows).toEqual(expect.arrayContaining([
         expect.objectContaining({ text: 'id-bearing inbound', sender: 'display', sender_id: 'U1' }),
         expect.objectContaining({ text: 'id-omitted inbound', sender: 'display', sender_id: null }),
@@ -4879,37 +4879,20 @@ describe('channel-log', () => {
       expect(searchLog(hermit(dir), ['anything'])).toEqual([]);
     }));
 
-    test('unconsolidated/markConsolidated/prune: retention prunes consolidated rows, retains unreviewed', withDir(async (dir) => {
+    test('retention prunes old rows and keeps recent rows without review bookkeeping', withDir(async (dir) => {
       const hermitPath = hermit(dir);
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'reviewed msg' });
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'unreviewed msg' });
-
-      const before = unconsolidated(hermitPath);
-      expect(before.ok).toBe(true);
-      expect(before.rows.length).toBe(2);
-
-      // Mark only the first row consolidated; the second stays unreviewed.
-      const markResult = markConsolidated(hermitPath, [before.rows[0].id]);
-      expect(markResult.ok).toBe(true);
-
-      const after = unconsolidated(hermitPath);
-      expect(after.rows.length).toBe(1);
-      expect(after.rows[0].text).toBe('unreviewed msg');
-
-      // A negative retention window makes every consolidated row "old" — but
-      // pruning must never touch the still-unreviewed row.
-      const pruneResult = prune(hermitPath, -1);
-      expect(pruneResult.ok).toBe(true);
-      expect(pruneResult.deleted).toBe(1);
-      expect(searchLog(hermitPath, ['unreviewed']).length).toBe(1);
-      expect(searchLog(hermitPath, ['reviewed']).length).toBe(0);
+      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'expired fact', ts: '2000-01-01T00:00:00.000Z' });
+      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'recent fact' });
+      expect(channelRows(hermitPath).rows).toHaveLength(2);
+      expect(prune(hermitPath, 90)).toEqual({ ok: true, deleted: 1 });
+      expect(channelRows(hermitPath).rows.map(row => row.text)).toEqual(['recent fact']);
+      expect(searchLog(hermitPath, ['expired'])).toEqual([]);
     }));
 
-    test('unconsolidated/prune on a hermit with no channel activity: ok:true, empty/zero (no DB created)', withDir(async (dir) => {
+    test('channelRows/prune on a hermit with no channel activity: ok:true, empty/zero (no DB created)', withDir(async (dir) => {
       const hermitPath = hermit(dir);
-      expect(unconsolidated(hermitPath)).toEqual({ ok: true, rows: [] });
+      expect(channelRows(hermitPath)).toEqual({ ok: true, rows: [] });
       expect(prune(hermitPath, 90)).toEqual({ ok: true, deleted: 0 });
-      expect(markConsolidated(hermitPath, [1, 2, 3])).toEqual({ ok: true });
       expect(dbExists(hermitPath)).toBe(false);
     }));
 
@@ -5049,12 +5032,6 @@ describe('channel-log', () => {
   });
 
   describe('scripts/channel-log.ts (subprocess CLI)', () => {
-    test('list-unconsolidated: no DB -> exit 0, empty rows', withDir(async (dir) => {
-      const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'list-unconsolidated']);
-      expect(r.exitCode).toBe(0);
-      expect(JSON.parse(r.stdout.trim())).toEqual({ rows: [] });
-    }));
-
     test('prune: no DB -> exit 0 (not a failure)', withDir(async (dir) => {
       const r = await runPinnedScript('channel-log.ts', hermit(dir), [hermit(dir), 'prune', '90']);
       expect(r.exitCode).toBe(0);
@@ -5067,55 +5044,9 @@ describe('channel-log', () => {
       expect(r.stdout).toBe('{"error":"usage"}\n');
     }));
 
-    test('list-unconsolidated stamps audience from shared_chats', withDir(async (dir) => {
-      const hermitPath = hermit(dir);
-      write(hermit(dir, 'config.json'), JSON.stringify({
-        // 4242 numeric: chat ids in config are often unquoted (Telegram), and the
-        // DB column is TEXT — the stamp has to coerce like the SQL grant does.
-        channels: { discord: { shared_chats: ['C2', 4242] } },
-      }));
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'private row' });
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C2', direction: 'in', text: 'shared row' });
-      logMessage(hermitPath, { source: 'discord', chat_id: '4242', direction: 'in', text: 'numeric shared row' });
-      const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(listed.exitCode).toBe(0);
-      const { rows } = JSON.parse(listed.stdout.trim());
-      const byChat = Object.fromEntries(rows.map((r: { chat_id: string; audience: string }) => [r.chat_id, r.audience]));
-      expect(byChat.C1).toBe('discord:C1');
-      expect(byChat.C2).toBe('shared');
-      expect(byChat['4242']).toBe('shared');
-    }));
-
-    test('list-unconsolidated with no config tags every row as own audience', withDir(async (dir) => {
-      const hermitPath = hermit(dir);
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'a' });
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C2', direction: 'in', text: 'b' });
-      const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(listed.exitCode).toBe(0);
-      const { rows } = JSON.parse(listed.stdout.trim());
-      expect(rows.map((r: { audience: string }) => r.audience).sort()).toEqual(['discord:C1', 'discord:C2']);
-    }));
-
-    test('list-unconsolidated -> mark-consolidated roundtrip through the CLI', withDir(async (dir) => {
-      const hermitPath = hermit(dir);
-      logMessage(hermitPath, { source: 'discord', chat_id: 'C1', direction: 'in', text: 'cli roundtrip message' });
-
-      const listed = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(listed.exitCode).toBe(0);
-      const { rows } = JSON.parse(listed.stdout.trim());
-      expect(rows.length).toBe(1);
-
-      const marked = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'mark-consolidated', String(rows[0].id)]);
-      expect(marked.exitCode).toBe(0);
-      expect(marked.stdout).toBe('OK\n');
-
-      const listedAfter = await runPinnedScript('channel-log.ts', hermitPath, [hermitPath, 'list-unconsolidated']);
-      expect(JSON.parse(listedAfter.stdout.trim())).toEqual({ rows: [] });
-    }));
-
     // channel-log.ts is reachable through a pre-approved
     // `Bash(bun */scripts/channel-log.ts*)` grant that covers every argument,
-    // and mark-consolidated/prune both mutate (docs/security.md § Script
+    // and prune mutates (docs/security.md § Script
     // Argument Trust).
     test('state-dir pin: refuses a log belonging to another project', withDir(async (mine) => {
       await withDir(async (victim) => {
@@ -5128,7 +5059,7 @@ describe('channel-log', () => {
         });
         expect(r.exitCode).toBe(1);
         expect(r.stdout).toStartWith('{"error":"foreign_state_dir:');
-        expect(unconsolidated(victimPath).rows?.length).toBe(1);
+        expect(channelRows(victimPath).rows?.length).toBe(1);
       })();
     }));
   });
@@ -5407,4 +5338,16 @@ describe('hermitd-docker restart browser build argument', () => {
       } finally { wd.cleanup(); }
     });
   }
+});
+
+
+describe('rowAudience', () => {
+  test('string-coerces shared ids and defaults to the channel audience', async () => {
+    const { rowAudience } = await import('../scripts/lib/channel-auth');
+    const config = { channels: { telegram: { shared_chats: [42, '43'] } } };
+    expect(rowAudience(config, 'telegram', '42')).toBe('shared');
+    expect(rowAudience(config, 'telegram', 43)).toBe('shared');
+    expect(rowAudience(config, 'telegram', 44)).toBe('telegram:44');
+    expect(rowAudience({}, 'discord', '1')).toBe('discord:1');
+  });
 });

@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Nightly `/hermitd:dream` corrects and organizes memory and topic pages from transcripts after two idle hours, with snapshots, safety-check notices and hash-checked undo
+
 ### Changed
+
+- Weekly review reports dream runs and flagged nights, and channel-log retention depends only on age
 
 - Chat decisions, closes, cancels and clear-waits naming a sender are refused unless that sender wrote in the current turn
 - Routine fires pass `--routine` on every notice, not only for routines with a `chat`
@@ -11,6 +17,17 @@
 
 - Decision reminders and decision reads no longer fail with `decision_inventory_unavailable` after imported delivery counts are rewritten with an empty attempt stamp
 - Proposal migration no longer resets decision reminder counts when the delivery budget file is unreadable or being written by a send
+
+### Removed
+
+- Weekly channel-log consolidation and the `channel-log list-unconsolidated` and `mark-consolidated` commands
+
+### Upgrade Instructions
+
+1. Read the installed routines with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`. If any entry has id `hermitd:dream`, leave it unchanged, including its enabled state and custom arguments. Otherwise count the entries in the returned `value` array and append at that count with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set routines.<count> '{"id":"hermitd:dream","schedule":"0 1 * * *","skill":"hermitd:dream","precheck":"dream","model":"sonnet","enabled":true}'`. Preserve every other routine and config field. The agent runs the job at 01:00 only when eligible transcripts exist and the operator has been idle for two hours. To disable it, set that entry's `enabled` to `false` through `settings-edit.ts`.
+2. Run the shipped apply-settings procedure from `skills/hermit-evolve/reference.md` Step 3 to install the dream command grants while preserving operator settings. No operator memory rewrite is needed during upgrade; the nightly job owns its snapshots and validation.
+
+**Leftover check:** `channel-log list-unconsolidated|mark`, `mark-consolidated`, and `consolidation-reference.md` in operator procedures. These commands and the weekly consolidation spec were removed; use `/hermitd:dream` for transcript-based memory maintenance and retain `channel-log prune` for age retention.
 
 ## [1.4.28] - 2026-11-07
 

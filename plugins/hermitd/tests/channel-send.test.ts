@@ -10,7 +10,7 @@ import path from 'node:path';
 import { runScript, runPinnedScript, processRunning, type RunOptions } from './helpers/run';
 import { setupWorkdir, writeConfig, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
-import { unconsolidated, dbExists } from '../scripts/lib/channel-log';
+import { rows as channelRows, dbExists } from '../scripts/lib/channel-log';
 import { sendOperatorNotice, splitMessage, sendToChannel, sendToOwnedChat } from '../scripts/lib/channel-send';
 import { channelHealthPath } from '../scripts/lib/channel-health';
 
@@ -59,7 +59,7 @@ describe('channel-send CLI', () => {
       expect(stub.requests[0].body.text).toBe('hello operator');
       expect(stub.requests[0].body.chat_id).toBe('12345');
 
-      const rows = unconsolidated(hermit(wd.dir)).rows;
+      const rows = channelRows(hermit(wd.dir)).rows;
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({ source: 'telegram', chat_id: '12345', direction: 'out', text: 'hello operator' });
     } finally {
@@ -81,7 +81,7 @@ describe('channel-send CLI', () => {
       });
       expect(r.exitCode).toBe(0);
       expect(stub.requests.map((q) => q.body.text)).toEqual([first, second]);
-      const rows = unconsolidated(hermit(wd.dir)).rows;
+      const rows = channelRows(hermit(wd.dir)).rows;
       expect(rows.length).toBe(1);
       expect(rows[0].text).toBe(`${first}\n\n${second}`);
     } finally {
@@ -1154,7 +1154,7 @@ describe('channel-send rate limits', () => {
       const { result, elapsed } = JSON.parse(output);
       const healthFile = channelHealthPath(hermit(wd.dir));
       const health = fs.existsSync(healthFile) ? JSON.parse(fs.readFileSync(healthFile, 'utf8'))[platform] : undefined;
-      return { result, elapsed, requests, responseTimes, health, rows: unconsolidated(hermit(wd.dir)).rows };
+      return { result, elapsed, requests, responseTimes, health, rows: channelRows(hermit(wd.dir)).rows };
     } finally {
       server.stop(true);
       wd.cleanup();
@@ -1324,7 +1324,7 @@ test('project send script receives text and only its declared environment', asyn
     // PWD, OLDPWD, SHLVL and _ are set by /bin/sh itself (bash on macOS, dash on Linux/WSL), not passed in.
     const shellSet = ['PWD', 'OLDPWD', 'SHLVL', '_'];
     expect(Object.keys(env).filter(key => ![...shellSet, 'PATH', 'HERMIT_DIR', 'HERMIT_CHAT_ID', 'HERMIT_THREAD_ID', 'CHANNEL_STATE_DIR'].includes(key))).toEqual([]);
-    expect(unconsolidated(hermit(wd.dir)).rows[0]).toMatchObject({ source: 'custom', direction: 'out' });
+    expect(channelRows(hermit(wd.dir)).rows[0]).toMatchObject({ source: 'custom', direction: 'out' });
   } finally { delete process.env.HERMIT_SEND_LEAK_PROBE; wd.cleanup(); }
 });
 
@@ -1436,7 +1436,7 @@ describe('merged notice results and logging', () => {
           expect(dbExists(hermit(wd.dir))).toBe(false);
           expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(false);
         } else {
-          expect(unconsolidated(hermit(wd.dir)).rows.map(r => r.text)).toEqual(['CLIENT\n\nTECHNICAL']);
+          expect(channelRows(hermit(wd.dir)).rows.map(r => r.text)).toEqual(['CLIENT\n\nTECHNICAL']);
           expect(fs.existsSync(channelHealthPath(hermit(wd.dir)))).toBe(true);
         }
       } finally { stub.stop(); wd.cleanup(); }
@@ -1568,7 +1568,7 @@ describe('owned Discord thread delivery', () => {
           expect(posts[0].text).toBe('CLIENT\n\nTECHNICAL');
         }
         if (owner === 'routine') expect(fs.readFileSync(path.join(dir, 'state/routine-metrics.jsonl'), 'utf8')).toContain('chat-undelivered');
-        const rows = unconsolidated(dir).rows;
+        const rows = channelRows(dir).rows;
         expect(rows.some(r => r.chat_id === 'PARENT' && r.text.includes('CLIENT'))).toBe(true);
         expect(rows.some(r => r.text.includes('TECHNICAL'))).toBe(false);
       } finally {

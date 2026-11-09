@@ -258,6 +258,15 @@ describe('rewriteGitignoreForWorkspace', () => {
     '.bashrc', '.gitconfig', '',
   ].join('\n');
 
+  test('dream run material is refused and always ignored in workspace backups', () => {
+    const root = freshDir(); hermitAt(root);
+    fs.writeFileSync(path.join(root, '.gitignore'), '.hermit/\n');
+    const rel = '.hermit/state/dream/run/inputs/one.txt';
+    expect(scanRefusedPaths(root, [rel])).toEqual([{ path: rel, reason: 'dream-run' }]);
+    rewriteGitignoreForWorkspace(root, TEMPLATE);
+    expect(fs.readFileSync(path.join(root, '.gitignore'), 'utf8')).toContain('.hermit/state/dream/');
+  });
+
   test('stops ignoring hermit state, keeps the secret-bearing lines, and is idempotent', () => {
     const dir = freshDir();
     fs.writeFileSync(path.join(dir, '.gitignore'), TEMPLATE);

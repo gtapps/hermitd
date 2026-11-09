@@ -70,6 +70,12 @@ const SPECS: Spec[] = [
     failExit: 0, // Malformed input exits 0; it denies only when the raw text names a skill folder.
   },
   {
+    name: 'core/dream-fence',
+    script: 'plugins/hermitd/scripts/dream-fence.ts',
+    benign: BENIGN_EDIT,
+    failExit: 0, // Denies through JSON on exit 0; non-dream callers get no output.
+  },
+  {
     name: 'core/artifact-backend-guard',
     script: 'plugins/hermitd/scripts/artifact-backend-guard.ts',
     // Bash, not Artifact: the guard returns on any non-Artifact tool_name, so

@@ -6,7 +6,8 @@ import { collectTree } from '../scripts/lib/proc';
 import { SCRIPTS_DIR } from './helpers/run';
 
 async function until<T>(read: () => T | undefined): Promise<T> {
-  const deadline = Date.now() + 5000;
+  // Spawning bun monitors and their watch children takes seconds under a saturated parallel run.
+  const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     const value = read();
     if (value !== undefined) return value;
@@ -123,7 +124,7 @@ test('test-mode monitor stops itself and its watch when its runner is killed', a
     fs.rmSync(project, { recursive: true });
     expect(stderr).toBe('');
   }
-}, 15000);
+}, 45000);
 
 test('watch stdout is tagged, substitutes roots, and runs from the project root', () => fixture(async f => {
   f.configure('printf "%s\\n" "$PWD ${CLAUDE_PROJECT_DIR} ${CLAUDE_PLUGIN_ROOT}"; exec tail -f /dev/null');

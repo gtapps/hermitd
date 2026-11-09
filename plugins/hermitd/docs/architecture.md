@@ -199,7 +199,7 @@ Task mutations and imports share `state/tasks.lock`. Every writer of `state/deci
 | `state/channel-responder-invoked.json` | channel-responder-invoked.ts only (resident Skill PostToolUse; session id and invocation time) | channel-reply-reminder stage (compares session and context-reset stamp) |
 | `state/channel-activity.json`  | channel-hook.ts only                                | channel-responder, heartbeat                                  |
 | `state/channel-replies.jsonl`  | channel-hook.ts (append only)                       | none — reflect's engagement join was removed (the ledger records outbound sends only, so it could not measure operator engagement) |
-| `state/channel-log.sqlite`     | channel-reply-reminder stage + channel-hook.ts (append, via `lib/channel-log.ts`); weekly-review marks/prunes | search.ts (recall, fourth source); weekly-review consolidation |
+| `state/channel-log.sqlite`     | channel-reply-reminder stage + channel-hook.ts (append, via `lib/channel-log.ts`); weekly-review prunes by age | search.ts (recall, fourth source) |
 | `state/observations.jsonl`     | reflect-precheck (`cost-spike`, `startup-drift`) + transcript-digest `--record-observation` (`behavior-digest`) + reflect (`quick-deferral`, `reflect-noticed`); append only | reflect (step 3b graduation), reflection-judge (§1.4 ledger verification) |
 | `state/proposal-metrics.jsonl` | task-backed creation and decision answers (append only)        | generate-summary.ts, proposal.ts metrics (read-only)   |
 | `state/usage-metrics.jsonl`    | usage-track.ts (Read PostToolUse, append only; compacted >180d by weekly-review) | weekly-review (untouched-knowledge suggestions) |
@@ -261,13 +261,13 @@ Per-file update policies for managed files under `.hermit/`:
 |  state/channel-log.sqlite (PROP-010)         |
 |  Owner: Agent (hooks). Lifetime: substrate.  |
 |  Forward-only DM log — the conversational    |
-|  layer above didn't capture. Consolidated    |
-|  weekly into memory/compiled; raw rows       |
-|  pruned only after consolidation.            |
+|  layer above didn't capture. Rows expire    |
+|  by age. Nightly dream uses transcripts to  |
+|  maintain memory and topic pages.           |
 +----------------------------------------------+
 ```
 
-OPERATOR.md is human-curated: your hermit changes it only when you ask, behind Claude Code's approval prompt. Auto-memory is Claude Code's built-in [persistent memory](https://code.claude.com/docs/en/sub-agents) and the primary input to learning. `compiled/` is for durable domain outputs the operator wants surfaced across sessions — distinct from auto-memory, which handles operational lessons. Task records hold progress and lessons. Readers consume normalized outcomes; operator policy lives in TASKS.md. `channel-log.sqlite` is the episodic substrate below all of the above: it captures the operator's actual DM text (deterministically, at hook level) so a concluded channel thread survives context compaction even before anything from it gets promoted. It's feature-detected everywhere it's read — a hermit with no channel traffic never creates the file, and recall/consolidation simply see nothing from this source.
+OPERATOR.md is human-curated: your hermit changes it only when you ask, behind Claude Code's approval prompt. Auto-memory is Claude Code's built-in [persistent memory](https://code.claude.com/docs/en/sub-agents) and the primary input to learning. `compiled/` is for durable domain outputs the operator wants surfaced across sessions — distinct from auto-memory, which handles operational lessons. Task records hold progress and lessons. Readers consume normalized outcomes; operator policy lives in TASKS.md. `channel-log.sqlite` is the episodic substrate below all of the above: it captures the operator's actual DM text (deterministically, at hook level) so a concluded channel thread survives context compaction even before anything from it gets promoted. It's feature-detected everywhere it's read — a hermit with no channel traffic never creates the file, and recall simply sees nothing from this source.
 
 The `proposal-triage` and `reflection-judge` gate agents each carry their own private `memory: project` store (at `.claude/agent-memory/<agent-name>/MEMORY.md`). These are **isolated from the operator's memory** — triage accumulates suppression-pattern heuristics, judge accumulates hollow-evidence shapes. Private memory sharpens judgment but is never the sole basis for a suppress verdict. Over-suppression is bounded by the reflect Component Health check (`state/reflection-state.json` and `state/proposal-metrics.jsonl` counters).
 

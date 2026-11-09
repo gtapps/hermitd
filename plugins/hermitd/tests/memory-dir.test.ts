@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { transcriptPathKey } from '../scripts/lib/cc-compat';
+import { transcriptPathKey, resolvedMemoryDir } from '../scripts/lib/cc-compat';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-memdir-');
 afterAll(cleanup);
@@ -71,5 +71,41 @@ describe('memory-dir.ts', () => {
 
     const out = await run([], configDir, sub);
     expect(out.dir).toBe(path.join(configDir, 'projects', transcriptPathKey(fs.realpathSync(fixture)), 'memory'));
+  });
+});
+
+
+describe('resolvedMemoryDir', () => {
+  test('refuses project overrides, ancestor git roots and all settings overrides', () => {
+    const root = freshDir();
+    const dir = path.join(root, '.hermit');
+    const configDir = freshDir();
+    const priorConfig = process.env.CLAUDE_CONFIG_DIR;
+    const priorName = process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+    delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+    try {
+      fs.mkdirSync(dir);
+      expect(resolvedMemoryDir(dir)).toBe(path.join(configDir, 'projects', transcriptPathKey(root), 'memory'));
+      process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'override';
+      expect(resolvedMemoryDir(dir)).toBeNull();
+      delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+      fs.mkdirSync(path.join(root, '.git'));
+      const nested = path.join(root, 'nested', '.hermit');
+      fs.mkdirSync(nested, { recursive: true });
+      expect(resolvedMemoryDir(nested)).toBeNull();
+      for (const file of [path.join(configDir, 'settings.json'), path.join(root, '.claude/settings.json'),
+        path.join(root, '.claude/settings.local.json'), path.join(dir, 'claude-settings.json')]) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify({ autoMemoryDirectory: '/custom' }));
+        expect(resolvedMemoryDir(dir)).toBeNull();
+        fs.unlinkSync(file);
+      }
+    } finally {
+      if (priorConfig === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = priorConfig;
+      if (priorName === undefined) delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+      else process.env.CLAUDE_CODE_PROJECT_DIR_NAME = priorName;
+    }
   });
 });

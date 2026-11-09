@@ -21,6 +21,8 @@ import { dispatchTaskAttribution, readTaskCostRows } from './lib/tasks';
 process.stdout.on('error', () => {});
 
 import fs from 'node:fs';
+import path from 'node:path';
+import { appendJsonlLine } from './lib/append-jsonl';
 
 import {
   hermitDir, costLogPath, extractUsage, foldUsageByRequest, turnPromptText,
@@ -96,6 +98,17 @@ process.stdin.on('end', () => {
   try {
     const raw = Buffer.concat(chunks).toString('utf-8').trim();
     const payload = raw ? JSON.parse(raw) : {};
+
+    // Dream completion includes synchronous workers too, before async cost gating.
+    if (typeof payload.agent_type === 'string' && payload.agent_type.startsWith('hermitd:dream-')) {
+      try {
+        const dream = JSON.parse(fs.readFileSync(path.join(HERMIT_DIR, 'state/dream.json'), 'utf8'));
+        const id = payloadAgentId(payload);
+        if (dream.running?.run_dir && id) appendJsonlLine(path.join(dream.running.run_dir, 'agents.jsonl'), JSON.stringify({
+          agent_id: id, agent_type: payload.agent_type, at: new Date().toISOString(),
+        }));
+      } catch { /* Completion recording must never change cost-hook failure behavior. */ }
+    }
 
     if (payload.stop_hook_active) { process.exit(0); return; }
 
