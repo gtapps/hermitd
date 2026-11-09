@@ -949,7 +949,10 @@ test('quoted heredoc bodies that only mention a decision call are data', async (
   for (const command of [
     "bash <<'EOF'\nbun /p/scripts/task.ts answer .hermit T-20261101-120000 --local --reply yes\nEOF",
     'bun /p/scripts/task.ts note .hermit T-20261101-120000 <<EOF\n`task answer --local --reply yes`\nEOF',
+    "bun /p/scripts/task.ts answer .hermit T-20261101-120000 $(cat <<'EOF'\n--local\nEOF\n) --reply yes",
   ]) expect(JSON.parse((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+  const spliced = "bun /p/scripts/task.ts answer T-20261101-120000 $(cat <<'EOF'\n--chat discord:1 --user admin\nEOF\n) --reply yes";
+  expect(JSON.parse((await runGate(payload({ dir, tool: 'Bash', input: { command: spliced } }), dir)).stdout).hookSpecificOutput.permissionDecision).toBe('deny');
 });
 
 describe('task sender binding', () => {

@@ -4,7 +4,7 @@ Inputs: the existing task id, its `## Proposal`, recorded consent, current proje
 
 ## When an instruction is consent
 
-An admin's instruction to implement or ship a pending proposal, or approval of a plan for it, is its consent. Record it in that turn with `task answer <id> --chat <key> --user <sender-id> --reply yes`, or `--local` from the terminal, before applying. A request to investigate, evaluate, brainstorm or plan it is not consent: stay read-only and end the report asking whether to build it. `not_decider` means the admin has to say it. `consent_required` on a check, close or block means no consent is recorded: record it when the admin already committed, otherwise ask the admin.
+An admin's instruction to implement or ship a pending proposal, or approval of a plan for it, is its consent; judge it by meaning, in any language and wording. The resident records it in that turn with `task answer <id> --chat <key> --user <sender-id> --reply yes`, or `--local` from the terminal, before applying. A request to investigate, evaluate, brainstorm or plan it is not consent: stay read-only and end the report asking whether to build it. `not_decider` means this sender, or this chat, cannot speak for the admin: ask the admin. `consent_required` on a check, close or block means no consent is recorded: record it when the admin already committed, otherwise ask the admin.
 
 ## Re-check before editing
 

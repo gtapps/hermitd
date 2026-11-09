@@ -1,5 +1,5 @@
 import { pinStateDirOrExit } from './lib/cc-compat';
-import { classifyChat, needsThread } from './lib/channel-chats';
+import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
 import { isKey } from './lib/conversation-key';
 import { readSettledConfig } from './lib/config-read';
 import { exitError } from './lib/cli';
@@ -57,7 +57,14 @@ async function main(): Promise<void> {
       threadConversation = await classifyChat(dir, config, source, chatId, thread) === 'thread';
       if (verb === 'open' && flags.requester !== 'agent' && thread === undefined && await needsThread(dir, config, source, chatId)) throw new Error('thread_required');
     }
-    result = mutateTask(dir, verb, id, flags, input, threadConversation);
+    // A sender chat that is itself a thread speaks for its parent chat; the channel's adapter knows the parent.
+    let senderParent: string | null = null;
+    if (!flags.local && isKey(flags.chat)) {
+      const [source, destination] = flags.chat.split(':');
+      const parent = await threadParent(dir, readSettledConfig(dir), source, destination.split('~')[0]);
+      if (parent.status === 'public') senderParent = parent.parent;
+    }
+    result = mutateTask(dir, verb, id, flags, input, threadConversation, senderParent);
   }
   console.log(JSON.stringify(result));
 }

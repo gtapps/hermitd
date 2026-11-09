@@ -240,12 +240,31 @@ test('id-less thread answers exclude null-conversation decisions but explicit id
   } finally { f.cleanup(); }
 });
 
-test('without named operators, a thread cannot prove the admin and says so', () => {
+test('without named operators, a thread of an unrelated chat cannot prove the admin and says so', () => {
   const f = fixture(); try {
     f.put('config.json', { channels: { discord: { default_chat_id: 'home' } } });
     const { id } = f.openRecord(consent, { conversation: undefined });
-    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true)).toEqual({ status: 'refused', reason: 'not_decider' });
-    expect(f.answer(id)).toMatchObject({ status: 'match', id });
+    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true, 'elsewhere')).toEqual({ status: 'refused', reason: 'not_decider' });
+    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true, 'home')).toMatchObject({ status: 'match', id });
+  } finally { f.cleanup(); }
+});
+
+test('a non-decider hears not_decider before missing consent; the agent hears consent_required', () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord();
+    const close = (extra: TaskFlags) => () => mutateTask(f.dir, 'close', id, { by: 'confirmed', actor: 'x', 'reason-stdin': true, ...extra }, 'Done');
+    expect(close({ chat, user: 'member' })).toThrow('not_decider');
+    expect(close({})).toThrow('consent_required');
+    expect(close({ chat, user: 'admin' })).toThrow('consent_required');
+  } finally { f.cleanup(); }
+});
+
+for (const [parent, verdict] of [['home', 'match'], ['other', 'refused']] as const) test(`CLI: a thread whose parent is ${parent} answers as that chat`, async () => {
+  const f = fixture(); try {
+    f.put('config.json', { channels: { discord: { default_chat_id: 'home' } } });
+    f.put('state/channel-chats.json', { discord: { chats: { th: { type: 11, parent_id: parent, fetched_at: new Date().toISOString() } } } });
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    expect(await f.ok('answer', [id, '--chat', 'discord:th', '--user', 'someone', '--reply', 'yes'])).toMatchObject({ status: verdict });
   } finally { f.cleanup(); }
 });
 

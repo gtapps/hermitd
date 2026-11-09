@@ -832,7 +832,9 @@ function main(payload: any): void {
     const command = typeof input.command === 'string' ? input.command : '';
     // Quoted heredoc bodies are stdin data: a note that mentions a decision call answers nothing.
     // Only a command that could reach task.ts pays for the scan (quotes cannot hide the name).
-    const taskText = /\btask(?:\.ts)?\b/.test(command.replace(/['"\\]/g, '')) ? literalShellText(command) : '';
+    // A substitution left after blanking can splice a blanked body back in as arguments, so it keeps the raw command.
+    const blanked = /\btask(?:\.ts)?\b/.test(command.replace(/['"\\]/g, '')) ? literalShellText(command) : '';
+    const taskText = COMMAND_SUBSTITUTION.test(blanked) ? command : blanked;
     const claims = taskSenderClaims(taskText);
     if (!claims) {
       deny('The task call\'s --chat/--user claim could not be read; rerun it as one plain task command with literal values.');

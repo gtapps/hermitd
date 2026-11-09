@@ -14,12 +14,13 @@
 - Routine fires pass `--routine` on every notice, not only for routines with a `chat`
 - The agent records a proposal's consent when the admin tells it to build, ship or go with a plan for it; investigating or planning never accepts one, and closes or checks on an unaccepted proposal refuse with `consent_required`
 - Answering an agent-wide decision by id from a chat that cannot prove the admin refuses with `not_decider` instead of reporting nothing pending
+- A public thread of the home or maintainer chat speaks for that chat on decisions, closes and cancels, so the admin can answer from a task thread without naming `operators`
 
 ### Fixed
 
 - Decision reminders and decision reads no longer fail with `decision_inventory_unavailable` after imported delivery counts are rewritten with an empty attempt stamp
 - Proposal migration no longer resets decision reminder counts when the delivery budget file is unreadable or being written by a send
-- Notes and proposals whose text mentions `task answer --local` or `--chat`/`--user` no longer raise a permission prompt or a denial
+- Notes and proposals whose heredoc text mentions `task answer --local` or `--chat`/`--user` no longer raise a permission prompt or a denial
 
 ### Removed
 
