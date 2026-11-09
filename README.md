@@ -10,9 +10,11 @@
 
 # Like Claude Tag, but local.
 
-Run an always-on Claude Code agent on your own machine, for you or your team. Start sessions from your chat in any project it can reach, on the model and effort you choose, and steer them through the agent or take over in the Claude app or CLI.
+Run an always-on Claude Code agent on your own machine, for you or your team.
 
-Use it from your terminal or the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels).
+Start and orchestrate sessions from chat in any project it can reach. Take over the same session in the Claude app or the CLI. Tasks, saved watches, and pending decisions survive a restart.
+
+Connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels). Use the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or your terminal.
 
 The agent has its own browser ([agent-browser](https://github.com/vercel-labs/agent-browser)). Take over and Hand back when you want, for example a login. Or use [Chrome on your laptop](https://code.claude.com/docs/en/chrome), including when the agent runs on another machine.
 
