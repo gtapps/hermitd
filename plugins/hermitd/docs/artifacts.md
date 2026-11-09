@@ -119,7 +119,7 @@ pre-approved; a hermit that ran on the default backend before the switch keeps t
 ## Dashboard
 
 `config.artifacts.dashboard`, state key `dashboard`. A single persistent page — status,
-latest brief, proposal queue, weekly evolution, and a compiled-docs index — rendered by
+latest brief, pending decisions, weekly evolution, and a compiled-docs index — rendered by
 `scripts/lib/dashboard.ts` (deterministic; no model authorship, except the embedded
 "latest brief" text, which is itself model-composed by the `brief` skill and written to
 `state/last-brief.json` — see the file's header comment). `<title>` and the `<h1>` are
