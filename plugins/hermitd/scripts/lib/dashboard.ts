@@ -220,10 +220,10 @@ function loadCompiledIndex(hermitDir: string): { docs: CompiledDocRow[]; omitted
       const name = path.basename(f);
       const fm = readFrontmatter(f) ?? {};
       if (!audienceVisible({}, fm.audience)) return [];
-      const date = text(fm.updated) ?? text(fm.created);
+      const day = (v: unknown) => /^\d{4}-\d{2}-\d{2}/.exec(text(v) ?? '')?.[0] ?? null;
       return [{
         name, title: text(fm.title) ?? name, type: text(fm.type), summary: text(fm.summary),
-        date: date ? date.slice(0, 10) : null,
+        date: day(fm.updated) ?? day(fm.created),
         tags: Array.isArray(fm.tags) ? fm.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim() !== '') : [],
       }];
     });

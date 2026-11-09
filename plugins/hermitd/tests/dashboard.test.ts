@@ -270,7 +270,7 @@ describe('loadDashboardState', () => {
 
   test('compiled_index reads type, summary, date and tags from frontmatter', withHermitDir((hermitDir) => {
     writeCompiledDoc(hermitDir, 'topic-direction.md', { title: 'Direction', type: 'topic', summary: 'Where it is going', created: '2026-10-01T21:55:00+01:00', updated: '2026-11-06T20:27:00+00:00', tags: '[market, roadmap]' }, 'body');
-    writeCompiledDoc(hermitDir, 'note-old.md', { title: 'Old note', type: 'note', created: '2026-09-01' }, 'body');
+    writeCompiledDoc(hermitDir, 'note-old.md', { title: 'Old note', type: 'note', created: '2026-09-01', updated: 'today' }, 'body');
     const docs = loadDashboardState(hermitDir).compiled_index.docs;
     expect(docs.find(d => d.name === 'topic-direction.md')).toEqual({ name: 'topic-direction.md', title: 'Direction', type: 'topic', summary: 'Where it is going', date: '2026-11-06', tags: ['market', 'roadmap'] });
     expect(docs.find(d => d.name === 'note-old.md')).toEqual({ name: 'note-old.md', title: 'Old note', type: 'note', summary: null, date: '2026-09-01', tags: [] });
