@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Cost reports price Claude Fable 5.2 ($8 / $40 per MTok, fast mode $16 / $80) and use it for the `fable` alias
+- Cost reports price Claude Fable 5.2 ($8 / $40 per MTok, fast mode $16 / $80) and use it for the `fable` alias and Claude Mythos models
 
 ## [1.4.29] - 2026-11-09
 

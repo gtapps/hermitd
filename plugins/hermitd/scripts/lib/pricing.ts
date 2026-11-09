@@ -26,6 +26,8 @@ export type CostByType = {
 };
 
 const CURRENT_TIER: Record<string, string> = {
+  // No Mythos API id is published; Mythos 5.2 rates equal Fable 5.2's (older Mythos is $10 / $50).
+  mythos: 'claude-fable-5-2',
   fable: 'claude-fable-5-2',
   opus: 'claude-opus-5-5',
   sonnet: 'claude-sonnet-5-5',
@@ -50,7 +52,7 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5': { input: 1, output: 5 },
 };
 
-const TIER_ORDER = ['fable', 'opus', 'sonnet', 'haiku'] as const;
+const TIER_ORDER = ['mythos', 'fable', 'opus', 'sonnet', 'haiku'] as const;
 
 function resolvePricing(model: string): { rates: ModelPricing; exact: boolean } {
   if (PRICING[model]) return { rates: PRICING[model], exact: true };

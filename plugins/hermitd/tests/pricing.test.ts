@@ -52,6 +52,12 @@ describe('resolvePricing', () => {
     expect(r.rates).toBe(PRICING['claude-fable-5-2']);
   });
 
+  test('mythos id → fable-5-2 rates, not exact', () => {
+    const r = resolvePricing('claude-mythos-5-2');
+    expect(r.exact).toBe(false);
+    expect(r.rates).toBe(PRICING['claude-fable-5-2']);
+  });
+
   test('claude-opus-5-5 is exact', () => {
     const r = resolvePricing('claude-opus-5-5');
     expect(r.exact).toBe(true);
