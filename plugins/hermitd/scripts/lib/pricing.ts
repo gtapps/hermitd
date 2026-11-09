@@ -1,11 +1,11 @@
 // Per-1M-token pricing (USD). Source of truth for all cost calculations.
-// Verified 2026-10-14 against:
+// Verified 2026-11-09 against:
 //   https://platform.claude.com/docs/en/about-claude/models/overview.md
 //   https://platform.claude.com/docs/en/about-claude/pricing.md
 //   https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md
 // Change ONLY this file when Anthropic updates prices; bump the verified date to today.
 
-export const PRICING_VERIFIED = '2026-10-14';
+export const PRICING_VERIFIED = '2026-11-09';
 
 export const CACHE_WRITE_5M = 1.25;
 export const CACHE_WRITE_1H = 2;
@@ -26,13 +26,14 @@ export type CostByType = {
 };
 
 const CURRENT_TIER: Record<string, string> = {
-  fable: 'claude-fable-5-1',
+  fable: 'claude-fable-5-2',
   opus: 'claude-opus-5-5',
   sonnet: 'claude-sonnet-5-5',
   haiku: 'claude-haiku-5-5',
 };
 
 const PRICING: Record<string, ModelPricing> = {
+  'claude-fable-5-2': { input: 8, output: 40, cacheReadMult: 0.025, fast: { input: 16, output: 80 } },
   'claude-fable-5-1': { input: 10, output: 50, cacheReadMult: 0.025 },
   'claude-fable-5':   { input: 10, output: 50 },
   'claude-opus-5-5':  { input: 4, output: 20, cacheReadMult: 0.05, fast: { input: 8, output: 40 } },

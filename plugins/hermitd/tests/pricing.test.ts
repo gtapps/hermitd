@@ -40,6 +40,18 @@ describe('resolvePricing', () => {
     expect(r.rates).toBe(PRICING['claude-haiku-5-5']);
   });
 
+  test('claude-fable-5-2 is exact', () => {
+    const r = resolvePricing('claude-fable-5-2');
+    expect(r.exact).toBe(true);
+    expect(r.rates).toEqual(PRICING['claude-fable-5-2']);
+  });
+
+  test('tier alias fable → fable-5-2, not exact', () => {
+    const r = resolvePricing('fable');
+    expect(r.exact).toBe(false);
+    expect(r.rates).toBe(PRICING['claude-fable-5-2']);
+  });
+
   test('claude-opus-5-5 is exact', () => {
     const r = resolvePricing('claude-opus-5-5');
     expect(r.exact).toBe(true);
@@ -76,6 +88,16 @@ describe('calculateCost', () => {
 
   test('Fable 5.1 1M reads = $0.25', () => {
     expect(calculateCost('claude-fable-5-1', { ...empty, cacheRead: 1_000_000 }).total).toBeCloseTo(0.25, 9);
+  });
+
+  test('Fable 5.2 1M reads = $0.20', () => {
+    expect(calculateCost('claude-fable-5-2', { ...empty, cacheRead: 1_000_000 }).total).toBeCloseTo(0.20, 9);
+  });
+
+  test('fast on fable-5-2: 1M input = $16, 1M output = $80, 1M reads = $0.40', () => {
+    expect(calculateCost('claude-fable-5-2', { ...empty, input: 1_000_000, fast: true }).total).toBeCloseTo(16, 9);
+    expect(calculateCost('claude-fable-5-2', { ...empty, output: 1_000_000, fast: true }).total).toBeCloseTo(80, 9);
+    expect(calculateCost('claude-fable-5-2', { ...empty, cacheRead: 1_000_000, fast: true }).total).toBeCloseTo(0.40, 9);
   });
 
   test('fast on opus-5 1M input = $10', () => {
