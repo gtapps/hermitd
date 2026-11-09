@@ -6,7 +6,7 @@ import path from 'node:path';
 import { EN, enHash, buildMessages, messagesPath, type MessageKey } from '../../scripts/lib/messages';
 
 const PT_TEXT: Record<MessageKey, string> = {
-  dream_restored: 'A arrumação noturna da memória falhou a validação. Repus a memória e as páginas de tópicos e mantive a janela para nova tentativa.',
+  dream_flagged: 'A arrumação noturna da memória falhou uma verificação de segurança. As alterações mantêm-se; diga "desfaz o sonho" para as reverter.',
   pause_reason_budget: 'um limite de orçamento',
   pause_reason_watchdog: 'o watchdog',
   pause_reason_request: 'o seu pedido',

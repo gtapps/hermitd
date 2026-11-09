@@ -73,7 +73,7 @@ const weekEnd = new Date(weekStart);
 weekEnd.setUTCDate(weekStart.getUTCDate() + 7); // exclusive
 
 // Bounded digest for the operator; raw dream receipts never enter model context.
-const dream = { runs: 0, restores: 0, changes: 0 };
+const dream = { runs: 0, flagged: 0, changes: 0 };
 try {
   const lines = fs.readFileSync(path.join(hermitDir, 'state/dream-log.jsonl'), 'utf8').split('\n');
   for (const line of lines) {
@@ -82,7 +82,7 @@ try {
     const at = new Date(row.at);
     if (!(at >= weekStart && at < weekEnd)) continue;
     dream.runs++;
-    if (row.status === 'restored' || row.status === 'abandoned') dream.restores++;
+    if (row.status === 'flagged') dream.flagged++;
     if (Number.isFinite(row.changes) && row.changes >= 0) dream.changes += row.changes;
   }
 } catch { /* No dream history yet. */ }

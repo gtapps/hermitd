@@ -10,4 +10,4 @@ As with the other file-writing suites, use `--scaffold --allow-tools Write Edit 
 claude plugin eval plugins/hermitd --tag dream --scaffold --allow-tools Write Edit Bash --ablation none --no-publish
 ```
 
-The original bare verification command omits fixture setup and tool grants, so it cannot pass file-based graders. Use the invocation above; add `--runs 1` while iterating. Evals need the host's Claude authentication, plugin trust and eval access. Unit fixtures separately exercise export, finish, restore and undo with real scripts.
+The original bare verification command omits fixture setup and tool grants, so it cannot pass file-based graders. Use the invocation above; add `--runs 1` while iterating. Evals need the host's Claude authentication, plugin trust and eval access. Unit fixtures separately exercise export, finish, validation and undo with real scripts.

@@ -62,7 +62,7 @@ Generates the weekly review for the current ISO week.
      Tidied: put <usage_auto_archived count> unused doc(s) away — <up to 5 of the usage_auto_archived names, comma-joined and plain; add "and N more" for the rest> — say "restore <name>" to bring one back [omit this whole line when the list is empty]
      Unused: <usage_untouched_count> doc(s) look dormant — say "archive them" if you want them tidied away [omit this whole line when 0]
      Skills: <skills_new> new, <skills_archived> put away, <skills_often_patched> often adjusted [omit when all are 0]
-     Dream: <step 1 dream.runs> runs, <dream.restores> restores, <dream.changes> file changes
+     Dream: <step 1 dream.runs> runs, <dream.flagged> flagged, <dream.changes> file changes
      Spend: $<total_cost_usd> this week (vs $<prior week's total_cost_usd>, if a prior file exists) — an estimate, not a bill
      ```
      Followed by the `Topic pages:` findings from step 3 when present, plus a final line listing whichever of the dashboard/weekly-review URLs were returned (e.g. `📎 <dashboard url> · 📎 <weekly-review url>` — omit either half that wasn't returned).

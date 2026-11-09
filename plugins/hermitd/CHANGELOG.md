@@ -4,11 +4,11 @@
 
 ### Added
 
-- Nightly `/hermitd:dream` corrects and organizes memory and topic pages from transcripts after two idle hours, with snapshots, automatic restore and hash-checked undo
+- Nightly `/hermitd:dream` corrects and organizes memory and topic pages from transcripts after two idle hours, with snapshots, safety-check notices and hash-checked undo
 
 ### Changed
 
-- Weekly review reports dream runs and restores, and channel-log retention depends only on age
+- Weekly review reports dream runs and flagged nights, and channel-log retention depends only on age
 
 - Chat decisions, closes, cancels and clear-waits naming a sender are refused unless that sender wrote in the current turn
 - Routine fires pass `--routine` on every notice, not only for routines with a `chat`

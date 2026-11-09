@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Folder-shared nightly dream state. Export is read-only outside state/dream*;
-// finish and undo alone publish restores to the snapshotted targets.
+// finish only validates and flags; undo alone writes snapshotted targets back.
 import fs from 'node:fs';
 import path from 'node:path';
 import { sha256 as hash } from './lib/hash';
@@ -186,15 +186,6 @@ function targetFiles(memory: string, compiled: string): Record<string, string> {
 function target(manifest: Manifest, key: string): string {
   return path.join(key.startsWith('memory/') ? manifest.memory_dir : manifest.compiled_dir, key.slice(key.indexOf('/') + 1));
 }
-function restore(run: string, manifest: Manifest): void {
-  const current = targetFiles(manifest.memory_dir, manifest.compiled_dir);
-  for (const key of Object.keys(current)) if (!(key in manifest.files)) fs.unlinkSync(target(manifest, key));
-  for (const key of Object.keys(manifest.files)) {
-    const file = target(manifest, key);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.copyFileSync(path.join(run, 'before', key), file);
-  }
-}
 interface Change { file: string; kind: 'changed' | 'created' | 'removed'; before: string | null; after: string | null }
 function changesFor(manifest: Manifest): Change[] {
   const current = targetFiles(manifest.memory_dir, manifest.compiled_dir);
@@ -247,17 +238,16 @@ function closeRun(dir: string, value: State, result: Json, abandoned = false): J
   const manifest: Manifest = readJson(path.join(run, 'manifest.json'));
   const changes = changesFor(manifest);
   writeFileAtomic(path.join(run, 'changes.json'), JSON.stringify(changes) + '\n', 0o600);
-  const failures = abandoned ? ['abandoned'] : validation(run, manifest, changes);
+  const failures = abandoned ? [] : validation(run, manifest, changes);
   const exported = readJson(path.join(run, 'export.json'));
   const stops = jsonLines(path.join(run, 'agents.jsonl'));
   const count = (type: string) => new Set(stops.filter(row => row.agent_type === type).map(row => row.agent_id)).size;
   const complete = count('hermitd:dream-analyzer') === exported.inputs.length && count('hermitd:dream-organizer') === 2;
-  const status = abandoned ? 'abandoned' : failures.length ? 'restored' : complete ? 'complete' : 'partial';
-  if (failures.length) {
-    restore(run, manifest);
-    // Notice delivery owns its own fallback to Findings. It never changes restore success.
-    void sendOperatorNotice(dir, { client: EN.dream_restored, routine: 'hermitd:dream' }).catch(() => {});
-  } else if (complete) value.window_start = exported.window_end;
+  const status = abandoned ? 'abandoned' : failures.length ? 'flagged' : complete ? 'complete' : 'partial';
+  // Changes stay in place either way; a failed check only tells the operator undo is available.
+  // Notice delivery owns its own fallback to Findings.
+  if (failures.length) void sendOperatorNotice(dir, { client: EN.dream_flagged, routine: 'hermitd:dream' }).catch(() => {});
+  if (complete && !abandoned) value.window_start = exported.window_end;
   const digest = { at: new Date().toISOString(), run_dir: run, status, changes: changes.length, failures, complete, result };
   fs.rmSync(path.join(run, 'inputs'), { recursive: true, force: true });
   writeFileAtomic(path.join(run, 'finished.json'), JSON.stringify(digest) + '\n', 0o600);
@@ -274,9 +264,9 @@ export function finishDream(dir: string, result: Json): Json {
 }
 export function undoDream(dir: string): Json {
   const root = path.join(dir, 'state/dream');
-  // A restored or abandoned run already left its targets as they were; undo the last run that kept changes.
+  // Undo the newest closed run that changed something, abandoned runs included.
   const run = names(root).sort().reverse().map(name => path.join(root, name)).find(run => {
-    try { return !['restored', 'abandoned'].includes(readJson(path.join(run, 'finished.json')).status); }
+    try { return readJson(path.join(run, 'changes.json')).length > 0; }
     catch (error: any) { if (error.code === 'ENOENT') return false; throw error; }
   });
   if (!run) return { status: 'empty', restored: [], conflicts: [] };

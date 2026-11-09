@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor, memoryDirFor } from '../scripts/lib/cc-compat';
-import { exportDream, INPUT_MAX_BYTES, NIGHT_MAX_BYTES } from '../scripts/dream';
+import { exportDream, undoDream, INPUT_MAX_BYTES, NIGHT_MAX_BYTES } from '../scripts/dream';
 
 const { freshDir, cleanup } = freshDirFactory('dream-');
 afterAll(cleanup);
@@ -58,15 +58,18 @@ describe('dream export', () => {
     expect(fs.statSync(out.inputs[0]).mode & 0o777).toBe(0o600);
     expect(f.run()).toEqual({ status: 'skipped', reason: 'run_in_progress' });
   });
-  test('abandoned lock restores before starting again', () => {
+  test('abandoned lock closes without restoring and undo can still revert it', () => {
     const f = fixture(); fs.writeFileSync(path.join(f.memory, 'fact.md'), 'before');
     f.lines('one.jsonl', [user('hello')]); const first = f.run();
     fs.writeFileSync(path.join(f.memory, 'fact.md'), 'after');
     const state = f.readState(); state.running.started_at = new Date(now - 3 * 3_600_000).toISOString();
     fs.writeFileSync(path.join(f.dir, 'state/dream.json'), JSON.stringify(state));
-    expect(f.run().status).toBe('ready');
-    expect(fs.readFileSync(path.join(f.memory, 'fact.md'), 'utf8')).toBe('before');
+    // A later start gives the second run its own directory, as consecutive nights do.
+    expect(f.execute(() => exportDream(f.dir, now + 1000)).status).toBe('ready');
+    expect(fs.readFileSync(path.join(f.memory, 'fact.md'), 'utf8')).toBe('after');
     expect(fs.readFileSync(path.join(f.dir, 'state/dream-log.jsonl'), 'utf8')).toContain('abandoned');
+    expect(f.execute(() => undoDream(f.dir)).restored).toEqual(['memory/fact.md']);
+    expect(fs.readFileSync(path.join(f.memory, 'fact.md'), 'utf8')).toBe('before');
     expect(first.run_dir).toBeDefined();
   });
   test('unresolved memory and heartbeat-only windows', () => {
@@ -153,7 +156,7 @@ describe('dream export', () => {
   });
 });
 
-import { finishDream, undoDream } from '../scripts/dream';
+import { finishDream } from '../scripts/dream';
 function prepare() {
   const f = fixture();
   fs.writeFileSync(path.join(f.memory, 'MEMORY.md'), '- [Fact](fact.md): one\n- [Role](feedback_role_test.md): [role discord:1] trusted\n');
@@ -180,11 +183,15 @@ describe('dream finish and undo', () => {
     foundational_line: (f: ReturnType<typeof prepare>) => fs.writeFileSync(path.join(f.dir, 'compiled/topic-a.md'), '---\naudience: discord:1\ntags: [foundational]\n---\nNew fact\n'),
     audience_change: (f: ReturnType<typeof prepare>) => fs.writeFileSync(path.join(f.dir, 'compiled/topic-a.md'), '---\naudience: shared\ntags: [foundational]\n---\nPinned fact\n'),
     audience_removal: (f: ReturnType<typeof prepare>) => fs.writeFileSync(path.join(f.dir, 'compiled/topic-a.md'), '---\ntags: [foundational]\n---\nPinned fact\n'),
-  })) test(`${name} restores byte for byte and removes created files`, () => {
+  })) test(`${name} is flagged, keeps the changes, and undo restores byte for byte`, () => {
     const f = prepare(); const before = fs.readFileSync(path.join(f.memory, 'fact.md'));
-    const start = f.readState().window_start;
     mutate(f); fs.writeFileSync(path.join(f.memory, 'new.md'), 'new'); f.stops();
-    expect(f.finish().status).toBe('restored');
+    const digest = f.finish();
+    const reason: Record<string, string> = { foundational_line: 'foundational', audience_change: 'audience', audience_removal: 'audience' };
+    expect(digest.status).toBe('flagged'); expect(digest.failures).toContain(reason[name] ?? name);
+    expect(fs.existsSync(path.join(f.memory, 'new.md'))).toBe(true);
+    expect(f.readState().window_start).toBe(at(2));
+    undoDream(f.dir);
     expect(fs.readFileSync(path.join(f.memory, 'fact.md'))).toEqual(before);
     const manifest = JSON.parse(fs.readFileSync(path.join(f.out.run_dir, 'manifest.json'), 'utf8'));
     for (const key of Object.keys(manifest.files)) {
@@ -192,7 +199,6 @@ describe('dream finish and undo', () => {
       expect(fs.readFileSync(target)).toEqual(fs.readFileSync(path.join(f.out.run_dir, 'before', key)));
     }
     expect(fs.existsSync(path.join(f.memory, 'new.md'))).toBe(false);
-    expect(f.readState().window_start).toBe(start);
   });
   test('whitespace changes keep facts, all stops advance the window and finish is idempotent', () => {
     const f = prepare(); fs.writeFileSync(path.join(f.memory, 'fact.md'), ' First   fact \nSecond fact\nThird fact\nFourth fact\n');
