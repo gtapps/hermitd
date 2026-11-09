@@ -119,6 +119,18 @@ describe('dream export', () => {
     const exported = JSON.parse(fs.readFileSync(path.join(out.run_dir, 'export.json'), 'utf8'));
     expect(exported.window_end).toBe(at(7));
   });
+  test('completion notices take the launching turn audience and dream notices are dropped', () => {
+    const f = fixture();
+    const launch = (id: string, n: number) => ({ ...agent('launch', n), toolUseResult: { status: 'async_launched', agentId: id } });
+    const notice = (id: string, body: string, n: number) => ({ ...user(`<task-notification>\n<task-id>${id}</task-id>\n<result>${body}</result>\n</task-notification>`, n), origin: { kind: 'task-notification' } });
+    f.lines('one.jsonl', [user('<channel source="discord" chat_id="99">private</channel>'), launch('p', 1),
+      user('[hermit-routine:hermitd:dream] Run dream', 2), launch('d', 3),
+      notice('p', 'private-result', 4), agent('relayed', 5), notice('d', 'dream-result', 6), agent('dream-status', 7)]);
+    const text = f.text(f.run());
+    expect(text).toContain('AUDIENCE: discord:99\nUSER: <task-notification>');
+    expect(text).toContain('private-result'); expect(text).not.toContain('AUDIENCE: shared');
+    expect(text).not.toContain('dream-result'); expect(text).not.toContain('dream-status');
+  });
   test('synchronous launches inherit the private audience and one oversized entry still exports', () => {
     const f = fixture();
     f.lines('one.jsonl', [user('<channel source="discord" chat_id="99">private</channel>'),

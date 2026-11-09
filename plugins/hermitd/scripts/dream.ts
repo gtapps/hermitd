@@ -70,7 +70,7 @@ export function eligibleEntries(dir: string, windowStart: string, runStart: stri
       if (match) files.push({ session, agent: match[1], entries: jsonLines(path.join(subs, sub)) });
     }
   }
-  const turns: Array<{ file: typeof files[number]; entries: Evidence[]; dropped: boolean; launches: string[] }> = [];
+  const turns: Array<{ file: typeof files[number]; entries: Evidence[]; dropped: boolean; launches: string[]; notice?: string }> = [];
   const parents = new Map<string, typeof turns[number]>();
   for (const file of files) {
     let turn: typeof turns[number] | undefined;
@@ -82,7 +82,9 @@ export function eligibleEntries(dir: string, windowStart: string, runStart: stri
         const ids = [...prompt.matchAll(/\[hermit-routine:([A-Za-z0-9._:-]+)\]/g)].map(m => m[1]);
         const envelope = parseChannelEnvelope(prompt, config);
         const audience = envelope ? rowAudience(config, envelope.sourceKey, envelope.chatId) : 'shared';
-        turn = { file, entries: [], dropped: source === 'heartbeat' || (source.startsWith('routine:') && ids.includes('hermitd:dream')), launches: [] };
+        // A background agent's completion notice opens a turn with no envelope; it belongs to the launching turn.
+        const notice = /^<task-notification>\s*<task-id>([^<\s]+)<\/task-id>/.exec(prompt)?.[1];
+        turn = { file, entries: [], dropped: source === 'heartbeat' || (source.startsWith('routine:') && ids.includes('hermitd:dream')), launches: [], notice };
         turns.push(turn);
         turn.entries.push({ entry, session: file.session, agent: file.agent, audience, prompt });
       } else if (turn) {
@@ -96,24 +98,26 @@ export function eligibleEntries(dir: string, windowStart: string, runStart: stri
       }
     }
   }
+  const isDropped = (turn: typeof turns[number]) => turn.dropped
+    || !!(turn.file.agent && excluded.has(turn.file.agent)) || !!(turn.notice && excluded.has(turn.notice));
   // A dropped parent may launch a subagent which launches another. Reach a fixed point.
   let changed = true;
   while (changed) {
     changed = false;
     for (const turn of turns) {
-      if (!turn.dropped && !(turn.file.agent && excluded.has(turn.file.agent))) continue;
+      if (!isDropped(turn)) continue;
       for (const id of turn.launches) if (!excluded.has(id)) { excluded.add(id); changed = true; }
     }
   }
   function inheritedAudience(turn: typeof turns[number], seen = new Set<string>()): string {
-    const id = turn.file.agent;
+    const id = turn.notice && parents.has(turn.notice) ? turn.notice : turn.file.agent;
     if (!id || seen.has(id) || !parents.has(id)) return turn.entries[0].audience;
     seen.add(id);
     return inheritedAudience(parents.get(id)!, seen);
   }
   const start = Date.parse(windowStart), end = Date.parse(runStart);
   return turns.flatMap(turn => {
-    if (turn.dropped || (turn.file.agent && excluded.has(turn.file.agent))) return [];
+    if (isDropped(turn)) return [];
     const audience = inheritedAudience(turn);
     return turn.entries.filter(e => {
       const ts = Date.parse(e.entry.timestamp);
