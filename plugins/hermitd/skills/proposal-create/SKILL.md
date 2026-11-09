@@ -98,7 +98,7 @@ HERMIT_PROPOSAL
 
 The script opens a waiting `kind: proposal` task with requester `agent`, an admin consent decision, and the proposal body in `## Proposal`. It records `created` metrics in the same invocation. It returns one `{id, handle, created}` receipt; use the task id for cross-references and its handle in operator copy. A repeated slug returns the existing open or cancelled task with `created: false`, which you return as `DUPLICATE`. Completed tasks are background.
 
-`{"error":…}` means creation failed: report it without guessing an id. `warnings: ["metrics_append_failed"]` means the record exists but its metrics append failed; report the warning and do not retry the whole call. No implementation starts here. Normal task intake reads [apply.md](apply.md) only after consent is recorded.
+`{"error":…}` means creation failed: report it without guessing an id. `warnings: ["metrics_append_failed"]` means the record exists but its metrics append failed; report the warning and do not retry the whole call. No implementation starts here. Normal task intake reads [apply.md](apply.md), which also says when an admin instruction is consent.
 
 Header fields:
 - `Title:` — required.

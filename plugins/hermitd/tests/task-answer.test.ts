@@ -53,7 +53,7 @@ for (const authority of ['requester', 'chat', 'admin']) test(`admin answers ${au
 test('consent no cancels with a reason and an unscoped admin decision is admin-only', () => {
   const f = fixture(); try {
     const { id } = f.openRecord(consent, { conversation: undefined });
-    expect(f.answer(id, 'no', 'member')).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(f.answer(id, 'no', 'member')).toEqual({ status: 'refused', reason: 'not_decider' });
     expect(f.answer(id, 'no')).toMatchObject({ status: 'match' });
     expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'cancelled', closed_reason: 'Consent declined: no' });
   } finally { f.cleanup(); }
@@ -86,7 +86,7 @@ test('pending consent cannot be bypassed through clear-wait, check, close, cance
       ['close', { by: 'confirmed', actor: 'admin', 'reason-stdin': true, chat, user: 'admin' }],
       ['cancel', { actor: 'admin', 'reason-stdin': true, chat, user: 'admin' }],
       ['block', { 'result-stdin': true }],
-    ] as const) expect(() => mutateTask(f.dir, verb, id, flags, 'Bypass')).toThrow('not_decider');
+    ] as const) expect(() => mutateTask(f.dir, verb, id, flags, 'Bypass')).toThrow('consent_required');
     expect(f.text(id)).toBe(before);
   } finally { f.cleanup(); }
 });
@@ -232,7 +232,39 @@ test('id-less thread answers exclude null-conversation decisions but explicit id
     const { id } = f.openRecord(consent, { conversation: undefined });
     const flags = { chat: 'discord:th', user: 'admin', reply: 'yes' };
     expect(mutateTask(f.dir, 'answer', undefined, flags, '', true)).toEqual({ status: 'none', reason: 'no_pending' });
+    expect(mutateTask(f.dir, 'answer', id, { ...flags, user: 'member' }, '', true)).toEqual({ status: 'refused', reason: 'not_decider' });
     expect(mutateTask(f.dir, 'answer', id, flags, '', true)).toMatchObject({ status: 'match', id });
+    mutateTask(f.dir, 'note', id, { check: 'true' }, '');
+    mutateTask(f.dir, 'check-result', id, { 'result-rev': String(f.read(id).result_rev), exit: '0', 'output-stdin': true }, 'Merged');
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'check', approved_by: 'admin' });
+  } finally { f.cleanup(); }
+});
+
+test('without named operators, a thread of an unrelated chat cannot prove the admin and says so', () => {
+  const f = fixture(); try {
+    f.put('config.json', { channels: { discord: { default_chat_id: 'home' } } });
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true, 'elsewhere')).toEqual({ status: 'refused', reason: 'not_decider' });
+    expect(mutateTask(f.dir, 'answer', id, { chat: 'discord:th', user: 'admin', reply: 'yes' }, '', true, 'home')).toMatchObject({ status: 'match', id });
+  } finally { f.cleanup(); }
+});
+
+test('a non-decider hears not_decider before missing consent; the agent hears consent_required', () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord();
+    const close = (extra: TaskFlags) => () => mutateTask(f.dir, 'close', id, { by: 'confirmed', actor: 'x', 'reason-stdin': true, ...extra }, 'Done');
+    expect(close({ chat, user: 'member' })).toThrow('not_decider');
+    expect(close({})).toThrow('consent_required');
+    expect(close({ chat, user: 'admin' })).toThrow('consent_required');
+  } finally { f.cleanup(); }
+});
+
+for (const [parent, verdict] of [['home', 'match'], ['other', 'refused']] as const) test(`CLI: a thread whose parent is ${parent} answers as that chat`, async () => {
+  const f = fixture(); try {
+    f.put('config.json', { channels: { discord: { default_chat_id: 'home' } } });
+    f.put('state/channel-chats.json', { discord: { chats: { th: { type: 11, parent_id: parent, fetched_at: new Date().toISOString() } } } });
+    const { id } = f.openRecord(consent, { conversation: undefined });
+    expect(await f.ok('answer', [id, '--chat', 'discord:th', '--user', 'someone', '--reply', 'yes'])).toMatchObject({ status: verdict });
   } finally { f.cleanup(); }
 });
 

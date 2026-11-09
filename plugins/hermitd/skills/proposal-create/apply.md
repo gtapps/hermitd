@@ -2,6 +2,10 @@
 
 Inputs: the existing task id, its `## Proposal`, recorded consent, current project state and any answered input decision. The resident and `hermitd:task-worker` use this same procedure. Implement nothing while a consent decision is pending. A worker performs the reads itself and returns its report to the resident, which owns record transitions.
 
+## When an instruction is consent
+
+An admin's instruction to implement or ship a pending proposal, or approval of a plan for it, is its consent; judge it by meaning, in any language and wording. The resident records it in that turn with `task answer <id> --chat <key> --user <sender-id> --reply yes`, or `--local` from the terminal, before applying. A request to investigate, evaluate, brainstorm or plan it is not consent: stay read-only and end the report asking whether to build it. `not_decider` means this sender, or this chat, cannot speak for the admin: ask the admin. `consent_required` on a check, close or block means no consent is recorded: record it when the admin already committed, otherwise ask the admin.
+
 ## Re-check before editing
 
 Read the proposal's Context, Proposed Solution, References and Verification, then bounded ranges around the cited paths and symbols. Missing raw/ or compiled/ citations may have the same basename under that directory's `.archive/`; verify the archived copy. URLs, memory names, task ids and `n/a` are background, not file paths. Rewording is already done only when the requested wording exists.
