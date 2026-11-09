@@ -1,10 +1,10 @@
 {
   "name": "hermitd-feed",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.21"
+      "version": "^1.4.29"
     }
   ],
   "description": "Scheduled briefs for Hermit from sources you choose, with story tracking, weekly summaries, and source-quality checks.",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8] - 2026-11-09
+
+### Upgrade Instructions
+No action required.
+
+No `config.json` changes required.
+
 ## [0.2.7] - 2026-10-25
 
 ### Changed
