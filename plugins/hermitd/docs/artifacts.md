@@ -131,7 +131,12 @@ shows the title and answer options; a proposal row expands to its `## Context`,
 `## Problem` and `## Proposed Solution` sections, rendered as written. On an
 `operator_profile: "non-technical"` install the page leaves out the spend and token
 tiles and the alert text (the count stays); the state also carries no proposal
-sections and the `by_person` card no per-task cost.
+sections and the `by_person` card no per-task cost. The compiled-docs index lists up to
+100 docs newest first, each with its frontmatter `title`, `type`, `summary`,
+`updated` (else `created`) date and `tags`; pages scoped to one chat (`audience:
+<key>:<chat_id>`) are left out. A small inline script adds a search box and type
+filters over those rows and remembers the last choice in the viewer's `localStorage`;
+with scripts off the list renders in full.
 
 Refresh triggers: `brief` (`--morning`/`--evening`), `weekly-review`, `proposal-create`,
 the task apply procedure. `brief` and `weekly-review` append a `📎 <url>` line to their channel

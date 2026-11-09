@@ -14,7 +14,8 @@ import { readExecution, taskStandup, type PersonTasks } from './tasks';
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readFileWithFrontmatter, globDir } from './frontmatter';
+import { readFileWithFrontmatter, readFrontmatter, globDir } from './frontmatter';
+import { audienceVisible } from './channel-auth';
 import { formatTokens } from './format';
 import { sha256 } from './hash';
 import { readMergedAlerts } from './alert-state';
@@ -76,6 +77,11 @@ export interface LastBriefState {
 export interface CompiledDocRow {
   name: string;
   title: string;
+  type: string | null;
+  summary: string | null;
+  /** YYYY-MM-DD of `updated`, else `created`. */
+  date: string | null;
+  tags: string[];
 }
 
 export interface DashboardState {
@@ -190,7 +196,7 @@ function loadLastBrief(hermitDir: string): LastBriefState | null {
   };
 }
 
-const COMPILED_INDEX_CAP = 20;
+const COMPILED_INDEX_CAP = 100;
 
 function statMtimeMs(file: string): number {
   try { return fs.statSync(file).mtimeMs; } catch { return 0; }
@@ -198,24 +204,30 @@ function statMtimeMs(file: string): number {
 
 // Excludes review-weekly-*.md — those already have their own dedicated section
 // (renderWeekly) so listing them again here would just be confusing duplication.
-// Newest-first (by mtime) before the cap, so on a hermit with >20 compiled docs the
-// discovery surface shows the most recently compiled ones rather than an arbitrary
-// alphabetical slice that could hide a just-written doc.
+// Newest-first (by mtime) before the cap, so on a hermit with more compiled docs than
+// the cap the discovery surface shows the most recently compiled ones rather than an
+// arbitrary alphabetical slice that could hide a just-written doc. A page scoped to one
+// chat (`audience: <key>:<chat_id>`) is left out: the dashboard reader has no chat, so
+// it passes audienceVisible an empty scope, which admits only unscoped and `shared` pages.
 function loadCompiledIndex(hermitDir: string): { docs: CompiledDocRow[]; omitted: number } {
   const compiledDir = path.join(hermitDir, 'compiled');
-  const files = globDir(compiledDir, /\.md$/)
+  const text = (v: unknown): string | null => typeof v === 'string' && v.trim() ? v.trim() : null;
+  const visible: CompiledDocRow[] = globDir(compiledDir, /\.md$/)
     .filter(f => !/^review-weekly-.*\.md$/.test(path.basename(f)))
     .map(f => ({ f, mtime: statMtimeMs(f) })) // stat once per file, not O(n log n) times in the comparator
     .sort((a, b) => b.mtime - a.mtime)
-    .map(({ f }) => f);
-  const docs: CompiledDocRow[] = files.slice(0, COMPILED_INDEX_CAP).map(f => {
-    const name = path.basename(f);
-    const parsed = readFileWithFrontmatter(f);
-    const title = typeof parsed?.fm?.title === 'string' && parsed.fm.title.trim() ? parsed.fm.title : name;
-    return { name, title };
-  });
-  const omitted = Math.max(0, files.length - COMPILED_INDEX_CAP);
-  return { docs, omitted };
+    .flatMap(({ f }) => {
+      const name = path.basename(f);
+      const fm = readFrontmatter(f) ?? {};
+      if (!audienceVisible({}, fm.audience)) return [];
+      const date = text(fm.updated) ?? text(fm.created);
+      return [{
+        name, title: text(fm.title) ?? name, type: text(fm.type), summary: text(fm.summary),
+        date: date ? date.slice(0, 10) : null,
+        tags: Array.isArray(fm.tags) ? fm.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim() !== '') : [],
+      }];
+    });
+  return { docs: visible.slice(0, COMPILED_INDEX_CAP), omitted: Math.max(0, visible.length - COMPILED_INDEX_CAP) };
 }
 
 // Alert entries have no single schema. Telemetry alerts carry `message`; the
@@ -511,17 +523,62 @@ function renderBrief(state: DashboardState): string {
   return card(`${s.brief_heading} <span class="muted">(${escapeHtml(b.kind)})</span>${when}`, mdToHtml(b.text));
 }
 
+// Search and type filter over the server-rendered rows. The tools stay hidden until the
+// script runs, so with scripts off the page is the plain list. Static text: the hash
+// gate sees the same bytes every render.
+const DOC_FILTER_SCRIPT = `<script>(function () {
+  var card = document.currentScript.parentElement;
+  var tools = card.querySelector('.doc-tools'), search = card.querySelector('.doc-search'), empty = card.querySelector('.doc-empty');
+  var buttons = [].slice.call(card.querySelectorAll('.doc-type')), rows = [].slice.call(card.querySelectorAll('.doc-list li[data-text]'));
+  var key = 'hermit-dashboard-docs', state = { q: '', type: '' };
+  try { var saved = JSON.parse(localStorage.getItem(key) || '{}'); state.q = String(saved.q || ''); state.type = String(saved.type || ''); } catch (e) {}
+  if (!buttons.some(function (b) { return b.dataset.type === state.type; })) state.type = '';
+  function apply() {
+    var words = state.q.toLowerCase().split(/\\s+/).filter(Boolean), shown = 0;
+    rows.forEach(function (row) {
+      var match = (!state.type || row.dataset.type === state.type) && words.every(function (w) { return row.dataset.text.indexOf(w) !== -1; });
+      row.hidden = !match; if (match) shown++;
+    });
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.type === state.type)); });
+    empty.hidden = shown > 0;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+  }
+  search.value = state.q;
+  search.addEventListener('input', function () { state.q = search.value; apply(); });
+  buttons.forEach(function (b) { b.addEventListener('click', function () { state.type = b.dataset.type; apply(); }); });
+  tools.hidden = false;
+  apply();
+})();</script>`;
+
 function renderCompiledIndex(state: DashboardState): string {
   const s = state.strings;
   const { docs, omitted } = state.compiled_index;
   if (!docs.length) return card(s.compiled_heading, `<p class="muted">${s.compiled_none}</p>`);
-  const items = docs
-    .map(d => `<li>${escapeHtml(d.title)}<span class="rail-meta">${escapeHtml(d.name)}</span></li>`)
-    .join('');
-  const omittedLine = omitted > 0 ? `<li class="muted">${fmt(s.common_more_not_shown, { n: omitted })}</li>` : '';
+  const items = docs.map(d => {
+    const meta = [
+      ...(d.type ? [chip(d.type)] : []),
+      ...(d.date ? [escapeHtml(d.date)] : []),
+      ...(d.tags.length ? [escapeHtml(d.tags.map(tag => `#${tag}`).join(' '))] : []),
+    ];
+    const haystack = [d.title, d.summary ?? '', d.type ?? '', d.name, ...d.tags].join(' ').toLowerCase();
+    return `<li data-type="${escapeHtml(d.type ?? '')}" data-text="${escapeHtml(haystack)}"><p class="rail-title">${escapeHtml(d.title)}</p>` +
+      (d.summary ? `<p class="doc-summary">${escapeHtml(d.summary)}</p>` : '') +
+      (meta.length ? `<p class="rail-meta">${meta.join(META_SEP)}</p>` : '') + '</li>';
+  }).join('');
+  const counts = new Map<string, number>();
+  for (const d of docs) if (d.type) counts.set(d.type, (counts.get(d.type) ?? 0) + 1);
+  const types = [...counts.keys()].sort();
+  const typeButtons = types.length > 1
+    ? `<div class="doc-types"><button type="button" class="doc-type" data-type="">${s.compiled_all}</button>` +
+      types.map(type => `<button type="button" class="doc-type" data-type="${escapeHtml(type)}">${escapeHtml(type)} (${counts.get(type)})</button>`).join('') + '</div>'
+    : '';
+  const omittedLine = omitted > 0 ? `<p class="muted">${fmt(s.common_more_not_shown, { n: omitted })}</p>` : '';
   return card(s.compiled_heading, `
       <p class="muted">${s.compiled_hint}</p>
-      <ul class="proposal-history">${items}${omittedLine}</ul>`);
+      <div class="doc-tools" hidden><input type="search" class="doc-search" placeholder="${s.compiled_search}" aria-label="${s.compiled_search}">${typeButtons}</div>
+      <ul class="proposal-history doc-list">${items}</ul>
+      <p class="muted doc-empty" hidden>${s.compiled_no_match}</p>${omittedLine}
+      ${DOC_FILTER_SCRIPT}`);
 }
 
 function renderByPerson(state: DashboardState): string {

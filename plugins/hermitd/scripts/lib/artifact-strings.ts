@@ -82,6 +82,9 @@ export const DEFAULT_STRINGS = {
   compiled_heading: 'Compiled docs',
   compiled_none: 'Nothing compiled yet.',
   compiled_hint: 'Ask to open any of these as a page.',
+  compiled_search: 'Search docs',
+  compiled_all: 'All',
+  compiled_no_match: 'No matching docs.',
 
   // Shared
   common_more_not_shown: '+{n} more not shown',

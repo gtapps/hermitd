@@ -7,11 +7,12 @@
 - Dashboard waiting rows expand to the proposal's Context, Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)
 - Non-technical installs see no spend, token or alert text on the built-in dashboard, only the counts and proposal titles; proposal text and by-person costs are withheld from custom renderers too
 - Remaining dashboard labels (execution, open tasks, the waiting line, by-person headings) come from the translatable strings table
+- Dashboard compiled-docs list shows each doc's type, summary, date and tags, lists up to 100 docs, leaves out pages scoped to one chat, and adds search and type filters that remember the last choice per viewer
 
 ### Upgrade Instructions
 
 1. The dashboard changes shape, so its next publish re-mints once. Nothing to do.
-2. **Only if `.hermit/state/artifact-strings.json` exists** (a translation overlay): regenerate the scaffold with `bun <plugin_root>/scripts/artifact.ts scaffold-strings <language>`, carry the existing translated values across, translate the new keys (`status_execution`, `status_open_tasks`, `session_unknown`, `waiting_row_admin`, `waiting_row_requester`, `waiting_row_chat`, `by_person_heading`, `by_person_promised`, `by_person_late`, `by_person_waiting`, `by_person_no_due`, `by_person_none`), keeping every `{placeholder}` token, and write the result back. Hermits without the file need no action.
+2. **Only if `.hermit/state/artifact-strings.json` exists** (a translation overlay): regenerate the scaffold with `bun <plugin_root>/scripts/artifact.ts scaffold-strings <language>`, carry the existing translated values across, translate the new keys (`status_execution`, `status_open_tasks`, `session_unknown`, `waiting_row_admin`, `waiting_row_requester`, `waiting_row_chat`, `by_person_heading`, `by_person_promised`, `by_person_late`, `by_person_waiting`, `by_person_no_due`, `by_person_none`, `compiled_search`, `compiled_all`, `compiled_no_match`), keeping every `{placeholder}` token, and write the result back. Hermits without the file need no action.
 
 ## [1.4.29] - 2026-11-09
 
