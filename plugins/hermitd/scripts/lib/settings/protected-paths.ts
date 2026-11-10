@@ -34,6 +34,7 @@ export const PROTECTED_PATHS: readonly string[] = [
   'docker.packages',
   'docker.recommended_plugins',
   'docker.fleet_mesh', 'browser',
+  'transcription',
   'routines.<n>.precheck',
   'routines.<n>.precheck_timeout_s',
 ];

@@ -134,6 +134,11 @@ if (Object.hasOwn(answers, 'browser')) {
   if (choice.default === 'chrome') config.chrome = true;
 }
 
+if (Object.hasOwn(answers, 'transcription')) {
+  if (typeof answers.transcription !== 'boolean') exitError('invalid_answers:transcription');
+  config.transcription = { ...(config.transcription ?? {}), enabled: answers.transcription };
+}
+
 // --- routines: upsert/remove morning + evening by id, never touch other routines ---
 function timeToCron(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);

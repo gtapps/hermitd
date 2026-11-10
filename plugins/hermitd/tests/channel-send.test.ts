@@ -1293,6 +1293,7 @@ describe('channel-send rate limits', () => {
     const r = await exercise('discord', [], {}, text);
     expect(r.result).toEqual({ ok: true, status: 200 });
     expect(r.requests.map((q) => q.body.content)).toEqual(['a'.repeat(1500), 'b'.repeat(1500)]);
+    for (const request of r.requests) expect(request.body.allowed_mentions).toEqual({ parse: ['users'], replied_user: true });
     expect(r.rows.map((row: any) => row.text)).toEqual([text]);
   });
 

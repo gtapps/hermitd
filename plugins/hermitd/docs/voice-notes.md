@@ -1,69 +1,33 @@
 # Voice Notes
 
-Send a voice note to your hermit over Discord or Telegram and it downloads the file on its own, the same way it handles photos and documents. It cannot listen to it: the model reads text, images, and PDFs, not audio. Out of the box the hermit tells you so and offers to set transcription up. This page is the setup.
+Voice notes work by default on every agent. When an audio attachment arrives from any channel, the agent downloads it with that channel's tool, transcribes it, echoes `🎙️ "…"` in the same chat, and replies to its content as the sender's message. The transcript is added to the original inbound log row, preserving the sender and making the spoken words searchable when channel logging is enabled. Echoes do not ping everyone, here or roles; user mentions remain enabled.
 
-Only a channel delivers an audio file. Through the Claude app, [dictation and voice mode](https://support.claude.com/en/articles/11101966-use-voice-mode) transcribe as you speak, so nothing here is needed.
+Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled transcription downloads no engine or models and uploads no audio; the agent acknowledges the note without exposing a file path. Use `/hermitd:hermit-settings transcription-echo` to turn the echo off independently. Both changes apply to the next voice note; Docker package changes take effect after the next `hermitd update`.
 
-Two steps: put a speech-to-text tool where the hermit runs, then tell the hermit to use it.
+## Local transcription
 
-## 1. Install a speech-to-text tool
+The default engine is pinned whisper.cpp with the `base` model and Silero voice activity detection. On Linux glibc x64 and arm64, hatch starts binary preparation in the background for tmux and interactive deployments. Missing binaries can also install on the first note. The pinned libgomp library ships beside whisper-cli; a pinned ffmpeg is installed only when ffmpeg is absent from PATH. Docker images include ffmpeg by default, controlled by the `HERMIT_TRANSCRIPTION` build argument.
 
-Where the tool goes depends on how the hermit runs:
+Tools already on PATH (`whisper-cli` and `ffmpeg`) take priority. Otherwise the engine lives under `.claude.local/whisper.cpp/<platform>-<arch>/<version>/` in the agent project. The first note downloads the base and Silero models into `.claude.local/whisper.cpp/models/`; hatch does not prefetch them. Downloads are checked against pinned SHA-256 hashes. There is no Python requirement, background transcription service or per-note local API charge.
 
-- **Docker:** it has to be in the image or the bind mount. Ask the hermit "install whisper.cpp and ffmpeg in the container" and the [`docker-customize`](../skills/docker-customize/SKILL.md) skill routes it.
-- **tmux:** the hermit runs on the host, so install the tool on the host and make sure it is on the PATH of the shell that runs `hermitd-start`.
-
-Then pick a tool. Self-hosted keeps the audio on the box, which is the point of a hermit.
-
-### Self-hosted: whisper.cpp (default)
-
-One binary and a model file, no Python, a few hundred megabytes of RAM while a note is transcribed and nothing resident afterwards. Voice notes arrive as OGG/Opus and whisper.cpp wants 16 kHz mono WAV, so install `ffmpeg` alongside it. Download a model once, next to the binary; `base` is a good first pick, `small` is more accurate on non-English speech and several times slower.
-
-The command the hermit will run:
+On macOS, install the tools once:
 
 ```bash
-ffmpeg -loglevel error -y -i "$IN" -ar 16000 -ac 1 /tmp/note-$$.wav && whisper-cli -m /path/to/ggml-base.bin -f /tmp/note-$$.wav -nt
+brew install whisper-cpp ffmpeg
 ```
 
-The `$$` keeps the scratch WAV per-invocation, so a second note (or a second hermit on the same host) never lands on a file the first one owns.
+Automatic binary installation does not support musl Linux or other platforms. `/hermitd:hermit-doctor` checks readiness without installing anything. A failed install records its error privately and names `.hermit/bin/hermitd-run transcribe --prepare` as the retry command.
 
-### Self-hosted: the `openai-whisper` package (GPU hosts)
+A run has one 540-second deadline. A silent clip produces a request to resend or type the message; an unavailable engine produces a neutral acknowledgement that transcription failed, without setup instructions or paths in the chat. Spoken replies and streaming transcription are not included.
 
-Same models and the same transcripts, on Python and PyTorch. On a CPU box it is heavier on every axis: PyTorch is a multi-gigabyte install, and the README's table puts `base` at about 1 GB and `small` at about 2 GB of memory to load. On a host with a GPU it is the fastest self-hosted option, and its `turbo` model runs at roughly eight times the speed of `large`. Needs `ffmpeg` too.
+## Hosted fallback
 
-```bash
-pip install -U openai-whisper
-whisper "$IN" --model turbo --output_format txt --output_dir /tmp && cat "/tmp/$(basename "${IN%.*}").txt"
-```
+When local transcription is unavailable, a present `GROQ_API_KEY` enables an audio upload to Groq with `whisper-large-v3-turbo`; `OPENAI_API_KEY` enables the OpenAI `whisper-1` fallback. Groq takes priority. Keep keys in ignored environment files, never in config or chat. Without either key, audio remains local. Cloud requests have a maximum 60-second timeout within the shared deadline, and files over 25 MB are not uploaded. Silence detected locally does not trigger an upload.
 
-`whisper` names its output after the input file, not after a fixed name, which is what the `basename` does. The container image ships no Python, and on Ubuntu 24.04 and newer the system Python is externally managed, so the `pip` line needs `python3` plus a virtualenv (or `pipx`) first. `docker-customize` § 2 is where that boot-time work goes.
+Netguard templates allow `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`. Existing Docker agents need the refreshed security templates and a subsequent `hermitd update` to receive the allowlist and ffmpeg layer. See [security](security.md#script-argument-trust) for download and attachment trust boundaries.
 
-`faster-whisper` is a third self-hosted runtime, generally the quickest on CPU, but it is a Python library rather than a command and needs a short wrapper script.
+## Other engines
 
-### Hosted: a transcription API
+A separately managed hosted transcription service can be integrated through an operator-authored workflow. It must handle credentials and audio disclosure explicitly; the built-in fallback supports only Groq and OpenAI.
 
-Audio is uploaded to the provider. No install beyond `curl` and `jq`, which the image has, and the same command on Docker and tmux. Put the key in `.env` (never in `config.json` or the role text). OpenAI lists `whisper-1` and `gpt-4o-transcribe` at $0.006 per minute and `gpt-4o-mini-transcribe` at $0.003 per minute as of September 2026; check your provider's pricing and endpoint. Shape of the call:
-
-```bash
-curl -sS https://api.openai.com/v1/audio/transcriptions -H "Authorization: Bearer $OPENAI_API_KEY" -F "file=@$IN" -F model=whisper-1 | jq -r .text
-```
-
-## 2. Tell the hermit to use it
-
-Save a standing role from chat, in your own words. Example:
-
-> remember: when a voice note arrives, download it, run `ffmpeg -loglevel error -y -i "<file>" -ar 16000 -ac 1 /tmp/note-$$.wav && whisper-cli -m /path/to/ggml-base.bin -f /tmp/note-$$.wav -nt` on the downloaded file, and treat the transcript as my message
-
-Pinning the role to one chat, listing roles, and forgetting one are covered in [Talk to Your Hermit](how-to-use.md#talk-to-your-hermit).
-
-The downloaded file lands in the `inbox/` of the channel plugin's state dir: `.claude.local/channels/<channel>/inbox/` on a bare-host boot, and `~/.claude/channels/<channel>/inbox/` as the container sees it (compose bind-mounts the first onto the second). Either way the hermit gets the exact path from the download and substitutes it into the command.
-
-Then send a voice note and check the reply addresses what you said.
-
-## Permissions
-
-Under the default `auto` permission mode a local binary reading an inbox file ran without a prompt in testing on Claude Code 2.1.263; expect the same, not a guarantee. On a prompting mode the first run raises one relayed approval; to stop that, add an allow rule in `.claude/settings.local.json` for every binary in the chain (`Bash(ffmpeg:*)` and `Bash(whisper-cli:*)` for the whisper.cpp recipe).
-
-## Not covered
-
-The hermit can transcribe a note, not send one. Reply audio would need text-to-speech, which nothing here provides.
+For GPU hosts, the Python `openai-whisper` package is an alternative runtime. Install it in a virtual environment alongside ffmpeg and manage its models and GPU dependencies yourself. Its `whisper` command is separate from the built-in `whisper-cli` path and needs an operator-authored workflow. The built-in default remains whisper.cpp.

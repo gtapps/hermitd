@@ -37,11 +37,16 @@ const EXPECTED_PATHS = [
   'docker.packages',
   'docker.recommended_plugins',
   'docker.fleet_mesh', 'browser',
+  'transcription',
   'routines.<n>.precheck',
   'routines.<n>.precheck_timeout_s',
 ];
 
 describe('protected settings paths', () => {
+  test('both transcription leaves require the settings gate', () => {
+    expect(askPathRegex().test('transcription.enabled')).toBe(true);
+    expect(askPathRegex().test('transcription.echo')).toBe(true);
+  });
   test('the protected surface stays complete', () => {
     expect(PROTECTED_PATHS).toEqual(EXPECTED_PATHS);
   });

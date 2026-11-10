@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.hermit
       args:
         HERMIT_BROWSER: ${HERMIT_BROWSER:-1}
+        HERMIT_TRANSCRIPTION: ${HERMIT_TRANSCRIPTION:-1}
         HOST_UID: ${UID:-1000}
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-latest}
     volumes:

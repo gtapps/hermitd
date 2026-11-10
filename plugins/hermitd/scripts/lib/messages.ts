@@ -20,6 +20,7 @@ import { sha256 } from './hash';
 import { readJson } from './cli';
 
 export const EN = {
+  transcript_echo: '🎙️ "{text}"',
   dream_flagged: 'Last night\'s memory tidy failed a safety check. The changes are still in place; say "undo the dream" to revert them.',
   // Pause reason, fills {label} in the paused lines below.
   pause_reason_budget: 'a budget cap',

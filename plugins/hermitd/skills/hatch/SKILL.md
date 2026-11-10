@@ -211,9 +211,10 @@ Substitute `<scope>` with the actual `core_install_scope` value.
 
 Record the operator's Visibility choice as `hatch_target` (overrides scope-derived default if different).
 
-After Phase 5's four questions, make a second `AskUserQuestion` call with these two questions:
+After Phase 5's four questions, make a second `AskUserQuestion` call with these three questions:
 
 - **Browser:** "Enable the hermit's own managed browser?" Options: "On (recommended)" (public pages without your laptop) / "Off" (decline the managed browser). Record `browser.enabled`.
+- **Transcription:** "Transcribe voice notes on this machine?" Options: "On (recommended)" / "Off". Record the boolean as `answers.transcription`, which overlays `transcription.enabled`. Quick mode asks nothing and keeps the template default.
 - **Default browser:** "Which browser should tasks use by default?" Options: "Managed browser (recommended)" (`browser.default: agent-browser`) / "Claude in Chrome" (`browser.default: chrome`, also set `chrome: true`, requires Claude login). Do not switch after a failure.
 
 
@@ -260,7 +261,7 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
 - **Phase 2** → `agent_name`, `language`, `timezone`.
 - **Phase 3** → `escalation`, `remote`.
 - **Phase 4** → `channels.<name>`: `enabled`, `allowed_users` (omit if the operator skipped access control), `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
-- **Phase 5** → `browser.enabled`, `browser.default`, `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
+- **Phase 5** → `browser.enabled`, `browser.default`, `transcription` (boolean), `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
 - **Never in a hatch payload** → `auth_mode`. It records which credential the hermit already runs on, and hatch has not established one yet; it stays at the template default (`null`, resolved from the credential volume at read time) and is written later by `/docker-setup`, `hermitd-docker login`, or a completed renewal.
 - **Step 3 hermit activation** → `activated_hermit`. `slug` is `activated_hermit.plugin`. Hatch never writes the operator’s startup skill.
 
@@ -279,6 +280,14 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-install.ts >/dev/null 2>&1 &
 ```
 
 Do not wait for downloads or run `sudo`. The final report names `hermitd run browser-host` when prerequisites are missing. For Docker, `/docker-setup` builds the browser into the image.
+
+**Start transcription preparation.** Beside the browser install, for `deployment: tmux` or `interactive` with `transcription.enabled` not false, launch once in the background:
+
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/transcribe.ts --prepare >/dev/null 2>&1 &
+```
+
+Do not wait or run `sudo`. This installs missing binaries only; models download on the first voice note. Include the transcription line from `will_apply` in the preview and from the final report in the summary.
 
 **Persist hatch options.** After config.json is written, before any settings or CLAUDE write, run:
 
