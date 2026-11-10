@@ -2153,7 +2153,7 @@ describe('reflect routine gating contract (token efficiency)', () => {
 const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age',
-  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'model-pricing-known',
+  'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'transcription', 'model-pricing-known',
   'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
   'backup',
 ];
@@ -3664,4 +3664,28 @@ test('browser doctor is warning-only and names the next command', withTmpdir(asy
   expect(checkBrowser(p, { deployment: 'container', marker: () => true }).status).toBe('ok');
   writeConfig(dir, { browser: { enabled: false } });
   expect(checkBrowser(p, options).status).toBe('ok');
+}));
+
+test('transcription doctor is read-only and warning-only for every readiness verdict', withTmpdir(async (dir) => {
+  const { checkTranscription, resolvePaths } = await import('../scripts/doctor-check');
+  const p = resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT);
+  writeConfig(dir, {});
+  const options = { platform: 'linux' as const, arch: 'x64', musl: false, docker: false, which: () => null };
+  expect(checkTranscription(p, options)).toMatchObject({ id: 'transcription', status: 'ok' });
+  expect(checkTranscription(p, { ...options, which: name => `/bin/${name}` }).status).toBe('ok');
+  expect(checkTranscription(p, { ...options, platform: 'darwin' }).detail).toContain('brew install whisper-cpp ffmpeg');
+  expect(checkTranscription(p, { ...options, platform: 'darwin' }).status).toBe('warn');
+  expect(checkTranscription(p, { ...options, musl: true }).status).toBe('warn');
+  expect(checkTranscription(p, { ...options, docker: true }).detail).toContain('hermitd update');
+  expect(checkTranscription(p, { ...options, docker: true }).status).toBe('warn');
+  const data = path.join(dir, '.claude.local/whisper.cpp');
+  expect(fs.existsSync(data)).toBe(false);
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'install-error.json'), JSON.stringify({ error: 'fixture failure' }));
+  const failed = checkTranscription(p, options);
+  expect(failed.status).toBe('warn');
+  expect(failed.detail).toContain('fixture failure');
+  expect(failed.detail).toContain('.hermit/bin/hermitd-run transcribe --prepare');
+  writeConfig(dir, { transcription: { enabled: false } });
+  expect(checkTranscription(p, options).status).toBe('ok');
 }));

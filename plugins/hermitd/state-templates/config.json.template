@@ -26,6 +26,10 @@
     "port": null,
     "host": null
   },
+  "transcription": {
+    "enabled": true,
+    "echo": true
+  },
   "push_notifications": true,
   "ask_gate": true,
   "routine_max_lateness_minutes": 60,

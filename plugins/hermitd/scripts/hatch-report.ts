@@ -121,6 +121,8 @@ export function confirmData(answers: Json): Json {
   }
   will.browser = { ...(t.browser ?? {}), ...(answers.browser ?? {}) };
   if (answers.browser) chosen.add('browser');
+  will.transcription = { ...(t.transcription ?? {}), ...(Object.hasOwn(answers, 'transcription') ? { enabled: answers.transcription } : {}) };
+  if (Object.hasOwn(answers, 'transcription')) chosen.add('transcription');
   // hermitd:heartbeat-restart is plumbing, not something the operator would recognize as
   // "a routine that wakes the agent".
   will.routines = {
@@ -203,6 +205,7 @@ export function finalData(o: Observed, deployment: string): Json {
     browser: { enabled: c.browser?.enabled !== false, default: c.browser?.default ?? 'agent-browser',
       ...(deployment !== 'docker' && c.browser?.enabled !== false && o.browserSetupNeeded ? { host_command: 'hermitd run browser-host' } : {}) },
     next_steps: steps,
+    transcription: { enabled: c.transcription?.enabled !== false, echo: c.transcription?.echo !== false },
     running_after_step: runningAfter,
     anytime: [
       { run: '/hermit-settings', purpose: 'change_settings', reference: CONFIG_REFERENCE_URL },

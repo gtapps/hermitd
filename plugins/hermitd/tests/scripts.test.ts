@@ -5311,19 +5311,19 @@ describe('session-check config validation', () => {
 });
 
 
-describe('hermitd-docker restart browser build argument', () => {
-  for (const enabled of [false, true]) {
-    test(`restart --build exports browser=${enabled}`, async () => {
+describe('hermitd-docker restart build arguments', () => {
+  for (const enabled of [false, true, undefined]) {
+    test(`restart --build exports browser and transcription=${enabled}`, async () => {
       const wd = setupWorkdir();
       const proj = wd.dir;
       try {
         fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
-        write(hermit(proj, 'config.json'), JSON.stringify({ browser: { enabled } }));
+        write(hermit(proj, 'config.json'), JSON.stringify({ browser: { enabled }, transcription: { enabled } }));
         write(path.join(proj, 'docker-compose.hermit.yml'), 'services: {}');
         const stub = path.join(proj, '.stub');
         fs.mkdirSync(stub);
         const callsFile = path.join(stub, 'docker-calls.txt');
-        write(path.join(stub, 'docker'), '#!/bin/sh\necho "$HERMIT_BROWSER $*" >> "$DOCKER_STUB_CALLS"\ncase "$*" in *"claude --version"*) echo "2.1.301";; *"ps --status running"*) echo hermit;; esac\n');
+        write(path.join(stub, 'docker'), '#!/bin/sh\necho "$HERMIT_BROWSER $HERMIT_TRANSCRIPTION $*" >> "$DOCKER_STUB_CALLS"\ncase "$*" in *"claude --version"*) echo "2.1.301";; *"ps --status running"*) echo hermit;; esac\n');
         fs.chmodSync(path.join(stub, 'docker'), 0o755);
         write(hermit(proj, 'bin', 'hermitd-run'), '#!/bin/sh\necho OK\n');
         fs.chmodSync(hermit(proj, 'bin', 'hermitd-run'), 0o755);
@@ -5334,7 +5334,7 @@ describe('hermitd-docker restart browser build argument', () => {
         expect(result.exitCode).toBe(0);
         const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
         expect(calls.some(line => line.includes(' build '))).toBe(true);
-        expect(calls.every(line => line.startsWith(enabled ? '1 ' : '0 '))).toBe(true);
+        expect(calls.every(line => line.startsWith(enabled === false ? '0 0 ' : '1 1 '))).toBe(true);
       } finally { wd.cleanup(); }
     });
   }

@@ -197,6 +197,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run dream finish *)',
   'Bash(.hermit/bin/hermitd-run dream undo *)',
   'Bash(.hermit/bin/hermitd-run channel-send *)',
+  'Bash(.hermit/bin/hermitd-run transcribe *)',
   'Bash(.hermit/bin/hermitd-run brief-digest .hermit *)',
   'Bash(.hermit/bin/hermitd-run observations observe *)',
   // The rc-gate skill's four verbs. The skill is operator-invoked, but the Bash

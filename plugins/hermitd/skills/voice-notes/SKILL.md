@@ -1,35 +1,24 @@
 ---
 name: voice-notes
-description: Handle a voice note or audio attachment the hermit cannot read, and set up transcription when the operator wants it. Activates when a channel message carries an audio attachment (Telegram voice message, Discord voice-message.ogg), or on "can you understand voice notes", "transcribe my voice message", "set up voice notes".
+description: Transcribe and respond to voice notes. Activates when any channel message carries an audio attachment, or when asked to transcribe an inbound voice message.
 ---
 # Voice Notes
 
-The channel plugin downloads the audio; the model cannot read it. Transcription is an operator choice, not a shipped default. The recipe lives in `${CLAUDE_PLUGIN_ROOT}/docs/voice-notes.md`; route to it, do not repeat it.
+Voice-note transcription and transcript echoes are on by default. Handle the audio as the sender's message, and reply through the same channel's reply tool. Never include local file paths or shell commands in channel replies.
 
-## Step 0 — Channel reply
+1. Download the attachment with that channel's own download tool. Keep it under that enabled channel's state directory.
+2. Read the configured `language` from `.hermit/config.json` and derive a two-letter language code (`pt-BR` becomes `pt`; missing or invalid means `en`).
+3. Run the command below using the inbound tag's channel key, chat id and message id. Use Bash `timeout: 600000` and quote all argument values as shell arguments.
 
-If this skill was invoked from a channel-arrived message (the inbound prompt contains a `<channel source="...">` tag), reply via that channel's reply tool. Otherwise emit to conversation. On a channel-tagged turn, step 1's bounded ask also opens a durable task input decision (see `channel-responder` § Channel-safe ask bridge), so the answer re-enters this skill in a later turn instead of stranding the setup half-done.
-
-## An audio attachment arrives
-
-With no standing role covering it, reply: you received a voice note, you cannot listen to it yet, and you can set that up if they want. Do not guess at the content or ask them to retype it unless they decline setup.
-
-## The operator asks to set it up
-
-Read `.hermit/config.json`: no channel with `enabled !== false` means no audio ever arrives (the Claude app transcribes before sending), so say so and stop.
-
-Otherwise walk them through the doc from chat:
-
-1. Settle one thing: should the audio stay on this machine, or is uploading it to a transcription provider acceptable? Self-hosted is the default. Then read only the matching doc section, self-hosted or hosted, plus its step 2.
-
-   **Channel-tagged turn:** send the question via the reply tool, open the input decision below, and stop. The answer comes back as a `--answer self-hosted` / `--answer hosted` re-entry, which skips the ask and resumes here.
    ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --title '<question>' --done 'Answer recorded' --requester <sourceKey>:<user_id> --conversation '<sourceKey>:<chat_id>' --waiting-on requester --dedupe-key 'question:voice-notes:setup' --decision '{"purpose":"input","authority":"requester","generation":1,"resume":"/hermitd:voice-notes setup --answer {answer}","options":["self-hosted","hosted"]}'
+   .hermit/bin/hermitd-run transcribe --file '<downloaded audio>' --channel '<channel key>' --chat '<chat id>' --message-id '<message id>' --language '<two-letter code>'
    ```
-2. Install: read `runtime_mode` from `.hermit/state/runtime.json`. On `docker`, delegate to `/hermitd:docker-customize` with the tool the doc names; otherwise name the host install for the operator rather than running it yourself. A hosted provider needs its key in `.env`, never in the role text or `config.json`.
-3. Role: save the standing role from the doc through the ordinary "remember" path, substituting the command they ended up with. Offer "for this channel" if they only want it in one chat.
-4. Verify: have them send a voice note and confirm the reply addresses what they said.
 
-On a prompting permission mode, mention the doc's allow rules after the first run raises an approval.
+4. Read the single JSON result and reply through that channel's reply tool:
 
-Validate the question target and use [the durable-question contract](../channel-responder/questions.md). Resume only from a matching `task answer` result; a no answer is input, never task cancellation.
+   - `ok`: act on `transcript` as that sender's message. Quote it first only if `echo` is `failed` or `unsupported`; otherwise the script already echoed it or the operator turned echoes off.
+   - `empty`: do not guess. Ask the sender to resend or type the message.
+   - `unavailable`: give one neutral line saying you could not transcribe the voice message, with no setup advice.
+   - `disabled`: acknowledge the voice note without guessing its content.
+
+If argument validation returns an error, correct the invocation using the attachment and the inbound tag. Keep diagnostic paths and commands out of the chat.

@@ -32,6 +32,11 @@ const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
 console.log(config.browser?.enabled === false ? '0' : '1');
 " "$CONFIG")
 export HERMIT_BROWSER
+HERMIT_TRANSCRIPTION=$(bun -e "
+const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+console.log(config.transcription?.enabled === false ? '0' : '1');
+" "$CONFIG")
+export HERMIT_TRANSCRIPTION
 
 # Resolve tmux session name from config
 TMUX_SESSION=$(bun -e "

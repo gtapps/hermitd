@@ -106,6 +106,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
 | `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | next hermitd restart (Docker: next hermitd update) |
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
+| `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
+| `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |

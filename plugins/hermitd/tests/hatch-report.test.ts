@@ -262,3 +262,16 @@ test('browser preview carries the default and host report names the prerequisite
   expect(finalData(observe(root), 'tmux').browser.host_command).toBe('hermitd run browser-host');
   expect(finalData(observe(root), 'docker').browser.host_command).toBeUndefined();
 });
+
+test('transcription preview and summary carry defaults and explicit opt-out', async () => {
+  const preview = async (answers: object) => JSON.parse((await runScript('hatch-report.ts', {
+    args: ['confirm', freshDir()], stdin: JSON.stringify(answers),
+    env: { CLAUDE_PLUGIN_ROOT: path.resolve(import.meta.dir, '..') },
+  })).stdout);
+  expect((await preview({})).will_apply.transcription).toEqual({ enabled: true, echo: true });
+  const declined = await preview({ transcription: false });
+  expect(declined.will_apply.transcription.enabled).toBe(false);
+  expect(declined.defaults).not.toContain('transcription');
+  expect(finalData(observe(hatched()), 'tmux').transcription).toEqual({ enabled: true, echo: true });
+  expect(finalData(observe(hatched({ config: { transcription: { enabled: false } } })), 'docker').transcription.enabled).toBe(false);
+});

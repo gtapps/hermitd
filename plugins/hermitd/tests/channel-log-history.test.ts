@@ -1,11 +1,40 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { conversationHistory, dbExists, logMessage } from '../scripts/lib/channel-log';
+import { conversationHistory, dbExists, enrichInbound, logMessage, rows, searchLog } from '../scripts/lib/channel-log';
 import { freshDirFactory } from './helpers/workdir';
 
 const { freshDir, cleanup } = freshDirFactory('conversation-history-');
 afterAll(cleanup);
+
+test('inbound enrichment preserves sender and body, is searchable and idempotent', () => {
+  const dir = freshDir();
+  const target = { source: 'custom', chat_id: 'chat', message_id: 'voice' };
+  logMessage(dir, { ...target, direction: 'in', sender: 'Alice', sender_id: 'alice', text: '(attachment)' });
+  logMessage(dir, { ...target, direction: 'out', text: 'outbound unchanged' });
+  const input = { ...target, transcript: 'Buy kumquats tomorrow' };
+  expect(enrichInbound(dir, input)).toEqual({ ok: true });
+  expect(enrichInbound(dir, input)).toEqual({ ok: true });
+  const found = searchLog(dir, ['kumquats']);
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ ...target, sender: 'Alice', text: '(attachment)\n🎙️ Buy kumquats tomorrow', direction: 'in' });
+  expect(rows(dir).rows[0].sender_id).toBe('alice');
+  expect(rows(dir).rows[1].text).toBe('outbound unchanged');
+  expect(searchLog(dir, ['attachment'])).toHaveLength(1);
+});
+
+test('enrichment with logging off or no row is a no-op and never creates a database', () => {
+  const dir = freshDir();
+  const input = { source: 'custom', chat_id: 'chat', message_id: 'voice', transcript: 'spoken' };
+  expect(enrichInbound(dir, input)).toEqual({ ok: false });
+  expect(dbExists(dir)).toBe(false);
+  logMessage(dir, { ...input, direction: 'in', text: '(attachment)' });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ knowledge: { channel_log_enabled: false } }));
+  expect(enrichInbound(dir, input)).toEqual({ ok: false });
+  expect(rows(dir).rows[0].text).toBe('(attachment)');
+  fs.writeFileSync(path.join(dir, 'config.json'), '{}');
+  expect(enrichInbound(dir, { ...input, message_id: 'absent' })).toEqual({ ok: false });
+});
 
 test('history selects the newest rows across both directions in chronological order', () => {
   const dir = freshDir();

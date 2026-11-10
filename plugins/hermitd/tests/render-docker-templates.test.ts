@@ -33,6 +33,12 @@ const dockerfile = (dir: string) => fs.readFileSync(path.join(dir, 'Dockerfile.h
 const compose = (dir: string) => fs.readFileSync(path.join(dir, 'docker-compose.hermit.yml'), 'utf8');
 
 describe('render-docker-templates.ts', () => {
+  test('every image has optional default-on ffmpeg and compose passes its build argument', async () => {
+    const dir = freshDir();
+    expect((await render(dir)).exitCode).toBe(0);
+    expect(dockerfile(dir)).toContain('# --- transcription ---\nARG HERMIT_TRANSCRIPTION=1\nRUN if [ "$HERMIT_TRANSCRIPTION" = 1 ]; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r /var/lib/apt/lists/*; fi');
+    expect(compose(dir)).toContain('HERMIT_TRANSCRIPTION: ${HERMIT_TRANSCRIPTION:-1}');
+  });
   test('renders all three files, exit 0, no {{ }} left', async () => {
     const dir = freshDir();
     const r = await render(dir);

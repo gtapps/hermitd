@@ -691,6 +691,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
   const TEMPLATE_ONLY_KEYS = new Set([
     'routines', 'monitors',
     'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host',
+    'transcription', 'transcription.enabled', 'transcription.echo',
     'docker.recommended_plugins',
     // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
     'routine_wake_lint', 'routine_wake_lint.max_windows',

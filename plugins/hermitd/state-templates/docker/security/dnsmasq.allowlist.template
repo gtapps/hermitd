@@ -44,6 +44,11 @@ server=/discord.com/1.1.1.1
 server=/discordapp.com/1.1.1.1
 server=/discord.gg/1.1.1.1
 server=/telegram.org/1.1.1.1
+# Voice-note model downloads and credential-enabled cloud fallback
+server=/huggingface.co/1.1.1.1
+server=/hf.co/1.1.1.1
+server=/api.groq.com/1.1.1.1
+server=/api.openai.com/1.1.1.1
 
 # --- Fleet-plugin contributions (rendered from each plugin's
 #     `## Docker network requirements` section, gated by per-entry

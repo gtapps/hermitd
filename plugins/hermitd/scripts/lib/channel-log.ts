@@ -194,6 +194,30 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
  * separation in FTS5 MATCH means AND by default; explicit OR keeps this an
  * any-term match, matching the substring scoring the rest of search.ts uses.
  */
+export function enrichInbound(
+  hermitDir: string,
+  input: { source: string; chat_id: string; message_id: string; transcript: string },
+): { ok: boolean } {
+  try {
+    if (!isLoggingEnabled(readSettledConfig(hermitDir), input.source) || !dbExists(hermitDir)) return { ok: false };
+    const db = openDb(hermitDir, { busyTimeoutMs: CLI_BUSY_TIMEOUT_MS });
+    try {
+      return db.transaction(() => {
+        const row = db.query("SELECT id, text FROM messages WHERE direction = 'in' AND source = ? AND chat_id = ? AND message_id = ? ORDER BY id DESC LIMIT 1")
+          .get(input.source, input.chat_id, input.message_id) as { id: number; text: string } | null;
+        if (!row) return { ok: false };
+        const suffix = `\n🎙️ ${input.transcript}`;
+        if (row.text.endsWith(suffix)) return { ok: true };
+        const text = row.text + suffix;
+        db.query("INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', ?, ?)").run(row.id, row.text);
+        db.query('UPDATE messages SET text = ? WHERE id = ?').run(text, row.id);
+        db.query('INSERT INTO messages_fts(rowid, text) VALUES (?, ?)').run(row.id, text);
+        return { ok: true };
+      }).immediate();
+    } finally { db.close(); }
+  } catch { return { ok: false }; }
+}
+
 function buildMatchExpr(terms: string[]): string {
   return terms
     .map((t) => `"${t.replace(/"/g, '""')}"`)
