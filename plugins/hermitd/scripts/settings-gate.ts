@@ -172,6 +172,12 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
   return false;
 }
 
+// One transcript read per hook run: a task command that also writes routines needs both the senders and the origin.
+let turnRead: { tPath: string; turn: ReturnType<typeof readTurn> } | undefined;
+function currentTurn(tPath: string): ReturnType<typeof readTurn> {
+  if (turnRead?.tPath !== tPath) turnRead = { tPath, turn: readTurn(tPath) };
+  return turnRead.turn;
+}
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
   | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };
@@ -184,7 +190,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return { kind: 'unknown' };
-    const { prompt } = readTurn(tPath);
+    const { prompt } = currentTurn(tPath);
     if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
@@ -205,7 +211,7 @@ function turnChannelSenders(payload: Json): SenderClaim[] | null {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return null;
-    const { lines, prompt } = readTurn(tPath);
+    const { lines, prompt } = currentTurn(tPath);
     if (!prompt.boundaryFound) return null;
     const config = readConfigRaw(hermitDir());
     const senders: SenderClaim[] = [];

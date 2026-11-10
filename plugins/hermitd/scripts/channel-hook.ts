@@ -95,8 +95,8 @@ function appendReplyEvent(channelKey: string, ts: string): void {
 }
 
 // Was this reply sent during a turn that a matching inbound envelope actually
-// opened? Reads a tail window of the transcript (cc-compat readTurn), cheap
-// enough to run on every reply, unlike a whole-session read, finds the
+// opened? Reads a tail window of the transcript (cc-compat readTurn: 512 KB,
+// widening once to 32 MB only when the turn started earlier), finds the
 // boundary prompt that started the CURRENT turn (mirrors cost-tracker.ts's
 // resolveTurnSource/turnPromptText usage), and requires that prompt to be a
 // <channel> envelope from the SAME chat this reply is going to. A routine
