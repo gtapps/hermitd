@@ -281,7 +281,7 @@ Routine `precheck`, channel `send_script`, config watch scripts, and `watch-poll
 
 Voice-note transcription uses pinned, SHA-256-verified first-use downloads from github.com (whisper.cpp and optional ffmpeg), huggingface.co (base and Silero models), and archive.ubuntu.com or ports.ubuntu.com (libgomp). Linux host hatch prepares missing binaries in the background when enabled; models wait for the first note. Setting `transcription.enabled: false` prevents these downloads and cloud requests.
 
-A present `GROQ_API_KEY` or `OPENAI_API_KEY` enables uploading audio when local transcription is unavailable, with Groq tried first. No key means no cloud upload. The transcription additions to the netguard allowlist are `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`.
+A present `GROQ_API_KEY` or `OPENAI_API_KEY` enables uploading audio when local transcription is unavailable, with Groq tried first. No key means no cloud upload. The transcription additions to the netguard allowlist are `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`.
 
 The sealed `transcribe` verb derives its state directory from `hermitDir()`, never argv. Before processing audio it requires a regular, non-symlink attachment whose realpath is contained under `channelStateDir()` for the enabled channel. It allowlists audio extensions and rejects `.env*`, `*.pem` and `*.key` names. Local conversion and recognition children receive only `PATH`, `HOME` and `LANG`, and share a single deadline. Transcript echoes target the inbound chat and skip outbound logging; the transcript enriches the sender's inbound log row instead.
 

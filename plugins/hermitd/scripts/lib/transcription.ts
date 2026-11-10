@@ -147,7 +147,9 @@ export async function installEngine(options: EngineOptions): Promise<{ status: '
     fs.mkdirSync(parent, { recursive: true });
     for (const name of fs.readdirSync(parent)) if (name.startsWith('.install-')) fs.rmSync(path.join(parent, name), { recursive: true });
     const target = path.join(parent, pins.version);
-    if (installedWhisper(options.projectRoot, platform, arch)?.dir === target) return { status: 'ready', dir: target };
+    const bundled = !(options.which ?? (name => Bun.which(name)))('ffmpeg');
+    const current = installedWhisper(options.projectRoot, platform, arch);
+    if (current?.dir === target && (current.ffmpeg || !bundled)) return { status: 'ready', dir: target };
     temp = fs.mkdtempSync(path.join(parent, '.install-'));
     const stage = path.join(temp, 'release');
     fs.mkdirSync(stage);
@@ -171,7 +173,6 @@ export async function installEngine(options: EngineOptions): Promise<{ status: '
     const libgomp = findFile(libraries, 'libgomp.so.1');
     if (!libgomp) throw new Error('libgomp_missing');
     fs.copyFileSync(libgomp, path.join(stage, 'libgomp.so.1'));
-    const bundled = !(options.which ?? (name => Bun.which(name)))('ffmpeg');
     if (bundled) {
       const ffmpegArchive = path.join(temp, 'ffmpeg.tar.xz');
       await download(pins.ffmpeg[architecture], ffmpegArchive, options);

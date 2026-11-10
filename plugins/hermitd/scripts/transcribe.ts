@@ -76,6 +76,7 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
   } catch (error) { return { result: { error: error instanceof Error ? error.message : String(error) }, exitCode: 1 }; }
   const finish = (result: Result) => ({ result, exitCode: 0 });
   if (raw === null || config.transcription.enabled === false) return finish(args.prepare ? { status: 'disabled' } : { status: 'disabled', path: file });
+  const language = normalizeLanguage((args['--language'] as string | undefined) ?? config.language ?? undefined);
   const which = options.which ?? (name => Bun.which(name));
   const engineOptions: EngineOptions = { projectRoot: path.dirname(dir), deadline, which, fetch: options.fetch };
   const env = options.env ?? process.env;
@@ -112,7 +113,7 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
       const output = path.join(temp, 'transcript');
       const converted = run([ffmpeg, '-nostdin', '-loglevel', 'error', '-y', '-i', file, '-ar', '16000', '-ac', '1', wav]);
       if (converted.exitCode !== 0) throw new Error(`ffmpeg_failed:${converted.stderr}`);
-      const recognized = run([binary, '-m', models.base, '-f', wav, '-l', normalizeLanguage(args['--language'] as string | undefined), '-t', '4', '-bs', '5', '-bo', '5', '-ng', '-nt', '-otxt', '-of', output, '--vad', '-vm', models.silero, '-vsd', '500']);
+      const recognized = run([binary, '-m', models.base, '-f', wav, '-l', language, '-t', '4', '-bs', '5', '-bo', '5', '-ng', '-nt', '-otxt', '-of', output, '--vad', '-vm', models.silero, '-vsd', '500']);
       remaining(deadline);
       if (recognized.exitCode !== 0) throw new Error(`whisper_failed:${recognized.stderr}`);
       if (!fs.existsSync(`${output}.txt`)) throw new Error('local_transcript_missing');
@@ -134,7 +135,7 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
           const body = new FormData();
           body.set('file', Bun.file(file), path.basename(file));
           body.set('model', model);
-          body.set('language', normalizeLanguage(args['--language'] as string | undefined));
+          body.set('language', language);
           const response = await (options.fetch ?? fetch)(`${base}/audio/transcriptions`, {
             method: 'POST', headers: { Authorization: `Bearer ${env[key]}` }, body,
             signal: AbortSignal.timeout(remaining(deadline, 60_000)),

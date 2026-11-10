@@ -7,14 +7,13 @@ description: Transcribe and respond to voice notes. Activates when any channel m
 Voice-note transcription and transcript echoes are on by default. Handle the audio as the sender's message, and reply through the same channel's reply tool. Never include local file paths or shell commands in channel replies.
 
 1. Download the attachment with that channel's own download tool. Keep it under that enabled channel's state directory.
-2. Read the configured `language` from `.hermit/config.json` and derive a two-letter language code (`pt-BR` becomes `pt`; missing or invalid means `en`).
-3. Run the command below using the inbound tag's channel key, chat id and message id. Use Bash `timeout: 600000` and quote all argument values as shell arguments.
+2. Run the command below using the inbound tag's channel key, chat id and message id. Use Bash `timeout: 600000` and quote all argument values as shell arguments.
 
    ```bash
-   .hermit/bin/hermitd-run transcribe --file '<downloaded audio>' --channel '<channel key>' --chat '<chat id>' --message-id '<message id>' --language '<two-letter code>'
+   .hermit/bin/hermitd-run transcribe --file '<downloaded audio>' --channel '<channel key>' --chat '<chat id>' --message-id '<message id>'
    ```
 
-4. Read the single JSON result and reply through that channel's reply tool:
+3. Read the single JSON result and reply through that channel's reply tool:
 
    - `ok`: act on `transcript` as that sender's message. Quote it first only if `echo` is `failed` or `unsupported`; otherwise the script already echoed it or the operator turned echoes off.
    - `empty`: do not guess. Ask the sender to resend or type the message.

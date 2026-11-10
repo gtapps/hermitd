@@ -68,6 +68,12 @@ describe('transcription engine', () => {
     expect(installedWhisper(root, 'linux', 'x64')?.ffmpeg).toBeTruthy();
     expect(options.requests).toContain('ffmpeg');
   }));
+  test('an install without ffmpeg is completed once PATH ffmpeg is gone', withDir(async root => {
+    const options = fixture(root);
+    expect(await installEngine({ ...options, which: () => '/usr/bin/ffmpeg' })).toHaveProperty('status', 'ready');
+    expect(await installEngine({ ...options, which: () => null })).toHaveProperty('status', 'ready');
+    expect(installedWhisper(root, 'linux', 'x64')?.ffmpeg).toBeTruthy();
+  }));
   test('readiness never writes and reports default first use', withDir(root => {
     const before = fs.readdirSync(root, { recursive: true });
     expect(readiness({ projectRoot: root, platform: 'linux', arch: 'x64', musl: false, which: () => null }).status).toBe('first_use');

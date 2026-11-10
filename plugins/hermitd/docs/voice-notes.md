@@ -1,8 +1,8 @@
 # Voice Notes
 
-Voice notes work by default on every agent. When an audio attachment arrives from any channel, the hermit downloads it with that channel's tool, transcribes it, echoes `🎙️ "…"` in the same chat, and replies to its content as the sender's message. The transcript is added to the original inbound log row, preserving the sender and making the spoken words searchable when channel logging is enabled. Echoes do not ping everyone, here or roles; user mentions remain enabled.
+Voice notes work by default on every agent. When an audio attachment arrives from any channel, the agent downloads it with that channel's tool, transcribes it, echoes `🎙️ "…"` in the same chat, and replies to its content as the sender's message. The transcript is added to the original inbound log row, preserving the sender and making the spoken words searchable when channel logging is enabled. Echoes do not ping everyone, here or roles; user mentions remain enabled.
 
-Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled transcription downloads no engine or models and uploads no audio; the hermit acknowledges the note without exposing a file path. Use `/hermitd:hermit-settings transcription-echo` to turn the echo off independently. Both changes apply to the next voice note; Docker package changes take effect after the next `hermitd update`.
+Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled transcription downloads no engine or models and uploads no audio; the agent acknowledges the note without exposing a file path. Use `/hermitd:hermit-settings transcription-echo` to turn the echo off independently. Both changes apply to the next voice note; Docker package changes take effect after the next `hermitd update`.
 
 ## Local transcription
 
@@ -24,7 +24,7 @@ A run has one 540-second deadline. A silent clip produces a request to resend or
 
 When local transcription is unavailable, a present `GROQ_API_KEY` enables an audio upload to Groq with `whisper-large-v3-turbo`; `OPENAI_API_KEY` enables the OpenAI `whisper-1` fallback. Groq takes priority. Keep keys in ignored environment files, never in config or chat. Without either key, audio remains local. Cloud requests have a maximum 60-second timeout within the shared deadline, and files over 25 MB are not uploaded. Silence detected locally does not trigger an upload.
 
-Netguard templates allow `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`. Existing Docker agents need the refreshed security templates and a subsequent `hermitd update` to receive the allowlist and ffmpeg layer. See [security](security.md#script-argument-trust) for download and attachment trust boundaries.
+Netguard templates allow `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`. Existing Docker agents need the refreshed security templates and a subsequent `hermitd update` to receive the allowlist and ffmpeg layer. See [security](security.md#script-argument-trust) for download and attachment trust boundaries.
 
 ## Other engines
 

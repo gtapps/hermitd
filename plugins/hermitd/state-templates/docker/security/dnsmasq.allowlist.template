@@ -44,7 +44,9 @@ server=/discord.com/1.1.1.1
 server=/discordapp.com/1.1.1.1
 server=/discord.gg/1.1.1.1
 server=/telegram.org/1.1.1.1
-# Voice-note model downloads and credential-enabled cloud fallback
+# Voice-note engine and model downloads and credential-enabled cloud fallback
+server=/archive.ubuntu.com/1.1.1.1
+server=/ports.ubuntu.com/1.1.1.1
 server=/huggingface.co/1.1.1.1
 server=/hf.co/1.1.1.1
 server=/api.groq.com/1.1.1.1

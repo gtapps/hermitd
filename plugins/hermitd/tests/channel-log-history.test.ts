@@ -23,6 +23,15 @@ test('inbound enrichment preserves sender and body, is searchable and idempotent
   expect(searchLog(dir, ['attachment'])).toHaveLength(1);
 });
 
+test('enrichment keeps the stored text cap', () => {
+  const dir = freshDir();
+  const input = { source: 'custom', chat_id: 'chat', message_id: 'voice', transcript: 'x'.repeat(10_000) };
+  logMessage(dir, { ...input, direction: 'in', text: '(attachment)' });
+  expect(enrichInbound(dir, input)).toEqual({ ok: true });
+  expect(enrichInbound(dir, input)).toEqual({ ok: true });
+  expect(rows(dir).rows[0].text).toHaveLength(8 * 1024);
+});
+
 test('enrichment with logging off or no row is a no-op and never creates a database', () => {
   const dir = freshDir();
   const input = { source: 'custom', chat_id: 'chat', message_id: 'voice', transcript: 'spoken' };
