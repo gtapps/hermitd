@@ -7,13 +7,12 @@ import { conversationKey } from './conversation-key';
 import { parseChannelEnvelope } from './channel-envelope';
 import { readConfigRaw } from './config-read';
 import { threadRecords } from './tasks';
-import { readTailLines, toolUseNames, toolUsesWithResults, transcriptPath, turnPromptText } from './cc-compat';
+import { readTurn, toolUseNames, toolUsesWithResults, transcriptPath } from './cc-compat';
 import { readJson } from './cli';
 import path from 'node:path';
 
 type Json = any;
 
-const TAIL_BYTES = 512 * 1024;
 // Channel tools that only read, so calling one sends the operator nothing.
 const READ_ONLY_TOOL_RE = /(download_attachment|fetch_messages)$/;
 
@@ -22,8 +21,7 @@ export async function replyBlockReason(dir: string, payload: Json): Promise<stri
     const tPath = transcriptPath(payload);
     if (!tPath) return null;
 
-    const { lines } = readTailLines(tPath, TAIL_BYTES);
-    const prompt = turnPromptText(lines, lines.length);
+    const { lines, prompt } = readTurn(tPath);
     if (!prompt.boundaryFound) return null;
 
     const config = readConfigRaw(dir);

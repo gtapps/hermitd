@@ -26,7 +26,7 @@ import { isSecretPath } from './lib/config-audit';
 import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
-import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
+import { hermitDir, readTurn, transcriptPath } from './lib/cc-compat';
 import { resolveProjectScript } from './lib/routines/gate';
 
 type Json = any;
@@ -172,21 +172,6 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
   return false;
 }
 
-const TURN_TAIL_BYTES = 512 * 1024;
-const TURN_TAIL_CAP = 32 * 1024 * 1024;
-
-/**
- * The current turn's lines and opening prompt. A long turn can push its opening prompt
- * past any fixed tail, so the read doubles until it finds the boundary, reaches the
- * file start, or hits the cap; the boundary rules stay turnPromptText's.
- */
-function readTurn(tPath: string): { lines: string[]; prompt: ReturnType<typeof turnPromptText> } {
-  for (let bytes = TURN_TAIL_BYTES; ; bytes *= 2) {
-    const { lines, readFrom } = readTailLines(tPath, bytes);
-    const prompt = turnPromptText(lines, lines.length);
-    if (prompt.boundaryFound || readFrom === 0 || bytes >= TURN_TAIL_CAP) return { lines, prompt };
-  }
-}
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
   | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };

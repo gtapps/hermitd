@@ -572,6 +572,27 @@ function turnPromptText(lines: string[], billedIndex: number): { text: string; b
   return { text: '', boundaryFound: false, index: -1, typed: false, joined };
 }
 
+const TURN_TAIL_BYTES = 512 * 1024;
+const TURN_TAIL_CAP = 32 * 1024 * 1024;
+
+/**
+ * The current turn's lines and opening prompt. A long turn can push its opening prompt
+ * past a fixed tail, so a missed boundary reads once more at the cap (one wide read,
+ * not a doubling ladder, keeps a hook inside its timeout); the boundary rules stay
+ * turnPromptText's.
+ * @param {string} tPath
+ * @returns {{ lines: string[], prompt: ReturnType<typeof turnPromptText> }}
+ */
+function readTurn(tPath: string): { lines: string[]; prompt: ReturnType<typeof turnPromptText> } {
+  let { lines, readFrom } = readTailLines(tPath, TURN_TAIL_BYTES);
+  let prompt = turnPromptText(lines, lines.length);
+  if (!prompt.boundaryFound && readFrom > 0) {
+    lines = readTailLines(tPath, TURN_TAIL_CAP).lines;
+    prompt = turnPromptText(lines, lines.length);
+  }
+  return { lines, prompt };
+}
+
 /**
  * A compact_boundary marker — CC writes one `type:'system'` entry per context
  * compaction (auto or manual). `compactMetadata.trigger` distinguishes them but
@@ -841,6 +862,7 @@ export {
   isTurnBoundary,
   isSkillInjection,
   turnPromptText,
+  readTurn,
   isCompactBoundary,
   toolUseNames,
   toolUsesWithResults,

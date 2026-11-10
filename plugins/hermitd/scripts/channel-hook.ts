@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homeSeedBlock, replyToolChannel } from './lib/channel-config';
 import { safe } from './lib/sanitize';
-import { hermitDir, transcriptPath, readTailLines, turnPromptText } from './lib/cc-compat';
+import { hermitDir, transcriptPath, readTurn } from './lib/cc-compat';
 import { readConfigRaw } from './lib/config-read';
 import { auditConfigChange } from './lib/config-audit';
 import { parseChannelEnvelope } from './lib/channel-envelope';
@@ -38,13 +38,6 @@ const CONFIG_PATH = path.join(HERMIT_DIR, 'config.json');
 const ACTIVITY_PATH = path.join(HERMIT_DIR, 'state', 'channel-activity.json');
 const REPLIES_PATH = path.join(HERMIT_DIR, 'state', 'channel-replies.jsonl');
 const MAX_STDIN = 64 * 1024;
-// 512KB matches cost-tracker's calibrated window for the same walk-back-to-the-
-// turn-boundary job. A channel reply lands at the END of a channel-responder
-// turn that already absorbed a skill body and several tool results; a window
-// that doesn't reach that turn's opening envelope fails the gate — and since
-// this hook seeds default_chat_id, that
-// silently leaves proactive outbound unconfigured.
-const TAIL_BYTES = 512 * 1024;
 
 function readConfig(): Json | null {
   return readConfigRaw(HERMIT_DIR);
@@ -102,8 +95,8 @@ function appendReplyEvent(channelKey: string, ts: string): void {
 }
 
 // Was this reply sent during a turn that a matching inbound envelope actually
-// opened? Reads only a tail window of the transcript (TAIL_BYTES) — cheap
-// enough to run on every reply, unlike a whole-session read — finds the
+// opened? Reads a tail window of the transcript (cc-compat readTurn), cheap
+// enough to run on every reply, unlike a whole-session read, finds the
 // boundary prompt that started the CURRENT turn (mirrors cost-tracker.ts's
 // resolveTurnSource/turnPromptText usage), and requires that prompt to be a
 // <channel> envelope from the SAME chat this reply is going to. A routine
@@ -114,15 +107,13 @@ export function isEligibleInboundReply(event: Json, channelKey: string, chatId: 
     const tPath = transcriptPath(event);
     if (!tPath) return false;
 
-    const { lines } = readTailLines(tPath, TAIL_BYTES);
-
-    const prompt = turnPromptText(lines, lines.length);
-    // No boundary in the window means "couldn't tell", not "wasn't inbound" —
-    // still fail closed, but say so, or a turn too large for TAIL_BYTES looks
-    // identical to a proactive send in the log.
+    const { prompt } = readTurn(tPath);
+    // No boundary in the window means "couldn't tell", not "wasn't inbound": still
+    // fail closed, but say so, or a turn too large to read looks identical to a
+    // proactive send in the log.
     if (!prompt.boundaryFound) {
       process.stderr.write(
-        `[channel-hook] undetermined ${channelKey}.default_chat_id — ${safe(chatId)} found no turn boundary in the last ${TAIL_BYTES} transcript bytes\n`
+        `[channel-hook] undetermined ${channelKey}.default_chat_id: ${safe(chatId)} found no turn boundary in the readable transcript tail\n`
       );
       return false;
     }
