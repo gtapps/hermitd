@@ -531,7 +531,7 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
     return {
       id: 'version-currency',
       status: 'warn',
-      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
+      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`hermitd update\` from a host terminal (it also applies the permission list), or \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
     };
   } catch (e: any) {
     return { id: 'version-currency', status: 'warn', detail: `check failed: ${e.message}` };

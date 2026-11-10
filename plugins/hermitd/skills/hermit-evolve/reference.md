@@ -246,19 +246,9 @@ For real hits, write one `Findings:` line per subject with replacement(s), hit c
 
 ### 8. Ensure plugin permissions in settings file
 
-Same logic as init step 8, but target the file determined by `hatch_target` (resolved in Step 1):
-- `hatch_target == "local"` → `.claude/settings.local.json`
-- `hatch_target == "committed"` → `.claude/settings.json`
+This step reports and never writes. `hermitd update` applies the plugin's sealed permission list when it moves the core plugin, adding missing sealed entries and removing only ones this plugin has retired, and prints what it changed; the operator's own rules are never touched.
 
-Run the sync verb — it is the single owner of this list, so do not restate the entries here or diff them by hand. It holds the canonical `HERMIT_ALLOW` (so it can't drift from what `hatch` installs), writes via `fs` (so it works even under the strict hook profile, where an `Edit`/`Write` to `.claude/settings*.json` is denied), and is idempotent:
-
-Run `apply-settings` (Commands).
-
-where `<resolved-settings-file>` is `.claude/settings.local.json` (local) or `.claude/settings.json` (committed) per `hatch_target`, using the absolute Commands entry.
-
-**Delegated mode: run it without asking** (a missing `bun` permission breaks hooks, so this is non-optional). It adds every sealed entry the target lacks and removes only entries this plugin shipped in a previous version and has since retired; an operator's own rules are never touched, and a target that is already current is not rewritten at all. Parse its one JSON line, `{"missing":[...],"obsolete":[...],"obsolete_deny":[...]}`, and report the three counts in the step-10 report, naming each `obsolete_deny` entry verbatim, since those are `permissions.deny` rules the operator may have wanted and can re-add by hand. When `other_file` is present, also report its `settings_file` and removal counts, naming each `other_file.obsolete_deny` entry verbatim. All three empty and no `other_file` means both files were already current; say nothing.
-
-(On a hermit whose allow-list predates `apply-settings.ts` itself, this command may hit a permission gate inside this subagent, which can't prompt — relay that to the step-10 report so the operator can add `Bash(bun */scripts/apply-settings.ts*)` and re-run, rather than wedging.)
+Run `permissions-plan` (Commands) with `<resolved-settings-file>` as `.claude/settings.local.json` when `hatch_target` is `local`, or `.claude/settings.json` when it is `committed`. Its one JSON line is `{"missing":[...],"obsolete":[...],"obsolete_deny":[...]}`. All three empty means the list is current; say nothing. Otherwise the plugin was updated some other way or the sync failed: report the counts, name each `obsolete_deny` entry verbatim (deny rules the operator may have wanted), and give the operator the command that applies them: the `permissions-plan` command as you ran it, with its last argument changed to `permissions-sync`.
 
 ### 8b. Retranslate changed notices
 

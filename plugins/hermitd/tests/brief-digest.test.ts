@@ -6,6 +6,9 @@ import { runScript } from './helpers/run';
 import { readTasks, encodeTask, type Task } from '../scripts/lib/tasks';
 import { briefContext, briefDigest, type BriefMode } from '../scripts/lib/brief-digest';
 
+// Tests that spawn brief-digest.ts pay one Bun cold start per call; under a loaded
+// parallel run several of them exceed Bun's 5s default.
+const SUBPROCESS_TIMEOUT = 30_000;
 const reference = new Date('2026-10-20T12:00:00Z');
 function save(dir: string, task: Task) {
   fs.writeFileSync(path.join(dir, 'tasks', `${task.id}.md`), encodeTask(task));
@@ -39,7 +42,7 @@ test('empty install and CLI mode and argument contracts', async () => {
       expect(JSON.parse(result.stdout).error).toBe(error);
     }
   } finally { f.cleanup(); }
-});
+}, SUBPROCESS_TIMEOUT);
 
 test('local day selection, newest latest, all owners in records and recent decisions on old records', async () => {
   const f = taskFixture();
@@ -144,7 +147,7 @@ test('all oversized sections pack below exact stdout ceiling including escaped c
     }
     expect(fs.readFileSync(path.join(f.dir, 'state/proposals-index.json'))).toEqual(before);
   } finally { f.cleanup(); }
-});
+}, SUBPROCESS_TIMEOUT);
 
 test('morning latest omits lessons without reporting them as left out', async () => {
   const f = taskFixture();
@@ -237,7 +240,7 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     expect(home.agent_steps).toBe(true);
     expect(await briefContext(f.dir, { chat: 'discord:group' })).toEqual({ scope: 'chat', agent_steps: true, destination: 'discord:group' });
   } finally { f.cleanup(); }
-});
+}, SUBPROCESS_TIMEOUT);
 
 test('scoped briefs skip closed unresolved records and bound morning candidates to recent closed work', async () => {
   const f = taskFixture();
