@@ -33,6 +33,7 @@ import {
   iterChannelConfigs,
   writeSettingsEnv,
   applyArtifactGrant,
+  applyPermissionSync,
   applyVoiceRender,
   renderLaunchOverlay,
   seedWorkspaceTrust,
@@ -1635,6 +1636,82 @@ describe('applyArtifactGrant', () => {
     captureLog(() => applyArtifactGrant(config));
     const settings = readSettings();
     expect(settings.permissions.allow).toContain('Artifact');
+  });
+});
+
+describe('applyPermissionSync', () => {
+  const pluginVer = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf-8')).version;
+  const applied = (v: string) => ({ _hermit_versions: { hermitd: v } });
+  const readState = () => JSON.parse(fs.readFileSync('.hermit/state/permissions-sync.json', 'utf-8'));
+  const stateExists = () => fs.existsSync('.hermit/state/permissions-sync.json');
+
+  test('first boot of a newer version syncs, stamps it and keeps a receipt for evolve', () => {
+    writeSettings({ permissions: { allow: ['Bash(git status:*)'] } });
+    const { out } = captureLog(() => applyPermissionSync(applied('0.0.1')));
+    const allow = readSettings().permissions.allow;
+    expect(allow).toContain('Bash(git status:*)');
+    expect(allow.length).toBeGreaterThan(1);
+    const state = readState();
+    expect(state.version).toBe(pluginVer);
+    expect(state.project).toBe(process.cwd());
+    expect(state.receipt).toHaveLength(1);
+    expect(state.receipt[0]).toMatchObject({ version: pluginVer, settings_file: '.claude/settings.local.json' });
+    expect(state.receipt[0].missing.length).toBe(allow.length - 1);
+    expect(out).toContain('Permission list synced');
+  });
+
+  test('an ordinary restart leaves a removed sealed entry removed', () => {
+    writeSettings({});
+    captureLog(() => applyPermissionSync(applied('0.0.1')));
+    const trimmed = readSettings().permissions.allow.slice(1);
+    writeSettings({ permissions: { allow: trimmed } });
+    captureLog(() => applyPermissionSync(applied('0.0.1')));
+    expect(readSettings().permissions.allow).toEqual(trimmed);
+  });
+
+  test('a boot after evolve already stamped the version syncs without a receipt', () => {
+    writeSettings({});
+    captureLog(() => applyPermissionSync(applied(pluginVer)));
+    expect(readSettings().permissions.allow.length).toBeGreaterThan(0);
+    expect(readState()).toMatchObject({ version: pluginVer, receipt: [] });
+  });
+
+  test('a moved install syncs once more', () => {
+    writeSettings({});
+    fs.writeFileSync('.hermit/state/permissions-sync.json', JSON.stringify({ version: pluginVer, project: '/elsewhere', receipt: [] }));
+    captureLog(() => applyPermissionSync(applied(pluginVer)));
+    expect(readSettings().permissions.allow.length).toBeGreaterThan(0);
+    expect(readState().project).toBe(process.cwd());
+  });
+
+  test('an unhatched install is left alone', () => {
+    writeSettings({});
+    applyPermissionSync({});
+    expect(fs.readFileSync('.claude/settings.local.json', 'utf-8')).toBe('{}');
+    expect(stateExists()).toBe(false);
+  });
+
+  test('a stale runtime older than the applied stamp is left alone', () => {
+    writeSettings({});
+    applyPermissionSync(applied('999.0.0'));
+    expect(fs.readFileSync('.claude/settings.local.json', 'utf-8')).toBe('{}');
+    expect(stateExists()).toBe(false);
+  });
+
+  test('a committed hatch target syncs the committed file', () => {
+    fs.writeFileSync('.hermit/state/hatch-options.json', JSON.stringify({ target: 'committed' }));
+    fs.writeFileSync('.claude/settings.json', '{}');
+    writeSettings({});
+    captureLog(() => applyPermissionSync(applied('0.0.1')));
+    expect(JSON.parse(fs.readFileSync('.claude/settings.json', 'utf-8')).permissions.allow.length).toBeGreaterThan(0);
+    expect(fs.readFileSync('.claude/settings.local.json', 'utf-8')).toBe('{}');
+  });
+
+  test('a failed sync warns, continues and records nothing', () => {
+    fs.writeFileSync('.claude/settings.local.json', '{not json');
+    const { out } = captureLog(() => applyPermissionSync(applied('0.0.1')));
+    expect(out).toContain('permission sync failed');
+    expect(stateExists()).toBe(false);
   });
 });
 
