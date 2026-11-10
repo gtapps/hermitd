@@ -26,7 +26,7 @@
 2. **Only if `.hermit/state/artifact-strings.json` exists** (a translation overlay): regenerate the scaffold with `bun <plugin_root>/scripts/artifact.ts scaffold-strings <language>`, carry the existing translated values across, translate the new keys (`status_execution`, `status_open_tasks`, `session_unknown`, `waiting_row_admin`, `waiting_row_requester`, `waiting_row_chat`, `by_person_heading`, `by_person_promised`, `by_person_late`, `by_person_waiting`, `by_person_no_due`, `by_person_none`, `compiled_search`, `compiled_all`, `compiled_no_match`), keeping every `{placeholder}` token, and write the result back. Hermits without the file need no action.
 3. **Docker agents:** refresh the Dockerfile and compose through [hermit-evolve reference, Step 5d](skills/hermit-evolve/reference.md#5d-merge-compose-and-dockerfile-template-changes-in-place), and the security templates through [Step 5](skills/hermit-evolve/reference.md#5-update-templates), so the optional ffmpeg layer and the `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com` netguard domains reach the next `hermitd update`. Preserve operator customizations through those procedures.
 4. **tmux and interactive agents:** when `transcription.enabled` is not false, start `bun ${CLAUDE_PLUGIN_ROOT}/scripts/transcribe.ts --prepare >/dev/null 2>&1 &` from the agent project root, without waiting or using `sudo`. This prepares missing binaries only; models download on the first voice note.
-3. Step 8 now only reports the permission list; `hermitd update` applies it from the next update on. Nothing to do.
+5. Step 8 now only reports the permission list; `hermitd update` applies it from the next update on. Nothing to do.
 
 ## [1.4.29] - 2026-11-09
 
