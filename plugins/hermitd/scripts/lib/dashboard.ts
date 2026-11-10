@@ -3,7 +3,7 @@ import { readExecution, taskStandup, type PersonTasks } from './tasks';
 // Deterministic renderer for the Hermit Dashboard artifact — the render itself is
 // script-authored, not model-authored, so a publish costs a render (pennies) instead
 // of a generation (dollars). Reads only state already on disk (runtime.json,
-// cost-index.json, alert-state.json, proposals-index.json + proposal bodies, latest
+// cost-index.json, alert-state.json, task records with their proposal sections, latest
 // compiled/review-weekly-*.md, state/last-brief.json, compiled/*.md) and produces one
 // self-contained HTML fragment. Note last-brief.json's `text` field is itself
 // model-composed (written by the brief skill) — the render step is deterministic given
@@ -14,7 +14,8 @@ import { readExecution, taskStandup, type PersonTasks } from './tasks';
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readFileWithFrontmatter, globDir } from './frontmatter';
+import { readFileWithFrontmatter, readFrontmatter, globDir } from './frontmatter';
+import { audienceVisible } from './channel-auth';
 import { formatTokens } from './format';
 import { sha256 } from './hash';
 import { readMergedAlerts } from './alert-state';
@@ -76,6 +77,11 @@ export interface LastBriefState {
 export interface CompiledDocRow {
   name: string;
   title: string;
+  type: string | null;
+  summary: string | null;
+  /** YYYY-MM-DD of `updated`, else `created`. */
+  date: string | null;
+  tags: string[];
 }
 
 export interface DashboardState {
@@ -86,8 +92,9 @@ export interface DashboardState {
   alive_now: boolean;
   today_cost_usd: number;
   today_tokens: number;
+  operator_profile: string;
   alerts: AlertRow[];
-  waiting: { id: string; title: string; authority: string; purpose: string; generation: number; options?: string[]; since: string | null }[];
+  waiting: { id: string; title: string; authority: string; purpose: string; generation: number; options?: string[]; since: string | null; details_html: string }[];
   weekly: WeeklyState | null;
   last_brief: LastBriefState | null;
   compiled_index: { docs: CompiledDocRow[]; omitted: number };
@@ -115,11 +122,43 @@ function loadTodayCost(hermitDir: string, timezone: string): { cost_usd: number;
   };
 }
 
-export function loadWaiting(hermitDir: string): DashboardState['waiting'] {
+/** The Context, Problem and Proposed Solution sections of a proposal record, as written,
+ *  with headings demoted one level to sit under the card heading. Context stays because
+ *  an external-content proposal carries its injection warning there. Only headings after
+ *  `## Proposal`, outside code fences, count: that section holds the proposal-create
+ *  layout, whose fixed headings are the structure; the text itself is never interpreted.
+ *  "" when absent. */
+export function proposalDetails(body: string): string {
+  const lines = body.replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex(line => /^## Proposal\s*$/.test(line));
+  if (start < 0) return '';
+  const out: string[] = [];
+  let keep = false;
+  let fenced = false;
+  for (const line of lines.slice(start + 1)) {
+    if (/^```/.test(line.trim())) fenced = !fenced;
+    else if (!fenced && /^## /.test(line)) keep = /^## (Context|Problem|Proposed Solution)\b/.test(line);
+    if (keep) out.push(fenced ? line : line.replace(/^(#{2,3}) /, '#$1 '));
+  }
+  return out.join('\n').trim();
+}
+
+/** A client-facing install: spend figures, raw alert text and proposal detail stay out
+ *  of view (docs/security.md § Tiered disclosure), leaving the counts. */
+function clientFacing(operatorProfile: string): boolean {
+  return operatorProfile === 'non-technical';
+}
+
+/** `withDetails` is false on a client-facing install, so proposal text never enters the
+ *  state handed to custom renderers either. */
+export function loadWaiting(hermitDir: string, withDetails = true): DashboardState['waiting'] {
   const inventory = pendingDecisions(hermitDir);
   if (!inventory.ok) throw new Error('decision_inventory_unreadable');
-  return inventory.records.map(({ task, decision }) => ({ id: task.id, title: task.title, authority: decision.authority,
-    purpose: decision.purpose, generation: decision.generation, options: decision.options, since: task.waiting_since }));
+  return inventory.records.map(({ task, decision }) => {
+    const details = withDetails && task.kind === 'proposal' ? proposalDetails(task.body) : '';
+    return { id: task.id, title: task.title, authority: decision.authority, purpose: decision.purpose, generation: decision.generation,
+      options: decision.options, since: task.waiting_since, details_html: details ? mdToHtml(details) : '' };
+  });
 }
 
 function loadWeekly(hermitDir: string): WeeklyState | null {
@@ -157,7 +196,7 @@ function loadLastBrief(hermitDir: string): LastBriefState | null {
   };
 }
 
-const COMPILED_INDEX_CAP = 20;
+const COMPILED_INDEX_CAP = 100;
 
 function statMtimeMs(file: string): number {
   try { return fs.statSync(file).mtimeMs; } catch { return 0; }
@@ -165,24 +204,30 @@ function statMtimeMs(file: string): number {
 
 // Excludes review-weekly-*.md — those already have their own dedicated section
 // (renderWeekly) so listing them again here would just be confusing duplication.
-// Newest-first (by mtime) before the cap, so on a hermit with >20 compiled docs the
-// discovery surface shows the most recently compiled ones rather than an arbitrary
-// alphabetical slice that could hide a just-written doc.
+// Newest-first (by mtime) before the cap, so on a hermit with more compiled docs than
+// the cap the discovery surface shows the most recently compiled ones rather than an
+// arbitrary alphabetical slice that could hide a just-written doc. A page scoped to one
+// chat (`audience: <key>:<chat_id>`) is left out: the dashboard reader has no chat, so
+// it passes audienceVisible an empty scope, which admits only unscoped and `shared` pages.
 function loadCompiledIndex(hermitDir: string): { docs: CompiledDocRow[]; omitted: number } {
   const compiledDir = path.join(hermitDir, 'compiled');
-  const files = globDir(compiledDir, /\.md$/)
+  const text = (v: unknown): string | null => typeof v === 'string' && v.trim() ? v.trim() : null;
+  const visible: CompiledDocRow[] = globDir(compiledDir, /\.md$/)
     .filter(f => !/^review-weekly-.*\.md$/.test(path.basename(f)))
     .map(f => ({ f, mtime: statMtimeMs(f) })) // stat once per file, not O(n log n) times in the comparator
     .sort((a, b) => b.mtime - a.mtime)
-    .map(({ f }) => f);
-  const docs: CompiledDocRow[] = files.slice(0, COMPILED_INDEX_CAP).map(f => {
-    const name = path.basename(f);
-    const parsed = readFileWithFrontmatter(f);
-    const title = typeof parsed?.fm?.title === 'string' && parsed.fm.title.trim() ? parsed.fm.title : name;
-    return { name, title };
-  });
-  const omitted = Math.max(0, files.length - COMPILED_INDEX_CAP);
-  return { docs, omitted };
+    .flatMap(({ f }) => {
+      const name = path.basename(f);
+      const fm = readFrontmatter(f) ?? {};
+      if (!audienceVisible({}, fm.audience)) return [];
+      const day = (v: unknown) => /^\d{4}-\d{2}-\d{2}/.exec(text(v) ?? '')?.[0] ?? null;
+      return [{
+        name, title: text(fm.title) ?? name, type: text(fm.type), summary: text(fm.summary),
+        date: day(fm.updated) ?? day(fm.created),
+        tags: Array.isArray(fm.tags) ? fm.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim() !== '') : [],
+      }];
+    });
+  return { docs: visible.slice(0, COMPILED_INDEX_CAP), omitted: Math.max(0, visible.length - COMPILED_INDEX_CAP) };
 }
 
 // Alert entries have no single schema. Telemetry alerts carry `message`; the
@@ -244,8 +289,9 @@ export function loadDashboardState(hermitDir: string): DashboardState {
     alive_now,
     today_cost_usd: today.cost_usd,
     today_tokens: today.tokens,
+    operator_profile: config.operator_profile,
     alerts,
-    waiting: loadWaiting(hermitDir),
+    waiting: loadWaiting(hermitDir, !clientFacing(config.operator_profile)),
     weekly: loadWeekly(hermitDir),
     last_brief: loadLastBrief(hermitDir),
     compiled_index: loadCompiledIndex(hermitDir),
@@ -391,20 +437,27 @@ function executionDisplay(state: DashboardState): { label: string; tone: 'acc' |
   if (raw === 'idle' && state.alive_now) return { label: state.strings.session_on_watch, tone: 'good' };
   if (raw === 'in_flight') return { label: state.strings.session_in_progress, tone: 'acc' };
   if (raw === 'idle') return { label: state.strings.session_idle, tone: 'acc' };
-  return { label: 'Unknown', tone: 'acc' };
+  return { label: state.strings.session_unknown, tone: 'acc' };
+}
+
+// Proposal detail is withheld earlier, in loadWaiting.
+function technical(state: DashboardState): boolean {
+  return !clientFacing(state.operator_profile);
 }
 
 function renderStatus(state: DashboardState): string {
   const s = state.strings;
   const execution = executionDisplay(state);
   const tiles = [
-    statTile('Execution', execution.label, execution.tone),
-    statTile('Open tasks', String(state.tasks.filter(task => task.outcome === 'open' || task.outcome === 'unconfirmed').length)),
-    statTile(s.status_today, `$${state.today_cost_usd.toFixed(2)}`),
-    statTile(s.status_tokens, escapeHtml(formatTokens(state.today_tokens))),
+    statTile(s.status_execution, execution.label, execution.tone),
+    statTile(s.status_open_tasks, String(state.tasks.filter(task => task.outcome === 'open' || task.outcome === 'unconfirmed').length)),
+    ...(technical(state) ? [
+      statTile(s.status_today, `$${state.today_cost_usd.toFixed(2)}`),
+      statTile(s.status_tokens, escapeHtml(formatTokens(state.today_tokens))),
+    ] : []),
     statTile(s.status_alerts, String(state.alerts.length), state.alerts.length ? 'warn' : undefined),
   ].join('');
-  return card(s.status_heading, `<div class="stat-row">${tiles}</div>${renderAlerts(state)}`);
+  return card(s.status_heading, `<div class="stat-row">${tiles}</div>${technical(state) ? renderAlerts(state) : ''}`);
 }
 
 // Shared two-line template for a proposal row: the title carries the scan, and
@@ -422,10 +475,20 @@ export function proposalLabel(p: ProposalRow, meta: string[]): string {
     `<p class="rail-meta">${parts.join(META_SEP)}</p>`;
 }
 
+// A proposal row expands to its Problem and Proposed Solution; questions, and every row
+// on a non-technical install, stay a title with the answer options.
 function renderWaiting(state: DashboardState): string {
-  const rows = state.waiting.map(row => railRow({ tone: 'warn', title: `From the agent: ${escapeHtml(row.title)}. Waiting on ${row.authority === 'admin' ? 'you' : row.authority}.`,
-    meta: [row.purpose, ...(row.options ?? [])].map(escapeHtml) }));
-  return card(state.strings.waiting_heading, rows.length ? rows.join('') : `<p class="muted">${state.strings.waiting_none}</p>`);
+  const s = state.strings;
+  const sentence: Record<string, string> = { admin: s.waiting_row_admin, requester: s.waiting_row_requester, chat: s.waiting_row_chat };
+  const rows = state.waiting.map(row => {
+    const title = fmt(sentence[row.authority], { title: escapeHtml(row.title) });
+    const meta = (row.options ?? []).map(escapeHtml);
+    if (!row.details_html) return railRow({ tone: 'warn', title, meta });
+    const metaHtml = meta.length ? `<p class="rail-meta">${meta.join(META_SEP)}</p>` : '';
+    return `<details class="proposal"><summary><p class="rail-title">${title}</p>${metaHtml}</summary>` +
+      `<div class="proposal-body">${row.details_html}</div></details>`;
+  });
+  return card(s.waiting_heading, rows.length ? rows.join('') : `<p class="muted">${s.waiting_none}</p>`);
 }
 
 // Omits the card entirely when there is no review yet — an empty section costs a
@@ -460,32 +523,79 @@ function renderBrief(state: DashboardState): string {
   return card(`${s.brief_heading} <span class="muted">(${escapeHtml(b.kind)})</span>${when}`, mdToHtml(b.text));
 }
 
+// Search and type filter over the server-rendered rows. The tools stay hidden until the
+// script runs, so with scripts off the page is the plain list. Static text: the hash
+// gate sees the same bytes every render.
+const DOC_FILTER_SCRIPT = `<script>(function () {
+  var card = document.currentScript.parentElement;
+  var tools = card.querySelector('.doc-tools'), search = card.querySelector('.doc-search'), empty = card.querySelector('.doc-empty');
+  var buttons = [].slice.call(card.querySelectorAll('.doc-type')), rows = [].slice.call(card.querySelectorAll('.doc-list li[data-text]'));
+  var key = 'hermit-dashboard-docs', state = { q: '', type: '' };
+  try { var saved = JSON.parse(localStorage.getItem(key) || '{}'); state.q = String(saved.q || ''); state.type = String(saved.type || ''); } catch (e) {}
+  if (!buttons.some(function (b) { return b.dataset.type === state.type; })) state.type = '';
+  function apply() {
+    var words = state.q.toLowerCase().split(/\\s+/).filter(Boolean), shown = 0;
+    rows.forEach(function (row) {
+      var match = (!state.type || row.dataset.type === state.type) && words.every(function (w) { return row.dataset.text.indexOf(w) !== -1; });
+      row.hidden = !match; if (match) shown++;
+    });
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.type === state.type)); });
+    empty.hidden = shown > 0;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+  }
+  search.value = state.q;
+  search.addEventListener('input', function () { state.q = search.value; apply(); });
+  buttons.forEach(function (b) { b.addEventListener('click', function () { state.type = b.dataset.type; apply(); }); });
+  tools.hidden = false;
+  apply();
+})();</script>`;
+
 function renderCompiledIndex(state: DashboardState): string {
   const s = state.strings;
   const { docs, omitted } = state.compiled_index;
   if (!docs.length) return card(s.compiled_heading, `<p class="muted">${s.compiled_none}</p>`);
-  const items = docs
-    .map(d => `<li>${escapeHtml(d.title)}<span class="rail-meta">${escapeHtml(d.name)}</span></li>`)
-    .join('');
-  const omittedLine = omitted > 0 ? `<li class="muted">${fmt(s.common_more_not_shown, { n: omitted })}</li>` : '';
+  const items = docs.map(d => {
+    const meta = [
+      ...(d.type ? [chip(d.type)] : []),
+      ...(d.date ? [escapeHtml(d.date)] : []),
+      ...(d.tags.length ? [escapeHtml(d.tags.map(tag => `#${tag}`).join(' '))] : []),
+    ];
+    const haystack = [d.title, d.summary ?? '', d.type ?? '', d.name, ...d.tags].join(' ').toLowerCase();
+    return `<li data-type="${escapeHtml(d.type ?? '')}" data-text="${escapeHtml(haystack)}"><p class="rail-title">${escapeHtml(d.title)}</p>` +
+      (d.summary ? `<p class="doc-summary">${escapeHtml(d.summary)}</p>` : '') +
+      (meta.length ? `<p class="rail-meta">${meta.join(META_SEP)}</p>` : '') + '</li>';
+  }).join('');
+  const counts = new Map<string, number>();
+  for (const d of docs) if (d.type) counts.set(d.type, (counts.get(d.type) ?? 0) + 1);
+  const types = [...counts.keys()].sort();
+  const typeButtons = types.length > 1
+    ? `<div class="doc-types"><button type="button" class="doc-type" data-type="">${s.compiled_all}</button>` +
+      types.map(type => `<button type="button" class="doc-type" data-type="${escapeHtml(type)}">${escapeHtml(type)} (${counts.get(type)})</button>`).join('') + '</div>'
+    : '';
+  const omittedLine = omitted > 0 ? `<p class="muted">${fmt(s.common_more_not_shown, { n: omitted })}</p>` : '';
   return card(s.compiled_heading, `
       <p class="muted">${s.compiled_hint}</p>
-      <ul class="proposal-history">${items}${omittedLine}</ul>`);
+      <div class="doc-tools" hidden><input type="search" class="doc-search" placeholder="${s.compiled_search}" aria-label="${s.compiled_search}">${typeButtons}</div>
+      <ul class="proposal-history doc-list">${items}</ul>
+      <p class="muted doc-empty" hidden>${s.compiled_no_match}</p>${omittedLine}
+      ${DOC_FILTER_SCRIPT}`);
 }
 
 function renderByPerson(state: DashboardState): string {
+  const s = state.strings;
   const groups = (state.by_person ?? []).map(person => {
-    const sections = ([['Promised', person.promised], ['Late', person.late], ['Waiting on them', person.waiting]] as const).map(([title, rows]) =>
-      `<h3>${title}</h3><ul>${rows.map(row => `<li>${escapeHtml(row.handle)}: ${escapeHtml(row.title)} (${escapeHtml(row.due ?? 'no due date')}) ${escapeHtml(row.listing.join(', '))} $${row.cost_usd.toFixed(4)}</li>`).join('')}</ul>`).join('');
+    const sections = ([[s.by_person_promised, person.promised], [s.by_person_late, person.late], [s.by_person_waiting, person.waiting]] as const).map(([title, rows]) =>
+      `<h3>${title}</h3><ul>${rows.map(row => `<li>${escapeHtml(row.handle)}: ${escapeHtml(row.title)} (${row.due ? escapeHtml(row.due) : s.by_person_no_due}) ${escapeHtml(row.listing.join(', '))}${technical(state) ? ` $${row.cost_usd.toFixed(4)}` : ''}</li>`).join('')}</ul>`).join('');
     return `<article><h2>${escapeHtml(person.identity)}${person.name ? ` (${escapeHtml(person.name)})` : ''}</h2>${sections}</article>`;
   });
-  return `<section class="card"><h2>By person</h2>${groups.join('') || '<p>No open tasks</p>'}</section>`;
+  return `<section class="card"><h2>${s.by_person_heading}</h2>${groups.join('') || `<p>${s.by_person_none}</p>`}</section>`;
 }
 
-/** The default page's cards, each as a standalone HTML fragment. Exported so a
- *  hermit-local dashboard renderer (see docs/artifacts.md § Custom renderer) can embed
- *  any of them verbatim instead of reimplementing them; `renderDashboard` composes the
- *  same map, so the two cannot drift. `weekly` is empty when there is no review yet. */
+/** The page's cards, each as a standalone HTML fragment. Exported so a hermit-local
+ *  dashboard renderer (see docs/artifacts.md § Custom renderer) can embed any of them
+ *  verbatim instead of reimplementing them; `renderDashboard` composes the same map
+ *  minus `by_person`, which only custom renderers place. `weekly` is empty when there
+ *  is no review yet. */
 export function renderCoreSections(state: DashboardState): Record<string, string> {
   return {
     status: renderStatus(state),
@@ -516,7 +626,6 @@ export function renderDashboard(state: DashboardState, opts?: { now?: string }):
     updatedToken: UPDATED_TOKEN,
     body: [
       sections.status,
-      sections.by_person,
       sections.brief,
       sections.waiting,
       sections.weekly,

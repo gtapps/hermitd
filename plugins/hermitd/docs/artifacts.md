@@ -119,14 +119,24 @@ pre-approved; a hermit that ran on the default backend before the switch keeps t
 ## Dashboard
 
 `config.artifacts.dashboard`, state key `dashboard`. A single persistent page — status,
-latest brief, proposal queue, weekly evolution, and a compiled-docs index — rendered by
+latest brief, pending decisions, weekly evolution, and a compiled-docs index — rendered by
 `scripts/lib/dashboard.ts` (deterministic; no model authorship, except the embedded
 "latest brief" text, which is itself model-composed by the `brief` skill and written to
 `state/last-brief.json` — see the file's header comment). `<title>` and the `<h1>` are
 both `<agent_name> — Dashboard` (`agent_name` falls back to `Hermit`), so a fleet
 operator can tell two hermits' tabs apart. The weekly and alert sections are omitted
 rather than rendered empty; pending decisions are shown in the waiting section,
-which owns that surface, and still count in the "Needs you" tile.
+which owns that surface, and still count in the "Needs you" tile. Each waiting row
+shows the title and answer options; a proposal row expands to its `## Context`,
+`## Problem` and `## Proposed Solution` sections, rendered as written. On an
+`operator_profile: "non-technical"` install the page leaves out the spend and token
+tiles and the alert text (the count stays); the state also carries no proposal
+sections and the `by_person` card no per-task cost. The compiled-docs index lists up to
+100 docs newest first, each with its frontmatter `title`, `type`, `summary`,
+`updated` (else `created`) date and `tags`; pages scoped to one chat (`audience:
+<key>:<chat_id>`) are left out. A small inline script adds a search box and type
+filters over those rows and remembers the last choice in the viewer's `localStorage`;
+with scripts off the list renders in full.
 
 Refresh triggers: `brief` (`--morning`/`--evening`), `weekly-review`, `proposal-create`,
 the task apply procedure. `brief` and `weekly-review` append a `📎 <url>` line to their channel
@@ -164,8 +174,9 @@ renderer composes from: `{state, theme_css, core_sections, updated_token}` — t
 `DashboardState` the built-in page renders from, the live `artifact-theme.ts` stylesheet
 (so core theme fixes reach custom pages without regenerating them), the default cards
 as ready-to-embed HTML keyed `status`, `by_person`, `brief`, `waiting`, `weekly` and
-`compiled_index`, and the hash placeholder. Every key in the payload, nested state
-included, is snake_case (`state.today_cost_usd`, `state.waiting.oldest_open_accepted`,
+`compiled_index` (`by_person` is offered here only; the built-in page leaves it out),
+and the hash placeholder. Every key in the payload, nested state
+included, is snake_case (`state.today_cost_usd`, `state.waiting[].details_html`,
 `state.weekly.body_html`). A custom page may use all of it, some of it, or none.
 
 ## Localization

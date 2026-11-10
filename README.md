@@ -10,15 +10,19 @@
 
 # Like Claude Tag, but local.
 
-Run an always-on Claude Code agent on your own machine, for you or your team. Start sessions from your chat in any project it can reach, on the model and effort you choose, and steer them through the agent or take over in the Claude app or CLI.
+Run an always-on Claude Code agent on your own machine, for you or your team.
 
-Use it from your terminal or the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels).
+Start and orchestrate sessions from chat in any project it can reach. Take over the same session in the Claude app or the CLI. Tasks, saved watches, and pending decisions survive a restart.
+
+Connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels). Use the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or your terminal.
+
+The agent has its own browser ([agent-browser](https://github.com/vercel-labs/agent-browser)). Take over and Hand back when you want, for example a login. Or use [Chrome on your laptop](https://code.claude.com/docs/en/chrome), including when the agent runs on another machine.
 
 Give it ongoing responsibilities: maintain research, monitor systems, run routines, and follow up on unfinished work. Between requests, it checks those responsibilities, carries progress across sessions, and reaches you when something needs attention.
 
 Run it on your Claude subscription and extend it with your own MCP servers, skills, and plugins.
 
-**It's Claude Code.** hermitd is a plugin for the official Claude Code CLI, which runs as Anthropic ships it. New Claude models, features, and fixes work as soon as Claude Code supports them.
+**It's Claude Code.** hermitd is a plugin for Claude Code, no new harness, no wrapper around Claude Code. You get all of Claude Code.
 
 https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 
@@ -101,7 +105,7 @@ Optional [Docker security controls](plugins/hermitd/docs/docker-security.md) cov
 
 - **Learning from experience.** The agent reviews evidence from its work and operation, saves useful lessons, and verifies proposed behavior changes before bringing them to you for approval.
 
-- **Control and visibility.** Track progress, proposals, and usage through the dashboard. Pause is enforced at the tool boundary, and optional usage caps can alert you or pause further work.
+- **Control and visibility.** Track progress, pending decisions, and usage through the dashboard. Pause is enforced at the tool boundary, and optional usage caps can alert you or pause further work.
 
 **Part of your project channel.** With passive mode, the agent saves incoming group messages to look back on later, and wakes when someone you allow @mentions it. It also remembers instructions for that channel. Fixed policies you set for a chat change only through an approval prompt, and an optional scheduled review proposes rule updates when the same correction keeps coming up.
 
@@ -218,7 +222,7 @@ Reflection runs at eligible task or session pauses, daily, and after routines co
 | `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
 | “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
-| “Download last month's invoices from the supplier portal.” | Uses its [own managed browser](plugins/hermitd/docs/how-to-use.md#browser-tasks) by default and offers phone Take over and Hand back on Linux/WSL2. The operator's Chrome is opt-in for their account. |
+| “Download last month's invoices from the supplier portal.” | Uses its [own managed browser](plugins/hermitd/docs/how-to-use.md#browser-tasks) by default and offers phone Take over and Hand back on Docker and Linux/WSL2 tmux. The operator's Chrome is opt-in for their account. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
 | “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
 
@@ -302,6 +306,8 @@ Use `hermitd start|stop|restart|attach [name]` for lifecycle commands, `hermitd 
 
 `hermitd agents [name]` opens Claude Code's agent view (`claude agents`) where the agent runs: inside the container for Docker agents, on the host under the agent's Claude config folder otherwise. On the host that view lists every session in the config folder, so pass `--cwd <path>` to narrow it. Extra flags pass through, and `--json` works from scripts.
 
+`hermitd skills [name] status|pin|unpin|rollback|archive|restore [skill]` inspects or controls learned skills. Use `status --skill <skill>` for one bounded history and its last use. Mutations run inside the container when the Docker agent is up. A task close can save a reusable procedure automatically; "keep this skill" pins it and "stop doing it that way" about a named learned skill rolls back its latest revision.
+
 See the [Upgrade guide](plugins/hermitd/docs/upgrading.md) for details.
 
 <a id="tips--tuning"></a>
@@ -324,6 +330,10 @@ Join the [Discord community](https://discord.gg/54sJqAxhUh) for setup help and d
 ## Credits
 
 [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) inspired the `raw/` → `compiled/` knowledge system.
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) and [OpenClaw](https://github.com/openclaw/openclaw) are other open source agents.
+
+[agent-browser](https://github.com/vercel-labs/agent-browser) from Vercel is the managed browser. [Claude in Chrome](https://code.claude.com/docs/en/chrome) is the alternative.
 
 ## License
 

@@ -320,7 +320,7 @@ Publishing of hermit-generated pages to Claude Code's [Artifacts](https://code.c
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `dashboard` | boolean | `true` | Publish the Hermit Dashboard (status, latest brief, proposal queue, weekly evolution, compiled-docs index), refreshed by `brief`, `weekly-review`, `proposal-create`, and `task answer`. |
+| `dashboard` | boolean | `true` | Publish the Hermit Dashboard (status, latest brief, pending decisions, weekly evolution, compiled-docs index), refreshed by `brief`, `weekly-review`, `proposal-create`, and `task answer`. |
 | `weekly_review` | boolean | `false` | Publish the latest compiled weekly review as a stable-URL page, refreshed by `weekly-review`. Off by default because the dashboard's weekly card already carries the full review. |
 | `publish_authorized` | boolean \| `null` | `null` | Whether unattended sessions may publish without a permission prompt. `null` = undecided (leaves an existing entry alone), `true` = authorized (grant applied at next boot), `false` = declined (the entry is removed at the next boot from every settings file the plugin wrote it to — the local one always, the committed one when the hatch target is stamped `committed` — not in-session; attended banking instead). See below. Set via `/hermit-settings artifact-authorization`, never edited directly. |
 | `backend` | string | `"claude"` | Where pages publish. `"claude"` is Claude Code's native Artifacts. Any other value names a connected MCP artifact server. See below. |

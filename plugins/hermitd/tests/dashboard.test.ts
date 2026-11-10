@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { mutateTask } from '../scripts/lib/tasks';
-import { loadDashboardState, renderDashboard, mdToHtml, escapeHtml } from '../scripts/lib/dashboard';
+import { loadDashboardState, renderDashboard, mdToHtml, escapeHtml, proposalDetails } from '../scripts/lib/dashboard';
 
 // ---------- fixture scaffolding ----------
 
@@ -196,7 +196,7 @@ describe('loadDashboardState', () => {
     const { id } = mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '') as { id: string };
     writeStaleIndex(hermitDir, [{ id: 'PROP-999-old', file: 'old.md', title: 'Obsolete' }]);
     const state = loadDashboardState(hermitDir);
-    expect(state.waiting).toEqual([{ id, title: 'Review configuration', authority: 'admin', purpose: 'consent', generation: 1, options: undefined, since: expect.any(String) }]);
+    expect(state.waiting).toEqual([{ id, title: 'Review configuration', authority: 'admin', purpose: 'consent', generation: 1, options: undefined, since: expect.any(String), details_html: '' }]);
     expect('proposals' in state).toBe(false);
   }));
 
@@ -259,19 +259,36 @@ describe('loadDashboardState', () => {
     expect(state.compiled_index.docs.find(d => d.name === 'no-frontmatter-doc.md')?.title).toBe('no-frontmatter-doc.md');
   }));
 
-  test('compiled_index caps at 20 and reports the omitted count', withHermitDir((hermitDir) => {
-    for (let i = 0; i < 25; i++) {
-      writeCompiledDoc(hermitDir, `doc-${String(i).padStart(2, '0')}.md`, null, 'body');
+  test('compiled_index caps at 100 and reports the omitted count', withHermitDir((hermitDir) => {
+    for (let i = 0; i < 105; i++) {
+      writeCompiledDoc(hermitDir, `doc-${String(i).padStart(3, '0')}.md`, null, 'body');
     }
     const state = loadDashboardState(hermitDir);
-    expect(state.compiled_index.docs.length).toBe(20);
+    expect(state.compiled_index.docs.length).toBe(100);
     expect(state.compiled_index.omitted).toBe(5);
   }));
 
+  test('compiled_index reads type, summary, date and tags from frontmatter', withHermitDir((hermitDir) => {
+    writeCompiledDoc(hermitDir, 'topic-direction.md', { title: 'Direction', type: 'topic', summary: 'Where it is going', created: '2026-10-01T21:55:00+01:00', updated: '2026-11-06T20:27:00+00:00', tags: '[market, roadmap]' }, 'body');
+    writeCompiledDoc(hermitDir, 'note-old.md', { title: 'Old note', type: 'note', created: '2026-09-01', updated: 'today' }, 'body');
+    const docs = loadDashboardState(hermitDir).compiled_index.docs;
+    expect(docs.find(d => d.name === 'topic-direction.md')).toEqual({ name: 'topic-direction.md', title: 'Direction', type: 'topic', summary: 'Where it is going', date: '2026-11-06', tags: ['market', 'roadmap'] });
+    expect(docs.find(d => d.name === 'note-old.md')).toEqual({ name: 'note-old.md', title: 'Old note', type: 'note', summary: null, date: '2026-09-01', tags: [] });
+  }));
+
+  test('compiled_index lists only unscoped and shared pages', withHermitDir((hermitDir) => {
+    writeCompiledDoc(hermitDir, 'topic-open.md', { title: 'Open' }, 'body');
+    writeCompiledDoc(hermitDir, 'topic-shared.md', { title: 'Shared', audience: 'shared' }, 'body');
+    writeCompiledDoc(hermitDir, 'topic-private.md', { title: 'Private', audience: 'discord:123' }, 'body');
+    const state = loadDashboardState(hermitDir);
+    expect(state.compiled_index.docs.map(d => d.name).sort()).toEqual(['topic-open.md', 'topic-shared.md']);
+    expect(renderDashboard(state).html).not.toContain('Private');
+  }));
+
   test('compiled_index is newest-first by mtime, so a recent doc is not hidden by an alphabetically-late name', withHermitDir((hermitDir) => {
-    // 20 older docs whose names sort BEFORE the newest, plus one recent doc whose
+    // 100 older docs whose names sort BEFORE the newest, plus one recent doc whose
     // name sorts LAST — under an alphabetical cap it would fall into the omitted bucket.
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 100; i++) {
       const f = path.join(hermitDir, 'compiled', `aaa-old-${String(i).padStart(2, '0')}.md`);
       fs.writeFileSync(f, 'body\n');
       fs.utimesSync(f, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
@@ -394,11 +411,126 @@ describe('renderDashboard', () => {
     expect(html).not.toContain('review-weekly-2026-W27.md');
   }));
 
+  test('compiled-docs rows carry summary, type chip, date and tags, with search hidden until the script runs', withHermitDir((hermitDir) => {
+    writeCompiledDoc(hermitDir, 'topic-direction.md', { title: 'Direction', type: 'topic', summary: 'Where it is going', updated: '2026-11-06', tags: '[market]' }, 'body');
+    writeCompiledDoc(hermitDir, 'note-x.md', { title: 'Note X', type: 'note' }, 'body');
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).toContain('<p class="doc-summary">Where it is going</p>');
+    expect(html).toContain('<span class="chip chip-unknown">topic</span>');
+    expect(html).toContain('2026-11-06');
+    expect(html).toContain('#market');
+    expect(html).toContain('data-type="topic" data-text="direction where it is going topic topic-direction.md market"');
+    expect(html).toContain('<div class="doc-tools" hidden><input type="search" class="doc-search" placeholder="Search docs"');
+    expect(html).toContain('<button type="button" class="doc-type" data-type="">All</button>');
+    expect(html).toContain('data-type="note">note (1)</button>');
+    expect(html).toContain('<p class="muted doc-empty" hidden>No matching docs.</p>');
+    expect(html).toContain('localStorage');
+  }));
+
+  test('compiled-docs type buttons appear only when there is more than one type', withHermitDir((hermitDir) => {
+    writeCompiledDoc(hermitDir, 'topic-a.md', { title: 'A', type: 'topic' }, 'body');
+    writeCompiledDoc(hermitDir, 'topic-b.md', { title: 'B', type: 'topic' }, 'body');
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).not.toContain('class="doc-types"');
+    expect(html).toContain('class="doc-search"');
+  }));
+
+  test('compiled-docs filter script narrows rows by text and type and remembers the choice', withHermitDir((hermitDir) => {
+    writeCompiledDoc(hermitDir, 'topic-direction.md', { title: 'Direction', type: 'topic', summary: 'Market plan' }, 'body');
+    writeCompiledDoc(hermitDir, 'note-x.md', { title: 'Note X', type: 'note' }, 'body');
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)![1];
+    // Minimal DOM double: just the elements and properties the script touches.
+    const el = (props: Record<string, any> = {}) => ({ hidden: true, value: '', dataset: {}, attrs: {} as Record<string, string>, listeners: {} as Record<string, () => void>,
+      setAttribute(k: string, v: string) { this.attrs[k] = v; }, addEventListener(k: string, f: () => void) { this.listeners[k] = f; }, ...props });
+    const rows = [el({ dataset: { type: 'topic', text: 'direction market plan topic topic-direction.md' } }), el({ dataset: { type: 'note', text: 'note x note note-x.md' } })];
+    const buttons = [el({ dataset: { type: '' } }), el({ dataset: { type: 'note' } }), el({ dataset: { type: 'topic' } })];
+    const tools = el(), search = el(), empty = el();
+    const card = { querySelector: (q: string) => ({ '.doc-tools': tools, '.doc-search': search, '.doc-empty': empty } as any)[q],
+      querySelectorAll: (q: string) => q === '.doc-type' ? buttons : rows };
+    const store: Record<string, string> = {};
+    const localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } };
+    new Function('document', 'localStorage', script)({ currentScript: { parentElement: card } }, localStorage);
+    expect(tools.hidden).toBe(false);
+    expect(rows.map(r => r.hidden)).toEqual([false, false]);
+    search.value = 'market'; search.listeners.input();
+    expect(rows.map(r => r.hidden)).toEqual([false, true]);
+    search.value = ''; search.listeners.input();
+    buttons[1].listeners.click();
+    expect(rows.map(r => r.hidden)).toEqual([true, false]);
+    expect(buttons[1].attrs['aria-pressed']).toBe('true');
+    expect(JSON.parse(store['hermit-dashboard-docs'])).toEqual({ q: '', type: 'note' });
+    search.value = 'nothing-matches'; search.listeners.input();
+    expect(empty.hidden).toBe(false);
+  }));
+
   test('renders pending decisions as waiting on you', withHermitDir(hermitDir => {
     mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '');
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).toContain('Waiting on you');
     expect(html).toContain('From the agent: Review configuration. Waiting on you.');
+    expect(html).not.toContain('consent');
+    expect(html).not.toContain('<details class="proposal">');
+  }));
+
+  const PROPOSAL_BODY = [
+    '## Context', 'Seen in the logs.', '', '## Problem', 'The page hides **detail**.', '',
+    '## Proposed Solution (v1 plan)', '- Render the sections', '', '## Impact', 'Smaller pages.', '',
+  ].join('\n');
+
+  test('a proposal expands to its Context, Problem and Proposed Solution sections only', withHermitDir(hermitDir => {
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Show detail', done: 'Verified', 'body-stdin': true }, PROPOSAL_BODY);
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).toContain('<details class="proposal"><summary><p class="rail-title">From the agent: Show detail. Waiting on you.</p></summary>');
+    expect(html).toContain('<h3>Context</h3>');
+    expect(html).toContain('Seen in the logs.');
+    expect(html).toContain('<h3>Problem</h3>');
+    expect(html).toContain('The page hides <strong>detail</strong>.');
+    expect(html).toContain('<h3>Proposed Solution (v1 plan)</h3>');
+    expect(html).toContain('<li>Render the sections</li>');
+    expect(html).not.toContain('Smaller pages.');
+  }));
+
+  test('proposalDetails reads headings only inside the Proposal section', () => {
+    expect(proposalDetails('## Progress\n## Problem\nnot this\n')).toBe('');
+    expect(proposalDetails('## Problem\nnot this\n## Proposal\n## Problem\nthis\n## References\nno')).toBe('### Problem\nthis');
+  });
+
+  test('proposalDetails ignores headings inside code fences and demotes nested headings', () => {
+    const body = '## Proposal\n## Proposed Solution\n### Step\n```md\n## Notes\n```\nafter\n## Impact\nno';
+    expect(proposalDetails(body)).toBe('### Proposed Solution\n#### Step\n```md\n## Notes\n```\nafter');
+  });
+
+  test('a non-technical install hides spend, alert text and proposal detail', withHermitDir(hermitDir => {
+    fs.writeFileSync(path.join(hermitDir, 'config.json'), JSON.stringify({ operator_profile: 'non-technical' }));
+    writeTodayCost(hermitDir, 1.23, 4567);
+    writeJson(hermitDir, 'state/alert-state.json', { alerts: { 'watchdog:x': { text: 'Watchdog restarted the process', timestamp: '2026-07-05T08:00:00Z' } } });
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Show detail', done: 'Verified', 'body-stdin': true }, PROPOSAL_BODY);
+    const state = loadDashboardState(hermitDir);
+    expect(state.waiting[0].details_html).toBe('');
+    const { html } = renderDashboard(state);
+    expect(html).not.toContain('$1.23');
+    expect(html).not.toContain('Spent today');
+    expect(html).not.toContain('Tokens');
+    expect(html).not.toContain('Watchdog restarted the process');
+    expect(html).toContain('Needs you');
+    expect(html).toContain('From the agent: Show detail. Waiting on you.');
+    expect(html).not.toContain('<details class="proposal">');
+    expect(html).not.toContain('The page hides');
+  }));
+
+  test('a technical install keeps spend and alert text', withHermitDir(hermitDir => {
+    writeTodayCost(hermitDir, 1.23, 4567);
+    writeJson(hermitDir, 'state/alert-state.json', { alerts: { 'watchdog:x': { text: 'Watchdog restarted the process', timestamp: '2026-07-05T08:00:00Z' } } });
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).toContain('$1.23');
+    expect(html).toContain('Watchdog restarted the process');
+  }));
+
+  test('the default page leaves out the by-person card', withHermitDir(hermitDir => {
+    mutateTask(hermitDir, 'open', undefined, { requester: 'agent', kind: 'proposal', title: 'Review configuration', done: 'Verified' }, '');
+    const { html } = renderDashboard(loadDashboardState(hermitDir));
+    expect(html).not.toContain('By person');
   }));
 
   test('shows placeholder copy for empty proposals and alerts', withHermitDir((hermitDir) => {

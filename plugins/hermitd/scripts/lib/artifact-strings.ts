@@ -31,11 +31,14 @@ export const DEFAULT_STRINGS = {
   status_tokens: 'Tokens',
   status_alerts: 'Needs you',
   status_no_alerts: 'No active alerts.',
+  status_execution: 'Execution',
+  status_open_tasks: 'Open tasks',
 
   // Execution labels, retaining the installed translation keys.
   session_in_progress: 'Working',
   session_idle: 'Idle',
   session_on_watch: 'On watch',
+  session_unknown: 'Unknown',
 
   // Budget-alert synthesis (message-less budget alerts)
   budget_text: '{period} budget {state}{amounts}',
@@ -53,6 +56,18 @@ export const DEFAULT_STRINGS = {
 
   waiting_heading: 'Waiting on you',
   waiting_none: 'Nothing waiting on you.',
+  // One whole sentence per decision authority, so translations keep their own grammar.
+  waiting_row_admin: 'From the agent: {title}. Waiting on you.',
+  waiting_row_requester: 'From the agent: {title}. Waiting on the requester.',
+  waiting_row_chat: 'From the agent: {title}. Waiting on the chat.',
+
+  // By-person card (not on the default page; offered to custom renderers)
+  by_person_heading: 'By person',
+  by_person_promised: 'Promised',
+  by_person_late: 'Late',
+  by_person_waiting: 'Waiting on them',
+  by_person_no_due: 'no due date',
+  by_person_none: 'No open tasks',
 
   // Weekly card. No empty state: the card is omitted entirely when there is no
   // review, rather than spending a section on saying so.
@@ -67,6 +82,9 @@ export const DEFAULT_STRINGS = {
   compiled_heading: 'Compiled docs',
   compiled_none: 'Nothing compiled yet.',
   compiled_hint: 'Ask to open any of these as a page.',
+  compiled_search: 'Search docs',
+  compiled_all: 'All',
+  compiled_no_match: 'No matching docs.',
 
   // Shared
   common_more_not_shown: '+{n} more not shown',
