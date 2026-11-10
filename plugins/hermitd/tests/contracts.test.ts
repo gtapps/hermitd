@@ -3474,12 +3474,14 @@ describe('hermit-evolve permission delegation contract', () => {
     evolveRef.indexOf('### 9. Write updated config'),
   );
 
-  // Boot applies the list; the runner only reads the plan, so no unattended
-  // settings write reaches the auto-mode classifier.
+  // `hermitd update` applies the list; the runner only reads the plan, so no
+  // unattended settings write reaches the auto-mode classifier.
   test('Step 8 reads permissions-plan and never runs permissions-sync', () => {
     const runner = fs.readFileSync(path.join(PLUGIN_ROOT, 'agents/evolve-runner.md'), 'utf8');
     expect(step8).toContain('`permissions-plan` (Commands)');
-    expect(step8).toContain('permissions-sync.json');
+    for (const script of ['hermitd-update.sh', 'hermitd-docker.sh']) {
+      expect(fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', script), 'utf8')).toContain('scripts/update-permissions.ts');
+    }
     expect(runner).toContain('apply-settings.ts <resolved-settings-file> permissions-plan');
     expect(runner).not.toContain('permissions-sync');
   });

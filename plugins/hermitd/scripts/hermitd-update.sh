@@ -99,22 +99,44 @@ _enumerate_host() {
     ' "$PROJECT_DIR" 2>/dev/null || true
 }
 
-# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
-_core_cc_floor_host() {
+# The installed core's directory, or nothing when unreadable.
+_core_install_host() {
   claude plugin list --json 2>/dev/null \
     | bun -e '
-      const fs = require("fs");
-      const d = JSON.parse(fs.readFileSync(0, "utf8"));
+      const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
       const rank = {local: 0, project: 1, user: 2};
       const core = (Array.isArray(d) ? d : [])
         .filter(p => p.enabled === true && String(p.id).startsWith("hermitd@") && p.installPath
           && (p.scope === "user" || p.projectPath === process.argv[1]))
         .sort((a, b) => (rank[a.scope] ?? 3) - (rank[b.scope] ?? 3))[0];
-      try {
-        const m = JSON.parse(fs.readFileSync(core.installPath + "/.claude-plugin/hermit-meta.json", "utf8")).min_claude_code_version;
-        if (typeof m === "string") console.log(m.replace(/^>=\s*/, ""));
-      } catch {}
+      if (core) console.log(core.installPath);
     ' "$PROJECT_DIR" 2>/dev/null || true
+}
+
+# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
+_core_cc_floor_host() {
+  local install
+  install=$(_core_install_host)
+  [ -n "$install" ] || return 0
+  bun -e 'try { const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).min_claude_code_version; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' \
+    "$install/.claude-plugin/hermit-meta.json" 2>/dev/null || true
+}
+
+# The pinned core version in a row list (TAB rows with the id in field 2 and the version in field 4).
+_core_version() {
+  printf '%s\n' "$1" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }'
+}
+
+# Apply the newly installed core's sealed permission list. Runs only when the core pin moved,
+# outside any Claude session, so hermit-evolve never writes it through the auto-mode classifier.
+_sync_permissions_host() {
+  local install out
+  install=$(_core_install_host)
+  if [ -z "$install" ] || ! out=$(cd "$PROJECT_DIR" && bun "$install/scripts/update-permissions.ts" </dev/null 2>&1); then
+    echo "[hermit] Warning: permission list not applied (${out:-core install not found}); hermit-evolve reports the command to run." >&2
+    return 0
+  fi
+  bun -e 'try { const r = JSON.parse(process.argv[1]); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
 }
 
 # Emits id<TAB>scope<TAB>errors for enumerated plugins currently reporting CLI errors (e.g.
@@ -212,6 +234,11 @@ done <<< "$UPDATE_ROWS"
 # Re-read pins now (pin moves at CLI-update time, before any reload).
 ROWS_AFTER=$(_enumerate_host)
 UPDATE_ROWS_AFTER=$(printf '%s\n' "$ROWS_AFTER" | grep '^UPDATE	' || true)
+CORE_BEFORE=$(_core_version "$UPDATE_ROWS")
+CORE_AFTER=$(_core_version "$UPDATE_ROWS_AFTER")
+if [ -n "$CORE_AFTER" ] && [ "$CORE_AFTER" != "$CORE_BEFORE" ]; then
+  _sync_permissions_host
+fi
 PLUGIN_ERRORS_AFTER=$(_enumerate_host_errors)
 
 # --- Apply in the running tmux session if one exists (host tmux, no docker exec). ---

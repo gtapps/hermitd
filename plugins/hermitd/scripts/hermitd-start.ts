@@ -29,7 +29,6 @@ import { isContainer } from './lib/container';
 import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
 import { cmpSemver } from './lib/semver';
-import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 import { sanitizeLanguage } from './lib/operator-language';
 import { outputStyleFor } from './lib/voice';
 import { artifactGrantApplies, generatedAutoMode, mergeOperatorAutoMode, operatorAutoModeFingerprint } from './lib/settings/operator-auto-mode';
@@ -373,14 +372,10 @@ function applyAlwaysOnDoctorSchedule(config: Json): void {
  *  SessionStart hook against the installed plugin (a `claude plugin list` entry), while
  *  bin/hermitd-run resolves PLUGIN_ROOT by scanning the marketplace clone, which never
  *  appears in that listing — so this surface points at the marketplace refresh. */
-function pluginVersion(): string {
-  const pluginJson = path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json');
-  return JSON.parse(fs.readFileSync(pluginJson, 'utf-8')).version ?? '0.0.0';
-}
-
 function checkForUpgrade(config: Json): void {
+  const pluginJson = path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json');
   try {
-    const pluginVer = pluginVersion();
+    const pluginVer = JSON.parse(fs.readFileSync(pluginJson, 'utf-8')).version ?? '0.0.0';
     const configVer = (config._hermit_versions ?? {})['hermitd'] ?? '0.0.0';
     const rel = cmpSemver(pluginVer, configVer);
     if (rel > 0) {
@@ -1149,53 +1144,6 @@ function applyVoiceRender(config: Json): void {
   }
 }
 
-const PERMISSION_SYNC_STATE = path.join(STATE_DIR, 'permissions-sync.json');
-
-/**
- * Apply the plugin's sealed permission list once per new plugin version, on the
- * first boot that runs it. Same out-of-session property as applyArtifactGrant: a
- * plain OS process before launch, so the auto-mode classifier is not in play and
- * hermit-evolve only reports. An ordinary restart does nothing, so an entry the
- * operator removed stays removed until the next upgrade.
- *
- * `state/permissions-sync.json` holds the last synced version and project path (a
- * moved or copied install syncs once more) plus a receipt of changes made before
- * evolve ran, which evolve's Step 8 reports. Skipped before hatch and on a stale
- * runtime older than the applied stamp.
- */
-function applyPermissionSync(config: Json): void {
-  const appliedVer = config._hermit_versions?.hermitd;
-  if (typeof appliedVer !== 'string') return;
-  let pluginVer: string;
-  try { pluginVer = pluginVersion(); } catch { return; }
-  if (cmpSemver(pluginVer, appliedVer) < 0) return;
-  const project = process.cwd();
-  const state = readJson(PERMISSION_SYNC_STATE) ?? {};
-  if (state.project === project && typeof state.version === 'string' && cmpSemver(pluginVer, state.version) <= 0) return;
-
-  const target = `.claude/${settingsFile(readTargetState('.hermit', { core_scope: null, target: 'local' }).target ?? 'local')}`;
-  const script = path.join(PLUGIN_ROOT, 'scripts', 'apply-settings.ts');
-  const r = spawnSync('bun', [script, target, 'permissions-sync'], { stdio: 'pipe', encoding: 'utf-8' });
-  let plan: Json = null;
-  try { plan = JSON.parse(r.stdout); } catch { /* reported below */ }
-  if (r.status !== 0 || !Array.isArray(plan?.missing)) {
-    console.log(`[hermit] WARNING: permission sync failed: ${(r.stdout || r.stderr || '').trim()}; continuing boot.`);
-    return;
-  }
-
-  const changed = [plan.missing, plan.obsolete, plan.obsolete_deny].some((l) => l.length) || !!plan.other_file;
-  // Only changes evolve has not reported yet: once the applied stamp reaches this
-  // version, evolve already listed them from its own read-only plan.
-  const receipt = (Array.isArray(state.receipt) ? state.receipt : [])
-    .filter((e: Json) => typeof e?.version === 'string' && cmpSemver(e.version, appliedVer) > 0);
-  if (changed && cmpSemver(pluginVer, appliedVer) > 0) receipt.push({ version: pluginVer, settings_file: target, ...plan });
-  writeFileAtomic(PERMISSION_SYNC_STATE, JSON.stringify({ version: pluginVer, project, receipt }, null, 2) + '\n');
-  if (changed) {
-    const deny = plan.obsolete_deny.length ? `, retired deny rules removed: ${plan.obsolete_deny.join(', ')}` : '';
-    console.log(`[hermit] Permission list synced for v${pluginVer} in ${target}: ${plan.missing.length} added, ${plan.obsolete.length} retired${deny}`);
-  }
-}
-
 /**
  * True when the operator has set `crossSessionInbound` in their own user settings.
  * Unreadable or malformed counts as unset — the same fail-open the rest of boot
@@ -1684,7 +1632,6 @@ async function main(): Promise<void> {
   // render must land on the file that call already rewrote, not be overwritten by it.
   applyVoiceRender(config);
   applyArtifactGrant(config);
-  applyPermissionSync(config);
   seedWorkspaceTrust();
   seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
@@ -1941,7 +1888,6 @@ export {
   writeSettingsEnv,
   applyVoiceRender,
   applyArtifactGrant,
-  applyPermissionSync,
   shlexQuote,
   shlexJoin,
   main,

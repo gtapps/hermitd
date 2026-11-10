@@ -246,12 +246,9 @@ For real hits, write one `Findings:` line per subject with replacement(s), hit c
 
 ### 8. Ensure plugin permissions in settings file
 
-This step reports and never writes. `hermitd-start` applies the plugin's sealed permission list on the first boot of each new plugin version, adding missing sealed entries and removing only ones this plugin has retired; the operator's own rules are never touched. That boot may come before this upgrade or after it, so report both:
+This step reports and never writes. `hermitd update` applies the plugin's sealed permission list when it moves the core plugin, adding missing sealed entries and removing only ones this plugin has retired, and prints what it changed; the operator's own rules are never touched.
 
-1. **Already applied.** In `.hermit/state/permissions-sync.json`, if present, report each `receipt` entry whose `version` is newer than the version this upgrade starts from: its `settings_file`, `missing` (added), `obsolete` and `obsolete_deny` (removed), and any `other_file` removals.
-2. **Still pending.** Run `permissions-plan` (Commands) with `<resolved-settings-file>` as `.claude/settings.local.json` when `hatch_target` is `local`, or `.claude/settings.json` when it is `committed`. When its `missing`, `obsolete` or `obsolete_deny` list is non-empty, report the counts as applied at the agent's next start, plus one line: an agent started without `hermitd-start` applies them with the same command, its last argument changed to `permissions-sync`.
-
-Name each `obsolete_deny` entry verbatim: those are deny rules the operator may have wanted and can re-add by hand. Nothing in either means the settings are current; say nothing.
+Run `permissions-plan` (Commands) with `<resolved-settings-file>` as `.claude/settings.local.json` when `hatch_target` is `local`, or `.claude/settings.json` when it is `committed`. Its one JSON line is `{"missing":[...],"obsolete":[...],"obsolete_deny":[...]}`. All three empty means the list is current; say nothing. Otherwise the plugin was updated some other way or the sync failed: report the counts, name each `obsolete_deny` entry verbatim (deny rules the operator may have wanted), and give the operator the command that applies them: the `permissions-plan` command as you ran it, with its last argument changed to `permissions-sync`.
 
 ### 8b. Retranslate changed notices
 
