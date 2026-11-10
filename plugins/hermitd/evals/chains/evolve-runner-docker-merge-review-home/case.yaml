@@ -16,7 +16,6 @@ execution:
     Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in the reference under this root; use the Commands entries below for scripts.
 
     ## Commands
-    - `apply-settings`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-sync`
     - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
     - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
     - `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
@@ -28,6 +27,7 @@ execution:
     - `manifest-seed`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts .hermit`
     - `messages-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts apply .hermit`
     - `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit`
+    - `permissions-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-plan`
     - `settings-get`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get`
     - `settings-set`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set`
     - `settings-unset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json unset`
@@ -51,7 +51,7 @@ execution:
     - **New settings (step 4):** write nothing except the detected `language`/`timezone` values (via a
       settings-edit verb) — step 9's finalizer applies every other missing template default itself and
       reports them as `settings_added`. Note those for the report ("adjust via /hermit-settings").
-    - **Settings target refusal:** if any `apply-settings` call (Step 8 or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
+    - **Settings target refusal:** if any `apply-settings.ts` call (Step 8's `permissions-plan` or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
     - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
       `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
     - **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
