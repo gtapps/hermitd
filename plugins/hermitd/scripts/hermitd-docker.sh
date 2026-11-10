@@ -32,6 +32,11 @@ const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
 console.log(config.browser?.enabled === false ? '0' : '1');
 " "$CONFIG")
 export HERMIT_BROWSER
+HERMIT_TRANSCRIPTION=$(bun -e "
+const config = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+console.log(config.transcription?.enabled === false ? '0' : '1');
+" "$CONFIG")
+export HERMIT_TRANSCRIPTION
 
 # Resolve tmux session name from config
 TMUX_SESSION=$(bun -e "
@@ -106,10 +111,9 @@ _running_cc_version() {
     | grep -oE '[0-9.]+' | head -1 || echo "unknown"
 }
 
-# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
-_core_cc_floor() {
-  local install
-  install="$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin list --json 2>/dev/null \
+# The installed core's directory inside the container, or nothing when unreadable.
+_core_install() {
+  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin list --json 2>/dev/null \
     | bun -e '
       const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
       const rank = {local: 0, project: 1, user: 2};
@@ -118,10 +122,34 @@ _core_cc_floor() {
           && (p.scope === "user" || p.projectPath === process.argv[1]))
         .sort((a, b) => (rank[a.scope] ?? 3) - (rank[b.scope] ?? 3))[0];
       if (core) console.log(core.installPath);
-    ' "$PROJECT_DIR" 2>/dev/null)" || true
+    ' "$PROJECT_DIR" 2>/dev/null || true
+}
+
+# The installed core's minimum Claude Code version (X.Y.Z), or nothing when unreadable.
+_core_cc_floor() {
+  local install
+  install="$(_core_install)"
   [ -n "$install" ] || return 0
   cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" cat "$install/.claude-plugin/hermit-meta.json" 2>/dev/null \
     | bun -e 'try { const m = JSON.parse(require("fs").readFileSync(0, "utf8")).min_claude_code_version; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' 2>/dev/null || true
+}
+
+# The pinned core version in a plugin row list (TAB rows: id, scope, version).
+_core_version() {
+  printf '%s\n' "$1" | awk -F'\t' '$1 ~ /^hermitd@/ { print $3; exit }'
+}
+
+# Apply the newly installed core's sealed permission list inside the container (its working
+# directory is the project). Runs only when the core pin moved, inside this operator-run
+# command, so hermit-evolve never writes it through the auto-mode classifier.
+_sync_permissions() {
+  local install out
+  install="$(_core_install)"
+  if [ -z "$install" ] || ! out=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" bun "$install/scripts/update-permissions.ts" </dev/null 2>&1); then
+    echo "[hermit] Warning: permission list not applied (${out:-core install not found}); hermit-evolve reports the command to run." >&2
+    return 0
+  fi
+  bun -e 'try { const r = JSON.parse(process.argv[1].trim().split("\n").pop()); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
 }
 
 _validate_compose() {
@@ -660,6 +688,10 @@ case "$CMD" in
       # this read is reliable (reading after /reload-plugins risks list/session view lag).
       PLUGIN_ROWS_AFTER=$(_enumerate_plugins)
       PLUGIN_ERRORS_AFTER=$(_enumerate_plugin_errors)
+      CORE_AFTER=$(_core_version "$PLUGIN_ROWS_AFTER")
+      if [ -n "$CORE_AFTER" ] && [ "$CORE_AFTER" != "$(_core_version "$PLUGIN_ROWS")" ]; then
+        _sync_permissions
+      fi
 
     fi
 

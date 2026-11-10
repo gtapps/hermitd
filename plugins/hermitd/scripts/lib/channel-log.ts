@@ -146,6 +146,13 @@ function ensureSchema(db: Json): void {
   }
 }
 
+// Shared by every write path so stored text keeps one redaction and size cap.
+function cleanText(text: string): string {
+  return text
+    .replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]')
+    .slice(0, MAX_TEXT_LEN);
+}
+
 /**
  * Insert one message. Creates the DB/schema on first call for this hermit.
  * Never throws — returns { ok:false, error } on any failure so fail-open
@@ -159,9 +166,7 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
     const db = openDb(hermitDir);
     try {
       ensureSchema(db);
-      const text = String(input.text ?? '')
-        .replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]')
-        .slice(0, MAX_TEXT_LEN);
+      const text = cleanText(String(input.text ?? ''));
       if (!text) return { ok: false, error: 'empty text' };
 
       const ts = input.ts || new Date().toISOString();
@@ -185,6 +190,31 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
+}
+
+export function enrichInbound(
+  hermitDir: string,
+  input: { source: string; chat_id: string; message_id: string; transcript: string },
+): { ok: boolean } {
+  try {
+    if (!isLoggingEnabled(readSettledConfig(hermitDir), input.source) || !dbExists(hermitDir)) return { ok: false };
+    const db = openDb(hermitDir, { busyTimeoutMs: CLI_BUSY_TIMEOUT_MS });
+    try {
+      return db.transaction(() => {
+        const row = db.query("SELECT id, text FROM messages WHERE direction = 'in' AND source = ? AND chat_id = ? AND message_id = ? ORDER BY id DESC LIMIT 1")
+          .get(input.source, input.chat_id, input.message_id) as { id: number; text: string } | null;
+        if (!row) return { ok: false };
+        const suffix = cleanText(`\n🎙️ ${input.transcript}`);
+        if (row.text.endsWith(suffix)) return { ok: true };
+        const text = (row.text + suffix).slice(0, MAX_TEXT_LEN);
+        if (text === row.text) return { ok: true };
+        db.query("INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', ?, ?)").run(row.id, row.text);
+        db.query('UPDATE messages SET text = ? WHERE id = ?').run(text, row.id);
+        db.query('INSERT INTO messages_fts(rowid, text) VALUES (?, ?)').run(row.id, text);
+        return { ok: true };
+      }).immediate();
+    } finally { db.close(); }
+  } catch { return { ok: false }; }
 }
 
 /**

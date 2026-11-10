@@ -154,7 +154,7 @@ async function sendDiscord(token: string, chatId: string, text: string, timeoutM
   return sendPlatform('discord', `${base}/channels/${chatId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
-    body: JSON.stringify({ content: text }),
+    body: JSON.stringify({ content: text, allowed_mentions: { parse: ['users'], replied_user: true } }),
   }, timeoutMs);
 }
 

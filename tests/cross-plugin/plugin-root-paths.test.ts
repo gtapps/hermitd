@@ -18,7 +18,6 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'hermit-settings -> proposal-create/apply.md': 'prose-only',
     'watch -> channel-responder/questions.md': 'prose-only',
     'hermit-settings -> channel-responder/questions.md': 'prose-only',
-    'voice-notes -> channel-responder/questions.md': 'prose-only',
     'hermit-evolve -> channel-responder/questions.md': 'prose-only',
     'hermit-doctor -> channel-responder/outbound.md': 'commands',
     'spawn-session -> watch/session-watch.md': 'prose-only',

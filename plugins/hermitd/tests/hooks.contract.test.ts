@@ -1451,7 +1451,7 @@ describe('doctor-check', () => {
     expect(report.checks.map((c: any) => c.id)).toEqual([
       'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
       'permission-rules', 'docker-security', 'reflect', 'scheduler', 'watchdog', 'context-age', 'routine-cost', 'heartbeat',
-      'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'model-pricing-known', 'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox', 'backup',
+      'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'transcription', 'model-pricing-known', 'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox', 'backup',
     ]);
   }));
 

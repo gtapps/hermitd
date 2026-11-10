@@ -38,7 +38,8 @@ test('symlinks and dangling symlink parents cannot escape', async () => {
   fs.symlinkSync(f.root, path.join(f.memory, 'escape'));
   fs.symlinkSync(path.join(f.root, 'absent'), path.join(f.memory, 'dangling'));
   fs.symlinkSync(path.join(f.root, 'outside'), path.join(f.dir, 'compiled/topic-link.md'));
-  for (const file of [path.join(f.memory, 'escape/out.md'), path.join(f.memory, 'dangling/out.md'), path.join(f.dir, 'compiled/topic-link.md')]) {
+  fs.writeFileSync(path.join(f.root, 'shared.md'), 'shared'); fs.symlinkSync(path.join(f.root, 'shared.md'), path.join(f.memory, 'link.md'));
+  for (const file of [path.join(f.memory, 'escape/out.md'), path.join(f.memory, 'dangling/out.md'), path.join(f.dir, 'compiled/topic-link.md'), path.join(f.memory, 'link.md')]) {
     expect((await f.run(f.write(file))).stdout).toContain('deny');
   }
 });

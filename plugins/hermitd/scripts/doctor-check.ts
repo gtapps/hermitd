@@ -24,6 +24,7 @@ import { readRuntimeJson } from './lib/runtime';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { getEnabledChannels, isDict } from './lib/channel-config';
 import { browserDeployment, browserEnabled, browserHostPlatform, browserHostPrerequisite, browserImageProbe, browserRuntimeMode, type BrowserPrerequisiteOptions } from './lib/browser-runtime';
+import { readiness, type ReadinessOptions } from './lib/transcription';
 import { isContainer } from './lib/container';
 import { readChannelToken, channelStateDir } from './lib/channel-token';
 import { CHANNEL_PROBES, extractBotIdentity } from './lib/channel-probe';
@@ -530,7 +531,7 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
     return {
       id: 'version-currency',
       status: 'warn',
-      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
+      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`hermitd update\` from a host terminal (it also applies the permission list), or \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
     };
   } catch (e: any) {
     return { id: 'version-currency', status: 'warn', detail: `check failed: ${e.message}` };
@@ -1588,6 +1589,18 @@ function checkBrowser(p: DoctorPaths = PATHS, options: BrowserPrerequisiteOption
   } catch (error: any) { return { id, status: 'warn', detail: `browser check: ${error.message}; run hermitd run browser-host in the host terminal` }; }
 }
 
+function checkTranscription(p: DoctorPaths = PATHS, options: Partial<ReadinessOptions> = {}) {
+  const id = 'transcription';
+  try {
+    const result = readiness({ projectRoot: path.dirname(p.hermitDir), hermitDir: p.hermitDir, docker: isContainer(), ...options });
+    const status = ['disabled', 'ready', 'first_use'].includes(result.status) ? 'ok' : 'warn';
+    const next = result.status === 'failed' ? '; next: .hermit/bin/hermitd-run transcribe --prepare' : '';
+    return { id, status, detail: result.reason + next };
+  } catch (error: any) {
+    return { id, status: 'warn', detail: `${error.message}; next: .hermit/bin/hermitd-run transcribe --prepare` };
+  }
+}
+
 // ----------------- Model pricing known -----------------
 
 // Shared by the two config-reading checks below: config.json's own validity is
@@ -2392,6 +2405,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkCredentialExpiry(p),
     checkChromeAuth(p),
     checkBrowser(p),
+    checkTranscription(p),
     checkModelPricingKnown(p),
     checkMemorySize(p),
     checkPassiveChats(p),
@@ -2610,7 +2624,7 @@ export {
   checkDockerSecurity, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
-  checkCredentialExpiry, checkChromeAuth, checkBrowser, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
+  checkCredentialExpiry, checkChromeAuth, checkBrowser, checkTranscription, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
   satisfiesRange, cidrOverlap,
   // Tests build their own paths for a scratch dir; the CLI runs on the argv-derived default.
   resolvePaths,

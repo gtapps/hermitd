@@ -548,3 +548,14 @@ test('fresh browser defaults on and Advanced Chrome selection enables Chrome', a
   expect(config.chrome).toBe(true);
   expect(config.browser).toMatchObject({ enabled: false, default: 'chrome', admins: [{ login: 'admin', mentions: {} }] });
 });
+
+test('transcription defaults on and Advanced opt-out preserves echo and custom fields', async () => {
+  const root = freshDir();
+  expect((await runHatchConfig(root, { project_name: 'test' })).exitCode).toBe(0);
+  const config = JSON.parse(fs.readFileSync(configPathFor(root), 'utf8'));
+  expect(config.transcription).toEqual({ enabled: true, echo: true });
+  config.transcription = { enabled: true, echo: false, custom: 'kept' };
+  seedConfig(root, config);
+  expect((await runHatchConfig(root, { transcription: false }, true)).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(root), 'utf8')).transcription).toEqual({ enabled: false, echo: false, custom: 'kept' });
+});

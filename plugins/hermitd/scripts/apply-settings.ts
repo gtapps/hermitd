@@ -197,6 +197,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run dream finish *)',
   'Bash(.hermit/bin/hermitd-run dream undo *)',
   'Bash(.hermit/bin/hermitd-run channel-send *)',
+  'Bash(.hermit/bin/hermitd-run transcribe *)',
   'Bash(.hermit/bin/hermitd-run brief-digest .hermit *)',
   'Bash(.hermit/bin/hermitd-run observations observe *)',
   // The rc-gate skill's four verbs. The skill is operator-invoked, but the Bash
@@ -440,8 +441,8 @@ switch (op) {
     // Plan first: the diff is computed against the pre-merge state, so the printed
     // result is exactly what this run changed.
     const plan = planPermissions(settings);
-    // Nothing to do — don't rewrite the file. hermit-evolve runs this on every
-    // upgrade, and a target that is already current must not come back reformatted
+    // Nothing to do: don't rewrite the file. `hermitd update` runs this whenever it
+    // moves the core plugin, and a target that is already current must not come back reformatted
     // (or with a fresh mtime) just for having been checked.
     if (plan.missing.length === 0 && plan.obsolete.length === 0 && plan.obsolete_deny.length === 0) readOnly = true;
     else {

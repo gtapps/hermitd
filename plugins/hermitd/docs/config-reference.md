@@ -535,6 +535,15 @@ The top-level `browser` object is protected by the native settings prompt. It is
 
 `/hermitd:browser` collects admins in chat, asks for the host command once and declares the `browser-handback` monitor. The command skips Tailscale when admins are unset. Managed Docker images carry `/etc/hermit/managed-browser` containing `display=plugin`; the plugin starts the display on demand. Older bare markers require `hermitd update`, and a Dockerfile without the delimited managed-browser block needs the parked upstream merge first. See [Browser Tasks](how-to-use.md#browser-tasks) and [host prerequisites](../skills/browser/host-setup.md).
 
+## transcription
+
+Voice-note transcription is enabled by default, including when the block is absent.
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `transcription.enabled` | `true` | Transcribe inbound voice notes. Set to `false` to disable transcription and downloads. |
+| `transcription.echo` | `true` | Echo the transcript into the same chat before replying to its content. |
+
 ## `docker`
 
 | Key | Type | Default | Description |

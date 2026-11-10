@@ -161,7 +161,9 @@ export function renderSources(
   }
 
   const dockerfile = renderTemplate(dockerfileTemplate, {
-    PACKAGES_BLOCK: [packagesBlock(packages), dockerfileTemplate.includes('{{BROWSER_ENV}}') ? (inputs.browser ? browserBlock(true) : '') : browserBlock()].filter(Boolean).join('\n\n'),
+    PACKAGES_BLOCK: [packagesBlock(packages), dockerfileTemplate.includes('{{BROWSER_ENV}}') ? (inputs.browser ? browserBlock(true) : '') : browserBlock(),
+      '# --- transcription ---\nARG HERMIT_TRANSCRIPTION=1\nRUN if [ "$HERMIT_TRANSCRIPTION" = 1 ]; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r /var/lib/apt/lists/*; fi',
+    ].filter(Boolean).join('\n\n'),
     BROWSER_ENV: inputs.browser
       ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\n'
       : '',
