@@ -26,7 +26,7 @@ import { isSecretPath } from './lib/config-audit';
 import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
-import { hermitDir, readTailLines, transcriptPath, turnPromptText } from './lib/cc-compat';
+import { hermitDir, readTurn, transcriptPath } from './lib/cc-compat';
 import { resolveProjectScript } from './lib/routines/gate';
 
 type Json = any;
@@ -172,7 +172,12 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
   return false;
 }
 
-const TURN_TAIL_BYTES = 512 * 1024;
+// One transcript read per hook run: a task command that also writes routines needs both the senders and the origin.
+let turnRead: { tPath: string; turn: ReturnType<typeof readTurn> } | undefined;
+function currentTurn(tPath: string): ReturnType<typeof readTurn> {
+  if (turnRead?.tPath !== tPath) turnRead = { tPath, turn: readTurn(tPath) };
+  return turnRead.turn;
+}
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
   | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };
@@ -185,8 +190,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return { kind: 'unknown' };
-    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
-    const prompt = turnPromptText(lines, lines.length);
+    const { prompt } = currentTurn(tPath);
     if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
@@ -207,8 +211,7 @@ function turnChannelSenders(payload: Json): SenderClaim[] | null {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return null;
-    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
-    const prompt = turnPromptText(lines, lines.length);
+    const { lines, prompt } = currentTurn(tPath);
     if (!prompt.boundaryFound) return null;
     const config = readConfigRaw(hermitDir());
     const senders: SenderClaim[] = [];

@@ -78,6 +78,13 @@ describe('isEligibleInboundReply — transcript-derived eligibility', () => {
     expect(isEligibleInboundReply({ transcript_path: t }, 'telegram', 'BBB')).toBe(false);
   });
 
+  test('an inbound envelope that opened the turn over 512 KB earlier is still eligible', () => {
+    const t = writeTranscript(['<channel source="plugin:telegram:telegram" chat_id="123">hi there</channel>']);
+    const padding = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(20 * 1024) }] } });
+    fs.appendFileSync(t, Array(40).fill(padding).join('\n') + '\n');
+    expect(isEligibleInboundReply({ transcript_path: t }, 'telegram', '123')).toBe(true);
+  });
+
   test('no transcript_path on the event is not eligible', () => {
     expect(isEligibleInboundReply({}, 'telegram', '123')).toBe(false);
   });

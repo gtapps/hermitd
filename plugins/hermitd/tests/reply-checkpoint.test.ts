@@ -77,6 +77,14 @@ describe('stop-pipeline — channel reply checkpoint', () => {
     expect(turnExists(dir)).toBe(true);
   }));
 
+  test('envelope boundary over 512 KB back, assistant text only: block JSON', withDir(async (dir) => {
+    writeTurn(dir);
+    writeTranscript(dir, [envelope(), ...Array.from({ length: 40 }, () => assistantText('x'.repeat(20 * 1024)))]);
+    const r = await runStop(dir);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).decision).toBe('block');
+  }));
+
   test('envelope boundary, discord reply tool with a different chat_id: stdout empty', withDir(async (dir) => {
     writeTranscript(dir, [
       envelope(),
