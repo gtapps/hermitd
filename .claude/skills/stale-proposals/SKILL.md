@@ -81,9 +81,9 @@ Compare that set against the IDs in the verdict lines. For any ID with no verdic
 
 Skip this entire step under `--no-apply`.
 
-Only a proposal still awaiting consent (`status: proposed` in the bundle) is auto-resolved: closing an approved one needs a named operator identity, so a `SHIPPED-STRONG` on an `accepted` proposal joins the Step 4 list.
+Only a proposal still awaiting consent (`status: proposed` in the bundle) is auto-resolved: an approved one was a deliberate yes, so a `SHIPPED-STRONG` on an `accepted` proposal joins the Step 4 list.
 
-The bundle's `task:` line gives the task id. Record the evidence, then decline consent through the local answer path, which is how `task.ts` closes a pending proposal from the terminal (`plugins/hermitd/docs/task-records.md` § Proposals and durable questions):
+The bundle's `task:` line gives the task id. Record the evidence, then close it with `dismiss`, which is how `task.ts` drops a proposal from the terminal (`plugins/hermitd/docs/task-records.md` § Proposals and durable questions):
 
 ```bash
 bun plugins/hermitd/scripts/task.ts note <hermit-dir> <task-id> --decision <<'HERMIT_NOTE'
@@ -93,9 +93,9 @@ HERMIT_NOTE
 echo "Shipped in <plugin> <version>." | bun plugins/hermitd/scripts/task.ts dismiss <hermit-dir> <task-id> --reason-stdin
 ```
 
-Replace `@now` with the current date. The note is what makes an automatic flip auditable: the operator can later see which bullet closed the proposal. A shipped proposal closes as cancelled (the record's own closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. `dismiss` closes only a proposal still waiting for consent and runs without a prompt when the operator typed the turn in the terminal; anywhere else it asks for Claude Code's permission, and bypass mode refuses it there, so a refusal means leave it for Step 4 and say so.
+Replace `@now` with the current date. The note is what makes an automatic flip auditable: the operator can later see which bullet closed the proposal. A shipped proposal closes as cancelled (the record's own closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. `dismiss` runs without a prompt on a turn the operator typed in the terminal. On a chat turn it is denied with a pointer to the chat path, and elsewhere it asks for permission (bypass mode refuses it), so a denial or refusal means leave it for Step 4 and say so.
 
-`dismiss` prints `{"id":...,"closed_by":"cancelled",...}` on success. A `{"status":"refused",...}` or `{"error":...}` means nothing was closed: report it, move that proposal into the Step 4 list, and continue with the rest. A `note` already written stays as a harmless record.
+`dismiss` prints `{"id":...,"closed_by":"cancelled",...}` on success. A `{"status":"refused",...}` (such as `not_proposal`), an `{"error":...}`, or a hook denial means nothing was closed: report it, move that proposal into the Step 4 list, and continue with the rest. A `note` already written stays as a harmless record.
 
 ## Step 4 — Ask about the rest
 
@@ -104,7 +104,7 @@ Present `SHIPPED-WEAK` and `AGED` together in one `AskUserQuestion` round, weak 
 Apply confirmed answers with `task.ts` (same `<hermit-dir>` as Step 1). Both "resolve" and "dismiss" close the record as cancelled; the Decision note carries the difference:
 
 - **awaiting consent** — `note --decision` with the operator's choice and reason (for resolve, as Step 3), then `dismiss <task-id> --reason-stdin` with the reason on stdin.
-- **accepted** — `cancel <task-id> --actor <source>:<user-id> --chat <chat-key> --user <user-id> --reason-stdin` with the reason on stdin, using the operator's own identity from this conversation. A terminal-only session has none: report the task id and leave it open.
+- **accepted** — `cancel <task-id> --actor <source>:<user-id> --chat <chat-key> --user <user-id> --reason-stdin` with the reason on stdin, using the operator's own identity from this conversation on a chat turn. From a terminal session, `dismiss <task-id> --reason-stdin` instead.
 - **leave open** — nothing to write.
 
 If a dismissal reason states a durable preference that would apply to a whole *family* of future proposals rather than just this one, save it as feedback memory. A proposal-specific "this doesn't apply here" is not.

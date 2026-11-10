@@ -657,7 +657,7 @@ function channelAccessAsks(command: string): string[] {
 }
 
 /**
- * Local answers use the native dialog as the human admin boundary.
+ * Labels a local answer for the ask shown off a typed terminal turn (main decides by origin).
  * Expansions are opaque and always ask rather than claiming a specific reply.
  */
 function localAnswerAsks(command: string): string[] {
@@ -846,22 +846,39 @@ function main(payload: any): void {
       deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
       return;
     }
-    // Read lazily: only a dismissal or a routines write needs the transcript.
+    // Read lazily: only an operator decision or a routines write needs the transcript.
     let turn: RoutineOrigin | undefined;
     const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
-    localAnswers = localAnswerAsks(taskText);
-    // `task dismiss` can only cancel a pending proposal (task.ts enforces that), so it needs no
-    // parsing here: only the operator's own typed terminal turn runs it without asking. The match
-    // is deliberately coarse. It guards the agent's normal path, not the records: a disguised
-    // spelling is not caught, and even in bypass mode the agent could change a record another
-    // way. The worst a miss does is cancel a proposal, never grant one.
-    if (/\btask(?:\.ts)?\s+dismiss\b/.test(taskText.replace(/['"\\]/g, ''))) {
+    const answers = localAnswerAsks(taskText);
+    // `task dismiss` can only cancel a proposal (task.ts enforces that), so it needs no parsing:
+    // the match is deliberately coarse. Like the rest of this hook it guards the agent's normal
+    // path, not the records; a disguised spelling is not caught. The origin proves who typed the
+    // turn, not what they asked for: the classifier and native rules still judge the command.
+    const dismisses = /\btask(?:\.ts)?\s+dismiss\b/.test(taskText.replace(/['"\\]/g, ''));
+    // A form the parser could not read (`git config --local` near a `task` word, `bash -c`) is
+    // not known to be a local answer, so a chat turn asks for it as before rather than steering.
+    const opaque = answers.length > 0 && answers.every(label => label === 'task answer --local');
+    if (answers.length || dismisses) {
       const value = origin();
-      if (!(value.kind === 'terminal' && value.proven)) localAnswers.push('dismiss a proposal');
-    }
-    if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
-      deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
-      return;
+      const bypass = payload.permission_mode === 'bypassPermissions';
+      const operator = value.kind === 'terminal' && value.proven;
+      if (value.kind === 'channel' && (dismisses || !opaque)) {
+        // A deny reason reaches the model, which retries on the sender-attributed path.
+        deny(`On a chat turn the sender decides, not the operator: ${[
+          ...(answers.length ? ['answer with `task answer [<id>] --chat <key> --user <sender-id> --reply <token>`'] : []),
+          ...(dismisses ? ['decline a pending proposal with `task answer <id> --chat <key> --user <sender-id> --reply no`, or cancel an accepted one with `task cancel <id> --actor <source>:<user-id> --chat <key> --user <sender-id> --reason-stdin`'] : []),
+        ].join('; ')}. If the command only mentions these, reword that text.`);
+        return;
+      }
+      // On the operator's typed turn a dismissal only cancels; a local answer can grant, and in
+      // bypass nothing else would check it.
+      if (bypass && (answers.length || !operator)) {
+        deny(answers.length
+          ? 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.'
+          : 'A command naming `task dismiss` runs in bypass mode only on the operator\'s own typed terminal turn; leave the proposal for the operator.');
+        return;
+      }
+      if (!operator) localAnswers = [...answers, ...(dismisses ? ['dismiss a proposal'] : [])];
     }
     if (payload.permission_mode === 'bypassPermissions'
       && channelAccessAsks(typeof input.command === 'string' ? input.command : '').length > 0) {
