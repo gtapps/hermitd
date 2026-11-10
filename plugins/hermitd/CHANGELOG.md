@@ -4,11 +4,11 @@
 
 ### Changed
 
-- Cost reports price Claude Fable 5.2 ($8 / $40 per MTok, fast mode $16 / $80) and use it for the `fable` alias and Claude Mythos models
 - Dashboard waiting rows expand to the proposal's Context, Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)
 - Non-technical installs see no spend, token or alert text on the built-in dashboard, only the counts and proposal titles; proposal text and by-person costs are withheld from custom renderers too
 - Remaining dashboard labels (execution, open tasks, the waiting line, by-person headings) come from the translatable strings table
 - Dashboard compiled-docs list shows each doc's type, summary, date and tags, lists up to 100 docs, leaves out pages scoped to one chat, and adds search and type filters that remember the last choice per viewer
+- Cost reports price Claude Fable 5.2 ($8 / $40 per MTok, fast mode $16 / $80) and use it for the `fable` alias and Claude Mythos models
 
 ### Upgrade Instructions
 
