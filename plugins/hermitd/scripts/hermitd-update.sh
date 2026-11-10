@@ -379,6 +379,7 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
   REQUEST_ARGS+=(--source update)
   [ "$SELF_RUN" = true ] || REQUEST_ARGS+=(--wait 300)
+  REQUEST_ARGS+=(--purpose upgrade)
   IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(_request_status "$(_harness_request "${REQUEST_ARGS[@]}")")"
   if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ]; then
     RELOAD_PLUGINS_SENT=true
@@ -412,6 +413,20 @@ else
   echo "[hermit] /hermitd:hermit-evolve in that session (always-on does it automatically)."
 fi
 
+# Remove the update deferral before checking the resulting health.
+[ -n "${UPDATE_MARKER:-}" ] && rm -f "$UPDATE_MARKER"
+DOCTOR_START=0
+DOCTOR_END=0
+if [ "${SELF_RUN:-false}" = false ]; then
+  DOCTOR_START="$(date +%s)000"
+  # Report only when the update held evolve back for the Claude Code floor; --fix would queue it.
+  DOCTOR_ARGS=(doctor --fix)
+  [ "$CC_BLOCKED" = true ] && DOCTOR_ARGS=(doctor)
+  # Exit 1 on a FAIL verdict is a result, not an error; the report window below decides.
+  "$SCRIPT_DIR/hermitd-run" hermitd-cli "${DOCTOR_ARGS[@]}" || true
+  DOCTOR_END="$(( $(date +%s) + 1 ))000"
+fi
+
 # --- History entry (shared schema with hermitd-docker update). ---
 LOG_FILE="$PROJECT_DIR/.hermit/state/update-history.jsonl"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -423,9 +438,10 @@ fi
 BEFORE_TSV=$(printf '%s\n' "$UPDATE_ROWS" | cut -f2-)
 AFTER_TSV=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | cut -f2-)
 bun - "$BEFORE_TSV" "$AFTER_TSV" "$FAIL_IDS_JSON" "$LOG_FILE" \
-      "$RELOAD_PLUGINS_SENT" "$EVOLVE_SENT" "$PLUGIN_ERRORS_AFTER" <<'JSEOF' || \
+      "$RELOAD_PLUGINS_SENT" "$EVOLVE_SENT" "$PLUGIN_ERRORS_AFTER" \
+      "${SELF_RUN:-false}" "$DOCTOR_START" "$DOCTOR_END" <<'JSEOF' || \
   echo "[hermit] Warning: could not write update log" >&2
-const [beforeTsv, afterTsv, failJson, logFile, reloadSent, evolveSent, errorsTsv] = process.argv.slice(2);
+const [beforeTsv, afterTsv, failJson, logFile, reloadSent, evolveSent, errorsTsv, selfRun, doctorStart, doctorEnd] = process.argv.slice(2);
 const parseRows = (tsv) => {
   const m = new Map();
   for (const line of (tsv || '').split('\n')) {
@@ -462,7 +478,19 @@ for (const [key, { id, scope, version }] of before) {
   if (err) entry.error = err;
   plugins.push(entry);
 }
+let doctor = selfRun === 'true' ? { status: 'skipped', reason: 'self_run' } : { status: 'error' };
+if (selfRun !== 'true') {
+  try {
+    const report = JSON.parse(require('fs').readFileSync(require('path').join(require('path').dirname(logFile), 'doctor-report.json'), 'utf8'));
+    const ts = Date.parse(report.ts);
+    if (ts >= Number(doctorStart) && ts <= Number(doctorEnd) && Array.isArray(report.checks)) {
+      doctor = { status: 'ran', issues: report.checks.filter(c => c.status !== 'ok').map(({ id, status }) => ({ id, status })) };
+    }
+  } catch {}
+}
+if (doctor.status === 'error') console.error('[hermit] doctor check could not run; run `hermitd doctor`');
 const entry = {
+  doctor,
   ts: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   trigger: 'hermitd-update',
   mode: 'host-plugins',

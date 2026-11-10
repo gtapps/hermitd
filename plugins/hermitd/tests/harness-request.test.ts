@@ -83,3 +83,22 @@ for (const status of ['ok', 'failed'] as const) {
     expect(JSON.parse(result.stdout)).toEqual(status === 'ok' ? { status: 'ok' } : { status: 'failed', reason: 'rejected', text: 'Failed to reload' });
   });
 }
+
+test('upgrade purpose admits only one batch per session', async () => {
+  const { wd, dir } = fixture();
+  const args = ['/reload-plugins', '--then', '/hermitd:hermit-evolve', 'unattended', '--purpose', 'upgrade'];
+  const first = await request(wd, args);
+  const second = await request(wd, args);
+  expect(first.exitCode).toBe(0);
+  expect(second.exitCode).toBe(0);
+  expect(JSON.parse(second.stdout)).toEqual(JSON.parse(first.stdout));
+  expect(queued(dir)).toHaveLength(1);
+  expect(queued(dir)[0].purpose).toBe('upgrade');
+});
+
+test('--purpose requires a value', async () => {
+  const { wd } = fixture();
+  const result = await request(wd, ['/reload-plugins', '--purpose']);
+  expect(result.exitCode).not.toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ error: 'invalid_flag' });
+});

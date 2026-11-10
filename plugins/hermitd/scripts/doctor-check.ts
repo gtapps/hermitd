@@ -37,7 +37,8 @@ import { readContextSurface } from './lib/context-surface';
 import { expandSessionName } from './lib/tmux';
 import { auditMessages, isEnglish, readMessagesFile } from './lib/messages';
 import { readJson, writeStdout } from './lib/cli';
-import { modLoadedForResident } from './lib/harness-mod';
+import { cmpSemver } from './lib/semver';
+import { modLoadedForResident, pendingPurpose } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
 import { findResident } from './lib/session-registry';
 import { bootMismatch } from './lib/monitor-health';
@@ -492,27 +493,44 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
       return { id: 'version-currency', status: 'ok', detail: 'core name/version not set — skipping' };
     }
 
+    const stamp = readSettledConfig(p.hermitDir)._hermit_versions?.hermitd ?? '0.0.0';
+    const relation = cmpSemver(installedVersion, stamp);
+    const markerPath = path.join(p.stateDir, 'update-in-progress.json');
+    const marker = readJson(markerPath);
+    const age = Date.now() - Date.parse(marker?.at);
+    const markerState = fs.existsSync(markerPath) ? (age >= 0 && age < 60 * 60 * 1000 ? 'fresh' : 'stale') : 'none';
+    const versions = `installed ${installedVersion}, applied stamp ${stamp}; update marker ${markerState}`;
+    const row = { id: 'version-currency', installed_version: installedVersion };
+    if (relation > 0) {
+      const pending = pendingPurpose(p.hermitDir, 'upgrade');
+      return { ...row, status: 'warn', detail: `${versions} — upgrade ${pending ? `queued at ${pending.requested_at}` : 'pending; run `hermitd doctor --fix`'}`,
+        ...(!pending ? { fix: 'evolve' } : {}) };
+    }
+    if (relation < 0) return { ...row, status: 'warn', detail: `${versions} — run \`hermitd update\`` };
+    if (markerState === 'stale') return { ...row, status: 'warn', detail: `${versions} — rerun \`hermitd update\`` };
+    if (markerState === 'fresh') return { ...row, status: 'ok', detail: versions };
+
     const mpFile = marketplaceCacheFile(coreName, p);
     if (!mpFile) {
-      return { id: 'version-currency', status: 'ok', detail: 'no marketplace cache to compare against (dev checkout, or marketplace never added)' };
+      return { ...row, status: 'ok', detail: 'no marketplace cache to compare against (dev checkout, or marketplace never added)' };
     }
     let marketplace: Json;
     try {
       marketplace = JSON.parse(fs.readFileSync(mpFile, 'utf8'));
     } catch {
-      return { id: 'version-currency', status: 'ok', detail: 'marketplace cache unreadable — skipping' };
+      return { ...row, status: 'ok', detail: 'marketplace cache unreadable — skipping' };
     }
     const entry = (Array.isArray(marketplace.plugins) ? marketplace.plugins : []).find((plugin: Json) => plugin.name === coreName);
     const cachedVersion: string = entry?.version;
     if (!cachedVersion || !/^\d+\.\d+\.\d+/.test(cachedVersion) || !/^\d+\.\d+\.\d+/.test(installedVersion)) {
-      return { id: 'version-currency', status: 'ok', detail: 'marketplace cache has no comparable version entry — skipping' };
+      return { ...row, status: 'ok', detail: 'marketplace cache has no comparable version entry — skipping' };
     }
 
     let cachedAt = '';
     try { cachedAt = ` (cached ${fs.statSync(mpFile).mtime.toISOString().slice(0, 10)})`; } catch {}
 
     if (Bun.semver.order(cachedVersion, installedVersion) <= 0) {
-      return { id: 'version-currency', status: 'ok', detail: `installed ${installedVersion}, no newer version in local marketplace cache${cachedAt}` };
+      return { ...row, status: 'ok', detail: `installed ${installedVersion}, no newer version in local marketplace cache${cachedAt}` };
     }
 
     // Read the newer version's CHANGELOG from the marketplace-cache clone (refreshed with
@@ -529,7 +547,7 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
       || null;
     const escalation = cachedChangelog && changelogRangeHasFixed(installedVersion, cachedVersion, cachedChangelog) ? ' — includes Fixed entries' : '';
     return {
-      id: 'version-currency',
+      ...row,
       status: 'warn',
       detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`hermitd update\` from a host terminal (it also applies the permission list), or \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
     };
@@ -915,7 +933,7 @@ function watchdogUnitName(config: Json, hermitDir: string): string {
  * Best-effort by construction: not Linux, no systemctl, no bus, or no such unit
  * all mean "nothing to diagnose here", never a doctor failure.
  */
-function checkWatchdogUnitStatus(serviceName: string): { status: 'fail'; detail: string } | null {
+function checkWatchdogUnitStatus(serviceName: string): { status: 'fail'; detail: string; pathMissing: boolean } | null {
   if (process.platform !== 'linux' || !Bun.which('systemctl')) return null;
   try {
     const out = execFileSync(
@@ -937,13 +955,14 @@ function checkWatchdogUnitStatus(serviceName: string): { status: 'fail'; detail:
     if (!failed) return null;
     const remedy =
       execStatus === 127
-        ? "the unit cannot resolve `bun` on its environment PATH — re-run `hermitd watchdog install` to bake the installing shell's PATH, then `systemctl --user daemon-reload`"
+        ? "the unit cannot resolve `bun` on its environment PATH — re-run `hermitd watchdog install` to bake the installing shell's PATH"
         : `inspect with \`journalctl --user -u ${serviceName}\``;
     return {
       status: 'fail',
       detail:
         `watchdog: systemd unit ${serviceName}.service last run failed ` +
         `(ExecMainStatus=${props.ExecMainStatus ?? '?'}, Result=${result ?? '?'}) — ${remedy}`,
+      pathMissing: execStatus === 127,
     };
   } catch {
     return null;
@@ -1011,9 +1030,18 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
     // entrypoint, not a systemd user unit, so it is not in scope here.
     const unitInScope = runtime?.runtime_mode === 'tmux' || runtime?.runtime_mode == null;
     const unitName = unitInScope ? watchdogUnitName(config, hermitDir) : null;
+    const linuxInstall = process.platform === 'linux' && !!Bun.which('systemctl')
+      && (wCfg.enabled === true || fs.existsSync(path.join(os.homedir(), '.config/systemd/user', `${unitName}.timer`)));
+    const darwinInstall = process.platform === 'darwin' && wCfg.enabled === true;
+    const canInstall = runtime?.runtime_mode === 'tmux' && (linuxInstall || darwinInstall);
+    const repair = canInstall ? { fix: 'watchdog-install' } : {};
+
     if (unitName) {
       const unitStatus = checkWatchdogUnitStatus(unitName);
-      if (unitStatus) return { id: 'watchdog', ...unitStatus };
+      if (unitStatus) {
+        const { pathMissing, ...row } = unitStatus;
+        return { id: 'watchdog', ...row, ...(pathMissing ? repair : {}) };
+      }
     }
 
     const statePath = path.join(stateDir, 'watchdog-state.json');
@@ -1051,12 +1079,12 @@ function checkWatchdog(p: DoctorPaths = PATHS) {
         remedy = 'native: run `hermitd watchdog install`; Docker: recreate the container (`docker compose up -d --force-recreate`)';
       }
       const staleLabel = wCfg.enabled ? 'enabled but not firing' : "scheduler isn't firing";
-      return { id: 'watchdog', status: 'warn', detail: `watchdog: ${staleLabel} (${ageNote}) — ${remedy}` };
+      return { id: 'watchdog', status: 'warn', ...repair, detail: `watchdog: ${staleLabel} (${ageNote}) — ${remedy}` };
     }
 
     if (unitName) {
       const stalePath = checkWatchdogUnitPathBaked(unitName);
-      if (stalePath) return { id: 'watchdog', ...stalePath };
+      if (stalePath) return { id: 'watchdog', ...stalePath, ...repair };
     }
 
     const eventsPath = path.join(stateDir, 'watchdog-events.jsonl');

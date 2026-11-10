@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Usage: hermitd-run harness-request <command> [arg] [--then <command> [arg]]
-//          [--source update] [--expect-version <v>] [--wait <seconds>]
+//          [--source update] [--expect-version <v>] [--purpose <key>] [--wait <seconds>]
 // Queues a harness command for the core mod; with --wait, prints its outcome.
 import { hermitDir } from './lib/cc-compat';
 import { exitError, failJson, printJson } from './lib/cli';
@@ -10,18 +10,20 @@ const SOURCES: QueueSource[] = ['terminal', 'update'];
 const commands: { command: string; arg: string | null }[] = [];
 let source: QueueSource = 'terminal';
 let expectVersion: string | undefined;
+let purpose: string | undefined;
 let wait: number | undefined;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const token = args[i];
   if (token === '--then') continue;
-  if (token === '--source' || token === '--expect-version' || token === '--wait') {
+  if (token === '--source' || token === '--expect-version' || token === '--wait' || token === '--purpose') {
     const value = args[++i];
-    if (!value) exitError('invalid_flag');
+    if (!value || value.startsWith('--')) exitError('invalid_flag');
     if (token === '--source') {
       if (!SOURCES.includes(value as QueueSource)) exitError('invalid_source');
       source = value as QueueSource;
     } else if (token === '--expect-version') expectVersion = value;
+    else if (token === '--purpose') purpose = value;
     else {
       if (!/^\d+$/.test(value)) exitError('invalid_wait');
       wait = Number(value);
@@ -39,7 +41,7 @@ if (commands.length === 0) exitError('missing_command');
 const dir = hermitDir();
 let id = '';
 try {
-  const queued = enqueue(dir, { source, commands, ...(expectVersion ? { expect_version: expectVersion } : {}) });
+  const queued = enqueue(dir, { source, commands, ...(purpose ? { purpose } : {}), ...(expectVersion ? { expect_version: expectVersion } : {}) });
   if (queued.status !== 'queued' || wait === undefined) {
     printJson(queued);
     process.exit(0);

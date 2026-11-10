@@ -27,7 +27,7 @@ import { triggerPrompt } from './helpers/transcript';
 import { frontmatterBlock, isModelInvocationDisabled } from './helpers/skill-frontmatter';
 import { validateCronSchedule, validate } from '../scripts/validate-config';
 import { resolve, resolveMaintainerTarget } from '../scripts/resolve-outbound-channel';
-import { resolvePaths, checkConfig } from '../scripts/doctor-check';
+import { resolvePaths, checkConfig, checkVersionCurrency, escalate } from '../scripts/doctor-check';
 import { PRICING_VERIFIED } from '../scripts/lib/pricing';
 
 const SCRIPTS = path.join(PLUGIN_ROOT, 'scripts');
@@ -2212,7 +2212,7 @@ describe('doctor version-currency check', () => {
   const coreName: string = coreManifest.name;
 
   test('no marketplace cache configured → ok', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const report = await runDoctorCheck(dir);
     const c = vcCheck(report);
     expect(c.status).toBe('ok');
@@ -2220,7 +2220,7 @@ describe('doctor version-currency check', () => {
   }), 20000);
 
   test('marketplace cache lists no matching plugin entry → ok, no comparable entry', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const mpFile = path.join(dir, 'marketplace.json');
     fs.writeFileSync(mpFile, JSON.stringify({ plugins: [] }));
     const r = await runScript('doctor-check.ts', {
@@ -2233,7 +2233,7 @@ describe('doctor version-currency check', () => {
   }), 20000);
 
   test('marketplace cache lists the same version → ok, no newer version', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const mpFile = path.join(dir, 'marketplace.json');
     fs.writeFileSync(mpFile, JSON.stringify({ plugins: [{ name: coreName, version: installedVersion }] }));
     const r = await runScript('doctor-check.ts', {
@@ -2246,7 +2246,7 @@ describe('doctor version-currency check', () => {
   }), 20000);
 
   test('marketplace cache lists a newer version, no Fixed entries in range → warn, not escalated', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const mpFile = path.join(dir, 'marketplace.json');
     fs.writeFileSync(mpFile, JSON.stringify({ plugins: [{ name: coreName, version: '99.0.0' }] }));
     const r = await runScript('doctor-check.ts', {
@@ -2260,7 +2260,7 @@ describe('doctor version-currency check', () => {
   }), 20000);
 
   test('marketplace cache lists a newer version with a Fixed entry in range → warn, escalated', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const mpFile = path.join(dir, 'marketplace.json');
     fs.writeFileSync(mpFile, JSON.stringify({ plugins: [{ name: coreName, version: '99.0.0' }] }));
     const changelog = path.join(dir, 'CHANGELOG.md');
@@ -2283,7 +2283,7 @@ describe('doctor version-currency check', () => {
   // — NOT the installed snapshot, which structurally can't carry the newer version's sections.
   // No HERMIT_DOCTOR_CHANGELOG_PATH override here: resolution must come from `source`.
   test('newer version Fixed entry resolved via marketplace-cache clone `source` → warn, escalated', withTmpdir(async (dir) => {
-    writeConfig(dir, {});
+    writeConfig(dir, { _hermit_versions: { hermitd: installedVersion } });
     const mpRoot = path.join(dir, 'mp');
     const mpFile = path.join(mpRoot, '.claude-plugin', 'marketplace.json');
     fs.mkdirSync(path.dirname(mpFile), { recursive: true });
@@ -3691,3 +3691,40 @@ test('transcription doctor is read-only and warning-only for every readiness ver
   writeConfig(dir, { transcription: { enabled: false } });
   expect(checkTranscription(p, options).status).toBe('ok');
 }));
+
+describe('doctor applied version and interrupted update', () => {
+  const version = readJson(path.join(PLUGIN_ROOT, '.claude-plugin/plugin.json')).version;
+  for (const [stamp, marker, pending, status, fix] of [
+    ['0.0.0', null, false, 'warn', 'evolve'],
+    [null, null, false, 'warn', 'evolve'],
+    ['99.0.0', null, false, 'warn', undefined],
+    [version, new Date().toISOString(), false, 'ok', undefined],
+    [version, '2000-01-01', false, 'warn', undefined],
+    [version, '2999-01-01', false, 'warn', undefined],
+    [version, 'invalid', false, 'warn', undefined],
+    ['0.0.0', '2000-01-01', false, 'warn', 'evolve'],
+    ['0.0.0', '2000-01-01', true, 'warn', undefined],
+  ] as const) {
+    test(`stamp ${stamp}, marker ${marker}, pending ${pending}`, withTmpdir((dir) => {
+      writeConfig(dir, { _hermit_versions: stamp ? { hermitd: stamp } : {} });
+      const hermit = path.join(dir, '.hermit');
+      if (marker) fs.writeFileSync(path.join(hermit, 'state/update-in-progress.json'), JSON.stringify({ at: marker }));
+      if (pending) {
+        fs.mkdirSync(path.join(hermit, 'state/harness-inflight'), { recursive: true });
+        fs.writeFileSync(path.join(hermit, 'state/harness-inflight/upgrade.json'), JSON.stringify({ id: 'upgrade', purpose: 'upgrade', commands: [], requested_at: '2026-01-01' }));
+      }
+      const check = checkVersionCurrency(resolvePaths(hermit, PLUGIN_ROOT)) as { status: string; detail: string; installed_version?: string; fix?: string };
+      expect(check.status).toBe(status);
+      expect(check.installed_version).toBe(version);
+      expect(check.fix).toBe(fix);
+      if (marker) expect(check.detail).toContain(marker === '2999-01-01' || marker === 'invalid' || marker === '2000-01-01' ? 'marker stale' : 'marker fresh');
+      if (stamp === '0.0.0' || stamp === null) expect(check.detail).toContain('stamp 0.0.0');
+      if (pending) {
+        expect(check.detail).toContain('queued at 2026-01-01');
+        const result = escalate([check], new Date().toISOString(), hermit);
+        expect(result.new[0].id).toBe('version-currency');
+        expect(JSON.parse(fs.readFileSync(path.join(hermit, 'state/doctor-alerts.json'), 'utf8')).alerts['doctor:version-currency']).toBeDefined();
+      }
+    }));
+  }
+});

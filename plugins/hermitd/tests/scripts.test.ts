@@ -47,6 +47,19 @@ const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
 const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf-8'));
 
+// Keep update-tail health fixtures independent of the real plugin discovery.
+const doctorPassStub = `if [ "$1 $2" = "hermitd-cli doctor" ]; then
+  [ ! -f .hermit/state/update-in-progress.json ] || { echo 'marker still present' >&2; exit 8; }
+  echo "fixture doctor pass $3"
+  [ "\${LIVE_SCENARIO:-\${UPDATE_SCENARIO:-}}" != doctor-fails ] || exit 9
+  if [ "\${LIVE_SCENARIO:-\${UPDATE_SCENARIO:-}}" = doctor-no-report ]; then exit 0; fi
+  bun -e 'require("fs").writeFileSync(".hermit/state/doctor-report.json", JSON.stringify({ts: new Date().toISOString(), checks: [{id: "runtime", status: "ok"}, {id: "watchdog", status: "warn"}]}))'
+  # A FAIL verdict exits 1 after writing its report; the pass still ran.
+  [ "\${LIVE_SCENARIO:-\${UPDATE_SCENARIO:-}}" != verdict-fail ] || exit 1
+  exit 0
+fi
+`;
+
 /** Subprocess runner for the bash scripts under test (check-upgrade.sh etc.). */
 async function runBash(
   scriptPath: string,
@@ -445,6 +458,11 @@ if [[ " $* " == *" ps --status running "* ]]; then
       ;;
   esac
 fi
+case "$*" in
+  *"claude plugin list --json"*) printf '[{"id":"hermitd@mp","enabled":true,"scope":"user","installPath":"/installed/core"}]\\n' ;;
+  *"doctor-check.ts"*) printf '{"checks":[{"id":"runtime","status":"ok","detail":"ready"}]}\\n' ;;
+  *"harness-request"*) printf '{"status":"queued","id":"upgrade"}\\n' ;;
+esac
 exit 0
 `);
     fs.chmodSync(path.join(stubDir, 'docker'), 0o755);
@@ -460,6 +478,29 @@ exit 0
         DOCKER_STUB_MODE: mode,
       },
     };
+  }
+
+  for (const mode of ['running', 'stopped'] as const) {
+    for (const args of [['doctor'], ['doctor', 'evolve', '1.4.30']]) {
+      test(`doctor ${args.slice(1).join(' ')} with container ${mode}`, async () => {
+        const f = fixture(mode);
+        try {
+          const r = await runBash(hermit(f.proj, 'bin', 'hermitd-docker'), { args, cwd: f.proj, env: f.env });
+          expect(r.exitCode).toBe(mode === 'running' ? 0 : 1);
+          const calls = fs.readFileSync(f.callsFile, 'utf8');
+          if (mode === 'stopped') {
+            expect(r.stderr).toContain('hermitd start');
+            expect(calls).not.toContain('exec -T');
+          } else if (args.length === 1) {
+            expect(JSON.parse(r.stdout).checks[0].status).toBe('ok');
+            expect(calls).toContain('exec -T hermit bun /installed/core/scripts/doctor-check.ts .hermit');
+          } else {
+            expect(JSON.parse(r.stdout)).toEqual({ status: 'queued', id: 'upgrade' });
+            expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.4.30 --purpose upgrade');
+          }
+        } finally { f.wd.cleanup(); }
+      });
+    }
   }
 
   test('running service reaches the configured tmux session', async () => {
@@ -581,7 +622,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
@@ -592,6 +633,10 @@ describe('hermitd-docker update plugin loop', () => {
         fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', name), dest);
         fs.chmodSync(dest, 0o755);
       }
+      const runner = hermit(proj, 'bin/hermitd-run');
+      fs.renameSync(runner, `${runner}.real`);
+      write(runner, `#!/usr/bin/env bash\n${doctorPassStub}exec "$(dirname "$0")/hermitd-run.real" "$@"\n`);
+      fs.chmodSync(runner, 0o755);
       write(hermit(proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') || scenario.startsWith('below-floor') ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
       write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
       const stub = path.join(proj, '.stub');
@@ -661,6 +706,11 @@ exit 0
       const idx = (text: string) => calls.findIndex(l => l.includes(text));
       const timeout = scenario.includes('timeout');
       const blocked = scenario === 'below-floor-plugins-only';
+      expect(r.stdout).toContain('fixture doctor pass');
+      expect(r.stdout.includes('fixture doctor pass --fix')).toBe(!blocked);
+      expect(entry.doctor).toEqual(scenario.startsWith('doctor-') ? { status: 'error' }
+        : { status: 'ran', issues: [{ id: 'watchdog', status: 'warn' }] });
+      expect(r.stderr.includes('doctor check could not run; run `hermitd doctor`')).toBe(scenario.startsWith('doctor-'));
       expect(entry.restarted).toBe(!timeout && !blocked);
       expect(entry.await.status).toBe(timeout ? 'timeout' : blocked ? 'blocked' : 'ready');
       expect(entry.image_built).toBe(!['plugins-only', 'timeout-first', 'evolve-timeout', 'below-floor-plugins-only'].includes(scenario));
@@ -724,7 +774,7 @@ exit 0
         expect(idx('/hermitd:hermit-evolve')).toBeLessThan(idx('await-upgrade --expect'));
         // One queued batch for the core mod: reload, then evolve, waited on from outside.
         const request = calls.find(l => l.includes('harness-request')) ?? '';
-        expect(request).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
+        expect(request).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300 --purpose upgrade');
       }
       expect(calls.some(l => l.includes('send-keys') || l.includes('capture-pane'))).toBe(false);
       if (scenario === 'below-floor') {
@@ -823,7 +873,7 @@ describe('hermitd-update host path', () => {
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
 
-  for (const scenario of ['interrupted', 'ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'ready', 'timeout-first', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
     test(`live host update: ${scenario}`, async () => {
       const f = fixture({ listJson: proj => {
         const list = JSON.parse(listDuplicateScopes(proj, scenario.startsWith('suffix-') ? '-467be32f41fc' : ''));
@@ -863,7 +913,7 @@ fi
         // The core mod's queue: record the request and answer as the verb would.
         fs.renameSync(path.join(bin, 'hermitd-run'), path.join(bin, 'hermitd-run.real'));
         write(path.join(bin, 'hermitd-run'), `#!/usr/bin/env bash
-if [ "$1" = harness-request ]; then
+${doctorPassStub}if [ "$1" = harness-request ]; then
   printf '%s\\n' "$*" >> "$LIVE_CALLS"
   case " $* " in *" --wait "*) echo '{"status":"ok"}' ;; *) echo '{"status":"queued","id":"q1"}' ;; esac
   exit 0
@@ -894,6 +944,12 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           return;
         }
         expect(r.exitCode).toBe(0);
+        const history = readJson(hermit(f.proj, 'state/update-history.jsonl'));
+        expect(history.doctor).toEqual(scenario === 'self-run' ? { status: 'skipped', reason: 'self_run' }
+          : scenario.startsWith('doctor-') ? { status: 'error' } : { status: 'ran', issues: [{ id: 'watchdog', status: 'warn' }] });
+        expect(r.stdout.includes('fixture doctor pass')).toBe(scenario !== 'self-run');
+        expect(r.stdout.includes('fixture doctor pass --fix')).toBe(scenario !== 'self-run' && scenario !== 'below-floor');
+        expect(r.stderr.includes('doctor check could not run; run `hermitd doctor`')).toBe(scenario.startsWith('doctor-'));
         if (scenario === 'below-floor') {
           // Evolve would stop on the old Claude Code: nothing is queued, waited on or restarted.
           const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
@@ -909,7 +965,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           expect(r.stdout).not.toContain('Waiting for a quiet boundary');
           expect(r.stdout).not.toContain('Waiting for hermit-evolve');
           expect(calls.some(l => l.includes('await-upgrade'))).toBe(false);
-          expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update');
+          expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --purpose upgrade');
           expect(calls.some(l => l.startsWith('send-keys'))).toBe(false);
           expect(calls.some(l => l.startsWith('stop') || l.startsWith('start'))).toBe(false);
           expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
@@ -936,8 +992,8 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         expect(calls.some(l => l.startsWith('send-keys') || l.startsWith('capture-pane'))).toBe(false);
         if (!scenario.startsWith('timeout-first')) {
           expect(calls.find(l => l.startsWith('harness-request'))).toBe(scenario === 'suffix-current'
-            ? 'harness-request /reload-plugins --expect-version 1.2.0 --source update --wait 300'
-            : 'harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300');
+            ? 'harness-request /reload-plugins --expect-version 1.2.0 --source update --wait 300 --purpose upgrade'
+            : 'harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --wait 300 --purpose upgrade');
         }
         if (scenario === 'suffix-current') {
           expect(calls.some(l => l.includes('--expect '))).toBe(false);

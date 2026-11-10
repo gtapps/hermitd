@@ -8,7 +8,7 @@ import { markGuest } from '../scripts/lib/guest-marker';
 import { inboundSince } from '../scripts/lib/channel-log';
 import { startHttpStub } from './helpers/http-stub';
 import {
-  claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, readOutcome, recover, recordLegs, validCommand,
+  claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, pendingPurpose, readOutcome, recover, recordLegs, validCommand,
   INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, QUEUE_PROTOCOL, type QueueEntry, type Unanswered,
 } from '../scripts/lib/harness-mod';
 
@@ -503,4 +503,18 @@ test('leg reasons are snake_case tokens; the text stays the human detail', () =>
   expect(legReason({ command: '/x', status: 'failed', text: 'Failed to reload' })).toBe('rejected');
   expect(legReason({ command: '/x', status: 'skipped', text: 'execution-not-idle' })).toBe('execution_not_idle');
   for (const token of ['expired', 'stale_session', 'shutdown', 'worker_lost']) expect(legReason({ command: '/x', status: 'unknown', text: token })).toBe(token);
+});
+
+test('upgrade purpose is pending while queued and in flight, until finalized', () => {
+  const { dir } = fixture();
+  expect(pendingPurpose(dir, 'upgrade')).toBeNull();
+  const request = { source: 'terminal' as const, purpose: 'upgrade', commands: [{ command: '/reload-plugins', arg: null }] };
+  const first = enqueue(dir, request) as { status: 'queued'; id: string };
+  expect(pendingPurpose(dir, 'upgrade')?.id).toBe(first.id);
+  expect(enqueue(dir, request)).toEqual(first);
+  expect(claim(dir, 'resident', VERSION)?.id).toBe(first.id);
+  expect(pendingPurpose(dir, 'upgrade')?.id).toBe(first.id);
+  expect(enqueue(dir, request)).toEqual(first);
+  finalize(dir, first.id, { legs: [{ command: '/reload-plugins', status: 'ok', text: 'reloaded' }] });
+  expect(pendingPurpose(dir, 'upgrade')).toBeNull();
 });

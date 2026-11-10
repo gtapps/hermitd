@@ -122,7 +122,7 @@ the row's own tier and the operator's config, not by the flag.
 Per-check semantics and status rules: `${CLAUDE_SKILL_DIR}/reference.md`, read only when a row
 needs interpreting.
 
-No automatic fixes. Doctor reports; the operator acts.
+This skill reports findings. Safe repairs run from a terminal with `hermitd doctor --fix`: it queues a pending upgrade once and reinstalls an already-authorized watchdog scheduler. In chat, name that command as the next step for whoever has a terminal. Remaining findings list the manual actions.
 
 ## Notes
 

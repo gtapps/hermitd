@@ -44,6 +44,8 @@ From chat, ask a host hermit to update itself: it asks for approval through Clau
 
 Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; after a wait timeout, or an interrupt before the restart, nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
 
+External updates end with `hermitd doctor --fix` after removing the update marker. The pass queues a pending core upgrade once, repairs a policy-safe watchdog scheduler, then re-checks and prints the remaining manual actions. It does not change the update's exit status. `.hermit/state/update-history.jsonl` records a `doctor` field: `ran` with non-ok check ids and statuses from a report inside the pass window, `error` if the pass failed or produced no current report, or `skipped` with reason `self_run` for a host update run by the resident. A doctor error asks you to run `hermitd doctor` from a terminal.
+
 ### Manual
 
 If you'd rather drive it by hand:
