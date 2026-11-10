@@ -175,7 +175,8 @@ function targetFiles(memory: string, compiled: string): Record<string, string> {
     for (const name of names(dir)) {
       const file = path.join(dir, name), key = `${prefix}/${name}`;
       const stat = fs.lstatSync(file);
-      if (stat.isSymbolicLink()) throw new Error('dream_symlink_target');
+      // Links are read-only to the dream: dream-fence denies writes through them, so they stay out of the snapshot.
+      if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory() && prefix.startsWith('memory')) collect(file, key);
       else if (stat.isFile() && (prefix.startsWith('memory') || /^topic-.*\.md$/.test(name))) files[key] = hash(fs.readFileSync(file));
     }
@@ -298,9 +299,7 @@ export function exportDream(dir: string, now = Date.now()): Json {
   const entries = eligibleEntries(dir, value.window_start, started);
   if (!entries.length) return { status: 'empty' };
   const compiled = path.join(dir, 'compiled');
-  let files: Record<string, string>;
-  try { files = targetFiles(memory, compiled); }
-  catch (error: any) { if (error.message === 'dream_symlink_target') return { status: 'skipped', reason: 'symlink_target' }; throw error; }
+  const files = targetFiles(memory, compiled);
   const run = path.join(dir, 'state/dream', started);
   fs.mkdirSync(path.join(run, 'inputs'), { recursive: true, mode: 0o700 });
   const manifest: Manifest = { memory_dir: memory, compiled_dir: compiled, files };
