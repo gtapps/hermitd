@@ -12,7 +12,7 @@ Read `.hermit/TASKS.md` first for record threshold, wording and confirmation pol
 - `conversation`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/conversation.ts .hermit`
 
 ## Intake
-Terminal/Remote Control: `task answer <id> --local --reply yes`, confirmed by Claude Code's prompt; refused in bypass. Never pass `--local` on a channel turn.
+Typed terminal turn: `task answer <id> --local --reply <token>`, `task dismiss <id> --reason-stdin`; no prompt, bypass refuses `--local`. Chat turn: `--chat`/`--user`.
 Decision replies: `task answer [<id>] --chat <key> --user <sender-id> --reply <token>` first. In any language, map to yes, no, a number or label. Respect `not_decider`, `consent_required`, `stale` and `ambiguous`. Input resumes `decision.resume`. Before task steering, run `task.ts list .hermit --open --conversation <sourceKey>:<chat_id>`. Select via the task thread or hook's open-tasks line; on ambiguity, ask once naming candidates. Questions open nothing.
 
 Use `open --title ... --requester <sourceKey>:<user_id> --done ...` for assignments. Pass requester display name, origin message id, conversation, due date and explicitly named approver when available. A record's `--card` stays with the resident, which also hands it to a worker and takes it back with `note <id> --owner worker:<agentId>` / `--owner resident`; a worker never opens or closes a record itself. Resident readiness is handled by `/hermitd:resident-start`. Work whose definition of done the agent can observe gets a check, at `open` when the predicate is already known, otherwise with `note <id> --check` once the inputs have been read.

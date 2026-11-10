@@ -4,10 +4,12 @@
 
 ### Added
 
+- `task dismiss <id> --reason-stdin` drops a proposal from the operator's terminal turn without a permission prompt; it can only cancel
 - Voice-note transcription is on by default across channels, with local whisper.cpp, searchable transcripts and optional echoes; turn it off with `/hermitd:hermit-settings transcription`
 
 ### Changed
 
+- `task answer --local` runs without a permission prompt on a turn the operator typed in the terminal (bypass mode still refuses it); on a chat turn the agent is pointed to the sender's own answer instead
 - Dashboard waiting rows expand to the proposal's Context, Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)
 - Non-technical installs see no spend, token or alert text on the built-in dashboard, only the counts and proposal titles; proposal text and by-person costs are withheld from custom renderers too
 - Remaining dashboard labels (execution, open tasks, the waiting line, by-person headings) come from the translatable strings table

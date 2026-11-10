@@ -938,6 +938,73 @@ test('local answer fallbacks, mixed settings and ordinary channel answers', asyn
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
 });
 
+test('operator decisions run silently on a typed terminal turn, steer on chat, ask elsewhere', async () => {
+  const dir = fixture({ channels: { discord: { allowed_users: ['admin'] } } });
+  const write = (name: string, ...entries: any[]) => {
+    const file = path.join(dir, `turn-${name}.jsonl`);
+    fs.writeFileSync(file, entries.map(entry => JSON.stringify(entry) + '\n').join(''));
+    return file;
+  };
+  const user = (origin: any, content = 'drop that proposal') => ({ type: 'user', origin, message: { content } });
+  const gate = (command: string, file: string, permission_mode = 'default') =>
+    runGate(JSON.stringify({ ...JSON.parse(payload({ dir, tool: 'Bash', permission_mode, input: { command } })), transcript_path: file }), dir);
+  const decision = async (command: string, file: string, permission_mode = 'default') =>
+    JSON.parse((await gate(command, file, permission_mode)).stdout).hookSpecificOutput;
+  const typed = write('typed', user({ kind: 'human' }));
+  const dismissals = [
+    "echo 'Shipped in 1.4.30' | .hermit/bin/hermitd-run task dismiss .hermit T-20261101-120000 --reason-stdin",
+    'bun plugins/hermitd/scripts/task.ts dismiss .hermit T-20261101-120000 --reason-stdin <<< "No longer wanted"; bun plugins/hermitd/scripts/task.ts dismiss .hermit T-20261101-120001 --reason-stdin <<< x',
+  ];
+  const answers = [
+    '.hermit/bin/hermitd-run task answer .hermit T-20261101-120000 --local --reply yes',
+    'bun plugins/hermitd/scripts/task.ts answer .hermit T-20261101-120000 --local --reply no',
+    '.hermit/bin/hermitd-run task answer .hermit T-20261101-120000 --local --reply ship',
+    '.hermit/bin/hermitd-run task answer .hermit --local --reply yes',
+  ];
+  for (const command of dismissals) {
+    expectSilent(await gate(command, typed));
+    expectSilent(await gate(command, typed, 'bypassPermissions'));
+  }
+  for (const command of answers) {
+    expectSilent(await gate(command, typed));
+    expectSilent(await gate(command, typed, 'auto'));
+    expect(await decision(command, typed, 'bypassPermissions')).toMatchObject({ permissionDecision: 'deny',
+      permissionDecisionReason: 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.' });
+  }
+
+  // A chat turn is denied with a steer to the sender-attributed path, in every mode.
+  const chat = write('chat', user(undefined, '<channel source="discord" chat_id="home" user_id="admin">drop it</channel>'));
+  const dismiss = dismissals[0];
+  for (const mode of ['default', 'bypassPermissions']) {
+    const dismissed = await decision(dismiss, chat, mode);
+    expect(dismissed.permissionDecision).toBe('deny');
+    expect(dismissed.permissionDecisionReason).toContain('--reply no');
+    expect(dismissed.permissionDecisionReason).toContain('task cancel <id>');
+    const answered = await decision(answers[0], chat, mode);
+    expect(answered.permissionDecision).toBe('deny');
+    expect(answered.permissionDecisionReason).toContain('task answer [<id>] --chat <key> --user <sender-id> --reply <token>');
+  }
+  // An unreadable form is not known to be a local answer, so a chat turn asks instead of steering.
+  expectAsk((await gate('git config --local core.hooksPath x && .hermit/bin/hermitd-run task list .hermit --open', chat)).stdout,
+    'Admin decision: task answer --local');
+
+  // Wakes, peers, joined turns and unreadable transcripts keep the ask, and deny in bypass.
+  const others = [
+    write('peer', user({ kind: 'peer' })),
+    write('wake', user({ kind: 'task-notification' })),
+    write('joined', user({ kind: 'human' }), { type: 'attachment', attachment: { type: 'queued_command', origin: { kind: 'task-notification' }, prompt: 'wake' } }),
+    path.join(dir, 'missing.jsonl'),
+  ];
+  for (const file of others) {
+    expectAsk((await gate(dismiss, file)).stdout, 'Admin decision: dismiss a proposal');
+    expectAsk((await gate(answers[0], file)).stdout, 'Admin decision: answer T-20261101-120000 "yes" as admin');
+    expect(await decision(dismiss, file, 'bypassPermissions')).toMatchObject({ permissionDecision: 'deny',
+      permissionDecisionReason: expect.stringContaining("operator's own typed terminal turn") });
+    expect((await decision(answers[0], file, 'bypassPermissions')).permissionDecision).toBe('deny');
+  }
+  expectSilent(await gate("bun plugins/hermitd/scripts/task.ts note .hermit T-20261101-120000 --decision <<'EOF'\nclosed with task dismiss\nEOF", others[0], 'bypassPermissions'));
+});
+
 test('quoted heredoc bodies that only mention a decision call are data', async () => {
   const dir = fixture();
   for (const body of ['closing needed `task answer --local` and a prompt', 'the agent ran git config --local for the task',

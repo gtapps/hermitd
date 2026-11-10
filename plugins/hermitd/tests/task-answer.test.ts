@@ -1,4 +1,6 @@
 import { test, expect } from 'bun:test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { decodeTask, mutateTask, isRunnable, type TaskFlags } from '../scripts/lib/tasks';
 import { pendingDecisions } from '../scripts/lib/decisions';
 import { taskFixture } from './helpers/tasks';
@@ -47,6 +49,25 @@ for (const authority of ['requester', 'chat', 'admin']) test(`admin answers ${au
   const f = fixture(); try {
     const { id } = f.openRecord({ purpose: 'input', authority, generation: 1 }, { kind: false, requester: 'discord:requester' });
     expect(f.answer(id)).toMatchObject({ status: 'match' });
+  } finally { f.cleanup(); }
+});
+
+test('dismiss cancels any open proposal as the operator and logs a decline only while consent was pending', () => {
+  const f = fixture(); try {
+    const metrics = () => { try { return fs.readFileSync(path.join(f.dir, 'state', 'proposal-metrics.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { return []; } };
+    const { id } = f.openRecord();
+    expect(() => mutateTask(f.dir, 'dismiss', id, {}, '')).toThrow('missing_reason_stdin');
+    expect(() => mutateTask(f.dir, 'dismiss', id, { 'reason-stdin': true }, ' ')).toThrow('empty_reason');
+    expect(mutateTask(f.dir, 'dismiss', id, { 'reason-stdin': true }, 'Shipped already')).toMatchObject({ id, closed_by: 'cancelled' });
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_actor: 'operator', closed_reason: 'Consent declined: Shipped already', waiting_on: null });
+    expect(metrics().filter(e => e.proposal_id === id)).toMatchObject([{ type: 'responded', action: 'dismiss' }]);
+    const accepted = f.openRecord(consent, { 'dedupe-key': 'accepted' }).id;
+    expect(f.answer(accepted)).toMatchObject({ status: 'match' });
+    expect(mutateTask(f.dir, 'dismiss', accepted, { 'reason-stdin': true }, 'Not needed now')).toMatchObject({ id: accepted, closed_by: 'cancelled' });
+    expect(f.read(accepted)).toMatchObject({ status: 'closed', closed_actor: 'operator', closed_reason: 'Not needed now' });
+    expect(metrics().filter(e => e.proposal_id === accepted).map(e => e.action)).toEqual(['accept']);
+    const question = f.openRecord(consent, { kind: false, 'dedupe-key': 'question' }).id;
+    expect(() => mutateTask(f.dir, 'dismiss', question, { 'reason-stdin': true }, 'No')).toThrow('not_proposal');
   } finally { f.cleanup(); }
 });
 

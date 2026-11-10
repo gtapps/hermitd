@@ -22,7 +22,7 @@ import { readDeliveryBudget } from './decisions';
 export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
-const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'not_decider', 'consent_required']);
+const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'not_decider', 'consent_required', 'not_proposal']);
 export function reportTaskError(error: unknown): void {
   if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
   else failJson(error);
@@ -435,6 +435,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     let record: Task;
     let digest: unknown;
     let progress = true;
+    let event: Record<string, unknown> | undefined;
     if (verb === 'answer') {
       const answered = answerTask(dir, records, id, flags, now, threadConversation, senderParent);
       if (answered.record) {
@@ -636,6 +637,17 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (!line) throw new Error('empty_reason');
         finish(record, 'cancelled', closer, line, now);
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
+      } else if (verb === 'dismiss') {
+        // The operator's terminal drop of an open proposal: it can only cancel, never grant.
+        if (record.kind !== 'proposal') throw new Error('not_proposal');
+        if (!flags['reason-stdin']) throw new Error('missing_reason_stdin');
+        if (!line) throw new Error('empty_reason');
+        const pending = decision?.purpose === 'consent';
+        finish(record, 'cancelled', 'operator', pending ? 'Consent declined: ' + line : line, now);
+        // Only a pending decline is a response; an accepted proposal already logged its accept.
+        if (pending) event = respondedEvent(record.id, 'dismiss');
+        progress = false; // a drop is not work on the record, as with `answer --reply no`
+        digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
     }
     if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled') {
@@ -649,6 +661,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
     if (progress) bindTaskTurn(dir, record.id);
+    if (event && appendEvent(dir, event)) digest = { ...(digest as object), warnings: ['metrics_append_failed'] };
     return digest;
   } finally { releaseLock(lock); }
 }
