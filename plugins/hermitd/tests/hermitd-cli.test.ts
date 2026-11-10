@@ -199,3 +199,121 @@ test('skills resolves named and nearest projects and routes Docker mutations', a
   expect((await f.run(['skills', 'demo', 'rollback', 'sample'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
   expect(f.calls()).toContain(`old|${f.p}|skills rollback sample\n`);
 });
+
+function doctorFixture(rows: object[]) {
+  const f = fixture();
+  write(path.join(f.p, '.hermit/state/runtime.json'), JSON.stringify({ runtime_mode: 'tmux', tmux_session: 'doctor-demo', config_dir: path.join(f.root, 'resident-config') }));
+  const report = path.join(f.p, 'doctor.json');
+  write(report, JSON.stringify({ checks: rows }));
+  write(path.join(f.core, 'scripts/doctor-check.ts'), `import fs from 'node:fs';
+fs.appendFileSync(process.env.CALLS!, 'check|' + process.cwd() + '|' + process.argv[2] + '|' + process.env.CLAUDE_PLUGIN_ROOT + '|' + process.env.CLAUDE_CONFIG_DIR + '\\n');
+console.log(fs.readFileSync('doctor.json', 'utf8'));
+`);
+  write(path.join(f.core, 'scripts/harness-request.ts'), `import fs from 'node:fs';
+fs.appendFileSync(process.env.CALLS!, 'queue|' + process.argv.slice(2).join(' ') + '\\n');
+console.log(process.env.REPAIR_RESULT || '{"status":"queued","id":"q1"}');
+`);
+  return { ...f, report };
+}
+const gap = { id: 'version-currency', status: 'warn', detail: 'upgrade pending', fix: 'evolve', installed_version: '1.4.30' };
+const watchdog = { id: 'watchdog', status: 'warn', detail: 'not firing', fix: 'watchdog-install' };
+for (const [rows, text, code] of [
+  [[{ id: 'runtime', status: 'ok', detail: 'ready' }], 'All checks passed.', 0],
+  [[gap], 'No failures; 1 warning(s).', 0],
+  [[{ id: 'runtime', status: 'fail', detail: 'broken; run `hermitd start`' }], '1. fail runtime: broken; run `hermitd start`', 1],
+  [[{ id: 'classifier-denials', status: 'fail', detail: 'denied' }], '1. fail classifier-denials:', 0],
+] as const) {
+  test(`doctor report: ${text}`, async () => {
+    const f = doctorFixture([...rows]);
+    const r = await f.run(['doctor', 'demo']);
+    expect(r.exitCode).toBe(code);
+    expect(r.stdout).toContain(text);
+    if (rows[0].id === 'version-currency') expect(r.stdout).toContain('`hermitd doctor --fix` applies 1 safe repair(s)');
+    expect(f.calls()).toContain(`check|${f.p}|${f.p}/.hermit|${f.core}|${f.root}/resident-config`);
+    expect(f.calls()).not.toContain('queue|');
+  });
+}
+test('doctor --fix queues an upgrade once and never counts it fixed', async () => {
+  const f = doctorFixture([gap, { ...gap, id: 'another-gap' }]);
+  const r = await f.run(['doctor', '--fix'], f.p, { TMUX_LIVE: '0' });
+  expect(r.exitCode).toBe(0);
+  expect(r.stdout).toContain('evolve: queued');
+  expect(r.stdout).toContain('Fixed 0');
+  expect(r.stdout).toContain('2. warn another-gap');
+  expect(f.calls().split('queue|')).toHaveLength(2);
+  expect(f.calls()).toContain('/reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.4.30 --purpose upgrade');
+  expect(f.calls().split('check|')).toHaveLength(3);
+});
+for (const repaired of [true, false]) {
+  test(`doctor watchdog install re-check ${repaired}`, async () => {
+    const f = doctorFixture([watchdog]);
+    write(path.join(f.p, '.hermit/bin/hermitd-watchdog'), `#!/bin/sh
+printf 'watchdog|%s\\n' "$*" >> "$CALLS"
+${repaired ? `printf '%s' '{"checks":[{"id":"watchdog","status":"ok","detail":"firing"}]}' > doctor.json` : ':'}
+`);
+    const r = await f.run(['doctor', '--fix'], f.p);
+    expect(r.exitCode).toBe(0);
+    expect(f.calls()).toContain('watchdog|install');
+    expect(r.stdout).toContain('watchdog-install: applied');
+    expect(r.stdout).toContain(`Fixed ${repaired ? 1 : 0}`);
+    expect(r.stdout.includes('within 5 minutes')).toBe(!repaired);
+  });
+}
+test('doctor leaves untagged findings manual', async () => {
+  const f = doctorFixture([{ id: 'runtime', status: 'warn', detail: 'restart the resident' }]);
+  const r = await f.run(['doctor', '--fix'], f.p);
+  expect(r.stdout).toContain('Fixed 0');
+  expect(f.calls()).not.toContain('queue|');
+  expect(f.calls()).not.toContain('watchdog|');
+});
+for (const [result, text] of [
+  ['{"status":"skipped","reason":"mod_not_loaded"}', 'skipped: mod_not_loaded'],
+  ['{"status":"skipped","reason":"shutdown"}', 'skipped: shutdown'],
+  ['{"status":"failed","reason":"broken"}', 'failed: broken'],
+  ['invalid', 'failed: malformed doctor output'],
+]) {
+  test(`doctor repair outcome ${text}`, async () => {
+    const f = doctorFixture([gap]);
+    const r = await f.run(['doctor', '--fix'], f.p, { TMUX_LIVE: '0', REPAIR_RESULT: result });
+    expect(r.stdout).toContain(`evolve: ${text}`);
+    expect(r.stdout).toContain('Fixed 0');
+  });
+}
+test('doctor watchdog failure and stopped tmux guidance', async () => {
+  const f = doctorFixture([gap, watchdog]);
+  const r = await f.run(['doctor', '--fix'], f.p, { WRAPPER_EXIT: '9' });
+  expect(r.stdout).toContain('start the agent with `hermitd start`; the upgrade runs at start');
+  expect(r.stdout).toContain('watchdog-install: failed: exit 9');
+  expect(f.calls()).not.toContain('queue|');
+});
+test('doctor Docker transport and stopped guidance', async () => {
+  const f = doctorFixture([gap]);
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.core, 'scripts/hermitd-docker.sh'), `printf 'docker|%s\\n' "$*" >> "$CALLS"
+if [ "$2" = evolve ]; then echo '{"status":"queued","id":"q"}'; else cat doctor.json; fi
+`);
+  const up = await f.run(['doctor', '--fix'], f.p, { DOCKER_LIVE: 'hermit' });
+  expect(up.exitCode).toBe(0); expect(up.stdout).toContain('evolve: queued');
+  expect(f.calls()).toContain('docker|doctor evolve 1.4.30');
+  const down = await f.run(['doctor'], f.p);
+  expect(down.exitCode).toBe(1);
+  expect(down.stdout).toContain('start it with `hermitd start`, then rerun `hermitd doctor`');
+});
+test('doctor explains failed install lookup and rejects malformed checks and flags', async () => {
+  const f = doctorFixture([gap]);
+  write(f.env.LIST, '[]');
+  const missing = await f.run(['doctor'], f.p);
+  expect(missing.exitCode).toBe(1);
+  expect(missing.stderr).toContain('doctor needs `claude plugin list`');
+  expect(missing.stderr).toContain('Check `claude --version`.');
+  fs.copyFileSync(f.env.FRESH_LIST, f.env.LIST);
+  fs.copyFileSync(path.join(f.core, 'scripts/doctor-check.ts'), path.join(f.fresh, 'scripts/doctor-check.ts'));
+  for (const report of ['bad json', '{"checks":[]}', '{"checks":[{"id":"runtime","status":"ok"}]}']) {
+    write(f.report, report);
+    const malformed = await f.run(['doctor'], f.p);
+    expect(malformed.exitCode).toBe(1);
+    expect(malformed.stderr).toContain('malformed doctor');
+    expect(malformed.stdout).not.toContain('All checks passed');
+  }
+  expect((await f.run(['doctor', '--json'], f.p)).exitCode).toBe(1);
+});

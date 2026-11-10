@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Docker management CLI for hermit containers.
 # Usage: hermitd-docker <command> [args...]
-# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build] [--fresh]
+# Commands: up, down, attach, agents, bash, login, setup-token, logs, restart [--build] [--fresh], update, doctor
 set -euo pipefail
 
 SCRIPT_DIR="$PWD/.hermit/bin"
 CONFIG="$SCRIPT_DIR/../config.json"
-CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]}"
+CMD="${1:?Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update|doctor> [args...]}"
 shift
 
 if [ ! -f "$CONFIG" ]; then
@@ -288,6 +288,19 @@ _enumerate_plugin_errors() {
 }
 
 case "$CMD" in
+  doctor)
+    _require_running
+    if [ "$#" -eq 0 ]; then
+      install="$(_core_install)"
+      if [ -z "$install" ]; then echo '[hermit] Could not find installed core.' >&2; exit 1; fi
+      cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" bun "$install/scripts/doctor-check.ts" .hermit
+    elif [ "$#" -eq 2 ] && [ "$1" = evolve ]; then
+      _harness_request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version "$2" --purpose upgrade
+    else
+      echo 'Usage: hermitd-docker doctor [evolve <version>]' >&2
+      exit 1
+    fi
+    ;;
   skills)
     cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run skills "$@"
     ;;
@@ -761,7 +774,7 @@ case "$CMD" in
         echo "[hermit] Queuing /reload-plugins..."
       fi
       [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
-      REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300)
+      REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300 --purpose upgrade)
       IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
       if [ "$REQUEST_STATUS" = ok ]; then
         RELOAD_PLUGINS_SENT=true
@@ -816,6 +829,17 @@ case "$CMD" in
     }
     _apply_update
 
+    # Remove the update deferral before checking the resulting health.
+    [ -n "${UPDATE_MARKER:-}" ] && rm -f "$UPDATE_MARKER"
+    DOCTOR_START=0
+    DOCTOR_END=0
+    if [ "${SELF_RUN:-false}" = false ]; then
+      DOCTOR_START="$(date +%s)000"
+      # Exit 1 on a FAIL verdict is a result, not an error; the report window below decides.
+      "$SCRIPT_DIR/hermitd-run" hermitd-cli doctor --fix || true
+      DOCTOR_END="$(( $(date +%s) + 1 ))000"
+    fi
+
     if [ "$RESTARTED" = true ] && [ -n "$CC_BUILD_VERSION" ] && [ "$CC_BUILD_VERSION" != "latest" ]; then
       CC_AFTER="$CC_BUILD_VERSION"
     else
@@ -836,9 +860,10 @@ case "$CMD" in
           "$PLUGIN_ROWS" "$PLUGIN_ROWS_AFTER" "$FAIL_IDS_JSON" \
           "$PLUGINS_COUNT_BEFORE" "$PLUGINS_COUNT_AFTER" "$LOG_FILE" \
           "$RELOAD_PLUGINS_SENT" "$EVOLVE_SENT" "$PLUGIN_ERRORS_AFTER" \
-          "$RESTARTED" "$IMAGE_BUILT" "$AWAIT_STATUS" "$AWAIT_REASON" <<'JSEOF' || \
+          "$RESTARTED" "$IMAGE_BUILT" "$AWAIT_STATUS" "$AWAIT_REASON" \
+          "${SELF_RUN:-false}" "$DOCTOR_START" "$DOCTOR_END" <<'JSEOF' || \
       echo "[hermit] Warning: could not write update log" >&2
-const [mode, ccBefore, ccAfter, beforeTsv, afterTsv, failJson, pbCount, paCount, logFile, reloadSent, evolveSent, errorsTsv, restarted, imageBuilt, awaitStatus, awaitReason] = process.argv.slice(2);
+const [mode, ccBefore, ccAfter, beforeTsv, afterTsv, failJson, pbCount, paCount, logFile, reloadSent, evolveSent, errorsTsv, restarted, imageBuilt, awaitStatus, awaitReason, selfRun, doctorStart, doctorEnd] = process.argv.slice(2);
 const parseRows = (tsv) => {
   const m = new Map();
   for (const line of (tsv || '').split('\n')) {
@@ -875,7 +900,19 @@ for (const [key, { id, scope, version }] of before) {
   if (err) entry.error = err;
   plugins.push(entry);
 }
+let doctor = selfRun === 'true' ? { status: 'skipped', reason: 'self_run' } : { status: 'error' };
+if (selfRun !== 'true') {
+  try {
+    const report = JSON.parse(require('fs').readFileSync(require('path').join(require('path').dirname(logFile), 'doctor-report.json'), 'utf8'));
+    const ts = Date.parse(report.ts);
+    if (ts >= Number(doctorStart) && ts <= Number(doctorEnd) && Array.isArray(report.checks)) {
+      doctor = { status: 'ran', issues: report.checks.filter(c => c.status !== 'ok').map(({ id, status }) => ({ id, status })) };
+    }
+  } catch {}
+}
+if (doctor.status === 'error') console.error('[hermit] doctor check could not run; run `hermitd doctor`');
 const entry = {
+  doctor,
   ts: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   trigger: 'hermitd-docker update',
   restarted: restarted === 'true',
@@ -938,7 +975,7 @@ JSEOF
     ;;
 
   *)
-    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update> [args...]" >&2
+    echo "Usage: hermitd docker <up|down|attach|agents|bash|login|setup-token|logs|restart [--build] [--fresh]|update|doctor> [args...]" >&2
     exit 1
     ;;
 esac

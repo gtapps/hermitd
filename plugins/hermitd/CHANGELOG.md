@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `hermitd doctor [--fix]` lists health findings and safely repairs pending upgrades and watchdog scheduler units.
+
+### Changed
+
+- External `hermitd update` runs a doctor repair pass and records its result in update history.
+
 ## [1.4.30] - 2026-11-10
 
 ### Added

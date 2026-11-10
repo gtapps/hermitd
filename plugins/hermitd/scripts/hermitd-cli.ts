@@ -6,6 +6,7 @@ import { isContainer } from './lib/container';
 import { resolvePlugin, isResolveError } from './lib/domain-hatch/resolve';
 import { marketplace, readRegistry, registerProject, prune } from './lib/host-registry';
 import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatus, inspect } from './lib/hermit-status';
+import { verdictLine } from './doctor-check';
 import { printJson } from './lib/cli';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
@@ -70,6 +71,85 @@ function updateProject(project: string, args: string[], docker: boolean): number
   const fresh = hostInstall(project);
   return dockerScript(project, ['update', ...args], fresh.installPath);
 }
+type DoctorCheck = { id: string; status: 'ok' | 'warn' | 'fail'; detail: string; fix?: string; installed_version?: string };
+function doctorProject(project: string, args: string[], useDocker: boolean, up: boolean): number {
+  const fix = args[0] === '--fix';
+  if (args.length > (fix ? 1 : 0)) throw new Error('Usage: hermitd doctor [name] [--fix]');
+  if (useDocker && !up) {
+    console.log('start it with `hermitd start`, then rerun `hermitd doctor`');
+    return 1;
+  }
+  let host: ReturnType<typeof hostInstall>;
+  try { host = hostInstall(project); }
+  catch (error) {
+    console.error(`doctor needs \`claude plugin list\` to find the installed plugin: ${error instanceof Error ? error.message : error}. Check \`claude --version\`.`);
+    return 1;
+  }
+  const runtime = readRuntime(project);
+  const env = { ...process.env, CLAUDE_PLUGIN_ROOT: host.installPath,
+    ...(runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {}) };
+  const capture = (command: string, argv: string[]) => {
+    const result = spawnSync(command, argv, { cwd: project, env, encoding: 'utf8', timeout: 120000 });
+    if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stderr.trim() || `exit ${result.status}`);
+    try { return JSON.parse(result.stdout); }
+    catch { throw new Error('malformed doctor output'); }
+  };
+  const dockerArgs = (argv: string[]) => [path.join(host.installPath, 'scripts/hermitd-docker.sh'), 'doctor', ...argv];
+  const checks = (): DoctorCheck[] => {
+    const report = useDocker ? capture('bash', dockerArgs([]))
+      : capture(process.execPath, [path.join(host.installPath, 'scripts/doctor-check.ts'), path.join(project, '.hermit')]);
+    if (!Array.isArray(report?.checks) || report.checks.length === 0 || !report.checks.every((row: DoctorCheck) =>
+      row && typeof row.id === 'string' && ['ok', 'warn', 'fail'].includes(row.status) && typeof row.detail === 'string')) {
+      throw new Error('malformed doctor report');
+    }
+    return report.checks;
+  };
+  const before = checks();
+  let after = before;
+  if (fix) {
+    const outcomes = new Map<string, string>();
+    for (const row of before) {
+      if (!row.fix || outcomes.has(row.fix)) continue;
+      try {
+        if (row.fix === 'evolve') {
+          if (!up) outcomes.set(row.fix, 'skipped: start the agent with `hermitd start`; the upgrade runs at start');
+          else if (!row.installed_version) outcomes.set(row.fix, 'failed: installed version missing');
+          else {
+            const result = useDocker ? capture('bash', dockerArgs(['evolve', row.installed_version]))
+              : capture(process.execPath, [path.join(host.installPath, 'scripts/harness-request.ts'), '/reload-plugins', '--then',
+                '/hermitd:hermit-evolve', 'unattended', '--expect-version', row.installed_version, '--purpose', 'upgrade']);
+            outcomes.set(row.fix, result?.status === 'queued' ? 'queued' : result?.status === 'skipped'
+              ? `skipped: ${result.reason ?? 'unknown'}` : `failed: ${result?.reason ?? 'invalid repair output'}`);
+          }
+        } else if (row.fix === 'watchdog-install') {
+          if (useDocker) outcomes.set(row.fix, 'skipped: watchdog install needs tmux mode');
+          else {
+            const code = wrapper(project, 'hermitd-watchdog', ['install']);
+            outcomes.set(row.fix, code === 0 ? 'applied' : `failed: exit ${code}`);
+          }
+        } else outcomes.set(row.fix, 'skipped: unknown repair');
+      } catch (error) { outcomes.set(row.fix, `failed: ${error instanceof Error ? error.message : error}`); }
+    }
+    after = checks();
+    for (const [repair, outcome] of outcomes) {
+      const confirm = repair === 'watchdog-install' && outcome === 'applied'
+        && before.some(row => row.fix === repair && after.some(check => check.id === row.id && check.status !== 'ok'));
+      console.log(`${repair}: ${outcome}${confirm ? '; the next scheduled run (within 5 minutes) confirms it' : ''}`);
+    }
+    const fixed = before.filter(row => row.fix && row.fix !== 'evolve' && row.status !== 'ok'
+      && after.some(check => check.id === row.id && check.status === 'ok')).length;
+    console.log(`Fixed ${fixed}`);
+  }
+  const remaining = after.filter(row => row.status !== 'ok');
+  remaining.forEach((row, i) => console.log(`${i + 1}. ${row.status} ${row.id}: ${row.detail}`));
+  if (!remaining.length) console.log('All checks passed.');
+  else if (!remaining.some(row => row.status === 'fail')) console.log(`No failures; ${remaining.length} warning(s).`);
+  if (!fix) {
+    const repairs = before.filter(row => row.fix).length;
+    if (repairs) console.log(`\`hermitd doctor --fix\` applies ${repairs} safe repair(s)`);
+  }
+  return verdictLine(after).startsWith('FAIL') ? 1 : 0;
+}
 // `install` is the one helper verb here (hatch and docker-setup run it), so it prints the
 // helper-script output; every other verb is an operator CLI. PATH notices stay on stderr.
 function install(args: string[], cwd: string, root: string): number {
@@ -123,8 +203,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|prune|docker|pause|watchdog|skills|run [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run [name] [args]');
   }
   const project = target(args, verb, cwd, root);
   if (verb === 'register') {
@@ -153,6 +233,7 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (docker === 'unknown' || tmux === 'unknown') throw new Error('Owner inspection failed: runtime is unknown');
   const interactive = runtime.runtime_mode === 'interactive' && docker !== 'up' && tmux !== 'up';
   const useDocker = docker === 'up' || (tmux !== 'up' && fs.existsSync(path.join(project, 'docker-compose.hermit.yml')));
+  if (verb === 'doctor') return doctorProject(project, args, useDocker, useDocker ? docker === 'up' : tmux === 'up');
   if (verb === 'update') return updateProject(project, args, useDocker);
   if (verb === 'agents') {
     if (useDocker && !interactive) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);

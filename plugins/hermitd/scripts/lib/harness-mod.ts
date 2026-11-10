@@ -159,6 +159,12 @@ function listEntries(dir: string, sub: string): Listed[] {
   return out;
 }
 
+/** A request remains pending until its queue or in-flight entry is finalized. */
+export function pendingPurpose(dir: string, purpose: string): QueueEntry | null {
+  return [...listEntries(dir, QUEUE_DIR), ...listEntries(dir, INFLIGHT_DIR)]
+    .find(({ entry }) => entry.purpose === purpose)?.entry ?? null;
+}
+
 /** Validates and appends one request. Never runs anything itself. */
 export function enqueue(dir: string, request: QueueRequest, now = Date.now()): EnqueueResult {
   if (!Array.isArray(request.commands)

@@ -77,7 +77,7 @@ exit 0
 async function watchdogCheck(
   cwd = dir,
   env: Record<string, string> = {},
-): Promise<{ status: string; detail: string }> {
+): Promise<{ status: string; detail: string; fix?: string }> {
   const r = await runScript('doctor-check.ts', {
     args: [hermit],
     cwd,
@@ -99,6 +99,7 @@ describe('watchdog unit status', () => {
     const check = await watchdogCheck();
     expect(check.status).toBe('fail');
     expect(check.detail).toContain('127');
+    expect(check.fix).toBe('watchdog-install');
     expect(check.detail).toContain('hermitd watchdog install');
   });
 
@@ -116,6 +117,7 @@ describe('watchdog unit status', () => {
     expect(check.status).not.toBe('fail');
     // No last_run was ever stamped in this fixture, so staleness still reports.
     expect(check.detail).toContain('not firing');
+    expect(check.fix).toBe('watchdog-install');
   });
 
   // A unit written before the PATH fix still ticks — hermitd-exec.sh resolves bun
@@ -146,6 +148,7 @@ describe('watchdog unit status', () => {
       expect(check.status).toBe('warn');
       // Not the staleness warn, which also names install — this is the unit-file read.
       expect(check.detail).toContain('no Environment=PATH');
+      expect(check.fix).toBe('watchdog-install');
       expect(check.detail).toContain('hermitd watchdog install');
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
@@ -187,8 +190,28 @@ describe('watchdog unit status', () => {
       const check = await watchdogCheck(elsewhere);
       expect(check.status).toBe('fail');
       expect(check.detail).toContain('127');
+    expect(check.fix).toBe('watchdog-install');
     } finally {
       fs.rmSync(elsewhere, { recursive: true, force: true });
     }
   });
+});
+
+for (const mode of ['tmux', 'docker']) {
+  test.serial.if(isLinux)(`repair policy in ${mode} with restart tier disabled`, async () => {
+    writeFakeSystemctl(unitFor(dir), { ExecMainStatus: '0', Result: 'success' });
+    fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({ watchdog: { enabled: false }, context_hygiene: { clear: { enabled: true } } }));
+    fs.writeFileSync(path.join(hermit, 'state/runtime.json'), JSON.stringify({ runtime_mode: mode }));
+    expect((await watchdogCheck()).fix).toBeUndefined();
+    const home = path.join(dir, 'home');
+    const units = path.join(home, '.config/systemd/user');
+    fs.mkdirSync(units, { recursive: true });
+    fs.writeFileSync(path.join(units, `${unitFor(dir)}.timer`), '[Timer]');
+    expect((await watchdogCheck(dir, { HOME: home })).fix).toBe(mode === 'tmux' ? 'watchdog-install' : undefined);
+  });
+}
+
+test.serial.if(isLinux)('no systemctl means no safe install tag', async () => {
+  // The subprocess uses Bun by absolute path; no scheduler is discoverable.
+  expect((await watchdogCheck(dir, { PATH: fakeBin })).fix).toBeUndefined();
 });
