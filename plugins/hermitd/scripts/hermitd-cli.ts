@@ -30,7 +30,7 @@ function target(args: string[], verb: string, cwd: string, root: string): string
   const reserved: Record<string, string[]> = {
     skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
-    docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update'],
+    docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
   };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
   if (matches.length > 1) throw new Error(`Ambiguous name ${first}: ${matches.map(row => row.project_dir).join(', ')}`);
@@ -90,7 +90,7 @@ function doctorProject(project: string, args: string[], useDocker: boolean, up: 
     ...(runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {}) };
   const capture = (command: string, argv: string[]) => {
     const result = spawnSync(command, argv, { cwd: project, env, encoding: 'utf8', timeout: 120000 });
-    if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stderr.trim() || `exit ${result.status}`);
+    if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
     try { return JSON.parse(result.stdout); }
     catch { throw new Error('malformed doctor output'); }
   };
@@ -119,7 +119,7 @@ function doctorProject(project: string, args: string[], useDocker: boolean, up: 
               : capture(process.execPath, [path.join(host.installPath, 'scripts/harness-request.ts'), '/reload-plugins', '--then',
                 '/hermitd:hermit-evolve', 'unattended', '--expect-version', row.installed_version, '--purpose', 'upgrade']);
             outcomes.set(row.fix, result?.status === 'queued' ? 'queued' : result?.status === 'skipped'
-              ? `skipped: ${result.reason ?? 'unknown'}` : `failed: ${result?.reason ?? 'invalid repair output'}`);
+              ? `skipped: ${result.reason ?? 'unknown'}` : `failed: ${result?.reason ?? result?.error ?? 'invalid repair output'}`);
           }
         } else if (row.fix === 'watchdog-install') {
           if (useDocker) outcomes.set(row.fix, 'skipped: watchdog install needs tmux mode');
@@ -130,7 +130,7 @@ function doctorProject(project: string, args: string[], useDocker: boolean, up: 
         } else outcomes.set(row.fix, 'skipped: unknown repair');
       } catch (error) { outcomes.set(row.fix, `failed: ${error instanceof Error ? error.message : error}`); }
     }
-    after = checks();
+    if ([...outcomes.values()].some(outcome => outcome === 'applied' || outcome === 'queued')) after = checks();
     for (const [repair, outcome] of outcomes) {
       const confirm = repair === 'watchdog-install' && outcome === 'applied'
         && before.some(row => row.fix === repair && after.some(check => check.id === row.id && check.status !== 'ok'));

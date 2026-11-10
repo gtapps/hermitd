@@ -159,9 +159,11 @@ function listEntries(dir: string, sub: string): Listed[] {
   return out;
 }
 
-/** A request remains pending until its queue or in-flight entry is finalized. */
-export function pendingPurpose(dir: string, purpose: string): QueueEntry | null {
-  return [...listEntries(dir, QUEUE_DIR), ...listEntries(dir, INFLIGHT_DIR)]
+/** A request remains pending until its in-flight entry is finalized or its queue entry expires. */
+export function pendingPurpose(dir: string, purpose: string, now = Date.now()): QueueEntry | null {
+  const live = listEntries(dir, QUEUE_DIR)
+    .filter(({ entry }) => now - Date.parse(entry.requested_at) <= COMMAND_MARKER_TTL_SECS * 1000);
+  return [...live, ...listEntries(dir, INFLIGHT_DIR)]
     .find(({ entry }) => entry.purpose === purpose)?.entry ?? null;
 }
 
@@ -178,7 +180,8 @@ export function enqueue(dir: string, request: QueueRequest, now = Date.now()): E
     const queued = listEntries(dir, QUEUE_DIR);
     if (request.purpose) {
       const same = [...queued, ...listEntries(dir, INFLIGHT_DIR)]
-        .find(({ entry }) => entry.purpose === request.purpose && entry.session_id === sessionId);
+        .find(({ entry }) => entry.purpose === request.purpose && entry.session_id === sessionId
+          && entry.expect_version === request.expect_version);
       if (same) return { status: 'queued', id: same.entry.id };
     }
     // File names sort in arrival order, so two requests in one millisecond get distinct stamps.

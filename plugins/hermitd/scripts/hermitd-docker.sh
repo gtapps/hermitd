@@ -835,8 +835,11 @@ case "$CMD" in
     DOCTOR_END=0
     if [ "${SELF_RUN:-false}" = false ]; then
       DOCTOR_START="$(date +%s)000"
+      # Report only when the update held evolve back for the Claude Code floor; --fix would queue it.
+      DOCTOR_ARGS=(doctor --fix)
+      [ "${AWAIT_REASON:-}" = cc_below_floor ] && DOCTOR_ARGS=(doctor)
       # Exit 1 on a FAIL verdict is a result, not an error; the report window below decides.
-      "$SCRIPT_DIR/hermitd-run" hermitd-cli doctor --fix || true
+      "$SCRIPT_DIR/hermitd-run" hermitd-cli "${DOCTOR_ARGS[@]}" || true
       DOCTOR_END="$(( $(date +%s) + 1 ))000"
     fi
 

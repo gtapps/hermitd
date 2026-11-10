@@ -50,7 +50,7 @@ const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf-8'));
 // Keep update-tail health fixtures independent of the real plugin discovery.
 const doctorPassStub = `if [ "$1 $2" = "hermitd-cli doctor" ]; then
   [ ! -f .hermit/state/update-in-progress.json ] || { echo 'marker still present' >&2; exit 8; }
-  echo 'fixture doctor pass'
+  echo "fixture doctor pass $3"
   [ "\${LIVE_SCENARIO:-\${UPDATE_SCENARIO:-}}" != doctor-fails ] || exit 9
   if [ "\${LIVE_SCENARIO:-\${UPDATE_SCENARIO:-}}" = doctor-no-report ]; then exit 0; fi
   bun -e 'require("fs").writeFileSync(".hermit/state/doctor-report.json", JSON.stringify({ts: new Date().toISOString(), checks: [{id: "runtime", status: "ok"}, {id: "watchdog", status: "warn"}]}))'
@@ -707,6 +707,7 @@ exit 0
       const timeout = scenario.includes('timeout');
       const blocked = scenario === 'below-floor-plugins-only';
       expect(r.stdout).toContain('fixture doctor pass');
+      expect(r.stdout.includes('fixture doctor pass --fix')).toBe(!blocked);
       expect(entry.doctor).toEqual(scenario.startsWith('doctor-') ? { status: 'error' }
         : { status: 'ran', issues: [{ id: 'watchdog', status: 'warn' }] });
       expect(r.stderr.includes('doctor check could not run; run `hermitd doctor`')).toBe(scenario.startsWith('doctor-'));
@@ -947,6 +948,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         expect(history.doctor).toEqual(scenario === 'self-run' ? { status: 'skipped', reason: 'self_run' }
           : scenario.startsWith('doctor-') ? { status: 'error' } : { status: 'ran', issues: [{ id: 'watchdog', status: 'warn' }] });
         expect(r.stdout.includes('fixture doctor pass')).toBe(scenario !== 'self-run');
+        expect(r.stdout.includes('fixture doctor pass --fix')).toBe(scenario !== 'self-run' && scenario !== 'below-floor');
         expect(r.stderr.includes('doctor check could not run; run `hermitd doctor`')).toBe(scenario.startsWith('doctor-'));
         if (scenario === 'below-floor') {
           // Evolve would stop on the old Claude Code: nothing is queued, waited on or restarted.
