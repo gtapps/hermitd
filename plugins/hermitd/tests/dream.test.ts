@@ -148,11 +148,15 @@ describe('dream export', () => {
     const big = g.run(); expect(big.pending).toBe(false); expect(big.inputs.length).toBeGreaterThan(1);
     for (const file of big.inputs) expect(fs.readFileSync(file, 'utf8')).toMatch(/^SESSION one\nAUDIENCE: shared\n/);
   });
-  test('a symlinked memory target skips without creating a run', () => {
-    const f = fixture(); fs.symlinkSync(f.root, path.join(f.memory, 'link.md'));
+  test('a symlinked memory file stays out of the run snapshot', () => {
+    const f = fixture(); fs.writeFileSync(path.join(f.root, 'shared.md'), 'shared');
+    fs.writeFileSync(path.join(f.memory, 'fact.md'), 'fact');
+    fs.symlinkSync(path.join(f.root, 'shared.md'), path.join(f.memory, 'link.md'));
     f.lines('one.jsonl', [user('hello')]);
-    expect(f.run()).toEqual({ status: 'skipped', reason: 'symlink_target' });
-    expect(fs.existsSync(path.join(f.dir, 'state/dream'))).toBe(false);
+    const out = f.run(); expect(out.status).toBe('ready');
+    const manifest = JSON.parse(fs.readFileSync(path.join(out.run_dir, 'manifest.json'), 'utf8'));
+    expect(Object.keys(manifest.files)).toEqual(['memory/fact.md']);
+    expect(fs.existsSync(path.join(out.run_dir, 'before/memory/link.md'))).toBe(false);
   });
 });
 

@@ -10,6 +10,10 @@
 - Dashboard compiled-docs list shows each doc's type, summary, date and tags, lists up to 100 docs, leaves out pages scoped to one chat, and adds search and type filters that remember the last choice per viewer
 - Cost reports price Claude Fable 5.2 ($8 / $40 per MTok, fast mode $16 / $80) and use it for the `fable` alias and Claude Mythos models
 
+### Fixed
+
+- `/hermitd:dream` treats symlinked files in the memory folder as read-only instead of skipping the whole run
+
 ### Upgrade Instructions
 
 1. The dashboard changes shape, so its next publish re-mints once. Nothing to do.
