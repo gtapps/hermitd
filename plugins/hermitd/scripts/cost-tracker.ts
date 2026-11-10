@@ -8,7 +8,7 @@ import path from 'node:path';
 
 import { calculateCost, resolvePricing, type CostByType } from './lib/pricing';
 import { kStr } from './lib/format';
-import { sessionId as ccSessionId, transcriptPath as ccTranscriptPath, readTailLines, entryText, isToolResult, isTurnBoundary, extractUsage, foldUsageByRequest, isCompactBoundary, turnPromptText, toolUseNames, costLogPath, hermitDir } from './lib/cc-compat';
+import { sessionId as ccSessionId, transcriptPath as ccTranscriptPath, readTailLines, entryText, isToolResult, isTurnBoundary, extractUsage, foldUsageByRequest, isCompactBoundary, turnPromptText, toolUseNames, costLogPath, hermitDir, TURN_TAIL_BYTES, TURN_TAIL_CAP } from './lib/cc-compat';
 import { costIndexPath, updateCostIndex, buildMainCostRow, buildSubagentCostRow, appendCostRows } from './lib/cost-log';
 import { todayYMD, thisWeekKey, thisMonthYYYYMM, friendlyBoundary } from './lib/time';
 import { mutateOwnedAlerts, budgetAlertsPath } from './lib/alert-state';
@@ -163,7 +163,7 @@ function resolveTurnSource(lines: string[], billedIndex: number): { source: stri
 // appear here; only the Agent tool_result (type:'user' with toolUseResult.usage) does.
 // extractUsage skips these because they aren't type:'assistant', so collect them
 // explicitly or their tokens vanish from the ledger.
-// Limitation: shares sumTurnUsage's TAIL_BYTES window — a turn larger than the 512KB tail
+// Limitation: shares sumTurnUsage's TURN_TAIL_BYTES window — a turn larger than the 512KB tail
 // is scanned from buffer start, so a prior turn's dispatch can bleed in. Same rare
 // over-count as the main-turn sum, accepted for the same reason.
 function collectSubagentUsage(lines: string[], billedIndex: number): Array<{
@@ -331,19 +331,17 @@ function scanTurnInTail(transcriptPath: string, tailBytes: number, billedSince?:
 }
 
 function readLastTurnUsage(transcriptPath: string, billedSince?: string): Json {
-  const TAIL_BYTES = 524288; // 512KB — covers most multi-step agentic turns
   // A long routine run (evolve, weekly-scan, weekly-review) can write more transcript
-  // than that in one turn. Its prompt then sits outside the window, so the turn bills to
+  // than TURN_TAIL_BYTES in one turn. Its prompt then sits outside the window, so the turn bills to
   // 'other' with a mid-turn token sum — and those runs are exactly the expensive ones the
   // ledger needs right. Read again at the cap when that happens.
   //
   // ONE retry, not a doubling ladder: each Stop bills exactly one turn, so there is never
   // a second boundary further back to walk to. A single wider read reaches as far as the
   // cap ever will, and a turn still unbounded at 8MB keeps the 'other' downgrade.
-  const RETRY_TAIL_BYTES = 8 * 1024 * 1024; // 8MB
-  const turn = scanTurnInTail(transcriptPath, TAIL_BYTES, billedSince);
+  const turn = scanTurnInTail(transcriptPath, TURN_TAIL_BYTES, billedSince);
   if (turn && turn.boundaryMissed) {
-    const wide = scanTurnInTail(transcriptPath, RETRY_TAIL_BYTES, billedSince);
+    const wide = scanTurnInTail(transcriptPath, TURN_TAIL_CAP, billedSince);
     // Usage and source come from the wider read; `tailLines` stays narrow. Its one
     // consumer, maybeDeriveSurface, takes the NEWEST compact_boundary in the lines it is
     // handed, so widening can only reach boundaries OLDER than 512KB would ever see —

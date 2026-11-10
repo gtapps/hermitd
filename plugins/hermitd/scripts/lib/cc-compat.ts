@@ -572,8 +572,10 @@ function turnPromptText(lines: string[], billedIndex: number): { text: string; b
   return { text: '', boundaryFound: false, index: -1, typed: false, joined };
 }
 
+// Shared with cost-tracker's turn billing so the two reads cannot drift apart. 8 MB covers the
+// largest turns seen (under 3 MB) and keeps one hook's peak memory near 50 MB.
 const TURN_TAIL_BYTES = 512 * 1024;
-const TURN_TAIL_CAP = 32 * 1024 * 1024;
+const TURN_TAIL_CAP = 8 * 1024 * 1024;
 
 /**
  * The current turn's lines and opening prompt. A long turn can push its opening prompt
@@ -863,6 +865,8 @@ export {
   isSkillInjection,
   turnPromptText,
   readTurn,
+  TURN_TAIL_BYTES,
+  TURN_TAIL_CAP,
   isCompactBoundary,
   toolUseNames,
   toolUsesWithResults,
