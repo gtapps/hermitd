@@ -6,7 +6,10 @@ import { runScript } from './helpers/run';
 import { setupWorkdir, writeConfig } from './helpers/workdir';
 
 // Tests run concurrently, so each gets its own project. PATH holds only bun, so
-// target resolution never reaches the operator's `claude` CLI.
+// target resolution never reaches the operator's `claude` CLI. Each run pays two
+// Bun cold starts (the script and its apply-settings child), past Bun's 5s
+// default under a loaded parallel run.
+const SUBPROCESS_TIMEOUT = 30_000;
 async function withProject(fn: (p: ReturnType<typeof project>) => Promise<void>) {
   const p = project();
   try { await fn(p); } finally { p.cleanup(); }
@@ -40,7 +43,7 @@ test('syncs the stamped local target and keeps operator entries', () => withProj
   expect(out.missing.length).toBe(allow.length - 1);
   expect(out.settings_file).toBe('.claude/settings.local.json');
   expect(out.summary).toContain(`${out.missing.length} added`);
-}));
+}), SUBPROCESS_TIMEOUT);
 
 test('syncs the committed file for a committed target', () => withProject(async (p) => {
   p.hatch('committed');
@@ -49,21 +52,22 @@ test('syncs the committed file for a committed target', () => withProject(async 
   expect(r.exitCode).toBe(0);
   expect(p.settings('settings.json').permissions.allow.length).toBeGreaterThan(0);
   expect(fs.existsSync(p.at('.claude/settings.local.json'))).toBe(false);
-}));
+}), SUBPROCESS_TIMEOUT);
 
 test('an unstamped target uses the install-scope default', () => withProject(async (p) => {
   p.hatch();
   const r = await p.run();
   expect(r.exitCode).toBe(0);
   expect(JSON.parse(r.stdout).settings_file).toBe('.claude/settings.local.json');
-}));
+}), SUBPROCESS_TIMEOUT);
 
-test('an unhatched project is skipped', () => withProject(async (p) => {
+test('a project whose hatch never finished is skipped', () => withProject(async (p) => {
+  writeConfig(p.at(''), {});
   const r = await p.run();
   expect(r.exitCode).toBe(0);
   expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'not_hatched' });
   expect(fs.readdirSync(p.at('.claude'))).toEqual([]);
-}));
+}), SUBPROCESS_TIMEOUT);
 
 test('a failed sync exits 1 with an error token', () => withProject(async (p) => {
   p.hatch('local');
@@ -71,4 +75,4 @@ test('a failed sync exits 1 with an error token', () => withProject(async (p) =>
   const r = await p.run();
   expect(r.exitCode).toBe(1);
   expect(JSON.parse(r.stdout).error).toStartWith('sync_failed');
-}));
+}), SUBPROCESS_TIMEOUT);

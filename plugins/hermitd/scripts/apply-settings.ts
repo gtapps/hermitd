@@ -440,7 +440,7 @@ switch (op) {
     // Plan first: the diff is computed against the pre-merge state, so the printed
     // result is exactly what this run changed.
     const plan = planPermissions(settings);
-    // Nothing to do — don't rewrite the file. `hermitd update` runs this whenever it
+    // Nothing to do: don't rewrite the file. `hermitd update` runs this whenever it
     // moves the core plugin, and a target that is already current must not come back reformatted
     // (or with a fresh mtime) just for having been checked.
     if (plan.missing.length === 0 && plan.obsolete.length === 0 && plan.obsolete_deny.length === 0) readOnly = true;

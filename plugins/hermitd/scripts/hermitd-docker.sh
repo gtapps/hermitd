@@ -135,8 +135,8 @@ _core_version() {
 }
 
 # Apply the newly installed core's sealed permission list inside the container (its working
-# directory is the project). Runs only when the core pin moved, outside any Claude session,
-# so hermit-evolve never writes it through the auto-mode classifier.
+# directory is the project). Runs only when the core pin moved, inside this operator-run
+# command, so hermit-evolve never writes it through the auto-mode classifier.
 _sync_permissions() {
   local install out
   install="$(_core_install)"
@@ -144,7 +144,7 @@ _sync_permissions() {
     echo "[hermit] Warning: permission list not applied (${out:-core install not found}); hermit-evolve reports the command to run." >&2
     return 0
   fi
-  bun -e 'try { const r = JSON.parse(process.argv[1]); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
+  bun -e 'try { const r = JSON.parse(process.argv[1].trim().split("\n").pop()); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
 }
 
 _validate_compose() {
