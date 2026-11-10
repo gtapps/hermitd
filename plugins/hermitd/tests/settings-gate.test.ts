@@ -989,6 +989,13 @@ describe('task sender binding', () => {
     }
   });
 
+  test('a message queued mid-turn binds its sender even when the turn opened over 512 KB earlier', async () => {
+    const padding = Array.from({ length: 40 }, () => ({ type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(20 * 1024) }] } }));
+    const entries = [opener(channel('member', '200')), ...padding, queued(channel('admin'))];
+    expectSilent(await gate(answer('admin'), entries));
+    expectDeny(await gate(answer('member'), entries));
+  });
+
   for (const [label, command, entries] of [
     ['different sender', answer('member'), [opener(channel('admin'))]],
     ['terminal opener', answer('admin'), [opener('yes', { kind: 'human' })]],
@@ -1009,14 +1016,13 @@ describe('task sender binding', () => {
     expectDeny(await gate(answer('member'), [opener(channel('admin')), { ...queued(channel('member')), type: 'user' }]));
   });
 
-  test('terminal, wake, missing and truncated turns never invent a sender', async () => {
+  test('terminal, wake and missing turns never invent a sender', async () => {
     expectDeny(await gate(answer('admin'), [opener('yes', { kind: 'human' })]));
     const wake = opener('<task-notification>go</task-notification>', { kind: 'task-notification' });
     expectSilent(await gate(answer('member'), [wake, queued(channel('member'))]));
     expectDeny(await gate(answer('admin'), [wake, queued(channel('member'))]));
     expectDeny(await gate(answer('admin'), null));
     expectDeny(await gate(answer('admin'), [queued(channel('admin'))]));
-    expectDeny(await gate(answer('admin'), [opener(channel('admin')), { type: 'assistant', text: 'x'.repeat(512 * 1024) }]));
   });
 
   test('task command forms bind every claimed sender', async () => {

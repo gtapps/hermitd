@@ -18,6 +18,7 @@
 ### Fixed
 
 - `/hermitd:dream` treats symlinked files in the memory folder as read-only instead of skipping the whole run
+- Chat task closes and answers sent while the agent is busy on a long turn are no longer refused as "the named sender did not write in this turn"; the permission gate now reads back to the start of the turn instead of the last 512 KB
 - Unattended upgrades no longer stop at the permission step: `hermitd update` applies the plugin's permission list when it moves the core plugin and prints what changed, and `/hermitd:hermit-evolve` only reports entries still pending, with the command that applies them
 
 ### Upgrade Instructions

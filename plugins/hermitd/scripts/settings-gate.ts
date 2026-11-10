@@ -173,6 +173,20 @@ export function chatBindingChanged(next: Json[], current: Json[], turn: () => st
 }
 
 const TURN_TAIL_BYTES = 512 * 1024;
+const TURN_TAIL_CAP = 32 * 1024 * 1024;
+
+/**
+ * The current turn's lines and opening prompt. A long turn can push its opening prompt
+ * past any fixed tail, so the read doubles until it finds the boundary, reaches the
+ * file start, or hits the cap; the boundary rules stay turnPromptText's.
+ */
+function readTurn(tPath: string): { lines: string[]; prompt: ReturnType<typeof turnPromptText> } {
+  for (let bytes = TURN_TAIL_BYTES; ; bytes *= 2) {
+    const { lines, readFrom } = readTailLines(tPath, bytes);
+    const prompt = turnPromptText(lines, lines.length);
+    if (prompt.boundaryFound || readFrom === 0 || bytes >= TURN_TAIL_CAP) return { lines, prompt };
+  }
+}
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
   | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };
@@ -185,8 +199,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return { kind: 'unknown' };
-    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
-    const prompt = turnPromptText(lines, lines.length);
+    const { prompt } = readTurn(tPath);
     if (!prompt.boundaryFound) return { kind: 'unknown' };
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
@@ -207,8 +220,7 @@ function turnChannelSenders(payload: Json): SenderClaim[] | null {
   try {
     const tPath = transcriptPath(payload);
     if (!tPath) return null;
-    const { lines } = readTailLines(tPath, TURN_TAIL_BYTES);
-    const prompt = turnPromptText(lines, lines.length);
+    const { lines, prompt } = readTurn(tPath);
     if (!prompt.boundaryFound) return null;
     const config = readConfigRaw(hermitDir());
     const senders: SenderClaim[] = [];
