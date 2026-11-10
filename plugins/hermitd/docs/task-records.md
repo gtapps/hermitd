@@ -16,6 +16,7 @@ Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State target
 | `block <id>` | Records `--waiting-on` with `--status-line` and `--next`, or posts a result with `--result-stdin`. A posted result increments `result_rev` and stays open as unconfirmed. |
 | `close <id>` | Confirmation requires an authorized actor, any named approver, and the matching result revision when a result was posted or a revision is passed; with no posted result, the requester's quoted word is enough. Check closure requires verified evidence from a held claim or the matching duty. A named approver blocks check closure. |
 | `cancel <id>` | Requires actor and reason on stdin. Cancellation is separate from successful completion. |
+| `dismiss <id>` | Declines a proposal still waiting for consent, as the operator, with the reason on stdin; refuses any other open record with `not_pending_proposal`. It can only cancel. |
 | `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, last_worker, result, waiting_on, closed_by, check, conversation, card_chat_id and card_message_id. |
 | `standup` | Reports windowed costs and commitments by person, with closed records grouped by closure actor type. Supports `--days` and `--json`. |
 | `check-snapshot <id>` | Returns check, result revision and status for the gated runner. |
@@ -74,4 +75,4 @@ Attaching the first check to an approved proposal keeps consent. Replacing or cl
 
 Each decision generation receives at most two confirmed deliveries. The send script owns counting. Failed or degraded sends consume none. Admin decisions use the maintainer chat, else the home chat on every profile; other decisions use their record's chat. After two deliveries, scoped briefs, status and the dashboard list the wait quietly. Questions never expire.
 
-From the terminal or Remote Control use `task answer <id> --local --reply yes`, confirmed by Claude Code's permission prompt. Local answers act as admin (`operator`); bypass mode refuses them. Never combine `--local` with `--chat` or `--user`, or use it on a channel turn.
+From the terminal or Remote Control use `task answer <id> --local --reply yes`, confirmed by Claude Code's permission prompt. To decline a pending proposal, `task dismiss <id> --reason-stdin` runs without that prompt when the operator typed the turn in the terminal, and asks anywhere else (bypass mode refuses it there). Local answers act as admin (`operator`); bypass mode refuses them. Never combine `--local` with `--chat` or `--user`, or use it on a channel turn.

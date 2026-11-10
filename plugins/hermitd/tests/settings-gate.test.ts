@@ -938,6 +938,32 @@ test('local answer fallbacks, mixed settings and ordinary channel answers', asyn
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
 });
 
+test('task dismiss runs silently only on an operator-typed terminal turn', async () => {
+  const dir = fixture();
+  const transcript = (origin: any) => {
+    const file = path.join(dir, `turn-${origin.kind}.jsonl`);
+    fs.writeFileSync(file, JSON.stringify({ type: 'user', origin, message: { content: 'drop that proposal' } }) + '\n');
+    return file;
+  };
+  const gate = (command: string, file: string, permission_mode = 'default') =>
+    runGate(JSON.stringify({ ...JSON.parse(payload({ dir, tool: 'Bash', permission_mode, input: { command } })), transcript_path: file }), dir);
+  const typed = transcript({ kind: 'human' });
+  for (const command of [
+    "echo 'Shipped in 1.4.30' | .hermit/bin/hermitd-run task dismiss .hermit T-20261101-120000 --reason-stdin",
+    'bun plugins/hermitd/scripts/task.ts dismiss .hermit T-20261101-120000 --reason-stdin <<< "No longer wanted"; bun plugins/hermitd/scripts/task.ts dismiss .hermit T-20261101-120001 --reason-stdin <<< x',
+  ]) {
+    expectSilent(await gate(command, typed));
+    expectSilent(await gate(command, typed, 'bypassPermissions'));
+  }
+  const dismiss = "echo 'No' | .hermit/bin/hermitd-run task dismiss .hermit T-20261101-120000 --reason-stdin";
+  for (const origin of [{ kind: 'peer' }, { kind: 'task-notification' }, { kind: 'channel' }]) {
+    expectAsk((await gate(dismiss, transcript(origin))).stdout, 'Admin decision: dismiss a proposal');
+  }
+  expectAsk((await gate(dismiss, path.join(dir, 'missing.jsonl'))).stdout, 'Admin decision: dismiss a proposal');
+  expectSilent(await gate("bun plugins/hermitd/scripts/task.ts note .hermit T-20261101-120000 --decision <<'EOF'\nclosed with task dismiss\nEOF", transcript({ kind: 'peer' }), 'bypassPermissions'));
+  expect(JSON.parse((await gate(dismiss, transcript({ kind: 'peer' }), 'bypassPermissions')).stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+});
+
 test('quoted heredoc bodies that only mention a decision call are data', async () => {
   const dir = fixture();
   for (const body of ['closing needed `task answer --local` and a prompt', 'the agent ran git config --local for the task',

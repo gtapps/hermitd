@@ -15,11 +15,11 @@ async function main(): Promise<void> {
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
-    close: ['chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'],
+    close: ['chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
     list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'limit'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
-  const requiresId = ['note', 'block', 'close', 'cancel', 'lesson', 'check-snapshot'].includes(verb);
+  const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot'].includes(verb);
   const id = requiresId || (verb === 'answer' && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');

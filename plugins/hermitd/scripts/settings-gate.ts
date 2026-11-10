@@ -846,7 +846,19 @@ function main(payload: any): void {
       deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
       return;
     }
+    // Read lazily: only a dismissal or a routines write needs the transcript.
+    let turn: RoutineOrigin | undefined;
+    const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
     localAnswers = localAnswerAsks(taskText);
+    // `task dismiss` can only cancel a pending proposal (task.ts enforces that), so it needs no
+    // parsing here: only the operator's own typed terminal turn runs it without asking. The match
+    // is deliberately coarse. It guards the agent's normal path, not the records: a disguised
+    // spelling is not caught, and even in bypass mode the agent could change a record another
+    // way. The worst a miss does is cancel a proposal, never grant one.
+    if (/\btask(?:\.ts)?\s+dismiss\b/.test(taskText.replace(/['"\\]/g, ''))) {
+      const value = origin();
+      if (!(value.kind === 'terminal' && value.proven)) localAnswers.push('dismiss a proposal');
+    }
     if (payload.permission_mode === 'bypassPermissions' && localAnswers.length) {
       deny('Answering a decision as admin is refused in bypass mode; answer from a connected chat.');
       return;
@@ -856,11 +868,9 @@ function main(payload: any): void {
       deny('Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.');
       return;
     }
-    // Read lazily: only a routines write needs the transcript.
-    let turn: RoutineOrigin | undefined;
     asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
       typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
-      () => (turn === undefined ? (turn = turnConversation(payload)) : turn),
+      origin,
       payload.permission_mode);
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';

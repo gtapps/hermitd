@@ -50,6 +50,20 @@ for (const authority of ['requester', 'chat', 'admin']) test(`admin answers ${au
   } finally { f.cleanup(); }
 });
 
+test('dismiss cancels only a proposal still waiting for consent, with the operator as actor', () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord();
+    expect(() => mutateTask(f.dir, 'dismiss', id, {}, '')).toThrow('missing_reason_stdin');
+    expect(() => mutateTask(f.dir, 'dismiss', id, { 'reason-stdin': true }, ' ')).toThrow('empty_reason');
+    expect(mutateTask(f.dir, 'dismiss', id, { 'reason-stdin': true }, 'Shipped already')).toMatchObject({ id, closed_by: 'cancelled' });
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_actor: 'operator', closed_reason: 'Consent declined: Shipped already', waiting_on: null });
+    const accepted = f.openRecord(consent, { 'dedupe-key': 'accepted' }).id;
+    expect(f.answer(accepted)).toMatchObject({ status: 'match' });
+    const question = f.openRecord(consent, { kind: false, 'dedupe-key': 'question' }).id;
+    for (const other of [accepted, question]) expect(() => mutateTask(f.dir, 'dismiss', other, { 'reason-stdin': true }, 'No')).toThrow('not_pending_proposal');
+  } finally { f.cleanup(); }
+});
+
 test('consent no cancels with a reason and an unscoped admin decision is admin-only', () => {
   const f = fixture(); try {
     const { id } = f.openRecord(consent, { conversation: undefined });

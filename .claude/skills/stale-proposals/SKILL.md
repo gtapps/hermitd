@@ -90,12 +90,12 @@ bun plugins/hermitd/scripts/task.ts note <hermit-dir> <task-id> --decision <<'HE
 Resolved @now: shipped in <plugin> <version>. <evidence sentence>
 HERMIT_NOTE
 
-bun plugins/hermitd/scripts/task.ts answer <hermit-dir> <task-id> --local --reply no
+echo "Shipped in <plugin> <version>." | bun plugins/hermitd/scripts/task.ts dismiss <hermit-dir> <task-id> --reason-stdin
 ```
 
-Replace `@now` with the current date. The note is what makes an automatic flip auditable: the operator can later see which bullet closed the proposal. A shipped proposal closes as cancelled (the record's own closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. The answer needs Claude Code's permission prompt and is refused under bypass mode, so a refusal means leave it for Step 4 and say so.
+Replace `@now` with the current date. The note is what makes an automatic flip auditable: the operator can later see which bullet closed the proposal. A shipped proposal closes as cancelled (the record's own closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. `dismiss` closes only a proposal still waiting for consent and runs without a prompt when the operator typed the turn in the terminal; anywhere else it asks for Claude Code's permission, and bypass mode refuses it there, so a refusal means leave it for Step 4 and say so.
 
-`answer` prints `{"status":"match",...}` on success. Any other status (`none`, `refused`, `ambiguous`, `stale`), or `{"error":...}`, means nothing was closed: report it, move that proposal into the Step 4 list, and continue with the rest. A `note` already written stays as a harmless record.
+`dismiss` prints `{"id":...,"closed_by":"cancelled",...}` on success. A `{"status":"refused",...}` or `{"error":...}` means nothing was closed: report it, move that proposal into the Step 4 list, and continue with the rest. A `note` already written stays as a harmless record.
 
 ## Step 4 — Ask about the rest
 
@@ -103,7 +103,7 @@ Present `SHIPPED-WEAK` and `AGED` together in one `AskUserQuestion` round, weak 
 
 Apply confirmed answers with `task.ts` (same `<hermit-dir>` as Step 1). Both "resolve" and "dismiss" close the record as cancelled; the Decision note carries the difference:
 
-- **awaiting consent** — `note --decision` with the operator's choice and reason (for resolve, as Step 3), then `answer <task-id> --local --reply no`.
+- **awaiting consent** — `note --decision` with the operator's choice and reason (for resolve, as Step 3), then `dismiss <task-id> --reason-stdin` with the reason on stdin.
 - **accepted** — `cancel <task-id> --actor <source>:<user-id> --chat <chat-key> --user <user-id> --reason-stdin` with the reason on stdin, using the operator's own identity from this conversation. A terminal-only session has none: report the task id and leave it open.
 - **leave open** — nothing to write.
 

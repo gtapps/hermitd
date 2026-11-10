@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `task dismiss <id> --reason-stdin` declines a proposal still waiting for consent and nothing else; it runs without a permission prompt when the operator typed the turn in the terminal, and asks from chats, peer sessions and wakes
+
 ### Changed
 
 - Dashboard waiting rows expand to the proposal's Context, Problem and Proposed Solution, show answer options instead of the decision purpose, and drop the by-person card from the default page (custom renderers still get it)

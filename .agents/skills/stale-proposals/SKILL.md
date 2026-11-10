@@ -75,12 +75,12 @@ bun plugins/hermitd/scripts/task.ts note <hermit-dir> <task-id> --decision <<'HE
 Resolved @now: shipped in <plugin> <version>. <evidence sentence>
 HERMIT_NOTE
 
-bun plugins/hermitd/scripts/task.ts answer <hermit-dir> <task-id> --local --reply no
+echo "Shipped in <plugin> <version>." | bun plugins/hermitd/scripts/task.ts dismiss <hermit-dir> <task-id> --reason-stdin
 ```
 
-Replace `@now` with the current date. The note makes the automatic resolution auditable. A shipped proposal closes as cancelled (the record's closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. The answer needs the harness permission prompt and is refused under bypass mode, so a refusal means leave it for Step 4 and say so.
+Replace `@now` with the current date. The note makes the automatic resolution auditable. A shipped proposal closes as cancelled (the record's closed reason reads "Consent declined"), because a pending proposal has no resolved outcome; the Decisions note says why. `dismiss` closes only a proposal still waiting for consent; outside an operator-typed Claude Code terminal turn it may need the harness permission prompt, and bypass mode refuses it there, so a refusal means leave it for Step 4 and say so.
 
-`answer` prints `{"status":"match",...}` on success. Any other status (`none`, `refused`, `ambiguous`, `stale`), or `{"error":...}`, means nothing was closed: report it, move that proposal to Step 4, and continue. A `note` already written stays as a harmless record.
+`dismiss` prints `{"id":...,"closed_by":"cancelled",...}` on success. A `{"status":"refused",...}` or `{"error":...}` means nothing was closed: report it, move that proposal to Step 4, and continue. A `note` already written stays as a harmless record.
 
 ## Step 4 — Ask about the rest
 
@@ -90,7 +90,7 @@ Stop and wait for the response. Do not interpret the original audit request as a
 
 Apply confirmed choices with `task.ts` against the same `<hermit-dir>` as Step 1. Both resolve and dismiss close the record as cancelled; the Decision note carries the difference:
 
-- **Awaiting consent:** `note --decision` with the user's choice and reason (for resolve, as Step 3), then `answer <task-id> --local --reply no`.
+- **Awaiting consent:** `note --decision` with the user's choice and reason (for resolve, as Step 3), then `dismiss <task-id> --reason-stdin` with the reason on stdin.
 - **Accepted:** `cancel <task-id> --actor <source>:<user-id> --chat <chat-key> --user <user-id> --reason-stdin` with the reason on stdin, using the user's own identity from this conversation. A terminal-only session has none: report the task id and leave it open.
 - **Leave open:** make no changes.
 
