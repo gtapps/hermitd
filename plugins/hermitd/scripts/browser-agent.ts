@@ -10,6 +10,7 @@ import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockf
 import { writeFileAtomic } from './lib/md-write';
 import { failJson, printJson, readJson } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
+import { startIdleWatch } from './browser-idle-watch';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 
@@ -38,7 +39,7 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   } finally { releaseLock(lock); }
 }
 
-interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; commandTimeoutMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
+interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; commandTimeoutMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult>; startIdleWatch?: (dir: string) => void }
 export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
   if (!browserEnabled(dir)) { printJson({ status: 'disabled' }); return 0; }
@@ -186,6 +187,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     }
     const after = session ? null : browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => chromeAlive(dir) });
     if (after && (after.epoch !== epoch || after.human)) { printJson({ error: 'human_has_control' }); return 1; }
+    if (!session && argv.at(-1) !== 'close') (options.startIdleWatch ?? startIdleWatch)(dir);
     await Bun.write(Bun.stdout, stdout);
     await Bun.write(Bun.stderr, stderr);
     return code;

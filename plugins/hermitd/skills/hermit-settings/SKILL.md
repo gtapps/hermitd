@@ -108,7 +108,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
 | `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | next hermitd restart (Docker: next hermitd update) |
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
-| `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds an unclaimed signed-in browser may stay inactive before it closes (0-86400, 0 keeps it open) | next heartbeat |
+| `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds an unclaimed signed-in browser may stay inactive before it closes (0-86400, 0 keeps it open) | next signed-in browser launch |
 | `browser-command-timeout` | `browser.command_timeout` | integer | any; seconds one browser command may run before it is stopped (5-600) | next browser command |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |

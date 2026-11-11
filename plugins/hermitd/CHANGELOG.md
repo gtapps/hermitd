@@ -4,7 +4,7 @@
 
 ### Added
 
-- The heartbeat closes the signed-in browser after `browser.inactivity_timeout` seconds (default 900) with no claim, person or use; `0` keeps it open. Sign-ins persist; the next claim relaunches it
+- A watcher started with the signed-in browser closes it after `browser.inactivity_timeout` seconds (default 900) with no claim, person or use; `0` keeps it open. Sign-ins persist; the next claim relaunches it
 - Agent start closes a Chrome on the agent's browser profile left by an earlier session when no task or person holds the browser
 - `browser.command_timeout` seconds (default 60) stops a browser command that runs longer and returns `browser_command_timeout`
 - `/hermitd:hermit-settings browser-inactivity-timeout` and `browser-command-timeout` set both values

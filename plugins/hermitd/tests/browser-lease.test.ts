@@ -302,27 +302,6 @@ test('the idle claim is taken only from an unheld, unused profile', () => {
   expect(browserLease('idle', 'idle-close', dir, 10_000, opts).status).toBe('human');
 });
 
-test('the sweep closes an unclaimed browser past the setting, and 0 disables it', () => {
-  const dir = freshDir();
-  const closed: string[] = [];
-  const deps = (now: number) => ({ now, pids: () => [1], wrapperClose: (_: string, task: string) => { closed.push(task); } });
-  const setIdle = (seconds: number) => fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { inactivity_timeout: seconds } }));
-  setIdle(60);
-  browserLease('claim', 'task-a', dir, 0);
-  sweepBrowserLease(dir, deps(BROWSER_IDLE_MS - 1));
-  expect(closed).toEqual([]);
-  browserLease('release', 'task-a', dir, 1000);
-  sweepBrowserLease(dir, deps(60_999));
-  expect(closed).toEqual([]);
-  setIdle(0);
-  sweepBrowserLease(dir, deps(10 * 60_000));
-  expect(closed).toEqual([]);
-  setIdle(60);
-  sweepBrowserLease(dir, deps(61_000));
-  expect(closed).toEqual(['idle-close']);
-  expect(browserLease('status', undefined, dir, 61_000).status).toBe('available');
-});
-
 test('the boot reap signals only Chrome on this profile, and never a held one', async () => {
   const dir = path.join(freshDir(), '.hermit');
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });

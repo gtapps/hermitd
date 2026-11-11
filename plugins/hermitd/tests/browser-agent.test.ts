@@ -20,7 +20,7 @@ function fixture() {
   const binary = path.join(root, 'real-browser');
   fs.writeFileSync(binary, `#!${process.execPath}\nif (process.env.TEST_SLEEP) { require('node:fs').writeFileSync(process.env.TEST_SLEEP, String(process.pid)); await Bun.sleep(60000); }\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
   const run = async (argv: string[], env: Record<string, string> = {}) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', commandTimeoutMs: Number(process.env.TEST_TIMEOUT_MS) || undefined, marker: ${JSON.stringify(path.join(root, 'marker'))}, ensureDisplay: async () => {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', commandTimeoutMs: Number(process.env.TEST_TIMEOUT_MS) || undefined, startIdleWatch: () => require('node:fs').appendFileSync(${JSON.stringify(path.join(root, 'watch-calls'))}, 'watch\\n'), marker: ${JSON.stringify(path.join(root, 'marker'))}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
       return process.env.TEST_BLOCKER ? { blocker: process.env.TEST_BLOCKER } : JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, 'state/browser-display.json'))}, 'utf8'));
@@ -32,6 +32,17 @@ function fixture() {
   };
   return { root, dir, socket, run };
 }
+
+test('signed-in commands start the inactivity watcher; close and named sessions do not', async () => {
+  const { root, dir, run } = fixture();
+  const calls = () => { try { return fs.readFileSync(path.join(root, 'watch-calls'), 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } };
+  browserLease('claim', 'task-a', dir);
+  expect((await run(['--task', 'task-a', 'open', 'https://example.com'])).code).toBe(0);
+  expect(calls()).toBe(1);
+  expect((await run(['--task', 'task-a', 'close'])).code).toBe(0);
+  expect((await run(['--session', 'anon', 'open', 'https://example.com'])).code).toBe(0);
+  expect(calls()).toBe(1);
+});
 
 test('a command past the timeout is killed and returns browser_command_timeout', async () => {
   const { root, dir, run } = fixture();

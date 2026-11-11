@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { hermitDir } from './cc-compat';
 import { browserDeployment, browserProfile } from './browser-runtime';
-import { readSettledConfig } from './config-read';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
 import { mutateTask, readTasks } from './tasks';
@@ -245,9 +244,9 @@ function signalProfileChrome(dir: string): void {
   signal(profileChromePids(dir, false), 'SIGKILL');
 }
 
-interface CloseDeps { pids?: (dir: string) => number[]; wrapperClose?: (dir: string, task: string) => void; now?: number }
+export interface CloseDeps { pids?: (dir: string) => number[]; wrapperClose?: (dir: string, task: string) => void; now?: number }
 /** Closes the profile's Chrome when no task or person has used it for `idleMs`. */
-function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: CloseDeps): boolean {
+export function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: CloseDeps): boolean {
   // A Docker host sees its container's processes in /proc but does not own them; only Linux runs the profile headed.
   if (process.platform !== 'linux' || browserDeployment(dir) === 'docker_host') return false;
   // Lock-free pre-check keeps the /proc scan off ticks where the lease is in use or recently used.
@@ -263,12 +262,9 @@ function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: Clos
   return true;
 }
 
-/** A holder that never releases has no other trigger for its idle expiry, and an unclaimed Chrome none for its close. */
-export function sweepBrowserLease(dir: string, deps: CloseDeps = {}): void {
-  if (!fs.existsSync(path.join(dir, 'state/browser-lease.json'))) return;
-  browserLease('status', undefined, dir, deps.now ?? Date.now());
-  const seconds = readSettledConfig(dir).browser.inactivity_timeout;
-  if (seconds > 0) closeUnusedChrome(dir, seconds * 1000, 'idle-close', deps);
+/** A holder that never releases has no other trigger for its idle expiry. */
+export function sweepBrowserLease(dir: string): void {
+  if (fs.existsSync(path.join(dir, 'state/browser-lease.json'))) browserLease('status', undefined, dir);
 }
 
 /** At agent start a Chrome on the profile that no claim or person holds was left by a crash. */
