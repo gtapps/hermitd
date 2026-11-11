@@ -400,9 +400,9 @@ export function coerce(setting: Setting, raw: string): { ok: true; value: Json }
       return { ok: true, value: raw };
     }
     case 'int': {
-      if (!/^\d+$/.test(raw)) return { ok: false, message: `${setting.arg} expects a positive integer (got "${raw}")` };
-      const n = parseInt(raw, 10);
-      if (n < 1) return { ok: false, message: `${setting.arg} expects a positive integer (got "${raw}")` };
+      const [lo, hi] = setting.range ?? [1, Infinity];
+      const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+      if (!(n >= lo && n <= hi)) return { ok: false, message: setting.range ? `${setting.arg} expects an integer from ${lo} to ${hi} (got "${raw}")` : `${setting.arg} expects a positive integer (got "${raw}")` };
       return { ok: true, value: n };
     }
     default:

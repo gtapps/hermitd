@@ -18,9 +18,9 @@ function fixture() {
   fs.mkdirSync(socket, { recursive: true });
   fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ display: ':17', vncSocket: path.join(socket, 'vnc.sock') }));
   const binary = path.join(root, 'real-browser');
-  fs.writeFileSync(binary, `#!${process.execPath}\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
+  fs.writeFileSync(binary, `#!${process.execPath}\nif (process.env.TEST_SLEEP) { require('node:fs').writeFileSync(process.env.TEST_SLEEP, String(process.pid)); await Bun.sleep(60000); }\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
   const run = async (argv: string[], env: Record<string, string> = {}) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', marker: ${JSON.stringify(path.join(root, 'marker'))}, ensureDisplay: async () => {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', commandTimeoutMs: Number(process.env.TEST_TIMEOUT_MS) || undefined, marker: ${JSON.stringify(path.join(root, 'marker'))}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
       return process.env.TEST_BLOCKER ? { blocker: process.env.TEST_BLOCKER } : JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, 'state/browser-display.json'))}, 'utf8'));
@@ -30,8 +30,17 @@ function fixture() {
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return { code, stderr, data: JSON.parse(stdout) };
   };
-  return { dir, socket, run };
+  return { root, dir, socket, run };
 }
+
+test('a command past the timeout is killed and returns browser_command_timeout', async () => {
+  const { root, dir, run } = fixture();
+  browserLease('claim', 'task-a', dir);
+  const pidFile = path.join(root, 'sleeper.pid');
+  expect(await run(['--task', 'task-a', 'open', 'https://example.com'], { TEST_SLEEP: pidFile, TEST_TIMEOUT_MS: '1500' })).toMatchObject({ code: 1, data: { error: 'browser_command_timeout' } });
+  const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+  expect(() => process.kill(pid, 0)).toThrow();
+});
 
 test('persistent commands require a live claim, renew it and preserve argv and exit code', async () => {
   const { dir, run } = fixture();

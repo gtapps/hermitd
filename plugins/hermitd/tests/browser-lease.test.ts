@@ -1,7 +1,8 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserLease, BROWSER_IDLE_MS, sweepBrowserLease } from '../scripts/lib/browser-lease';
+import { browserLease, BROWSER_IDLE_MS, reapOrphanedChrome, sweepBrowserLease } from '../scripts/lib/browser-lease';
+import { browserProfile } from '../scripts/lib/browser-runtime';
 import { mutateTask, readTasks } from '../scripts/lib/tasks';
 import { freshDirFactory } from './helpers/workdir';
 import { runScript } from './helpers/run';
@@ -286,4 +287,64 @@ test('teardown takes and drops the claim without sweeping queued tasks', () => {
   expect(browserLease('teardown', 'shutdown', dir)).toMatchObject({ status: 'claimed', holder: 'shutdown' });
   browserLease('teardown', undefined, dir);
   expect(browserLease('inspect', undefined, dir).waiters).toEqual([{ task: 'queued', waiting_on: 'holder' }]);
+});
+
+test('the idle claim is taken only from an unheld, unused profile', () => {
+  const dir = freshDir();
+  const opts = { idleMs: 100, chromeAlive: () => true };
+  browserLease('claim', 'task-a', dir, 0);
+  expect(browserLease('idle', 'idle-close', dir, 500, opts).status).toBe('active');
+  browserLease('release', 'task-a', dir, 10);
+  expect(browserLease('idle', 'idle-close', dir, 109, opts).status).toBe('active');
+  expect(browserLease('idle', 'idle-close', dir, 110, opts)).toEqual({ status: 'claimed', holder: 'idle-close' });
+  browserLease('release', 'idle-close', dir, 120);
+  browserLease('takeover', undefined, dir, 130, { login: 'admin', admins: ['admin'], chromeAlive: () => true });
+  expect(browserLease('idle', 'idle-close', dir, 10_000, opts).status).toBe('human');
+});
+
+test('the sweep closes an unclaimed browser past the setting, and 0 disables it', () => {
+  const dir = freshDir();
+  const closed: string[] = [];
+  const deps = (now: number) => ({ now, pids: () => [1], wrapperClose: (_: string, task: string) => { closed.push(task); } });
+  const setIdle = (minutes: number) => fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { idle_timeout_minutes: minutes } }));
+  setIdle(1);
+  browserLease('claim', 'task-a', dir, 0);
+  sweepBrowserLease(dir, deps(BROWSER_IDLE_MS - 1));
+  expect(closed).toEqual([]);
+  browserLease('release', 'task-a', dir, 1000);
+  sweepBrowserLease(dir, deps(60_999));
+  expect(closed).toEqual([]);
+  setIdle(0);
+  sweepBrowserLease(dir, deps(10 * 60_000));
+  expect(closed).toEqual([]);
+  setIdle(1);
+  sweepBrowserLease(dir, deps(61_000));
+  expect(closed).toEqual(['idle-close']);
+  expect(browserLease('status', undefined, dir, 61_000).status).toBe('available');
+});
+
+test('the boot reap signals only Chrome on this profile, and never a held one', async () => {
+  const dir = path.join(freshDir(), '.hermit');
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  const script = path.join(path.dirname(dir), 'fake-chrome.js');
+  fs.writeFileSync(script, "console.log('ready'); setInterval(() => {}, 1000);\n");
+  const start = async (profile: string) => {
+    const child = Bun.spawn([process.execPath, script, `--user-data-dir=${profile}`], { stdout: 'pipe' });
+    for await (const chunk of child.stdout) if (new TextDecoder().decode(chunk).includes('ready')) break;
+    return child;
+  };
+  const noClose = { wrapperClose: () => {} };
+  const ours = await start(browserProfile(dir));
+  const other = await start(path.join(path.dirname(dir), 'other-profile'));
+  try {
+    browserLease('claim', 'task-a', dir);
+    expect(reapOrphanedChrome(dir, noClose)).toBe(false);
+    browserLease('release', 'task-a', dir);
+    browserLease('takeover', undefined, dir, Date.now(), { login: 'admin', admins: ['admin'] });
+    expect(reapOrphanedChrome(dir, noClose)).toBe(false);
+    browserLease('human-release', undefined, dir);
+    expect(reapOrphanedChrome(dir, noClose)).toBe(true);
+    await ours.exited;
+    expect(other.exitCode).toBeNull();
+  } finally { ours.kill(); other.kill(); }
 });

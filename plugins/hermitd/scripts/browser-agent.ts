@@ -9,6 +9,7 @@ import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { failJson, printJson, readJson } from './lib/cli';
+import { readSettledConfig } from './lib/config-read';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 
@@ -37,7 +38,7 @@ function sessionAdmission(socketDir: string, session: string, remove = false): b
   } finally { releaseLock(lock); }
 }
 
-interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
+interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; commandTimeoutMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
 export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
   if (!browserEnabled(dir)) { printJson({ status: 'disabled' }); return 0; }
@@ -170,9 +171,13 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   try {
     const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' });
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); },
+      options.commandTimeoutMs ?? (readSettledConfig(dir).browser.command_timeout_seconds ?? 60) * 1000);
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
-    ]);
+    ]).finally(() => clearTimeout(timer));
+    if (timedOut) { printJson({ error: 'browser_command_timeout' }); return 1; }
     if (host && new TextDecoder().decode(stderr).includes('No usable sandbox')) {
       printJson({ error: 'browser_sandbox_blocked', detail: 'Run hermitd run browser-host. For Claude Code /sandbox set sandbox.excludedCommands to include: bun */scripts/browser-agent.ts *' }); return 1;
     }

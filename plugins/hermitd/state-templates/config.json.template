@@ -24,7 +24,9 @@
     "default": "agent-browser",
     "admins": [],
     "port": null,
-    "host": null
+    "host": null,
+    "idle_timeout_minutes": 15,
+    "command_timeout_seconds": 60
   },
   "transcription": {
     "enabled": true,

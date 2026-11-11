@@ -162,6 +162,7 @@ function validateTable(config: Json, rows: Record<string, Spec>, errors: string[
     if (spec.kind === 'number' && spec.range && (!Number.isFinite(value) || value < spec.range[0] || value > spec.range[1])) {
       errors.push(`${dotted}: must be in [${spec.range.join(', ')}]`);
     }
+    if (spec.kind === 'number' && spec.integer && !Number.isInteger(value)) errors.push(`${dotted}: must be an integer`);
   }
 }
 

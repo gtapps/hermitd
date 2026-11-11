@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { hermitDir } from './cc-compat';
 import { browserDeployment, browserProfile } from './browser-runtime';
+import { readSettledConfig } from './config-read';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
 import { mutateTask, readTasks } from './tasks';
@@ -21,6 +23,8 @@ export interface BrowserEvent {
 export interface BrowserLease {
   holder: string | null; expires_at: number; waiters: Waiter[];
   epoch: number; human: HumanLease | null; pending: BrowserEvent[];
+  /** Last claim, renewal, release or hand-back; absent on a lease written before idle close. */
+  used_at?: number;
 }
 
 export function browserEventSequence(id: string): number {
@@ -40,18 +44,23 @@ export function browserEventCursor(dir: string): number {
   }
 }
 
-/** Chrome for Testing's managed persistent profile, never a named headless session. */
-export function persistentChromeAlive(dir = hermitDir()): boolean {
-  if (browserDeployment(dir) === 'docker_host') return true;
+/** Chrome processes on the managed persistent profile, never a named headless session. */
+function profileChromePids(dir: string, mainOnly: boolean): number[] {
   const profile = browserProfile(dir);
-  return fs.readdirSync('/proc').some(pid => {
+  return fs.readdirSync('/proc').filter(pid => {
     if (!/^\d+$/.test(pid)) return false;
     try {
       const args = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0');
       return args.some(arg => arg === `--user-data-dir=${profile}`)
-        && !args.some(arg => arg.startsWith('--type='));
+        && !(mainOnly && args.some(arg => arg.startsWith('--type=')));
     } catch { return false; }
-  });
+  }).map(Number);
+}
+
+/** Chrome for Testing's managed persistent profile, never a named headless session. */
+export function persistentChromeAlive(dir = hermitDir()): boolean {
+  if (browserDeployment(dir) === 'docker_host') return true;
+  return profileChromePids(dir, true).length > 0;
 }
 
 function readLease(file: string): BrowserLease {
@@ -67,6 +76,7 @@ function readLease(file: string): BrowserLease {
         && (lease.human.task === null || typeof lease.human.task === 'string')
         && (lease.human.waiting_since === null || typeof lease.human.waiting_since === 'string')
         && (lease.human.disconnected_at === null || Number.isFinite(lease.human.disconnected_at))))
+      || !(lease.used_at === undefined || Number.isFinite(lease.used_at))
       || !Array.isArray(lease.waiters)
       || lease.waiters.some((waiter: Waiter) => !waiter || typeof waiter.task !== 'string' || typeof waiter.waiting_on !== 'string')) {
       throw new Error('invalid_browser_lease');
@@ -84,9 +94,9 @@ export function humanGeneration(dir: string): number | null {
 }
 
 /** The folder shares the lease; the lock covers only the short transaction. */
-type LeaseAction = 'teardown' | 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
+type LeaseAction = 'teardown' | 'idle' | 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
-  login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
+  login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean; idleMs?: number;
 }
 interface LeaseResult extends Partial<BrowserLease> { status: string }
 export function browserLease(action: LeaseAction, task?: string, dir = hermitDir(), now = Date.now(), options: LeaseOptions = {}): LeaseResult {
@@ -107,6 +117,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       lease.pending.push({ id: `${lease.epoch + 1}-${randomUUID()}`, reason, task: human.task, waiting_since: human.waiting_since });
       lease.human = null;
       lease.epoch++;
+      lease.used_at = now;
       if (lease.holder) lease.expires_at = now + BROWSER_IDLE_MS;
       save();
     };
@@ -175,6 +186,14 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       if (action === 'claim' && task?.trim()) queue(lease.human.login);
       return { status: 'human', human: lease.human, epoch: lease.epoch };
     }
+    if (action === 'idle') {
+      // Taken in the same transaction as the idle check, so no task can claim between them.
+      if (lease.holder || now - (lease.used_at ?? 0) < options.idleMs!) return { status: 'active' };
+      lease.holder = task!;
+      lease.expires_at = now + BROWSER_IDLE_MS;
+      save();
+      return { status: 'claimed', holder: lease.holder };
+    }
     if (!lease.holder && lease.waiters.length && (action === 'status' || claimExpired)) {
       // Recovers a waiter that blocked after the release meant to wake it.
       clearNextWaiter(dir, lease);
@@ -186,6 +205,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     if (action === 'release') {
       if (task && lease.holder && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
       if (lease.holder) clearNextWaiter(dir, lease);
+      if (lease.holder) lease.used_at = now;
       lease.holder = null;
       lease.expires_at = 0;
       save();
@@ -203,6 +223,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       lease.waiters = lease.waiters.filter(waiter => waiter.task !== task);
     }
     lease.expires_at = now + BROWSER_IDLE_MS;
+    lease.used_at = now;
     save();
     return { status: 'claimed', holder: lease.holder!, expires_at: lease.expires_at };
   } finally {
@@ -210,9 +231,48 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
   }
 }
 
-/** A holder that never releases has no other trigger for its idle expiry. */
-export function sweepBrowserLease(dir: string): void {
-  if (fs.existsSync(path.join(dir, 'state/browser-lease.json'))) browserLease('status', undefined, dir);
+/** The wrapper's close also stops its daemon; on a hang it is killed and the signals below finish the job. */
+function closeThroughWrapper(dir: string, task: string): void {
+  spawnSync(process.execPath, [path.join(import.meta.dir, '../browser-agent.ts'), '--task', task, 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout: 10_000, killSignal: 'SIGKILL' });
+}
+
+function signalProfileChrome(dir: string): void {
+  const signal = (pids: number[], name: NodeJS.Signals) => { for (const pid of pids) try { process.kill(pid, name); } catch {} };
+  signal(profileChromePids(dir, true), 'SIGTERM');
+  // SIGTERM lets Chrome flush the profile, so sign-ins survive; SIGKILL only what ignores it. Rescanning
+  // cmdline, not kill(pid, 0), because an exited but unreaped Chrome is a zombie that kill still reaches.
+  for (let waited = 0; waited < 5000 && profileChromePids(dir, false).length; waited += 100) Bun.sleepSync(100);
+  signal(profileChromePids(dir, false), 'SIGKILL');
+}
+
+interface CloseDeps { pids?: (dir: string) => number[]; wrapperClose?: (dir: string, task: string) => void; now?: number }
+/** Closes the profile's Chrome when no task or person has used it for `idleMs`. */
+function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: CloseDeps): boolean {
+  // A Docker host sees its container's processes in /proc but does not own them; only Linux runs the profile headed.
+  if (process.platform !== 'linux' || browserDeployment(dir) === 'docker_host') return false;
+  // Lock-free pre-check keeps the /proc scan off ticks where the lease is in use.
+  const lease = readLease(path.join(dir, 'state/browser-lease.json'));
+  if (lease.human || (lease.holder && lease.expires_at > (deps.now ?? Date.now()))) return false;
+  if (!(deps.pids ?? (d => profileChromePids(d, false)))(dir).length) return false;
+  if (browserLease('idle', task, dir, deps.now ?? Date.now(), { idleMs }).status !== 'claimed') return false;
+  try {
+    (deps.wrapperClose ?? closeThroughWrapper)(dir, task);
+    signalProfileChrome(dir);
+  } finally { browserLease('release', task, dir, deps.now ?? Date.now()); }
+  return true;
+}
+
+/** A holder that never releases has no other trigger for its idle expiry, and an unclaimed Chrome none for its close. */
+export function sweepBrowserLease(dir: string, deps: CloseDeps = {}): void {
+  if (!fs.existsSync(path.join(dir, 'state/browser-lease.json'))) return;
+  browserLease('status', undefined, dir, deps.now ?? Date.now());
+  const minutes = readSettledConfig(dir).browser.idle_timeout_minutes;
+  if (minutes) closeUnusedChrome(dir, minutes * 60_000, 'idle-close', deps);
+}
+
+/** At agent start a Chrome on the profile that no claim or person holds was left by a crash. */
+export function reapOrphanedChrome(dir = hermitDir(), deps: CloseDeps = {}): boolean {
+  return closeUnusedChrome(dir, 0, 'boot-reap', deps);
 }
 
 function clearNextWaiter(dir: string, lease: BrowserLease): void {

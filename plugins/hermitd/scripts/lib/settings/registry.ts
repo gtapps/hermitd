@@ -29,6 +29,8 @@ export interface Setting {
   kind: Kind;
   /** Allowed values for `kind: 'enum'`. */
   values?: readonly string[];
+  /** Inclusive bounds for `kind: 'int'`. */
+  range?: [number, number];
   /** Whether 'none'/'clear' is meaningful (maps to null). */
   nullable?: boolean;
   group: 'Identity' | 'Operational' | 'Artifacts';
@@ -71,6 +73,12 @@ const ROWS: readonly SettingRow[] = [
     applies: 'next hermitd restart (Docker: next hermitd update)' },
   { arg: 'browser-default', path: 'browser.default', group: 'Operational',
     label: 'Default browser', hint: 'agent-browser or chrome (requires chrome enabled)' },
+  { arg: 'browser-idle-timeout', path: 'browser.idle_timeout_minutes', group: 'Operational',
+    label: 'Browser idle close', hint: 'minutes an unclaimed signed-in browser may sit idle before it closes (0-1440, 0 keeps it open)',
+    applies: 'next heartbeat' },
+  { arg: 'browser-command-timeout', path: 'browser.command_timeout_seconds', group: 'Operational',
+    label: 'Browser command timeout', hint: 'seconds one browser command may run before it is stopped (5-3600)',
+    applies: 'next browser command' },
   { arg: 'transcription', path: 'transcription.enabled', group: 'Operational',
     label: 'Voice-note transcription', hint: 'transcribe inbound voice notes',
     applies: 'next voice note (Docker image: next hermitd update)' },
@@ -121,7 +129,7 @@ export const SETTINGS: readonly Setting[] = ROWS.map(row => {
   }
   const values = row.values ?? (spec.kind === 'string' ? spec.enum : undefined);
   const kind: Kind = values ? 'enum' : spec.kind === 'number' ? 'int' : spec.kind as 'string' | 'boolean';
-  return { ...row, kind, values, nullable: 'nullable' in spec ? spec.nullable : false };
+  return { ...row, kind, values, nullable: 'nullable' in spec ? spec.nullable : false, ...(spec.kind === 'number' && spec.range ? { range: spec.range } : {}) };
 });
 
 /** Read-only rows `show` renders but no argument sets. */

@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import { ensureDisplay } from './browser-display';
+import { reapOrphanedChrome } from './lib/browser-lease';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -1821,6 +1822,8 @@ async function main(): Promise<void> {
     execvp(cmd);
   }
 
+  try { if (reapOrphanedChrome()) console.log('[hermit] Browser: closed a Chrome left by an earlier session'); }
+  catch (error) { console.error(`[hermit] Browser: ${error instanceof Error ? error.message : error}`); }
   const display = await ensureDisplay();
   if ('blocker' in display && display.blocker !== 'unsupported') console.log(`[hermit] Browser display: ${display.blocker}`);
   maybeInstallWatchdogScheduler(

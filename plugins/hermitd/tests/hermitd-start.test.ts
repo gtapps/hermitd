@@ -690,7 +690,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
   // their own missing-key logic (not part of loadConfig merge).
   const TEMPLATE_ONLY_KEYS = new Set([
     'routines', 'monitors',
-    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host',
+    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host', 'browser.idle_timeout_minutes', 'browser.command_timeout_seconds',
     'transcription', 'transcription.enabled', 'transcription.echo',
     'docker.recommended_plugins',
     // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
