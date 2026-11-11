@@ -73,6 +73,7 @@ describe('apply-settings permissions-plan', () => {
     expect(plan.missing).toContain('Bash(bun */scripts/heartbeat.ts ack-queue*)');
     expect(plan.missing).toContain('Bash(.hermit/bin/hermitd-run task answer *)');
     expect(plan.missing).toContain('Bash(.hermit/bin/hermitd-run task cancel *)');
+    expect(plan.missing).toContain('Bash(.hermit/bin/hermitd-run task decide *)');
     expect(plan.obsolete).toEqual([]);
     expect(plan.obsolete_deny).toEqual([]);
   }));
@@ -399,6 +400,7 @@ describe('literal-path hermitd-run grants', () => {
       'Bash(.hermit/bin/hermitd-run task close *)',
       'Bash(.hermit/bin/hermitd-run task answer *)',
       'Bash(.hermit/bin/hermitd-run task cancel *)',
+      'Bash(.hermit/bin/hermitd-run task decide *)',
     ]);
     expect(HERMIT_ALLOW.some((entry: string) => entry.includes('task-check.ts'))).toBe(false);
   });

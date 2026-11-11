@@ -166,6 +166,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run task close *)',
   'Bash(.hermit/bin/hermitd-run task answer *)',
   'Bash(.hermit/bin/hermitd-run task cancel *)',
+  'Bash(.hermit/bin/hermitd-run task decide *)',
   // Role-proposal replies arrive on ordinary chat turns, sealed for the same
   // reason; snapshot and commit stay with the routine's own script path.
   'Bash(.hermit/bin/hermitd-run role-review .hermit get *)',

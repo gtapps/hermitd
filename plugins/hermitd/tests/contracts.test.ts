@@ -1381,6 +1381,12 @@ describe('hermit-settings channel reachability', () => {
 // ============================================================
 
 describe('model-invocable inventory', () => {
+  test('typed task decisions contain no shell injection or argument placeholders', () => {
+    const skill = fs.readFileSync(path.join(SKILLS, 'task-decide/SKILL.md'), 'utf8');
+    expect(skill).not.toMatch(/!`/);
+    expect(skill).not.toMatch(/\$(ARGUMENTS|\d)/);
+  });
+
   test('only the operator-invoked wizards have model invocation disabled', () => {
     // Sorted: readdirSync returns directory order, which is arbitrary.
     const flagged = fs.readdirSync(SKILLS).filter((dir) => {
@@ -1388,7 +1394,7 @@ describe('model-invocable inventory', () => {
       return fs.existsSync(skillPath)
         && isModelInvocationDisabled(fs.readFileSync(skillPath, 'utf8'));
     }).sort();
-    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'hatch', 'rc-gate']);
+    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'hatch', 'rc-gate', 'task-decide']);
   });
 });
 

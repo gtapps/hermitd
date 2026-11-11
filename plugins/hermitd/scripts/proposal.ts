@@ -49,7 +49,7 @@ export function verbCreate(stateDir: string, stdin: string): Verdict {
   if (!title) return { error: 'missing_title' };
   const source = grabHeader(header, 'Source') || 'manual';
   const category = grabHeader(header, 'Category') || 'improvement';
-  if (!VALID_CATEGORIES.has(category)) return { error: 'invalid_category' };
+  if (!VALID_CATEGORIES.has(category)) return { error: `invalid_category:${[...VALID_CATEGORIES].join('|')}` };
   const tags = parseStringArray(grabHeader(header, 'Tags'));
   if (tags === null) return { error: 'invalid_tags' };
   if (parseStringArray(grabHeader(header, 'Related-Sessions')) === null) return { error: 'invalid_related_sessions' };

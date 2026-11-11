@@ -1,3 +1,4 @@
+import { parseDecideArgs } from './lib/task-decide-args';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
 import { isKey } from './lib/conversation-key';
@@ -9,13 +10,20 @@ async function main(): Promise<void> {
   const [verb, dirArg, ...args] = process.argv.slice(2);
   if (!dirArg) exitError();
   const dir = pinStateDirOrExit(dirArg);
+  if (verb === 'decide') {
+    const parsed = parseDecideArgs(args);
+    const result = parsed ? mutateTask(dir, 'decide', parsed.id, { token: parsed.token }, '')
+      : { status: 'refused', reason: 'usage', usage: '[<id>] yes|no|<n>|close|cancel' };
+    console.log(JSON.stringify(result));
+    return;
+  }
   const allowed: Record<string, string[]> = {
     open: ['source', 'category', 'tags', 'waiting-on', 'decision', 'body-stdin', 'kind', 'note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     answer: ['local', 'chat', 'user', 'reply', 'generation', 'result-rev'],
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
-    close: ['chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
+    close: ['local', 'chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
     list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'limit'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');

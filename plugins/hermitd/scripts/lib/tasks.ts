@@ -18,13 +18,14 @@ import { isPrimaryOperator, isAllowedSender } from './channel-auth';
 import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 import { readDeliveryBudget } from './decisions';
+import { TASK_ID } from './task-decide-args';
 
-export const TASK_ID = /^T-\d{8}-\d{6}(-[a-z0-9])?$/;
+export { TASK_ID } from './task-decide-args';
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
 // Callers branch on these, so the CLIs print them as an exit-0 refusal, not an error.
 const TASK_REFUSALS = new Set(['thread_required', 'thread_busy', 'not_found', 'not_open', 'owner_busy', 'stale_result', 'stale_check', 'stale_wait', 'approver_required', 'check_needs_evidence', 'no_open_check', 'watch_not_found', 'not_decider', 'consent_required', 'not_proposal']);
 export function reportTaskError(error: unknown): void {
-  if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message });
+  if (error instanceof Error && TASK_REFUSALS.has(error.message)) printJson({ status: 'refused', reason: error.message, ...('needs' in error ? { needs: error.needs } : {}) });
   else failJson(error);
 }
 const SLUG = /^[\w.:~+@;=-]+$/;
@@ -349,6 +350,16 @@ function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decisi
 
 const namesSender = (flags: TaskFlags) => 'chat' in flags || 'user' in flags;
 
+function closeActor(flags: TaskFlags): string {
+  if (flags.local === true) return 'operator';
+  if (!namesSender(flags)) return required(flags, 'actor');
+  const chat = required(flags, 'chat');
+  checkKey(chat);
+  const actor = `${chat.split(':')[0]}:${required(flags, 'user')}`;
+  if ('actor' in flags && flag(flags, 'actor') !== actor) throw new Error(`conflicting_actor:${actor}`);
+  return actor;
+}
+
 function startConsent(record: Task, now: string, generation = 0): void {
   const previous = record.decision ? decodeDecision(record.decision) : null;
   record.decision = JSON.stringify({ purpose: 'consent', authority: 'admin', generation: Math.max(previous?.generation ?? 0, generation) + 1 });
@@ -430,12 +441,40 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
   fs.mkdirSync(path.dirname(lock), { recursive: true });
   if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
   try {
+    if (flags.local === true && namesSender(flags)) throw new Error('invalid_arguments');
     const records = readTasks(dir);
     const now = new Date().toISOString();
     let record: Task;
     let digest: unknown;
     let progress = true;
     let event: Record<string, unknown> | undefined;
+    if (verb === 'decide') {
+      const token = required(flags, 'token');
+      const pending = records.filter(record => pendingDecision(record));
+      const target = id ? records.find(record => record.id === id) : pending.length === 1 ? pending[0] : undefined;
+      if (token === 'close') {
+        verb = 'close';
+        flags = { local: true, by: 'confirmed', actor: 'operator', 'reason-stdin': true,
+          ...(target?.result ? { 'result-rev': String(target.result_rev) } : {}) };
+        input = 'closed by the operator';
+      } else if (token === 'cancel' && (target && pendingDecision(target))?.purpose !== 'consent') {
+        verb = 'cancel';
+        flags = { local: true, actor: 'operator', 'reason-stdin': true };
+        input = 'cancelled by the operator';
+      } else {
+        let reply = token === 'cancel' ? 'no' : token;
+        const options = target && pendingDecision(target)?.options;
+        if (target && /^[1-9]\d*$/.test(token) && options) {
+          const index = Number(token) - 1;
+          if (!Number.isSafeInteger(index) || index >= options.length) return {
+            status: 'ambiguous', reason: 'number_out_of_range', choices: [{ id: target.id, options }],
+          };
+          reply = options[index];
+        }
+        verb = 'answer';
+        flags = { local: true, reply };
+      }
+    }
     if (verb === 'answer') {
       const answered = answerTask(dir, records, id, flags, now, threadConversation, senderParent);
       if (answered.record) {
@@ -510,18 +549,18 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const protectedRecord = record.kind === 'proposal' || (decision !== null && (record.requester === 'agent' || decision.authority === 'admin'));
       if (['check-result', 'close', 'cancel'].includes(verb) && protectedRecord) {
         const authority = decision ?? { purpose: 'consent', authority: 'admin', generation: 1 } as Decision;
-        const decides = verb === 'check-result' || canDecide(dir, record, flags, authority, senderParent);
+        const decides = flags.local === true || verb === 'check-result' || canDecide(dir, record, flags, authority, senderParent);
         // A named sender who cannot decide hears that first, so nobody records consent on their behalf.
         if (!decides && namesSender(flags)) throw new Error('not_decider');
         if (decision?.purpose === 'consent' || (verb === 'check-result' && record.kind === 'proposal' && record.approved_rev === null)) throw new Error('consent_required');
-        if (!decides) throw new Error('not_decider');
+        if (!decides) throw Object.assign(new Error('not_decider'), { needs: 'chat,user' });
       }
       // A plain wait (such as the browser lease) clears as before; only a pending decision needs its decider.
       if (verb === 'note' && flags['clear-waiting'] && decision && protectedRecord) {
         const decides = canDecide(dir, record, flags, decision, senderParent);
         if (!decides && namesSender(flags)) throw new Error('not_decider');
         if (decision.purpose === 'consent') throw new Error('consent_required');
-        if (!decides) throw new Error('not_decider');
+        if (!decides) throw Object.assign(new Error('not_decider'), { needs: 'chat,user' });
       }
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
@@ -614,8 +653,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         record.waiting_since = now;
       } else if (verb === 'close') {
         const by = flag(flags, 'by');
-        if (by !== 'check' && by !== 'confirmed') throw new Error('invalid_closed_by');
-        const closer = required(flags, 'actor');
+        if (by !== 'check' && by !== 'confirmed') throw new Error('invalid_closed_by:check|confirmed');
+        const closer = closeActor(flags);
         let reason = line;
         if (by === 'confirmed') {
           if (record.approver && closer !== record.approver) throw new Error('approver_required');
@@ -632,7 +671,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         finish(record, by, closer, reason, now);
         digest = { id, closed_by: by, result_rev: record.result_rev, next_queued: nextQueued(records) };
       } else if (verb === 'cancel') {
-        const closer = required(flags, 'actor');
+        const closer = closeActor(flags);
         if (!flags['reason-stdin']) throw new Error('missing_reason_stdin');
         if (!line) throw new Error('empty_reason');
         finish(record, 'cancelled', closer, line, now);

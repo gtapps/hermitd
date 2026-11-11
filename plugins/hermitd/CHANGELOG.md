@@ -4,10 +4,14 @@
 
 ### Added
 
+- `/hermitd:task-decide [<id>] yes|no|<n>|close|cancel` records typed operator decisions without passing typed text to a shell.
 - `hermitd doctor [--fix]` lists health findings and safely repairs pending upgrades and watchdog scheduler units.
 
 ### Changed
 
+- Protected-close refusals name missing sender flags; invalid close and proposal-category errors list accepted values.
+- `task close --local` confirms closes on typed terminal turns; sender-attributed closes and cancellations derive the actor from the verified sender.
+- Claude Code 2.1.322 or newer is required.
 - External `hermitd update` runs a doctor repair pass and records its result in update history.
 
 ## [1.4.30] - 2026-11-10

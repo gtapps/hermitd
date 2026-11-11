@@ -914,8 +914,8 @@ for (const mode of ['bypassPermissions', 'auto', 'default']) {
     const output = JSON.parse(r.stdout).hookSpecificOutput;
     expect(output.permissionDecision).toBe(mode === 'bypassPermissions' ? 'deny' : 'ask');
     expect(output.permissionDecisionReason).toBe(mode === 'bypassPermissions'
-      ? 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.'
-      : 'Admin decision: answer T-20261101-120000 "yes" as admin');
+      ? 'Answering a decision as admin is refused in bypass mode; the operator can type /hermitd:task-decide <id> <token>.'
+      : 'Admin decision: answer T-20261101-120000 "yes" as admin. Or the operator types /hermitd:task-decide T-20261101-120000 yes');
   });
 }
 
@@ -931,10 +931,10 @@ test('local answer fallbacks, mixed settings and ordinary channel answers', asyn
   expectSilent(await runGate(JSON.stringify({ ...answer, transcript_path: channel }), dir));
   expectSilent(await runGate(payload({ dir, tool: 'Bash', input: { command: 'task list .hermit --open' } }), dir));
   for (const [command, reason] of [
-    ['task "$V" --local', 'Admin decision: task answer --local'],
-    ["bash -c 'hermitd-run task answer .hermit --local --reply yes'", 'Admin decision: task answer --local'],
-    ['task answer .hermit --local --reply "yes please"', 'Admin decision: answer the pending decision "yes please" as admin'],
-    ['task answer .hermit --local --reply yes && ' + cmd('set voice friendly'), 'Admin decision: answer the pending decision "yes" as admin; Hermit setting: voice'],
+    ['task "$V" --local', 'Admin decision: task answer --local. Or the operator types /hermitd:task-decide <id> <token>'],
+    ["bash -c 'hermitd-run task answer .hermit --local --reply yes'", 'Admin decision: task answer --local. Or the operator types /hermitd:task-decide <id> <token>'],
+    ['task answer .hermit --local --reply "yes please"', 'Admin decision: answer the pending decision "yes please" as admin. Or the operator types /hermitd:task-decide <id> <token>'],
+    ['task answer .hermit --local --reply yes && ' + cmd('set voice friendly'), 'Admin decision: answer the pending decision "yes" as admin; Hermit setting: voice. Or the operator types /hermitd:task-decide <id> <token>'],
   ]) expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command } }), dir)).stdout, reason);
 });
 
@@ -969,7 +969,7 @@ test('operator decisions run silently on a typed terminal turn, steer on chat, a
     expectSilent(await gate(command, typed));
     expectSilent(await gate(command, typed, 'auto'));
     expect(await decision(command, typed, 'bypassPermissions')).toMatchObject({ permissionDecision: 'deny',
-      permissionDecisionReason: 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.' });
+      permissionDecisionReason: 'Answering a decision as admin is refused in bypass mode; the operator can type /hermitd:task-decide <id> <token>.' });
   }
 
   // A chat turn is denied with a steer to the sender-attributed path, in every mode.
@@ -986,7 +986,7 @@ test('operator decisions run silently on a typed terminal turn, steer on chat, a
   }
   // An unreadable form is not known to be a local answer, so a chat turn asks instead of steering.
   expectAsk((await gate('git config --local core.hooksPath x && .hermit/bin/hermitd-run task list .hermit --open', chat)).stdout,
-    'Admin decision: task answer --local');
+    'Admin decision: task answer --local. Or the operator types /hermitd:task-decide <id> <token>');
 
   // Wakes, peers, joined turns and unreadable transcripts keep the ask, and deny in bypass.
   const others = [
@@ -996,12 +996,43 @@ test('operator decisions run silently on a typed terminal turn, steer on chat, a
     path.join(dir, 'missing.jsonl'),
   ];
   for (const file of others) {
-    expectAsk((await gate(dismiss, file)).stdout, 'Admin decision: dismiss a proposal');
-    expectAsk((await gate(answers[0], file)).stdout, 'Admin decision: answer T-20261101-120000 "yes" as admin');
+    expectAsk((await gate(dismiss, file)).stdout, 'Admin decision: dismiss a proposal. Or the operator types /hermitd:task-decide <id> <token>');
+    expectAsk((await gate(answers[0], file)).stdout, 'Admin decision: answer T-20261101-120000 "yes" as admin. Or the operator types /hermitd:task-decide T-20261101-120000 yes');
     expect(await decision(dismiss, file, 'bypassPermissions')).toMatchObject({ permissionDecision: 'deny',
       permissionDecisionReason: expect.stringContaining("operator's own typed terminal turn") });
     expect((await decision(answers[0], file, 'bypassPermissions')).permissionDecision).toBe('deny');
   }
+  const close = '.hermit/bin/hermitd-run task close .hermit T-20261101-120000 --local --by confirmed --reason-stdin';
+  for (const opaqueClose of ["bash -c 'task close .hermit T-20261101-120000 --local --by confirmed --reason-stdin'", 'task close .hermit T-20261101-120000 --local --by confirmed --reason-stdin <<< "$REASON"']) {
+    expectSilent(await gate(opaqueClose, typed, 'bypassPermissions'));
+    expect((await decision(opaqueClose, chat)).permissionDecision).toBe('deny');
+    expect((await decision(opaqueClose, others[0])).permissionDecision).toBe('ask');
+  }
+  for (const mode of ['default', 'bypassPermissions']) {
+    expectSilent(await gate(close, typed, mode));
+    expect(await decision(close, chat, mode)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('--by confirmed') });
+  }
+  for (const file of others) {
+    expectAsk((await gate(close, file)).stdout, 'Admin decision: close T-20261101-120000 as admin. Or the operator types /hermitd:task-decide T-20261101-120000 close');
+    expect((await decision(close, file, 'bypassPermissions')).permissionDecision).toBe('deny');
+  }
+  const boundary = '<command-message>hermitd:task-decide</command-message>\n<command-name>/hermitd:task-decide</command-name>';
+  const command = '.hermit/bin/hermitd-run task decide .hermit T-20261101-120000 yes';
+  const slash = write('slash', user({ kind: 'human' }, boundary + '\n<command-args>T-20261101-120000 yes</command-args>'));
+  for (const mode of ['auto', 'bypassPermissions']) expectSilent(await gate(command, slash, mode));
+  for (const other of ['bun plugins/hermitd/scripts/task.ts decide .hermit T-20261101-120000 yes', command + '; touch x']) {
+    expect(await decision(other, slash)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('Run exactly:') });
+  }
+  for (const file of [typed, chat, ...others]) {
+    expect(await decision(command, file)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('Only the operator can run this') });
+  }
+  const empty = write('empty-slash', user({ kind: 'human' }, boundary));
+  const raw = 'T-20261101-120000 yes $(touch pwned) ;echo X';
+  const malicious = write('malicious-slash', user({ kind: 'human' }, boundary + '\n<command-args>' + raw + '</command-args>'));
+  for (const [file, cmd] of [[empty, command], [malicious, command], [malicious, '.hermit/bin/hermitd-run task decide .hermit ' + raw]]) {
+    expect(await decision(cmd, file)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('The typed arguments are not valid') });
+  }
+  expect(fs.existsSync(path.join(dir, 'pwned'))).toBe(false);
   expectSilent(await gate("bun plugins/hermitd/scripts/task.ts note .hermit T-20261101-120000 --decision <<'EOF'\nclosed with task dismiss\nEOF", others[0], 'bypassPermissions'));
 });
 

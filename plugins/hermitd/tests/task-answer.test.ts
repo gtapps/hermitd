@@ -301,3 +301,82 @@ for (const key of ['slack:home~t1', 'discord:th']) test('CLI classifies id-less 
     expect(await f.ok('answer', [id, '--chat', key, '--user', 'admin', '--reply', 'yes'])).toMatchObject({ status: 'match', id });
   } finally { f.cleanup(); }
 });
+
+
+test('CLI protected close explains missing sender without changing named-sender refusals', async () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord(); f.answer(id);
+    expect(await f.ok('close', [id, '--by', 'confirmed', '--reason-stdin'], 'Done')).toEqual({ status: 'refused', reason: 'not_decider', needs: 'chat,user' });
+    expect(await f.ok('close', [id, '--chat', chat, '--user', 'member', '--by', 'confirmed', '--reason-stdin'], 'Done')).toEqual({ status: 'refused', reason: 'not_decider' });
+  } finally { f.cleanup(); }
+});
+
+
+test('sender close derives its actor and terminal close preserves consent', async () => {
+  const f = fixture(); try {
+    const { id } = f.openRecord();
+    expect(await f.ok('close', [id, '--local', '--by', 'confirmed', '--reason-stdin'], 'Done')).toMatchObject({ reason: 'consent_required' });
+    expect((await f.run('close', [id, '--local', '--chat', 'x'])).stdout).toContain('invalid_arguments');
+    f.answer(id);
+    expect(() => mutateTask(f.dir, 'close', id, { chat, user: 'admin', actor: 'other', by: 'confirmed', 'reason-stdin': true }, 'Done')).toThrow('conflicting_actor:discord:admin');
+    await f.ok('close', [id, '--chat', chat, '--user', 'admin', '--by', 'confirmed', '--reason-stdin'], 'Done');
+    expect(f.read(id).closed_actor).toBe('discord:admin');
+    const local = f.openRecord().id; f.answer(local);
+    await f.ok('close', [local, '--local', '--by', 'confirmed', '--reason-stdin'], 'Done');
+    expect(f.read(local).closed_actor).toBe('operator');
+  } finally { f.cleanup(); }
+});
+
+test('decide resolves consent and ambiguity under the writer lock', () => {
+  const f = fixture(); try {
+    const a = f.openRecord().id;
+    const b = f.openRecord().id;
+    const before = f.text(a);
+    expect(mutateTask(f.dir, 'decide', undefined, { token: 'yes' }, '')).toMatchObject({ status: 'ambiguous', reason: 'multiple_pending' });
+    expect(f.text(a)).toBe(before);
+    mutateTask(f.dir, 'decide', b, { token: 'cancel' }, '');
+    expect(f.read(b).closed_reason).toBe('Consent declined: no');
+    expect(mutateTask(f.dir, 'decide', undefined, { token: 'yes' }, '')).toMatchObject({ status: 'match', id: a });
+    expect(f.read(a).approved_by).toBe('operator');
+    mutateTask(f.dir, 'decide', a, { token: 'cancel' }, '');
+    expect(f.read(a)).toMatchObject({ closed_actor: 'operator', closed_reason: 'cancelled by the operator' });
+    const plain = f.openRecord(consent, { kind: false }).id;
+    mutateTask(f.dir, 'decide', plain, { token: 'cancel' }, '');
+    expect(f.read(plain).closed_reason).toBe('Consent declined: no');
+  } finally { f.cleanup(); }
+});
+
+test('decide numbers select positions and input no preserves resume', () => {
+  const f = fixture(); try {
+    const id = f.openRecord({ purpose: 'input', authority: 'admin', generation: 1, options: ['2', 'Other'] }, { kind: false }).id;
+    expect(mutateTask(f.dir, 'decide', id, { token: '3' }, '')).toMatchObject({ status: 'ambiguous', reason: 'number_out_of_range' });
+    expect(mutateTask(f.dir, 'decide', id, { token: '2' }, '')).toMatchObject({ answer: 'Other' });
+    const other = f.openRecord({ purpose: 'input', authority: 'admin', generation: 1, resume: '/hermitd:task' }, { kind: false }).id;
+    expect(mutateTask(f.dir, 'decide', other, { token: 'no' }, '')).toMatchObject({ answer: 'no', resume: '/hermitd:task' });
+  } finally { f.cleanup(); }
+});
+
+test('decide close uses current result and preserves consent and named approvers', () => {
+  const f = fixture(); try {
+    const id = f.openRecord().id;
+    expect(() => mutateTask(f.dir, 'decide', id, { token: 'close' }, '')).toThrow('consent_required');
+    f.answer(id);
+    mutateTask(f.dir, 'block', id, { 'result-stdin': true }, 'Ready');
+    expect(mutateTask(f.dir, 'decide', id, { token: 'close' }, '')).toMatchObject({ closed_by: 'confirmed' });
+    expect(f.read(id)).toMatchObject({ closed_actor: 'operator', closed_reason: 'closed by the operator' });
+    const named = f.openRecord({ purpose: 'input', authority: 'admin', generation: 1 }, { kind: false, approver: 'named' }).id;
+    expect(() => mutateTask(f.dir, 'decide', named, { token: 'close' }, '')).toThrow('approver_required');
+  } finally { f.cleanup(); }
+});
+
+test('decide CLI treats extra shell text as invalid data and empty args as usage', async () => {
+  const f = fixture(); try {
+    const id = f.openRecord().id;
+    const before = f.text(id);
+    for (const args of [[], [id, 'yes', '$(touch pwned)']]) {
+      expect(await f.ok('decide', args)).toEqual({ status: 'refused', reason: 'usage', usage: '[<id>] yes|no|<n>|close|cancel' });
+    }
+    expect(f.text(id)).toBe(before);
+    expect(fs.existsSync(path.join(path.dirname(f.dir), 'pwned'))).toBe(false);
+  } finally { f.cleanup(); }
+});

@@ -34,7 +34,7 @@ describe('task-backed proposal creation', () => {
     ['Title: x\nbody', 'missing_separator'],
     ['Title: x\n---\n ', 'empty_body'],
     ['Source: manual\n---\nx', 'missing_title'],
-    ['Title: x\nCategory: other\n---\nx', 'invalid_category'],
+    ['Title: x\nCategory: other\n---\nx', 'invalid_category:improvement|routine|capability|constraint|bug'],
     ['Title: x\nTags: [1]\n---\nx', 'invalid_tags'],
     ['Title: x\nRelated-Sessions: {}\n---\nx', 'invalid_related_sessions'],
   ])('invalid input writes nothing: %s', (stdin, error) => withDir(async dir => {
@@ -69,7 +69,7 @@ describe('proposal inventory digest', () => {
     fs.writeFileSync(path.join(base, 'config.json'), JSON.stringify({ channels: { discord: { operators: ['admin'] } } }));
     mutateTask(base, 'answer', second.id, { chat: 'discord:home', user: 'admin', reply: 'no' }, '');
     mutateTask(base, 'answer', third.id, { chat: 'discord:home', user: 'admin', reply: 'yes' }, '');
-    mutateTask(base, 'close', third.id, { by: 'confirmed', actor: 'admin', chat: 'discord:home', user: 'admin', 'reason-stdin': true }, 'Done');
+    mutateTask(base, 'close', third.id, { by: 'confirmed', chat: 'discord:home', user: 'admin', 'reason-stdin': true }, 'Done');
     proposalDigest(base);
     const digest = JSON.parse(fs.readFileSync(path.join(base, 'state', 'proposal-digest.json'), 'utf8'));
     expect(digest.proposals.map((record: any) => record.id)).toContain(first.id);
