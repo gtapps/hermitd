@@ -351,7 +351,10 @@ function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decisi
 const namesSender = (flags: TaskFlags) => 'chat' in flags || 'user' in flags;
 
 function closeActor(flags: TaskFlags): string {
-  if (flags.local === true) return 'operator';
+  if (flags.local === true) {
+    if ('actor' in flags && flag(flags, 'actor') !== 'operator') throw new Error('conflicting_actor:operator');
+    return 'operator';
+  }
   if (!namesSender(flags)) return required(flags, 'actor');
   const chat = required(flags, 'chat');
   checkKey(chat);
@@ -372,7 +375,6 @@ function startConsent(record: Task, now: string, generation = 0): void {
 
 function answerTask(dir: string, records: Task[], id: string | undefined, flags: TaskFlags, now: string, threadConversation: boolean, senderParent: string | null): { record?: Task; verdict: Record<string, unknown>; event?: Record<string, unknown> } {
   const local = flags.local === true;
-  if (local && ('chat' in flags || 'user' in flags)) throw new Error('invalid_arguments');
   const chat = local ? null : required(flags, 'chat');
   if (!local) { required(flags, 'user'); checkKey(chat!); }
   const reply = required(flags, 'reply').toLowerCase();

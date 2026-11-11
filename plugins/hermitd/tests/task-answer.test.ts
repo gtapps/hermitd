@@ -311,7 +311,6 @@ test('CLI protected close explains missing sender without changing named-sender 
   } finally { f.cleanup(); }
 });
 
-
 test('sender close derives its actor and terminal close preserves consent', async () => {
   const f = fixture(); try {
     const { id } = f.openRecord();
@@ -322,6 +321,7 @@ test('sender close derives its actor and terminal close preserves consent', asyn
     await f.ok('close', [id, '--chat', chat, '--user', 'admin', '--by', 'confirmed', '--reason-stdin'], 'Done');
     expect(f.read(id).closed_actor).toBe('discord:admin');
     const local = f.openRecord().id; f.answer(local);
+    expect(() => mutateTask(f.dir, 'close', local, { local: true, actor: 'other', by: 'confirmed', 'reason-stdin': true }, 'Done')).toThrow('conflicting_actor:operator');
     await f.ok('close', [local, '--local', '--by', 'confirmed', '--reason-stdin'], 'Done');
     expect(f.read(local).closed_actor).toBe('operator');
   } finally { f.cleanup(); }

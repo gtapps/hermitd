@@ -900,7 +900,9 @@ function main(payload: any): void {
       if (bypass && (answers.length || !operator)) {
         deny(answers.length
           ? 'Answering a decision as admin is refused in bypass mode; the operator can type /hermitd:task-decide <id> <token>.'
-          : `A command naming ${closes ? '`task close --local`' : '`task dismiss`'} runs in bypass mode only on the operator's own typed terminal turn; leave the proposal for the operator.`);
+          : closes
+            ? 'A command naming `task close --local` runs in bypass mode only on the operator\'s own typed terminal turn; the operator can type /hermitd:task-decide <id> close.'
+            : 'A command naming `task dismiss` runs in bypass mode only on the operator\'s own typed terminal turn; leave the proposal for the operator.');
         return;
       }
       if (!operator) {
