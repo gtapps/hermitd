@@ -172,10 +172,11 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   try {
     const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' });
     let timedOut = false;
-    // Settling keeps a hand-edited out-of-range value; one under the floor would kill every command.
+    // Settling keeps a hand-edited out-of-range value; one under the floor would kill every command,
+    // one over the ceiling would let a command outlive its 15-minute claim.
     const seconds = readSettledConfig(dir).browser.command_timeout;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); },
-      options.commandTimeoutMs ?? (seconds >= 5 ? seconds : 60) * 1000);
+      options.commandTimeoutMs ?? (seconds >= 5 && seconds <= 600 ? seconds : 60) * 1000);
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
     ]).finally(() => clearTimeout(timer));
