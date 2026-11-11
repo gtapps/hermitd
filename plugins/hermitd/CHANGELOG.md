@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Sites that hide a control at phone width are usable in the signed-in browser by widening its viewport.
+
 ## [1.4.31] - 2026-11-11
 
 ### Added
