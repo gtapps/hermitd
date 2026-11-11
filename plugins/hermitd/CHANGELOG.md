@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.31] - 2026-11-11
 
 ### Added
 
@@ -14,6 +14,14 @@
 - Accepted results return the same learning review guidance as confirmed closes when learning applies.
 - Claude Code 2.1.322 or newer is required.
 - External `hermitd update` runs a doctor repair pass and records its result in update history.
+
+### Upgrade Instructions
+
+1. Run the permission check in [hermit-evolve reference, Step 8](skills/hermit-evolve/reference.md#8-ensure-plugin-permissions-in-settings-file) so the new `Bash(.hermit/bin/hermitd-run task decide *)` grant is reported if still pending.
+
+**Note:** Claude Code 2.1.322 or newer is now required; evolve Step 0 enforces it.
+
+No `config.json` changes required.
 
 ## [1.4.30] - 2026-11-10
 
