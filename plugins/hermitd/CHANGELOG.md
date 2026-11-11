@@ -11,6 +11,7 @@
 
 - Protected-close refusals name missing sender flags; invalid close and proposal-category errors list accepted values.
 - `task close --local` confirms closes on typed terminal turns; sender-attributed closes and cancellations derive the actor from the verified sender.
+- Accepted results return the same learning review guidance as confirmed closes when learning applies.
 - Claude Code 2.1.322 or newer is required.
 - External `hermitd update` runs a doctor repair pass and records its result in update history.
 

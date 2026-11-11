@@ -435,6 +435,16 @@ function answerTask(dir: string, records: Task[], id: string | undefined, flags:
   return { record, event, verdict: { status: 'match', id: record.id, answer, generation: decision.generation, resume: decision.resume ?? null } };
 }
 
+function closeLearning(dir: string, record: Task): { next?: string } {
+  if (record.status !== 'closed' || record.closed_by === 'cancelled') return {};
+  const config = readSettledConfig(dir);
+  if (config.skills.learning && ['auto', 'bypassPermissions'].includes(config.permission_mode)
+    && (record.delegated || reviewCallsReached(dir, record))) {
+    return { next: `before the close reply, read ${LEARN_GUIDE}` };
+  }
+  return {};
+}
+
 export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false, senderParent: string | null = null): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
@@ -484,7 +494,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           if (error) answered.verdict.warnings = ['metrics_append_failed'];
         }
       }
-      return answered.verdict;
+      return { ...answered.verdict, ...(answered.record ? closeLearning(dir, answered.record) : {}) };
     }
     if (verb === 'open') {
       const requester = required(flags, 'requester');
@@ -689,12 +699,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         digest = { id, closed_by: 'cancelled', next_queued: nextQueued(records) };
       } else throw new Error('invalid_verb');
     }
-    if ((verb === 'close' || verb === 'check-result') && record.status === 'closed' && record.closed_by !== 'cancelled') {
-      const config = readSettledConfig(dir);
-      if (config.skills.learning && ['auto', 'bypassPermissions'].includes(config.permission_mode)
-        && (record.delegated || reviewCallsReached(dir, record))) {
-        digest = { ...(digest as object), next: `before the close reply, read ${LEARN_GUIDE}` };
-      }
+    if (verb === 'close' || verb === 'check-result') {
+      digest = { ...(digest as object), ...closeLearning(dir, record) };
     }
     const encoded = encodeTask(record);
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });

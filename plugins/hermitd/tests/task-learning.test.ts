@@ -208,3 +208,14 @@ test('muting a closed delegated task preserves closure without review state', ()
   expect(readTasks(dir)[0]).toMatchObject({ status: 'closed', muted: true });
   expect(readTasks(dir)[0]).not.toHaveProperty('skill_review');
 });
+
+test('accepted results share close-time learning eligibility; declines never schedule it', () => {
+  for (const learning of [true, false]) for (const reply of ['yes', 'no']) {
+    const dir = fixture(learning);
+    const id = open(dir, { owner: 'helper:review' });
+    mutateTask(dir, 'block', id, { 'result-stdin': true, decision: JSON.stringify({ purpose: 'result', authority: 'admin', generation: 1 }) }, 'Ready');
+    const verdict = mutateTask(dir, 'answer', id, { local: true, reply }, '') as any;
+    if (learning && reply === 'yes') expect(verdict.next).toEndWith('skills/task/learn.md');
+    else expect(verdict).not.toHaveProperty('next');
+  }
+});
