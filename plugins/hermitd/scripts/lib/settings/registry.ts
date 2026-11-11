@@ -77,7 +77,7 @@ const ROWS: readonly SettingRow[] = [
     label: 'Browser idle close', hint: 'minutes an unclaimed signed-in browser may sit idle before it closes (0-1440, 0 keeps it open)',
     applies: 'next heartbeat' },
   { arg: 'browser-command-timeout', path: 'browser.command_timeout_seconds', group: 'Operational',
-    label: 'Browser command timeout', hint: 'seconds one browser command may run before it is stopped (5-3600)',
+    label: 'Browser command timeout', hint: 'seconds one browser command may run before it is stopped (5-600)',
     applies: 'next browser command' },
   { arg: 'transcription', path: 'transcription.enabled', group: 'Operational',
     label: 'Voice-note transcription', hint: 'transcribe inbound voice notes',

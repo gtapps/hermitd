@@ -224,7 +224,7 @@ test('browser config settles defaults and validates admin entries and nullable i
   const admins = [{ login: 'person@example.com', mentions: { custom: '@person' } }];
   expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', admins: [], port: null, host: null, idle_timeout_minutes: 15, command_timeout_seconds: 60 });
   for (const idle_timeout_minutes of ['15', 1.5, -1, 1441]) expect(validate({ ...template, browser: { idle_timeout_minutes } }).errors.join(' ')).toContain('browser.idle_timeout_minutes:');
-  for (const command_timeout_seconds of [4, 3601, 30.5]) expect(validate({ ...template, browser: { command_timeout_seconds } }).errors.join(' ')).toContain('browser.command_timeout_seconds:');
+  for (const command_timeout_seconds of [4, 601, 30.5]) expect(validate({ ...template, browser: { command_timeout_seconds } }).errors.join(' ')).toContain('browser.command_timeout_seconds:');
   expect(validate({ ...template, browser: { idle_timeout_minutes: 0, command_timeout_seconds: 5 } }).errors).toEqual([]);
   expect(settleConfig({ browser: { admins, port: 6081 } }).browser).toMatchObject({ admins, port: 6081 });
   expect(settleConfig({ browser: { admins: 'bad' } }).browser.admins).toEqual([]);

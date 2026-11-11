@@ -233,7 +233,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
 
 /** The wrapper's close also stops its daemon; on a hang it is killed and the signals below finish the job. */
 function closeThroughWrapper(dir: string, task: string): void {
-  spawnSync(process.execPath, [path.join(import.meta.dir, '../browser-agent.ts'), '--task', task, 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout: 10_000, killSignal: 'SIGKILL' });
+  spawnSync(process.execPath, [path.join(import.meta.dir, '../browser-agent.ts'), '--task', task, 'close'], { env: { ...process.env, AGENT_DIR: path.resolve(dir) }, stdio: 'ignore', timeout: 10_000, killSignal: 'SIGKILL' });
 }
 
 function signalProfileChrome(dir: string): void {
@@ -250,11 +250,12 @@ interface CloseDeps { pids?: (dir: string) => number[]; wrapperClose?: (dir: str
 function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: CloseDeps): boolean {
   // A Docker host sees its container's processes in /proc but does not own them; only Linux runs the profile headed.
   if (process.platform !== 'linux' || browserDeployment(dir) === 'docker_host') return false;
-  // Lock-free pre-check keeps the /proc scan off ticks where the lease is in use.
+  // Lock-free pre-check keeps the /proc scan off ticks where the lease is in use or recently used.
+  const now = deps.now ?? Date.now();
   const lease = readLease(path.join(dir, 'state/browser-lease.json'));
-  if (lease.human || (lease.holder && lease.expires_at > (deps.now ?? Date.now()))) return false;
+  if (lease.human || (lease.holder && lease.expires_at > now) || now - (lease.used_at ?? 0) < idleMs) return false;
   if (!(deps.pids ?? (d => profileChromePids(d, false)))(dir).length) return false;
-  if (browserLease('idle', task, dir, deps.now ?? Date.now(), { idleMs }).status !== 'claimed') return false;
+  if (browserLease('idle', task, dir, now, { idleMs }).status !== 'claimed') return false;
   try {
     (deps.wrapperClose ?? closeThroughWrapper)(dir, task);
     signalProfileChrome(dir);
@@ -267,7 +268,7 @@ export function sweepBrowserLease(dir: string, deps: CloseDeps = {}): void {
   if (!fs.existsSync(path.join(dir, 'state/browser-lease.json'))) return;
   browserLease('status', undefined, dir, deps.now ?? Date.now());
   const minutes = readSettledConfig(dir).browser.idle_timeout_minutes;
-  if (minutes) closeUnusedChrome(dir, minutes * 60_000, 'idle-close', deps);
+  if (minutes > 0) closeUnusedChrome(dir, minutes * 60_000, 'idle-close', deps);
 }
 
 /** At agent start a Chrome on the profile that no claim or person holds was left by a crash. */
