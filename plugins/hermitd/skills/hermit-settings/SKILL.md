@@ -46,7 +46,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings skills-learning: enable or disable close-time skill learning
 /hermitd:hermit-settings skills-notify: off, on, or verbose learning notifications
 /hermitd:hermit-settings reflection       — tune graduation threshold (graduation_min_sessions)
-/hermitd:hermit-settings browser-idle-timeout: minutes before an unclaimed signed-in browser closes (0 keeps it open)
+/hermitd:hermit-settings browser-inactivity-timeout: seconds before an unclaimed signed-in browser closes (0 keeps it open)
 /hermitd:hermit-settings browser-command-timeout: seconds before one browser command is stopped
 /hermitd:hermit-settings push-notifications — toggle PushNotification doorbell (fires when no channel is enabled or a configured channel is unreachable)
 /hermitd:hermit-settings artifact-dashboard — toggle the Hermit Dashboard artifact (single-URL status/waiting/weekly-evolution page)
@@ -108,8 +108,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
 | `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | next hermitd restart (Docker: next hermitd update) |
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
-| `browser-idle-timeout` | `browser.idle_timeout_minutes` | integer | any; minutes an unclaimed signed-in browser may sit idle before it closes (0-1440, 0 keeps it open) | next heartbeat |
-| `browser-command-timeout` | `browser.command_timeout_seconds` | integer | any; seconds one browser command may run before it is stopped (5-600) | next browser command |
+| `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds an unclaimed signed-in browser may stay inactive before it closes (0-86400, 0 keeps it open) | next heartbeat |
+| `browser-command-timeout` | `browser.command_timeout` | integer | any; seconds one browser command may run before it is stopped (5-600) | next browser command |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |

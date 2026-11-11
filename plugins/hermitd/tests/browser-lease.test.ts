@@ -306,8 +306,8 @@ test('the sweep closes an unclaimed browser past the setting, and 0 disables it'
   const dir = freshDir();
   const closed: string[] = [];
   const deps = (now: number) => ({ now, pids: () => [1], wrapperClose: (_: string, task: string) => { closed.push(task); } });
-  const setIdle = (minutes: number) => fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { idle_timeout_minutes: minutes } }));
-  setIdle(1);
+  const setIdle = (seconds: number) => fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { inactivity_timeout: seconds } }));
+  setIdle(60);
   browserLease('claim', 'task-a', dir, 0);
   sweepBrowserLease(dir, deps(BROWSER_IDLE_MS - 1));
   expect(closed).toEqual([]);
@@ -317,7 +317,7 @@ test('the sweep closes an unclaimed browser past the setting, and 0 disables it'
   setIdle(0);
   sweepBrowserLease(dir, deps(10 * 60_000));
   expect(closed).toEqual([]);
-  setIdle(1);
+  setIdle(60);
   sweepBrowserLease(dir, deps(61_000));
   expect(closed).toEqual(['idle-close']);
   expect(browserLease('status', undefined, dir, 61_000).status).toBe('available');

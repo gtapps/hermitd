@@ -4,14 +4,14 @@
 
 ### Added
 
-- The heartbeat closes the signed-in browser after `browser.idle_timeout_minutes` (default 15) with no claim, person or use; `0` keeps it open. Sign-ins persist; the next claim relaunches it
+- The heartbeat closes the signed-in browser after `browser.inactivity_timeout` seconds (default 900) with no claim, person or use; `0` keeps it open. Sign-ins persist; the next claim relaunches it
 - Agent start closes a Chrome on the agent's browser profile left by an earlier session when no task or person holds the browser
-- `browser.command_timeout_seconds` (default 60) stops a browser command that runs longer and returns `browser_command_timeout`
-- `/hermitd:hermit-settings browser-idle-timeout` and `browser-command-timeout` set both values
+- `browser.command_timeout` seconds (default 60) stops a browser command that runs longer and returns `browser_command_timeout`
+- `/hermitd:hermit-settings browser-inactivity-timeout` and `browser-command-timeout` set both values
 
 ### Upgrade Instructions
 
-No `config.json` changes required: absent `browser.idle_timeout_minutes` and `browser.command_timeout_seconds` take their defaults, so idle close is on. **Operator note:** `/hermitd:hermit-settings browser-idle-timeout 0` keeps the agent's signed-in browser open until shutdown.
+No `config.json` changes required: absent `browser.inactivity_timeout` and `browser.command_timeout` take their defaults, so idle close is on. **Operator note:** `/hermitd:hermit-settings browser-inactivity-timeout 0` keeps the agent's signed-in browser open until shutdown.
 
 ## [1.4.31] - 2026-11-11
 

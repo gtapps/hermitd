@@ -385,9 +385,9 @@ describe('settings-edit apply-known', () => {
 
   test('integers honor the config range, including a 0 that disables', () => {
     const cfg: any = {};
-    expect(applyKnown(cfg, 'browser-idle-timeout', '0').ok).toBe(true);
-    expect(cfg.browser.idle_timeout_minutes).toBe(0);
-    expect(applyKnown(cfg, 'browser-idle-timeout', '1441').ok).toBe(false);
+    expect(applyKnown(cfg, 'browser-inactivity-timeout', '0').ok).toBe(true);
+    expect(cfg.browser.inactivity_timeout).toBe(0);
+    expect(applyKnown(cfg, 'browser-inactivity-timeout', '86401').ok).toBe(false);
     expect(applyKnown(cfg, 'browser-command-timeout', '4').ok).toBe(false);
     expect(applyKnown(cfg, 'reflection', '0').ok).toBe(false);
   });

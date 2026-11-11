@@ -267,8 +267,8 @@ function closeUnusedChrome(dir: string, idleMs: number, task: string, deps: Clos
 export function sweepBrowserLease(dir: string, deps: CloseDeps = {}): void {
   if (!fs.existsSync(path.join(dir, 'state/browser-lease.json'))) return;
   browserLease('status', undefined, dir, deps.now ?? Date.now());
-  const minutes = readSettledConfig(dir).browser.idle_timeout_minutes;
-  if (minutes > 0) closeUnusedChrome(dir, minutes * 60_000, 'idle-close', deps);
+  const seconds = readSettledConfig(dir).browser.inactivity_timeout;
+  if (seconds > 0) closeUnusedChrome(dir, seconds * 1000, 'idle-close', deps);
 }
 
 /** At agent start a Chrome on the profile that no claim or person holds was left by a crash. */

@@ -25,8 +25,8 @@
     "admins": [],
     "port": null,
     "host": null,
-    "idle_timeout_minutes": 15,
-    "command_timeout_seconds": 60
+    "inactivity_timeout": 900,
+    "command_timeout": 60
   },
   "transcription": {
     "enabled": true,
