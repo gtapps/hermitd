@@ -14,6 +14,7 @@
 // chat). What the text does show is judged strictly: a target the shell would
 // expand at run time is asked, because the hook cannot know what it names.
 
+import { parseDecideArgs, canonicalDecideCommand } from './lib/task-decide-args';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -665,19 +666,23 @@ function channelAccessAsks(command: string): string[] {
  */
 function localAnswerAsks(command: string): string[] {
   if (!/\btask(?:\.ts)?\b/.test(command) || !/--local\b/.test(command)) return [];
-  if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return ['task answer --local'];
+  const plain = command.replace(/['"\\]/g, '');
+  const fallback = /\btask(?:\.ts)?\s+close\b/.test(plain) && !/\btask(?:\.ts)?\s+answer\b/.test(plain)
+    ? 'task close --local' : 'task answer --local';
+  if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return [fallback];
   const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
   const labels = commands.flatMap(part => {
     const tokens = (part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? []).map(stripQuotes);
     const at = tokens.findIndex(token => /(?:^|\/)task(?:\.ts)?$/.test(token));
-    if (at < 0 || tokens[at + 1] !== 'answer' || !tokens.includes('--local')) return [];
+    if (at < 0 || !['answer', 'close'].includes(tokens[at + 1]) || !tokens.includes('--local')) return [];
     const id = tokens.slice(at + 2).find(token => /^T-\d{8}-\d{6}(?:-[a-z0-9])?$/.test(token));
+    if (tokens[at + 1] === 'close') return [`close ${id ?? 'the pending decision'} as admin`];
     const replyAt = tokens.indexOf('--reply');
     const reply = replyAt < 0 ? '?' : tokens[replyAt + 1] ?? '?';
     return [`answer ${id ?? 'the pending decision'} ${JSON.stringify(reply)} as admin`];
   });
   // A form the parser cannot read (`bash -c '...'`, split quoting) stays opaque and asks.
-  return labels.length ? labels : ['task answer --local'];
+  return labels.length ? labels : [fallback];
 }
 
 /** Quoting cannot hide a task decision call that names, or could be fed, a sender. */
@@ -830,6 +835,7 @@ function main(payload: any): void {
   const input = payload?.tool_input ?? {};
   let asked: string[] | null = null;
   let localAnswers: string[] = [];
+  let decideHint = '<id> <token>';
 
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
@@ -838,6 +844,19 @@ function main(payload: any): void {
     // A substitution left after blanking can splice a blanked body back in as arguments, so it keeps the raw command.
     const blanked = /\btask(?:\.ts)?\b/.test(command.replace(/['"\\]/g, '')) ? literalShellText(command) : '';
     const taskText = COMMAND_SUBSTITUTION.test(blanked) ? command : blanked;
+    if (/\btask(?:\.ts)?\s+decide\b/.test(command.replace(/['"\\]/g, ''))) {
+      const value = turnConversation(payload);
+      const tPath = transcriptPath(payload);
+      const boundary = value.kind === 'terminal' && value.proven && tPath
+        ? currentTurn(tPath).prompt.text.match(/^<command-message>hermitd:task-decide<\/command-message>\n<command-name>\/hermitd:task-decide<\/command-name>(?:\n<command-args>([^\n]*)<\/command-args>)?$/) : null;
+      if (!boundary) deny('Only the operator can run this: ask them to type /hermitd:task-decide <id> <token>. If the command only mentions it, reword that text.');
+      else {
+        const parsed = parseDecideArgs(boundary[1]?.trim().split(/\s+/) ?? []);
+        if (!parsed) deny('The typed arguments are not valid: /hermitd:task-decide [<id>] yes|no|<n>|close|cancel');
+        else if (command !== canonicalDecideCommand(parsed)) deny(`Run exactly: ${canonicalDecideCommand(parsed)}`);
+      }
+      return;
+    }
     const claims = taskSenderClaims(taskText);
     if (!claims) {
       deny('The task call\'s --chat/--user claim could not be read; rerun it as one plain task command with literal values.');
@@ -852,23 +871,26 @@ function main(payload: any): void {
     // Read lazily: only an operator decision or a routines write needs the transcript.
     let turn: RoutineOrigin | undefined;
     const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
-    const answers = localAnswerAsks(taskText);
+    const labels = localAnswerAsks(taskText);
+    const answers = labels.filter(label => !label.startsWith('close ') && label !== 'task close --local');
     // `task dismiss` can only cancel a proposal (task.ts enforces that), so it needs no parsing:
     // the match is deliberately coarse. Like the rest of this hook it guards the agent's normal
     // path, not the records; a disguised spelling is not caught. The origin proves who typed the
     // turn, not what they asked for: the classifier and native rules still judge the command.
+    const closes = /\btask(?:\.ts)?\s+close\b/.test(taskText.replace(/['"\\]/g, '')) && /--local\b/.test(taskText);
     const dismisses = /\btask(?:\.ts)?\s+dismiss\b/.test(taskText.replace(/['"\\]/g, ''));
     // A form the parser could not read (`git config --local` near a `task` word, `bash -c`) is
     // not known to be a local answer, so a chat turn asks for it as before rather than steering.
     const opaque = answers.length > 0 && answers.every(label => label === 'task answer --local');
-    if (answers.length || dismisses) {
+    if (answers.length || dismisses || closes) {
       const value = origin();
       const bypass = payload.permission_mode === 'bypassPermissions';
       const operator = value.kind === 'terminal' && value.proven;
-      if (value.kind === 'channel' && (dismisses || !opaque)) {
+      if (value.kind === 'channel' && (dismisses || closes || !opaque)) {
         // A deny reason reaches the model, which retries on the sender-attributed path.
         deny(`On a chat turn the sender decides, not the operator: ${[
           ...(answers.length ? ['answer with `task answer [<id>] --chat <key> --user <sender-id> --reply <token>`'] : []),
+          ...(closes ? ['close with `task close <id> --chat <key> --user <sender-id> --by confirmed --reason-stdin`'] : []),
           ...(dismisses ? ['decline a pending proposal with `task answer <id> --chat <key> --user <sender-id> --reply no`, or cancel an accepted one with `task cancel <id> --actor <source>:<user-id> --chat <key> --user <sender-id> --reason-stdin`'] : []),
         ].join('; ')}. If the command only mentions these, reword that text.`);
         return;
@@ -877,11 +899,18 @@ function main(payload: any): void {
       // bypass nothing else would check it.
       if (bypass && (answers.length || !operator)) {
         deny(answers.length
-          ? 'Answering a decision as admin is refused in bypass mode; answer from a connected chat.'
-          : 'A command naming `task dismiss` runs in bypass mode only on the operator\'s own typed terminal turn; leave the proposal for the operator.');
+          ? 'Answering a decision as admin is refused in bypass mode; the operator can type /hermitd:task-decide <id> <token>.'
+          : closes
+            ? 'A command naming `task close --local` runs in bypass mode only on the operator\'s own typed terminal turn; the operator can type /hermitd:task-decide <id> close.'
+            : 'A command naming `task dismiss` runs in bypass mode only on the operator\'s own typed terminal turn; leave the proposal for the operator.');
         return;
       }
-      if (!operator) localAnswers = [...answers, ...(dismisses ? ['dismiss a proposal'] : [])];
+      if (!operator) {
+        localAnswers = [...labels, ...(dismisses ? ['dismiss a proposal'] : [])];
+        const match = labels[0]?.match(/^(?:answer (T-\d{8}-\d{6}(?:-[a-z0-9])?) "(yes|no|[1-9]\d*)"|close (T-\d{8}-\d{6}(?:-[a-z0-9])?)) as admin$/);
+        const parsed = match && parseDecideArgs([match[1] ?? match[3], match[2] ?? 'close']);
+        if (parsed) decideHint = `${parsed.id} ${parsed.token}`;
+      }
     }
     if (payload.permission_mode === 'bypassPermissions'
       && channelAccessAsks(typeof input.command === 'string' ? input.command : '').length > 0) {
@@ -912,7 +941,7 @@ function main(payload: any): void {
   }
 
   if (localAnswers.length) {
-    ask(`Admin decision: ${localAnswers.join(', ')}${asked ? '; Hermit setting: ' + asked.join(', ') : ''}`);
+    ask(`Admin decision: ${localAnswers.join(', ')}${asked ? '; Hermit setting: ' + asked.join(', ') : ''}. Or the operator types /hermitd:task-decide ${decideHint}`);
     return;
   }
   if (!asked) return;

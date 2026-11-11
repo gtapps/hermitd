@@ -44,7 +44,7 @@ test('a cancelled proposal latches its dedupe key but a completed proposal allow
     expect(await f.open(args)).toMatchObject({ id: first.id, created: false });
     const second = await f.open(['--kind', 'proposal', '--dedupe-key', 'proposal:completed']);
     expect(await f.ok('answer', [second.id, '--chat', 'discord:home', '--user', 'admin', '--reply', 'yes'])).toMatchObject({ status: 'match' });
-    await f.ok('close', [second.id, '--by', 'confirmed', '--actor', 'admin', '--chat', 'discord:home', '--user', 'admin', '--reason-stdin'], 'Completed');
+    await f.ok('close', [second.id, '--by', 'confirmed', '--chat', 'discord:home', '--user', 'admin', '--reason-stdin'], 'Completed');
     expect(await f.open(['--kind', 'proposal', '--dedupe-key', 'proposal:completed'])).toMatchObject({ created: true });
   } finally { f.cleanup(); }
 });
