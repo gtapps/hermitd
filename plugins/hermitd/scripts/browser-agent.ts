@@ -181,13 +181,14 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
     ]).finally(() => clearTimeout(timer));
+    // Before any early return: a command that timed out may still have launched Chrome.
+    if (!session && argv.at(-1) !== 'close') (options.startIdleWatch ?? startIdleWatch)(dir);
     if (timedOut) { printJson({ error: 'browser_command_timeout' }); return 1; }
     if (host && new TextDecoder().decode(stderr).includes('No usable sandbox')) {
       printJson({ error: 'browser_sandbox_blocked', detail: 'Run hermitd run browser-host. For Claude Code /sandbox set sandbox.excludedCommands to include: bun */scripts/browser-agent.ts *' }); return 1;
     }
     const after = session ? null : browserLease('inspect', undefined, dir, Date.now(), { chromeAlive: () => chromeAlive(dir) });
     if (after && (after.epoch !== epoch || after.human)) { printJson({ error: 'human_has_control' }); return 1; }
-    if (!session && argv.at(-1) !== 'close') (options.startIdleWatch ?? startIdleWatch)(dir);
     await Bun.write(Bun.stdout, stdout);
     await Bun.write(Bun.stderr, stderr);
     return code;

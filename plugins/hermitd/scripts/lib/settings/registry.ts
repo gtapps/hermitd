@@ -75,7 +75,7 @@ const ROWS: readonly SettingRow[] = [
     label: 'Default browser', hint: 'agent-browser or chrome (requires chrome enabled)' },
   { arg: 'browser-inactivity-timeout', path: 'browser.inactivity_timeout', group: 'Operational',
     label: 'Browser inactivity close', hint: 'seconds an unclaimed signed-in browser may stay inactive before it closes (0-86400, 0 keeps it open)',
-    applies: 'next signed-in browser launch' },
+    applies: 'next signed-in browser command' },
   { arg: 'browser-command-timeout', path: 'browser.command_timeout', group: 'Operational',
     label: 'Browser command timeout', hint: 'seconds one browser command may run before it is stopped (5-600)',
     applies: 'next browser command' },

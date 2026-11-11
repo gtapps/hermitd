@@ -51,6 +51,7 @@ test('a command past the timeout is killed and returns browser_command_timeout',
   expect(await run(['--task', 'task-a', 'open', 'https://example.com'], { TEST_SLEEP: pidFile, TEST_TIMEOUT_MS: '1500' })).toMatchObject({ code: 1, data: { error: 'browser_command_timeout' } });
   const pid = Number(fs.readFileSync(pidFile, 'utf8'));
   expect(() => process.kill(pid, 0)).toThrow();
+  expect(fs.readFileSync(path.join(root, 'watch-calls'), 'utf8')).toBe('watch\n');
 });
 
 test('persistent commands require a live claim, renew it and preserve argv and exit code', async () => {
