@@ -272,3 +272,21 @@ it('compact guest emits no context and keeps its guest marker', async () => {
     expect(fs.existsSync(markerFor(wd.dir, 'compact-guest'))).toBe(true);
   } finally { wd.cleanup(); }
 });
+
+for (const source of ['startup', 'compact']) {
+  for (const key of ['discord', 'telegram', 'custom', 'none']) {
+    it(`channel format hint: ${source}, ${key}`, async () => {
+      const wd = setupWorkdir(); try {
+        const env = fixture(wd.dir, { tmuxExit: 1 });
+        fs.writeFileSync(path.join(wd.dir, '.hermit/config.json'), JSON.stringify({ language: 'pt', channels: key === 'none' ? {} : { [key]: { enabled: true } } }));
+        const res = await runScript('startup-context.ts', { cwd: wd.dir, env: { ...env, EVAL_HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ source }) });
+        expect(res.exitCode).toBe(0);
+        if (['discord', 'telegram'].includes(key)) {
+          expect(res.stdout).toContain(`channel format: ${key}:`);
+          expect(res.stdout.indexOf('channel format:')).toBeGreaterThan(res.stdout.indexOf(source === 'compact' ? 'operator language:' : 'operator_language:'));
+        } else expect(res.stdout).not.toContain('channel format:');
+        if (source === 'compact') expect(res.stdout.length).toBeLessThanOrEqual(1200);
+      } finally { wd.cleanup(); }
+    });
+  }
+}

@@ -18,7 +18,7 @@ Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts <verb> .hermit ...`. State target
 | `cancel <id>` | Requires actor and reason on stdin. Cancellation is separate from successful completion. |
 | `decide [<id>] <token>` | Resolves `yes`, `no`, a positive option number, `close`, or `cancel` against current state under the task lock. `close` and `cancel` require an id. Only the matching typed `/hermitd:task-decide` authorizes this command. |
 | `dismiss <id>` | Cancels an open proposal, pending or accepted, as the operator, with the reason on stdin; a pending one records `Consent declined: <reason>`. Refuses any other record with `not_proposal`. It can only cancel. |
-| `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, last_worker, result, waiting_on, closed_by, check, conversation, card_chat_id and card_message_id. |
+| `list` | Supports `--open`, `--all`, `--owner`, `--conversation`, `--requester`, `--handle`, `--id`, `--dedupe-key`, `--with-check`, `--limit` (default 20), `--json`. JSON includes owner, last_worker, result (first line, at most 200 characters), result_len (full stored character length), waiting_on, closed_by, check, conversation, card_chat_id and card_message_id. |
 | `standup` | Reports windowed costs and commitments by person, with closed records grouped by closure actor type. Supports `--days` and `--json`. |
 | `check-snapshot <id>` | Returns check, result revision and status for the gated runner. |
 
@@ -40,7 +40,7 @@ The standalone watchdog clear additionally requires operator quiet, context age 
 
 ## Cost and readers
 
-Progress-bearing writes bind task ids to the current turn. Matching cost rows carry `bucket: tasks`; shared rows allocate cost and tokens equally across their task ids. Otherwise channel conversation work is `conversation`, while heartbeat and routine work is `duties`. A worker's rows match the record it was dispatched with. The version-4 cost index stores date-keyed `by_task` buckets for 90 days; wider windows fall back to a scan using the same allocator. This is attribution, not a separate provider bill.
+Progress-bearing writes bind task ids to the current turn, except guest helper report submissions, which leave the resident’s task-turn binding untouched. Matching cost rows carry `bucket: tasks`; shared rows allocate cost and tokens equally across their task ids. Otherwise channel conversation work is `conversation`, while heartbeat and routine work is `duties`. A worker's rows match the record it was dispatched with. The version-4 cost index stores date-keyed `by_task` buckets for 90 days; wider windows fall back to a scan using the same allocator. This is attribution, not a separate provider bill.
 
 `scripts/lib/task-report.ts` normalizes records for brief, reflect, weekly review, cost report, health, MCP, export and dashboard. `done` means check or confirmed, `cancelled` remains distinct, and a result on an open record is `unconfirmed`. Lessons and decisions come from the record body. Readers use task records only. Recall also searches retained historical archives.
 
@@ -54,7 +54,7 @@ Before replying, the responder lists open records for the conversation and recor
 
 A confirmed result closes only the matching revision. Any clear acceptance of a posted result, in any wording or language, confirms it; a named approver confirms in their own words and blocks check closure. The task skill runs a record's check when the result is recorded; the daily run is the fallback. Any authorized human in the conversation can steer a record; a named approver restricts confirmation. Duties may open deduplicated records for work requiring a person when `tasks.duties_open_records` is enabled.
 
-A task thread with a bound session works like a Projects thread: follow-ups go to that session, which answers with its working context. Confirmations, parking and conversation commands stay with the resident. Watched reports land as results on the record and in its thread; unprompted reports land as notes and thread posts. The resident updates the card on each report. Approvals are given directly in the session through `claude attach <id>` or Remote Control, never relayed through the task thread. The next phase can bind the same session to its new record.
+A task thread with a bound session works like a Projects thread: follow-ups go to that session, which answers with its working context. Confirmations, parking and conversation commands stay with the resident. Authors choose `result`, `needs-input` or `note` when submitting; watched and unprompted reports use the same command and owner check. The resident updates the card on each report. Approvals are given directly in the session through `claude attach <id>` or Remote Control, never relayed through the task thread. The next phase can bind the same session to its new record.
 
 ## Learned-skill reviews
 
@@ -62,7 +62,23 @@ Records persist `delegated` (default `false`). Ownership by a worker or helper s
 
 The close or check digest carries `next`, naming the absolute path of the review guide. The resident follows it once in the main session before replying. Nothing is persisted on the task, a lost review is not resumed, and the skill ledger alone records changes. Old review fields are ignored and dropped on the next record write. With `skills.notify: on`, the close reply mentions learning only when a skill changed; `verbose` adds a short preview and `off` adds nothing.
 
-Worker reports use `[[helper-report <task-id> <id>]]`. The relay checks the named open record against the reply tool, chat and configured thread attribute, then adds the task handle and title when several records share a chat without threads.
+Helpers and workers submit once with the body on stdin:
+
+```bash
+.hermit/bin/hermitd-run task report .hermit <task-id> --as helper:<name> --kind result <<'REPORT'
+The review is ready.
+
+1. Confirm the proposed name.
+
+The existing configuration supports it.
+REPORT
+```
+
+Workers use `--as worker`; `needs-input` records a requester wait without setting a result, and `note` records progress tagged with the author. Results reuse `block --result-stdin`, including consent checks, decision generations and `result_rev`. A multiline result is stored as a JSON-quoted scalar and round-trips exactly; Progress, Decisions and Outcome notes stay on one line. Without a task, a helper uses `task report .hermit --no-task --as helper:<name>` and the ordinary operator-notice client route.
+
+The script chooses a ten-character report id and writes immutable `helper-reports/<id>.md`, with task and author binding in `<id>.json`. No operator-authored path selects the file. Empty or over-64-KB input, a closed task, or an owner mismatch is refused before storage or delivery. Proposal consent refusals also store and send nothing.
+
+The JSON receipt is `{report, task, recorded, result_rev, delivery}`. Delivery is `sent`, `partial`, `failed`, `relay` (no script send path) or `no_channel`. Expected outcomes exit 0. Delivery follows the record’s conversation and thread after recording; shared-chat reports receive the task handle and title. A capped Discord send counts as sent, and the complete report remains stored. The resident handles cards, checks and closure from the receipt, reading the body only for `relay`. A failed or partial send gets a one-line operator notice; authors never resubmit.
 
 ## Proposals and durable questions
 

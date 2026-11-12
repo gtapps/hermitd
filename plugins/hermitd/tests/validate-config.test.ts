@@ -88,3 +88,9 @@ test('config watches ignore retired persistent and timeout_ms fields', () => {
   expect(result.errors.filter(e => e.includes('monitors'))).toEqual([]);
   expect(result.warnings.filter(e => e.includes('monitors'))).toEqual([]);
 });
+
+test('channel format accepts only declared converters or passthrough', () => {
+  const errors = (format: unknown) => validate({ channels: { custom: { format } } }).errors.filter(e => e.includes('channels.custom.format'));
+  for (const format of ['discord', 'telegram', 'signal', 'matrix', 'mattermost', 'sms', 'bluebubbles', 'line', 'irc', 'email', 'ntfy', 'slack', 'google_chat', 'whatsapp', 'passthrough']) expect(errors(format)).toEqual([]);
+  for (const format of [null, 1, '', {}, 'MarkdownV2']) expect(errors(format).length).toBe(1);
+});

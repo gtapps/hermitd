@@ -162,6 +162,7 @@ const HERMIT_ALLOW = [
   // reaches the model with no resolvable plugin root, and its `bun
   // */scripts/task.ts*` twin is suspended under auto mode.
   'Bash(.hermit/bin/hermitd-run task note *)',
+  'Bash(.hermit/bin/hermitd-run task report *)',
   'Bash(.hermit/bin/hermitd-run task block *)',
   'Bash(.hermit/bin/hermitd-run task close *)',
   'Bash(.hermit/bin/hermitd-run task answer *)',

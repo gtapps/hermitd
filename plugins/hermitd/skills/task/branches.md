@@ -11,7 +11,7 @@ Rare-branch procedures for `task/SKILL.md`. Read only the section the skill name
 
 ## Replace an unreachable worker
 
-Write the output of `conversation` (Commands) with arguments `history --source '<source>' --chat-id '<chat_id>' --limit 100` to `.hermit/helper-reports/<id>-history.md` (its `rows` may be empty). Dispatch a fresh worker as `SKILL.md` **Dispatch the worker** says, with the record's notes and that path, then run `task-note` (Commands) with arguments `<id> --owner worker:<new-agentId>`.
+Write the output of `conversation` (Commands) with arguments `history --source '<source>' --chat-id '<chat_id>' --limit 100` to `.hermit/helper-reports/<id>-history.md` (its `rows` may be empty). Dispatch a fresh worker as `SKILL.md` **Dispatch the worker** says, with the record's notes, that path, the operator language and the requester's message unchanged, then run `task-note` (Commands) with arguments `<id> --owner worker:<new-agentId>`.
 
 ## Standup and duties
 

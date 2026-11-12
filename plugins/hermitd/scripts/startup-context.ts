@@ -1,3 +1,5 @@
+import { hintFor } from './lib/channel-format';
+import { getEnabledChannels } from './lib/channel-config';
 import { readTaskReports } from './lib/task-report';
 import { observeExecution, readExecution, startupTasks } from './lib/tasks';
 // Suppress EPIPE errors (e.g. when stdout pipe closes early in tests)
@@ -110,6 +112,13 @@ function operatorLanguage(agentDir: string): string | null {
     scanHits.push({ source: 'config.json:language', reason }));
 }
 
+function channelFormatHints(config: ReturnType<typeof readSettledConfig>): string[] {
+  return getEnabledChannels(config).flatMap(key => {
+    const hint = hintFor(config, key);
+    return hint ? [`channel format: ${safe(hint)}`] : [];
+  });
+}
+
 // Build the post-compaction delta capsule: the ONLY injection on
 // source === "compact" alongside OPERATOR.md. Carries hermit lifecycle state (never assumed
 // preserved by the native summary — its quality varies) plus file pointers;
@@ -125,10 +134,12 @@ function buildCompactionPointers(agentDir: string): string {
   const lang = operatorLanguage(agentDir);
   if (lang) parts.push(`operator language: ${safe(lang)} (reply in this language)`);
 
+  const config = readSettledConfig(agentDir);
+  parts.push(...channelFormatHints(config));
+
   parts.push('Task policy: read TASKS.md before intake or confirmation.');
 
   try {
-    const config = readSettledConfig(agentDir);
     const route = resolveOutboundChannel(config.channels);
     if (route) parts.push(`outbound channel: ${safe(route.id)} (chat_id: ${safe(route.chat_id)})`);
   } catch {}
@@ -185,7 +196,7 @@ function emitGuestBanner(agentDir: string): void {
   // claims a running resident with no name to address.
   if (residentSessionActive(agentDir)) {
     const peerName = residentPeerName(agentDir);
-    console.log(`---Guest Session--- A managed hermit session is already running here.${peerName ? ` Resident: @${safe(peerName)}. SendMessage it GUEST_REPORT: when finished.` : ''} Work normally; resident duties belong to the hermit.`);
+    console.log(`---Guest Session--- A managed hermit session is already running here.${peerName ? ` Resident: @${safe(peerName)}. Submit once via task report with --as helper:<name> and --kind result|needs-input|note using a quoted heredoc, in the brief's operator language, verdict first, numbered decisions, detail, standard markdown without tables or headings. Without a task use --no-task. SendMessage it GUEST_REPORT: <verdict>, Report: <id>, Delivery: <status>, optional Procedure:, with no body. On classifier denial send Delivery: blocked <reason> without a report body; never resubmit.` : ''} Work normally; resident duties belong to the hermit.`);
   } else {
     console.log('---Guest Session--- Start the resident with hermitd start.');
   }
@@ -391,9 +402,11 @@ function emitFullContext(source: string | null) {
   }
 
   const lang = operatorLanguage(AGENT_DIR);
-  if (lang) {
-    emit('Operator Preferences', `operator_language: ${safe(lang)}\nAll operator-facing prose uses this language.`);
-  }
+  const preferences = [
+    ...(lang ? [`operator_language: ${safe(lang)}\nAll operator-facing prose uses this language.`] : []),
+    ...channelFormatHints(readSettledConfig(AGENT_DIR)),
+  ];
+  if (preferences.length) emit('Operator Preferences', preferences.join('\n'));
 
   // -------------------------------------------------------
   // 1. Operator context (priority 1, budget 2000)

@@ -114,11 +114,11 @@ cp .hermit/state/helper-system-prompt.md .hermit/helper-prompt.md
 
 Before you cut anything:
 
-- **Keep the `GUEST_REPORT` block and the instruction to send it to the hermit by name.** That message is how a helper hands its result back. Without it the hermit never records the outcome, with no error.
+- **Keep the `task report` submission and the `GUEST_REPORT` receipt handoff to the hermit by name.** The helper writes for the operator in the brief’s language, submits once with a quoted heredoc, then sends only its verdict, report id and delivery status to the resident. The script records the outcome and delivers it to the task’s chat.
 - Keep the project path lines: they point helpers working in a worktree at the hermit's real state folder.
 - What you remove is yours: the shipped rules you cut no longer reach helpers.
 - The copy holds today's path and name. Put `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` back in their place if you want the file to follow a moved project or a renamed hermit.
-- Upgrades never touch this file, and an upgrade can change the `GUEST_REPORT` block; your copy keeps the old one until you copy it again. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin; lines you paste from `prompts/helper.md` keep working, placeholders included.
+- Upgrades preserve your custom prompt. When upgrade instructions replace its report section, every other line stays intact and the hermit tells you; prompt changes take effect after restart. After an upgrade, compare it with `prompts/helper.md` and `prompts/rules.md` in the installed hermitd plugin; lines you paste from `prompts/helper.md` keep working, placeholders included.
 
 ---
 

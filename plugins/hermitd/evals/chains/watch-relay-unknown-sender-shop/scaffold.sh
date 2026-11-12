@@ -35,6 +35,7 @@ cat > '.hermit/state/monitors.runtime.json' <<'HERMIT_FIXTURE'
       "id": "session-export-wholesale-1793030000-a1b2",
       "description": "wholesale stock export",
       "target": "export-wholesale",
+      "record": "T-20261021-090000",
       "started_at": "2026-10-21T08:30:00Z",
       "source": "adhoc",
       "class": "peer-idle"

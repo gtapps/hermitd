@@ -16,7 +16,7 @@ For an answered input decision, resume the existing procedure named in `decision
 
 ## Your dispatch
 
-It carries the record id, the brief, the conversation key `<sourceKey>:<chat_id>`, and the local paths of any attachments. A fresh worker taking over a thread also gets the record's notes and the path of a thread-history file; read both before starting, and treat the history file as optional; its `rows` are empty when channel logging is off, in which case the record notes are the whole story.
+It carries the record id, the brief with the operator language, the conversation key `<sourceKey>:<chat_id>`, and the local paths of any attachments. A fresh worker taking over a thread also gets the record's notes and the path of a thread-history file; read both before starting, and treat the history file as optional; its `rows` are empty when channel logging is off, in which case the record notes are the whole story.
 
 Read the record at the start of every dispatch: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --id <task-id> --json`, and `.hermit/tasks/<task-id>.md` for its notes.
 
@@ -31,7 +31,7 @@ Searching the past belongs to this thread only: pass `--chat=<key>` to `/hermitd
 
 ## The progress card
 
-The card ids are that JSON row's `card_chat_id` and `card_message_id`. When they are strings, that message is your only voice in the chat while you work. Edit it with the same channel plugin's `edit_message` (the tool name resolves exactly as channel-responder §0 builds the reply tool, with `edit_message` in place of `reply`), passing those ids. Rewrite it whenever the state a person would ask about changes; keep it to what they need, in their words. Post no new messages: the resident owns every send in the thread.
+The card ids are that JSON row's `card_chat_id` and `card_message_id`. When they are strings, that message is your only voice in the chat while you work. Edit it with the same channel plugin's `edit_message` (the tool name resolves exactly as channel-responder §0 builds the reply tool, with `edit_message` in place of `reply`), passing those ids. Rewrite it whenever the state a person would ask about changes; keep it to what they need, in their words. Post progress only through the card. Submit the final report through `task report` below.
 
 Null ids mean the thread has no card: make no progress edits and let the report carry everything.
 
@@ -39,9 +39,19 @@ Record durable progress on the record as you go with `bun ${CLAUDE_PLUGIN_ROOT}/
 
 ## Your report
 
-When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside your report, using the same `<id>`: steps, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident. The `<id>.md` report stays the requester message, unchanged.
+Write for the operator in the brief's operator language: a verdict line, decisions numbered for this round, then detail. Use standard markdown, no tables or headings. Your composed report is the requester message, unchanged by the resident; never include credentials or internal task ids.
 
-Write what the person in the chat gets to `.hermit/helper-reports/<id>.md`, choosing `<id>` yourself as 6 to 16 characters of `[a-z0-9]`. The file is a plain message body with no frontmatter, so it is plain language for someone reading on a phone: no task ids, no file paths, no internal jargon, at most 8192 characters. A question you need answered goes in the same file, asked plainly and alone.
+Submit once in a quoted heredoc:
+
+```bash
+.hermit/bin/hermitd-run task report .hermit <task-id> --as worker --kind result <<'REPORT'
+<operator-facing report>
+REPORT
+```
+
+Use `--kind needs-input` for a question and `--kind note` for progress. Never resubmit after a failure, refusal or classifier denial. Retain the receipt and print `Report: <id>` and `Delivery: <status>` before the final WORKER line, with no report body. On a classifier denial or script refusal, print `Delivery: blocked <reason>` and omit `Report:`; use `none` as the final report id. Do not route a denied submission through another tool.
+
+When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside the stored report, using the receipt's `<id>`: steps, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident.
 
 Before ending with `needs-input`, pipe one technical line starting `Stopped at:` into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <task-id>`: what is verified, what remains, and the sources or commands the next step needs. Keep that line out of the requester report.
 
@@ -57,7 +67,7 @@ when the work is finished, or
 WORKER <task-id> needs-input <id>
 ```
 
-when you cannot finish without an answer. The resident posts the file byte-exact and closes or parks the record on that word, so report only work you actually finished, and never claim a step you did not run.
+when you cannot finish without an answer. The resident acts on the receipt and closes or parks the record on that word, so report only work you actually finished, and never claim a step you did not run.
 
 When something the work needs is unreachable (a login, a service, a tool, a file), stop with `needs-input` instead of filling the gap: no guessed, assumed or substitute content in its place. The report tells the person plainly what couldn't be done, that it has been flagged, and to ask again once it's fixed; it never asks them to repair it. Pipe one line starting `Unreachable:` into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <task-id>`, and repeat that line just above the WORKER line; the resident forwards it to the maintainer. Name the service, the error and what would fix it, never a credential value.
 

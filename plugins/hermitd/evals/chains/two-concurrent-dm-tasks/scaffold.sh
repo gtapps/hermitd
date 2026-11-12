@@ -38,23 +38,15 @@ for a in "$@"; do case "$a" in T-*) id="$a";; esac; done
 [ "$1" = task ] || { echo OK; exit 0; }
 case "$verb${id:+ $id}" in
   'list') cat <<'OUT'
-{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
+{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
 OUT
   ;;
   'note T-20261021-090000-0') cat <<'OUT'
-{"id":"T-20261021-090000-0","result_rev":0}
-OUT
-  ;;
-  'block T-20261021-090000-0') cat <<'OUT'
-{"id":"T-20261021-090000-0","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
+{"id":"T-20261021-090000-0","result_rev":1}
 OUT
   ;;
   'note T-20261021-090000') cat <<'OUT'
-{"id":"T-20261021-090000","result_rev":0}
-OUT
-  ;;
-  'block T-20261021-090000') cat <<'OUT'
-{"id":"T-20261021-090000","listing":"unconfirmed","result_rev":1,"waiting_on":"discord:100000000000000001"}
+{"id":"T-20261021-090000","result_rev":1}
 OUT
   ;;
   'answer T-20261021-090000') cat <<'OUT'
@@ -105,7 +97,7 @@ status: open
 opened_at: 2026-10-21T09:00:00.000Z
 requester: discord:100000000000000001
 handle: review-invoice
-owner: worker:b1b2c3d4
+owner: resident
 closed_at: null
 closed_by: null
 closed_actor: null
@@ -117,16 +109,16 @@ due: null
 conversation: discord:400000000000000001
 card_chat_id: null
 card_message_id: null
-waiting_on: null
-waiting_since: null
-result: null
-result_at: null
+waiting_on: discord:100000000000000001
+waiting_since: 2026-10-01T13:30:00.000Z
+result: "The invoice discrepancy review is ready for approval.\n"
+result_at: 2026-10-01T13:30:00.000Z
 stall_at: null
 stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-last_worker: null
+last_worker: b1b2c3d4
 kind: null
 decision: null
 approved_rev: null
@@ -137,7 +129,7 @@ muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]
 claims: []
-result_rev: 0
+result_rev: 1
 ---
 ## Progress
 - 2026-10-21T09:00:00.000Z discord:100000000000000001: Opened: Recommendation approved
@@ -149,6 +141,7 @@ result_rev: 0
 ## Lessons
 
 ## Outcome
+- 2026-10-01T13:30:00.000Z hermit: The invoice discrepancy review is ready for approval.
 HERMIT_FIXTURE
 mkdir -p ".hermit/tasks"
 cat > '.hermit/tasks/T-20261021-090000.md' <<'HERMIT_FIXTURE'
@@ -163,7 +156,7 @@ status: open
 opened_at: 2026-10-21T09:00:00.000Z
 requester: discord:100000000000000001
 handle: renew-domain
-owner: worker:a1b2c3d4
+owner: resident
 closed_at: null
 closed_by: null
 closed_actor: null
@@ -175,16 +168,16 @@ due: null
 conversation: discord:400000000000000001
 card_chat_id: null
 card_message_id: null
-waiting_on: null
-waiting_since: null
-result: null
-result_at: null
+waiting_on: discord:100000000000000001
+waiting_since: 2026-10-01T13:30:00.000Z
+result: "The domain renewal comparison is ready for approval.\n"
+result_at: 2026-10-01T13:30:00.000Z
 stall_at: null
 stall_status: null
 stall_next: null
 dedupe_key: null
 check: null
-last_worker: null
+last_worker: a1b2c3d4
 kind: null
 decision: null
 approved_rev: null
@@ -195,7 +188,7 @@ muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]
 claims: []
-result_rev: 0
+result_rev: 1
 ---
 ## Progress
 - 2026-10-21T09:00:00.000Z discord:100000000000000001: Opened: Recommendation approved
@@ -207,6 +200,7 @@ result_rev: 0
 ## Lessons
 
 ## Outcome
+- 2026-10-01T13:30:00.000Z hermit: The domain renewal comparison is ready for approval.
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

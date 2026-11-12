@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { capDiscordParts, convertText, formatFor, splitForPlatform } from './channel-format';
 import { pendingDecisions, readDeliveryBudget } from './decisions';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
@@ -73,28 +74,13 @@ export interface SendOptions {
   // An already-loaded config snapshot (sendOperatorNotice passes its own down to
   // each leg) so a multi-leg notice reads config.json once, not per send.
   config?: Json;
+  /** Only author-submitted reports cap Discord deliveries. */
+  discordCapNotice?: string;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const TELEGRAM_MAX_LEN = 4096;
 const DISCORD_MAX_LEN = 2000;
-
-/** Split `text` into ordered parts of at most `limit` chars, breaking at the last
- * blank line, then line break, then space, then a hard cut that never separates
- * a surrogate pair. The separator itself is dropped; indentation is kept. */
-export function splitMessage(text: string, limit: number): string[] {
-  const parts: string[] = [];
-  let rest = text;
-  while (rest.length > limit) {
-    let cut = [rest.lastIndexOf('\n\n', limit), rest.lastIndexOf('\n', limit), rest.lastIndexOf(' ', limit)]
-      .find((i) => i > 0) ?? limit;
-    if (cut === limit && /[\uD800-\uDBFF]/.test(rest[cut - 1])) cut--;
-    parts.push(rest.slice(0, cut));
-    rest = rest.slice(cut).replace(/^(\n+| )/, '');
-  }
-  if (rest || !parts.length) parts.push(rest);
-  return parts;
-}
 
 /** Map a fetch rejection to a stable error string (timeouts read as 'request timeout'). */
 function fetchError(e: any): string {
@@ -140,12 +126,12 @@ async function sendPlatform(
   }
 }
 
-async function sendTelegram(token: string, chatId: string, text: string, timeoutMs: number): Promise<SendResult> {
+async function sendTelegram(token: string, chatId: string, text: string, timeoutMs: number, thread?: string | null): Promise<SendResult> {
   const base = process.env.HERMIT_TELEGRAM_API_URL || 'https://api.telegram.org';
   return sendPlatform('telegram', `${base}/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify({ chat_id: chatId, text, ...(thread != null ? { message_thread_id: thread } : {}) }),
   }, timeoutMs);
 }
 
@@ -160,7 +146,7 @@ async function sendDiscord(token: string, chatId: string, text: string, timeoutM
 
 // Keep in step with DIRECT_SEND_CHANNELS in lib/channel-config.ts.
 const SENDERS: Record<string, {
-  send: (token: string, chatId: string, text: string, timeoutMs: number) => Promise<SendResult>;
+  send: (token: string, chatId: string, text: string, timeoutMs: number, thread?: string | null) => Promise<SendResult>;
   maxLen: number;
 }> = {
   telegram: { send: sendTelegram, maxLen: TELEGRAM_MAX_LEN },
@@ -213,10 +199,11 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
     if (!rawCfg) return { ok: false, error: 'config_read_failed' };
     const config = settleConfig(rawCfg);
 
-    const target = opts.target ?? resolveOutboundChannel(config.channels);
+    const target: SendOptions['target'] = opts.target ?? resolveOutboundChannel(config.channels) ?? undefined;
     if (!target) return { ok: false, error: 'no_reachable_channel' };
     const { id: channelId, chat_id: chatId } = target;
 
+    text = convertText(text, formatFor(config, channelId));
     const sender = SENDERS[channelId];
     const channel = config.channels?.[channelId];
     const deadline = performance.now() + (opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -235,8 +222,10 @@ export async function sendToChannel(hermitDir: string, text: string, opts: SendO
       // Ordered parts share one timeout budget; stop at the first failed part.
       result = { ok: false };
       let accepted = false;
-      for (const part of splitMessage(text, sender.maxLen)) {
-        result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())));
+      const parts = splitForPlatform(text, sender.maxLen);
+      const deliveryParts = channelId === 'discord' && opts.discordCapNotice !== undefined ? capDiscordParts(parts, opts.discordCapNotice) : parts;
+      for (const part of deliveryParts) {
+        result = await sender.send(token, chatId, part, Math.max(1, Math.ceil(deadline - performance.now())), target.thread);
         if (!result.ok) {
           if (accepted) result.partial = true;
           break;
@@ -296,11 +285,11 @@ async function fallbackToParent(
 
 /** Deliver unattended output to its owning chat, preserving a safe public parent fallback. */
 export async function sendToOwnedChat(
-  hermitDir: string, chatKey: string, text: string, opts: Omit<SendOptions, 'target'> = {},
+  hermitDir: string, chatKey: string, text: string, opts: Omit<SendOptions, 'target'> & { thread?: string | null } = {},
 ): Promise<OwnedSendResult> {
   if (!isKey(chatKey)) return { ok: false, error: 'invalid_chat', route: 'chat' };
   const at = chatKey.indexOf(':');
-  const target = { id: chatKey.slice(0, at), chat_id: chatKey.slice(at + 1) };
+  const target = { id: chatKey.slice(0, at), chat_id: chatKey.slice(at + 1), thread: opts.thread };
   const config = opts.config ?? readSettledConfig(hermitDir);
   if (!getEnabledChannels(config).includes(target.id)) return { ok: false, error: 'channel_disabled', route: 'chat' };
   if (target.id === 'discord') await lookupChat(hermitDir, config, target.chat_id);
@@ -319,6 +308,7 @@ export async function sendToOwnedChat(
  * Findings. `sensitive` keeps the maintainer text out of the episodic channel log.
  */
 export interface OperatorNotice {
+  discordCapNotice?: string;
   client?: string;
   maintainer?: { text: string; fallback: 'client' | 'primary' | 'findings'; sensitive?: boolean };
   timeoutMs?: number;
@@ -429,7 +419,7 @@ async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice, 
   }
 
   if (notice.client) {
-    const options = { timeoutMs: notice.timeoutMs, config, recordHealth: false };
+    const options = { timeoutMs: notice.timeoutMs, config, recordHealth: false, discordCapNotice: notice.discordCapNotice };
     if (mergedResult) {
       // A failed merged send may retry only the client text in a safe parent.
       out.client = owned
@@ -439,7 +429,7 @@ async function deliverOperatorNotice(hermitDir: string, notice: OperatorNotice, 
       out.client = await sendToOwnedChat(hermitDir, `${owned.id}:${owned.chat_id}`, notice.client, options);
     } else {
       out.client = await sendToChannel(hermitDir, notice.client, {
-        target: target ?? undefined, timeoutMs: notice.timeoutMs, config,
+        target: target ?? undefined, timeoutMs: notice.timeoutMs, config, discordCapNotice: notice.discordCapNotice,
       });
     }
     // A relayed client leg is the caller's to deliver, so it records no failure.

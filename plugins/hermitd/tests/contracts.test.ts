@@ -3577,9 +3577,9 @@ describe('task-worker agent contract', () => {
     expect(agent).toContain('WORKER <task-id> needs-input <id>');
   });
 
-  test('writes its report where the relay hook reads it', () => {
-    expect(agent).toContain('.hermit/helper-reports/<id>.md');
-    expect(agent).toContain('edit_message');
+  test('submits its operator-facing report once and returns a body-free receipt', () => {
+    expect(agent).toContain('task report .hermit <task-id> --as worker --kind result');
+    for (const phrase of ["<<'REPORT'", 'operator language', 'verdict line', 'numbered for this round', 'no tables or headings', '--kind needs-input', 'Report: <id>', 'Delivery: <status>', 'Never resubmit', 'with no report body', 'edit_message']) expect(agent).toContain(phrase);
   });
 
   // The resident routes an `Unreachable:` note to the maintainer on needs-input.

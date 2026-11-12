@@ -139,6 +139,8 @@ alternate invocation, or weaker permission mode. The exceptions are
    writes it. If it is missing, refuse with one line: restart with hermitd-start
    so boot writes the helper system-prompt file.
 
+   Before `claude --bg`, choose the report record. Without `--task`, bind the open record, when present, using `task.ts note <abs>/.hermit <T-id> --owner helper:<n>`. With `--task`, open or reuse the helper-work record with `--dedupe-key "helper:<task-id>"`, requester from this authorized turn, and a title naming the helper work, then bind it with `--owner helper:<n>`. This record holds the helper report, not the source proposal's implementation result. Refuse `invalid_owner` or `owner_busy` before launch. Include the report task id, `helper:<n>` for `--as`, and the operator language in the brief; without a record, require `--no-task`. Require a verdict line, numbered decisions for this round, then detail in standard markdown without tables or headings, submitted once through `task report` in a quoted heredoc. The helper returns only the receipt to the resident.
+
 3. `cd <dir>` as its own Bash call, then run the command in Usage as the next
    one, so the launch stands alone in the transcript and in any approval that
    does reach the operator. With `--cwd`, then `cd <abs>` as the next call
@@ -148,7 +150,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    `claude attach <id>`, `claude stop <id>` hints. For a `Workspace not trusted. Run`
    refusal, follow [untrusted-folder.md](untrusted-folder.md). Home-directory
    and unresolvable refusals are reported without that branch. If the spawn is declined or
-   fails, stop; do not watch, open a record, or patch a Decision.
+   fails, restore any bound record to resident ownership and stop; do not watch or patch a Decision.
    After every successful launch, read the full session id `<sid>` once:
    ```bash
    claude agents --json | jq -r --arg id <bg-id> '.[] | select(.id==$id) | .sessionId'
@@ -161,16 +163,12 @@ alternate invocation, or weaker permission mode. The exceptions are
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id>`,
    where `<T-id>` is that open record's id, not the bg id (the note is
    timestamped for you).
-   After the handoff note, bind the record with
-   `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id> --owner helper:<n>`.
-   On `invalid_owner` (a custom name outside `[A-Za-z0-9._-]{1,64}`) or
-   `owner_busy`, leave it resident-owned and tell the operator why.
-   With `--task <id>`, open or reuse a helper-work task with `--dedupe-key "helper:<task-id>"`, requester from the current authorized turn, and a title naming the helper work. This record holds the helper's report, not the proposal's implementation result. Note `Handed to helper <n> (<sid>); helper record <helper-task-id>.` on the source task, and bind the helper-work record with `--owner helper:<n>`. A repeated launch for the same source task reuses this helper record.
+   Ownership was bound before launch. On a failed launch, return the bound record to `--owner resident`; do not leave it assigned to an absent helper. With `--task`, note `Handed to helper <n> (<sid>); helper record <helper-task-id>.` on the source task after launch.
 
 4. Invoke `/hermitd:watch session <n> "<first 40 chars of the operator prompt>" --id <bg-id>`.
    When the watch reports the helper blocked on its `waitingFor`, add nothing:
    the watch's helper poll announces it in chat.
-   Whenever step 3 bound or opened a record, also pass `--record <T-id>`.
+   Whenever step 2 bound or opened a record, also pass `--record <T-id>`.
    That skill owns the subscription (`watch/session-watch.md` § Starting a session watch)
    and the idle-notice relay (`watch/notices.md` § Handling idle notices); do not re-implement either.
    When it declines the subscription, pass on the reason it gives rather than
@@ -182,7 +180,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    ANSI-stripped lines; name the state those lines show (a boot dialog it
    cannot answer, a crash, a finished turn) rather than one they do not. A
    declined subscription writes no registry entry, so no report can ever
-   reach the record opened in step 3: cancel it with the decline reason
+   reach the record selected in step 2: cancel it with the decline reason
    (`task.ts cancel .hermit <T-id> --actor <requester> --reason-stdin`)
    and say whether the tail leaves the helper running unwatched or stuck,
    rather than leaving a commitment waiting on a report that cannot arrive.
