@@ -578,7 +578,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (decision.purpose === 'consent') throw new Error('consent_required');
         if (!decides) throw Object.assign(new Error('not_decider'), { needs: 'chat,user' });
       }
-      if (report && verb === 'block' && !flags['result-stdin']) flags = { ...flags, 'waiting-on': record.requester };
+      // An agent-requested record (a proposal) cannot wait on `agent`; its question goes to the admin.
+      if (report && verb === 'block' && !flags['result-stdin']) flags = { ...flags, 'waiting-on': record.requester === 'agent' ? 'admin' : record.requester };
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
@@ -769,7 +770,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : r.result.split(/\r?\n/, 1)[0].slice(0, 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : (r.result.split(/\r?\n/).find(line => line.trim()) ?? '').slice(0, 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

@@ -92,6 +92,15 @@ test('needs-input stalls on requester without setting a result; notes carry prov
   } finally { f.cleanup(); }
 });
 
+test('needs-input on an approved proposal waits on the admin', async () => {
+  const f = taskFixture(); try {
+    const opened = mutateTask(f.dir, 'open', undefined, { title: 'Proposal', done: 'Verified', requester: 'agent', kind: 'proposal', owner: author, decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 }), 'waiting-on': 'admin' }, '') as { id: string };
+    mutateTask(f.dir, 'decide', opened.id, { token: 'yes' }, '');
+    expect(await f.ok('report', args(opened.id, 'needs-input'), 'Which option?')).toMatchObject({ recorded: true });
+    expect(decodeTask(f.text(opened.id))).toMatchObject({ waiting_on: 'admin', stall_status: 'Which option?' });
+  } finally { f.cleanup(); }
+});
+
 for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'relay', 'no_channel', 'thread', 'shared', 'cap', 'no-task'] as const) {
   test.serial(`report delivery: ${scenario}`, async () => {
     const f = taskFixture();

@@ -38,6 +38,7 @@ export function storeHelperReport(
       return id;
     } catch (error) {
       fs.unlinkSync(file);
+      fs.rmSync(path.join(reports, `${id}.json`), { force: true });
       throw error;
     } finally { fs.closeSync(fd); }
   }
@@ -74,8 +75,8 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
       // Owner validation and storage run inside mutateTask's writer lock. The
       // original transitions remain the sole owners of result/consent logic.
       const mutation: { verb: string; flags: TaskFlags; input: string } = {
-        result: { verb: 'block', flags: { 'result-stdin': true }, input: text },
-        'needs-input': { verb: 'block', flags: { 'waiting-on': '', 'status-line': text.trim().split(/\r?\n/, 1)[0], next: 'Requester response' }, input: text },
+        result: { verb: 'block', flags: { 'result-stdin': true, actor: tag }, input: text },
+        'needs-input': { verb: 'block', flags: { 'status-line': text.trim().split(/\r?\n/, 1)[0], next: 'Requester response', actor: tag }, input: text },
         note: { verb: 'note', flags: { actor: tag }, input: `${tag} ${text}` },
       }[kind as 'result' | 'needs-input' | 'note'];
       mutateTask(dir, mutation.verb, id, mutation.flags, mutation.input, false, null, {

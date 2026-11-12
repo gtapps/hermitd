@@ -40,6 +40,9 @@ describe('Hermes channel formatting ports (2c7104fc04)', () => {
     expect(stripMarkdown("```python\nprint('hi')\n```")).toBe("print('hi')");
     expect(stripMarkdown('a\n\n\n\nb')).toBe('a\n\nb');
     expect(convertText('**bold** and [link](https://example.com)', 'telegram')).toBe('bold and link\nhttps://example.com');
+    const signIn = 'Sign in: https://claude.ai/oauth/authorize?code_challenge=Ab-_cd_-ef&state=*x*';
+    expect(convertText(signIn, 'telegram')).toBe(signIn);
+    expect(convertText('[link](https://example.com/a-_b_-c)', 'telegram')).toBe('link\nhttps://example.com/a-_b_-c');
   });
   // tests/gateway/test_mattermost.py, TestMattermostFormatMessage.
   test('Mattermost reduces images only', () => {
