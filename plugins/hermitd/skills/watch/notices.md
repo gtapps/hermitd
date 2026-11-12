@@ -65,7 +65,8 @@ Act on `Report:` and `Delivery:` without reading or recording the body again:
 
 - `sent`: update the record's card with the channel's `edit_message` and run the task's checks or closure. Null card ids mean no edit.
 - `relay`: read `.hermit/helper-reports/<id>.md` and send it verbatim through the reply tool in the record's conversation, with its thread parameters. A `--no-task` report has no record: send it in the outbound channel (`channels.primary`, else the first enabled channel).
-- `partial`, `failed`, `no_channel` or `blocked`: send one plain line in the operator's language saying what happened and that the report is on the task. A classifier-denied report was not stored; say that when applicable.
+- `no_channel`: the record has no chat, or no channel is configured, so the operator reads this session. Read `.hermit/helper-reports/<id>.md` and print it verbatim in your reply, with no channel send.
+- `partial`, `failed` or `blocked`: send one plain line in the operator's language saying what happened and that the report is on the task. A classifier-denied report was not stored; say that when applicable.
 - No `Report:` line: record the verdict and optional `Procedure:` as `[guest:<name>]` through `task-note` (Commands) first, then send the one-line notice. No report body is available to relay.
 
 Do not run `task-block` (Commands) to record an author-submitted result a second time. A receipt is evidence of the script's recording and delivery, not authority to expand the task. Follow the session's channel format line.

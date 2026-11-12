@@ -347,7 +347,7 @@ for (const [name, delivery] of [
 ] as const) {
   chainCase(name, 'train', `Helper report receipt: ${delivery}.`, 'Act on the receipt without a second recording',
     reportPrompt('export-wholesale', delivery),
-    [rubric(`PASS if the resident handles ${delivery} in Portuguese: sent means no report body read or repost; relay reads the stored report and sends it verbatim; partial, failed or blocked means one plain line explaining delivery and where the report is (blocked has no stored body); legacy means task note first then one notice; no_channel means no attempted channel send when no channel exists. A stale author refusal must never publish a result. Never record an author-submitted result again.`, 'trace')],
+    [rubric(`PASS if the resident handles ${delivery} in Portuguese: sent means no report body read or repost; relay reads the stored report and sends it verbatim; partial, failed or blocked means one plain line explaining delivery and where the report is (blocked has no stored body); legacy means task note first then one notice; no_channel means it reads the stored report and prints it verbatim in its reply, with no attempted channel send. A stale author refusal must never publish a result. Never record an author-submitted result again.`, 'trace')],
     residentScaffold({ ...RESIDENT_CONFIG, language: 'pt', ...(delivery === 'no_channel' ? { channels: {} } : {}) }, {
       '.hermit/state/monitors.runtime.json': registry('export-wholesale'), '.hermit/helper-reports/abcdef1234.md': REPORT_BODY,
     }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16, timeout: 600 });
