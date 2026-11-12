@@ -1,7 +1,3 @@
-* text=auto
-*.sh text eol=lf
-*.py text eol=lf
-
 # Concurrent feature branches both append entries to `## [Unreleased]` in each
 # plugin's CHANGELOG.md. Union-merge concatenates both sides instead of producing
 # conflict markers — correct semantic for append-only changelogs.
