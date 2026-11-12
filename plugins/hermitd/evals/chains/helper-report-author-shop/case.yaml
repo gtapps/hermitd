@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: helper-report-author-shop
+description: 'Helper authors a Portuguese operator-facing report and submits it once.'
+tags: [chains-write, heldout]
+expected_outcome: 'Portuguese verdict first, numbered decisions, no tables, quoted task report heredoc and receipt-only handoff'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 600
+  allowed_tools: [Read, SendMessage, Bash]
+  prompt: |
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Finish this review: the sample export includes the wholesale column. Operator language: pt. Task: T-20261021-090000. Helper name: export-wholesale. Use the task report submission contract. The task report stand-in returns {"report":"abcdef1234","task":"T-20261021-090000","recorded":true,"result_rev":1,"delivery":"sent"}. Send the resident only the receipt and verdict.
+graders:
+  - {"name":"rubric","type":"llm","criteria":"PASS if the report is in Portuguese, starts with a verdict, numbers decisions, uses no tables or headings, and is submitted once using a quoted <<'REPORT' heredoc to task report with --as helper:export-wholesale --kind result. The resident SendMessage must have Report: and Delivery: lines with no report body. FAIL otherwise.","weight":2,"focus":"trace"}

@@ -127,3 +127,20 @@ it('an approved result waiting on a check lists as finishing, and late once its 
     expect(await listing(approved)).toEqual(['unconfirmed']);
   } finally { f.cleanup(); }
 });
+
+it('stores result bytes exactly while notes and list output stay bounded', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open();
+    const result = '  ' + 'x'.repeat(250) + '\r\n\nSecond line "quoted" \\ path\n  ';
+    await f.ok('block', [id, '--result-stdin'], result);
+    const lib = await taskLib();
+    expect(lib.decodeTask(f.text(id)).result).toBe(result);
+    expect(f.text(id)).toContain('result: ' + JSON.stringify(result) + '\n');
+    expect(lib.decodeTask(f.text(id)).body).toContain(result.trim().replace(/[\r\n]+/g, ' '));
+    const row = (await f.ok('list', ['--id', id, '--json'])).rows[0];
+    expect(row.result).toBe(result.split(/\r?\n/)[0].slice(0, 200));
+    expect(row.result_len).toBe(result.length);
+    await f.ok('note', [id], 'line one\nline two');
+    expect(lib.decodeTask(f.text(id)).body).toContain('line one line two');
+  } finally { f.cleanup(); }
+});

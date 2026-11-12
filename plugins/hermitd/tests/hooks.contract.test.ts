@@ -1064,7 +1064,7 @@ Rota body.
     // Line-boundary truncation: every emitted pointer line is intact, not a
     // partial fragment of the field that follows it.
     for (const line of r.stdout.split('---Operator Instructions')[0].trimEnd().split('\n').slice(1)) {
-      expect(line).toMatch(/^(operator language|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir|Full state): /);
+      expect(line).toMatch(/^(operator language|channel format|Task policy|pending micro-proposals|outbound channel|latest task|operator context|proposals dir|Full state): /);
     }
   }));
 
@@ -1488,7 +1488,7 @@ describe('doctor-check', () => {
     expect(names.sort()).toEqual([
       'skill-guard', 'skill-lint', 'dream-fence', 'mcp-auth-gate', 'mcp-auth-gate',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',
-      'helper-report-relay', 'helper-report-relay', 'channel-responder-invoked',
+      'channel-responder-invoked',
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',
       'startup-context', 'stop-pipeline', 'stop-failure-stamp', 'subagent-cost', 'precompact-stamp',
     ].sort());

@@ -1,3 +1,4 @@
+import { submitHelperReport } from './lib/helper-reports';
 import { parseDecideArgs } from './lib/task-decide-args';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
     return;
   }
   const allowed: Record<string, string[]> = {
+    report: ['as', 'kind', 'no-task'],
     open: ['source', 'category', 'tags', 'waiting-on', 'decision', 'body-stdin', 'kind', 'note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     answer: ['local', 'chat', 'user', 'reply', 'generation', 'result-rev'],
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
@@ -28,10 +30,10 @@ async function main(): Promise<void> {
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
   const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot'].includes(verb);
-  const id = requiresId || (verb === 'answer' && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
+  const id = requiresId || (['answer', 'report'].includes(verb) && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');
-  const booleans = new Set(['local', 'note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check']);
+  const booleans = new Set(['local', 'note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check', 'no-task']);
   const flags: TaskFlags = {};
   while (args.length) {
     const token = args.shift()!;
@@ -49,7 +51,9 @@ async function main(): Promise<void> {
   }
   if (flags.id && !TASK_ID.test(String(flags.id))) throw new Error('invalid_id');
   let result: unknown;
-  if (verb === 'list') result = listTasks(dir, flags);
+  if (verb === 'report') {
+    result = await submitHelperReport(dir, id, flags, await Bun.stdin.text());
+  } else if (verb === 'list') result = listTasks(dir, flags);
   else if (verb === 'standup') {
     const days = flags.days === undefined ? 7 : Number(flags.days);
     if (!Number.isFinite(days) || days <= 0) throw new Error('invalid_days');

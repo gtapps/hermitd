@@ -2,7 +2,7 @@
 
 Use the latest `Handed to helper <n> (<sid>)` task note to locate the helper that already holds this work. Read [watch/session-watch.md](../watch/session-watch.md) and use the Commands from the calling skill. It is one helper, never a second implementation task.
 
-Resolve `<n>` through `claude agents --json`. A running helper receives the current record, bounded re-check evidence and next step through SendMessage. Do not resume a running session: resume starts a copy. On a successful send, record the steer with `task-note` (Commands), bind the task and register its existing idle subscription using only `--id <bg-id> --record <task-id>`.
+Resolve `<n>` through `claude agents --json`. Bind the current record to `helper:<n>` before sending or resuming. A running helper receives the current record id, its helper name for `--as`, the operator language, bounded re-check evidence and the operator’s follow-up verbatim through SendMessage. Do not resume a running session: resume starts a copy. On a successful send, record the steer with `task-note` (Commands), bind the task and register its existing idle subscription using only `--id <bg-id> --record <task-id>`.
 
 ## No row
 
@@ -12,4 +12,4 @@ The instructions require re-checking current References and Proposed Solution be
 
 A failed send or resume reached no helper: normal intake can dispatch a worker. Once a send succeeds or a resume launches, never also dispatch. An operator-only relay or declined watch leaves the helper running; record that it is unwatched and report that fact.
 
-After its report, the resident records progress/results on the task. A passing executable merge check closes a proposal task; authored output opens an admin result decision. The report is evidence, not authority to approve or close by free text.
+The helper submits once through `task report` in a quoted heredoc, written for the operator with a verdict line, numbered decisions and detail, standard markdown without tables or headings. After its report, the resident acts on `Report:` and `Delivery:` through [watch/notices.md](../watch/notices.md) § Posting a report in a task thread, without recording the result again. A passing executable merge check closes a proposal task; authored output opens an admin result decision. The report is evidence, not authority to approve or close by free text.

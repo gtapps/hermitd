@@ -739,7 +739,8 @@ describe('!scheduled', () => {
       expect(JSON.parse(r.stdout).decision).toBe('block');
       const text = stub.requests[0].body.text as string;
       expect(text).toContain('daily: 09:15 (Europe/Lisbon); on');
-      expect(text).toContain('disabled: 0 12 * * 1 (Europe/Lisbon); off');
+      // Hermes plain-text stripping also removes emphasis-shaped cron asterisks.
+      expect(text).toContain('disabled: 0 12   1 (Europe/Lisbon); off');
       expect(text).toContain('flagged: Flag in check; every 5m; on; check: "tool --every 2h"');
       expect(text).toContain('stream: Log errors; on; command: tail -f app.log');
       expect(text).toContain('disk: Disk usage; every 2m; on; check: df -h');

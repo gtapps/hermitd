@@ -41,7 +41,7 @@ export type Task = Record<typeof requiredStrings[number], string> & Record<typeo
 // An agent id is lowercase hex (probed shape: `a5670124e38fb50cb`); the charset keeps
 // the `worker:*` list wildcard, or any other non-id string, from being stored as an owner.
 const WORKER_OWNER = /^worker:[0-9a-f]{8,}$/;
-const HELPER_OWNER = /^helper:[A-Za-z0-9._-]{1,64}$/;
+export const HELPER_OWNER = /^helper:[A-Za-z0-9._-]{1,64}$/;
 const validOwner = (value: string) => value === 'resident' || WORKER_OWNER.test(value) || HELPER_OWNER.test(value);
 // Open conversation records held by the resident, a worker, or a spawned helper.
 // Records own real threads; chats without threads may share several records.
@@ -111,7 +111,7 @@ export function encodeTask(record: Task): string {
   const keys = [...requiredStrings, ...nullableStrings, ...booleans, 'tags', 'claims', 'result_rev'] as const;
   // A bare `null` reads back as the null literal, so the string "null" must stay quoted.
   const encode = (value: unknown) => typeof value === 'string' ? (clean(value) === 'null' ? '"null"' : serializeValue(clean(value))) : serializeValue(value);
-  return '---\n' + keys.map(key => `${key}: ${encode(record[key])}`).join('\n') + '\n---\n' + record.body;
+  return '---\n' + keys.map(key => `${key}: ${key === 'result' && record.result !== null ? JSON.stringify(record.result) : encode(record[key])}`).join('\n') + '\n---\n' + record.body;
 }
 
 export function readTasks(dir: string): Task[] {
@@ -447,7 +447,7 @@ function closeLearning(dir: string, record: Task): { next?: string } {
   return {};
 }
 
-export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false, senderParent: string | null = null): unknown {
+export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false, senderParent: string | null = null, report?: { author: string; store: (record: Task) => void }): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
@@ -551,6 +551,10 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const found = records.find(r => r.id === id);
       if (!found) throw new Error('not_found');
       record = found;
+      if (report) {
+        if (record.status !== 'open') throw new Error('closed');
+        if (report.author === 'worker' ? !record.owner.startsWith('worker:') : report.author !== record.owner) throw new Error('not_owner');
+      }
       if (verb === 'check-snapshot') return { check: record.check, result_rev: record.result_rev, status: record.status };
       if (verb === 'check-result' && (record.status !== 'open' || !record.check || !/^\d+$/.test(flag(flags, 'result-rev') ?? '') || Number(flags['result-rev']) !== record.result_rev)) throw new Error('stale_check');
       const muteOnly = verb === 'note' && !input.trim() && 'muted' in flags && Object.keys(flags).every(k => k === 'muted' || k === 'actor');
@@ -574,6 +578,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         if (decision.purpose === 'consent') throw new Error('consent_required');
         if (!decides) throw Object.assign(new Error('not_decider'), { needs: 'chat,user' });
       }
+      if (report && verb === 'block' && !flags['result-stdin']) flags = { ...flags, 'waiting-on': record.requester };
       const actor = flag(flags, 'actor') ?? 'hermit';
       const line = clean(input.trim());
       if (verb === 'note') {
@@ -647,7 +652,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         }
         if (flags['result-stdin']) {
           if (!line) throw new Error('empty');
-          record.result = line; record.result_rev++; record.result_at = now;
+          record.result = input; record.result_rev++; record.result_at = now;
           record.waiting_on = flag(flags, 'waiting-on') ?? record.approver ?? record.requester;
           append(record, 'Outcome', actor, line, now);
           digest = { id, listing: 'unconfirmed', result_rev: record.result_rev, waiting_on: record.waiting_on };
@@ -705,9 +710,10 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       digest = { ...(digest as object), ...closeLearning(dir, record) };
     }
     const encoded = encodeTask(record);
+    report?.store(record);
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
-    if (progress) bindTaskTurn(dir, record.id);
+    if (progress && !report?.author.startsWith('helper:')) bindTaskTurn(dir, record.id);
     if (event && appendEvent(dir, event)) digest = { ...(digest as object), warnings: ['metrics_append_failed'] };
     return digest;
   } finally { releaseLock(lock); }
@@ -763,7 +769,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : r.result.split(/\r?\n/, 1)[0].slice(0, 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

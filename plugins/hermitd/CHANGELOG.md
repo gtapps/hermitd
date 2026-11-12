@@ -2,9 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- `task report` stores and records author-submitted operator reports, delivers them to the task’s chat and thread, and returns a delivery receipt.
+- Protected `channels.<key>.format` selects channel conversion and session formatting hints.
+
+### Changed
+
+- Core sends use Hermes Agent markdown conversion and fence-safe splitting; Discord task reports stop after eight messages with a localized notice pointing to the task.
+- Task results preserve multiline text exactly; `task list` returns a bounded preview and full result length.
+- Helpers and workers write reports for the operator and return receipts for resident follow-up.
+
 ### Fixed
 
+- Helper reports are no longer denied and retyped by the resident in auto mode; the author’s inline submission is reviewed before storage and delivery.
 - Sites that hide a control at phone width are usable in the signed-in browser by widening its viewport.
+
+### Upgrade Instructions
+
+1. If `.hermit/helper-prompt.md` is non-empty and does not already mention `task report`, replace only its report section with the report section from the shipped `prompts/helper.md`. Preserve every other line and tell the operator what changed. Skip an empty, absent or already-updated file.
+2. If `.hermit/resident-prompt.md` is non-empty and does not already mention `task report`, replace only its `GUEST_REPORT:` rule with the shipped rule from `prompts/resident.md`. Preserve every other line and tell the operator what changed. Skip an empty, absent or already-updated file.
+3. The new prompts take effect at the restart that follows the update.
+
+**Leftover check:** Custom operator prompts and procedures may still write helper report files or ask the resident to record and post them. Find those instructions, ask once before changing anything beyond steps 1 and 2, and replace them with author-run `task report` submission and receipt handling.
 
 ## [1.4.31] - 2026-11-11
 

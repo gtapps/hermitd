@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { CHANNEL_FORMATS } from './lib/channel-format';
 import { TABLE, type Spec } from './lib/config-read';
 import { parseDuration } from './lib/time';
 import path from 'node:path';
@@ -414,6 +415,9 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       }
       if (ch.plugin !== undefined && (typeof ch.plugin !== 'string' || !/^[\w-]+$/.test(ch.plugin))) {
         errors.push(`channels.${name}.plugin: must be a plugin name matching ^[\\w-]+$`);
+      }
+      if (ch.format !== undefined && !CHANNEL_FORMATS.includes(ch.format)) {
+        errors.push(`channels.${name}.format: must be one of ${CHANNEL_FORMATS.join(', ')}`);
       }
       if (ch.send_script !== undefined) {
         const error = validatePrecheckValue(ch.send_script);

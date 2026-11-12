@@ -11,7 +11,7 @@ import { runScript, runPinnedScript, processRunning, type RunOptions } from './h
 import { setupWorkdir, writeConfig, type Workdir } from './helpers/workdir';
 import { startHttpStub } from './helpers/http-stub';
 import { rows as channelRows, dbExists } from '../scripts/lib/channel-log';
-import { sendOperatorNotice, splitMessage, sendToChannel, sendToOwnedChat } from '../scripts/lib/channel-send';
+import { sendOperatorNotice, sendToChannel, sendToOwnedChat } from '../scripts/lib/channel-send';
 import { channelHealthPath } from '../scripts/lib/channel-health';
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
@@ -80,7 +80,7 @@ describe('channel-send CLI', () => {
         env: { HERMIT_TELEGRAM_API_URL: stub.url },
       });
       expect(r.exitCode).toBe(0);
-      expect(stub.requests.map((q) => q.body.text)).toEqual([first, second]);
+      expect(stub.requests.map((q) => q.body.text)).toEqual([`${first}\n (1/2)`, `${second} (2/2)`]);
       const rows = channelRows(hermit(wd.dir)).rows;
       expect(rows.length).toBe(1);
       expect(rows[0].text).toBe(`${first}\n\n${second}`);
@@ -1062,30 +1062,6 @@ describe('channel-send CLI --notice', () => {
   });
 });
 
-describe('splitMessage', () => {
-  test('keeps text within the limit as one part', () => {
-    expect(splitMessage('short', 10)).toEqual(['short']);
-    expect(splitMessage('', 10)).toEqual(['']);
-  });
-
-  test('prefers a blank line, then a line break, then a space, then a hard cut', () => {
-    expect(splitMessage('aaa\n\nbb\ncc dd', 10)).toEqual(['aaa', 'bb\ncc dd']);
-    expect(splitMessage('aaa\nbbb cc', 8)).toEqual(['aaa', 'bbb cc']);
-    expect(splitMessage('aaa bbbbbb', 8)).toEqual(['aaa', 'bbbbbb']);
-    expect(splitMessage('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij']);
-  });
-
-  test('drops only the separator, keeping the next part\'s indentation', () => {
-    expect(splitMessage('aaa\n  bb', 6)).toEqual(['aaa', '  bb']);
-  });
-
-  test('never cuts a surrogate pair in half', () => {
-    const parts = splitMessage('abc😀def', 4);
-    expect(parts).toEqual(['abc', '😀de', 'f']);
-    expect(parts.join('')).toBe('abc😀def');
-  });
-});
-
 describe('channel-send rate limits', () => {
   type Platform = 'discord' | 'telegram';
   interface Reply {
@@ -1292,7 +1268,7 @@ describe('channel-send rate limits', () => {
     const text = `${'a'.repeat(1500)}\n\n${'b'.repeat(1500)}`;
     const r = await exercise('discord', [], {}, text);
     expect(r.result).toEqual({ ok: true, status: 200 });
-    expect(r.requests.map((q) => q.body.content)).toEqual(['a'.repeat(1500), 'b'.repeat(1500)]);
+    expect(r.requests.map((q) => q.body.content)).toEqual(['a'.repeat(1500) + '\n (1/2)', 'b'.repeat(1500) + ' (2/2)']);
     for (const request of r.requests) expect(request.body.allowed_mentions).toEqual({ parse: ['users'], replied_user: true });
     expect(r.rows.map((row: any) => row.text)).toEqual([text]);
   });
@@ -1643,4 +1619,55 @@ test('intended Findings destination preserves sensitive diagnostic text', async 
     expect(result.maintainer).toMatchObject({ route: 'findings', delivered: true });
     expect(findings(wd)).toContain('Diagnostic detail for the maintainer');
   } finally { wd.cleanup(); }
+});
+
+test('core egress formats built-ins and passes Telegram threads', async () => {
+  const wd = setupChannelWorkdir();
+  const stub = startHttpStub();
+  try {
+    const result = await withApi(stub.url, () => sendToOwnedChat(hermit(wd.dir), 'telegram:12345', '**hello** [link](https://example.com)', { thread: '42' }));
+    expect(result.ok).toBe(true);
+    expect(stub.requests[0].body).toMatchObject({ text: 'hello link\nhttps://example.com', message_thread_id: '42' });
+  } finally { stub.stop(); wd.cleanup(); }
+});
+
+test('custom send scripts receive converted unsplit text only when declared', async () => {
+  const wd = setupWorkdir();
+  try {
+    write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > text.out\n');
+    fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+    for (const format of [undefined, 'telegram']) {
+      const text = '**bold** ' + 'x'.repeat(5000);
+      const result = await sendToChannel(hermit(wd.dir), text, { config: { channels: { custom: { send_script: 'send.sh', format } } }, target: { id: 'custom', chat_id: 'C1' } });
+      expect(result.ok).toBe(true);
+      expect(fs.readFileSync(path.join(wd.dir, 'text.out'), 'utf8')).toBe(format ? text.replace('**bold**', 'bold') : text);
+    }
+  } finally { wd.cleanup(); }
+});
+
+test('Discord egress converts tables and splits long fences without a notice cap', async () => {
+  const wd = setupWorkdir();
+  const state = path.join(wd.dir, 'discord');
+  fs.mkdirSync(state);
+  fs.writeFileSync(path.join(state, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
+  const config = { channels: { discord: { state_dir: state } } };
+  const posts: string[] = [];
+  const server = Bun.serve({ port: 0, async fetch(req) { posts.push((await req.json() as any).content); return Response.json({ id: 'ok' }); } });
+  const previous = process.env.HERMIT_DISCORD_API_URL;
+  process.env.HERMIT_DISCORD_API_URL = server.url.toString().replace(/\/$/, '');
+  try {
+    const opts = { config, target: { id: 'discord', chat_id: 'C1' } };
+    expect((await sendToChannel(hermit(wd.dir), '| Name | Score |\n|---|---|\n| Alice | 95 |', opts)).ok).toBe(true);
+    expect(posts.shift()).toBe('**Alice**\n• Score: 95');
+    expect((await sendToChannel(hermit(wd.dir), '```ts\n' + 'const a = 1;\n'.repeat(2000) + '```', opts)).ok).toBe(true);
+    expect(posts.length).toBeGreaterThan(8);
+    posts.forEach((part, i) => {
+      expect(part.match(/```/g)?.length).toBe(2);
+      expect(part.endsWith(` (${i + 1}/${posts.length})`)).toBe(true);
+    });
+  } finally {
+    if (previous === undefined) delete process.env.HERMIT_DISCORD_API_URL;
+    else process.env.HERMIT_DISCORD_API_URL = previous;
+    server.stop(true); wd.cleanup();
+  }
 });

@@ -374,6 +374,7 @@ describe('literal-path hermitd-run grants', () => {
     'Bash(.hermit/bin/hermitd-run channel-send *)',
     'Bash(.hermit/bin/hermitd-run observations observe *)',
     'Bash(.hermit/bin/hermitd-run task note *)',
+  'Bash(.hermit/bin/hermitd-run task report *)',
     'Bash(.hermit/bin/hermitd-run task block *)',
     'Bash(.hermit/bin/hermitd-run task close *)',
     'Bash(.hermit/bin/hermitd-run rc-server start)',
@@ -396,6 +397,7 @@ describe('literal-path hermitd-run grants', () => {
   test('task resolver grants expose only the annotation verbs', () => {
     expect(HERMIT_ALLOW.filter((entry: string) => entry.includes('hermitd-run task '))).toEqual([
       'Bash(.hermit/bin/hermitd-run task note *)',
+  'Bash(.hermit/bin/hermitd-run task report *)',
       'Bash(.hermit/bin/hermitd-run task block *)',
       'Bash(.hermit/bin/hermitd-run task close *)',
       'Bash(.hermit/bin/hermitd-run task answer *)',

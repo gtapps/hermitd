@@ -20,6 +20,7 @@ export const PROTECTED_PATHS: readonly string[] = [
   'channels.<name>.operators',
   'channels.<name>.passive_chats',
   'channels.<name>.instructions',
+  'channels.<name>.format',
   'channels.<name>.state_dir',
   'channels.<name>.marketplace',
   'channels.<name>.enabled',

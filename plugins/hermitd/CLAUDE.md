@@ -10,7 +10,7 @@ Standard Claude Code plugin layout (`agents/`, `skills/`, `hooks/hooks.json`, `s
 
 ## Subagent delegation
 
-The shipped hermit is main-as-orchestrator: the long-lived main session delegates a sub-step to an isolated-context subagent when the step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict. A dispatch costs the `CLAUDE.md`/`CLAUDE.local.md` re-seed plus at least two main turns at full context (dispatch and completion ingestion), so batch dispatches and keep trivial sub-steps inline. A delegated step returns a verdict plus an optional `operator_message`; main owns `AskUserQuestion` and operator notification. The operator-facing version is in `prompts/resident.md` § Rules.
+The shipped hermit is main-as-orchestrator: the long-lived main session delegates a sub-step to an isolated-context subagent when the step's intermediate context dwarfs its conclusion, it needs no operator contact mid-flight, and main needs only the verdict. A dispatch costs the `CLAUDE.md`/`CLAUDE.local.md` re-seed plus at least two main turns at full context (dispatch and completion ingestion), so batch dispatches and keep trivial sub-steps inline. Helpers and workers deliver their own task reports through `task report` and return a verdict and receipt. Main owns `AskUserQuestion`, proactive notices and receipt follow-up. The operator-facing version is in `prompts/resident.md` § Rules.
 
 ## Per-project state
 

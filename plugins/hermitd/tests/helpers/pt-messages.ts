@@ -6,6 +6,7 @@ import path from 'node:path';
 import { EN, enHash, buildMessages, messagesPath, type MessageKey } from '../../scripts/lib/messages';
 
 const PT_TEXT: Record<MessageKey, string> = {
+  task_report_truncated: 'O resto deste relatório está na tarefa.',
   transcript_echo: '🎙️ "{text}"',
   dream_flagged: 'A arrumação noturna da memória falhou uma verificação de segurança. As alterações mantêm-se; diga "desfaz o sonho" para as reverter.',
   pause_reason_budget: 'um limite de orçamento',

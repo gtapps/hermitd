@@ -179,3 +179,7 @@ When adding a new hook script, import `hermitDir` from `./lib/cc-compat` and com
 | `state/operator-auto-mode.json` | Generated at launch with a fingerprint of operator auto-mode settings, used by the watchdog to detect pending rule changes. |
 | `state/helper-system-prompt.md` | Generated at each start from `prompts/helper.md` and `prompts/rules.md`, or from a non-empty `helper-prompt.md` with `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` filled in; passed to spawn-session helpers as their appended system prompt; gated. |
 | `helper-prompt.md` | Optional operator-owned replacement for the shipped helper prompt and rules; never written by the plugin; gated. |
+
+## Author-submitted task reports
+
+`helper-reports/` is core-owned, folder-shared infrastructure outside the raw/compiled knowledge layout. `task report` creates immutable `<id>.md` bodies and `<id>.json` task/author bindings under the task writer lock; helpers and workers do not choose report paths or edit stored bodies. Both the directory and report file must resolve inside the pinned state root. Results retain the exact submitted text as a JSON-quoted task scalar. The resident consumes the receipt and reads the body only for a reply-only channel’s relay fallback. Optional `<id>.procedure.md` files carry reusable procedure evidence for close-time learning.
