@@ -787,9 +787,9 @@ function commitPendingCredential(): void {
   }
 
   // Re-checked here, not trusted from the mint: the mint ran minutes to hours ago.
-  // Only a lapsed verdict drops it. No verdict commits anyway: nothing retries a
-  // deferred commit, the staging is fresh by the check above, and this flow runs only
-  // after the live login was found dead.
+  // Only a lapsed verdict drops it. No verdict commits anyway: the mint read this
+  // staging as usable before pointing at it, the staleness check above bounds how long
+  // ago that was, and the live file is backed up before the merge.
   const { state } = loginStatus(stagedDir);
   if (state === 'lapsed') {
     clear();
@@ -823,7 +823,7 @@ function commitPendingCredential(): void {
     spawnSync(process.execPath, [SETTINGS_EDIT_SCRIPT, path.join(HERMIT_ROOT, 'config.json'), 'set', 'auth_mode', 'login'], {
       stdio: 'ignore',
     });
-    appendEvent('credential-committed', 'login');
+    appendEvent('credential-committed', state === 'usable' ? 'login' : 'login (no status verdict)');
   } catch (e) {
     // The write is atomic, so a failure leaves the live file as it was and the
     // restart proceeds on the credential the hermit already had.

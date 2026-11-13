@@ -405,8 +405,8 @@ describe('staged credential commit', () => {
     expect(events).not.toContain('credential-committed');
   }));
 
-  // No verdict on a fresh staged sign-in commits it: nothing would retry a deferred
-  // commit, and this flow only runs once the live login was found dead.
+  // No verdict on a fresh staged sign-in commits it: the mint already read it usable,
+  // and the staleness bound limits how old that reading can be.
   test('no verdict on a fresh staged login still commits it', withHermit(async (h) => {
     writeConfig(h);
     writeFakeTmux(h, 1);
@@ -417,8 +417,10 @@ describe('staged credential commit', () => {
     expect(r.exitCode).toBe(0);
 
     expect(readJson(path.join(configDir, '.credentials.json')).claudeAiOauth.accessToken).toBe('sk-ant-oat01-freshfreshfresh');
+    expect(readJson(path.join(configDir, '.credentials.json.pre-login.bak')).claudeAiOauth.accessToken).toBe('old-one');
+    expect(fs.existsSync(stagedDir)).toBe(false);
     expect(fs.existsSync(state(h, 'pending-credential.json'))).toBe(false);
-    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('credential-committed');
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('no status verdict');
   }));
 
   // `usable` only says the file carries a token, so an abandoned staging still reads
