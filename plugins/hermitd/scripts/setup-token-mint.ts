@@ -52,10 +52,10 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   AuthMode,
-  credentialsFilePath,
   defaultConfigDir,
   detectAuthModeFromVolume,
   envAuthPresent,
+  fileLoginUsable,
   installToken,
   isPlausibleToken,
   loginStatus,
@@ -456,7 +456,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   // browser-completed grace window, then ask for a code — is the same in both modes.
   const captured = () =>
     AUTH_TARGET === 'login'
-      ? stagedLoginUsable()
+      ? fileLoginUsable(LOGIN_STAGING_DIR)
         ? 'staged'
         : null
       : extractToken(readStream());
@@ -504,12 +504,6 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   await io.notify(MESSAGES.t('mint_signed_in', { date: friendlyDate(MESSAGES, record.expires_at) }));
   console.log(JSON.stringify({ ok: true, expires_at: record.expires_at }));
   return 0;
-}
-
-/** The sign-in has landed in staging. The file gate keeps the poll from spawning
- *  `claude auth status` every tick while the operator has not signed in yet. */
-function stagedLoginUsable(): boolean {
-  return fs.existsSync(credentialsFilePath(LOGIN_STAGING_DIR)) && loginStatus(LOGIN_STAGING_DIR).state === 'usable';
 }
 
 /**
@@ -676,7 +670,7 @@ async function main(): Promise<void> {
     case 'await-token-and-install': {
       if (AUTH_TARGET === 'login') {
         const staged = await waitFor(
-          () => (stagedLoginUsable() ? true : null),
+          () => (fileLoginUsable(LOGIN_STAGING_DIR) ? true : null),
           TOKEN_TIMEOUT_MS,
         );
         if (!staged) {

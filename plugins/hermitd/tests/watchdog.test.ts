@@ -1378,6 +1378,24 @@ test('login status unavailable + an auth stamp → no relay', withHermit(async (
   expect(events).not.toContain('reauth-relay');
 }));
 
+// A quiet tick in login mode never checked the login, so it cannot end the unreachable
+// suppression on its own: a restart of a dead-login agent would otherwise re-arm a relay
+// nobody can answer.
+test('login mode: the unreachable stamp clears only once the login reads usable', withHermit(async (h) => {
+  writeConfig(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  const unreachable = state(h, 'relay-unreachable.json');
+  fs.writeFileSync(unreachable, JSON.stringify({ at: new Date().toISOString() }));
+  const configDir = writeStoredLogin(h, '');
+  const env = { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' };
+  expect((await watchdog(h, 'run', { env })).exitCode).toBe(0);
+  expect(fs.existsSync(unreachable)).toBe(true);
+  writeStoredLogin(h);
+  expect((await watchdog(h, 'run', { env })).exitCode).toBe(0);
+  expect(fs.existsSync(unreachable)).toBe(false);
+}));
+
 // The check runs only when a failed turn gives a reason: a quiet tick spawns nothing,
 // even over a dead login, which the next failed turn will surface.
 test('no auth stamp → login status is not checked', withHermit(async (h) => {

@@ -211,7 +211,9 @@ export function loginStatus(
   // Anything that makes Claude Code ignore the stored login is stripped, so the verdict is about the login.
   for (const key of [...ENV_AUTH_VARS, TOKEN_ENV_VAR]) delete env[key];
   if (configDir !== defaultConfigDir()) env.CLAUDE_CONFIG_DIR = configDir;
-  const r = spawnSync('claude', ['auth', 'status'], { env, encoding: 'utf8', timeout: 3000 });
+  // Room for the refresh the command runs on an expired access token: a kill mid-refresh
+  // reads as unknown and can drop a refresh token the server has already rotated.
+  const r = spawnSync('claude', ['auth', 'status'], { env, encoding: 'utf8', timeout: 15000 });
   if (r.error || r.signal || (r.status !== 0 && r.status !== 1)) return unknown;
   let out: any;
   try {
@@ -235,9 +237,17 @@ export function loginStatus(
  */
 export function detectAuthModeFromVolume(configDir: string): 'login' | 'token' | null {
   if (readTokenValue(configDir) !== null) return 'token';
-  // The file gate keeps a macOS Keychain login out: the relay installs into the file.
-  if (fs.existsSync(credentialsFilePath(configDir)) && loginStatus(configDir).state === 'usable') return 'login';
+  if (fileLoginUsable(configDir)) return 'login';
   return null;
+}
+
+/**
+ * A usable claude.ai login held in `configDir`'s credentials file. The file gate keeps a
+ * macOS Keychain login out (the relay installs into the file) and skips the
+ * `claude auth status` spawn while nothing has been written yet.
+ */
+export function fileLoginUsable(configDir: string): boolean {
+  return fs.existsSync(credentialsFilePath(configDir)) && loginStatus(configDir).state === 'usable';
 }
 
 /**

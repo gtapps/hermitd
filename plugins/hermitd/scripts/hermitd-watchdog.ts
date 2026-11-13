@@ -2133,9 +2133,8 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     // that login reading usable says nothing about the token the hermit runs on.
     // Checked only while a notice is outstanding, so healthy ticks spawn nothing.
     const configDir = defaultConfigDir();
-    if (ws.lapsed_login_notified_at
-      && resolveAuthMode(config, configDir, envAuthOwnsCredential(sessionEnvAuth)) === 'login'
-      && loginStatus(configDir).state === 'usable') {
+    const loginMode = resolveAuthMode(config, configDir, envAuthOwnsCredential(sessionEnvAuth)) === 'login';
+    if (ws.lapsed_login_notified_at && loginMode && loginStatus(configDir).state === 'usable') {
       delete ws.lapsed_login_notified_at;
       appendEvent('lapsed-login-recovered', 'claude.ai login usable again', world);
       recovered = true;
@@ -2144,14 +2143,14 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     // signal that ends the lapse — otherwise a hermit whose channel came back would
     // stay silently suppressed until the 24h age-out.
     //
-    // Keyed on the reauth verdict rather than on a stored login: 'idle' means the
-    // credential this hermit actually runs on is neither expired nor lapsed, in
-    // whatever mode. loginStatus() alone would never clear it in token mode,
-    // where the stored login is not the credential the hermit runs on.
-    if (reauth === 'idle') {
-      try {
-        world.files.rm(path.join(world.paths.stateDir, 'relay-unreachable.json'));
-      } catch {}
+    // In token mode 'idle' means the token is neither expired nor reported dead. In
+    // login mode 'idle' also covers a tick with no failed turn, where the login went
+    // unchecked, so the login itself has to read usable before the suppression ends;
+    // checked only while a stamp exists, so healthy ticks spawn nothing.
+    const unreachable = path.join(world.paths.stateDir, 'relay-unreachable.json');
+    if (reauth === 'idle' && world.files.readJson(unreachable) !== null
+      && (!loginMode || loginStatus(configDir).state === 'usable')) {
+      world.files.rm(unreachable);
     }
     if (recovered) writeWatchdogState(ws, world);
   }
