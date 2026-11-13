@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SCRIPTS_DIR } from './helpers/run';
+import { writeFileAtomic } from '../scripts/lib/md-write';
 
 async function until<T>(read: () => T | undefined): Promise<T> {
   const deadline = Date.now() + 5000;
@@ -52,14 +53,14 @@ function state(project: string): any {
 }
 
 test('initial, change, restart and edited checks', () => fixture(async project => {
-  fs.writeFileSync(path.join(project, 'value'), 'one');
+  writeFileAtomic(path.join(project, 'value'), 'one');
   const check = 'printf . >> ticks; cat value';
   let watch = start(project, check);
   try {
     await until(() => watch.lines.length === 1 && state(project)?.state === 'one' ? true : undefined);
     await until(() => fs.readFileSync(path.join(project, 'ticks'), 'utf8').length >= 3 ? true : undefined);
     expect(watch.lines).toEqual(['initial: one']);
-    fs.writeFileSync(path.join(project, 'value'), 'two');
+    writeFileAtomic(path.join(project, 'value'), 'two');
     await until(() => watch.lines.length === 2 ? true : undefined);
     expect(watch.lines).toEqual(['initial: one', 'changed: two']);
   } finally { await watch.stop(); }
@@ -68,7 +69,7 @@ test('initial, change, restart and edited checks', () => fixture(async project =
     const ticks = fs.readFileSync(path.join(project, 'ticks'), 'utf8').length;
     await until(() => fs.readFileSync(path.join(project, 'ticks'), 'utf8').length >= ticks + 2 ? true : undefined);
     expect(watch.lines).toEqual([]);
-    fs.writeFileSync(path.join(project, 'value'), 'three');
+    writeFileAtomic(path.join(project, 'value'), 'three');
     await until(() => watch.lines.length === 1 ? true : undefined);
     expect(watch.lines).toEqual(['changed: three']);
   } finally { await watch.stop(); }
@@ -80,18 +81,18 @@ test('initial, change, restart and edited checks', () => fixture(async project =
 }));
 
 test('pipefail failures keep baseline and recover once', () => fixture(async project => {
-  fs.writeFileSync(path.join(project, 'mode'), 'ok');
+  writeFileAtomic(path.join(project, 'mode'), 'ok');
   const check = 'if [ "$(cat mode)" = ok ]; then echo ready; else false | cat; fi';
   const watch = start(project, check);
   try {
     await until(() => watch.lines.length === 1 ? true : undefined);
-    fs.writeFileSync(path.join(project, 'mode'), 'fail');
+    writeFileAtomic(path.join(project, 'mode'), 'fail');
     await until(() => watch.lines.length === 2 ? true : undefined);
     expect(watch.lines).toEqual(['initial: ready', 'failing: 1']);
     expect(state(project).state).toBe('ready');
     await until(() => state(project)?.failures >= 4 ? true : undefined);
     expect(watch.lines).toHaveLength(2);
-    fs.writeFileSync(path.join(project, 'mode'), 'ok');
+    writeFileAtomic(path.join(project, 'mode'), 'ok');
     await until(() => watch.lines.length === 3 ? true : undefined);
     expect(watch.lines[2]).toBe('recovered: ready');
   } finally { await watch.stop(); }
@@ -128,11 +129,11 @@ test('a check whose descendant keeps stdout open still times out', () => fixture
 
 test('empty state, multiline output, and WATCH_LAST_STATE', () => fixture(async project => {
   const watch = start(project, 'printf "%s" "$WATCH_LAST_STATE" > last; cat value');
-  fs.writeFileSync(path.join(project, 'value'), '');
+  writeFileAtomic(path.join(project, 'value'), '');
   try {
     await until(() => watch.lines.length === 1 ? true : undefined);
     expect(watch.lines).toEqual(['initial: ']);
-    fs.writeFileSync(path.join(project, 'value'), 'one\ntwo');
+    writeFileAtomic(path.join(project, 'value'), 'one\ntwo');
     await until(() => watch.lines.length === 2 ? true : undefined);
     expect(watch.lines[1]).toBe('changed: one\\ntwo');
     await until(() => fs.readFileSync(path.join(project, 'last'), 'utf8') === 'one\ntwo' ? true : undefined);
