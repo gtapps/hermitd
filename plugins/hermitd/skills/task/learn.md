@@ -17,7 +17,7 @@ Use this order:
 3. Add a topical `references/` file to that learned skill and link it from SKILL.md.
 4. Create a class-level skill only when those homes do not fit. A name that only fits this task is wrong.
 
-Write the procedure first. A pitfall is a rule plus one clause of why, attached to its step. State when the rule applies. No dates, PR numbers, quoted chat or incident narrative. Put each rule once; fix wrong text in place and never append a duplicate. Keep reusable inputs, workflow and result in SKILL.md and conditional detail in references. Use skill-creator's Skill Writing Guide when installed, otherwise [Anthropic's skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices).
+Write the procedure first, as concrete steps: name the exact command, path or `hermitd-run` verb the closed task showed working, not general method advice, which loads on every matching task and can displace the agent's own approach. A pitfall is a rule plus one clause of why, attached to its step. State when the rule applies. No dates, PR numbers, quoted chat or incident narrative. Put each rule once; fix wrong text in place and never append a duplicate. Keep reusable inputs, workflow and result in SKILL.md and conditional detail in references. Use skill-creator's Skill Writing Guide when installed, otherwise [Anthropic's skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices).
 
 Do not capture environment failures, negative claims about tools, transient errors, one-off narratives or failures that never resolved.
 
