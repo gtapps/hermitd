@@ -8,6 +8,7 @@
 - `hermitd update` in Docker rebuilds the image first when the running Claude Code is below a plugin's range, then updates the held plugins on the new image before the restart.
 - Login-mode credential checks use `claude auth status` instead of reading `.credentials.json`; a missing or unreadable stored login counts as lapsed, and a check that gives no verdict starts nothing and shows in doctor as a failed probe
 - Close-time skill reviews write concrete steps the closed task showed working instead of general method advice, and task procedure reports record the exact commands or tools used
+- A request to reconnect a tool no longer sends a sign-in link to chat; the agent asks an admin to finish it with `/mcp` at its terminal, since Claude Code refuses a callback pasted in a session with a channel
 
 ### Fixed
 

@@ -279,6 +279,8 @@ A source that's missing or unreadable on disk becomes `null` for its section —
 
 **Privacy:** the destination is *your* endpoint — this is operator-directed egress (a fleet dashboard, your own monitoring), never a phone-home to the plugin authors. Even fully redacted, the bundle is behavioral metadata: spend, session cadence, when-active, health. If you run this hermit on a **client project** (consultant/agency), be aware that exported cost/session figures can reveal that client's billing patterns even with `redact_operator_text: true` — point the webhook only at an endpoint you control, and prefer keeping redaction on.
 
+**Step-by-step export:** this webhook is the health and cost bundle above. Claude Code's OpenTelemetry export is the per-step trail (prompts, model requests, tool calls). How to turn that on for a resident is [OpenTelemetry](opentelemetry.md). Event names, attributes, and collector examples are in [Claude Code's monitoring docs](https://code.claude.com/docs/en/monitoring-usage).
+
 Modify with `/hermit-settings`. Validated by `validate-config.ts`. Manual export/debugging: `bun scripts/report-export.ts [hermit-dir] [--print]` (`--print` builds the bundle to stdout without sending or stamping state).
 
 ---
