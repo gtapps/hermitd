@@ -787,13 +787,11 @@ function commitPendingCredential(): void {
   }
 
   // Re-checked here, not trusted from the mint: the mint ran minutes to hours ago.
-  // An unknown verdict keeps the staging for a later restart; staleness bounds it.
+  // Only a lapsed verdict drops it. No verdict commits anyway: nothing retries a
+  // deferred commit, the staging is fresh by the check above, and this flow runs only
+  // after the live login was found dead.
   const { state } = loginStatus(stagedDir);
-  if (state === 'unknown') {
-    appendEvent('credential-commit-deferred', 'login status unavailable');
-    return;
-  }
-  if (state !== 'usable') {
+  if (state === 'lapsed') {
     clear();
     appendEvent('credential-commit-skipped', state);
     return;

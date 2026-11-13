@@ -405,9 +405,9 @@ describe('staged credential commit', () => {
     expect(events).not.toContain('credential-committed');
   }));
 
-  // No verdict on the staged login is no reason to throw a fresh sign-in away: it stays
-  // for a later restart, and the staleness bound still clears it in the end.
-  test('an unreadable verdict on the staged login keeps the staging, live untouched', withHermit(async (h) => {
+  // No verdict on a fresh staged sign-in commits it: nothing would retry a deferred
+  // commit, and this flow only runs once the live login was found dead.
+  test('no verdict on a fresh staged login still commits it', withHermit(async (h) => {
     writeConfig(h);
     writeFakeTmux(h, 1);
     writeFakePgrep(h, 1);
@@ -416,12 +416,9 @@ describe('staged credential commit', () => {
     const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
     expect(r.exitCode).toBe(0);
 
-    expect(readJson(path.join(configDir, '.credentials.json')).claudeAiOauth.accessToken).toBe('old-one');
-    expect(fs.existsSync(stagedDir)).toBe(true);
-    expect(fs.existsSync(state(h, 'pending-credential.json'))).toBe(true);
-    const events = fs.readFileSync(eventsFile(h), 'utf-8');
-    expect(events).toContain('credential-commit-deferred');
-    expect(events).not.toContain('credential-committed');
+    expect(readJson(path.join(configDir, '.credentials.json')).claudeAiOauth.accessToken).toBe('sk-ant-oat01-freshfreshfresh');
+    expect(fs.existsSync(state(h, 'pending-credential.json'))).toBe(false);
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('credential-committed');
   }));
 
   // `usable` only says the file carries a token, so an abandoned staging still reads
