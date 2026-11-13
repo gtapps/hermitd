@@ -3,10 +3,12 @@
 # Fails on any error, and on any warning except the plugin-root CLAUDE.md note:
 # those files are contributor docs kept on purpose, which is also why --strict
 # is never passed.
-# A plugin that declares a hooks module gets every .ts file type-checked against
+# A plugin that declares a hooks module gets its .ts files type-checked against
 # the hooks-module globals only, so its Bun scripts report missing Bun and Node
 # types. TypeScript diagnostics count only inside a declared module's folder;
-# `bunx tsc` checks the scripts with Bun's types.
+# `bunx tsc` checks the scripts with Bun's types. The validator lists at most 400
+# .ts files per plugin, so a module can fall outside its parent's report; plugins
+# nested one level down (a module's own test wrapper) are validated too.
 # Usage: bash scripts/plugin-validate.sh [root]   (default root: the repo root)
 set -uo pipefail
 
@@ -14,6 +16,9 @@ ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 rc=0
 
 targets=("$ROOT"/plugins/*/)
+for manifest in "$ROOT"/plugins/*/*/.claude-plugin/plugin.json; do
+  [ -f "$manifest" ] && targets+=("$(dirname "$(dirname "$manifest")")")
+done
 [ -f "$ROOT/.claude-plugin/marketplace.json" ] && targets+=("$ROOT/.claude-plugin/marketplace.json")
 
 for target in "${targets[@]}"; do
