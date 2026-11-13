@@ -330,7 +330,7 @@ See the [Upgrade guide](plugins/hermitd/docs/upgrading.md) for details.
 - **Configure:** the [Config Reference](plugins/hermitd/docs/config-reference.md) covers the full schema and tuning details.
 - **Use:** [Getting Started](plugins/hermitd/docs/how-to-use.md) and the [Owner's Guide](plugins/hermitd/docs/owners-guide.md) cover everyday work, decisions, and controls.
 - **Automate:** [Routine Authoring](plugins/hermitd/docs/routine-authoring.md) covers schedules and prechecks. [Channel configuration](plugins/hermitd/docs/config-reference.md#channels) includes third-party channel plugins.
-- **Observe:** [Artifacts](plugins/hermitd/docs/artifacts.md) explains the dashboard, pending decisions, and weekly reviews.
+- **Observe:** [Artifacts](plugins/hermitd/docs/artifacts.md) explains the dashboard, pending decisions, and weekly reviews. [OpenTelemetry](plugins/hermitd/docs/opentelemetry.md) explains how to export each step to a collector you run. Event names and attributes are in [Claude Code's monitoring docs](https://code.claude.com/docs/en/monitoring-usage).
 - **Maintain:** [Upgrading](plugins/hermitd/docs/upgrading.md), [Backup](plugins/hermitd/docs/backup.md), [Troubleshooting](plugins/hermitd/docs/troubleshooting.md), and [Uninstalling](plugins/hermitd/docs/how-to-use.md#install).
 - **Understand:** [Architecture](plugins/hermitd/docs/architecture.md), [Security](plugins/hermitd/docs/security.md), and [FAQ](plugins/hermitd/docs/faq.md).
 
