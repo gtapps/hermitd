@@ -290,6 +290,7 @@ Container restarts trigger recovery automatically:
 | ---------------------------------- | ------- | -------------------------------- |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`  | `65`    | Compacts at 65% context          |
 | `MAX_THINKING_TOKENS`              | `10000` | Prevents runaway reasoning costs |
+| `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES` | `1` | Skips subagent spinner-label requests |
 
 Adjust with `/hermit-settings env`.
 

@@ -45,7 +45,8 @@
   "monitors": [],
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
-    "MAX_THINKING_TOKENS": "10000"
+    "MAX_THINKING_TOKENS": "10000",
+    "CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES": "1"
   },
   "boot_skill": null,
   "shutdown_skill": null,
