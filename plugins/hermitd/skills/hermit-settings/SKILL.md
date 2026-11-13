@@ -339,8 +339,9 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
   ```
   Environment Variables (config.json env → resident launch overlay)
 
-    CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 65
-    MAX_THINKING_TOKENS             10000
+    CLAUDE_AUTOCOMPACT_PCT_OVERRIDE              65
+    MAX_THINKING_TOKENS                          10000
+    CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES 1
 
   Hook profile (process-scoped, not written to settings.local.json)
 

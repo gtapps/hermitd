@@ -154,6 +154,7 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 | `context_hygiene.compact` | compact long-running active context: **enabled**, `100000` compactible tokens / `4h` cooldown |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | auto-compact at % of context: **`65`** |
 | `MAX_THINKING_TOKENS` | thinking-token cap per turn: **`10000`** |
+| `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES` | skips subagent spinner-label requests: **`1`** |
 | `watchdog.scheduler_enabled` | OS scheduler for the watchdog tick: **`true`** on tmux always-on (auto-installed at boot); `false` or `hermitd-watchdog uninstall` opts out |
 | `watchdog.enabled` | recovery/restart tier: **`false`** until first scheduler registration (or `/docker-setup`); hygiene still runs |
 

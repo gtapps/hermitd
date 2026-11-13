@@ -56,6 +56,7 @@ Resolved at boot by `hermitd-start` into the resident launch overlay and process
 | `AGENT_HOOK_PROFILE` | _(unset)_ | Hook profile: `minimal`, `standard`, `strict`. Not seeded into a new config — with nothing set, a managed (always-on/Docker) launch resolves `strict` and an interactive one `standard`. Set it here to override; an ambient value in the environment outranks it. A managed launch is floored at `standard`, so `minimal` is raised. Never written to `settings.local.json`. |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `"65"` | Auto-compact at this % of context window. |
 | `MAX_THINKING_TOKENS` | `"10000"` | Cap on thinking tokens per turn. |
+| `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES` | `"1"` | Skips the subagent spinner labels Claude Code requests every 30 seconds while a subagent runs. Reaches only the agent's own launch, so your interactive sessions in the same folder keep them. Set `"0"` to turn the labels back on. |
 Modify with `/hermit-settings env` — except `AGENT_HOOK_PROFILE`, which that command refuses; edit `config.json` directly for it.
 
 `*_STATE_DIR` vars are **not** stored in `env` — `hermitd-start` derives them from `channels.<name>.state_dir` at boot.
@@ -659,7 +660,8 @@ A realistic `config.json` for an always-on Docker hermit with Discord:
   "env": {
     "AGENT_HOOK_PROFILE": "strict",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
-    "MAX_THINKING_TOKENS": "10000"
+    "MAX_THINKING_TOKENS": "10000",
+    "CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES": "1"
   },
   "scheduled_checks": [
     {"id": "my-check", "plugin": "my-plugin", "skill": "my-plugin:my-audit-skill", "enabled": true, "trigger": "session"}

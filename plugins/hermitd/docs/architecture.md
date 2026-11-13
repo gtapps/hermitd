@@ -376,6 +376,7 @@ Truthy ambient values win over configured environment values in every carrier.
 | --------------------------------- | ---------- | -------------------------------------------------- |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `65`       | Auto-compact at 65% context                        |
 | `MAX_THINKING_TOKENS`             | `10000`    | Cap thinking budget                                |
+| `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES` | `1` | Skips subagent spinner-label requests |
 | `AGENT_HOOK_PROFILE`              | _(unset)_  | Active hook profile. Not seeded — absence means "no preference", which resolves to `strict` on a managed launch and `standard` on an interactive one |
 | `DISCORD_STATE_DIR`               | (derived)  | Explicit channel path or bare-host project default |
 | `TELEGRAM_STATE_DIR`              | (derived)  | Explicit channel path or bare-host project default |
