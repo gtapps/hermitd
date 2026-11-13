@@ -118,8 +118,8 @@ _core_cc_floor_host() {
   local install
   install=$(_core_install_host)
   [ -n "$install" ] || return 0
-  bun -e 'try { const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).min_claude_code_version; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' \
-    "$install/.claude-plugin/hermit-meta.json" 2>/dev/null || true
+  bun -e 'try { const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).engines?.["claude-code"]; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' \
+    "$install/.claude-plugin/plugin.json" 2>/dev/null || true
 }
 
 # The pinned core version in a row list (TAB rows with the id in field 2 and the version in field 4).

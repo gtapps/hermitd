@@ -144,7 +144,7 @@ Argument: `root`.
 | `loaded` | This process's `.claude-plugin/plugin.json` version |
 | `applied` | The hermit's `config._hermit_versions["hermitd"]`, or `null` |
 | `required_bun_version` | `.claude-plugin/hermit-meta.json` |
-| `min_claude_code_version` | `.claude-plugin/hermit-meta.json` |
+| `min_claude_code_version` | `engines["claude-code"]` in `.claude-plugin/plugin.json` |
 | `contract_version` | `1` |
 
 ### `wake`

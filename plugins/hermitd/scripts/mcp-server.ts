@@ -329,7 +329,7 @@ function getVersion(root: string): Json {
     loaded: typeof plugin.version === 'string' ? plugin.version : null,
     applied: typeof applied === 'string' ? applied : null,
     required_bun_version: typeof meta.required_bun_version === 'string' ? meta.required_bun_version : null,
-    min_claude_code_version: typeof meta.min_claude_code_version === 'string' ? meta.min_claude_code_version : null,
+    min_claude_code_version: typeof plugin.engines?.['claude-code'] === 'string' ? plugin.engines['claude-code'] : null,
     contract_version: 1,
   };
 }

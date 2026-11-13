@@ -11,7 +11,7 @@
 //     assistant/user/tool_result type discrimination)
 //   - Cost-log path resolution (record shape is hermit-owned — see costLogPath)
 //   - Best-effort CC version string (diagnostic only — never branch on it;
-//     the install-gate is min_claude_code_version in hermit-meta.json)
+//     the install-gate is engines["claude-code"] in plugin.json)
 //
 // Out-of-scope (NOT in this module):
 //   - pricing.js: Anthropic published pricing — a hermit-owned data table

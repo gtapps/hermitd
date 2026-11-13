@@ -21,6 +21,7 @@ set -euo pipefail
 
 MARKETPLACE="gtapps/hermitd"
 PLUGIN="hermitd"
+PLUGIN_JSON_URL="https://raw.githubusercontent.com/gtapps/hermitd/main/plugins/hermitd/.claude-plugin/plugin.json"
 META_URL="https://raw.githubusercontent.com/gtapps/hermitd/main/plugins/hermitd/.claude-plugin/hermit-meta.json"
 DOCS_URL="https://github.com/gtapps/hermitd#quick-start"
 
@@ -52,8 +53,8 @@ ver_ge() {
   }'
 }
 
-# Pull one "key": ">=X.Y.Z" out of hermit-meta.json and reduce it to X.Y.Z.
-# No jq dependency: the file is small, flat and machine-written.
+# Pull one "key": ">=X.Y.Z" out of a plugin manifest and reduce it to X.Y.Z.
+# No jq dependency: the files are small and keep one key per line.
 meta_floor() {
   printf '%s' "$1" \
     | sed -n 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -84,17 +85,20 @@ detect_platform() {
 
 # ------------------------------------------------------------------ floors ----
 
-# Read the version floors from the plugin's own manifest, the file doctor-check.ts
-# and hermit-evolve also read. A failed fetch is not fatal: absent tools are
-# installed at latest, which clears any floor. An already-present but stale tool
-# then goes uncaught here: /hermit-doctor reports a stale Bun, and hermit-evolve
-# stops on a stale Claude Code.
+# Read the version floors from the plugin's own manifests: the Claude Code floor
+# from plugin.json's native `engines`, the Bun floor from hermit-meta.json, the
+# files hermit-evolve and doctor-check.ts also read. A failed fetch is not fatal:
+# absent tools are installed at latest, which clears any floor. An already-present
+# but stale tool then goes uncaught here: /hermit-doctor reports a stale Bun, and
+# Claude Code refuses to install a plugin whose engines range it does not meet.
 load_floors() {
-  local meta
+  local manifest meta
   CLAUDE_FLOOR=""
   BUN_FLOOR=""
+  if manifest="$(curl -fsSL --max-time 20 "$PLUGIN_JSON_URL" 2>/dev/null)"; then
+    CLAUDE_FLOOR="$(meta_floor "$manifest" claude-code)"
+  fi
   if meta="$(curl -fsSL --max-time 20 "$META_URL" 2>/dev/null)"; then
-    CLAUDE_FLOOR="$(meta_floor "$meta" min_claude_code_version)"
     BUN_FLOOR="$(meta_floor "$meta" required_bun_version)"
   fi
   if [ -z "$CLAUDE_FLOOR" ] || [ -z "$BUN_FLOOR" ]; then

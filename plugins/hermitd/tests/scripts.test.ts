@@ -622,7 +622,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only', 'engine-held']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const proj = wd.dir;
@@ -654,7 +654,9 @@ if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
 fi
 case "$*" in
-  *"hermit-meta.json"*) [[ "$UPDATE_SCENARIO" != below-floor* ]] || echo '{"min_claude_code_version":">=2.1.308"}' ;;
+  *".claude-plugin/plugin.json"*) [[ "$UPDATE_SCENARIO" != below-floor* ]] || echo '{"engines":{"claude-code":">=2.1.308"}}' ;;
+  *"exec -T hermit claude plugin update hermitd@hermitd --scope project --json"*)
+    [ "$UPDATE_SCENARIO" != engine-held ] || echo '{"command":"update","outcome":"ok","message":"Skipped: hermitd stays at 1.2.14.","updateOutcome":"skipped","skipReason":"engine_range"}' ;;
   *"await-upgrade"*)
     count=0
     [ ! -f "$DOCKER_STUB_CALLS.await" ] || read -r count < "$DOCKER_STUB_CALLS.await"
@@ -737,9 +739,9 @@ exit 0
         }
       } else {
       expect(calls.filter(l => l.includes('claude plugin update ')).map(l => l.slice(l.indexOf('claude plugin update ')))).toEqual([
-        'claude plugin update hermitd@hermitd --scope local',
-        'claude plugin update hermitd@hermitd --scope project',
-        'claude plugin update hermitd-scribe@hermitd --scope project',
+        'claude plugin update hermitd@hermitd --scope local --json',
+        'claude plugin update hermitd@hermitd --scope project --json',
+        'claude plugin update hermitd-scribe@hermitd --scope project --json',
       ]);
       expect(calls.filter(l => l.includes('claude plugin marketplace update '))).toHaveLength(1);
       expect(entry.plugins).toEqual([
@@ -779,11 +781,23 @@ exit 0
       expect(calls.some(l => l.includes('send-keys') || l.includes('capture-pane'))).toBe(false);
       if (scenario === 'below-floor') {
         // Evolve would stop on the old Claude Code, so the image is rebuilt first and boot runs it.
-        expect(r.stdout).toContain('below hermitd\'s minimum 2.1.308');
+        expect(r.stdout).toContain('below an updated plugin\'s minimum');
         expect(r.stdout).toContain('load at boot on the rebuilt image');
         expect(idx('harness-request')).toBe(-1);
-        expect(idx('cat /cache/hermitd/1.2.0/.claude-plugin/hermit-meta.json')).toBeGreaterThan(idx('claude plugin update '));
+        expect(idx('cat /cache/hermitd/1.2.0/.claude-plugin/plugin.json')).toBeGreaterThan(idx('claude plugin update '));
         expect(idx(' build ')).toBeLessThan(idx(' down'));
+        expect(idx(' run --rm')).toBe(-1);
+      }
+      if (scenario === 'engine-held') {
+        // The running Claude Code misses the new core's engines range, so the core stays put;
+        // the rebuilt image updates it before the bounce and boot runs the pending evolve.
+        expect(r.stdout).toContain('below an updated plugin\'s minimum');
+        expect(r.stderr).toContain('Skipped: hermitd stays at 1.2.14.');
+        expect(idx('harness-request')).toBe(-1);
+        const held = idx('run --rm --no-deps -T --entrypoint claude hermit plugin update hermitd@hermitd --scope project');
+        expect(held).toBeGreaterThan(idx(' build '));
+        expect(held).toBeLessThan(idx(' down'));
+        expect(calls.filter(l => l.includes(' run --rm'))).toHaveLength(1);
       }
       if (scenario === 'old-watchdog') {
         expect(r.stderr.split('await-upgrade unavailable')).toHaveLength(2);
@@ -925,7 +939,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
         write(hermit(f.proj, 'config.json'), JSON.stringify({ tmux_session_name: 'hermit-test', _hermit_versions: { hermitd: scenario === 'suffix-current' ? '1.2.0' : '0.0.1' } }));
         if (scenario === 'below-floor') {
           fs.mkdirSync(path.join(f.proj, 'cache/hermitd/.claude-plugin'), { recursive: true });
-          write(path.join(f.proj, 'cache/hermitd/.claude-plugin/hermit-meta.json'), JSON.stringify({ min_claude_code_version: '>=2.1.308' }));
+          write(path.join(f.proj, 'cache/hermitd/.claude-plugin/plugin.json'), JSON.stringify({ engines: { 'claude-code': '>=2.1.308' } }));
           const claudeStub = path.join(f.proj, '.stub/claude');
           write(claudeStub, fs.readFileSync(claudeStub, 'utf8').replace('exit 0\n', '') + 'if [ "$1" = "--version" ]; then echo "2.1.301 (Claude Code)"; fi\nexit 0\n');
         }

@@ -8,7 +8,7 @@ Before changing a plugin, read its `plugins/<slug>/AGENTS.md`. Load only the gui
 - Hermit runs continuously inside Claude Code. Evaluate features for downstream chat operators, not only this repository's development workflow. Do not use this development hermit's session history as evidence of core feature utility. Check Claude Code documentation and the plugin catalog before adding a capability; when one already covers it, link to it instead of reimplementing.
 - Domain plugins depend on core. Core discovers siblings generically from metadata; it must not import siblings, hardcode their slugs in logic, or branch on their installation. Siblings use core commands with an appropriate version floor instead of importing core code. Preserve `${CLAUDE_PLUGIN_ROOT}/../*/.claude-plugin/plugin.json` discovery.
 - Domain plugin `skills/`, `agents/`, `state-templates/`, and `docs/` carry core-facing terminology; sweep them when core wording changes.
-- Keep `required_core_version` and `requires` in `.claude-plugin/hermit-meta.json` synchronized with `plugin.json` dependencies. Internal `hermit.*` extensions belong in hermit-meta.json. Raise `min_claude_code_version` when relying on newer host behavior; do not add old-host shims.
+- Keep `required_core_version` and `requires` in `.claude-plugin/hermit-meta.json` synchronized with `plugin.json` dependencies. Internal `hermit.*` extensions belong in hermit-meta.json. Raise `engines["claude-code"]` in `plugin.json` when relying on newer host behavior; do not add old-host shims.
 
 ## Authoring contracts
 
