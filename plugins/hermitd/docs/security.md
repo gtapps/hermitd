@@ -368,16 +368,21 @@ Hermit's runtime (tmux, claude CLI, bun, jq, npm, git+HTTPS plugin installs) nee
 **Verifying it's active.** From the host:
 
 ```bash
+# The stack: base, security overlay and operator override, in that order
+COMPOSE_FILES=(-f docker-compose.hermit.yml)
+[ ! -f docker-compose.security.yml ] || COMPOSE_FILES+=(-f docker-compose.security.yml)
+[ ! -f docker-compose.override.yml ] || COMPOSE_FILES+=(-f docker-compose.override.yml)
+
 # Capabilities — both should be 0000000000000000
-docker compose -f docker-compose.hermit.yml exec hermit \
+docker compose "${COMPOSE_FILES[@]}" exec hermit \
   grep -E '^Cap(Eff|Bnd)' /proc/self/status
 
 # no-new-privileges — should report NoNewPrivs: 1
-docker compose -f docker-compose.hermit.yml exec hermit \
+docker compose "${COMPOSE_FILES[@]}" exec hermit \
   grep NoNewPrivs /proc/self/status
 
 # PID limit — should report 2048
-docker compose -f docker-compose.hermit.yml exec hermit cat /sys/fs/cgroup/pids.max
+docker compose "${COMPOSE_FILES[@]}" exec hermit cat /sys/fs/cgroup/pids.max
 ```
 
 **Limitation.** These flags only apply at container creation, not on `restart`. After patching an existing compose file, run `hermitd-docker down` then `hermitd-docker up` — `hermitd-docker restart` silently keeps the old container.

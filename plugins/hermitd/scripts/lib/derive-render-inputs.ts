@@ -20,8 +20,6 @@ export function deriveRenderInputs(configPath: string): Inputs | null {
   // deploy predating it; the renderer and /docker-security both treat absent as
   // "bridge", so rejecting it here would strand those hermits on report-only.
   const networkMode = config.docker.network_mode ?? 'bridge';
-  const browser = config.browser?.enabled === undefined ? true : config.browser.enabled;
-  if (typeof browser !== 'boolean') return null;
   const browserPort = config.browser?.port ?? undefined;
   if (browserPort !== undefined && (!Number.isInteger(browserPort) || browserPort < 1 || browserPort > 65535)) return null;
   const fleetMesh = config.docker.fleet_mesh ?? false;
@@ -54,7 +52,6 @@ export function deriveRenderInputs(configPath: string): Inputs | null {
     networkMode,
     gitIdentityMount,
     fleetMesh,
-    browser,
     ...(browserPort !== undefined && config.docker.security?.network?.enabled !== true ? { browserPort } : {}),
   };
 }

@@ -22,9 +22,9 @@
 
 ### Upgrade Instructions
 
-1. **Docker agents only:** follow [docker-customize, Convert](skills/docker-customize/SKILL.md#convert) before rebuilding. Snapshot both installed Docker files, migrate the browser default, reconcile Git identity and packages, render to scratch, and place every customization in the operator hook or override before `--convert`. Preserve all existing operator content. If any line cannot be placed, leave both installed Docker files untouched and report each unplaced line; do not claim conversion completed. Tmux agents skip this step.
+1. **Docker agents only:** follow [docker-customize, Convert](skills/docker-customize/SKILL.md#convert) before rebuilding. Snapshot both installed Docker files, migrate the browser default, reconcile Git identity and packages, render to scratch, and place every customization in the operator hook or override before `--convert`, then delete the stale Docker merge state (step 8). Preserve all existing operator content. If any line cannot be placed, leave both installed Docker files untouched and report each unplaced line; do not claim conversion completed. Tmux agents skip this step.
 2. Apply the converted files through the next host `hermitd update`, which renders again, rebuilds and restarts. An update-launched evolve leaves that work to its waiting host update. Keep API keys in `.env`; a host-shell-only `ANTHROPIC_API_KEY` is not forwarded.
-3. To retry an interrupted or unresolved conversion, run `/hermitd:docker-customize "Convert"`. It writes complete hook and override candidates without duplicating commands, preserves their existing content, and reports "nothing to convert" if the generated header is already present. Unconverted installs keep their files and print the Convert notice on later lifecycle commands.
+3. To retry an interrupted or unresolved conversion, run `/hermitd:docker-customize "Convert"`. It writes complete hook and override candidates without duplicating commands, preserves their existing content, and on an install that already has the generated header only deletes stale merge state and reports "nothing to convert". Unconverted installs keep their files and print the Convert notice on later lifecycle commands.
 
 ## [1.4.32] - 2026-11-12
 

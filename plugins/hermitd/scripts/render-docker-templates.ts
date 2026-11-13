@@ -25,7 +25,6 @@ export interface Inputs {
   networkMode: 'bridge' | 'host';
   gitIdentityMount: boolean;
   fleetMesh?: boolean;
-  browser?: boolean;
   browserPort?: number;
 }
 
