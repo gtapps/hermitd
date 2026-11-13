@@ -5,8 +5,9 @@ import type { ProcessRunResult } from 'claude-code';
 // Complete event inputs, so each test states only the fields the mod reads.
 const ran = (stdout: string): { value: ProcessRunResult } => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } });
 const switchCost = { context_tokens: 0, prompt_cache_warm: false, cache_ttl: '5m' as const, estimated_cache_write_usd: 0, pricing: 'default' as const };
-const preSwitch = (requested_model: string, to_model: string) => ({ requested_model, to_model, from_model: 'claude-opus', source: 'command' as const, ...switchCost });
+const preSwitch = (requested_model: string, to_model: string) => ({ requested_model, to_model, from_model: 'opus', source: 'command' as const, ...switchCost });
 const postSwitch = (from_model: string, to_model: string) => ({ from_model, to_model, requested_model: null, source: 'command' as const, ...switchCost });
+const completed = (turnId: string, agentId?: string) => ({ turnId, agentId, reason: 'answer' as const, answer: '', durationMs: 0, isAborted: false });
 
 const channel = (body: string) => ({ text: `<channel source="telegram" chat_id="12345" user="u1">${body}</channel>`, origin: { kind: 'channel' as const, server: 'telegram' }, wait: false });
 type Cmd = { command: string; arg: string | null };
@@ -218,10 +219,10 @@ test('a main turn gates the queue; a subagent turn does not', async ($, on) => {
   await clock.advance(4000);
   expect(r.calls).not.toContain('claim');
   await $.turn.start({ text: '', turnId: 'sub', agentId: 'worker' });
-  await $.turn.complete({ agentId: 'worker', reason: 'answer', answer: '', turnId: 'sub', durationMs: 0, isAborted: false, usage: undefined });
+  await $.turn.complete(completed('sub', 'worker'));
   await clock.advance(2000);
   expect(r.calls).not.toContain('claim');
-  await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: undefined });
+  await $.turn.complete(completed('main'));
   await clock.advance(2000);
   expect(r.commands).toEqual(['advisor']);
 });
@@ -234,10 +235,10 @@ test('a request queued mid-turn is claimed on the main turn.complete, not on a s
   await boot($);
   await $.turn.start({ text: '', turnId: 'main' });
   r.queue.push(entry('a', [{ command: '/advisor', arg: 'opus' }]));
-  await $.turn.complete({ agentId: 'worker', reason: 'answer', answer: '', turnId: 'sub', durationMs: 0, isAborted: false, usage: undefined });
+  await $.turn.complete(completed('sub', 'worker'));
   await clock.settle();
   expect(r.calls).not.toContain('claim');
-  await $.turn.complete({ reason: 'answer', answer: '', turnId: 'main', durationMs: 0, isAborted: false, usage: undefined });
+  await $.turn.complete(completed('main'));
   await clock.settle();
   expect(r.commands).toEqual(['advisor']);
 });
@@ -352,7 +353,7 @@ test('a fresh copy loaded while a turn is in flight leaves the wait to the engin
   await clock.advance(2000);
   // The copy never saw the turn start, so it claims; $.command.run queues behind the turn.
   expect(r.commands).toEqual(['clear']);
-  await $.turn.complete({ reason: 'answer', answer: '', turnId: 'unseen', durationMs: 0, isAborted: false, usage: undefined });
+  await $.turn.complete(completed('unseen'));
   release();
   await clock.settle();
   expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
