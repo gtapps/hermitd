@@ -33,8 +33,9 @@ export function deriveRenderInputs(configPath: string): Inputs | null {
   const envLines: string[] = [];
   const volumeLines: string[] = [];
   for (const channel of getEnabledChannels(config)) {
+    // A channel key that is not a shell identifier gets no state-dir wiring; it never blocks the render.
     const envKey = channelStateDirKey(channel);
-    if (!envKey) return null;
+    if (!envKey) continue;
     const relativeStateDir = `.claude.local/channels/${channel}`;
     envLines.push(`${envKey}=\${PWD}/${relativeStateDir}`);
     volumeLines.push(`\${PWD}/${relativeStateDir}:/home/claude/.claude/channels/${channel}`);

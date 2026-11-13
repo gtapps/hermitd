@@ -222,7 +222,6 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
       await required([process.execPath, script('render-security-overlay'), 'render', project], securityRenderInput(security));
     } else {
       const rendered = JSON.parse(await required([process.execPath, script('render-docker-templates'), project]));
-      if (rendered.error) throw new Error(rendered.error);
       if (rendered.status === 'skipped') throw new Error(rendered.reason === 'not_converted'
         ? 'Docker files are not converted; run /hermitd:docker-customize "Convert".'
         : 'Docker files use a newer renderer; update the host plugin.');

@@ -594,9 +594,9 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
     writeChanged(dest, fs.readFileSync(source));
     return dest;
   };
-  const remain = (entry: Json, file: string, mergedPath: string | null = null) => receipt.remaining.push({
+  const remain = (entry: Json, file: string) => receipt.remaining.push({
     file, class: entry.class ?? entry.status, base_path: entry.base_path ?? null,
-    theirs_path: entry.theirs_path ?? null, merged_path: mergedPath, bak: null,
+    theirs_path: entry.theirs_path ?? null, merged_path: null, bak: null,
   });
   for (const [prefix, entries] of [['templates', plan.templates_changed], ['bin', plan.bin_changed]] as const) {
     for (const entry of entries) {
@@ -625,7 +625,7 @@ export function applyEvolve(dir: string, pluginRoot: string, pluginListJsonPath?
       seed('docker/' + name, upstream);
     }
   }
-  // Raw copies can already equal upstream after an interrupted seed; rendered Docker files cannot.
+  // Raw copies can already equal upstream after an interrupted seed.
   const raw = [
     ...TEMPLATE_FILES.map(name => ({ key: 'templates/' + name, source: path.join(stDir, name), dest: path.join(dir, 'templates', name) })),
     ...fs.readdirSync(path.join(stDir, 'bin'), { withFileTypes: true }).filter(file => file.isFile())

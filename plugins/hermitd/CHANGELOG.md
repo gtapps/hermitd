@@ -102,7 +102,7 @@ No `config.json` changes required.
 
 1. The dashboard changes shape, so its next publish re-mints once. Nothing to do.
 2. **Only if `.hermit/state/artifact-strings.json` exists** (a translation overlay): regenerate the scaffold with `bun <plugin_root>/scripts/artifact.ts scaffold-strings <language>`, carry the existing translated values across, translate the new keys (`status_execution`, `status_open_tasks`, `session_unknown`, `waiting_row_admin`, `waiting_row_requester`, `waiting_row_chat`, `by_person_heading`, `by_person_promised`, `by_person_late`, `by_person_waiting`, `by_person_no_due`, `by_person_none`, `compiled_search`, `compiled_all`, `compiled_no_match`), keeping every `{placeholder}` token, and write the result back. Hermits without the file need no action.
-3. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
+3. Superseded by the later Docker file split; follow docker-customize Convert from that release's Upgrade Instructions.
 
 4. **tmux and interactive agents:** when `transcription.enabled` is not false, start `bun ${CLAUDE_PLUGIN_ROOT}/scripts/transcribe.ts --prepare >/dev/null 2>&1 &` from the agent project root, without waiting or using `sudo`. This prepares missing binaries only; models download on the first voice note.
 5. Step 8 now only reports the permission list; `hermitd update` applies it from the next update on. Nothing to do.
@@ -481,7 +481,7 @@ No `config.json` changes required.
 1. Delete `.hermit/state/pending-harness-switch.json` if it exists.
 2. In `.hermit/state/watchdog-state.json`, remove the `last_pane_hash_standalone` and `last_pane_hash_compact` keys and set `last_nudge_transport` to `null`. Leave every other key unchanged.
 3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so SIGTERM runs `hermitd-run graceful-shutdown`. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
-4. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
+4. Superseded by the later Docker file split; follow docker-customize Convert from that release's Upgrade Instructions.
 
 ## [1.4.19] - 2026-10-22
 
@@ -1433,7 +1433,7 @@ No config.json changes required for steps 4, 5, 6, and 7.
 
 ### Upgrade Instructions
 1. The Tasks line lives in the plugin-owned CLAUDE-APPEND block, which Step 6 already replaces wholesale, so no manual edit is needed. If this operator hand-edited the Tasks line inside the block, their edit is overwritten; tell them once. Reload project context afterwards as the skill already instructs.
-2. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
+2. Superseded by the later Docker file split; follow docker-customize Convert from that release's Upgrade Instructions.
 ### Added
 - `docker-customize` routes a container change (tool, binary, apt package, env var, persistent directory, side service) to the first channel that can carry it: the `Dockerfile.hermit` operator block, then `docker-entrypoint.hermit-local.sh`, then compose. `docs/always-on.md` § Customizing the container carries the same map for humans.
 - `hermit-docker restart --build` rebuilds the image pinned to the running Claude Code version.
@@ -1817,7 +1817,7 @@ Everything else in this release is self-migrating on next run: the denial ledger
 
 ### Upgrade Instructions
 
-Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
+Superseded by the later Docker file split; follow docker-customize Convert from that release's Upgrade Instructions.
 
 ## [1.2.45] - 2026-08-23
 

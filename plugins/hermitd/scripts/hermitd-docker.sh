@@ -162,9 +162,11 @@ _sync_permissions() {
 
 _render_docker() {
   local result
-  result=$(bun "$(dirname "${BASH_SOURCE[0]}")/render-docker-templates.ts" "$PROJECT_DIR") || return $?
+  if ! result=$(bun "$(dirname "${BASH_SOURCE[0]}")/render-docker-templates.ts" "$PROJECT_DIR"); then
+    echo "[hermit] Docker file render failed: ${result:-no output}" >&2
+    return 1
+  fi
   case "$result" in
-    *'"error"'*) echo "$result" >&2; return 1 ;;
     *'"reason":"not_converted"'*) echo '[hermit] Docker files are not converted; run /hermitd:docker-customize "Convert".' ;;
     *'"reason":"newer_renderer"'*) echo '[hermit] Docker files use a newer renderer; update the host plugin.' ;;
   esac

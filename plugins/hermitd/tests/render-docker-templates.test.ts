@@ -288,7 +288,7 @@ describe('render-docker-templates.ts', () => {
     config(dir);
     const rel = path.relative(process.cwd(), dir);
     const r = await runScript('render-docker-templates.ts', {
-      args: [rel], stdin: JSON.stringify(BASE_INPUT),
+      args: [rel],
     });
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(r.stdout);
@@ -300,19 +300,20 @@ describe('render-docker-templates.ts', () => {
     const outputDir = freshDir();
     config(projectRoot);
     const r = await runScript('render-docker-templates.ts', {
-      args: [projectRoot, '--to', outputDir], stdin: JSON.stringify(BASE_INPUT),
+      args: [projectRoot, '--to', outputDir],
     });
 
     expect(r.exitCode).toBe(0);
     expect(fs.existsSync(path.join(outputDir, 'Dockerfile.hermit'))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, 'docker-compose.hermit.yml'))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, 'docker-entrypoint.hermit.sh'))).toBe(false);
-    expect(fs.readdirSync(projectRoot).sort()).toEqual(['.hermit', 'docker-entrypoint.hermit.sh']);
+    expect(fs.readdirSync(projectRoot)).toEqual(['.hermit']);
+    expect(JSON.parse(r.stdout).manifest_seed).toBeUndefined();
   });
 
   test('a failed render prints {"error"} on stdout and writes nothing', async () => {
     const dir = freshDir();
-    const r = await runScript('render-docker-templates.ts', { args: [dir], stdin: 'not json' });
+    const r = await runScript('render-docker-templates.ts', { args: [dir] });
     expect(r.exitCode).toBe(1);
     expect(JSON.parse(r.stdout).error).toStartWith('render_failed:');
     expect(fs.readdirSync(dir)).toEqual([]);
@@ -477,7 +478,16 @@ test('convert, current and older headers render without overwriting an existing 
 test.each(['x', 'curl;touch pwned', 'UPPER', '-curl', 'curl foo'])('invalid package writes nothing: %s', async pkg => {
   const dir = freshDir(); config(dir, { packages: [pkg] });
   const result = await runScript('render-docker-templates.ts', { args: [dir] });
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode).toBe(1);
   expect(JSON.parse(result.stdout)).toEqual({ error: `invalid_package:${pkg}` });
   expect(fs.readdirSync(dir)).toEqual(['.hermit']);
+});
+
+test('a channel key that is not a shell identifier renders without state-dir wiring', () => {
+  const dir = freshDir();
+  const configPath = path.join(dir, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: { 'my-chat': { plugin: 'my-chat' } }, docker: { packages: [] } }));
+  const derived = deriveRenderInputs(configPath);
+  expect(derived?.channels).toEqual({ envLines: [], volumeLines: [] });
+  expect(derived?.channelPlugins).toEqual([{ marketplace: 'claude-plugins-official', plugin: 'my-chat' }]);
 });

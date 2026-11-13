@@ -8,11 +8,13 @@ on:
     paths:
       - 'plugins/hermitd/state-templates/docker/**'
       - 'plugins/hermitd/scripts/render-docker-templates.ts'
+      - 'plugins/hermitd/scripts/lib/derive-render-inputs.ts'
       - '.github/workflows/test-docker-build.yml'
   pull_request:
     paths:
       - 'plugins/hermitd/state-templates/docker/**'
       - 'plugins/hermitd/scripts/render-docker-templates.ts'
+      - 'plugins/hermitd/scripts/lib/derive-render-inputs.ts'
       - '.github/workflows/test-docker-build.yml'
 
 jobs:

@@ -19,7 +19,7 @@ services:
       # Persists across restarts. First run is slower (onboarding + plugin install).
       - claude-config:/home/claude/.claude
       # Git identity — read-only so commits have the right author name/email.
-      # Remove this line if the host has no ~/.gitconfig.
+      # Rendered only while docker.git_identity_mount is true.
       - ${HOME}/.gitconfig:/home/claude/.gitconfig:ro
 {{CHANNEL_VOLUME_LINES}}
     working_dir: ${PWD}

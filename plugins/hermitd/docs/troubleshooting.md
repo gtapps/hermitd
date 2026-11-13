@@ -215,7 +215,7 @@ Notes:
 Usually a UID mismatch between the host and the container user. The generated Dockerfile creates a `claude` user matching your host UID. If you changed your system user or are running on a different machine:
 
 1. Check your host UID: `id -u`
-2. Rebuild the image: `docker compose -f docker-compose.hermit.yml build --no-cache`
+2. Rebuild the image: `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml -f docker-compose.override.yml build --no-cache`, dropping each `-f` file the project does not have
 
 ## Channel Messages Not Arriving
 
