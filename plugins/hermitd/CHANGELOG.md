@@ -4,8 +4,9 @@
 
 ### Changed
 
-- Requires Claude Code 2.1.323 or newer, declared as the native `engines["claude-code"]` range in `plugin.json`, so `claude plugin install` and `claude plugin update` refuse or hold a version the running Claude Code cannot load.
+- Claude Code 2.1.323 or newer is required, declared as the native `engines["claude-code"]` range in `plugin.json`, so `claude plugin install` and `claude plugin update` refuse or hold a version the running Claude Code cannot load.
 - `hermitd update` in Docker rebuilds the image first when the running Claude Code is below a plugin's range, then updates the held plugins on the new image before the restart.
+
 ## [1.4.32] - 2026-11-12
 
 ### Added

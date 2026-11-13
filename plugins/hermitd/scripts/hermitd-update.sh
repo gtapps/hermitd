@@ -357,8 +357,10 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   # mod is recognised by that copy and the evolve leg still runs once.
   CORE_VERSION=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }' | sed -E 's/-[0-9a-f]{12}$//')
   # hermit-evolve stops on a Claude Code below the new core's minimum, so a queued evolve
-  # would never stamp the versions and the wait below would time out. The pins stay moved;
-  # the next start on a newer Claude Code loads them and runs the pending evolve.
+  # would never stamp the versions and the wait below would time out. This applies only to a
+  # Claude Code that ignores engines and moved the pin anyway; the next start on a newer Claude
+  # Code loads it and runs the pending evolve. A Claude Code that honors engines holds the
+  # pin instead and prints its own `claude update` hint above.
   CC_FLOOR=$(_core_cc_floor_host)
   CC_HOST=$(claude --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true)
   if [ -n "$CC_FLOOR" ] && [ -n "$CC_HOST" ] \

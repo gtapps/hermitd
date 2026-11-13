@@ -90,7 +90,7 @@ detect_platform() {
 # files hermit-evolve and doctor-check.ts also read. A failed fetch is not fatal:
 # absent tools are installed at latest, which clears any floor. An already-present
 # but stale tool then goes uncaught here: /hermit-doctor reports a stale Bun, and
-# Claude Code refuses to install a plugin whose engines range it does not meet.
+# hermit-evolve stops on a stale Claude Code.
 load_floors() {
   local manifest meta
   CLAUDE_FLOOR=""

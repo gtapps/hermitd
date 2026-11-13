@@ -702,6 +702,7 @@ case "$CMD" in
           fi
         else
           PLUGINS_FAIL_IDS+=("$pid"$'\t'"$pscope")
+          _update_outcome "$UPDATE_OUT" >/dev/null
           echo "[hermit] Warning: update failed for $pid — run manually inside the container:" >&2
           echo "[hermit]          claude plugin update $pid --scope $pscope" >&2
         fi
@@ -820,11 +821,14 @@ case "$CMD" in
         for _held in "${ENGINE_HELD_IDS[@]}"; do
           IFS=$'\t' read -r pid pscope <<< "$_held"
           echo "[hermit] Updating $pid (scope $pscope) on the rebuilt image..."
-          (cd "$PROJECT_DIR" && "${DC[@]}" run --rm --no-deps -T --entrypoint claude "$SERVICE" \
-            plugin update "$pid" --scope "$pscope" </dev/null) || \
+          if ! (cd "$PROJECT_DIR" && "${DC[@]}" run --rm --no-deps -T --entrypoint claude "$SERVICE" \
+              plugin update "$pid" --scope "$pscope" </dev/null); then
+            PLUGINS_FAIL_IDS+=("$_held")
             echo "[hermit] Warning: update failed for $pid; rerun \`hermitd update\` after the restart." >&2
+          fi
         done
         PLUGIN_ROWS_AFTER=$(_enumerate_plugins)
+        PLUGIN_ERRORS_AFTER=$(_enumerate_plugin_errors)
         CORE_AFTER=$(_core_version "$PLUGIN_ROWS_AFTER")
         if [ -n "$CORE_AFTER" ] && [ "$CORE_AFTER" != "$CORE_HELD_BEFORE" ]; then
           _sync_permissions
@@ -965,7 +969,7 @@ JSEOF
     if [ "$AWAIT_STATUS" = timeout ]; then
       echo "[hermit] Update paused; no restart performed."
     elif [ "$AWAIT_STATUS" = blocked ]; then
-      echo "[hermit] Update blocked: Claude Code ${CC_BEFORE} is below hermitd's minimum; rerun \`hermitd update\` without --plugins-only."
+      echo "[hermit] Update blocked: Claude Code ${CC_BEFORE} is below an updated plugin's minimum; rerun \`hermitd update\` without --plugins-only."
     else
       echo "[hermit] Update complete."
     fi
