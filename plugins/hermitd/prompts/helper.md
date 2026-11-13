@@ -24,7 +24,7 @@ Then send the resident (session name {{RESIDENT_NAME}}, or the session banner's 
 GUEST_REPORT: <one-sentence verdict>
 Report: <receipt's report id>
 Delivery: <receipt's delivery status>
-Procedure: <optional reusable steps, inputs, pitfalls, and how done was verified>
+Procedure: <optional reusable steps with the exact commands or tools used, inputs, pitfalls, and how done was verified>
 
 On a classifier denial, omit `Report:` and use `Delivery: blocked <reason>`, with no body. On a script refusal, omit `Report:` and name the refusal in `Delivery: blocked <reason>`. Omit `Procedure:` when no reusable procedure emerged. Never write project skills yourself; hand the procedure to the resident. End your turn on a one-sentence verdict.
 
