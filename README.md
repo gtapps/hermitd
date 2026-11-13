@@ -26,6 +26,19 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 
 https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 
+## How it compares
+
+| Option | Why hermitd |
+|--------|-------------|
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://github.com/openclaw/openclaw) | hermitd runs directly inside Claude Code as a plugin, without a wrapper or separate agent loop. Your native tools, permissions, skills, plugins, and MCP stay in use. |
+| [Claude Projects](https://code.claude.com/docs/en/claude-projects.md) | Run an ongoing agent on your host, handling chat requests and watching local systems. Watches return after restarts, reports go back to the right chat, and tasks stay open until confirmed, verified, or cancelled. In Monitor mode, [prechecks](plugins/hermitd/docs/routine-authoring.md) can skip scheduled runs without using model tokens. |
+| [Claude Tag](https://claude.com/docs/claude-tag/concepts/how-it-works) | Use Discord, Telegram, iMessage, or custom Claude Code channels, and continue the same session in the Claude app or terminal. Tag currently documents Slack, including with self-hosted runners; [Microsoft Teams is announced](https://claude.com/form/claude-tag-teams-waitlist). |
+| [Claude Duet](https://support.claude.com/en/articles/17631495-get-started-with-claude-duet), [ChatGPT Dots](https://learn.chatgpt.com/docs/dots), [Grok Bot](https://docs.x.ai/grok-bot/overview) | Run the agent itself on your machine or server, beside your files, databases, and local services. Keep your Claude Code tools and choose its model and effort. Duet, Dots, and Grok Bot provide managed cloud agents. |
+
+You keep the host running and maintain its sign-ins. Claude inference still runs in the cloud.
+
+Sources checked November 12 and 13, 2026.
+
 <a id="quick-start"></a>
 
 ## Set up
