@@ -77,7 +77,7 @@ function activationSummary(root: string): Activates {
       for (const key of ['apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport', 'gcpAuthRefresh', 'otelHeadersHelper', 'enabledPlugins', 'extraKnownMarketplaces']) {
         if (settings[key] !== undefined) add(out.helper_commands, `${file}: ${key}: ${JSON.stringify(settings[key])}`);
       }
-      for (const key of ['statusLine', 'subagentStatusLine', 'fileSuggestion']) {
+      for (const key of ['statusLine', 'fileSuggestion']) {
         if (settings[key]?.command !== undefined) add(out.helper_commands, `${file}: ${key}: ${settings[key].command}`);
       }
     } catch { add(out.unreadable, file); }

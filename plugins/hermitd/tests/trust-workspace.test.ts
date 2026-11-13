@@ -304,6 +304,8 @@ test('check discloses bounded settings and agent hooks without env values or exe
     hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'echo hook' }] }] },
     permissions: { allow: ['Bash(echo *)'], additionalDirectories: ['/extra'] },
     env: { SECRET: 'never-disclose' }, apiKeyHelper: 'echo helper', otelHeadersHelper: 'echo otel',
+    statusLine: { type: 'command', command: 'echo status' },
+    subagentStatusLine: { type: 'command', command: 'echo obsolete' },
     fileSuggestion: { type: 'command', command: 'echo suggest' }, enabledPlugins: { 'tool@market': true },
   }));
   fs.writeFileSync(path.join(clone, '.claude/settings.local.json'), '{bad');
@@ -318,9 +320,10 @@ test('check discloses bounded settings and agent hooks without env values or exe
   const result = await check(state, clone);
   expect(result.activates).toMatchObject({ allow_rules: ['Bash(echo *)'], additional_directories: ['/extra'], env_keys: ['SECRET'], unreadable: ['.claude/settings.local.json'], truncated: false });
   expect(result.activates.hooks.join()).toContain('echo hook');
-  for (const helper of ['echo helper', 'echo otel', 'echo suggest', 'tool@market']) expect(result.activates.helper_commands.join()).toContain(helper);
+  for (const helper of ['echo helper', 'echo otel', 'echo status', 'echo suggest', 'tool@market']) expect(result.activates.helper_commands.join()).toContain(helper);
   for (const server of ['mcp', 'https://mcp.example.test', 'echo headers']) expect(result.activates.mcp_commands.join()).toContain(server);
   for (const hook of ['echo agent', 'echo nested-agent', 'echo skill']) expect(result.activates.agent_hooks.join()).toContain(hook);
+  expect(result.activates.helper_commands.join()).not.toContain('echo obsolete');
   expect(JSON.stringify(result)).not.toContain('never-disclose');
   fs.writeFileSync(path.join(clone, '.claude/settings.json'), JSON.stringify({ permissions: { allow: Array(25).fill('x'.repeat(600)) } }));
   const capped = (await check(state, clone)).activates;
