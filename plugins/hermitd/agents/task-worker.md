@@ -51,7 +51,7 @@ REPORT
 
 Use `--kind needs-input` for a question and `--kind note` for progress. Never resubmit after a failure, refusal or classifier denial. Retain the receipt and print `Report: <id>` and `Delivery: <status>` before the final WORKER line, with no report body. On a classifier denial or script refusal, print `Delivery: blocked <reason>` and omit `Report:`; use `none` as the final report id. Do not route a denied submission through another tool.
 
-When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside the stored report, using the receipt's `<id>`: steps, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident.
+When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside the stored report, using the receipt's `<id>`: steps with the exact commands or tools used, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident.
 
 Before ending with `needs-input`, pipe one technical line starting `Stopped at:` into `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <task-id>`: what is verified, what remains, and the sources or commands the next step needs. Keep that line out of the requester report.
 

@@ -7,7 +7,7 @@
 - Claude Code 2.1.323 or newer is required, declared as the native `engines["claude-code"]` range in `plugin.json`, so `claude plugin install` and `claude plugin update` refuse or hold a version the running Claude Code cannot load.
 - `hermitd update` in Docker rebuilds the image first when the running Claude Code is below a plugin's range, then updates the held plugins on the new image before the restart.
 - Login-mode credential checks use `claude auth status` instead of reading `.credentials.json`; a missing or unreadable stored login counts as lapsed, and a check that gives no verdict starts nothing and shows in doctor as a failed probe
-- Close-time skill reviews write concrete steps the closed task showed working instead of general method advice
+- Close-time skill reviews write concrete steps the closed task showed working instead of general method advice, and task procedure reports record the exact commands or tools used
 
 ### Fixed
 
