@@ -377,7 +377,7 @@ export const register: Register = on => {
     if (!active || e.door !== 'command' || !own) return result;
     const content = e.message?.content;
     const text = typeof content === 'string' ? content : Array.isArray(content)
-      ? content.filter((part: { type: string }) => part.type === 'text').map((part) => String(part.text)).join('\n') : '';
+      ? content.filter((part: { type: string }) => part.type === 'text').map((part) => String(part.text ?? '')).join('\n') : '';
     const dispatched = /<command-name>([^<]+)<\/command-name>/.exec(text);
     if (dispatched) {
       const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1] ?? '';
