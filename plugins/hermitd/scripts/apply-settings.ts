@@ -120,7 +120,6 @@ const HERMIT_ALLOW = [
   // hermit-evolve's unattended retranslation of reworded script notices.
   'Bash(bun */scripts/messages.ts*)',
   'Bash(bun */scripts/manifest-seed.ts*)',
-  'Bash(bun */scripts/docker-bun-pin.ts*)',
   'Bash(bun */scripts/apply-settings.ts*)',
   'Bash(bun */scripts/channel-log.ts*)',
   'Bash(bun */scripts/channel-send.ts*)',
@@ -258,6 +257,7 @@ const HERMIT_ALLOW = [
 // an entry still in HERMIT_ALLOW — this registry is what makes a deletion or a respelling
 // reach already-hatched hermits.
 const HERMIT_OBSOLETE = [
+  'Bash(bun */scripts/docker-bun-pin.ts*)',
   'Bash(bun */scripts/apply-reflection-actions.ts*)',
   'Bash(.hermit/bin/hermitd-run domain-hatch sync-block *)',
   // Only the house brief called these; it no longer reads tasks or micro-proposals.

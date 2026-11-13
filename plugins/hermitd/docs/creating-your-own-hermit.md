@@ -245,9 +245,9 @@ During `/docker-setup`, the wizard reads this section for every mirrored plugin,
 
 **Scope:** declare only packages your plugin's own scripts need (hermit-owned). Do not declare the user's project's build deps (e.g. `libsqlite3-dev` for a native addon) — those are live-scanned from the project tree each time `/docker-setup` runs and would drift if declared statically in your plugin.
 
-**Why not write to `docker.packages` from your hatch?** The plugin directory lives in Docker's `claude-config` named volume, which is wiped on `docker compose down -v`, plugin updates, and fresh installs. Anything written there (venvs, caches, stamps) is ephemeral. Using the declaration convention bakes deps into the image at build time, making them permanent and removing the need for runtime installation.
+**Plugin dependencies:** declare apt dependencies rather than silently changing operator config during hatch. The setup wizard combines declarations with the operator's choices in `docker.packages`; the host renderer reads that list before each lifecycle build. Plugin-local caches and installs are not an image dependency declaration.
 
-Operators can review the approved package list via `/hermit-settings docker`. It is read only when `/docker-setup` renders the templates, so adjusting it there installs nothing on its own — an already-built container takes a package through the operator block of `Dockerfile.hermit` (`/docker-customize`) plus a rebuild.
+Operators can add and remove approved packages through `/hermit-settings docker`, then run `hermitd restart --build` on the host. Root toolchain setup belongs in `docker-build.hermit-local.sh`, boot-time work in `docker-entrypoint.hermit-local.sh`, and volumes, ports and env in `docker-compose.override.yml`. These files are operator-owned; generated Docker files are refreshed from config.
 
 ### Docker network requirements
 

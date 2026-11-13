@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { composeFiles } from './lib/compose-files';
 /**
  * Boot script for hermit autonomous sessions.
  *
@@ -1360,7 +1361,7 @@ export function dockerHermitRunning(): boolean {
   try {
     const r = spawnSync(
       'docker',
-      ['compose', '-f', 'docker-compose.hermit.yml', 'ps', '--status', 'running', '--format', '{{.Service}}'],
+      ['compose', ...composeFiles(process.cwd()), 'ps', '--status', 'running', '--format', '{{.Service}}'],
       { timeout: 5000, encoding: 'utf-8' },
     );
     if (r.status !== 0 || !r.stdout) return false;

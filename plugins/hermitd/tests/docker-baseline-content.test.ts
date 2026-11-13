@@ -655,3 +655,11 @@ test('entrypoint rechecks tmux for 60 seconds before exiting', () => {
   expect(block).toContain('if tmux has-session -t "$SESSION_NAME"');
   expect(block).toContain('[ "$_session_returned" = true ] || break');
 });
+
+ test('generated Docker templates have no inline customization or API key interpolation', () => {
+  expect(dockerfile).not.toContain('# --- operator:');
+  expect(compose).not.toContain('AUTH_ENV_LINE');
+  expect(compose).not.toContain('ANTHROPIC_API_KEY=');
+  expect(dockerfile).toContain('USER root\nCOPY docker-build.hermit-local.sh* /opt/hermit-build/');
+  expect(dockerfile.lastIndexOf('USER claude')).toBeGreaterThan(dockerfile.indexOf('bash /opt/hermit-build/'));
+});

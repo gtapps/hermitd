@@ -1,6 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { dockerfileHasOwnBrowser } from './browser-runtime';
 import type { Inputs } from '../render-docker-templates';
 import { channelStateDirKey, getEnabledChannels, isDict } from './channel-config';
 
@@ -13,27 +11,15 @@ function readJson(file: string): any | null {
   }
 }
 
-function readCompose(file: string): any | null {
-  try {
-    const parsed = Bun.YAML.parse(fs.readFileSync(file, 'utf8'));
-    return isDict(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function deriveRenderInputs(configPath: string, composePath: string): Inputs | null {
+export function deriveRenderInputs(configPath: string): Inputs | null {
   const config = readJson(configPath);
-  const compose = readCompose(composePath);
-  if (!config || !compose || !isDict(config.docker)) return null;
+  if (!config || !isDict(config.docker)) return null;
 
   const packages = config.docker.packages;
   // `network_mode` is absent from the shipped config template and from every
   // deploy predating it; the renderer and /docker-security both treat absent as
   // "bridge", so rejecting it here would strand those hermits on report-only.
   const networkMode = config.docker.network_mode ?? 'bridge';
-  const browser = config.browser?.enabled === undefined ? !dockerfileHasOwnBrowser(path.join(path.dirname(composePath), 'Dockerfile.hermit')) : config.browser.enabled;
-  if (typeof browser !== 'boolean') return null;
   const browserPort = config.browser?.port ?? undefined;
   if (browserPort !== undefined && (!Number.isInteger(browserPort) || browserPort < 1 || browserPort > 65535)) return null;
   const fleetMesh = config.docker.fleet_mesh ?? false;
@@ -45,41 +31,19 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
   const envLines: string[] = [];
   const volumeLines: string[] = [];
   for (const channel of getEnabledChannels(config)) {
+    // A channel key that is not a shell identifier gets no state-dir wiring; it never blocks the render.
     const envKey = channelStateDirKey(channel);
-    if (!envKey) return null;
+    if (!envKey) continue;
     const relativeStateDir = `.claude.local/channels/${channel}`;
     envLines.push(`${envKey}=\${PWD}/${relativeStateDir}`);
     volumeLines.push(`\${PWD}/${relativeStateDir}:/home/claude/.claude/channels/${channel}`);
   }
 
-  const hermit = compose.services?.hermit;
-  if (!isDict(hermit) || !Array.isArray(hermit.environment) || !Array.isArray(hermit.volumes)) return null;
-  if (hermit.environment.some((line: unknown) => typeof line !== 'string')) return null;
-  if (hermit.volumes.some((line: unknown) => typeof line !== 'string')) return null;
-
-  const authLines = hermit.environment.filter((line: string) => line.startsWith('ANTHROPIC_API_KEY='));
-  if (authLines.length > 1) return null;
-
-  let auth: Inputs['auth'];
-  if (authLines.length === 0) {
-    auth = 'oauth-token';
-  } else if (authLines[0] === 'ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}') {
-    auth = 'api-key';
-  } else {
-    return null;
-  }
-
-  // Any source counts: base and theirs render the template's default line, so
-  // the 3-way merge keeps an operator-chosen source as an ordinary local edit.
-  const gitIdentityMounts = hermit.volumes.filter(
-    (line: string) => /:\/home\/claude\/\.gitconfig(:|$)/.test(line),
-  );
-  if (gitIdentityMounts.length > 1) return null;
-  const gitIdentityMount = gitIdentityMounts.length === 1;
+  const gitIdentityMount = config.docker.git_identity_mount ?? true;
+  if (typeof gitIdentityMount !== 'boolean') return null;
 
   return {
     packages: [...packages],
-    auth,
     channels: { envLines, volumeLines },
     // Built-in channels boot from claude-plugins-official whatever their config says (hermitd-start).
     channelPlugins: getEnabledChannels(config).map(key => ['discord', 'telegram', 'imessage'].includes(key)
@@ -88,7 +52,6 @@ export function deriveRenderInputs(configPath: string, composePath: string): Inp
     networkMode,
     gitIdentityMount,
     fleetMesh,
-    browser,
     ...(browserPort !== undefined && config.docker.security?.network?.enabled !== true ? { browserPort } : {}),
   };
 }

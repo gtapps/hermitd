@@ -98,9 +98,10 @@ Or use `/hermit-doctor` — the `docker-security` check flags drift between decl
 
 In **log-only mode**, dnsmasq logs every queried domain (allowed or not — log-only does not block) to the container's stdout. Read it via:
 
-```
-docker compose -f docker-compose.hermit.yml \
-               -f docker-compose.security.yml logs hermit-netguard
+```bash
+COMPOSE_FILES=(-f docker-compose.hermit.yml -f docker-compose.security.yml)
+[ ! -f docker-compose.override.yml ] || COMPOSE_FILES+=(-f docker-compose.override.yml)
+docker compose "${COMPOSE_FILES[@]}" logs hermit-netguard
 ```
 
 In **enforce mode**, the same command surfaces NXDOMAIN denials. Decide which domains to allow, then:

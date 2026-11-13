@@ -8,7 +8,6 @@ description: Evolves hermit configuration and templates after a plugin update. D
 Upgrade the project's hermit configuration after a plugin update.
 
 ## Commands
-- `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
 - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 
@@ -44,7 +43,7 @@ After a successful upgrade, arm `/hermitd:later add 1d "doctor has no new failur
 
 **Step 10 runs in the main loop** (not the subagent), consuming the `evolve-runner`'s returned report. The subagent's report is the single source for what follows.
 
-Build the Templates, Bin wrappers, Docker entrypoint and Docker templates lines from the runner's `evolve-apply` JSON receipt plus its completed `remaining` resolutions. A parked file is not a merged file.
+Build the Templates, Bin wrappers, Docker entrypoint lines from the runner's `evolve-apply` JSON receipt plus its completed `remaining` resolutions.
 
 **Report contract** — the subagent's final message is exactly this; non-deferred runs carry no deferred block, so the common payload is tiny:
 
@@ -54,8 +53,8 @@ Settings added: <keys | none>
 Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
 Bin wrappers: <restored/replaced(.bak) | none>
 Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
-Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
-Docker rebuild: <needed + order | base-patched | no>
+Docker render: <written | skipped(reason) | n/a>
+Docker rebuild: <needed + order | no>
 Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
   <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
   <name current>              (no version gap)
@@ -102,10 +101,6 @@ conversation. Stop.
 **Docker rebuild notice.** When `.hermit/state/update-in-progress.json` has an `at` under 60 minutes old and does not hold `"build": false`, the update that launched evolve waits for the version stamps, builds the merged Docker files, and restarts the resident at a quiet boundary. Report that the update applies the refreshed files; do not request another update. Otherwise, from the report's `Docker entrypoint` / `Docker rebuild` fields, append a `Docker:` section when a rebuild is needed:
 - Entrypoint refreshed → "Docker entrypoint refreshed. Rebuild to apply: `hermitd update`."
 - `Docker entrypoint: migrated(...)` → "Your entrypoint customizations moved to `docker-entrypoint.hermit-local.sh`, where upgrades no longer touch them (`<N>` moved). Rebuild to apply the new entrypoint: `hermitd update`." Add, only when `<M>` is non-zero: "`<M>` change(s) could not be moved automatically — they are in `<patch path>` for you to re-apply."
-- `Docker rebuild: base-patched` → "Docker base image updated. Rebuild to apply: `hermitd update`. Do **not** re-run `/docker-setup` — your Dockerfile customizations are preserved." When this value is present, **suppress** the `Docker templates:` bullet below for `Dockerfile.hermit` (the migration already handled it).
-- `Docker templates: <name> merged(...)` → rebuild notice (this is the only `Docker templates:` outcome that fires one): "Merged upstream changes into `<name>` while preserving the operator customizations. Rebuild to apply: `hermitd update`." Name every merged file. Use the same wording in the channel notice.
-- `Docker templates: kept(...)` or `conflict(...)` → not a rebuild. Client voice (inline, direct-channel, and any `client` leg), one next step, no path: "I kept your customised `<name>` and set the new upstream version aside. Ask me to merge it when you want this release's changes." Name every kept or conflicted file. The archived path may go in the maintainer leg. “Ask me to merge it” routes to `/hermitd:docker-customize` → “Merge a parked upstream copy”, including `adopt` after its checks.
-- `Docker templates: report-only(...)` → "Docker template inputs could not be derived safely. Evolve left `<names>` unchanged for operator review on the host."
 - Never auto-rebuild.
 
 **Reconcile routines after a successful always-on upgrade.** If the report represents a completed

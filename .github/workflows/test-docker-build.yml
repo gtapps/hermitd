@@ -1,26 +1,20 @@
 name: Test Docker Build
 
-# The images operators actually rebuild are the current template and whatever
-# docker-bun-pin.ts converges a legacy Dockerfile into. Neither was ever built
-# in CI, so a template edit shipped unverified and the fleet found out on
-# `hermitd-docker update`. Path-filtered: this is a multi-minute network build,
-# not something an ordinary core PR should wait on.
+# Build config-rendered Docker images and verify the runtime and optional hook.
 
 on:
   push:
     branches: [main]
     paths:
       - 'plugins/hermitd/state-templates/docker/**'
-      - 'plugins/hermitd/scripts/docker-bun-pin.ts'
       - 'plugins/hermitd/scripts/render-docker-templates.ts'
-      - 'plugins/hermitd/tests/fixtures/Dockerfile.hermit.legacy'
+      - 'plugins/hermitd/scripts/lib/derive-render-inputs.ts'
       - '.github/workflows/test-docker-build.yml'
   pull_request:
     paths:
       - 'plugins/hermitd/state-templates/docker/**'
-      - 'plugins/hermitd/scripts/docker-bun-pin.ts'
       - 'plugins/hermitd/scripts/render-docker-templates.ts'
-      - 'plugins/hermitd/tests/fixtures/Dockerfile.hermit.legacy'
+      - 'plugins/hermitd/scripts/lib/derive-render-inputs.ts'
       - '.github/workflows/test-docker-build.yml'
 
 jobs:
@@ -32,7 +26,7 @@ jobs:
         include:
           - shape: current
             runner: ubuntu-latest
-          - shape: converged-legacy
+          - shape: hook
             runner: ubuntu-latest
           - shape: browser
             runner: ubuntu-latest
@@ -44,38 +38,27 @@ jobs:
         with:
           bun-version: '1.4.2'
 
-      # The current template, rendered exactly as /docker-setup renders it with
-      # no operator packages.
-      - name: Render the current template
-        if: matrix.shape != 'converged-legacy'
+      - name: Render from config
         run: |
-          mkdir -p build
-          echo '{
-            "packages": [],
-            "auth": "oauth-token",
-            "channels": { "envLines": [], "volumeLines": [] },
-            "networkMode": "bridge",
-            "gitIdentityMount": true,
-            "browser": ${{ startsWith(matrix.shape, 'browser') }}
-          }' | bun plugins/hermitd/scripts/render-docker-templates.ts "$PWD/build"
-
-      # A pre-1.2.0 deployed Dockerfile put through the real migration script.
-      - name: Converge the legacy fixture
-        if: matrix.shape == 'converged-legacy'
-        run: |
-          mkdir -p build/.hermit/state
-          cp plugins/hermitd/tests/fixtures/Dockerfile.hermit.legacy build/Dockerfile.hermit
-          cp plugins/hermitd/state-templates/docker/docker-entrypoint.hermit.sh.template \
-             build/docker-entrypoint.hermit.sh
-          cd build
-          verdict=$(AGENT_DIR="$PWD/.hermit" \
-            bun ../plugins/hermitd/scripts/docker-bun-pin.ts \
-              "$PWD/.hermit" 1.4.2 ci-build)
-          echo "verdict: $verdict"
-          test "$verdict" = '{"status":"converged"}'
+          mkdir -p build/.hermit
+          echo '{"docker":{"packages":[],"git_identity_mount":true},"channels":{},"browser":{"enabled":true}}' > build/.hermit/config.json
+          bun plugins/hermitd/scripts/render-docker-templates.ts "$PWD/build"
+          if [ "${{ matrix.shape }}" = hook ]; then
+            cat > build/docker-build.hermit-local.sh <<'HOOK'
+          set -e
+          test "$(id -u)" = 0
+          command -v claude
+          command -v bun
+          touch /opt/hermit-build/hook-ran-as-root
+          HOOK
+          fi
 
       - name: Build the image
-        run: docker build -t hermit-ci:${{ matrix.shape }} -f build/Dockerfile.hermit build
+        run: docker build --build-arg HERMIT_BROWSER=${{ startsWith(matrix.shape, 'browser') && '1' || '0' }} -t hermit-ci:${{ matrix.shape }} -f build/Dockerfile.hermit build
+
+      - name: Verify the optional root hook
+        if: matrix.shape == 'hook'
+        run: docker run --rm --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'test -f /opt/hermit-build/hook-ran-as-root && test "$(id -un)" = claude'
 
       # The pin is the point: a floating install would still build fine.
       - name: Verify the pinned runtime inside the image

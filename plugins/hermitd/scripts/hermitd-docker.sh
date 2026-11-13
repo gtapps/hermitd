@@ -51,11 +51,13 @@ console.log(name.replaceAll('{project_name}', require('path').basename(process.a
 # target hermit.
 SERVICE="hermit"
 
-# Compose invocation: chain the security overlay if present so every command
-# (up/down/exec/logs/...) sees the merged config. Idempotent — wrapper
-# behavior is unchanged when the overlay is absent.
-DC=(docker compose -f "$COMPOSE")
-[ -f "$COMPOSE_SEC" ] && DC=(docker compose -f "$COMPOSE" -f "$COMPOSE_SEC")
+# Re-evaluate on every call: evolve can create an operator override.
+_dc() {
+  local files=(-f "$COMPOSE")
+  [ ! -f "$COMPOSE_SEC" ] || files+=(-f "$COMPOSE_SEC")
+  [ ! -f "$PROJECT_DIR/docker-compose.override.yml" ] || files+=(-f "$PROJECT_DIR/docker-compose.override.yml")
+  docker compose "${files[@]}" "$@"
+}
 
 _oauth_hint() {
   echo ""
@@ -75,7 +77,7 @@ _install_host_cli() {
 
 _require_running() {
   local services
-  if ! services="$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>&1)"; then
+  if ! services="$(cd "$PROJECT_DIR" && _dc ps --status running --format '{{.Service}}' 2>&1)"; then
     echo "[hermit] Could not query Docker Compose for running services." >&2
     printf '%s\n' "$services" | awk 'NR <= 5 { print substr($0, 1, 300) }' >&2
     exit 1
@@ -107,13 +109,13 @@ if (rt.runtime_mode && rt.runtime_mode !== 'docker' && typeof rt.tmux_session ==
 }
 
 _running_cc_version() {
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude --version 2>/dev/null \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" claude --version 2>/dev/null \
     | grep -oE '[0-9.]+' | head -1 || echo "unknown"
 }
 
 # The installed core's directory inside the container, or nothing when unreadable.
 _core_install() {
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin list --json 2>/dev/null \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" claude plugin list --json 2>/dev/null \
     | bun -e '
       const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
       const rank = {local: 0, project: 1, user: 2};
@@ -130,7 +132,7 @@ _core_cc_floor() {
   local install
   install="$(_core_install)"
   [ -n "$install" ] || return 0
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" cat "$install/.claude-plugin/plugin.json" 2>/dev/null \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" cat "$install/.claude-plugin/plugin.json" 2>/dev/null \
     | bun -e 'try { const m = JSON.parse(require("fs").readFileSync(0, "utf8")).engines?.["claude-code"]; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' 2>/dev/null || true
 }
 
@@ -151,16 +153,28 @@ _core_version() {
 _sync_permissions() {
   local install out
   install="$(_core_install)"
-  if [ -z "$install" ] || ! out=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" bun "$install/scripts/update-permissions.ts" </dev/null 2>&1); then
+  if [ -z "$install" ] || ! out=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" bun "$install/scripts/update-permissions.ts" </dev/null 2>&1); then
     echo "[hermit] Warning: permission list not applied (${out:-core install not found}); hermit-evolve reports the command to run." >&2
     return 0
   fi
   bun -e 'try { const r = JSON.parse(process.argv[1].trim().split("\n").pop()); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
 }
 
+_render_docker() {
+  local result
+  if ! result=$(bun "$(dirname "${BASH_SOURCE[0]}")/render-docker-templates.ts" "$PROJECT_DIR"); then
+    echo "[hermit] Docker file render failed: ${result:-no output}" >&2
+    return 1
+  fi
+  case "$result" in
+    *'"reason":"not_converted"'*) echo '[hermit] Docker files are not converted; run /hermitd:docker-customize "Convert".' ;;
+    *'"reason":"newer_renderer"'*) echo '[hermit] Docker files use a newer renderer; update the host plugin.' ;;
+  esac
+}
+
 _validate_compose() {
-  local detail backup="" candidate
-  if detail="$(cd "$PROJECT_DIR" && "${DC[@]}" config -q 2>&1)"; then
+  local detail
+  if detail="$(cd "$PROJECT_DIR" && _dc config -q 2>&1)"; then
     return 0
   fi
 
@@ -171,15 +185,7 @@ _validate_compose() {
   if [ -f "$COMPOSE_SEC" ]; then
     echo "[hermit] Note: the security overlay is merged too; the error may point at $COMPOSE_SEC." >&2
   fi
-  for candidate in "$PROJECT_DIR"/.hermit/state/docker-compose.hermit.yml.*.bak; do
-    [ -f "$candidate" ] && backup="$candidate"
-  done
-  if [ -n "$backup" ]; then
-    echo "[hermit] If the error is in the base compose, restore the last operator copy and retry:" >&2
-    echo "  cp '$backup' '$COMPOSE'" >&2
-  else
-    echo "[hermit] No docker-compose.hermit.yml .bak was found to restore." >&2
-  fi
+  echo "[hermit] Check docker-compose.override.yml; restore its last operator copy and retry." >&2
   exit 1
 }
 
@@ -202,7 +208,7 @@ _warn_if_entrypoint_stale() {
   [ -f "$ondisk" ] || return 0   # non-entrypoint layout — nothing to compare
 
   local cid image rc=0
-  cid="$(cd "$PROJECT_DIR" && "${DC[@]}" ps -a -q "$SERVICE" 2>/dev/null | head -1 || true)"
+  cid="$(cd "$PROJECT_DIR" && _dc ps -a -q "$SERVICE" 2>/dev/null | head -1 || true)"
   [ -n "$cid" ] || return 0   # never created — first boot, nothing baked yet
   image="$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)"
   [ -n "$image" ] || return 0
@@ -237,11 +243,11 @@ _require_core_version_at_least() {
 # Queue a harness command for the resident's core mod inside the container
 # (`harness-request`); prints its JSON verdict, or nothing if the container is unreachable.
 _harness_request() {
-  (cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run harness-request "$@" </dev/null 2>/dev/null) || true
+  (cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-run harness-request "$@" </dev/null 2>/dev/null) || true
 }
 
 _get_plugin_count() {
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
     claude plugin list --json 2>/dev/null \
     | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).length)' || echo "0"
 }
@@ -254,7 +260,7 @@ _get_plugin_count() {
 # dependency, so updating core first lets them re-resolve against the new version instead
 # of hitting a stale-core version block in the same pass.
 _enumerate_plugins() {
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
     claude plugin list --json 2>/dev/null \
     | bun -e '
       const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -277,7 +283,7 @@ _enumerate_plugins() {
 # dependency-version-unsatisfied, no-matching-tag). Read-only annotation — never drives
 # update logic, only explains an "unchanged" result in the summary/history.
 _enumerate_plugin_errors() {
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+  cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
     claude plugin list --json 2>/dev/null \
     | bun -e '
       const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -299,7 +305,7 @@ case "$CMD" in
     if [ "$#" -eq 0 ]; then
       install="$(_core_install)"
       if [ -z "$install" ]; then echo '[hermit] Could not find installed core.' >&2; exit 1; fi
-      cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" bun "$install/scripts/doctor-check.ts" .hermit
+      cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" bun "$install/scripts/doctor-check.ts" .hermit
     elif [ "$#" -eq 2 ] && [ "$1" = evolve ]; then
       _harness_request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version "$2" --purpose upgrade
     else
@@ -308,7 +314,7 @@ case "$CMD" in
     fi
     ;;
   skills)
-    cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run skills "$@"
+    cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-run skills "$@"
     ;;
   up)
     UP_ARGS=()
@@ -322,13 +328,14 @@ case "$CMD" in
     # Guarded: expanding an empty array under `set -u` aborts on bash < 4.4 (the
     # macOS system bash), which would break a plain `hermitd-docker up`.
     if [ ${#UP_ARGS[@]} -gt 0 ]; then set -- "${UP_ARGS[@]}"; else set --; fi
+    _render_docker
     _validate_compose
     _refuse_if_host_tmux_owner
     echo "[hermit] Starting Docker container..."
     # Clear any stale conflict marker from a prior inert boot before starting, so
     # the poll below only trips on a marker THIS boot's entrypoint writes.
     rm -f "$PROJECT_DIR/.hermit/state/.boot-conflict" 2>/dev/null || true
-    cd "$PROJECT_DIR" && "${DC[@]}" up -d "$@"
+    cd "$PROJECT_DIR" && _dc up -d "$@"
     # Surface an entrypoint singleton-conflict: the container comes up but stays
     # inert (a live non-docker owner holds the state dir). `up -d` returns success
     # and the healthcheck only flips minutes later, so poll the marker briefly.
@@ -369,7 +376,7 @@ case "$CMD" in
       # The resident runs its shutdown skill through the core mod and settles that turn.
       # The entrypoint's SIGTERM cleanup finds this same operation and does not run it again.
       echo "[hermit] Running the graceful shutdown (up to 60s)..."
-      SHUTDOWN_OUT=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-run graceful-shutdown --timeout 60 </dev/null 2>/dev/null || true)
+      SHUTDOWN_OUT=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-run graceful-shutdown --timeout 60 </dev/null 2>/dev/null || true)
       case "$SHUTDOWN_OUT" in
         *'"status":"settled"'*) echo "[hermit] Execution settled." ;;
         *) echo "[hermit] Timed out waiting for graceful close; forcing stop." >&2 ;;
@@ -377,7 +384,7 @@ case "$CMD" in
     fi
 
     echo "[hermit] Stopping Docker container..."
-    cd "$PROJECT_DIR" && "${DC[@]}" down
+    cd "$PROJECT_DIR" && _dc down
     echo "[hermit] Container stopped."
     ;;
 
@@ -385,7 +392,7 @@ case "$CMD" in
     _require_running
     echo "[hermit] Attaching to tmux session: $TMUX_SESSION"
     echo "[hermit] Detach with: Ctrl+B then D"
-    cd "$PROJECT_DIR" && "${DC[@]}" exec "$SERVICE" tmux -u attach -t "$TMUX_SESSION"
+    cd "$PROJECT_DIR" && _dc exec "$SERVICE" tmux -u attach -t "$TMUX_SESSION"
     ;;
 
   agents)
@@ -393,12 +400,12 @@ case "$CMD" in
     # Interactive view from a terminal; `-T` keeps `hermitd agents --json | jq` working from scripts.
     TTY=-T
     if [ -t 0 ] && [ -t 1 ]; then TTY=; fi
-    cd "$PROJECT_DIR" && "${DC[@]}" exec $TTY "$SERVICE" claude agents "$@"
+    cd "$PROJECT_DIR" && _dc exec $TTY "$SERVICE" claude agents "$@"
     ;;
 
   bash)
     _require_running
-    cd "$PROJECT_DIR" && "${DC[@]}" exec -it "$SERVICE" /bin/bash "$@"
+    cd "$PROJECT_DIR" && _dc exec -it "$SERVICE" /bin/bash "$@"
     ;;
 
   setup-token)
@@ -408,10 +415,10 @@ case "$CMD" in
     echo "[hermit] → Open the link it prints, sign in, and paste the code back here"
     echo "[hermit] → The token is written straight to the container's config volume — it is never printed"
     echo ""
-    cd "$PROJECT_DIR" && "${DC[@]}" exec -it "$SERVICE" .hermit/bin/hermitd-run setup-token-mint terminal
+    cd "$PROJECT_DIR" && _dc exec -it "$SERVICE" .hermit/bin/hermitd-run setup-token-mint terminal
     echo ""
     echo "[hermit] Restarting the hermit so it picks up the new token..."
-    cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog restart reauth \
+    cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog restart reauth \
       || echo "[hermit] Auto-restart failed — run: hermitd restart" >&2
     echo "[hermit] Done. Renewal from here on is handled over your channel — no box access needed."
     ;;
@@ -422,7 +429,7 @@ case "$CMD" in
     # .credentials.json from its original /login. That file is never refreshed
     # again, so the expiry mirror-check below would report "expired" forever and
     # push the operator into a login they don't need. Short-circuit first.
-    STATUS_JSON=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+    STATUS_JSON=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
       .hermit/bin/hermitd-run setup-token-mint status 2>/dev/null || echo '{}')
     STATUS_PARSED=$(echo "$STATUS_JSON" | bun -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.token_mode ?? 'false'); console.log(d.expires_at ?? 'unknown');" 2>/dev/null || printf 'false\nunknown')
     TOKEN_MODE="${STATUS_PARSED%%$'\n'*}"
@@ -439,21 +446,21 @@ case "$CMD" in
     # same way a channel-relayed renewal is: into a staged config dir the watchdog
     # commits on restart. Only a container with no session yet (fresh install, the
     # entrypoint still waiting for credentials) needs the interactive REPL path.
-    if cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    if cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
       echo "[hermit] Signing in with claude.ai."
       echo "[hermit] → Open the link it prints, sign in, and paste the code back here"
       echo "[hermit] → The credential is staged and applied when the hermit restarts"
       echo ""
-      cd "$PROJECT_DIR" && "${DC[@]}" exec -it "$SERVICE" \
+      cd "$PROJECT_DIR" && _dc exec -it "$SERVICE" \
         .hermit/bin/hermitd-run setup-token-mint terminal --target login
       echo ""
       echo "[hermit] Restarting the hermit so it picks up the new sign-in..."
-      cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog restart reauth \
+      cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog restart reauth \
         || echo "[hermit] Auto-restart failed — run: hermitd restart" >&2
       echo "[hermit] Done. Renewal from here on is handled over your channel — no box access needed."
       exit 0
     fi
-    AUTH_STATUS=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude auth status --json 2>/dev/null || echo '{}')
+    AUTH_STATUS=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" claude auth status --json 2>/dev/null || echo '{}')
     PARSED=$(echo "$AUTH_STATUS" | bun -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.loggedIn ?? 'false'); console.log(d.email ?? 'unknown'); console.log(d.authMethod ?? 'unknown');" 2>/dev/null || printf 'false\nunknown\nunknown')
     LOGGED_IN="${PARSED%%$'\n'*}"
     REST="${PARSED#*$'\n'}"
@@ -466,7 +473,7 @@ case "$CMD" in
       # Token freshness — mirrors docker-entrypoint.hermit.sh §0b (expiresAt vs Date.now()).
       # Duplicated intentionally: the two scripts are cp'd independently with no sourcing path.
       # Outputs: "ok" (valid token or no expiresAt field), "expired" (access token lapsed), "unknown" (read/parse error).
-      FRESH=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" sh -c \
+      FRESH=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" sh -c \
         'bun -e "try{const f=(process.env.CLAUDE_CONFIG_DIR||\"/home/claude/.claude\")+\"/.credentials.json\";const e=(JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")).claudeAiOauth??{}).expiresAt;if(!e){console.log(\"ok\")}else{const ms=Number(e);if(Number.isNaN(ms))throw 0;console.log(ms<Date.now()?\"expired\":\"ok\")}}catch{console.log(\"unknown\")}"' \
         2>/dev/null || echo "unknown")
     fi
@@ -483,11 +490,11 @@ case "$CMD" in
       echo ""
       # A token hermit keeps its old sign-in on the volume, so the file existing after
       # the REPL proves nothing. Only a file the REPL rewrote with a usable login does.
-      CRED_MTIME=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" sh -c \
+      CRED_MTIME=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" sh -c \
         'bun -e "try{console.log(require(\"fs\").statSync((process.env.CLAUDE_CONFIG_DIR||\"/home/claude/.claude\")+\"/.credentials.json\").mtimeMs)}catch{console.log(0)}"' \
         2>/dev/null || echo 0)
-      cd "$PROJECT_DIR" && "${DC[@]}" exec -it "$SERVICE" claude
-      if ! cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" sh -c \
+      cd "$PROJECT_DIR" && _dc exec -it "$SERVICE" claude
+      if ! cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" sh -c \
           'bun -e "const fs=require(\"fs\");const f=(process.env.CLAUDE_CONFIG_DIR||\"/home/claude/.claude\")+\"/.credentials.json\";try{const ok=fs.statSync(f).mtimeMs!==Number(process.argv[1])&&!!JSON.parse(fs.readFileSync(f,\"utf8\")).claudeAiOauth?.accessToken;process.exit(ok?0:1)}catch{process.exit(1)}" "$1"' \
           _ "$CRED_MTIME" 2>/dev/null; then
         echo "" >&2
@@ -498,7 +505,7 @@ case "$CMD" in
       # Recorded only now: the mode must never be written before the credential it
       # names exists, or a failed sign-in leaves the hermit configured for one it
       # does not have.
-      cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+      cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
         .hermit/bin/hermitd-run settings-edit .hermit/config.json set auth_mode login \
         >/dev/null 2>&1 || true
       echo "[hermit] Credentials saved. The hermit will start shortly."
@@ -506,7 +513,7 @@ case "$CMD" in
     ;;
 
   logs)
-    cd "$PROJECT_DIR" && "${DC[@]}" logs "$@"
+    cd "$PROJECT_DIR" && _dc logs "$@"
     ;;
 
   restart)
@@ -528,6 +535,7 @@ case "$CMD" in
       echo "[hermit] ERROR: 'restart' no longer accepts service args. Use 'hermitd restart' to restart everything." >&2
       exit 2
     fi
+    _render_docker
     _validate_compose
     _refuse_if_host_tmux_owner
     if [ "${1:-}" = "--build" ]; then
@@ -536,13 +544,13 @@ case "$CMD" in
         CC_PIN="latest"
       fi
       echo "[hermit] Rebuilding image pinned to Claude Code ${CC_PIN}..."
-      if ! (cd "$PROJECT_DIR" && "${DC[@]}" build --build-arg "CLAUDE_CODE_VERSION=${CC_PIN}"); then
+      if ! (cd "$PROJECT_DIR" && _dc build --build-arg "CLAUDE_CODE_VERSION=${CC_PIN}"); then
         echo "[hermit] Image build failed: old container still running, no changes applied." >&2
         exit 1
       fi
     fi
     echo "[hermit] Restarting container..."
-    cd "$PROJECT_DIR" && "${DC[@]}" down && "${DC[@]}" up -d
+    cd "$PROJECT_DIR" && _dc down && _dc up -d
     _warn_if_entrypoint_stale
     echo "[hermit] Container restarted."
     _oauth_hint
@@ -569,7 +577,7 @@ case "$CMD" in
 
     CC_BEFORE=$(_running_cc_version)
     CC_LATEST="(skipped)"
-    [ "$PLUGINS_ONLY" = false ] && CC_LATEST=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+    [ "$PLUGINS_ONLY" = false ] && CC_LATEST=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
       npm view @anthropic-ai/claude-code version 2>/dev/null || echo "unknown") || true
     PLUGINS_COUNT_BEFORE=0
     [ "$CC_ONLY" = false ] && PLUGINS_COUNT_BEFORE=$(_get_plugin_count) || true
@@ -639,7 +647,7 @@ case "$CMD" in
       fi
       # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
       _stamp_update_marker
-      if output=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
+      if output=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
         parsed=$(bun -e '
           try {
             const r = JSON.parse(process.argv[1]);
@@ -687,14 +695,14 @@ case "$CMD" in
       ')
       while IFS= read -r mp; do
         [ -z "$mp" ] && continue
-        cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" claude plugin marketplace update "$mp" </dev/null 2>/dev/null || \
+        cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" claude plugin marketplace update "$mp" </dev/null 2>/dev/null || \
           echo "[hermit] Warning: could not refresh marketplace $mp — updates may resolve against a stale catalog" >&2
       done <<< "$MARKETPLACES"
 
       while IFS=$'\t' read -r pid pscope pver; do
         [ -z "$pid" ] && continue
         echo "[hermit] Updating $pid (scope $pscope)..."
-        if UPDATE_OUT=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+        if UPDATE_OUT=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" \
             claude plugin update "$pid" --scope "$pscope" --json </dev/null); then
           PLUGINS_OK_IDS+=("$pid"$'\t'"$pscope")
           if [ "$(_update_outcome "$UPDATE_OUT")" = engine_range ]; then
@@ -802,6 +810,7 @@ case "$CMD" in
     if [ "$EVOLVE_SENT" = true ]; then
       _await_upgrade "${EXPECT_ARGS[@]}" || return 0
     fi
+    _render_docker
     if [ "$PLUGINS_ONLY" = false ]; then
       CC_BUILD_VERSION="${CC_LATEST}"
       if [ -z "$CC_BUILD_VERSION" ] || [ "$CC_BUILD_VERSION" = "unknown" ] || [ "$CC_BUILD_VERSION" = "(skipped)" ]; then
@@ -809,7 +818,7 @@ case "$CMD" in
       fi
       _validate_compose
       echo "[hermit] Rebuilding image with latest Claude Code (${CC_BUILD_VERSION})..."
-      if ! (cd "$PROJECT_DIR" && "${DC[@]}" build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
+      if ! (cd "$PROJECT_DIR" && _dc build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
         echo "[hermit] Image build failed — old container still running, no changes applied." >&2
         exit 1
       fi
@@ -821,7 +830,7 @@ case "$CMD" in
         for _held in "${ENGINE_HELD_IDS[@]}"; do
           IFS=$'\t' read -r pid pscope <<< "$_held"
           echo "[hermit] Updating $pid (scope $pscope) on the rebuilt image..."
-          if ! (cd "$PROJECT_DIR" && "${DC[@]}" run --rm --no-deps -T --entrypoint claude "$SERVICE" \
+          if ! (cd "$PROJECT_DIR" && _dc run --rm --no-deps -T --entrypoint claude "$SERVICE" \
               plugin update "$pid" --scope "$pscope" </dev/null); then
             PLUGINS_FAIL_IDS+=("$_held")
             echo "[hermit] Warning: update failed for $pid; rerun \`hermitd update\` after the restart." >&2
@@ -840,20 +849,20 @@ case "$CMD" in
     trap 'exit 130' INT
     trap 'exit 143' TERM
     echo "[hermit] Bouncing container..."
-    cd "$PROJECT_DIR" && "${DC[@]}" down
+    cd "$PROJECT_DIR" && _dc down
     export HERMIT_RESUME=1
-    cd "$PROJECT_DIR" && "${DC[@]}" up -d
+    cd "$PROJECT_DIR" && _dc up -d
     RESTARTED=true
 
     RUNNING=""
     for _i in $(seq 1 5); do
-      RUNNING=$(cd "$PROJECT_DIR" && "${DC[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
+      RUNNING=$(cd "$PROJECT_DIR" && _dc ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "$SERVICE" || true)
       [ -n "$RUNNING" ] && break
       sleep 2
     done
     if [ -z "$RUNNING" ]; then
       echo "[hermit] Container failed to come back up." >&2
-      cd "$PROJECT_DIR" && "${DC[@]}" logs --tail=30 "$SERVICE" >&2
+      cd "$PROJECT_DIR" && _dc logs --tail=30 "$SERVICE" >&2
       exit 1
     fi
 

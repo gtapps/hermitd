@@ -476,7 +476,7 @@ describe('static settings policy', () => {
       'telemetry_export.enabled',
       'telemetry_export.destination.url', 'telemetry_export.destination.bearer_env',
       'telemetry_export.redact_operator_text', 'artifacts.publish_authorized', 'artifacts.backend',
-      'docker.packages', 'docker.recommended_plugins.0.enabled', 'docker.fleet_mesh', 'browser', 'transcription.enabled', 'transcription.echo', 'remote', 'chrome', 'auth_mode']) {
+      'docker.git_identity_mount', 'docker.packages', 'docker.recommended_plugins.0.enabled', 'docker.fleet_mesh', 'browser', 'transcription.enabled', 'transcription.echo', 'remote', 'chrome', 'auth_mode']) {
       for (const rest of [`set ${field} true`, `set ${field} false`, `unset ${field}`, `toggle ${field}`]) {
         const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }), dir);
         expectAsk(r.stdout, `Hermit setting: ${field}${rest.startsWith('set ') ? '=' + rest.split(' ').at(-1) : ''}`);

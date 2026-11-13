@@ -18,7 +18,6 @@ execution:
     ## Commands
     - `domain-hatch-ensure-target`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts ensure-target hermitd`
     - `domain-hatch-preflight`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/domain-hatch.ts preflight hermitd`
-    - `evolve-adopt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit adopt`
     - `evolve-apply`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit apply`
     - `evolve-finalize`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-finalize.ts .hermit`
     - `evolve-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit`
@@ -41,7 +40,7 @@ execution:
        not need to read).
     3. Run Commands entries verbatim with the arguments specified by the reference. At Step 5 run
        `evolve-apply` first, then resolve only its `remaining` entries. Build the Templates, Bin wrappers,
-       Docker entrypoint and Docker templates report lines from its JSON receipt plus those resolutions.
+       Docker entrypoint report lines from its JSON receipt plus those resolutions.
 
     ## Delegated-mode rules (you cannot prompt the operator)
 
@@ -54,12 +53,7 @@ execution:
     - **Settings target refusal:** if any `apply-settings.ts` call (Step 8's `permissions-plan` or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.
     - **Config writes:** never Edit or Write `.hermit/config.json`. Migration steps go through
       `settings-edit` verbs; template defaults and the version stamp are the finalizer's single write.
-    - **Mechanical file work (steps 5–5d):** `evolve-apply` owns copies, template `.new` parking,
-      boot-wrapper backups, copies of Docker files the operator never edited, bootstrap parks and their
-      baselines. Do not redo them. A customized Docker file's clean merge arrives in `remaining` with a
-      `merged_path` for you to review, never installed.
-      Resolve only `remaining` entries using `reference.md`; keep customized files unless that procedure
-      explicitly resolves their entrypoint sidecar migration.
+    - **Mechanical file work (steps 5–5c):** `evolve-apply` owns copies, template `.new` parking, boot-wrapper backups and entrypoint baselines. Resolve only `remaining` entries using `reference.md` and run its header-gated Docker renderer afterwards.
     - **Legacy `## Plan` strip (step 4b):** warn only, never strip.
     - **Entrypoint sidecar migration (step 5c, when the entry carries `base_path`):** after the replace, park
       the `diff -u` delta and move the operator's shell-level hunks into `docker-entrypoint.hermit-local.sh` per
@@ -72,11 +66,6 @@ execution:
       as a deferred-migration block (below) and **skip that step only**. This is the sole escalation path.
       A deferred step's channel-resolution stanza (`options`/`decision.resume`, if the instruction carries one)
       is data for the main loop's Step 10 — copy it verbatim into the block; do not act on it yourself.
-    - **Surgical docker-template migrations:** an Upgrade Instruction may patch a wizard-rendered docker
-      template (`Dockerfile.hermit`) and re-record its `template-manifest.json` baseline. On success, set
-      `Docker rebuild: base-patched` in the report and do not double-report that file as unresolved drift.
-      When the CHANGELOG step's anchor line is absent (operator-customized base), follow the standard
-      deferred-migration path: skip this step only and continue.
     - **Version bump (step 9):** run `evolve-finalize.ts` and parse its stdout JSON. Use `core.confirmed` as
       `vNEW` in the report — NOT `plan.to`. If it prints `error`, return
       `Upgrade: blocked: config version bump failed — <joined errors[].message>` and omit
@@ -102,8 +91,8 @@ execution:
     Templates: <refreshed/restored/kept-N/conflicts-parked-N | none>
     Bin wrappers: <restored/replaced(.bak) | none>
     Docker entrypoint: <refreshed | conflict-replaced(<backup path>) | migrated(<N> moved, <M> in <patch path>) | n/a>
-    Docker templates: <name merged(3-way[; reviewed[, n lines fixed] | ; n conflicts resolved]) | kept(bootstrap, upstream not merged: <path>) | conflict(<n | review | reason>): upstream copy at <path>; ... | report-only(<names>) | none>
-    Docker rebuild: <needed + order | base-patched | no>
+    Docker render: <written | skipped(reason) | n/a>
+    Docker rebuild: <needed + order | no>
     Sibling hermits: <one or more of the following per sibling, space-separated, or "none">
       <name vOLD->vNEW>           (confirmed by finalizer — only from siblings_confirmed)
       <name current>              (no version gap)
@@ -142,7 +131,7 @@ execution:
     - bun --version: 1.4.2
     - evolve gate and preflight: {"status":"ok","core_from":"1.4.21","core_to":"1.4.22"}
     - evolve-plan: {"templates_changed":[{"name":"TASKS.md.template","class":"conflict"}],"settings_added":[],"bin_changed":[],"docker":"n/a","siblings":[],"upgrade_steps":[]}
-    - evolve-apply: {"applied":[{"file":"templates/TASKS.md.template","outcome":"parked-new"}],"remaining":[],"parked":[],"own_browser":false}
+    - evolve-apply: {"applied":[{"file":"templates/TASKS.md.template","outcome":"parked-new"}],"remaining":[]}
     - evolve-finalize: {"status":"ok","siblings_confirmed":[],"siblings_skipped":[],"siblings_warnings":[]}
     - Every other script the procedure names: OK with no changes.
     </system-reminder>

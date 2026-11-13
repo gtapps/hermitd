@@ -32,14 +32,24 @@ If the output is `container`, **stop immediately** — do not proceed to step 1.
 
 > This skill writes a `docker-compose.security.yml` overlay on the host and recreates the container with stronger isolation. Run it from your host shell in the project root. To inspect the live security posture *inside* the running container, run `/hermitd:hermit-doctor` — it includes a `docker-security` check.
 
+For every direct Compose command, rebuild `COMPOSE_FILES` immediately before use in the same Bash call:
+
+```bash
+COMPOSE_FILES=(-f docker-compose.hermit.yml)
+[ ! -f docker-compose.security.yml ] || COMPOSE_FILES+=(-f docker-compose.security.yml)
+[ ! -f docker-compose.override.yml ] || COMPOSE_FILES+=(-f docker-compose.override.yml)
+```
+
+Use `docker compose "${COMPOSE_FILES[@]}"`: base, security overlay, then operator override. Re-evaluate after writing either overlay.
+
 ### 1. Prerequisites
 
 1. Read `.hermit/config.json`. If missing: "Run `/hermitd:hatch` first." Stop.
 2. Verify `docker-compose.hermit.yml` exists at the project root. If missing: "Run `/hermitd:docker-setup` first." Stop.
 3. **Docker daemon check**: run `timeout 10s docker info >/dev/null 2>&1`. If it fails or times out: tell the operator "Docker daemon is not reachable or timed out. Start Docker before re-running `/docker-security`." Stop.
 4. Read `docker.network_mode` from config (default: `"bridge"`). If `"host"`, set `HOST_NETWORK_MODE=true` and surface to operator: "Detected `network_mode: host` in your config. The LAN containment toggle (Prompt 1) will be skipped — it would replace host mode and break your HA / host-bound service access. Resource bounds (Prompt 2) will not apply network sysctls in host mode either; Docker rejects them and the container would fail to start."
-5. **Detect hermit ports**: run `timeout 10s docker compose -f docker-compose.hermit.yml config --format json 2>/dev/null` and parse `.services.hermit.ports`. Store as in-memory `detected_hermit_ports` (array of long-form Compose port objects: `{target, published, host_ip, protocol, mode}`). If the command fails or returns no JSON, fall back to `grep -n '^\s*ports:' docker-compose.hermit.yml` and set `detected_hermit_ports_unparsed=true` if found. Either way, a non-empty result means ports are present.
-6. Check whether the container is currently running: `docker compose -f docker-compose.hermit.yml ps --status running --format '{{.Service}}' 2>/dev/null | grep -x hermit`. If absent: tell the operator "Container is not running. The wizard will still write the overlay; you'll see the live verification only after starting the container with `hermitd-docker up`."
+5. **Detect hermit ports**: run `timeout 10s docker compose "${COMPOSE_FILES[@]}" config --format json 2>/dev/null` and parse `.services.hermit.ports`. Store as in-memory `detected_hermit_ports` (array of long-form Compose port objects: `{target, published, host_ip, protocol, mode}`). If the command fails or returns no JSON, scan the selected Compose files for `ports:` keys and set `detected_hermit_ports_unparsed=true` if found. Either way, a non-empty result means ports are present.
+6. Check whether the container is currently running: `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x hermit`. If absent: tell the operator "Container is not running. The wizard will still write the overlay; you'll see the live verification only after starting the container with `hermitd-docker up`."
 7. Read current `docker.security.*` from config.json. Also read `sandbox.enabled` from the target settings file (same `hatch_target` routing as hatch/docker-setup: `hatch_target == "local"` → `.claude/settings.local.json`; else → `.claude/settings.json`) — display only, hermit does not configure this key. Print a "current posture" summary. Example:
 
    ```
@@ -83,7 +93,7 @@ Map: `"Yes — recommended"` → `dns_mode: "log-only"`. `"Yes — strict"` → 
 If the operator selected a "Yes" option AND `detected_hermit_ports` is non-empty (or `detected_hermit_ports_unparsed=true`), surface a follow-up `AskUserQuestion` (header: `"Port publishing"`) immediately:
 
 ```
-Your docker-compose.hermit.yml publishes ports on the hermit service:
+Your merged Compose stack publishes ports on the hermit service:
   - "3000:3000"        ← list each port if parsed, or "(port block detected)" if unparsed
   ...
 
@@ -93,7 +103,7 @@ only netguard (the netns owner) can publish ports.
 ```
 
 Options:
-- `"Move ports to netguard (recommended)"` — render the same `ports:` block on `hermit-netguard` in the overlay. Persist to `docker.security.network.publish_ports`. After overlay is written (step 6), show a diff and prompt the operator to delete the `ports:` block from `docker-compose.hermit.yml` themselves — the wizard does not modify the base file.
+- `"Move ports to netguard (recommended)"` — render the same `ports:` block on `hermit-netguard` in the overlay. Persist to `docker.security.network.publish_ports`. After overlay is written (step 6), show a diff and use the Step 7 override auto-fix to clear `services.hermit.ports`; never edit the generated base file.
 - `"Skip LAN containment (keep ports on hermit)"` — clear the LAN containment selection (treat as if operator answered No above). Set `lan_containment_skipped_due_to_ports=true`. Continue to step 4.
 - `"Cancel"` — print "Re-run /docker-security after deciding how to handle your port publishing. See docs/docker-security.md for guidance." Exit. Write nothing.
 
@@ -220,13 +230,13 @@ Persist `docker.security.audit.plugin_installs` accordingly.
 
 ### 6. Render overlay
 
-**Browser viewer publishing:** When `browser.port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. Re-render the base with `browserPort` omitted to remove its browser mapping before recreating. Never publish the same viewer in both services. With containment off, base rendering owns it; host networking uses the loopback bind environment instead of a mapping.
+**Browser viewer publishing:** When `browser.port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. After persisting config, run `.hermit/bin/hermitd-run render-docker-templates <project-root>` and check its verdict before recreating; enabled LAN containment makes the config-driven renderer omit the base browser mapping. On a skipped or error verdict, stop and follow the renderer reason before proceeding. Never publish the same viewer in both services. With containment off, base rendering owns it; host networking uses the loopback bind environment instead of a mapping.
 
 **Before rendering — preserve `publish_ports` across reruns:**
 Read `docker.security.network.publish_ports` from the existing config.json (if present). Keep this as `persisted_publish_ports`. In the current wizard run:
 - If the operator chose "Move ports to netguard": replace `persisted_publish_ports` with the newly detected ports from step 5 (prerequisites).
-- If no base ports were detected AND the operator did not visit the port-conflict flow: keep `persisted_publish_ports` unchanged (the operator already deleted the base block; do not lose the netguard mapping).
-- If the operator chose "Skip LAN containment (keep ports on hermit)": set `persisted_publish_ports = []` (LAN containment is off; ports stay on hermit in the base file).
+- If no base ports were detected AND the operator did not visit the port-conflict flow: keep `persisted_publish_ports` unchanged (the override already clears hermit ports; do not lose the netguard mapping).
+- If the operator chose "Skip LAN containment (keep ports on hermit)": set `persisted_publish_ports = []` (LAN containment is off; ports stay on hermit in the merged stack).
 
 **All-off branch — warn before deletion if `publish_ports` was set:**
 Otherwise (all toggles off): before deleting the overlay, check if `persisted_publish_ports` is non-empty. If so, surface:
@@ -237,13 +247,13 @@ ports that hermit-netguard currently publishes:
   - "3000:3000"
   ...
 
-If you previously deleted the `ports:` block from docker-compose.hermit.yml,
-you'll need to re-add it there before bringing the container back up — the
-overlay won't be there to publish them.
+Restore the hermit ports in docker-compose.override.yml before bringing
+the container back up; remove a hermit ports reset if needed.
+The security overlay will no longer publish them.
 ```
 
 Then `AskUserQuestion` (header: `"Confirm all-off"`):
-- `"Yes — proceed (I'll restore base ports if needed)"`
+- `"Yes — proceed (I'll restore override ports if needed)"`
 - `"No — cancel"`
 
 On Yes: continue to overlay deletion, clear `docker.security.*`, tell the operator "All toggles off — overlay removed and config cleared." Skip to step 9.
@@ -301,7 +311,7 @@ HERMIT_SEC_JSON
 
 Notes:
 - `network` is required only when `toggles.lan.enabled`. The script places sysctls on netguard when LAN is on, on hermit when LAN is off (Prompt 2 only). `host_ip: "0.0.0.0"` and `mode: "ingress"` (Compose defaults) are omitted from rendered port entries.
-- If base ports were detected via the grep fallback (`detected_hermit_ports_unparsed=true`) with no parsed shape, pass `publishPorts: []` and tell the operator: "Could not parse port shapes from the compose config — manually add your `ports:` block to `hermit-netguard` in the rendered overlay and delete it from the base file."
+- If base ports were detected via the grep fallback (`detected_hermit_ports_unparsed=true`) with no parsed shape, pass `publishPorts: []` and tell the operator: "Could not parse port shapes from the compose config — configure `docker.security.network.publish_ports` and re-render the security overlay, then clear `services.hermit.ports` in docker-compose.override.yml using the Step 7 procedure."
 - The script prints `{ "written": [...] }`.
 
 #### 6c. Copy the netguard Dockerfile + entrypoint (only if Prompt 1 enabled)
@@ -314,10 +324,10 @@ Notes:
 After both are copied, force a fresh netguard image build:
 
 ```bash
-timeout 180s docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml build --no-cache hermit-netguard
+timeout 180s docker compose "${COMPOSE_FILES[@]}" build --no-cache hermit-netguard
 ```
 
-If the build exits non-zero, run `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml logs hermit-netguard --tail=30`, surface the output, and suggest a targeted fix:
+If the build exits non-zero, run `docker compose "${COMPOSE_FILES[@]}" logs hermit-netguard --tail=30`, surface the output, and suggest a targeted fix:
 - **`apk add` fails** → DNS not reachable at build time; check host network and Docker DNS config (`/etc/docker/daemon.json`)
 - **Syntax error in nftables.conf or dnsmasq.allowlist** → read the error line; it usually names the file and line number
 - **Port already in use** → a published port in the overlay conflicts; `ss -tlnp | grep <port>` finds the owner
@@ -331,29 +341,28 @@ On `"No — I'll restart manually later"`: skip to step 9 with the note "Overlay
 
 ### 7. Restart + smoke test
 
-**Hard gate — re-check base ports before starting:**
-Before running `hermitd-docker up`, re-run the step 5 port detection: `timeout 10s docker compose -f docker-compose.hermit.yml config --format json 2>/dev/null | bun -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log((((d.services ?? {}).hermit ?? {}).ports ?? []).length)'`. If the result is non-zero (or the command output from the grep fallback is non-empty) AND `docker.security.network.enabled === true` (LAN containment is on):
+**Hard gate — re-check merged ports before starting:**
+Before running `hermitd-docker up`, re-run the step 5 port detection: `timeout 10s docker compose "${COMPOSE_FILES[@]}" config --format json 2>/dev/null | bun -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log((((d.services ?? {}).hermit ?? {}).ports ?? []).length)'`. If the result is non-zero (or the command output from the grep fallback is non-empty) AND `docker.security.network.enabled === true` (LAN containment is on):
 
 Ask with `AskUserQuestion` (header: `"Ports conflict"`):
-- `"Auto-fix — I'll remove the \`ports:\` block (backup first)"` (Recommended)
+- `"Auto-fix — I'll clear hermit ports in the override (backup first)"` (Recommended)
 - `"I'll edit it myself — pause here"`
 
-**On "Auto-fix":** Back up the base compose file first: `cp docker-compose.hermit.yml docker-compose.hermit.yml.bak`. Then read `docker-compose.hermit.yml`, locate the `ports:` key under the `hermit:` service, and remove it and all its child lines (keep every other key). Write the file back. Print: "Removed `ports:` block from docker-compose.hermit.yml (backup: docker-compose.hermit.yml.bak). Ports are now published by hermit-netguard via the overlay." Continue to the restart sequence below ("If operator chose to restart now...").
+**On "Auto-fix":** Back up an existing `docker-compose.override.yml` to a timestamped `.bak` under `.hermit/state/`. Preserve its operator content and set `services.hermit.ports: !reset []` in that override (replace its existing ports key rather than duplicating it). Never write `docker-compose.hermit.yml`. Rebuild `COMPOSE_FILES`, then run `docker compose "${COMPOSE_FILES[@]}" config -q` and confirm the merged hermit service has no ports. On failure, restore the override backup (or remove only the newly created override) and stop with the error. Print: "Hermit ports cleared through docker-compose.override.yml; netguard publishes them through the security overlay." Continue to the restart sequence below.
 
 **On "I'll edit it myself":** Print:
 ```
-Cannot start container — docker-compose.hermit.yml still publishes ports on hermit.
-Those ports are now published by hermit-netguard via the overlay.
-Delete the `ports:` block from docker-compose.hermit.yml, then run:
-  hermitd start
+Cannot start container: the merged hermit service still publishes ports.
+Set services.hermit.ports: !reset [] in docker-compose.override.yml,
+then validate the merged stack and run hermitd start.
 ```
-Stop here. Tell the operator: "Overlay and config have been written — just delete the base `ports:` block first, then run `hermitd start`."
+Stop here. Tell the operator the overlay and config have been written and the override must clear the conflicting hermit ports.
 
 If operator chose to restart now AND container was running before this skill (and the hard gate passed):
 
 1. Run `.hermit/bin/hermitd-docker down`.
 2. Run `.hermit/bin/hermitd-docker up` (the wrapper picks up the overlay automatically). The first up will trigger `docker compose build hermit-netguard` if Prompt 1 was enabled — wait for completion (can be 30-60s on first build).
-3. Poll `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml ps --status running --format '{{.Service}}'` every 2s for up to 30s; expect `hermit` (and `hermit-netguard` if Prompt 1 enabled). If either is missing after 30s: run `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml logs <missing-service> --tail=30` (substitute `hermit` or `hermit-netguard` per the missing service; omit the service name if both are down), surface output, and suggest:
+3. Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 30s; expect `hermit` (and `hermit-netguard` if Prompt 1 enabled). If either is missing after 30s: run `docker compose "${COMPOSE_FILES[@]}" logs <missing-service> --tail=30` (substitute `hermit` or `hermit-netguard` per the missing service; omit the service name if both are down), surface output, and suggest:
    - **hermit-netguard won't start** → nftables or dnsmasq config error; read the log for the line number
    - **hermit won't start** → check if the base `ports:` conflict was fully resolved (re-run the hard gate port check above)
    - **Both down** → Docker daemon issue; `docker info` to confirm daemon is healthy
@@ -363,7 +372,7 @@ If operator chose to restart now AND container was running before this skill (an
 Stream the static verification script into the live container. It is placeholder-free (hardcoded probe values) and uses only tools the hermit base image ships — `bun`, `jq`, `curl`, glibc `getent` (no `python3`, `nc`, or `nslookup`):
 
 ```bash
-docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml \
+docker compose "${COMPOSE_FILES[@]}" \
   exec -T hermit sh -s < "${CLAUDE_PLUGIN_ROOT}/state-templates/docker/security/verify-security.sh"
 ```
 

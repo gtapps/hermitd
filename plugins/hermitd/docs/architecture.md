@@ -221,7 +221,9 @@ Task mutations and imports share `state/tasks.lock`. Every writer of `state/deci
 | `state/watchdog-state.json`    | hermitd-watchdog.ts only                             | doctor-check.ts (`last_run` liveness + `consecutive_stale` + `last_hygiene_eval` + `hygiene_eval_counts`) |
 | `state/context-surface.json`   | cost-tracker.ts only (derived at each compaction boundary) | hermitd-watchdog.ts (compact-tier conversation gate), doctor-check.ts (`context-age`) |
 | `state/watchdog-events.jsonl`  | hermitd-watchdog.ts + channel-send.ts (append; maintainer fallback and undelivered client notices)                    | doctor-check.ts (event counts), resident-start (restart reason)|
-| `state/template-manifest.json` | `manifest-seed.ts` (called by hatch seed, docker-setup baselines, hermit-evolve update-after-copy) | evolve-plan.ts (classify), doctor-check.ts (shape check) |
+| `state/template-manifest.json` | `manifest-seed.ts` (called by hatch seed, docker-setup entrypoint baseline, hermit-evolve update-after-copy) | evolve-plan.ts (classify), doctor-check.ts (shape check) |
+
+Project-root Docker ownership is separate: the renderer owns header-marked `Dockerfile.hermit` and `docker-compose.hermit.yml`, deriving both from config before every host `up`, `restart` and `update`. Evolve classifies only the entrypoint and seeds only its Docker baseline. The operator owns `docker.packages`, `docker-build.hermit-local.sh`, `docker-entrypoint.hermit-local.sh`, and `docker-compose.override.yml`. Compose applies base, security overlay, then operator override. Conversion is a complete, retryable migration described by docker-customize.
 
 Per-file update policies for managed files under `.hermit/`:
 

@@ -1,3 +1,4 @@
+import { composeFiles } from './compose-files';
 /**
  * Shared tmux helpers for the lifecycle scripts
  * (hermitd-start, hermitd-stop, hermitd-watchdog) and the harness-command drain.
@@ -27,7 +28,7 @@ export function tmuxArgv(transport: Transport, args: string[]): { cmd: string; a
   if (transport.kind === 'host') return { cmd: 'tmux', argv: args };
   return {
     cmd: 'docker',
-    argv: ['compose', '-f', transport.composeFile, 'exec', '-T', transport.service, 'tmux', ...args],
+    argv: ['compose', ...composeFiles(path.dirname(transport.composeFile)), 'exec', '-T', transport.service, 'tmux', ...args],
   };
 }
 

@@ -35,6 +35,7 @@ const EXPECTED_PATHS = [
   'telemetry_export.redact_operator_text',
   'artifacts.publish_authorized',
   'artifacts.backend',
+  'docker.git_identity_mount',
   'docker.packages',
   'docker.recommended_plugins',
   'docker.fleet_mesh', 'browser',

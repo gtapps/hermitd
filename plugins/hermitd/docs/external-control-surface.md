@@ -175,8 +175,9 @@ field — read `paused` from `get_status` or `list_hermits`.
 
 When `runtime_mode` is `docker` and this process is not inside the container,
 wake relays with
-`docker compose -f docker-compose.hermit.yml exec -T hermit .hermit/bin/hermitd-run mcp-server --wake-local`
-from the project root. Relay spawn failure, timeout, or nonzero exit is
+`docker compose <stack> exec -T hermit .hermit/bin/hermitd-run mcp-server --wake-local`
+from the project root, where `<stack>` is `-f docker-compose.hermit.yml`, then
+`-f docker-compose.security.yml` and `-f docker-compose.override.yml` when present. Relay spawn failure, timeout, or nonzero exit is
 `unreachable`. The in-container `--wake-local` path posts locally and does
 not recurse.
 

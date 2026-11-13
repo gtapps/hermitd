@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
+import { composeFiles } from './lib/compose-files';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isContainer } from './lib/container';
 import { readSettledConfig } from './lib/config-read';
-import { APPARMOR_PROFILE_FILE, BROWSER_PACKAGE_COMMANDS, appArmorProfileMissing, browserAppArmorProfile, browserDataDir, browserDeployment, browserHostPlatform, browserImageProbe, browserRuntimeMode, installedBrowser, managedBrowserMergePending } from './lib/browser-runtime';
+import { APPARMOR_PROFILE_FILE, BROWSER_PACKAGE_COMMANDS, appArmorProfileMissing, browserAppArmorProfile, browserDataDir, browserDeployment, browserHostPlatform, browserImageProbe, browserRuntimeMode, installedBrowser } from './lib/browser-runtime';
 import { installBrowser } from './browser-install';
 import { maybeStartBrowserDisplay } from './browser-display';
 import os from 'node:os';
@@ -23,18 +24,6 @@ interface HostOptions {
   restriction?: () => string;
   profileFile?: string;
   startDisplay?: typeof maybeStartBrowserDisplay;
-}
-
-/** Adds only the viewer's compose lines, where the renderer puts them: operator edits to the Docker files stay. */
-export function publishViewer(file: string, port: number, hostNetwork: boolean): void {
-  const compose = fs.readFileSync(file, 'utf8');
-  const entry = hostNetwork ? `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:${port}` : `"127.0.0.1:${port}:6080"`;
-  if (compose.includes(entry)) return;
-  const anchor = new RegExp(`^\\n?(?=(?:    #.*\\n)?    ${hostNetwork ? 'network_mode: host' : 'cap_drop:'}$)`, 'm');
-  if ((!hostNetwork && /^    ports:$/m.test(compose)) || !anchor.test(compose)) {
-    throw new Error(`Add ${entry} to the hermit service in docker-compose.hermit.yml by hand, then run this again.`);
-  }
-  fs.writeFileSync(file, compose.replace(anchor, hostNetwork ? `      - ${entry}\n` : `    ports:\n      - ${entry}\n`));
 }
 
 const onPath = (name: string) => Bun.which(name, { PATH: process.env.PATH });
@@ -156,18 +145,11 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version) || Number(version.split('.')[0]) < 28) throw new Error('Docker server 28.0.0 or newer is required for safe localhost publishing.');
     const marker = await run(browserImageProbe(path.join(project, 'docker-compose.hermit.yml')));
     if (marker.code) {
-      const pending = managedBrowserMergePending(dir);
-      if (pending) {
-        throw new Error('Dockerfile.hermit has no managed-browser block: ask the hermit to merge it'
-          + ` (parked copy: ${pending.parked ?? 'none'})`);
-      }
       throw new Error('Managed browser missing from the image: run hermitd update to rebuild');
     }
   }
   const containerDisplay = async (verb: 'ensure' | 'status') => {
-    const args = ['docker', 'compose', '-f', path.join(project, 'docker-compose.hermit.yml')];
-    const security = path.join(project, 'docker-compose.security.yml');
-    if (fs.existsSync(security)) args.push('-f', security);
+    const args = ['docker', 'compose', ...composeFiles(project)];
     args.push('exec', '-T', 'hermit', '.hermit/bin/hermitd-run', 'browser-display', verb);
     return JSON.parse(await required(args));
   };
@@ -238,7 +220,12 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
       await set('docker.security.network.publish_ports', ports);
       security.network.publish_ports = ports;
       await required([process.execPath, script('render-security-overlay'), 'render', project], securityRenderInput(security));
-    } else publishViewer(path.join(project, 'docker-compose.hermit.yml'), port, config.docker.network_mode === 'host');
+    } else {
+      const rendered = JSON.parse(await required([process.execPath, script('render-docker-templates'), project]));
+      if (rendered.status === 'skipped') throw new Error(rendered.reason === 'not_converted'
+        ? 'Docker files are not converted; run /hermitd:docker-customize "Convert".'
+        : 'Docker files use a newer renderer; update the host plugin.');
+    }
     log('Recreating the hermit container to enable the viewer; the image will not be rebuilt.');
     await required(['bash', path.join(dir, 'bin/hermitd-docker'), 'up', '--force-recreate', '--no-build']);
   } else startDisplay();

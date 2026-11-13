@@ -324,7 +324,7 @@ function statefulRows(config: Json): Json[] {
     { arg: 'routines', label: 'Routines', ...count(routines) },
     { arg: 'scheduled-checks', label: 'Session checks', ...count(checks) },
     { arg: 'env', label: 'Environment', keys: envKeys },
-    { arg: 'docker', label: 'Docker packages', packages: Array.isArray(packages) ? packages : [] },
+    { arg: 'docker', label: 'Docker packages', packages: Array.isArray(packages) ? packages : [], applies: 'hermitd restart --build' },
   ];
 }
 

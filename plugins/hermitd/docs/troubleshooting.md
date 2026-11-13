@@ -157,7 +157,7 @@ Common causes:
 - **Network issues during build:** `apt-get` or `npm install` fails. Check your network, proxy settings, and Docker DNS config.
 - **npm permission errors:** Claude Code installs globally. The Dockerfile sets `NPM_CONFIG_PREFIX` for the `claude` user — if you modified the Dockerfile, ensure this is preserved.
 - **Ubuntu 26.04 default user conflict:** UID 1000 is taken by the default `ubuntu` user. The generated Dockerfile runs `userdel -r ubuntu` first — don't remove this line.
-- **Rebuild after config changes:** setting `docker.packages` in config.json installs nothing on its own — the list is read only when the Docker templates are rendered. Add the package inside the operator block of `Dockerfile.hermit`, then rebuild: `hermitd restart --build` (it needs the container running; from stopped, `hermitd start --build`). See [Customizing the container](always-on.md#customizing-the-container).
+- **Rebuild after config changes:** add or remove `docker.packages` through `/hermitd:hermit-settings docker`, then rebuild: `hermitd restart --build` (it needs the container running; from stopped, `hermitd start --build`). See [Customizing the container](always-on.md#customizing-the-container).
 
 ## Upgrade Says Nothing to Update
 
@@ -215,7 +215,7 @@ Notes:
 Usually a UID mismatch between the host and the container user. The generated Dockerfile creates a `claude` user matching your host UID. If you changed your system user or are running on a different machine:
 
 1. Check your host UID: `id -u`
-2. Rebuild the image: `docker compose -f docker-compose.hermit.yml build --no-cache`
+2. Rebuild the image: `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml -f docker-compose.override.yml build --no-cache`, dropping each `-f` file the project does not have
 
 ## Channel Messages Not Arriving
 

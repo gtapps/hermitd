@@ -19,10 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 {{PACKAGES_BLOCK}}
 
-# --- operator: root-context installs go here; upgrades merge around this block ---
-#
-# --- end operator ---
-
 # Match host UID for volume permissions. Ubuntu 26.04 ships a default
 # 'ubuntu' user at UID 1000 — remove it first.
 ARG HOST_UID=1000
@@ -50,6 +46,11 @@ RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 ENV BUN_INSTALL=/home/claude/.bun
 ENV PATH=/home/claude/.bun/bin:$PATH
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+
+USER root
+COPY docker-build.hermit-local.sh* /opt/hermit-build/
+RUN if [ -f /opt/hermit-build/docker-build.hermit-local.sh ]; then bash /opt/hermit-build/docker-build.hermit-local.sh; fi
+USER claude
 
 COPY --chmod=755 --chown=claude:claude docker-entrypoint.hermit.sh /home/claude/docker-entrypoint.sh
 

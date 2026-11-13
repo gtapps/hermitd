@@ -1,3 +1,4 @@
+import { composeFiles } from './lib/compose-files';
 import { readTaskInventory } from './lib/tasks';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { readTargetState, settingsFile } from './lib/domain-hatch/target';
@@ -257,21 +258,6 @@ function checkStateFiles(p: DoctorPaths = PATHS) {
       ).map(([k]) => k);
       if (badKeys.length > 0) {
         return { id: 'state', status: 'fail', detail: `template-manifest.json: invalid sha256 in: ${badKeys.join(', ')}` };
-      }
-      // Docker baseline guard: a docker-deployed project with no compose/Dockerfile
-      // template baselines has its F2 drift signal unarmed — either never recorded
-      // (pre-this-version deploy) or dropped by a manifest rewrite. Warn (not fail):
-      // hermit-evolve bootstraps them during its next merge. Check the template
-      // keys specifically, not any `docker/` key — hermit-evolve Step 5c writes the
-      // `docker/docker-entrypoint.hermit.sh` baseline on its own, so its presence
-      // does NOT imply docker-setup ran (the F2 baselines would still be missing).
-      const projRoot = path.join(hermitDir, '..');
-      const dockerDeployed = ['docker-compose.hermit.yml', 'Dockerfile.hermit', 'docker-entrypoint.hermit.sh']
-        .some(f => fs.existsSync(path.join(projRoot, f)));
-      const hasTemplateBaselines = m.files['docker/docker-compose.hermit.yml.template'] != null
-        || m.files['docker/Dockerfile.hermit.template'] != null;
-      if (dockerDeployed && !hasTemplateBaselines) {
-        return { id: 'state', status: 'warn', detail: 'docker files deployed but compose/Dockerfile template baselines are missing; hermit-evolve bootstraps them on the next upstream merge' };
       }
     } catch {
       // file existence was already checked above; any error here is unexpected
@@ -636,7 +622,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
     let composeCfg: Json;
     try {
       composeCfg = JSON.parse(execFileSync('docker', [
-        'compose', '-f', baseCompose, '-f', overlayPath,
+        'compose', ...composeFiles(projectRoot),
         'config', '--format', 'json',
       ], { cwd: projectRoot, timeout: 10_000 }).toString());
     } catch (e: any) {

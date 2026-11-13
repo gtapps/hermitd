@@ -167,15 +167,15 @@ test('container executable path follows the managed image marker', async () => {
   expect((await run(argv)).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe('/opt/chrome-linux64/chrome');
 });
 
-test('Docker display blockers name the merge candidate or the image rebuild', async () => {
+test('Docker display blockers name the image rebuild', async () => {
   const { dir, run } = fixture();
   browserLease('claim', 'task', dir);
   const parked = path.join(dir, 'state/Dockerfile.hermit.20261103.upstream');
   fs.writeFileSync(parked, 'new template');
   let result = await run(['--task', 'task', 'snapshot'], { TEST_BLOCKER: 'image_missing' });
   expect(result.data).toMatchObject({ error: 'browser_display_missing', reason: 'image_missing' });
-  expect(result.data.detail).toContain('managed-browser merge');
-  expect(result.data.detail).toContain(parked);
+  expect(result.data.detail).toContain('hermitd update');
+  expect(result.data.detail).not.toContain(parked);
   fs.writeFileSync(path.join(dir, '../Dockerfile.hermit'), '# --- managed browser ---\n# --- end managed browser ---');
   result = await run(['--task', 'task', 'snapshot'], { TEST_BLOCKER: 'image_rebuild_pending' });
   expect(result.data.reason).toBe('image_rebuild_pending');

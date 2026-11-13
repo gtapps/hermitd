@@ -21,6 +21,9 @@ function getPath(obj: any, dotted: string): any {
 describe('settleConfig degenerate inputs', () => {
   // [case, raw input, dotted path, settled value]
   const CASES: Array<[string, unknown, string, unknown]> = [
+    ['git identity mount defaults on', {}, 'docker.git_identity_mount', true],
+    ['git identity mount accepts false', { docker: { git_identity_mount: false } }, 'docker.git_identity_mount', false],
+    ['git identity mount rejects strings', { docker: { git_identity_mount: 'false' } }, 'docker.git_identity_mount', true],
     ['missing config -> nullable scalar null', undefined, 'timezone', null],
     ['missing config -> scalar default', undefined, 'escalation', 'balanced'],
     ['missing lateness limit -> default', {}, 'routine_max_lateness_minutes', 60],
@@ -149,6 +152,7 @@ describe('read-path gate', () => {
     'settings-gate.ts', // PreToolUse gate: the literal is a path suffix it matches tool calls against, never a file it reads
     'browser-agent.ts', // agent-browser's own empty config, never the hermit's
     'browser-install.ts', // agent-browser's own empty config, never the hermit's
+    'render-docker-templates.ts', // hands the path to lib/derive-render-inputs, which validates the raw docker and browser blocks itself
   ]);
 
   test('no config.json literal outside config-read importers and the allowlist', () => {
