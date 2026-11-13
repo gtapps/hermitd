@@ -319,6 +319,7 @@ describe('settings-edit show', () => {
     expect(s('channels')).toMatchObject({ configured: ['discord', 'telegram'], enabled: ['discord'] });
     expect(s('brief').enabled).toEqual([{ channel: 'discord', time: '08:00' }]);
     expect(s('routines')).toMatchObject({ enabled: 1, total: 2 });
+    expect(s('docker').applies).toBe('hermitd restart --build');
     expect(s('env').keys).toEqual(['FOO']);
   });
 

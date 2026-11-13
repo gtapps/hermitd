@@ -693,6 +693,8 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
     'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host',
     'transcription', 'transcription.enabled', 'transcription.echo',
     'docker.recommended_plugins',
+    // Settled by config-read.ts docker shape (default true) for the Docker renderer; not part of the loadConfig merge.
+    'docker.git_identity_mount',
     // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
     'routine_wake_lint', 'routine_wake_lint.max_windows',
     // Settled by config-read.ts TABLE for task records; not part of the loadConfig merge.

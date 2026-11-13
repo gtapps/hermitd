@@ -38,7 +38,10 @@ if [ -f "$COMPOSE" ]; then
   HAS_DOCKER=false
   command -v docker >/dev/null 2>&1 && HAS_DOCKER=true
   if [ "$HAS_DOCKER" = true ] && docker info >/dev/null 2>&1; then
-    RUNNING=$(cd "$PROJECT_DIR" && docker compose -f "$COMPOSE" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "hermit" || true)
+    COMPOSE_FILES=(-f "$COMPOSE")
+    [ ! -f "$PROJECT_DIR/docker-compose.security.yml" ] || COMPOSE_FILES+=(-f "$PROJECT_DIR/docker-compose.security.yml")
+    [ ! -f "$PROJECT_DIR/docker-compose.override.yml" ] || COMPOSE_FILES+=(-f "$PROJECT_DIR/docker-compose.override.yml")
+    RUNNING=$(cd "$PROJECT_DIR" && docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x "hermit" || true)
     [ -n "$RUNNING" ] && STACK_RUNNING=true
   fi
   if [ "$STACK_RUNNING" = true ]; then

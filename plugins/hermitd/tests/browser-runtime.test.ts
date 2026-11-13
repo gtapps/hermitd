@@ -38,7 +38,7 @@ test('only operator browser installations count as a conflict', () => {
 
 test('delimited managed browser is excluded while operator installs remain visible', () => {
   const file = path.join(freshDir(), 'Dockerfile.hermit');
-  const { dockerfile } = render({ auth: 'oauth-token', networkMode: 'bridge', gitIdentityMount: true });
+  const { dockerfile } = render({ networkMode: 'bridge', gitIdentityMount: true });
   fs.writeFileSync(file, dockerfile);
   expect(dockerfileHasOwnBrowser(file)).toBe(false);
   fs.appendFileSync(file, '\nRUN npm install agent-browser\n');

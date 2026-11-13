@@ -4,6 +4,9 @@
 
 ### Changed
 
+- `Dockerfile.hermit` and `docker-compose.hermit.yml` are generated from config before host `up`, `restart` and `update`; customization lives in `docker.packages`, `docker-build.hermit-local.sh`, `docker-compose.override.yml` and `docker-entrypoint.hermit-local.sh`.
+- Compose applies the base, security overlay and operator override in that order; the operator override wins.
+- API keys exported only in the host shell no longer reach Docker containers; keep `ANTHROPIC_API_KEY` in `.env`.
 - Claude Code 2.1.323 or newer is required, declared as the native `engines["claude-code"]` range in `plugin.json`, so `claude plugin install` and `claude plugin update` refuse or hold a version the running Claude Code cannot load.
 - `hermitd update` in Docker rebuilds the image first when the running Claude Code is below a plugin's range, then updates the held plugins on the new image before the restart.
 - Login-mode credential checks use `claude auth status` instead of reading `.credentials.json`; a missing or unreadable stored login counts as lapsed, and a check that gives no verdict starts nothing and shows in doctor as a failed probe
@@ -12,9 +15,16 @@
 
 ### Fixed
 
+- Managed Docker image layers, including ffmpeg and the browser, reach converted installs on every rebuild; `docker.packages` additions and removals apply through `hermitd restart --build`.
 - Workspace trust disclosures no longer list the removed `subagentStatusLine` setting as an active helper command.
 - An `authentication_failed` turn no longer sends a sign-in link while Claude Code reports the stored claude.ai login as usable, so a transient edge block such as a Cloudflare 403 stops asking the operator to sign in again
 - A failed subagent no longer marks the agent idle or counts as the agent's own failed turn
+
+### Upgrade Instructions
+
+1. **Docker agents only:** follow [docker-customize, Convert](skills/docker-customize/SKILL.md#convert) before rebuilding. Snapshot both installed Docker files, migrate the browser default, reconcile Git identity and packages, render to scratch, and place every customization in the operator hook or override before `--convert`. Preserve all existing operator content. If any line cannot be placed, leave both installed Docker files untouched and report each unplaced line; do not claim conversion completed. Tmux agents skip this step.
+2. Apply the converted files through the next host `hermitd update`, which renders again, rebuilds and restarts. An update-launched evolve leaves that work to its waiting host update. Keep API keys in `.env`; a host-shell-only `ANTHROPIC_API_KEY` is not forwarded.
+3. To retry an interrupted or unresolved conversion, run `/hermitd:docker-customize "Convert"`. It writes complete hook and override candidates without duplicating commands, preserves their existing content, and reports "nothing to convert" if the generated header is already present. Unconverted installs keep their files and print the Convert notice on later lifecycle commands.
 
 ## [1.4.32] - 2026-11-12
 
@@ -92,7 +102,8 @@ No `config.json` changes required.
 
 1. The dashboard changes shape, so its next publish re-mints once. Nothing to do.
 2. **Only if `.hermit/state/artifact-strings.json` exists** (a translation overlay): regenerate the scaffold with `bun <plugin_root>/scripts/artifact.ts scaffold-strings <language>`, carry the existing translated values across, translate the new keys (`status_execution`, `status_open_tasks`, `session_unknown`, `waiting_row_admin`, `waiting_row_requester`, `waiting_row_chat`, `by_person_heading`, `by_person_promised`, `by_person_late`, `by_person_waiting`, `by_person_no_due`, `by_person_none`, `compiled_search`, `compiled_all`, `compiled_no_match`), keeping every `{placeholder}` token, and write the result back. Hermits without the file need no action.
-3. **Docker agents:** refresh the Dockerfile and compose through [hermit-evolve reference, Step 5d](skills/hermit-evolve/reference.md#5d-merge-compose-and-dockerfile-template-changes-in-place), and the security templates through [Step 5](skills/hermit-evolve/reference.md#5-update-templates), so the optional ffmpeg layer and the `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com` netguard domains reach the next `hermitd update`. Preserve operator customizations through those procedures.
+3. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
+
 4. **tmux and interactive agents:** when `transcription.enabled` is not false, start `bun ${CLAUDE_PLUGIN_ROOT}/scripts/transcribe.ts --prepare >/dev/null 2>&1 &` from the agent project root, without waiting or using `sudo`. This prepares missing binaries only; models download on the first voice note.
 5. Step 8 now only reports the permission list; `hermitd update` applies it from the next update on. Nothing to do.
 
@@ -470,10 +481,7 @@ No `config.json` changes required.
 1. Delete `.hermit/state/pending-harness-switch.json` if it exists.
 2. In `.hermit/state/watchdog-state.json`, remove the `last_pane_hash_standalone` and `last_pane_hash_compact` keys and set `last_nudge_transport` to `null`. Leave every other key unchanged.
 3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so SIGTERM runs `hermitd-run graceful-shutdown`. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
-4. **Hand the hook profile to `config.json`** (Docker hermits only). Hermit-evolve step 5d merges the compose template change, which removes the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml`; until now that line forced `strict` and outranked `config.json`. Then read `env.AGENT_HOOK_PROFILE` in `.hermit/config.json`:
-   - **Absent or `"strict"`**: nothing to do. The hermit keeps launching at `strict`.
-   - **Any other value**: compose overrode it, so it applies from the restart that finishes this update. Add to Operator notes: "Docker now applies `env.AGENT_HOOK_PROFILE` = `<value>` from `config.json`, which turns off the dev plugin's push guard. To return to strict, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset env.AGENT_HOOK_PROFILE`, then `hermitd restart`."
-   - **After step 5d**: if `docker-compose.hermit.yml` still has an `AGENT_HOOK_PROFILE=` line, that line keeps outranking `config.json`. Add to Operator notes: "Delete the `AGENT_HOOK_PROFILE=` line from `docker-compose.hermit.yml` so `config.json` owns the hook profile, then run `hermitd-docker update`."
+4. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
 
 ## [1.4.19] - 2026-10-22
 
@@ -1425,7 +1433,7 @@ No config.json changes required for steps 4, 5, 6, and 7.
 
 ### Upgrade Instructions
 1. The Tasks line lives in the plugin-owned CLAUDE-APPEND block, which Step 6 already replaces wholesale, so no manual edit is needed. If this operator hand-edited the Tasks line inside the block, their edit is overwritten; tell them once. Reload project context afterwards as the skill already instructs.
-2. The Dockerfile template gained an operator block. A hermit with lines already in that gap sees one conflict in § 5d, resolved in place or kept with a notice; no rebuild needed for the block itself.
+2. Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
 ### Added
 - `docker-customize` routes a container change (tool, binary, apt package, env var, persistent directory, side service) to the first channel that can carry it: the `Dockerfile.hermit` operator block, then `docker-entrypoint.hermit-local.sh`, then compose. `docs/always-on.md` § Customizing the container carries the same map for humans.
 - `hermit-docker restart --build` rebuilds the image pinned to the running Claude Code version.
@@ -1809,25 +1817,7 @@ Everything else in this release is self-migrating on next run: the denial ledger
 
 ### Upgrade Instructions
 
-**Docker runtime pinned to Bun 1.4.0 (completes the 1.2.45 step).** Non-Docker hermits: nothing to do — bun comes from the host and `required_bun_version` is unchanged at `>=1.3.0`.
-
-**Step 1 — Pin.** From the project root, run:
-
-```
-bun <plugin_root>/scripts/docker-bun-pin.ts .claude-code-hermit 1.4.0 <to>
-```
-
-(`<to>` is the plan's `to` version string, available from the pre-pass result.) The script classifies `Dockerfile.hermit`, applies the right patch, and re-records the template baseline so the drift detector clears. It is idempotent — a hermit already patched by hand is reported, not re-patched. A converged pre-1.2.0 scaffold keeps its old baseline on purpose: only its bun block is current, so the Dockerfile drift nudge on future evolves is a true signal, not a leftover.
-
-**Step 2 — Report, by verdict line.**
-
-The script prints one JSON object; branch on its `status`:
-
-- `converged` or `repinned` → set the report's `Docker rebuild` field to `base-patched`. Step 10 emits a rebuild-only notice and suppresses the generic "re-run /docker-setup" drift bullet for `Dockerfile.hermit`.
-- `already_pinned`, or `skip` with reason `absent` → nothing to report.
-- `defer` (reason `unrecognized_bun_install_shape`) → the file no longer matches any shipped shape (bun installed some other way). Record a deferred-migration block with the instruction "manually set bun to 1.4.0 in `Dockerfile.hermit`, then rebuild", and **continue the remaining evolve steps** (do not abort).
-
-No `config.json` changes required.
+Superseded by this release's Docker file split; follow docker-customize Convert in the current Upgrade Instructions.
 
 ## [1.2.45] - 2026-08-23
 

@@ -1,3 +1,4 @@
+import { composeFiles } from './compose-files';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -12,9 +13,7 @@ export function inspect(command: string, args: string[], cwd: string) {
 export function dockerTransport(project: string): Transport {
   const compose = path.join(project, 'docker-compose.hermit.yml');
   if (!fs.existsSync(compose)) return 'down';
-  const args = ['compose', '-f', compose];
-  const overlay = path.join(project, 'docker-compose.security.yml');
-  if (fs.existsSync(overlay)) args.push('-f', overlay);
+  const args = ['compose', ...composeFiles(project)];
   const result = inspect('docker', [...args, 'ps', '--status', 'running', '--format', '{{.Service}}'], project);
   if (result.error || result.status !== 0) return 'unknown';
   return result.stdout.split(/\r?\n/).includes('hermit') ? 'up' : 'down';

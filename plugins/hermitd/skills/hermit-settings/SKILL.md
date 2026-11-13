@@ -39,7 +39,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings watchdog       — scheduler_enabled, enable/disable, stale_factor, wedge_floor, escalate_after, operator_grace, context hygiene compaction
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
-/hermitd:hermit-settings docker           — view Docker packages (read-only); edit recommended plugins
+/hermitd:hermit-settings docker           — add/remove Docker packages; edit recommended plugins
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
 /hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
@@ -355,7 +355,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
 - Note: "Env changes reach the session through the launch overlay at the next `hermitd-start`. Restart the hermit to apply them."
 
 **If argument is "docker":**
-- Show current `docker.packages` list (read-only):
+- Show current `docker.packages` list:
   ```
   Docker Packages (config.json docker.packages → Dockerfile.hermit)
 
@@ -364,7 +364,8 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
 
   (or "No packages configured" if empty)
   ```
-- Note: this list is read only when `/docker-setup` renders the templates. To install something now, add it inside the operator block of `Dockerfile.hermit` (or run `/docker-customize`) and rebuild with `hermitd restart --build`. Do not prompt to add or remove packages and do not `set docker.packages`.
+- Ask whether to add or remove packages. Validate added names against `^[a-z0-9][a-z0-9+\-.]+$`, deduplicate, and preserve the rest of the list. Apply the complete array with `settings-edit set docker.packages '<JSON array>'`; complete the protected-path native permission request. Removing a package drops only that name.
+- Tell the operator: "Rebuild on the host with `hermitd restart --build` (from stopped, `hermitd start --build`). The wrapper renders from the current package list before building."
 
 - Then show current `docker.recommended_plugins`:
   ```

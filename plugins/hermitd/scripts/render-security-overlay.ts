@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { composeFiles } from './lib/compose-files';
 /**
  * Deterministic rendering for /docker-security. Two subcommands:
  *
@@ -138,7 +139,7 @@ export function ipv4SubnetsFromInspect(subnetField: string): string[] {
 
 function ownProjectName(projectRoot: string): string {
   try {
-    const r = spawnSync('docker', ['compose', '-f', 'docker-compose.hermit.yml', 'config', '--format', 'json'],
+    const r = spawnSync('docker', ['compose', ...composeFiles(projectRoot), 'config', '--format', 'json'],
       { cwd: projectRoot, timeout: 10000, encoding: 'utf8' });
     if (r.status === 0 && r.stdout) {
       const j = JSON.parse(r.stdout);

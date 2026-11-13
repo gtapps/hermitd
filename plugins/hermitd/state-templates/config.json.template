@@ -53,7 +53,8 @@
   "docker": {
     "packages": [],
     "recommended_plugins": [],
-    "fleet_mesh": false
+    "fleet_mesh": false,
+    "git_identity_mount": true
   },
   "tasks": {
     "duties_open_records": true, "queue_nudge_minutes": 60

@@ -126,24 +126,19 @@ Read `.hermit/config.json` and extract:
 - `agent_name`
 - Detect project path from `pwd`
 
-### 4. Template inputs (rendering deferred to Step 7b.6)
+### 4. Config inputs (rendering deferred to Step 7b.6)
 
-> `scripts/render-docker-templates.ts` renders the three base files at Step 7b.6, after plugin resolution (Step 7b) and the apt-package union (Step 7b.packages) have finalized `docker.packages` and Step 7 has configured channels. Here, only collect the semantic inputs the render call needs; do not read or write template files yet.
+Collect choices for config; the renderer reads only `<PROJECT_ROOT>/.hermit/config.json`, never stdin or installed Docker files. Do not write templates directly.
 
-The render script derives every `{{PLACEHOLDER}}` internally and fails loud (writes nothing) if any survives. Assemble this input object as choices resolve, to be piped on stdin at Step 7b.6:
+- `docker.packages`: finalized apt package union from Step 7b.packages.
+- `docker.network_mode`: `"bridge"` or `"host"` from Step 2.
+- `docker.recommended_plugins`: confirmed entries from Step 7b.
+- `docker.git_identity_mount`: Step 1 preflight `gitconfig_exists`. If false, note: "No ~/.gitconfig found; commits inside the container have no host author identity. Create one and enable docker.git_identity_mount, or configure Git inside the container."
+- `browser.enabled`: Step 2 browser choice. Preserve `browser.port` on reruns; the renderer puts it on netguard when LAN containment is enabled, otherwise in the base stack.
+- Channel configuration from Step 7 drives state-directory env and mount lines and the managed channel approval drop-in.
+- `docker.fleet_mesh`: preserve the config value, absent means false. When true, the external volumes and pid namespace holder in `docs/always-on.md` must exist before startup.
 
-- `packages` — the finalized `docker.packages` array (Step 7b.packages). Empty array → no project-package layer.
-- `auth` — `"oauth-token"` for subscription, or `"api-key"` (Step 2). The mint-or-keep decision at Step 8 does not affect rendering — both subscription outcomes render as `oauth-token` and add no auth env line, since their credential lives on the named volume (`.hermit-setup-token` if minted, `.credentials.json` otherwise). The setup-token deliberately never goes in `.env`: compose applies `env_file` only at container creation, so an `.env`-stored token would force a host-side recreate on every renewal.
-- `channels` — `{ envLines: [...], volumeLines: [...] }`, one entry per enabled channel (Step 7). Pass the line **bodies** (the script owns the `      - ` indent):
-  - env body: `<VAR>_STATE_DIR=${PWD}/.claude.local/channels/<plugin>` (VAR = channel key uppercased, only when `<VAR>_STATE_DIR` matches `^[A-Z_][A-Z0-9_]*$`; omit state env and volume lines for invalid keys)
-  - volume body: `${PWD}/.claude.local/channels/<plugin>:/home/claude/.claude/channels/<plugin>` (keeps channel writes inside the project tree — no permission prompts under `bypassPermissions`)
-  - No channels → both arrays empty.
-- `channelPlugins`: for every enabled channel key, `{ marketplace: channels[key].marketplace ?? 'claude-plugins-official', plugin: channels[key].plugin ?? key }`, except `discord`, `telegram` and `imessage`, which always pass `{ marketplace: 'claude-plugins-official', plugin: key }`. The renderer writes the managed channel approval drop-in when third-party marketplaces are present. Installation of those plugins uses `docker.recommended_plugins` in Step 7b.
-- `networkMode` — `docker.network_mode` (`"bridge"` or `"host"`, Step 2).
-- `gitIdentityMount` — the Step 1 preflight `gitconfig_exists`. When **false**, the `.gitconfig` bind-mount is dropped and you must add to the summary: "No ~/.gitconfig found — git commits inside the container will have no author identity. Create one on the host and re-run docker-setup, or set git config manually inside the container."
-- `browser` — the Step 2 browser choice, true or false.
-- `browserPort` - pass `browser.port` when set, except with `docker.security.network.enabled: true`, where the mapping belongs to netguard through `publish_ports`. Omit when absent. Preserve it on reruns. Host networking uses `HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:<port>` with no mapping.
-- `fleetMesh` - read `docker.fleet_mesh` from the project's `.hermit/config.json`; absent means `false`. Never ask interactively. When true, tell the operator that the two external volumes and the `hermit-fleet-pidns` holder in `docs/always-on.md` must exist before `hermitd-docker up`.
+Auth does not affect rendering. API keys belong in `.env` (`env_file` delivers them); subscription credentials live on the named volume. Never put the setup token in `.env`.
 
 ### 5. Auto-memory seed
 
@@ -302,55 +297,59 @@ After plugin selection is finalized, union the two sources of apt package candid
      <package-a>          — declared by <plugin-name>
      <package-b>          — declared by <plugin-name>
    ```
-   Operator approves, removes, or adds entries. Write the approved set as the final `docker.packages` (passed to step 7c for config.json write).
+   Operator approves, removes, or adds entries. Write the approved set as the final `docker.packages` (persisted before Step 7b.6 renders).
 
    **Quick mode auto-accept**: if every entry in the combined list (a) passed the validator regex and (b) came from a safelisted source — meaning project-signal entries OR entries declared by plugins where `is_safelisted(marketplace)` is true (claude-plugins-official + gtapps/*) — skip the prompt and accept the list silently. Print a one-line summary so the operator sees what landed: `Quick auto-accepted N image packages (all from safelisted sources). Configure later via /hermit-settings docker.` If ANY entry came from a third-party plugin (operator-confirmed in Step 7b), fall through to the prompt — defaults stop applying once a third-party source contributed apt deps.
 
-### 7b.6. Render templates (deferred from Step 4)
+### 7b.6. Persist config, then render
 
-Before rendering, persist the resolved `browser.enabled` choice with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set browser.enabled true|false`. Complete its native permission request. This write precedes the render so interrupted setup retries keep the choice.
+**Pre-write gate for `docker.recommended_plugins`:** Re-run Step 7b.10's assertion on every entry. If any fails, return to Step 7b.3 without writing.
 
-Now that `docker.packages` (Step 7b.packages), channel state dirs (Step 7), and the auth/network choices (Step 2) are finalized, render the three base files in **one** call. `render-docker-templates.ts` derives every `{{PLACEHOLDER}}`, renders `Dockerfile.hermit` + `docker-compose.hermit.yml`, `cp`-copies the entrypoint verbatim, and fails loud (exit 1, nothing written) if any placeholder survives. Anchor the argv to the **absolute** `<PROJECT_ROOT>` (Step 1) — cwd can drift after earlier `docker compose` / `tmux` calls. Pipe the Step 4 input object on stdin:
+Before rendering, persist all resolved choices using `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts <PROJECT_ROOT>/.hermit/config.json set <path> <JSON-value>`:
+
+- `docker.packages` (Step 7b.packages)
+- `docker.network_mode` (Step 2)
+- `docker.recommended_plugins` (Step 7b, post-gate)
+- `docker.git_identity_mount` (Step 1 preflight `gitconfig_exists`)
+- `browser.enabled` (Step 2)
+- `channels.<channel>.state_dir` (Step 7, when applicable)
+
+Complete native permission requests for protected paths. Preserve all other config keys. Each successful write precedes rendering, so an interrupted setup retains the choices.
+
+Run the config-driven CLI with the absolute project root and no stdin:
 
 ```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts <PROJECT_ROOT> <<'HERMIT_RENDER_JSON'
-{
-  "packages": [...],
-  "auth": "oauth-token" | "api-key",
-  "channels": { "envLines": [...], "volumeLines": [...] },
-  "networkMode": "bridge" | "host",
-  "gitIdentityMount": true | false,
-  "fleetMesh": true | false,
-  "browserPort": <browser.port when set and LAN containment is off>,
-  "browser": true | false
-}
-HERMIT_RENDER_JSON
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts <PROJECT_ROOT>
 ```
 
-The script prints `{ "written": [...], "entrypoint_copied": true, "manifest_seed": {...} }`. If `gitIdentityMount` was false, surface the summary note from Step 4.
+Parse the JSON verdict before proceeding:
 
-**Record the template baselines in the manifest** (arms the `hermit-evolve` drift signals) by piping `report.manifest_seed` — emitted with absolute paths and the current plugin version — straight into `manifest-seed.ts`. **Do not hand-compute the hashes.**
+- `{"status":"skipped","reason":"not_converted"}`: **stop setup**. Tell the operator to run `/hermitd:docker-customize "Convert"`, then retry setup. Never continue deployment against these unconverted files.
+- `{"status":"skipped","reason":"newer_renderer"}`: stop and ask the operator to update the host plugin before retrying.
+- An `error` or nonzero exit: stop with the error; do not build.
+- Otherwise the renderer wrote `Dockerfile.hermit` and `docker-compose.hermit.yml`. It copies the entrypoint only if the project has none. If `docker.git_identity_mount` is false, include Step 4's note.
 
-Pipe **only the value of the `manifest_seed` field** (the `{ "plugin_version", "entries" }` object), not the whole render stdout: `manifest-seed.ts` expects that top-level shape, and the full envelope seeds no baselines (the drift signals silently never arm).
+When the result contains `manifest_seed`, pipe **only that field's value** to `manifest-seed.ts`, preserving its absolute paths and plugin version:
 
 ```bash
 echo '<the manifest_seed object only: {"plugin_version":...,"entries":[...]}>' | bun ${CLAUDE_PLUGIN_ROOT}/scripts/manifest-seed.ts <PROJECT_ROOT>/.hermit
 ```
 
-The `manifest_seed` payload deliberately hashes the **on-disk rendered** entrypoint (copied verbatim, so its hash equals the upstream template's — lets `hermit-evolve` Step 5c manage it as a boot-critical file) and the two **upstream** `.template` files (never the rendered output, which differs from upstream forever due to substitution — lets Step 10 report upstream drift without false positives). `manifest-seed.ts` preserves every other manifest key (`templates/`/`bin/` baselines, sibling-hermit keys) and refuses to overwrite a present-but-corrupt manifest.
+This seeds only `docker/docker-entrypoint.hermit.sh`, hashing the newly copied on-disk entrypoint. Existing entrypoints are untouched and emit no seed. Do not hand-compute hashes or seed generated Docker templates. `manifest-seed.ts` preserves unrelated baselines and refuses a corrupt manifest.
 
-### 7c. Write Docker settings to config.json
+### 7c. Confirm persisted settings
 
-**Pre-write gate for `docker.recommended_plugins`:** Re-run the step 7b.10 assertion on every entry. If any fails, do **not** write — return to step 7b.3 to re-resolve.
+Read back the settings persisted before Step 7b.6. They are the renderer's source of truth; do not write a second set of defaults after rendering. Confirm the protected writes succeeded before deployment.
 
-Write all collected Docker settings to config.json in a single update:
-- `browser.enabled` (already persisted before Step 7b.6; keep that choice)
-- `docker.network_mode` (from Step 2)
-- `docker.packages` (from Step 7b.packages)
-- `docker.recommended_plugins` (from Step 7b, post-gate)
-- `channels.<channel>.state_dir` (from Step 7, if applicable)
+For **every** direct Compose command below, build the array immediately before use in the same Bash call, including after an overlay is created:
 
-Merge into existing config — never remove existing keys.
+```bash
+COMPOSE_FILES=(-f docker-compose.hermit.yml)
+[ ! -f docker-compose.security.yml ] || COMPOSE_FILES+=(-f docker-compose.security.yml)
+[ ! -f docker-compose.override.yml ] || COMPOSE_FILES+=(-f docker-compose.override.yml)
+```
+
+The order is base, security overlay, operator override. Use `docker compose "${COMPOSE_FILES[@]}"` for all operations.
 
 ### 8. Guided deployment
 
@@ -408,11 +407,11 @@ Re-run /hermitd:docker-setup any time you want guided help.
 ```
 
 **If "Yes — build now":**
-1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount — if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each configured channel run `mkdir -p .claude.local/channels/<plugin>`. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt so channel pairing commands land on an idle REPL, not a busy session turn), and `rm -f .hermit/state/.boot-conflict` — the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose -f docker-compose.hermit.yml up -d --build` — builds and starts. Help fix errors (daemon not running, network, disk). Use `docker compose` directly here rather than `.hermit/bin/hermitd-docker up`: its trailing attach/detach echo is operator hand-off text, which step 9 delivers at the right moment.
-2. **Verify the container stayed running:** Poll `docker compose -f docker-compose.hermit.yml ps --status running --format '{{.Service}}'` every 2s for up to 10s, checking `.hermit/state/.boot-conflict` on each tick. If the marker exists, the container is up but **inert**: the entrypoint found a live non-Docker instance owning this project's state and is holding PID 1 without starting claude, so `ps --status running` reports it healthy and every later step (login, trust, pairing) would run against a container with no tmux session. Show the marker's contents, then stop with: "Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`." (Step 1's `live_owner` gate catches this before the build; this poll covers a host hermit restarted mid-wizard.) An absent marker at this point is **not** an all-clear: the entrypoint writes it at §4b, after the credential wait and the first-run plugin install, so on a first boot it cannot exist yet — the first-run acceptance poll below re-checks it once the container has had time to get there. If the service appears and no marker exists — continue to the next sub-section. If it never appears after 10s, run `docker compose -f docker-compose.hermit.yml logs --tail=30 hermit` and show the output. Suggest a targeted fix based on the log:
+1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount — if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each configured channel run `mkdir -p .claude.local/channels/<plugin>`. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt so channel pairing commands land on an idle REPL, not a busy session turn), and `rm -f .hermit/state/.boot-conflict` — the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose "${COMPOSE_FILES[@]}" up -d --build` — builds and starts. Help fix errors (daemon not running, network, disk). Use `docker compose` directly here rather than `.hermit/bin/hermitd-docker up`: its trailing attach/detach echo is operator hand-off text, which step 9 delivers at the right moment.
+2. **Verify the container stayed running:** Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 10s, checking `.hermit/state/.boot-conflict` on each tick. If the marker exists, the container is up but **inert**: the entrypoint found a live non-Docker instance owning this project's state and is holding PID 1 without starting claude, so `ps --status running` reports it healthy and every later step (login, trust, pairing) would run against a container with no tmux session. Show the marker's contents, then stop with: "Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`." (Step 1's `live_owner` gate catches this before the build; this poll covers a host hermit restarted mid-wizard.) An absent marker at this point is **not** an all-clear: the entrypoint writes it at §4b, after the credential wait and the first-run plugin install, so on a first boot it cannot exist yet — the first-run acceptance poll below re-checks it once the container has had time to get there. If the service appears and no marker exists — continue to the next sub-section. If it never appears after 10s, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit` and show the output. Suggest a targeted fix based on the log:
    - **Daemon not running** → `docker info` errors → start Docker Desktop or `sudo systemctl start docker`, then re-run this skill
    - **Build failure** → read the build error line in the log above; fix the Dockerfile or missing dependency
-   - **Missing `.env` var** → `docker compose -f docker-compose.hermit.yml config 2>&1 | grep -i error` names it
+   - **Missing `.env` var** → `docker compose "${COMPOSE_FILES[@]}" config 2>&1 | grep -i error` names it
    - **Port conflict** → `ss -tlnp | grep <port>` finds what's using the published port
    **Do not continue to Login / Workspace trust / Channel pairing while the container is down or inert — stop here and ask the operator to fix and re-run the skill.**
 
@@ -423,10 +422,10 @@ Re-run /hermitd:docker-setup any time you want guided help.
    ```
    This opens a claude REPL inside the container. Type `/login`, follow the URL in a browser, then paste the code back when prompted. Type `/exit` when done — the hermit starts automatically.
 2. Ask with `AskUserQuestion` (header: `"Login"`) — `"Done — login succeeded"` / `"Failed — couldn't complete login"`. Do **not** poll logs in a loop. Do **not** rebuild or restart the container. `hermitd-docker login` already verifies `.credentials.json` and exits non-zero if absent, so a "Done" answer means creds are present.
-3. On `"Failed"`: run `docker compose -f docker-compose.hermit.yml logs --tail=30 hermit` and show output. Suggest the targeted fix:
+3. On `"Failed"`: run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit` and show output. Suggest the targeted fix:
    - **OAuth URL unreachable** → copy the URL from the log and open it manually in a browser
    - **Code expired / rejected** → re-run `hermitd-docker login` (codes expire in ~10 min)
-   - **Credentials not written** → `docker compose exec -T hermit ls /home/claude/.claude/.credentials.json` (should exist after login); missing = named volume not mounted — check `docker-compose.hermit.yml` volume entry
+   - **Credentials not written** → `docker compose "${COMPOSE_FILES[@]}" exec -T hermit ls /home/claude/.claude/.credentials.json` (should exist after login); missing = named volume not mounted — check `docker-compose.hermit.yml` volume entry
    Then **stop** — operator re-runs `/hermitd:docker-setup` after resolving the issue.
 
 **Post-login decision — which credential this hermit runs on:** ask immediately after the login above succeeds. The attended login is still required first — the first-launch wizard demands an interactive login and will not accept the env token (confirmed live), and initial setup is attended anyway.
@@ -453,9 +452,9 @@ Ask with `AskUserQuestion` (header: `"Auth method"`) — **Sign in with claude.a
 
 **First-run acceptance (workspace trust + bypass mode):** Before asking the operator to attach, verify the tmux session exists inside the container (the entrypoint may still be installing plugins):
 ```
-docker compose -f docker-compose.hermit.yml exec -T hermit tmux has-session -t <TMUX_SESSION_NAME>
+docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux has-session -t <TMUX_SESSION_NAME>
 ```
-If the session is not ready, retry every 5s until one of two **outcomes** lands: the tmux session appears (continue), or `.hermit/state/.boot-conflict` appears (stop). This is where an inert container actually surfaces, since the entrypoint reaches its §4b guard only after the credential wait and the first-run plugin install, well past step 8.2's poll. On the marker, show its contents and stop with the same message step 8.2 uses ("Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`."); do not continue to workspace trust or channel pairing. A first run installs plugins over the network, so a slow boot here is normal: give up only after 10 minutes with neither outcome, then show the last 30 lines of entrypoint logs (`docker compose logs --tail=30 hermit`) and stop.
+If the session is not ready, retry every 5s until one of two **outcomes** lands: the tmux session appears (continue), or `.hermit/state/.boot-conflict` appears (stop). This is where an inert container actually surfaces, since the entrypoint reaches its §4b guard only after the credential wait and the first-run plugin install, well past step 8.2's poll. On the marker, show its contents and stop with the same message step 8.2 uses ("Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`."); do not continue to workspace trust or channel pairing. A first run installs plugins over the network, so a slow boot here is normal: give up only after 10 minutes with neither outcome, then show the last 30 lines of entrypoint logs (`docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit`) and stop.
 
 Note: a running tmux session does **not** mean claude has finished booting — it may still be sitting on an acceptance screen waiting for input.
 
@@ -495,7 +494,7 @@ If the token is present, ask if already paired. If not:
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" policy <plugin> allowlist
    ```
    Relay the result or stop on `{"error"}`.
-4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose -f docker-compose.hermit.yml exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
+4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
 5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `/hermitd:channel-setup` from the host to complete its home-to-state location check before proceeding.
 6. **Default delivery settings** (skip if pairing was skipped this run):
    ```bash
@@ -525,15 +524,15 @@ Then run, in sequence:
 
 1. `.hermit/bin/hermitd-docker down`; sends the configured shutdown skill, if any, and polls for a fresh execution boundary up to 60s before removing the container. If it prints "Timed out waiting for graceful close; forcing stop", flag it in the final summary (session that witnessed setup didn't close cleanly; not blocking but worth noting).
 
-2. `docker compose -f docker-compose.hermit.yml up -d` — recreates the container. Use `docker compose` directly, as in step 8, not `hermitd-docker up`. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
+2. `docker compose "${COMPOSE_FILES[@]}" up -d` — recreates the container. Use `docker compose` directly, as in step 8, not `hermitd-docker up`. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
 
-3. Re-verify the container stayed running (same poll as step 8.2). If it failed to come back up, run `docker compose -f docker-compose.hermit.yml logs --tail=30 hermit`, show the output, and apply the same targeted hints as step 8.2 (daemon down, build failure, port conflict). Stop — don't proceed to step 9.
+3. Re-verify the container stayed running (same poll as step 8.2). If it failed to come back up, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit`, show the output, and apply the same targeted hints as step 8.2 (daemon down, build failure, port conflict). Stop — don't proceed to step 9.
 
 Why this step exists: mid-setup, claude REPL starts before plugins are fully enabled and channel pairing completes. The session it was running is a "bootstrap session" full of setup chatter. A clean restart gives the operator a first *real* session with correctly-loaded plugins, fresh tmux state, and no config-time noise.
 
 Why `down` + `up` rather than `hermitd-docker restart`: a recreated container clears ephemeral container-layer state and re-runs the entrypoint from a clean slate.
 
-If `browser.enabled` is true, finish with one public-page check inside the container: `docker compose -f docker-compose.hermit.yml exec -T -e HERMIT_PLUGIN_ROOT=/home/claude/.claude/plugins/marketplaces/hermitd/plugins/hermitd hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. The `-e` is required because `exec` does not inherit the entrypoint's environment. Report whether the page loaded; surface a failure rather than switching browsers.
+If `browser.enabled` is true, finish with one public-page check inside the container: `docker compose "${COMPOSE_FILES[@]}" exec -T -e HERMIT_PLUGIN_ROOT=/home/claude/.claude/plugins/marketplaces/hermitd/plugins/hermitd hermit agent-browser --session setup-check open https://example.com`, then close that session with `agent-browser --session setup-check close` through the same compose exec. The `-e` is required because `exec` does not inherit the entrypoint's environment. Report whether the page loaded; surface a failure rather than switching browsers.
 
 ### 8c. Seed permission rules
 
@@ -588,7 +587,7 @@ If something looks wrong, help diagnose — suggest concrete next steps.
 
 **Why a named volume for config?** The container gets its own `/home/claude/.claude` instead of sharing the host's, so container state (onboarding, auto-memory, plugin cache) never leaks into host interactive sessions. It persists across restarts; first run is slower while it populates.
 
-**Want shared config instead?** Replace the `claude-config` named volume with a bind-mount in `docker-compose.hermit.yml`: `- ${HOME}/.claude:${HOME}/.claude` and set `CLAUDE_CONFIG_DIR=${HOME}/.claude`. Not recommended — changes in either direction leak.
+**Want shared config instead?** Replace the `claude-config` named volume through `docker-compose.override.yml`: `- ${HOME}/.claude:${HOME}/.claude` and set `CLAUDE_CONFIG_DIR=${HOME}/.claude`. Not recommended — changes in either direction leak.
 
 **Domain-plugin apt dependencies.** Declare system packages your plugin needs in a `## Docker apt dependencies` section in the plugin's hatch SKILL.md or a `DOCKER.md` at the plugin root. See step 7b.packages and [Creating Your Own Hermit — Docker dependencies](../../docs/creating-your-own-hermit.md#docker-dependencies).
 

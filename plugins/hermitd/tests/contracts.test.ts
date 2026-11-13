@@ -1968,18 +1968,17 @@ describe('template-manifest doctor contract', () => {
     expect(s.detail).toContain('templates/HEARTBEAT.md.template');
   }), 20000);
 
-  test('docker deployed but no template baselines → state warns', withTmpdir(async (dir) => {
+  test('docker deployed without template baselines → state ok', withTmpdir(async (dir) => {
     writeConfig(dir, {});
     seedState(dir); // default manifest: templates key only, no docker/
     fs.writeFileSync(path.join(dir, 'docker-compose.hermit.yml'), 'services: {}\n');
     const report = await runDoctorCheck(dir);
     const s = stateCheck(report);
     expect(s).toBeDefined();
-    expect(s.status).toBe('warn');
-    expect(s.detail).toContain('docker');
+    expect(s.status).toBe('ok');
   }), 20000);
 
-  test('docker deployed + ONLY entrypoint baseline (evolve wrote it, docker-setup did not) → still warns', withTmpdir(async (dir) => {
+  test('docker deployed with only an entrypoint baseline → state ok', withTmpdir(async (dir) => {
     writeConfig(dir, {});
     // Step 5c writes the entrypoint key independently of docker-setup; that alone must
     // NOT suppress the warn — the F2 compose/Dockerfile baselines are still missing.
@@ -1991,7 +1990,7 @@ describe('template-manifest doctor contract', () => {
     const report = await runDoctorCheck(dir);
     const s = stateCheck(report);
     expect(s).toBeDefined();
-    expect(s.status).toBe('warn');
+    expect(s.status).toBe('ok');
   }), 20000);
 
   test('docker deployed WITH compose/Dockerfile template baselines → state ok', withTmpdir(async (dir) => {

@@ -54,7 +54,7 @@ Handle wrapper results before continuing:
 | `browser_install_failed:<detail>` | Report the download or prerequisite failure; ask the operator to run `hermitd run browser-host`. Do not install packages from the task. |
 | `browser_sandbox_blocked` | Relay both fixes in the detail: terminal `hermitd run browser-host`, and the `bun */scripts/browser-agent.ts *` line in `sandbox.excludedCommands`. Never disable Chrome’s sandbox. |
 | `takeover_unsupported` | macOS has no phone takeover. Use configured Claude in Chrome for the operator’s account or report the blocker. |
-| `browser_display_missing` | Read `reason` and `detail`. Docker `image_missing` or `image_rebuild_pending`: run `hermitd update` on the host; if the detail names a missing managed-browser block, ask the hermit to merge `Dockerfile.hermit` through `/hermitd:docker-customize` first. `display_start_failed`: Docker, report the startup failure and run `hermitd update`; tmux, run `hermitd run browser-host`. `unsupported`: interactive hosts support anonymous public browsing only; use always-on tmux for a host display. |
+| `browser_display_missing` | Read `reason` and `detail`. Docker `image_missing` or `image_rebuild_pending`: run `hermitd update` on the host; if the Docker files lack the generated header, follow `/hermitd:docker-customize "Convert"` first. `display_start_failed`: Docker, report the startup failure and run `hermitd update`; tmux, run `hermitd run browser-host`. `unsupported`: interactive hosts support anonymous public browsing only; use always-on tmux for a host display. |
 | `metadata_url_refused` | Report the blocked cloud metadata destination; do not retry through another browser or URL spelling. |
 | `docker_host_session` | Run browser work inside the hermit container. |
 

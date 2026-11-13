@@ -17,16 +17,30 @@ afterAll(cleanup);
 
 const BASE_INPUT = {
   packages: [] as string[],
-  auth: 'oauth-token' as const,
   channels: { envLines: [] as string[], volumeLines: [] as string[] },
   networkMode: 'bridge' as const,
   gitIdentityMount: true,
 };
 
+function config(dir: string, overrides: Record<string, any> = {}) {
+  const input: Record<string, any> = { ...BASE_INPUT, ...overrides };
+  fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+  const channels: Record<string, any> = {};
+  for (const line of input.channels.envLines ?? []) {
+    const key = line.match(/channels\/([^/]+)$/)?.[1];
+    if (key) channels[key] = {};
+  }
+  for (const plugin of overrides.channelPlugins ?? []) channels[plugin.plugin === 'custom-plugin' ? 'custom' : plugin.plugin] = plugin;
+  fs.writeFileSync(path.join(dir, '.hermit/config.json'), JSON.stringify({
+    channels,
+    docker: { packages: input.packages, network_mode: input.networkMode, git_identity_mount: input.gitIdentityMount, fleet_mesh: input.fleetMesh },
+    browser: { enabled: overrides.browser, port: overrides.browserPort },
+  }));
+}
+
 async function render(dir: string, overrides: Record<string, unknown> = {}) {
-  const input = { ...BASE_INPUT, ...overrides };
-  const r = await runScript('render-docker-templates.ts', { args: [dir], stdin: JSON.stringify(input) });
-  return r;
+  config(dir, overrides);
+  return runScript('render-docker-templates.ts', { args: [dir] });
 }
 
 const dockerfile = (dir: string) => fs.readFileSync(path.join(dir, 'Dockerfile.hermit'), 'utf8');
@@ -108,33 +122,17 @@ describe('render-docker-templates.ts', () => {
     expect(dockerfile(dir)).not.toContain('# Project-specific packages');
   });
 
-  // The operator block is a durable merge contract: hermit-evolve's section 5d
-  // merges operator edits around it, and docker-customize tells operators to put
-  // root-context installs inside it. A later template edit that drops or moves it
-  // would silently remove that surface, so pin both markers and their position.
-  test('operator block survives rendering, once, above the host-UID layer', async () => {
-    const dir = freshDir();
-    await render(dir, { packages: ['ffmpeg'] });
-    const df = dockerfile(dir);
-    expect(df.match(/^# --- operator:/gm) ?? []).toHaveLength(1);
-    expect(df.match(/^# --- end operator ---$/gm) ?? []).toHaveLength(1);
-    expect(df.indexOf('# --- operator:')).toBeLessThan(df.indexOf('# --- end operator ---'));
-    expect(df.indexOf('# --- end operator ---')).toBeLessThan(df.indexOf('# Match host UID'));
-  });
-
-  test('operator block sits between the packages token and the host-UID layer in the template', () => {
-    const tpl = fs.readFileSync(
-      path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'Dockerfile.hermit.template'), 'utf8');
-    expect(tpl.match(/^# --- operator:/gm) ?? []).toHaveLength(1);
-    expect(tpl.match(/^# --- end operator ---$/gm) ?? []).toHaveLength(1);
-    const order = ['{{PACKAGES_BLOCK}}', '# --- operator:', '# --- end operator ---', '# Match host UID']
-      .map((needle) => tpl.indexOf(needle));
-    expect(order).not.toContain(-1);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-    // No template token inside the block, or rendering would substitute into
-    // operator-owned lines and the merge would fight the renderer.
-    const block = tpl.slice(order[1], order[2]);
-    expect(block).not.toMatch(/\{\{[A-Z][A-Z0-9_]*\}\}/);
+  test('generated image delegates root customization to an optional hook after the toolchain', async () => {
+    const dir = freshDir(); await render(dir);
+    const image = dockerfile(dir);
+    expect(image).not.toContain('# --- operator:');
+    const hook = 'USER root\nCOPY docker-build.hermit-local.sh* /opt/hermit-build/\nRUN if [ -f /opt/hermit-build/docker-build.hermit-local.sh ]; then bash /opt/hermit-build/docker-build.hermit-local.sh; fi\nUSER claude';
+    expect(image).toContain(hook);
+    expect(image.indexOf(hook)).toBeGreaterThan(image.indexOf('bun.sh/install'));
+    expect(image.indexOf(hook)).toBeGreaterThan(image.indexOf('npm install -g @anthropic-ai/claude-code'));
+    expect(image.indexOf(hook)).toBeLessThan(image.indexOf('COPY --chmod=755'));
+    expect(image.match(/^USER .*$/gm)?.at(-1)).toBe('USER claude');
+    expect(compose(dir)).not.toContain('ANTHROPIC_API_KEY=');
   });
 
   test('network_mode: host is present only for host networking', async () => {
@@ -168,10 +166,10 @@ describe('render-docker-templates.ts', () => {
     expect(dockerfile(enabledDir)).toBe(dockerfile(disabledDir));
   });
 
-  test('api-key auth adds ANTHROPIC_API_KEY env line; oauth does not', async () => {
+  test('auth never adds an API key interpolation', async () => {
     const keyDir = freshDir();
     await render(keyDir, { auth: 'api-key' });
-    expect(compose(keyDir)).toContain('- ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}');
+    expect(compose(keyDir)).not.toContain('ANTHROPIC_API_KEY=');
 
     const oauthDir = freshDir();
     await render(oauthDir, { auth: 'oauth-token' });
@@ -219,7 +217,6 @@ describe('render-docker-templates.ts', () => {
     const input = {
       packages: ['libsqlite3-dev', 'ffmpeg'],
       channelPlugins: [{ marketplace: 'claude-plugins-official', plugin: 'discord' }],
-      auth: 'api-key' as const,
       channels: {
         envLines: ['DISCORD_STATE_DIR=${PWD}/.claude.local/channels/discord'],
         volumeLines: ['${PWD}/.claude.local/channels/discord:/home/claude/.claude/channels/discord'],
@@ -238,11 +235,12 @@ describe('render-docker-templates.ts', () => {
         packages: input.packages,
         network_mode: input.networkMode,
         fleet_mesh: input.fleetMesh,
+        git_identity_mount: input.gitIdentityMount,
 
       },
     }));
 
-    expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))).toEqual(input);
+    expect(deriveRenderInputs(configPath)).toEqual(input);
   });
 
   // The shipped config template has no `network_mode` key, and neither does any
@@ -256,38 +254,8 @@ describe('render-docker-templates.ts', () => {
       docker: { packages: [], fleet_mesh: false },
     }));
 
-    const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
+    const derived = deriveRenderInputs(configPath);
     expect(derived?.networkMode).toBe('bridge');
-  });
-
-  async function deriveWithGitMount(from: string, to: string) {
-    const dir = freshDir();
-    await render(dir, { channels: { envLines: [], volumeLines: [] } });
-    const composePath = path.join(dir, 'docker-compose.hermit.yml');
-    fs.writeFileSync(composePath, compose(dir).replace(from, to));
-    const configPath = path.join(dir, 'config.json');
-    fs.writeFileSync(configPath, JSON.stringify({
-      channels: {},
-      docker: { packages: [], fleet_mesh: false },
-    }));
-    return deriveRenderInputs(configPath, composePath);
-  }
-
-  test('a custom git identity mount source derives as gitIdentityMount', async () => {
-    const derived = await deriveWithGitMount(
-      '${HOME}/.gitconfig:/home/claude/.gitconfig:ro',
-      '${PWD}/.claude.local/gitconfig:/home/claude/.gitconfig:ro',
-    );
-    expect(derived?.gitIdentityMount).toBe(true);
-  });
-
-  test('two git identity mounts stay underivable', async () => {
-    const line = '      - ${HOME}/.gitconfig:/home/claude/.gitconfig:ro\n';
-    const derived = await deriveWithGitMount(
-      line,
-      line + '      - ${PWD}/.claude.local/gitconfig:/home/claude/.gitconfig:ro\n',
-    );
-    expect(derived).toBeNull();
   });
 
   test('no channels leaves no channel state-dir wiring', async () => {
@@ -312,11 +280,12 @@ describe('render-docker-templates.ts', () => {
     // Entrypoint hashes the on-disk rendered file at the project root; the two
     // .template keys hash the upstream templates in the plugin.
     expect(byKey['docker/docker-entrypoint.hermit.sh']).toBe(path.join(dir, 'docker-entrypoint.hermit.sh'));
-    expect(byKey['docker/Dockerfile.hermit.template']).toContain('state-templates/docker/Dockerfile.hermit.template');
+    expect(Object.keys(byKey)).toEqual(['docker/docker-entrypoint.hermit.sh']);
   });
 
   test('relative project-root argv is resolved to an absolute path', async () => {
     const dir = freshDir();
+    config(dir);
     const rel = path.relative(process.cwd(), dir);
     const r = await runScript('render-docker-templates.ts', {
       args: [rel], stdin: JSON.stringify(BASE_INPUT),
@@ -329,6 +298,7 @@ describe('render-docker-templates.ts', () => {
   test('--to writes only under the requested output directory', async () => {
     const projectRoot = freshDir();
     const outputDir = freshDir();
+    config(projectRoot);
     const r = await runScript('render-docker-templates.ts', {
       args: [projectRoot, '--to', outputDir], stdin: JSON.stringify(BASE_INPUT),
     });
@@ -336,8 +306,8 @@ describe('render-docker-templates.ts', () => {
     expect(r.exitCode).toBe(0);
     expect(fs.existsSync(path.join(outputDir, 'Dockerfile.hermit'))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, 'docker-compose.hermit.yml'))).toBe(true);
-    expect(fs.existsSync(path.join(outputDir, 'docker-entrypoint.hermit.sh'))).toBe(true);
-    expect(fs.readdirSync(projectRoot)).toEqual([]);
+    expect(fs.existsSync(path.join(outputDir, 'docker-entrypoint.hermit.sh'))).toBe(false);
+    expect(fs.readdirSync(projectRoot).sort()).toEqual(['.hermit', 'docker-entrypoint.hermit.sh']);
   });
 
   test('a failed render prints {"error"} on stdout and writes nothing', async () => {
@@ -366,7 +336,7 @@ test('marketplace channel renders an approval drop-in for all enabled channel pl
     docker: { packages: [] },
     channels: { discord: {}, custom: { marketplace: 'custom-market', plugin: 'custom-plugin' }, disabled: { enabled: false } },
   }));
-  const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
+  const derived = deriveRenderInputs(configPath);
   expect(derived?.channelPlugins).toEqual(channelPlugins);
   expect((await render(dir, { ...derived! })).exitCode).toBe(0);
   expect(dockerfile(dir)).toContain(JSON.stringify({ channelsEnabled: true, allowedChannelPlugins: channelPlugins }));
@@ -384,7 +354,7 @@ test('browser derives true when absent and rejects non-booleans', async () => {
   const configPath = path.join(dir, 'config.json');
   for (const value of [undefined, false, true, null, 'true', 1]) {
     fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: value }, docker: { packages: [] } }));
-    const derived = deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'));
+    const derived = deriveRenderInputs(configPath);
     if (value === undefined || typeof value === 'boolean') {
       expect(derived?.browser).toBe(value ?? true);
     } else {
@@ -419,7 +389,7 @@ test('browser true pins and verifies both architectures above the root operator 
   expect(image).toContain('1f496a826c9ba4d6a5f5bf2de686145fe718528c2cc3dbeb96b5893b89653724');
   expect(image).toContain('/etc/hermit/managed-browser');
   expect(image).toContain('scripts/browser-agent.ts');
-  expect(image.indexOf('npm install -g --allow-scripts')).toBeLessThan(image.indexOf('# --- operator:'));
+  expect(image.indexOf('npm install -g --allow-scripts')).toBeLessThan(image.indexOf('# Match host UID'));
   expect(image).not.toContain('ENV AGENT_BROWSER_PROFILE');
   const baseline = freshDir();
   await render(baseline);
@@ -449,9 +419,9 @@ test('viewer port has one bridge publish site, survives derivation, and binds di
     expect(source.includes('HERMIT_BROWSER_VIEWER_BIND=127.0.0.1:6090')).toBe(networkMode === 'host');
     const configPath = path.join(dir, 'config.json');
     fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true, port: 6090 }, docker: { packages: [], network_mode: networkMode } }));
-    expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBe(6090);
+    expect(deriveRenderInputs(configPath)?.browserPort).toBe(6090);
     fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true, port: 6090 }, docker: { packages: [], security: { network: { enabled: true } } } }));
-    expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browserPort).toBeUndefined();
+    expect(deriveRenderInputs(configPath)?.browserPort).toBeUndefined();
     await render(dir, { browser: true });
     expect(compose(dir)).not.toContain('ports:');
     expect(dockerfile(dir)).toContain('novnc-1.7.0.tgz');
@@ -465,23 +435,49 @@ test('operator-installed agent-browser defaults off and an explicit browser choi
   fs.appendFileSync(file, '\nRUN npm install -g agent-browser\n');
   const configPath = path.join(dir, 'config.json');
   fs.writeFileSync(configPath, JSON.stringify({ channels: {}, docker: { packages: [] } }));
-  expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(false);
+  expect(deriveRenderInputs(configPath)?.browser).toBe(true);
   fs.writeFileSync(configPath, JSON.stringify({ channels: {}, browser: { enabled: true }, docker: { packages: [] } }));
-  expect(deriveRenderInputs(configPath, path.join(dir, 'docker-compose.hermit.yml'))?.browser).toBe(true);
+  expect(deriveRenderInputs(configPath)?.browser).toBe(true);
 });
 
-test('legacy pristine templates keep conditional browser installs and environment', () => {
-  const templates = {
-    dockerfile: '{{PACKAGES_BLOCK}}\n# --- operator: retained ---\n{{BROWSER_ENV}}',
-    compose: '',
-  };
-  for (const browser of [false, true]) {
-    const output = renderSources({ ...BASE_INPUT, browser }, templates).dockerfile;
-    expect(output.includes('# Managed browser')).toBe(browser);
-    expect(output.includes('touch /etc/hermit/managed-browser')).toBe(browser);
-    expect(output.includes('ENV AGENT_BROWSER_EXECUTABLE_PATH=')).toBe(browser);
-    expect(output.includes('ENV AGENT_BROWSER_ARGS=--no-sandbox')).toBe(browser);
-    expect(output).not.toContain('ARG HERMIT_BROWSER');
-    expect(output).toContain('# --- operator: retained ---');
+
+test.each([
+  ['unconverted', 'FROM debian\n', 'not_converted'],
+  ['newer', '# Generated by hermitd 999.0.0\n', 'newer_renderer'],
+])('header gate: %s', async (_label, content, reason) => {
+  const dir = freshDir(); config(dir);
+  fs.writeFileSync(path.join(dir, 'Dockerfile.hermit'), content);
+  const result = await runScript('render-docker-templates.ts', { args: [dir] });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ status: 'skipped', reason });
+  expect(dockerfile(dir)).toBe(content);
+  expect(fs.existsSync(path.join(dir, 'docker-compose.hermit.yml'))).toBe(false);
+  const output = freshDir();
+  expect((await runScript('render-docker-templates.ts', { args: [dir, '--to', output] })).exitCode).toBe(0);
+  expect(dockerfile(output)).toContain('Generated by hermitd');
+});
+
+test('convert, current and older headers render without overwriting an existing entrypoint', async () => {
+  const dir = freshDir(); config(dir);
+  fs.writeFileSync(path.join(dir, 'Dockerfile.hermit'), 'FROM debian\n');
+  fs.writeFileSync(path.join(dir, 'docker-entrypoint.hermit.sh'), 'operator entrypoint');
+  const converted = await runScript('render-docker-templates.ts', { args: [dir, '--convert'] });
+  expect(converted.exitCode).toBe(0);
+  expect(JSON.parse(converted.stdout).manifest_seed).toBeUndefined();
+  expect(fs.readFileSync(path.join(dir, 'docker-entrypoint.hermit.sh'), 'utf8')).toBe('operator entrypoint');
+  for (const header of [dockerfile(dir).split('\n')[0], '# Generated by hermitd 0.0.1']) {
+    fs.writeFileSync(path.join(dir, 'Dockerfile.hermit'), header + '\nstale');
+    expect((await runScript('render-docker-templates.ts', { args: [dir] })).exitCode).toBe(0);
+    expect(dockerfile(dir)).toContain('ffmpeg');
+    expect(dockerfile(dir)).toContain('agent-browser@');
+    expect(dockerfile(dir)).not.toContain('stale');
   }
+});
+
+test.each(['x', 'curl;touch pwned', 'UPPER', '-curl', 'curl foo'])('invalid package writes nothing: %s', async pkg => {
+  const dir = freshDir(); config(dir, { packages: [pkg] });
+  const result = await runScript('render-docker-templates.ts', { args: [dir] });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ error: `invalid_package:${pkg}` });
+  expect(fs.readdirSync(dir)).toEqual(['.hermit']);
 });

@@ -247,11 +247,11 @@ describe('manifest-seed: skill-call source-path contract', () => {
     expect(docker).toContain('manifest-seed.ts');
   });
 
-  test('render-docker-templates emits upstream .template files for the two substituted keys', () => {
+  test('render-docker-templates seeds only the entrypoint', () => {
     const script = read('scripts/render-docker-templates.ts');
     // Keys ending in .template map to plugin-root upstream templates (never rendered output).
-    expect(script).toContain("'docker/docker-compose.hermit.yml.template'");
-    expect(script).toContain("'docker/Dockerfile.hermit.template'");
+    expect(script).not.toContain("'docker/docker-compose.hermit.yml.template'");
+    expect(script).not.toContain("'docker/Dockerfile.hermit.template'");
     // The entrypoint key hashes the ON-DISK rendered copy at the project root.
     expect(script).toContain("'docker/docker-entrypoint.hermit.sh'");
     expect(script).toContain('entrypointPath');

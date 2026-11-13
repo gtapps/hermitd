@@ -761,7 +761,7 @@ exit 0
       expect(w.delivery).toBe('unconfirmed');
       const argv = fs.readFileSync(rec, 'utf-8').trim().split('\n');
       expect(argv).toEqual([
-        'compose', '-f', 'docker-compose.hermit.yml', 'exec', '-T', 'hermit',
+        'compose', '-f', path.join(wd.dir, 'docker-compose.hermit.yml'), 'exec', '-T', 'hermit',
         '.hermit/bin/hermitd-run', 'mcp-server', '--wake-local',
       ]);
     } finally {

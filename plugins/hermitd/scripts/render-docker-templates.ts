@@ -1,49 +1,13 @@
 #!/usr/bin/env bun
 import { BROWSER_PINS } from './lib/browser-pins';
-/**
- * Renders the base Docker scaffolding for /docker-setup Step 7b.6.
- *
- * The skill owns every DECISION (auth, channels, packages, networking, plugin
- * resolution) and hands this script the resolved SEMANTIC inputs on stdin; the
- * script derives the `{{PLACEHOLDER}}` strings, renders `Dockerfile.hermit` and
- * `docker-compose.hermit.yml` from the upstream templates, and copies the
- * entrypoint verbatim (it has no placeholders — the session name is resolved
- * from config.json at container startup, so it must be `cp`-copied, never
- * regenerated). All rendering + validation happens in memory; nothing is
- * written unless every file passes the fail-loud placeholder check.
- *
- * Usage: bun render-docker-templates.ts <project-root> [--to <output-dir>]
- *   stdin JSON:
- *     {
- *       "packages": ["libsqlite3-dev", ...],
- *       "auth": "setup-token" | "oauth-token" | "api-key",
- *       "channels": {
- *         "envLines":    ["DISCORD_STATE_DIR=${PWD}/.claude.local/channels/discord", ...],
- *         "volumeLines": ["${PWD}/.claude.local/channels/discord:/home/claude/.claude/channels/discord", ...]
- *       },
- *       "networkMode": "bridge" | "host",
- *       "gitIdentityMount": true,
- *       "fleetMesh": true            // optional; absent == false
- *     }
- *   channels.envLines / volumeLines carry the line BODY (the text after
- *   `      - `); this script owns the compose indentation.
- *
- * Prints JSON to stdout:
- *   { "written": ["/abs/Dockerfile.hermit", "/abs/docker-compose.hermit.yml"],
- *     "entrypoint_copied": true,
- *     "manifest_seed": { "plugin_version": "...", "entries": [...] } }
- * The skill pipes `manifest_seed` straight into manifest-seed.ts — this script
- * does NOT hash anything itself (one writer per file). Its value is that script's
- * stdin payload, so it keeps manifest-seed's input keys.
- *
- * Exit 0 on success. Any validation failure / unsubstituted placeholder →
- * `{"error":"render_failed:<detail>"}`, exit 1, nothing written.
- */
+/** Render plugin-owned Docker files from project config. */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderTemplate } from './lib/render-template';
-import { exitError } from './lib/cli';
+import { emitJson, exitError, printJson } from './lib/cli';
+import { writeFileAtomic } from './lib/md-write';
+import { deriveRenderInputs } from './lib/derive-render-inputs';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const TEMPLATES_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker');
@@ -56,7 +20,6 @@ export interface Channels {
 }
 export interface Inputs {
   packages?: string[];
-  auth: 'setup-token' | 'oauth-token' | 'api-key';
   channels?: Channels;
   channelPlugins?: Array<{ marketplace: string; plugin: string }>;
   networkMode: 'bridge' | 'host';
@@ -75,18 +38,18 @@ function packagesBlock(packages: string[]): string {
   if (packages.length === 0) return '';
   return [
     '# Project-specific packages (from config.json docker.packages)',
-    '# Rendered at /docker-setup time. To add a package now, put it in the operator',
-    '# block below (or run /docker-customize), then rebuild.',
+    '# Edit docker.packages and rebuild with hermitd restart --build.',
     'RUN apt-get update && apt-get install -y --no-install-recommends \\',
     `      ${packages.join(' ')} && \\`,
     '    rm -rf /var/lib/apt/lists/*',
   ].join('\n');
 }
 
-function browserBlock(legacy = false): string {
-  const block = [
-    '# Managed browser (pins move with core releases)',
-    'RUN apt-get update && apt-get install -y --no-install-recommends \\',
+function browserBlock(): string {
+  return [
+    '# --- managed browser ---',
+    'ARG HERMIT_BROWSER=1',
+    'RUN if [ "$HERMIT_BROWSER" = 1 ]; then apt-get update && apt-get install -y --no-install-recommends \\',
     '      tigervnc-standalone-server openbox procps libxcb-shm0 libx11-xcb1 libx11-6 libxcb1 libxext6 libxrandr2 libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxi6 libgtk-3-0 libpangocairo-1.0-0 libpango-1.0-0 libatk1.0-0t64 libcairo-gobject2 libcairo2 libgdk-pixbuf-2.0-0 libxrender1 libasound2t64 libfreetype6 libfontconfig1 libdbus-1-3 libnss3 libnss3-tools libnspr4 libatk-bridge2.0-0t64 libdrm2 libxkbcommon0 libatspi2.0-0t64 libcups2t64 libxshmfence1 libgbm1 fonts-liberation && \\',
     '    rm -r /var/lib/apt/lists/* && \\',
     `    npm install -g --allow-scripts=agent-browser agent-browser@${BROWSER_PINS.agent.version} && \\`,
@@ -104,13 +67,10 @@ function browserBlock(legacy = false): string {
     '    mkdir -p /opt/novnc && tar xzf /tmp/novnc.tgz -C /opt/novnc --strip-components=1 && rm /tmp/novnc.tgz && \\',
     "    printf '%s\\n' '#!/bin/sh' 'if [ ! -f \"${HERMIT_PLUGIN_ROOT:-}/scripts/browser-agent.ts\" ]; then echo \"agent-browser: hermit plugin unavailable\" >&2; exit 1; fi' 'exec bun \"${HERMIT_PLUGIN_ROOT}/scripts/browser-agent.ts\" \"$@\"' > /usr/local/bin/agent-browser && \\",
     '    chmod 755 /usr/local/bin/agent-browser && \\',
-    '    mkdir -p /etc/hermit && touch /etc/hermit/managed-browser',
+    "    mkdir -p /etc/hermit && printf 'display=plugin\\n' > /etc/hermit/managed-browser; \\",
+    '    fi',
+    '# --- end managed browser ---',
   ].join('\n');
-  if (legacy) return block;
-  return block
-    .replace('# Managed browser (pins move with core releases)', '# --- managed browser ---\nARG HERMIT_BROWSER=1')
-    .replace('RUN apt-get', 'RUN if [ "$HERMIT_BROWSER" = 1 ]; then apt-get')
-    .replace('touch /etc/hermit/managed-browser', "printf 'display=plugin\\n' > /etc/hermit/managed-browser; " + '\\' + '\n    fi\n# --- end managed browser ---');
 }
 
 function indentedLines(bodies: string[]): string {
@@ -131,6 +91,9 @@ export function renderSources(
 ): { dockerfile: string; compose: string } {
   if (inputs.browserPort !== undefined && (!Number.isInteger(inputs.browserPort) || inputs.browserPort < 1 || inputs.browserPort > 65535)) throw new Error('invalid_viewer_port');
   const packages = inputs.packages ?? [];
+  for (const pkg of packages) {
+    if (!/^[a-z0-9][a-z0-9+\-.]+$/.test(pkg)) throw new Error(`invalid_package:${pkg}`);
+  }
   const channels = inputs.channels ?? {};
   // envLines/volumeLines feed the CHANNEL_ENV_LINES and CHANNEL_VOLUME_LINES
   // placeholders, which are really just "extra env/volume lines" despite the
@@ -161,27 +124,12 @@ export function renderSources(
   }
 
   const dockerfile = renderTemplate(dockerfileTemplate, {
-    PACKAGES_BLOCK: [packagesBlock(packages), dockerfileTemplate.includes('{{BROWSER_ENV}}') ? (inputs.browser ? browserBlock(true) : '') : browserBlock(),
+    PACKAGES_BLOCK: [packagesBlock(packages), browserBlock(),
       '# --- transcription ---\nARG HERMIT_TRANSCRIPTION=1\nRUN if [ "$HERMIT_TRANSCRIPTION" = 1 ]; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r /var/lib/apt/lists/*; fi',
     ].filter(Boolean).join('\n\n'),
-    BROWSER_ENV: inputs.browser
-      ? 'ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/chrome-linux64/chrome\nENV AGENT_BROWSER_ARGS=--no-sandbox\n'
-      : '',
     CHANNEL_ALLOWLIST_BLOCK: channelAllowlistBlock(inputs.channelPlugins ?? []),
   });
 
-  // AUTH_ENV_LINE carries a trailing newline (api-key) so CHANNEL_ENV_LINES,
-  // which shares the same template line, starts on a fresh line.
-  //
-  // Only api-key gets an env line. Both subscription modes read their
-  // credential from the claude-config volume — and setup-token specifically
-  // must NOT be wired through .env: compose applies env_file at container
-  // creation only, so an .env-stored token would need a host-side recreate on
-  // every renewal, defeating the point of channel-relayed re-auth. hermitd-start
-  // exports it from the volume file at process start instead.
-  const authEnvLine = inputs.auth === 'api-key'
-    ? '      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}\n'
-    : '';
   const networkModeLine = inputs.networkMode === 'host'
     ? '    # WARNING: host networking exposes all host-local services to the container.\n    network_mode: host'
     : '';
@@ -197,7 +145,6 @@ export function renderSources(
     : '';
 
   const compose = renderTemplate(composeTemplate, {
-    AUTH_ENV_LINE: authEnvLine,
     CHANNEL_ENV_LINES: indentedLines(envLines),
     CHANNEL_VOLUME_LINES: indentedLines(volumeLines),
     NETWORK_MODE_LINE: networkModeLine,
@@ -225,66 +172,48 @@ function pluginVersion(): string {
 }
 
 if (import.meta.main) {
-  const argv = process.argv.slice(2);
-  const toIndex = argv.indexOf('--to');
-  if (toIndex !== -1 && !argv[toIndex + 1]) exitError();
-  const projectRootArg = argv.find(
-    (arg, index) => arg !== '--to' && (toIndex === -1 || index !== toIndex + 1),
-  );
-  const projectRoot = path.resolve(projectRootArg || process.cwd());
-  const outputDir = toIndex === -1 ? projectRoot : path.resolve(argv[toIndex + 1]);
-
-  let raw = '';
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (c) => { raw += c; });
-  process.stdin.on('error', () => {});
-  process.stdin.on('end', () => {
-    try {
-      const inputs = JSON.parse(raw) as Inputs;
-
-      // Render + validate everything before any write. pluginVersion() reads +
-      // parses plugin.json; resolve it here too so a missing/corrupt manifest
-      // throws BEFORE any file is written (honours the "nothing written" contract).
-      const { dockerfile, compose } = render(inputs);
-      const entrypointSrc = path.join(TEMPLATES_DIR, 'docker-entrypoint.hermit.sh.template');
-      if (!fs.existsSync(entrypointSrc)) throw new Error(`missing entrypoint template: ${entrypointSrc}`);
-      const version = pluginVersion();
-
-      const dockerfilePath = path.join(outputDir, 'Dockerfile.hermit');
-      const composePath = path.join(outputDir, 'docker-compose.hermit.yml');
-      const entrypointPath = path.join(outputDir, 'docker-entrypoint.hermit.sh');
-
-      // `--to` may name a scratch dir that does not exist yet (evolve's
-      // `state/evolve-docker/theirs`). Still after render+validate, so a
-      // rendering failure creates nothing.
-      fs.mkdirSync(outputDir, { recursive: true });
-      fs.writeFileSync(dockerfilePath, dockerfile);
-      fs.writeFileSync(composePath, compose);
-      fs.copyFileSync(entrypointSrc, entrypointPath);
-
-      const manifestSeed = {
-        plugin_version: version,
-        entries: [
-          { key: 'docker/docker-entrypoint.hermit.sh', file: entrypointPath },
-          {
-            key: 'docker/docker-compose.hermit.yml.template',
-            file: path.join(TEMPLATES_DIR, 'docker-compose.hermit.yml.template'),
-          },
-          {
-            key: 'docker/Dockerfile.hermit.template',
-            file: path.join(TEMPLATES_DIR, 'Dockerfile.hermit.template'),
-          },
-        ],
-      };
-
-      console.log(JSON.stringify({
-        written: [dockerfilePath, composePath],
-        entrypoint_copied: true,
-        manifest_seed: manifestSeed,
-      }));
-      process.exit(0);
-    } catch (e: any) {
-      exitError(`render_failed:${e.message}`);
+  try {
+    const argv = process.argv.slice(2);
+    const projectRoot = path.resolve(argv[0]);
+    const toIndex = argv.indexOf('--to');
+    if (toIndex !== -1 && !argv[toIndex + 1]) throw new Error('missing_output_dir');
+    const outputDir = toIndex === -1 ? projectRoot : path.resolve(argv[toIndex + 1]);
+    const version = pluginVersion();
+    const dockerfilePath = path.join(outputDir, 'Dockerfile.hermit');
+    const composePath = path.join(outputDir, 'docker-compose.hermit.yml');
+    if (toIndex === -1 && fs.existsSync(dockerfilePath)) {
+      const header = fs.readFileSync(dockerfilePath, 'utf8').split('\n')[0];
+      const match = header.match(/Generated by hermitd (\d+\.\d+\.\d+)/);
+      if (match && Bun.semver.order(match[1], version) > 0) {
+        emitJson({ status: 'skipped', reason: 'newer_renderer' });
+      }
+      if (!match && !argv.includes('--convert')) {
+        emitJson({ status: 'skipped', reason: 'not_converted' });
+      }
     }
-  });
+    const inputs = deriveRenderInputs(path.join(projectRoot, '.hermit', 'config.json'));
+    if (!inputs) throw new Error('invalid_config');
+    const { dockerfile, compose } = render(inputs);
+    const header = `# Generated by hermitd ${version}. Customize docker.packages, docker-build.hermit-local.sh, docker-compose.override.yml, docker-entrypoint.hermit-local.sh.\n`;
+    const entrypointPath = path.join(projectRoot, 'docker-entrypoint.hermit.sh');
+    const entrypointSrc = path.join(TEMPLATES_DIR, 'docker-entrypoint.hermit.sh.template');
+    const entrypointCopied = !fs.existsSync(entrypointPath);
+    const entrypoint = entrypointCopied ? fs.readFileSync(entrypointSrc, 'utf8') : null;
+    fs.mkdirSync(outputDir, { recursive: true });
+    writeFileAtomic(dockerfilePath, header + dockerfile);
+    writeFileAtomic(composePath, header + compose);
+    if (entrypoint !== null) writeFileAtomic(entrypointPath, entrypoint, 0o755);
+    emitJson({
+      written: [dockerfilePath, composePath],
+      entrypoint_copied: entrypointCopied,
+      ...(entrypointCopied ? { manifest_seed: {
+        plugin_version: version,
+        entries: [{ key: 'docker/docker-entrypoint.hermit.sh', file: entrypointPath }],
+      } } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith('invalid_package:')) printJson({ error: message });
+    else exitError(`render_failed:${message}`);
+  }
 }

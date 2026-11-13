@@ -1,3 +1,4 @@
+import { composeFiles } from './lib/compose-files';
 // MCP stdio control surface — discover, observe, and wake hermits without
 // coupling to `.hermit/` internals.
 //
@@ -343,7 +344,7 @@ function wakeResult(write_status: 'flushed' | 'unreachable'): Json {
 
 function relayWake(projectRoot: string): Json {
   const r = spawnSync('docker', [
-    'compose', '-f', 'docker-compose.hermit.yml', 'exec', '-T', 'hermit',
+    'compose', ...composeFiles(projectRoot), 'exec', '-T', 'hermit',
     '.hermit/bin/hermitd-run', 'mcp-server', '--wake-local',
   ], {
     cwd: projectRoot,

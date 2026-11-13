@@ -54,8 +54,10 @@ An installed hermit belongs to its operator; they rewrite it and the plugin keep
 | Surface | What the operator can put there |
 |---|---|
 | `routines[]`, `boot_skill`, `shutdown_skill`, `monitors[]` | any skill string, including their own local plugins' skills |
-| `config.env`, `docker.packages`, `docker.recommended_plugins` | arbitrary values |
-| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md`, `docker/` | free-form rewrite; on-disk beats template (see the `hermitd-docker update` gotcha below) |
+| `config.env`, `docker.recommended_plugins` | arbitrary values |
+| `docker.packages` | validated apt package names, rendered at each host lifecycle boundary |
+| `OPERATOR.md`, `HEARTBEAT.md`, `knowledge-schema.md` | free-form rewrite |
+| `docker-build.hermit-local.sh`, `docker-entrypoint.hermit-local.sh`, `docker-compose.override.yml` | operator-owned image, boot and stack customization |
 
 Above the contract line, give skills data + goal + voice and let the model compose; don't hardcode content, edge-case copy, checklists, or opinions about how the operator should work. Loose is not vague: a skill still states its goal and verdict shape precisely.
 
@@ -85,4 +87,4 @@ Constraints:
 - The hermit Ubuntu image has no `strace`, and `apt install` is blocked while `read_only: true` is on. For fs/network tracing inside hermit use `NODE_DEBUG=fs,http,https,net,tls claude ...`.
 - Netguard enforce mode is authoritative (verified live, dnsmasq 2.92): with `no-resolv` + `--conf-file`, unmatched queries NXDOMAIN and are never forwarded. The `forwarded <host> to 127.0.0.11` lines in `docker logs <stack>-hermit-netguard-1` come from log-only mode, which forwards everything by design. Static `address=/host/ip` allowlist records are honored in both modes (`dnsmasq.allowlist.template`).
 - `grep` with no match breaks `&&` chains in diagnostic one-liners and silently truncates the rest; use `; grep ... || true` when continuation matters.
-- `hermitd-docker update` builds from the on-disk Dockerfile, compose file, and entrypoint. Upgrade Instructions for those templates name `hermit-evolve` as the refresh path. Update waits for evolve before building, so the merged files apply at its one quiet restart.
+- `hermitd-docker up`, `restart` and `update` regenerate header-marked Dockerfile and base compose from config before validation and builds. Update renders after evolve; the Claude Code floor path renders before its early build. Operator work belongs in `docker.packages`, `docker-build.hermit-local.sh`, `docker-entrypoint.hermit-local.sh` and `docker-compose.override.yml`; the plugin never writes the three operator files. Compose order is base, security overlay, then operator override. Keep entrypoint classification separate.

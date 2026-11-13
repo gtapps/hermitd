@@ -26,7 +26,7 @@ The resident handles operator contact. Isolated workers return a verdict or comp
 ## Runtime and Docker changes
 
 - Read the Bun floor from `.claude-plugin/hermit-meta.json` (`required_bun_version`). Keep the Docker template's `BUN_VERSION` aligned when raising it.
-- `hermitd-docker update` builds from the on-disk Dockerfile, compose file, and entrypoint. Template upgrade instructions must refresh/merge them through `hermit-evolve` before rebuilding.
+- `hermitd-docker up`, `restart` and `update` regenerate header-marked Dockerfile and base compose from config before validation and builds. Update renders after evolve; the Claude Code floor path renders before its early build. Operator work belongs in `docker.packages`, `docker-build.hermit-local.sh`, `docker-entrypoint.hermit-local.sh` and `docker-compose.override.yml`; the plugin never writes the three operator files. Compose order is base, security overlay, then operator override. Keep entrypoint classification separate.
 - Do not reintroduce container `read_only: true` without proving Claude's credential-refresh writes work with the volume/tmpfs layout.
 - Netguard log-only mode forwards unmatched DNS; enforce mode blocks it. Preserve that distinction and static allowlist records when changing the entrypoint. See [Docker security](docs/docker-security.md).
 
