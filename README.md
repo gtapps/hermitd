@@ -299,7 +299,7 @@ You can run separate agents for different responsibilities, each with its own wo
 
 **Sign-in renewal from chat.** When your agent’s Claude sign-in needs renewing, use `/relogin` from your connected chat. Open the link in your browser, sign in, and send the code back in chat.
 
-**Tool sign-ins from chat.** Anyone admitted may ask to reconnect a tool or claude.ai connector; an admin finishes the sign-in. The account used serves every chat and routine, so prefer a dedicated account over a personal login. Paste the callback address in a chat that reaches the agent; forward the sign-in link if the tool belongs to someone else's account.
+**Tool sign-ins.** Anyone admitted may ask to reconnect a tool or claude.ai connector; the agent tells an admin, who finishes the sign-in with `/mcp` at the agent's terminal. The account used serves every chat and routine, so prefer a dedicated account over a personal login, and forward the link `/mcp` shows if the tool belongs to someone else's account.
 
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
