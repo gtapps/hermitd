@@ -2,7 +2,8 @@ name: Plugin Validate
 # Runs Claude Code's native `claude plugin validate` over every plugin and the
 # marketplace, so schema, hook and MCP problems go red at the pull request
 # instead of at release time. scripts/plugin-validate.sh owns the gate: any
-# error, or any warning except the plugin-root CLAUDE.md note.
+# error, or any warning except the plugin-root CLAUDE.md note and TypeScript
+# diagnostics outside a hooks module's folder.
 on:
   push:
     branches: [main]

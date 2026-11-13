@@ -1,6 +1,9 @@
 {
   "name": "hermitd",
   "version": "1.4.32",
+  "engines": {
+    "claude-code": ">=2.1.323"
+  },
   "description": "Your own local Claude Tag, in the Claude app, Discord, Telegram, or a custom Claude Code channel.",
   "author": {
     "name": "gtapps",

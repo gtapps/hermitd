@@ -19,9 +19,10 @@ import { localIdentity } from './helpers/registry-fixture';
 type Json = any;
 
 const SCRIPT = path.join(SCRIPTS_DIR, 'mcp-server.ts');
-const PLUGIN_VERSION = JSON.parse(
+const PLUGIN_JSON = JSON.parse(
   fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf-8'),
-).version;
+);
+const PLUGIN_VERSION = PLUGIN_JSON.version;
 const HERMIT_META = JSON.parse(
   fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'hermit-meta.json'), 'utf-8'),
 );
@@ -665,7 +666,7 @@ describe('get_health, get_brief, get_version', () => {
       expect(v.applied).toBe('0.0.1');
       expect(v.loaded).not.toBe(v.applied);
       expect(v.required_bun_version).toBe(HERMIT_META.required_bun_version);
-      expect(v.min_claude_code_version).toBe(HERMIT_META.min_claude_code_version);
+      expect(v.min_claude_code_version).toBe(PLUGIN_JSON.engines['claude-code']);
       expect(v.contract_version).toBe(1);
     } finally {
       await s.close();

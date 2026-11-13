@@ -8,13 +8,13 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
 
 ### 0. Verify Claude Code CLI version
 
-- Read `.claude-plugin/hermit-meta.json` under the plugin root. If the file
-  doesn't exist or `min_claude_code_version` is not set, skip this step.
+- Read `engines["claude-code"]` from `.claude-plugin/plugin.json` under the
+  plugin root. If it is not set, skip this step.
 - Run `claude --version` and parse the leading semver (format:
   `X.Y.Z (Claude Code)`). If the command fails or the version cannot be parsed,
   report: "Could not detect Claude Code CLI version — proceeding anyway." and
   skip the comparison.
-- Compare the detected version against `min_claude_code_version` (supports
+- Compare the detected version against that range (supports
   `>=X.Y.Z` or bare `X.Y.Z`, treated as `>=`). If the CLI version is below the
   minimum, report:
 
@@ -25,12 +25,12 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
   /hermitd:hermit-evolve.
   ```
 
-  Substitute `<min>` with the value from `min_claude_code_version` and
+  Substitute `<min>` with the range's version and
   `<detected>` with the parsed CLI version. Then stop. Do not prompt to bypass.
 
 ### 0b. Verify the bun runtime (hard gate)
 
-- Read `required_bun_version` from the same `hermit-meta.json`. If not set, skip
+- Read `required_bun_version` from `.claude-plugin/hermit-meta.json`. If not set, skip
   this step.
 - Run `bun --version`. If the command fails (bun not installed) or the version is
   below the requirement, report:

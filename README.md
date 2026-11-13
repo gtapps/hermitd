@@ -48,7 +48,7 @@ Sources checked November 12 and 13, 2026.
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.322+ and Bun 1.4+ installed:
+With Claude Code 2.1.323+ and Bun 1.4+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local

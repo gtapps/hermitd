@@ -60,10 +60,12 @@ jobs:
           # Source the installer rather than re-typing its ver_ge and floor
           # parsing, so a fix to either cannot silently drift from what this
           # assertion checks. main() is guarded, so sourcing defines functions
-          # without re-running the install. load_floors reads the same URL the
-          # installer read, so a floor raised in an unmerged PR cannot fail this
-          # job spuriously.
+          # without re-running the install. load_floors reads this checkout's
+          # manifests, so a change to where or how a floor is declared is
+          # checked against the parsing in the same tree.
           source "$GITHUB_WORKSPACE/scripts/install.sh"
+          PLUGIN_JSON_URL="file://$GITHUB_WORKSPACE/plugins/hermitd/.claude-plugin/plugin.json"
+          META_URL="file://$GITHUB_WORKSPACE/plugins/hermitd/.claude-plugin/hermit-meta.json"
           load_floors
 
           # load_floors empties both floors on a failed fetch, and ver_ge treats

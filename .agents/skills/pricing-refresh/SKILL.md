@@ -51,5 +51,5 @@ If the operator explicitly confirms:
    `[Unreleased]`: rate table refreshed for the current generations.
 3. Run `cd plugins/Codex-hermit && bun test tests/pricing.test.ts`.
 
-Do not commit. Do not bump `min_claude_code_version`. Do not add a hook, a
+Do not commit. Do not bump `engines["claude-code"]`. Do not add a hook, a
 routine, or a `config.json` entry.

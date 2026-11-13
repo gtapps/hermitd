@@ -130,8 +130,14 @@ _core_cc_floor() {
   local install
   install="$(_core_install)"
   [ -n "$install" ] || return 0
-  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" cat "$install/.claude-plugin/hermit-meta.json" 2>/dev/null \
-    | bun -e 'try { const m = JSON.parse(require("fs").readFileSync(0, "utf8")).min_claude_code_version; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' 2>/dev/null || true
+  cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" cat "$install/.claude-plugin/plugin.json" 2>/dev/null \
+    | bun -e 'try { const m = JSON.parse(require("fs").readFileSync(0, "utf8")).engines?.["claude-code"]; if (typeof m === "string") console.log(m.replace(/^>=\s*/, "")); } catch {}' 2>/dev/null || true
+}
+
+# Print a `claude plugin update --json` result's message and echo `engine_range` when the
+# update held the plugin back because the running Claude Code misses its engines range.
+_update_outcome() {
+  bun -e 'try { const r = JSON.parse(process.argv[1].trim().split("\n").pop()); if (r.message) console.error("[hermit] " + r.message); if (r.skipReason === "engine_range") console.log("engine_range"); } catch {}' "$1"
 }
 
 # The pinned core version in a plugin row list (TAB rows: id, scope, version).
@@ -600,6 +606,7 @@ case "$CMD" in
 
     PLUGINS_OK_IDS=()
     PLUGINS_FAIL_IDS=()
+    ENGINE_HELD_IDS=()
     PLUGIN_ROWS_AFTER=""
     PLUGIN_ERRORS_AFTER=""
     EVOLVE_SENT=false
@@ -687,11 +694,15 @@ case "$CMD" in
       while IFS=$'\t' read -r pid pscope pver; do
         [ -z "$pid" ] && continue
         echo "[hermit] Updating $pid (scope $pscope)..."
-        if (cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
-            claude plugin update "$pid" --scope "$pscope" </dev/null); then
+        if UPDATE_OUT=$(cd "$PROJECT_DIR" && "${DC[@]}" exec -T "$SERVICE" \
+            claude plugin update "$pid" --scope "$pscope" --json </dev/null); then
           PLUGINS_OK_IDS+=("$pid"$'\t'"$pscope")
+          if [ "$(_update_outcome "$UPDATE_OUT")" = engine_range ]; then
+            ENGINE_HELD_IDS+=("$pid"$'\t'"$pscope")
+          fi
         else
           PLUGINS_FAIL_IDS+=("$pid"$'\t'"$pscope")
+          _update_outcome "$UPDATE_OUT" >/dev/null
           echo "[hermit] Warning: update failed for $pid — run manually inside the container:" >&2
           echo "[hermit]          claude plugin update $pid --scope $pscope" >&2
         fi
@@ -711,18 +722,20 @@ case "$CMD" in
     # hermit-evolve stops on a Claude Code below the new core's minimum, so a queued evolve
     # would never stamp the versions and the wait below would time out before the rebuild
     # that brings the newer Claude Code. Rebuild first; boot then runs the pending evolve.
+    # A plugin whose engines range the running Claude Code misses was held at its version;
+    # it is updated again on the rebuilt image before the bounce.
     BELOW_FLOOR=false
     if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ]; then
       CC_FLOOR=$(_core_cc_floor)
-      if [ -n "$CC_FLOOR" ] && [ "$CC_BEFORE" != unknown ] \
-          && [ "$(printf '%s\n%s\n' "$CC_FLOOR" "$CC_BEFORE" | sort -V | head -1)" != "$CC_FLOOR" ]; then
+      if [ ${#ENGINE_HELD_IDS[@]} -gt 0 ] || { [ -n "$CC_FLOOR" ] && [ "$CC_BEFORE" != unknown ] \
+          && [ "$(printf '%s\n%s\n' "$CC_FLOOR" "$CC_BEFORE" | sort -V | head -1)" != "$CC_FLOOR" ]; }; then
         BELOW_FLOOR=true
         if [ "$PLUGINS_ONLY" = true ]; then
-          echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}; rerun \`hermitd update\` without --plugins-only to rebuild the image." >&2
+          echo "[hermit] Claude Code ${CC_BEFORE} is below an updated plugin's minimum; rerun \`hermitd update\` without --plugins-only to rebuild the image." >&2
           AWAIT_STATUS=blocked; AWAIT_REASON=cc_below_floor
           return 0
         fi
-        echo "[hermit] Claude Code ${CC_BEFORE} is below hermitd's minimum ${CC_FLOOR}: rebuilding first; hermit-evolve runs at boot."
+        echo "[hermit] Claude Code ${CC_BEFORE} is below an updated plugin's minimum: rebuilding first; hermit-evolve runs at boot."
       fi
     fi
 
@@ -801,6 +814,26 @@ case "$CMD" in
         exit 1
       fi
       IMAGE_BUILT=true
+      # The rebuilt image's Claude Code meets the held plugins' ranges. A one-off container
+      # shares the config volume, so the pins move now and boot runs the pending evolve.
+      if [ ${#ENGINE_HELD_IDS[@]} -gt 0 ]; then
+        CORE_HELD_BEFORE=$(_core_version "$PLUGIN_ROWS_AFTER")
+        for _held in "${ENGINE_HELD_IDS[@]}"; do
+          IFS=$'\t' read -r pid pscope <<< "$_held"
+          echo "[hermit] Updating $pid (scope $pscope) on the rebuilt image..."
+          if ! (cd "$PROJECT_DIR" && "${DC[@]}" run --rm --no-deps -T --entrypoint claude "$SERVICE" \
+              plugin update "$pid" --scope "$pscope" </dev/null); then
+            PLUGINS_FAIL_IDS+=("$_held")
+            echo "[hermit] Warning: update failed for $pid; rerun \`hermitd update\` after the restart." >&2
+          fi
+        done
+        PLUGIN_ROWS_AFTER=$(_enumerate_plugins)
+        PLUGIN_ERRORS_AFTER=$(_enumerate_plugin_errors)
+        CORE_AFTER=$(_core_version "$PLUGIN_ROWS_AFTER")
+        if [ -n "$CORE_AFTER" ] && [ "$CORE_AFTER" != "$CORE_HELD_BEFORE" ]; then
+          _sync_permissions
+        fi
+      fi
     fi
     _await_upgrade || return 0
     _validate_compose
@@ -936,7 +969,7 @@ JSEOF
     if [ "$AWAIT_STATUS" = timeout ]; then
       echo "[hermit] Update paused; no restart performed."
     elif [ "$AWAIT_STATUS" = blocked ]; then
-      echo "[hermit] Update blocked: Claude Code ${CC_BEFORE} is below hermitd's minimum; rerun \`hermitd update\` without --plugins-only."
+      echo "[hermit] Update blocked: Claude Code ${CC_BEFORE} is below an updated plugin's minimum; rerun \`hermitd update\` without --plugins-only."
     else
       echo "[hermit] Update complete."
     fi

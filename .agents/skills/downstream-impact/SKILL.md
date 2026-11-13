@@ -24,7 +24,7 @@ A change reaches downstream only through a few surfaces. Read only what the diff
 - **Operator chat**: channel notices, push notifications, `AskUserQuestion` prompts, skill text that composes messages. Does the operator see new, fewer, or differently worded messages? Is there a new thing they can ask for?
 - **Hermit flow**: hooks, heartbeat, routines, watches, watchdog, session start/close. Does the hermit wake more, less, or for a different reason? Did a step move from the model to a script, or the reverse?
 - **Upgrade path**: `templates/`, migrations, `### Upgrade Instructions`. What does `hermit-evolve` rewrite, what does the operator do by hand, what operator-edited file survives.
-- **Gates**: `min_claude_code_version`, `required_core_version`, new config keys, permission or deny rules, default on or off. Who is excluded, who has to opt in.
+- **Gates**: `engines["claude-code"]`, `required_core_version`, new config keys, permission or deny rules, default on or off. Who is excluded, who has to opt in.
 - **Cost**: per-wake context, hook stdout, new always-loaded text.
 - **Reach**: `main` is staging. Installed operators see nothing until the plugin's `version` bumps; `--plugin-dir` testers and fresh installs see `main` HEAD. Say which group this reaches today.
 
