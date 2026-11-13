@@ -9,6 +9,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { installFakeClaude, writeAuthStatusReply, authStatusCalls } from './helpers/auth-status';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -84,6 +85,7 @@ function setupHermit(): Hermit {
   // Stub bin dir on PATH for fake tmux + pgrep
   const fakeBin = path.join(dir, 'fake-bin');
   fs.mkdirSync(fakeBin);
+  installFakeClaude(fakeBin);
 
   return {
     dir, fakeBin,
@@ -330,7 +332,7 @@ describe('staged credential commit', () => {
     fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'old@x' } }));
     fs.writeFileSync(
       path.join(stagedDir, '.credentials.json'),
-      JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: 'r2', refreshTokenExpiresAt: 42 } }),
+      JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: 'r2', refreshTokenExpiresAt: Date.now() + 30 * 86400_000 } }),
     );
     fs.writeFileSync(path.join(stagedDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'new@x' } }));
     fs.writeFileSync(
@@ -401,6 +403,24 @@ describe('staged credential commit', () => {
     const events = fs.readFileSync(eventsFile(h), 'utf-8');
     expect(events).toContain('credential-commit-skipped');
     expect(events).not.toContain('credential-committed');
+  }));
+
+  // No verdict on a fresh staged sign-in commits it: the mint already read it usable,
+  // and the staleness bound limits how old that reading can be.
+  test('no verdict on a fresh staged login still commits it', withHermit(async (h) => {
+    writeConfig(h);
+    writeFakeTmux(h, 1);
+    writeFakePgrep(h, 1);
+    const { configDir, stagedDir } = stage(h, 'sk-ant-oat01-freshfreshfresh');
+    writeAuthStatusReply(stagedDir, 2, '');
+    const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+    expect(r.exitCode).toBe(0);
+
+    expect(readJson(path.join(configDir, '.credentials.json')).claudeAiOauth.accessToken).toBe('sk-ant-oat01-freshfreshfresh');
+    expect(readJson(path.join(configDir, '.credentials.json.pre-login.bak')).claudeAiOauth.accessToken).toBe('old-one');
+    expect(fs.existsSync(stagedDir)).toBe(false);
+    expect(fs.existsSync(state(h, 'pending-credential.json'))).toBe(false);
+    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('no status verdict');
   }));
 
   // `usable` only says the file carries a token, so an abandoned staging still reads
@@ -1284,7 +1304,7 @@ test('lapsed /login with a channel → relay spawned, nudge and restart suppress
   writeFakePgrep(h, 1);
   // Stale enough that a nudge would normally fire — proving the tier suppresses it.
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
-  const configDir = writeStoredLogin(h);
+  const configDir = writeStoredLogin(h, ''); // the stub a dead login leaves
   const r = await watchdog(h, 'run', {
     env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' },
   });
@@ -1296,6 +1316,100 @@ test('lapsed /login with a channel → relay spawned, nudge and restart suppress
   expect(events).not.toContain('restart');
 }));
 
+// A transient edge block (a Cloudflare 403) reaches the stamp as `authentication_failed`
+// too. In login mode Claude Code's own login status decides, so a usable login sends
+// no sign-in link however the turn failed.
+test('usable /login + an auth stamp → no relay, no notice', withHermit(async (h) => {
+  writeConfig(h);
+  configureChannel(h);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, 'Please run /login · API Error: 403 Attention Required! | Cloudflare');
+  writeFakePgrep(h, 1);
+  const configDir = writeStoredLogin(h);
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
+  expect(events).not.toContain('reauth-relay');
+  expect(events).not.toContain('lapsed-login-detected');
+  expect(authStatusCalls(configDir).length).toBeGreaterThan(0);
+}));
+
+test('usable /login + an auth stamp + an unreachable stamp → no notice', withHermit(async (h) => {
+  writeConfig(h);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
+  writeFakePgrep(h, 1);
+  fs.writeFileSync(state(h, 'relay-unreachable.json'), JSON.stringify({ at: new Date().toISOString() }));
+  const configDir = writeStoredLogin(h);
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
+  expect(events).not.toContain('lapsed-login-detected');
+}));
+
+test('/login whose refresh expiry has passed + an auth stamp → relay as expired', withHermit(async (h) => {
+  writeConfig(h);
+  configureChannel(h);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
+  writeFakePgrep(h, 1);
+  const configDir = writeStoredLogin(h);
+  const creds = readJson(path.join(configDir, '.credentials.json'));
+  creds.claudeAiOauth.refreshTokenExpiresAt = Date.now() - 3600_000;
+  fs.writeFileSync(path.join(configDir, '.credentials.json'), JSON.stringify(creds));
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('claude.ai login expired');
+}));
+
+// No verdict authorizes nothing: a failed turn alone never sends a sign-in link.
+test('login status unavailable + an auth stamp → no relay', withHermit(async (h) => {
+  writeConfig(h);
+  configureChannel(h);
+  writeFakeTmux(h, 0);
+  writeAuthStamp(h, LAPSED_LOGIN_TEXT);
+  writeFakePgrep(h, 1);
+  const configDir = writeStoredLogin(h, '');
+  writeAuthStatusReply(configDir, 0, 'not json');
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
+  expect(events).not.toContain('reauth-relay');
+}));
+
+// A quiet tick in login mode never checked the login, so it cannot end the unreachable
+// suppression on its own: a restart of a dead-login agent would otherwise re-arm a relay
+// nobody can answer.
+test('login mode: the unreachable stamp clears only once the login reads usable', withHermit(async (h) => {
+  writeConfig(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  const unreachable = state(h, 'relay-unreachable.json');
+  fs.writeFileSync(unreachable, JSON.stringify({ at: new Date().toISOString() }));
+  const configDir = writeStoredLogin(h, '');
+  const env = { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' };
+  expect((await watchdog(h, 'run', { env })).exitCode).toBe(0);
+  expect(fs.existsSync(unreachable)).toBe(true);
+  writeStoredLogin(h);
+  expect((await watchdog(h, 'run', { env })).exitCode).toBe(0);
+  expect(fs.existsSync(unreachable)).toBe(false);
+}));
+
+// The check runs only when a failed turn gives a reason: a quiet tick spawns nothing,
+// even over a dead login, which the next failed turn will surface.
+test('no auth stamp → login status is not checked', withHermit(async (h) => {
+  writeConfig(h);
+  configureChannel(h);
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  const configDir = writeStoredLogin(h, '');
+  const r = await watchdog(h, 'run', { env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' } });
+  expect(r.exitCode).toBe(0);
+  expect(authStatusCalls(configDir)).toEqual([]);
+  const events = fs.existsSync(eventsFile(h)) ? fs.readFileSync(eventsFile(h), 'utf-8') : '';
+  expect(events).not.toContain('reauth-relay');
+}));
+
 // The other half: the relay already tried and could not reach anybody. Without this
 // stamp the watchdog respawns that same doomed relay on every tick, forever.
 test('lapsed /login + a fresh unreachable stamp → one notice, no relay', withHermit(async (h) => {
@@ -1305,7 +1419,7 @@ test('lapsed /login + a fresh unreachable stamp → one notice, no relay', withH
   writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
-  const configDir = writeStoredLogin(h);
+  const configDir = writeStoredLogin(h, ''); // the stub a dead login leaves
   fs.writeFileSync(state(h, 'relay-unreachable.json'), JSON.stringify({ at: isoAgo(1) }));
   const stub = startHttpStub();
   try {
@@ -1334,7 +1448,7 @@ test('lapsed /login + a stamp older than 24h → relay retried', withHermit(asyn
   writeFakeTmux(h, 0);
   writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
-  const configDir = writeStoredLogin(h);
+  const configDir = writeStoredLogin(h, ''); // the stub a dead login leaves
   fs.writeFileSync(state(h, 'relay-unreachable.json'), JSON.stringify({ at: isoAgo(25 * 3600) }));
   const r = await watchdog(h, 'run', {
     env: { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_OAUTH_TOKEN: '' },
@@ -1397,7 +1511,7 @@ test('lapsed /login, second tick within the day → deduped, no second push', wi
   writeFakeTmux(h, 0);
   writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
-  const configDir = writeStoredLogin(h);
+  const configDir = writeStoredLogin(h, ''); // the stub a dead login leaves
   // Exercise the notification branch. Without this stamp the watchdog starts
   // a detached relay, whose first request races the assertion below.
   fs.writeFileSync(state(h, 'relay-unreachable.json'), JSON.stringify({ at: isoAgo(1) }));
@@ -1658,7 +1772,7 @@ test('no env_auth stamp → the /login tier still owns the 401, not the env-auth
   writeAuthStamp(h, LAPSED_LOGIN_TEXT);
   writeFakePgrep(h, 1);
   touchAgo(state(h, '.heartbeat'), 6 * 3600);
-  const configDir = writeStoredLogin(h);
+  const configDir = writeStoredLogin(h, ''); // the stub a dead login leaves
   patchRuntime(h, { config_dir: configDir, env_auth: false });
   const r = await watchdog(h, 'run', { env: UNIT_ENV(h) });
   expect(r.exitCode).toBe(0);

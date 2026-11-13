@@ -53,6 +53,30 @@ describe('stop-failure-stamp', () => {
     expect(fs.existsSync(stateFile(dir))).toBe(false);
   }));
 
+  // A subagent's failure carries the parent's session_id plus its own agent_id (probed
+  // on CC 2.1.323). It must not stamp the resident or mark its in-flight turn idle.
+  test('a subagent failure leaves the stamp and the execution state alone', withDir(async (dir) => {
+    const stateDir = path.join(dir, '.hermit', 'state');
+    fs.mkdirSync(stateDir, { recursive: true });
+    const execution = JSON.stringify({ state: 'in_flight', turn_id: 't1', cc_session_id: STOP_FAILURE_PAYLOAD.session_id }) + '\n';
+    fs.writeFileSync(path.join(stateDir, 'execution.json'), execution);
+
+    const r = await run(dir, JSON.stringify({ ...STOP_FAILURE_PAYLOAD, agent_id: 'afa1815e2f1379a86', agent_type: 'probeagent' }));
+    expect(r.exitCode).toBe(0);
+    expect(fs.existsSync(stateFile(dir))).toBe(false);
+    expect(fs.readFileSync(path.join(stateDir, 'execution.json'), 'utf8')).toBe(execution);
+  }));
+
+  // `agent_type` alone also appears on main-session hooks under `--agent`.
+  test('agent_type without an agent_id, or an empty agent_id, still stamps', withDir(async (dir) => {
+    for (const extra of [{ agent_type: 'main-agent' }, { agent_id: '' }]) {
+      fs.rmSync(stateFile(dir), { force: true });
+      const r = await run(dir, JSON.stringify({ ...STOP_FAILURE_PAYLOAD, ...extra }));
+      expect(r.exitCode).toBe(0);
+      expect(readStamp(dir).session_id).toBe(STOP_FAILURE_PAYLOAD.session_id);
+    }
+  }));
+
   test('the message is bounded at 300 characters', withDir(async (dir) => {
     const long = 'x'.repeat(500);
     const r = await run(dir, JSON.stringify({ ...STOP_FAILURE_PAYLOAD, last_assistant_message: long }));
