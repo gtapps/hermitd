@@ -7,8 +7,10 @@
 # the hooks-module globals only, so its Bun scripts report missing Bun and Node
 # types. TypeScript diagnostics count only inside a declared module's folder;
 # `bunx tsc` checks the scripts with Bun's types. The validator lists at most 400
-# .ts files per plugin, so a module can fall outside its parent's report; plugins
-# nested one level down (a module's own test wrapper) are validated too.
+# .ts files per plugin and only files with diagnostics, so a clean parent report
+# cannot show its module was checked. Plugins nested one level down (a module's
+# own test wrapper) are validated too, and the gate fails a module folder that is
+# not itself a validated plugin or that holds more than 400 .ts files.
 # Usage: bash scripts/plugin-validate.sh [root]   (default root: the repo root)
 set -uo pipefail
 
@@ -20,6 +22,7 @@ for manifest in "$ROOT"/plugins/*/*/.claude-plugin/plugin.json; do
   [ -f "$manifest" ] && targets+=("$(dirname "$(dirname "$manifest")")")
 done
 [ -f "$ROOT/.claude-plugin/marketplace.json" ] && targets+=("$ROOT/.claude-plugin/marketplace.json")
+roots="$(for target in "${targets[@]}"; do (cd "$target" 2>/dev/null && pwd); done | jq -R '. + "/"' | jq -s .)"
 
 for target in "${targets[@]}"; do
   target="${target%/}"
@@ -30,6 +33,15 @@ for target in "${targets[@]}"; do
     module_dirs="$(jq -r '.modules[]?' "$target/hooks/hooks.json" | while IFS= read -r module; do
       (cd "$target/hooks/$(dirname "$module")" 2>/dev/null && pwd)
     done | jq -R 'select(length > 0) + "/"' | jq -s .)"
+    while IFS= read -r dir; do
+      if ! jq -e --arg dir "$dir" 'index($dir)' <<<"$roots" >/dev/null; then
+        echo "$label: hooks module folder ${dir#"$ROOT"/} is not a validated plugin; give it a .claude-plugin/plugin.json wrapper one level below plugins/<slug>/"
+        rc=1
+      elif [ "$(find "$dir" -name '*.ts' -not -path '*/node_modules/*' | wc -l)" -gt 400 ]; then
+        echo "$label: hooks module folder ${dir#"$ROOT"/} holds more than 400 .ts files, past what the validator checks; move the module into its own wrapped folder"
+        rc=1
+      fi
+    done < <(jq -r '.[]' <<<"$module_dirs")
   fi
   # The validator exits 1 on errors, so its code is ignored and the report decides.
   # Empty output or a missing errors/warnings array makes jq fail, so a

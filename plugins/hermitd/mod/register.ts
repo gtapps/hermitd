@@ -352,7 +352,7 @@ export const register: Register = on => {
     const result = await next(e);
     if (result.block || result.permissionDecision === 'deny' || result.permissionDecision === 'ask') return result;
     if (approval !== null && e.requested_model === approval) {
-      if (active) active.expectedModel = typeof e.to_model === 'string' ? e.to_model : null;
+      if (active) active.expectedModel = e.to_model;
       approval = null;
       return { permissionDecision: 'allow' };
     }
