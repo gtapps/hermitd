@@ -1,4 +1,4 @@
-import type { EngineInterface, Register } from 'claude-code';
+import type { EngineInterface, Register, TurnStepInput } from 'claude-code';
 
 type Command = { command: string; arg: string | null };
 type Leg = { command: string; status: 'ok' | 'failed' | 'unknown' | 'skipped'; text: string; submitted_at?: string };
@@ -72,7 +72,8 @@ let active: {
 } | undefined;
 let approval: string | null = null;
 // The resident's chat-set effort, applied per main-thread request; the session's own level stays.
-let effort: string | undefined;
+type Effort = TurnStepInput['effort'];
+let effort: Effort;
 
 const busy = () => !!(request || running || active);
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -133,6 +134,7 @@ function observe($: EngineInterface) {
 async function dispatch($: EngineInterface) {
   if (!request || active || running) return;
   const command = request.commands[legs.length];
+  if (!command) return;
   if (command.command === '/doctor') return runDoctor($, request);
   if (command.command === '/effort') return setEffort($, command.arg ?? '');
   const current = {
@@ -196,7 +198,7 @@ async function setEffort($: EngineInterface, level: string) {
     if (!clear && !EFFORT_LEVELS.has(level)) throw new Error(`Unknown effort level: ${level}`);
     if (!stateDir) throw new Error('No resident state directory');
     await $.fs.write(`${stateDir}/effort-override.json`, JSON.stringify({ level: clear ? null : level, set_at: new Date().toISOString() }) + '\n');
-    effort = clear ? undefined : level;
+    effort = clear ? undefined : level as Effort;
     leg = { command: '/effort', status: 'ok', text: clear ? 'Effort override cleared; the launch level applies' : `Effort set to ${level}; the status line still shows the launch level` };
   } catch (error) {
     leg = { command: '/effort', status: 'failed', text: errorText(error) };
@@ -371,11 +373,11 @@ export const register: Register = on => {
     // A rejected command (such as `/model` with an unknown model) appends system rows with
     // engine origin; the command-name and args match below still ties them to this run.
     const own = (e.origin.kind === 'engine' && e.message?.type === 'system')
-      || (e.origin.kind === 'plugin' && e.origin.name === $.plugin.name);
+      || (e.origin.kind === 'plugin' && 'name' in e.origin && e.origin.name === $.plugin.name);
     if (!active || e.door !== 'command' || !own) return result;
     const content = e.message?.content;
     const text = typeof content === 'string' ? content : Array.isArray(content)
-      ? content.filter((part: { type: string }) => part.type === 'text').map((part: { text: string }) => part.text).join('\n') : '';
+      ? content.filter((part: { type: string }) => part.type === 'text').map((part) => String(part.text)).join('\n') : '';
     const dispatched = /<command-name>([^<]+)<\/command-name>/.exec(text);
     if (dispatched) {
       const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1] ?? '';
@@ -385,7 +387,7 @@ export const register: Register = on => {
     if (!stdout || !active.stdoutStarted) return result;
     const command = active.command.command;
     if (command === '/compact' || SKILL_RE.test(command)) return result;
-    const observed = stdout[1];
+    const observed = stdout[1] ?? '';
     const status = classifyStdout(command, observed);
     // A cleared context is reported from classic.SessionStart or the SessionStart stamp, once the resident id is current.
     if (command === '/clear' && status === 'ok') return result;
@@ -396,7 +398,7 @@ export const register: Register = on => {
 
   on('session.compact', async ($, e, next) => {
     const result = await next(e);
-    if (active?.command.command === '/compact' && typeof result.tokensBefore === 'number' && typeof result.tokensAfter === 'number') {
+    if (active?.command.command === '/compact' && result.skip === undefined && typeof result.tokensBefore === 'number' && typeof result.tokensAfter === 'number') {
       active.evidence = { command: '/compact', status: 'ok', text: `Compacted ${result.tokensBefore} to ${result.tokensAfter} tokens` };
       observe($);
     }
@@ -416,7 +418,7 @@ export const register: Register = on => {
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e);
     if (e.source === 'clear' && active?.command.command === '/clear') {
-      active.evidence = { command: '/clear', status: 'ok', text: STAMPED['/clear'].text };
+      active.evidence = { command: '/clear', status: 'ok', text: STAMPED['/clear']!.text };
       observe($);
     }
     $.clock.after(0, async () => loadedFor($, await $.session.id()).catch(() => undefined));

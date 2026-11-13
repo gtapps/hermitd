@@ -1,3 +1,4 @@
+// @ts-nocheck: fixtures pass partial event inputs; register.ts carries the type check.
 import { expect, mock, test } from 'claude-code/testing';
 import { classifyStdout, isCommandPrompt } from '../register';
 
