@@ -5,16 +5,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runScript } from './helpers/run';
+import { authStatusCalls, useFakeClaude, writeAuthStatusReply } from './helpers/auth-status';
 import {
   credentialsFilePath,
   detectAuthModeFromVolume,
-  inspectStoredLogin,
   installToken,
   isPlausibleToken,
+  loginStatus,
   msUntilExpiry,
-  msUntilLoginExpiry,
   resolveAuthMode,
-  storedLoginUsable,
   readTokenRecord,
   readTokenValue,
   tokenFilePath,
@@ -23,6 +22,10 @@ import {
 } from '../scripts/lib/setup-token';
 
 const VALID = 'sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789';
+
+// Every login check here goes through a fake `claude` that answers `auth status` the
+// way Claude Code does (tests/helpers/auth-status.ts).
+useFakeClaude();
 
 function tmpdir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-token-test-'));
@@ -214,6 +217,20 @@ describe('doctor expiry probe', () => {
     expect(await probe(hermitDir, configDir)).toBe('EXPIRED');
   }));
 
+  test('login mode, unreadable credentials file → EXPIRED', withFixture(async (hermitDir, configDir) => {
+    fs.writeFileSync(credentialsFilePath(configDir), '{not json');
+    expect(await probe(hermitDir, configDir)).toBe('EXPIRED');
+  }));
+
+  // No verdict is a probe failure, which doctor shows as a warning, never a pass.
+  test('login mode, login status unavailable → probe fails', withFixture(async (hermitDir, configDir) => {
+    writeLogin(configDir, { accessToken: 'a', refreshToken: 'r' });
+    writeAuthStatusReply(configDir, 0, 'not json');
+    const out = await rawProbe(hermitDir, configDir);
+    expect(out.exitCode).toBe(1);
+    expect(JSON.parse(out.stdout)).toEqual({ error: 'auth_status_unavailable' });
+  }));
+
   // An empty volume means "never signed in" on Linux, but on macOS it is the normal
   // state of a logged-in operator whose credential sits in the Keychain — reporting
   // EXPIRED there would fire a false alarm on every macOS install.
@@ -240,57 +257,89 @@ describe('doctor expiry probe', () => {
   }));
 });
 
-describe('stored /login inspection', () => {
-  const writeCreds = (configDir: string, body: unknown) =>
-    fs.writeFileSync(credentialsFilePath(configDir), JSON.stringify(body));
+describe('loginStatus (claude auth status)', () => {
+  const writeCreds = (configDir: string, oauth: Record<string, unknown>) =>
+    fs.writeFileSync(credentialsFilePath(configDir), JSON.stringify({ claudeAiOauth: oauth }));
 
-  test('absent file', withDirs((_h, configDir) => {
-    expect(inspectStoredLogin(configDir)).toEqual({ status: 'absent', refreshExpiresAt: null });
+  test('a signed-in login with a future refresh expiry is usable, with that expiry', withDirs((_h, configDir) => {
+    const at = Date.now() + 30 * 86400_000;
+    writeCreds(configDir, { accessToken: 'a', refreshToken: 'r', refreshTokenExpiresAt: at });
+    expect(loginStatus(configDir)).toEqual({ state: 'usable', expiresAt: at });
   }));
 
-  test('unparseable file is malformed, not a stub', withDirs((_h, configDir) => {
+  test('a signed-in login without an expiry is usable and undated', withDirs((_h, configDir) => {
+    writeCreds(configDir, { accessToken: 'a', refreshToken: 'r' });
+    expect(loginStatus(configDir)).toEqual({ state: 'usable', expiresAt: null });
+  }));
+
+  test('a passed refresh expiry is lapsed, though Claude Code still says logged in', withDirs((_h, configDir) => {
+    writeCreds(configDir, { accessToken: 'a', refreshToken: 'r', refreshTokenExpiresAt: 5000 });
+    expect(loginStatus(configDir, 10_000)).toEqual({ state: 'lapsed', expiresAt: 5000 });
+  }));
+
+  test('stub, absent and unreadable files are all lapsed', withDirs((_h, configDir) => {
+    expect(loginStatus(configDir).state).toBe('lapsed');
+    writeCreds(configDir, { accessToken: '', refreshToken: '', expiresAt: 0 });
+    expect(loginStatus(configDir).state).toBe('lapsed');
     fs.writeFileSync(credentialsFilePath(configDir), '{not json');
-    expect(inspectStoredLogin(configDir)).toEqual({ status: 'malformed', refreshExpiresAt: null });
+    expect(loginStatus(configDir).state).toBe('lapsed');
   }));
 
-  test('empty accessToken is the lapse stub Claude Code writes in place', withDirs((_h, configDir) => {
-    writeCreds(configDir, { claudeAiOauth: { accessToken: '', refreshToken: '', expiresAt: 0 } });
-    expect(inspectStoredLogin(configDir)).toEqual({ status: 'stub', refreshExpiresAt: null });
-    expect(storedLoginUsable(configDir)).toBe(false);
+  test('any reply outside the probed shape is unknown', withDirs((_h, configDir) => {
+    for (const [code, stdout] of [
+      [0, 'not json'],
+      [0, 'null'],
+      [0, '[]'],
+      [0, '{}'],
+      [0, JSON.stringify({ loggedIn: true, authMethod: 'oauth_token', loginExpiresAt: null })],
+      [0, JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', loginExpiresAt: 'soon' })],
+      [1, JSON.stringify({ loggedIn: true })],
+      [2, JSON.stringify({ loggedIn: false })],
+    ] as const) {
+      writeAuthStatusReply(configDir, code, stdout);
+      expect(loginStatus(configDir)).toEqual({ state: 'unknown', expiresAt: null });
+    }
   }));
 
-  test('usable login surfaces refreshTokenExpiresAt', withDirs((_h, configDir) => {
-    writeCreds(configDir, {
-      claudeAiOauth: {
-        accessToken: 'a',
-        refreshToken: 'r',
-        expiresAt: 0,
-        refreshTokenExpiresAt: 4200,
-      },
-    });
-    expect(inspectStoredLogin(configDir)).toEqual({ status: 'usable', refreshExpiresAt: 4200 });
-    expect(storedLoginUsable(configDir)).toBe(true);
+  test('a missing claude binary is unknown', withDirs((_h, configDir) => {
+    const saved = process.env.PATH;
+    process.env.PATH = path.join(configDir, 'no-such-bin');
+    try {
+      expect(loginStatus(configDir)).toEqual({ state: 'unknown', expiresAt: null });
+    } finally {
+      process.env.PATH = saved;
+    }
   }));
 
-  test('usable login without the field is still usable', withDirs((_h, configDir) => {
-    writeCreds(configDir, { claudeAiOauth: { accessToken: 'a', refreshToken: 'r', expiresAt: 0 } });
-    expect(inspectStoredLogin(configDir)).toEqual({ status: 'usable', refreshExpiresAt: null });
+  test('credentials that mask the stored login are stripped from the call', withDirs((_h, configDir) => {
+    const saved = { token: process.env[TOKEN_ENV_VAR], key: process.env.ANTHROPIC_API_KEY };
+    process.env[TOKEN_ENV_VAR] = 'sk-ant-oat01-env';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-api-env';
+    try {
+      loginStatus(configDir);
+    } finally {
+      for (const [k, v] of [[TOKEN_ENV_VAR, saved.token], ['ANTHROPIC_API_KEY', saved.key]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    expect(authStatusCalls(configDir)).toEqual([{ config_dir_set: true, oauth_token: false, api_key: false }]);
   }));
 
-  test('msUntilLoginExpiry: delta, stub negative, otherwise null', withDirs((_h, configDir) => {
-    expect(msUntilLoginExpiry(configDir, 1000)).toBeNull();
-
-    writeCreds(configDir, { claudeAiOauth: { accessToken: '', refreshToken: '', expiresAt: 0 } });
-    expect(msUntilLoginExpiry(configDir, 1000)).toBe(-1);
-
-    writeCreds(configDir, {
-      claudeAiOauth: { accessToken: 'a', refreshToken: 'r', refreshTokenExpiresAt: 5000 },
-    });
-    expect(msUntilLoginExpiry(configDir, 1000)).toBe(4000);
-
-    // Usable but undated: nothing to measure, and -1 would falsely read as expired.
-    writeCreds(configDir, { claudeAiOauth: { accessToken: 'a', refreshToken: 'r' } });
-    expect(msUntilLoginExpiry(configDir, 1000)).toBeNull();
+  // Claude Code keeps .claude.json under CLAUDE_CONFIG_DIR whenever it is set, even to
+  // ~/.claude, so the default dir is checked with the variable left unset.
+  test('the default config dir leaves CLAUDE_CONFIG_DIR unset', withDirs((hermitDir) => {
+    const saved = { home: process.env.HOME, dir: process.env.CLAUDE_CONFIG_DIR };
+    process.env.HOME = hermitDir;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    try {
+      loginStatus();
+    } finally {
+      process.env.HOME = saved.home;
+      if (saved.dir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = saved.dir;
+    }
+    expect(authStatusCalls(path.join(hermitDir, '.claude'))).toEqual([{ config_dir_set: false, oauth_token: false, api_key: false }]);
   }));
 });
 
@@ -372,6 +421,15 @@ describe('resolveAuthMode', () => {
       expect(detectAuthModeFromVolume(configDir)).toBe('login');
       installToken(hermitDir, configDir, VALID); // the login stays; the token outranks it
       expect(detectAuthModeFromVolume(configDir)).toBe('token');
+    });
+  }));
+
+  // A macOS login lives in the Keychain, which the relay's file install cannot serve,
+  // so a signed-in status with no credentials file stays unresolved.
+  test('detectAuthModeFromVolume needs the credentials file, not just a signed-in status', withDirs((_h, configDir) => {
+    withoutEnvToken(() => {
+      writeAuthStatusReply(configDir, 0, JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', loginExpiresAt: null }));
+      expect(detectAuthModeFromVolume(configDir)).toBeNull();
     });
   }));
 });

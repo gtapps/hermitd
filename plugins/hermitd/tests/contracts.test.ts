@@ -22,6 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { runScript, PLUGIN_ROOT } from './helpers/run';
+import { useFakeClaude, writeAuthStatusReply } from './helpers/auth-status';
 import { fixturesDir } from './helpers/workdir';
 import { triggerPrompt } from './helpers/transcript';
 import { frontmatterBlock, isModelInvocationDisabled } from './helpers/skill-frontmatter';
@@ -2482,6 +2483,9 @@ describe('chromeAuthNote', () => {
 });
 
 describe('doctor credential-expiry check', () => {
+  // The login probe asks `claude auth status`; the fake answers from the fixture
+  // credentials the way Claude Code does.
+  useFakeClaude();
   const credCheck = (report: any) => (report.checks ?? []).find((c: any) => c.id === 'credential-expiry');
   const VALID_OAT = 'sk-ant-oat01-abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -2668,7 +2672,8 @@ describe('doctor credential-expiry check', () => {
     expect(credCheck(report).status).toBe('ok');
   }), 20000);
 
-  test('malformed session credentials JSON is not flagged → ok', withTmpdir(async (dir) => {
+  // Claude Code cannot read it either, so the agent cannot work on it.
+  test('malformed session credentials JSON → warn as EXPIRED', withTmpdir(async (dir) => {
     writeConfig(dir, {});
     const credDir = path.join(dir, 'creds');
     fs.mkdirSync(credDir, { recursive: true });
@@ -2677,8 +2682,24 @@ describe('doctor credential-expiry check', () => {
       args: ['.hermit'], cwd: dir,
       env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: credDir, ANTHROPIC_API_KEY: '' },
     });
-    const report = JSON.parse(r.stdout);
-    expect(credCheck(report).status).toBe('ok');
+    const c = credCheck(JSON.parse(r.stdout));
+    expect(c.status).toBe('warn');
+    expect(c.detail).toContain('EXPIRED');
+  }), 20000);
+
+  // No verdict from Claude Code is a probe failure, shown as a warning, never a pass.
+  test('login status unavailable → warn as a failed probe', withTmpdir(async (dir) => {
+    writeConfig(dir, {});
+    const credDir = path.join(dir, 'creds');
+    writeStoredLogin(credDir, 30);
+    writeAuthStatusReply(credDir, 0, 'not json');
+    const r = await runScript('doctor-check.ts', {
+      args: ['.hermit'], cwd: dir,
+      env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_CONFIG_DIR: credDir, ANTHROPIC_API_KEY: '' },
+    });
+    const c = credCheck(JSON.parse(r.stdout));
+    expect(c.status).toBe('warn');
+    expect(c.detail).not.toContain('EXPIRED');
   }), 20000);
 
   // In token mode a stored .credentials.json is inert: Claude Code keeps a

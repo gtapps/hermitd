@@ -14,6 +14,7 @@ import { extractToken, extractUrl, findAck, findCode, mintCommand } from '../scr
 import { EN_MESSAGES, LOCKED, friendlyDate } from '../scripts/lib/messages';
 import { PT } from './helpers/pt-messages';
 import { runScript } from './helpers/run';
+import { useFakeClaude } from './helpers/auth-status';
 
 const FULL_URL =
   'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e' +
@@ -181,6 +182,10 @@ describe('auth-mode verbs', () => {
     fs.writeFileSync(path.join(hermitDir, 'config.json'), JSON.stringify({ agent_name: 'fix' }, null, 2));
     return { root, hermitDir, configDir };
   }
+
+  // Login detection asks `claude auth status`; the fake answers from the fixture
+  // credentials the way Claude Code does.
+  useFakeClaude();
 
   const run = (hermitDir: string, configDir: string, args: string[], extraEnv: Record<string, string> = {}) =>
     runScript('setup-token-mint.ts', {

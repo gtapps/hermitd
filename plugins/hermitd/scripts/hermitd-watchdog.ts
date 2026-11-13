@@ -47,7 +47,7 @@ import { readConfigRaw, readSettledConfig } from './lib/config-read';
 import { evaluateBackupDue } from './lib/backup';
 import { isPaused, pauseReasonLabel } from './lib/pause';
 import { LOCKED, EN_MESSAGES, loadMessages, type Messages } from './lib/messages';
-import { claudeStateFile, credentialsFilePath, defaultConfigDir, envAuthPresent, inspectStoredLogin, msUntilExpiry, msUntilLoginExpiry, resolveAuthMode, storedLoginUsable } from './lib/setup-token';
+import { claudeStateFile, credentialsFilePath, defaultConfigDir, envAuthPresent, loginStatus, msUntilExpiry, resolveAuthMode } from './lib/setup-token';
 import { isContainer } from './lib/container';
 import { writeFileAtomic } from './lib/md-write';
 import { promptTokensOf as promptTokens, compactibleTokens, MAX_PLAUSIBLE_PROMPT_TOKENS, isOwnTurn } from './lib/context-signal';
@@ -776,9 +776,9 @@ function commitPendingCredential(): void {
 
   // Staleness first. A staging that outlived its restart (the restart aborted on
   // survivors, the lock was held, requestRestart never landed) must not be committed
-  // by some unrelated restart days later: `usable` only means the file carries a
-  // token, so an abandoned sign-in still reads usable long after it stopped working,
-  // and committing it would replace a working credential and take the hermit dark.
+  // by some unrelated restart days later: `usable` is a local read, so an abandoned
+  // sign-in still reads usable long after it stopped working, and committing it would
+  // replace a working credential and take the hermit dark.
   const stagedAge = ageSecs(pending.staged_at ?? '');
   if (stagedAge === null || stagedAge * 1000 > PENDING_CREDENTIAL_MAX_AGE_MS) {
     clear();
@@ -787,10 +787,15 @@ function commitPendingCredential(): void {
   }
 
   // Re-checked here, not trusted from the mint: the mint ran minutes to hours ago.
-  const status = inspectStoredLogin(stagedDir).status;
-  if (status !== 'usable') {
+  // An unknown verdict keeps the staging for a later restart; staleness bounds it.
+  const { state } = loginStatus(stagedDir);
+  if (state === 'unknown') {
+    appendEvent('credential-commit-deferred', 'login status unavailable');
+    return;
+  }
+  if (state !== 'usable') {
     clear();
-    appendEvent('credential-commit-skipped', status);
+    appendEvent('credential-commit-skipped', state);
     return;
   }
 
@@ -1079,11 +1084,13 @@ function envAuthOwnsCredential(sessionEnvAuth: boolean | null): boolean {
  * 'active' → relay in flight; 'spawned' → just started one; 'idle' → nothing to do.
  *
  * `authLapsed` is the failed turn's own verdict (a StopFailure `authentication_failed`
- * for this session), and it is a second, independent trigger next to the recorded
- * expiry. The record only knows when the token was *minted plus a year*; a token
- * revoked early (account change, rotation, a bad restore) leaves the record reading
- * healthy while every request 401s, and the wedge tiers below would answer that with
- * restart churn. The failed turn says what the record can't.
+ * for this session). Claude Code gives that same verdict to a transient edge block, such
+ * as a Cloudflare 403, so it never starts a relay on its own in login mode: it only
+ * prompts a `claude auth status` check, and Claude Code's answer decides. A dead login
+ * reads lapsed there because Claude Code rewrites it to an empty stub when its refresh
+ * fails. Token mode has no such check: its record only knows *minted plus a year*, a
+ * token revoked early leaves that record reading healthy while every request 401s, and
+ * the failed turn is the only witness.
  */
 function evaluateReauth(
   config: Json,
@@ -1100,11 +1107,11 @@ function evaluateReauth(
   // An env credential is nobody's to renew from here — no relay can fix it.
   if (mode === 'external') return 'idle';
 
-  // In login mode the durable expiry is the stored credential's own
-  // refreshTokenExpiresAt; a lapse stub reports -1, so one comparison covers both
-  // "the sign-in ran out" and "the sign-in was spent".
-  const msLeft = mode === 'login' ? msUntilLoginExpiry(configDir) : msUntilExpiry(HERMIT_ROOT);
-  const expired = msLeft !== null && msLeft <= 0;
+  // Login mode checks only when a failed turn gives a reason, so healthy ticks spawn
+  // nothing; an unknown verdict authorizes nothing.
+  if (mode === 'login' && (!authLapsed || loginStatus(configDir).state !== 'lapsed')) return 'idle';
+  const msLeft = mode === 'login' ? null : msUntilExpiry(HERMIT_ROOT);
+  const expired = mode === 'login' || (msLeft !== null && msLeft <= 0);
   if (!expired && !authLapsed) return 'idle';
 
   // The relay's own send is the reachability test, and it stamps this file when it
@@ -2112,7 +2119,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
   // once per check billed the common path twice for nothing.
   //
   // No auth stamp for this session is the only recovery signal available for the env-auth
-  // notice: there is no storedLoginUsable() equivalent for a key held in the operator's
+  // notice: there is no loginStatus() equivalent for a key held in the operator's
   // shell, which the watchdog cannot see even when it is working.
   if (!authLapsed) {
     const ws = readWatchdogState(world);
@@ -2123,13 +2130,14 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
       recovered = true;
     }
     // Login mode only: a token hermit keeps its old stored login on the volume, and
-    // that file reading usable says nothing about the token the hermit runs on.
+    // that login reading usable says nothing about the token the hermit runs on.
+    // Checked only while a notice is outstanding, so healthy ticks spawn nothing.
     const configDir = defaultConfigDir();
-    const loginUsable = resolveAuthMode(config, configDir, envAuthOwnsCredential(sessionEnvAuth)) === 'login'
-      && storedLoginUsable(configDir);
-    if (ws.lapsed_login_notified_at && loginUsable) {
+    if (ws.lapsed_login_notified_at
+      && resolveAuthMode(config, configDir, envAuthOwnsCredential(sessionEnvAuth)) === 'login'
+      && loginStatus(configDir).state === 'usable') {
       delete ws.lapsed_login_notified_at;
-      appendEvent('lapsed-login-recovered', 'usable stored login present again', world);
+      appendEvent('lapsed-login-recovered', 'claude.ai login usable again', world);
       recovered = true;
     }
     // The unreachable stamp is a suppression, so it has to be cleared by the same
@@ -2138,7 +2146,7 @@ async function auth({ world, config, timezone, snap }: RecoveryContext): Promise
     //
     // Keyed on the reauth verdict rather than on a stored login: 'idle' means the
     // credential this hermit actually runs on is neither expired nor lapsed, in
-    // whatever mode. storedLoginUsable() alone would never clear it in token mode,
+    // whatever mode. loginStatus() alone would never clear it in token mode,
     // where the stored login is not the credential the hermit runs on.
     if (reauth === 'idle') {
       try {

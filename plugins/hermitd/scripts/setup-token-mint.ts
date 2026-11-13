@@ -52,12 +52,13 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   AuthMode,
+  credentialsFilePath,
   defaultConfigDir,
   detectAuthModeFromVolume,
   envAuthPresent,
-  inspectStoredLogin,
   installToken,
   isPlausibleToken,
+  loginStatus,
   mintCaptureFilePath,
   mintSessionName,
   readTokenRecord,
@@ -455,7 +456,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   // browser-completed grace window, then ask for a code — is the same in both modes.
   const captured = () =>
     AUTH_TARGET === 'login'
-      ? inspectStoredLogin(LOGIN_STAGING_DIR).status === 'usable'
+      ? stagedLoginUsable()
         ? 'staged'
         : null
       : extractToken(readStream());
@@ -505,6 +506,12 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
   return 0;
 }
 
+/** The sign-in has landed in staging. The file gate keeps the poll from spawning
+ *  `claude auth status` every tick while the operator has not signed in yet. */
+function stagedLoginUsable(): boolean {
+  return fs.existsSync(credentialsFilePath(LOGIN_STAGING_DIR)) && loginStatus(LOGIN_STAGING_DIR).state === 'usable';
+}
+
 /**
  * Point at the staged sign-in and report when it lapses. The ISO string is derived
  * here rather than by the caller so an undated credential surfaces as null — the
@@ -512,7 +519,7 @@ async function runMintFlow(io: OperatorIO, mode: string, requireAck: boolean): P
  * which on a ~30-day login would be a lie the operator acts on.
  */
 function writePendingCredential(): string | null {
-  const { refreshExpiresAt } = inspectStoredLogin(LOGIN_STAGING_DIR);
+  const { expiresAt } = loginStatus(LOGIN_STAGING_DIR);
   fs.mkdirSync(path.dirname(PENDING_CREDENTIAL_FILE), { recursive: true });
   // Atomic: the watchdog reads this file from another process on its own schedule,
   // so a torn read would look like "no credential pending" and skip the commit.
@@ -520,9 +527,7 @@ function writePendingCredential(): string | null {
     PENDING_CREDENTIAL_FILE,
     JSON.stringify({ staged_dir: LOGIN_STAGING_DIR, staged_at: new Date().toISOString() }, null, 2) + '\n',
   );
-  if (refreshExpiresAt === null) return null;
-  const iso = new Date(refreshExpiresAt);
-  return Number.isNaN(iso.getTime()) ? null : iso.toISOString();
+  return expiresAt === null ? null : new Date(expiresAt).toISOString();
 }
 
 function writeRelayUnreachable(): void {
@@ -671,7 +676,7 @@ async function main(): Promise<void> {
     case 'await-token-and-install': {
       if (AUTH_TARGET === 'login') {
         const staged = await waitFor(
-          () => (inspectStoredLogin(LOGIN_STAGING_DIR).status === 'usable' ? true : null),
+          () => (stagedLoginUsable() ? true : null),
           TOKEN_TIMEOUT_MS,
         );
         if (!staged) {
@@ -718,7 +723,7 @@ async function main(): Promise<void> {
       // report as token mode. Same definition the watchdog and entrypoint use.
       // Kept alongside auth_mode because `hermitd-docker login` parses it.
       const record = readTokenRecord(HERMIT_DIR);
-      const loginExpiry = inspectStoredLogin(defaultConfigDir()).refreshExpiresAt;
+      const loginExpiry = AUTH_TARGET === 'login' ? loginStatus().expiresAt : null;
       const stage: string | undefined = readMarker()?.stage;
       console.log(
         JSON.stringify({
@@ -759,16 +764,16 @@ async function main(): Promise<void> {
           // An env credential is nobody's to renew from here.
           console.log('OK');
         } else if (AUTH_TARGET === 'login') {
-          const { status, refreshExpiresAt } = inspectStoredLogin(defaultConfigDir());
-          if (status === 'usable') {
-            console.log(refreshExpiresAt === null ? 'OK' : `EXPIRES:${new Date(refreshExpiresAt).toISOString()}`);
-          } else if (status === 'malformed') {
-            console.log('OK'); // unreadable is a probe problem, not an expiry verdict
-          } else {
-            // A stub is a spent login; absent in login mode means the sign-in the
-            // hermit runs on is gone. Both need the same relogin the operator gets
-            // for an expired token.
+          const { state, expiresAt } = loginStatus();
+          if (state === 'usable') {
+            console.log(expiresAt === null ? 'OK' : `EXPIRES:${new Date(expiresAt).toISOString()}`);
+          } else if (state === 'lapsed') {
+            // Spent, absent or unreadable: the sign-in the hermit runs on is gone,
+            // and it needs the same relogin the operator gets for an expired token.
             console.log('EXPIRED');
+          } else {
+            // No verdict is a probe failure, which doctor shows as a warning.
+            code = fail('auth_status_unavailable');
           }
         } else {
           const record = readTokenRecord(process.argv[3] || HERMIT_DIR);

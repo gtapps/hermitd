@@ -6,6 +6,14 @@
 
 - Claude Code 2.1.323 or newer is required, declared as the native `engines["claude-code"]` range in `plugin.json`, so `claude plugin install` and `claude plugin update` refuse or hold a version the running Claude Code cannot load.
 - `hermitd update` in Docker rebuilds the image first when the running Claude Code is below a plugin's range, then updates the held plugins on the new image before the restart.
+### Fixed
+
+- An `authentication_failed` turn no longer sends a sign-in link while Claude Code reports the stored claude.ai login as usable, so a transient edge block such as a Cloudflare 403 stops asking the operator to sign in again
+- A failed subagent no longer marks the agent idle or counts as the agent's own failed turn
+
+### Changed
+
+- Login-mode credential checks use `claude auth status` instead of reading `.credentials.json`; a missing or unreadable stored login counts as lapsed, and a check that gives no verdict starts nothing and shows in doctor as a failed probe
 
 ## [1.4.32] - 2026-11-12
 

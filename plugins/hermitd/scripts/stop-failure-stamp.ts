@@ -8,8 +8,8 @@ import { observeExecution } from './lib/tasks';
 //
 // The hook only records. It writes state/stop-failure.json and stops there: the
 // watchdog owns the notification, and stop-pipeline.ts deletes the stamp on the
-// next healthy Stop. Guest sessions write nothing, the same residency gate every
-// other state-writing hook applies — one hermit folder, one resident writer.
+// next healthy Stop. Guest sessions and subagents write nothing, the same residency
+// gate every other state-writing hook applies — one hermit folder, one resident writer.
 //
 // Fail-open and side-effect-only: every path exits 0 with empty stdout.
 
@@ -32,6 +32,9 @@ function main(payload: Json): void {
   // grant, and a hand-fed `{"error":"rate_limit"}` would otherwise push the watchdog
   // into notifying the operator about an outage that never happened.
   if (payload.hook_event_name !== 'StopFailure') return;
+  // A subagent's StopFailure carries the parent's session_id plus its own agent_id
+  // (probed on CC 2.1.323). It is neither the resident's turn ending nor its failure.
+  if (typeof payload.agent_id === 'string' && payload.agent_id) return;
 
   const stateDir = path.join(hermitDir(), 'state');
   if (isGuest(stateDir, sessionId(payload))) return;

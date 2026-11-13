@@ -17,10 +17,12 @@
  *     credentials-file field — confirmed live), so this record is the only
  *     source of truth.
  *
- * Auth-mode detection is env/file presence, never parsing `claude /status` or
- * any other TUI output — those labels shift between releases.
+ * Auth-mode detection is env/file presence; a stored login's state comes from
+ * `claude auth status` JSON (loginStatus), never from TUI output or the
+ * credentials file's contents.
  */
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,14 +56,17 @@ export function claudeStateFile(configDir?: string): string {
  * watchdog does not, and reads the launch stamp in runtime.json instead.
  */
 export function envAuthPresent(): boolean {
-  return Boolean(
-    process.env.ANTHROPIC_API_KEY ||
-      process.env.ANTHROPIC_AUTH_TOKEN ||
-      process.env.CLAUDE_CODE_USE_BEDROCK ||
-      process.env.CLAUDE_CODE_USE_VERTEX ||
-      process.env.CLAUDE_CODE_USE_FOUNDRY,
-  );
+  return ENV_AUTH_VARS.some((key) => Boolean(process.env[key]));
 }
+
+/** Env credentials that outrank a stored login: an API key, a bearer token, a cloud provider. */
+const ENV_AUTH_VARS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+];
 
 export function tokenFilePath(configDir: string): string {
   return path.join(configDir, TOKEN_FILENAME);
@@ -177,73 +182,50 @@ export function msUntilExpiry(hermitDir: string, now: number = Date.now()): numb
 /** How this hermit authenticates. `external` = an env credential outranks both files. */
 export type AuthMode = 'login' | 'token' | 'external';
 
-/** What a stored /login credential file is, for callers that need more than a boolean. */
-export type StoredLoginStatus = 'absent' | 'malformed' | 'stub' | 'usable';
+/** Claude Code's own verdict on the stored claude.ai login. */
+export type LoginState = 'usable' | 'lapsed' | 'unknown';
 
 /**
- * Classify the stored /login credential, and surface the one expiry field that means
- * anything.
+ * The stored claude.ai login as Claude Code reports it through `claude auth status`.
  *
- * The `stub` case is the load-bearing one. Observed live on CC 2.1.251: when a refresh
- * fails, Claude Code rewrites the file in place as
- * `{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,…}}` — the file
- * survives as an inert stub. So "the file exists" and "the file changed" both keep
- * reading healthy through a lapse, and only the token's presence distinguishes a
- * hermit that can work from one that can't. `/logout` leaves the same stub.
+ * Exit 0 with `authMethod: "claude.ai"` is a signed-in login; `loginExpiresAt` is its
+ * refresh expiry, which Claude Code reports without judging, so a passed date is
+ * `lapsed` here. Exit 1 with `loggedIn: false` covers a refresh-failure stub, an absent
+ * file and an unreadable one alike. Anything else is `unknown`, and callers act on
+ * nothing they cannot see: a missing binary, a timeout, or output in another shape.
  *
- * `expiresAt` stays rejected as an expiry signal: the access token refreshes silently
- * roughly every 8h, so a past value says nothing (doctor-check makes the same point
- * where it declines to warn on that field). `refreshTokenExpiresAt` is the field
- * refresh does NOT move — Claude Code computes it once at sign-in as
- * `now + refresh_token_expires_in * 1000` (~30 days for a claude.ai login) and carries
- * it forward untouched. It is the only durable "this hermit goes dark on" date a
- * stored login has.
+ * This is local usability, not proof that a request will succeed. With an expired
+ * access token the command refreshes the login itself under Claude Code's own lock,
+ * and a refresh that fails there still reports usable on that call; the next call
+ * reads lapsed.
+ *
+ * CLAUDE_CONFIG_DIR is set only for a dir other than the default: Claude Code keeps
+ * `.claude.json` under it whenever it is set, even to `~/.claude`.
  */
-export function inspectStoredLogin(configDir: string): {
-  status: StoredLoginStatus;
-  refreshExpiresAt: number | null;
-} {
-  let raw: string;
+export function loginStatus(
+  configDir: string = defaultConfigDir(),
+  now: number = Date.now(),
+): { state: LoginState; expiresAt: number | null } {
+  const unknown = { state: 'unknown' as const, expiresAt: null };
+  const env: Record<string, string | undefined> = { ...process.env };
+  // Anything that makes Claude Code ignore the stored login is stripped, so the verdict is about the login.
+  for (const key of [...ENV_AUTH_VARS, TOKEN_ENV_VAR]) delete env[key];
+  if (configDir !== defaultConfigDir()) env.CLAUDE_CONFIG_DIR = configDir;
+  const r = spawnSync('claude', ['auth', 'status'], { env, encoding: 'utf8', timeout: 3000 });
+  if (r.error || r.signal || (r.status !== 0 && r.status !== 1)) return unknown;
+  let out: any;
   try {
-    raw = fs.readFileSync(credentialsFilePath(configDir), 'utf8');
+    out = JSON.parse(r.stdout);
   } catch {
-    return { status: 'absent', refreshExpiresAt: null };
+    return unknown;
   }
-  let creds: any;
-  try {
-    creds = JSON.parse(raw);
-  } catch {
-    return { status: 'malformed', refreshExpiresAt: null };
-  }
-  const token = creds?.claudeAiOauth?.accessToken;
-  if (typeof token !== 'string' || token.length === 0) {
-    return { status: 'stub', refreshExpiresAt: null };
-  }
-  const exp = creds?.claudeAiOauth?.refreshTokenExpiresAt;
-  return {
-    status: 'usable',
-    refreshExpiresAt: typeof exp === 'number' && Number.isFinite(exp) ? exp : null,
-  };
-}
-
-/**
- * True when a stored /login credential still carries a token — i.e. somebody could
- * work with it. Deliberately NOT an expiry check; see inspectStoredLogin.
- */
-export function storedLoginUsable(configDir: string): boolean {
-  return inspectStoredLogin(configDir).status === 'usable';
-}
-
-/**
- * Milliseconds until a stored /login goes dark, or null when there is nothing to
- * measure. A stub returns -1: that credential is already spent, so callers comparing
- * `<= 0` treat "lapsed" and "expired" alike without a second check.
- */
-export function msUntilLoginExpiry(configDir: string, now: number = Date.now()): number | null {
-  const { status, refreshExpiresAt } = inspectStoredLogin(configDir);
-  if (status === 'stub') return -1;
-  if (status !== 'usable' || refreshExpiresAt === null) return null;
-  return refreshExpiresAt - now;
+  if (!out || typeof out !== 'object' || Array.isArray(out)) return unknown;
+  if (r.status === 1) return out.loggedIn === false ? { state: 'lapsed', expiresAt: null } : unknown;
+  if (out.authMethod !== 'claude.ai') return unknown;
+  if (out.loginExpiresAt == null) return { state: 'usable', expiresAt: null };
+  const expiresAt = typeof out.loginExpiresAt === 'string' ? Date.parse(out.loginExpiresAt) : NaN;
+  if (Number.isNaN(expiresAt)) return unknown;
+  return { state: expiresAt > now ? 'usable' : 'lapsed', expiresAt };
 }
 
 /**
@@ -253,7 +235,8 @@ export function msUntilLoginExpiry(configDir: string, now: number = Date.now()):
  */
 export function detectAuthModeFromVolume(configDir: string): 'login' | 'token' | null {
   if (readTokenValue(configDir) !== null) return 'token';
-  if (storedLoginUsable(configDir)) return 'login';
+  // The file gate keeps a macOS Keychain login out: the relay installs into the file.
+  if (fs.existsSync(credentialsFilePath(configDir)) && loginStatus(configDir).state === 'usable') return 'login';
   return null;
 }
 
