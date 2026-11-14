@@ -59,9 +59,17 @@ function sentinelLine(text: string): string {
 // Routine ids share the config charset, including plugin namespace separators.
 // The strict charset here ([A-Za-z0-9._:-]+) rejects skill-template
 // noise ([hermit-routine:*], <id> placeholders).
-function classifySource(triggerText: string): string {
+function classifySource(triggerText: string, opener?: Json): string {
   if (!triggerText) return 'other';
   const t = triggerText.trim();
+  if (opener?.type === 'user' && opener.origin?.kind === 'plugin' && opener.origin?.name === 'hermitd'
+      && /<command-name>\/?hermitd:hermit-routines<\/command-name>/.test(t)) {
+    const args = t.match(/<command-args>([^<]*)<\/command-args>/)?.[1] ?? '';
+    const retry = args.match(/^run ([A-Za-z0-9._:-]+) --retry(?:\s|$)/);
+    const lost = args.match(/^lost ([A-Za-z0-9._:-]+)@/);
+    const id = retry?.[1] ?? lost?.[1];
+    if (id) return `routine:${id.slice(0, 64)}`;
+  }
   const line = sentinelLine(t);
   if (line === 'HEARTBEAT_EVALUATE') return 'heartbeat';
   const watchMatch = line.match(/^WATCH_EVENT \[hermit-watch:([A-Za-z0-9._-]+)\]/)

@@ -1,6 +1,7 @@
 // Resident-owned state for the native harness command executor: one durable queue that
 // chat, the terminal, the watchdog, shutdown, update and pause write and the core mod
 // drains with `$.command.run`. No tmux fallback.
+import { stillPendingRoutine, stillLostRoutine } from './routines/recover';
 import { claimAttempt, stillUnfinished } from './channel-recovery';
 import { isPaused } from './pause';
 import crypto from 'node:crypto';
@@ -321,8 +322,17 @@ export function claim(
           const execution = observed.state === 'unknown' ? readJson(path.join(dir, 'state', 'execution.json')) : observed;
           const live = execution?.state === 'in_flight' && execution.cc_session_id === runtime.cc_session_id
             && (options.lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > options.lastTurnCompleteAt);
-          const key = entry.purpose?.startsWith('channel-recover:') ? entry.purpose.slice('channel-recover:'.length) : '';
-          if (!isPaused(dir).paused && !live) verdict = !stillUnfinished(dir, key) ? 'done' : claimAttempt(dir, key, now) ? 'run' : 'wait';
+          if (!isPaused(dir).paused && !live) {
+            const purpose = entry.purpose ?? '';
+            if (purpose.startsWith('channel-recover:')) {
+              const key = purpose.slice('channel-recover:'.length);
+              verdict = !stillUnfinished(dir, key) ? 'done' : claimAttempt(dir, key, now) ? 'run' : 'wait';
+            } else if (purpose.startsWith('routine-retry:')) {
+              verdict = stillPendingRoutine(dir, purpose.slice('routine-retry:'.length), now) ? 'run' : 'done';
+            } else if (purpose.startsWith('routine-lost:')) {
+              verdict = stillLostRoutine(dir, purpose.slice('routine-lost:'.length)) ? 'run' : 'done';
+            } else verdict = 'done';
+          }
         } catch {}
         if (verdict === 'done') settle(dir, listed, legsFor(entry, 'skipped', 'nothing_unfinished'), unanswered, now);
         if (verdict !== 'run') continue;

@@ -201,6 +201,9 @@ Task mutations and imports share `state/tasks.lock`. Every writer of `state/deci
 | `state/channel-responder-invoked.json` | channel-responder-invoked.ts only (resident Skill PostToolUse; session id and invocation time) | channel-reply-reminder stage (compares session and context-reset stamp) |
 | `state/channel-activity.json`  | channel-hook.ts only                                | channel-responder, heartbeat                                  |
 | `state/channel-replies.jsonl`  | channel-hook.ts (append only)                       | none — reflect's engagement join was removed (the ledger records outbound sends only, so it could not measure operator engagement) |
+| `state/routine-unfinished.json` | Resident due/precheck/finish, boot and Stop hooks, mod reconciliation, through `lib/routines/unfinished.ts` under its file lock | Retry admission, retry chat digest and lost-notice guards |
+| `state/recovery-pending` | Channel and routine recovery producers through `lib/recovery-marker.ts` under its marker lock; removed only when both stores are empty | Mod idle reconciliation |
+| `state/routine-recovery-since` | `hermitd-start` at boot, retaining the preceding `.boot-id` timestamp | `routines.ts recover --report`, bounded recent recovery facts |
 | `state/channel-log.sqlite`     | channel-reply-reminder stage + channel-hook.ts (append, via `lib/channel-log.ts`); weekly-review prunes by age | search.ts (recall, fourth source) |
 | `state/observations.jsonl`     | reflect-precheck (`cost-spike`, `startup-drift`) + transcript-digest `--record-observation` (`behavior-digest`) + reflect (`quick-deferral`, `reflect-noticed`); append only | reflect (step 3b graduation), reflection-judge (§1.4 ledger verification) |
 | `state/proposal-metrics.jsonl` | task-backed creation and decision answers (append only)        | generate-summary.ts, proposal.ts metrics (read-only)   |
@@ -236,7 +239,7 @@ Per-file update policies for managed files under `.hermit/`:
 
 ## Memory Model
 
-Per-conversation recovery reads the chat log to answer unfinished channel turns; `channel_recovery` controls its enablement and maximum age.
+Per-conversation recovery reads the chat log to answer unfinished channel turns; `channel_recovery` controls its enablement and maximum age. Routine recovery shares the idle reconcile and `state/recovery-pending` marker, keeps occurrences in `state/routine-unfinished.json`, and retries once within six hours unless the routine sets `retry_after_crash: false`. Retry prechecks use the chat log as memory of already sent messages; message delivery is unchanged.
 
 ```
 +----------------------------------------------+

@@ -4,9 +4,13 @@
 
 ### Added
 
+- Interrupted routine runs receive one retry within six hours after a crash or API failure, continuing from their outbound chat history; `retry_after_crash: false` opts out.
+
 - Unfinished channel conversations receive a recovery turn that reads their chat history after a crash, API failure or interrupt.
 
 ### Changed
+
+- Routine health counts interrupted closures separately from contract failures and incomplete attempts; expired runs and interrupted retries receive one operator notice.
 
 - `Dockerfile.hermit` and `docker-compose.hermit.yml` are generated from config before host `up`, `restart` and `update`; customization lives in `docker.packages`, `docker-build.hermit-local.sh`, `docker-compose.override.yml` and `docker-entrypoint.hermit-local.sh`.
 - Compose applies the base, security overlay and operator override in that order; the operator override wins.
@@ -26,6 +30,10 @@
 - A failed subagent no longer marks the agent idle or counts as the agent's own failed turn
 
 ### Upgrade Instructions
+
+- Inspect installed routines and name those whose skills act outside the chat, such as archival, session closure or external writes. Ask the operator in chat which named routines should set `retry_after_crash: false`, then write only the confirmed choices in installed `config.json`. Preserve every other routine and operator edit; no state migration is required.
+
+**Leftover check:** Routine health now reports interrupted closures in `interrupted`, excluding them from `failure_total` and recovered attempts from `incomplete`. Find operator procedures that interpret these fields, ask once before changing them, and align only confirmed procedures with these meanings.
 
 - Merge the config template into installed `config.json` to add `channel_recovery` while preserving operator values. Set `channel_recovery.enabled: false` to turn recovery off.
 

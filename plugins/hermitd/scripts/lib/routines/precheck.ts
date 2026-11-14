@@ -15,12 +15,15 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { emitJson } from '../cli';
+import { retryContext } from './recover';
+import { clearEntries, markStarted, readUnfinished, withUnfinished, type Unfinished } from './unfinished';
+import { latestFires } from '../cron';
+import { readJson, emitJson, flagValue } from '../cli';
 import { hermitDir } from '../cc-compat';
 import { readConfigRaw } from '../config-read';
 import { isPaused } from '../pause';
 import { logRoutineEvent } from './event';
-import { clearRunRecord, resolveArtifactPath, statIdentity, validateExpectArtifact, writeRunRecord } from './run-record';
+import { clearRunRecord, readRunRecord, resolveArtifactPath, statIdentity, validateExpectArtifact, writeRunRecord } from './run-record';
 import { utcISOStamp } from '../time';
 import { BUILTIN_REFLECT, readReflectGate, runGate } from './gate';
 
@@ -29,7 +32,10 @@ type Json = any;
 const PROCEED = { status: 'proceed' };
 
 const id = process.argv[2];
-const delivery = process.argv[3] || 'cron-create';
+const args = process.argv.slice(3);
+const retryMark = flagValue(args, '--retry');
+const deliveryIndex = args.indexOf('--delivery');
+const delivery = (deliveryIndex >= 0 ? args[deliveryIndex + 1] : args[0]?.startsWith('--') ? undefined : args[0]) || 'cron-create';
 
 if (!id) emitJson(PROCEED);
 
@@ -55,6 +61,18 @@ function routineEntry(): Json | null {
   } catch {
     return null;
   }
+}
+
+const routine = routineEntry();
+const retryKey = retryMark ? `${id}@${retryMark}` : '';
+const candidate = readUnfinished(HERMIT_ROOT)[retryKey];
+const eligibleRetry = (entry: Unfinished | undefined) => !!entry && entry.state === 'interrupted'
+  && entry.attempts === 0 && routine?.enabled !== false && !!routine
+  && routine.retry_after_crash !== false && routine.skill === entry.skill;
+let retryEntry = eligibleRetry(candidate) ? candidate : undefined;
+
+function skipEntry(): void {
+  if (!retryEntry) clearEntries(HERMIT_ROOT, entry => entry.routine_id === id && entry.state === 'dispatched');
 }
 
 /**
@@ -87,6 +105,7 @@ function reflectGate(routine: Json | null): Json | null {
   const gate = runGate(routine, HERMIT_ROOT, consumedMark() || utcISOStamp());
   if (gate.verdict === 'skip') {
     stamp('skipped-precheck');
+    skipEntry();
     emitJson({ status: 'skip', reason: 'gate_skip' });
   }
   if (gate.verdict === 'error') stamp('precheck-error', gate.detail);
@@ -135,7 +154,11 @@ function captureArtifactBaseline(): void {
     }
 
     const timezone = typeof config.timezone === 'string' ? config.timezone : null;
-    const resolved = resolveArtifactPath(pattern.trim(), timezone);
+    const resolved = resolveArtifactPath(pattern.trim(), timezone, retryEntry ? new Date(retryEntry.mark) : new Date());
+    if (retryEntry) {
+      const existing = readRunRecord(HERMIT_ROOT, id);
+      if (existing && !existing.outcome && existing.resolved_path === resolved) return;
+    }
     writeRunRecord(HERMIT_ROOT, id, {
       started_ts: utcISOStamp(),
       resolved_path: resolved,
@@ -152,13 +175,37 @@ try {
 }
 if (paused) {
   stamp('skipped-paused');
+  skipEntry();
   emitJson({ status: 'skip', reason: 'paused' });
 }
 
 // Runs before the `started` stamp: a gate skip means this fire never opened, so it
 // must not leave an attempt the ledger would later read as abandoned.
-const reflect = reflectGate(routineEntry());
+const reflect = reflectGate(routine);
 
-stamp('started');
+if (retryEntry) {
+  const claimed = withUnfinished(HERMIT_ROOT, store => {
+    if (!eligibleRetry(store[retryKey])) return false;
+    store[retryKey].attempts++;
+    store[retryKey].state = 'started';
+    store[retryKey].retry = true;
+    store[retryKey].skill = routine.skill;
+    store[retryKey].started_at ??= new Date().toISOString();
+    store[retryKey].session_id = readJson(path.join(HERMIT_ROOT, 'state/runtime.json'))?.cc_session_id;
+    return true;
+  });
+  if (!claimed) retryEntry = undefined;
+}
+if (!retryEntry && routine && typeof routine.skill === 'string') {
+  const config = readConfigRaw(HERMIT_ROOT);
+  const at = new Date();
+  const mark = delivery === 'monitor' ? consumedMark() : latestFires(routine.schedule, config?.timezone ?? null,
+    new Date(at.getTime() - 366 * 86400000), at, 1)[0]?.toISOString();
+  markStarted(HERMIT_ROOT, {
+    routine_id: id, skill: routine.skill, mark: mark ?? at.toISOString(), delivery,
+    started_at: at.toISOString(), session_id: readJson(path.join(HERMIT_ROOT, 'state/runtime.json'))?.cc_session_id,
+  });
+}
+stamp('started', retryEntry ? 'retry' : undefined);
 captureArtifactBaseline();
-emitJson(reflect ? { ...PROCEED, reflect } : PROCEED);
+emitJson({ ...PROCEED, ...(reflect ? { reflect } : {}), ...(retryEntry ? { retry: retryContext(HERMIT_ROOT, retryEntry) } : {}) });

@@ -1,3 +1,4 @@
+import { stampInterrupted } from './lib/routines/unfinished';
 import { observeExecution } from './lib/tasks';
 // stop-failure-stamp.ts — StopFailure hook
 //
@@ -57,6 +58,7 @@ function main(payload: Json): void {
     const tmp = file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(stamp) + '\n', 'utf-8');
     fs.renameSync(tmp, file);
+    stampInterrupted(hermitDir(), 'api', sessionId(payload) ?? undefined);
   } catch { /* fail-open */ }
 }
 

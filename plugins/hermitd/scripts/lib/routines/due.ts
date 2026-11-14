@@ -31,6 +31,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { markDispatched } from './unfinished';
 import { maxLatenessMinutes } from './lateness';
 import { isPaused } from '../pause';
 import { validateCronSchedule, ROUTINE_ID_RE } from '../../validate-config';
@@ -268,6 +269,13 @@ if (scheduleChanged) {
 // Persist succeeded (or nothing changed) — now flush the deferred skip stamps.
 for (const [id, event, detail] of pendingStamps) stamp(id, event, detail);
 
-for (const id of dueIds) stamp(id, 'dispatched');
+for (const id of dueIds) {
+  stamp(id, 'dispatched');
+  const routine = eligible.find((r: Json) => r.id === id);
+  markDispatched(hermitDir, {
+    routine_id: id, skill: routine.skill, mark: schedule[id].last_consumed_mark,
+    delivery: 'monitor', dispatched_at: now().toISOString(),
+  });
+}
 
 finish(dueIds.length ? [`ROUTINE_DUE ${dueIds.map(id => `[hermit-routine:${id}]`).join(' ')}`] : []);

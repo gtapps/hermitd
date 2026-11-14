@@ -435,3 +435,32 @@ describe('routines.ts health — cwd drift', () => {
     expect(JSON.parse(r.stdout).source).toBe('ok');
   }));
 });
+
+import { classifySource } from '../scripts/lib/trigger-source';
+
+test('interrupted closures count causes without failure or orphan counts, including dispatch-only closes', () => {
+  const lines: string[] = [];
+  for (const cause of ['api', 'unclean', 'planned', '-']) {
+    lines.push(row('r', 'dispatched', daysAgo(2)));
+    lines.push(JSON.stringify({ routine_id: 'r', event: 'failed-interrupted', ts: daysAgo(2), detail: `lost:${cause}` }));
+  }
+  const e = only(lines);
+  expect(e).toMatchObject({ interrupted: { api: 1, unclean: 1, planned: 1, '-': 1 }, failure_total: 0,
+    failures: {}, orphan_terminals: 0, unhandled: 0, unhandled_open: false, open_attempt: false });
+});
+
+test('a recovered start closes its old attempt without counting incomplete', () => {
+  const e = only([row('r', 'started', daysAgo(3)),
+    JSON.stringify({ routine_id: 'r', event: 'started', ts: daysAgo(2), detail: 'retry' }), row('r', 'fired', daysAgo(2))]);
+  expect(e).toMatchObject({ fires: 1, incomplete: 0, open_attempt: false });
+});
+
+for (const args of ['run plug:r --retry 2026-11-14T10:00:00Z --delivery monitor', 'lost plug:r@2026-11-14T10:00:00Z api']) {
+  test(`routine attribution requires plugin origin: ${args}`, () => {
+    const text = `<command-name>/hermitd:hermit-routines</command-name><command-args>${args}</command-args>`;
+    expect(classifySource(text, { type: 'user', origin: { kind: 'plugin', name: 'hermitd' } })).toBe('routine:plug:r');
+    expect(classifySource(text)).toBe('other');
+    expect(classifySource(text, { type: 'user', origin: { kind: 'composer' } })).toBe('other');
+    expect(classifySource(text, { type: 'assistant', origin: { kind: 'plugin', name: 'hermitd' } })).toBe('other');
+  });
+}

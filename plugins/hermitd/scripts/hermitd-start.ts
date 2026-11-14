@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { stampInterrupted } from './lib/routines/unfinished';
 import { composeFiles } from './lib/compose-files';
 /**
  * Boot script for hermit autonomous sessions.
@@ -442,9 +443,10 @@ function checkPrerequisites(): Json {
 }
 
 /** Check for stale runtime state from a previous run and warn. */
-function checkStaleRuntime(config: Json, sessionName: string): void {
+function checkStaleRuntime(config: Json, sessionName: string): 'unclean' | 'planned' {
   const runtime = readRuntimeJson();
-  if (runtime === null) return;
+  if (runtime === null) return 'planned';
+  let cause: 'unclean' | 'planned' = 'planned';
 
   const mode = runtime.runtime_mode;
   const shutdownCompleted = runtime.shutdown_completed_at;
@@ -465,6 +467,7 @@ function checkStaleRuntime(config: Json, sessionName: string): void {
           );
           console.log('[hermit] /resident-start will offer recovery.');
           runtime.last_error = 'unclean_shutdown';
+      cause = 'unclean';
         }
         delete runtime.planned_restart_at;
         writeRuntimeJson(runtime);
@@ -474,6 +477,7 @@ function checkStaleRuntime(config: Json, sessionName: string): void {
       console.log('[hermit] Warning: Previous interactive session ended during a turn.');
       console.log('[hermit] /resident-start will offer recovery.');
       runtime.last_error = 'unclean_shutdown';
+      cause = 'unclean';
       writeRuntimeJson(runtime);
     }
   }
@@ -489,6 +493,7 @@ function checkStaleRuntime(config: Json, sessionName: string): void {
     console.log(`[hermit] Warning: Interrupted transition detected: ${transition} (target: ${target})`);
     console.log('[hermit] /resident-start will resume or clean up.');
   }
+  return cause;
 }
 
 /**
@@ -524,6 +529,10 @@ function stampFreshSessionOnBoot(existing: Json, resume: string | undefined): vo
 function writeBootId(): void {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });
+    let previous: string;
+    try { previous = fs.statSync(path.join(STATE_DIR, '.boot-id')).mtime.toISOString(); }
+    catch { previous = new Date().toISOString(); }
+    fs.writeFileSync(path.join(STATE_DIR, 'routine-recovery-since'), previous + '\n');
     fs.writeFileSync(path.join(STATE_DIR, '.boot-id'), randomUUID() + '\n');
   } catch {}
 }
@@ -1602,7 +1611,7 @@ async function main(): Promise<void> {
   const cmd = buildClaudeCommand(config, tools, { resume });
   if (willBootstrap) cmd.push(bootstrap);
 
-  checkStaleRuntime(config, sessionName);
+  const interruptionCause = checkStaleRuntime(config, sessionName);
 
   console.log(`[hermit] Resume: ${resume ?? (promptChanged ? 'fresh (resident prompt changed)' : 'fresh')}`);
 
@@ -1645,6 +1654,7 @@ async function main(): Promise<void> {
       console.log('[hermit] Install tmux for persistent sessions.');
     }
     // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
+    stampInterrupted(path.dirname(STATE_DIR), interruptionCause);
     writeBootId();
     clearWatchRegistry();
     clearEffortOverrideOnBoot(config);
@@ -1751,6 +1761,7 @@ async function main(): Promise<void> {
   if (runtimeMode === 'tmux') registerHostProjectOnBoot();
 
   // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
+  stampInterrupted(path.dirname(STATE_DIR), interruptionCause);
   writeBootId();
   clearWatchRegistry();
   clearEffortOverrideOnBoot(config);

@@ -31,6 +31,8 @@ export type RoutineHistoryEntry = {
   /** `failed-<reason>` terminals in-window, keyed by bare reason. */
   failures: Record<string, number>;
   failure_total: number;
+  /** Interrupted occurrences closed by recovery, keyed by cause. */
+  interrupted: Record<string, number>;
   /** Attempts provably abandoned: a `started` superseded by another `started`. */
   incomplete: number;
   /** Terminals that arrived with no attempt open — never invents a start. */
@@ -97,6 +99,7 @@ export function emptyEntry(id: string): RoutineHistoryEntry {
     fires: 0,
     failures: {},
     failure_total: 0,
+    interrupted: {},
     incomplete: 0,
     orphan_terminals: 0,
     open_attempt: false,
@@ -197,13 +200,22 @@ export function foldRoutineHistory(
       // A second `started` with the previous attempt still open means the first
       // one never reached `finish`. That is the signal the old subtraction was
       // reaching for, measured directly.
-      if (open.has(row.id) && inWindow) entry.incomplete += 1;
+      if (open.has(row.id) && inWindow && row.detail !== 'retry') entry.incomplete += 1;
       if (inWindow) entry.starts += 1;
       open.set(row.id, row.ts);
       dispatchedOpen.delete(row.id);
       continue;
     }
 
+    if (row.event === 'failed-interrupted') {
+      open.delete(row.id);
+      dispatchedOpen.delete(row.id);
+      if (inWindow) {
+        const cause = row.detail?.split(':').at(-1) || '-';
+        entry.interrupted[cause] = (entry.interrupted[cause] ?? 0) + 1;
+      }
+      continue;
+    }
     const isFired = row.event === 'fired';
     const isFailure = row.event.startsWith('failed-');
     if (isFired || isFailure) {

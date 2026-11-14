@@ -100,3 +100,15 @@ test('channel recovery max_age requires a duration', () => {
   expect(validate({ channel_recovery: { enabled: true, max_age: '6h' } }).errors.filter(error => error.includes('channel_recovery'))).toEqual([]);
   expect(validate({ channel_recovery: { max_age: 'tomorrow' } }).errors.some(error => error.includes('channel_recovery.max_age'))).toBe(true);
 });
+
+test('retry_after_crash is optional boolean and does not change the registered prompt hash', () => {
+  const routine = { id: 'r', skill: 'test:run', schedule: '0 9 * * *', enabled: true };
+  for (const value of [true, false, undefined]) {
+    expect(validate({ routines: [{ ...routine, retry_after_crash: value }] }).errors.filter(e => e.includes('retry_after_crash'))).toEqual([]);
+  }
+  for (const value of [null, 'false', 0]) {
+    expect(validate({ routines: [{ ...routine, retry_after_crash: value }] }).errors.some(e => e.includes('retry_after_crash'))).toBe(true);
+  }
+  const { promptHash } = require('../scripts/lib/routines/registry');
+  expect(promptHash(routine, routine.schedule, '/plugin')).toBe(promptHash({ ...routine, retry_after_crash: false }, routine.schedule, '/plugin'));
+});

@@ -326,6 +326,9 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (r.reflect_after === true && r.id === 'hermitd:heartbeat-restart') {
         warnings.push(`routines[${i}]: reflect_after on "hermitd:heartbeat-restart" is ignored — the anchor short-circuits before finish on a healthy check`);
       }
+      if (r.retry_after_crash !== undefined && typeof r.retry_after_crash !== 'boolean') {
+        errors.push(`routines[${i}]: retry_after_crash must be boolean`);
+      }
       if (r.expect_artifact !== undefined && r.expect_artifact !== null) {
         const artErr = validateExpectArtifact(r.expect_artifact);
         if (artErr) {

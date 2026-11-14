@@ -313,7 +313,7 @@ async function reconcile($: EngineInterface, sessionId: string) {
   initialScan = true;
   lastScan = { at: await $.clock.now(), sessionId, turnCompleteAt: lastTurnCompleteAt };
   // A failed scan waits for the next scan window; it never holds back the queue below.
-  await bridge($, 'reconcile').catch(() => undefined);
+  await bridge($, 'reconcile', JSON.stringify({ lastTurnCompleteAt })).catch(() => undefined);
 }
 
 async function tick($: EngineInterface) {

@@ -99,6 +99,9 @@ After a survivor-blocked stop the shutdown gate keeps the channel silent, becaus
 
 ## Routines Not Firing
 
+- For a run cut off after dispatch or start, inspect `state/routine-unfinished.json`. The mod retries once within six hours while idle; API recovery waits 10, 30, then 60 minutes per failure stamp, and pauses keep the retry pending within the window. `retry_after_crash: false`, a changed skill, a disabled or removed routine, a newer occurrence or a planned restart closes silently. Esc-aborted turns are also silent. An exhausted or expired occurrence produces one lost-run notice.
+- A recovery `started` row has `detail: retry`. A `failed-interrupted` row has `detail: <planned|optout|superseded|disabled|aborted|lost>:<unclean|planned|api|->`; it is an interruption, not an artifact failure. `routines.ts recover --report` summarizes recent retries and closures. A retry receives the cut-off run's outbound chat digest so it can continue instead of repeating messages.
+
 - Check the `routines` array in config.json — each routine must have `enabled: true`.
 - Verify state: `/hermitd:hermit-routines status`. Monitor mode shows the monitor's liveness + interval and the anchor's CronList entry; fallback mode lists one CronCreate per enabled routine, prefixed with `[hermit-routine:<id>]`.
 - If `status` shows nothing loaded: confirm `always_on: true` in config.json (only always-on hermits auto-register on launch). Manual fix: run `/hermitd:hermit-routines load`.
