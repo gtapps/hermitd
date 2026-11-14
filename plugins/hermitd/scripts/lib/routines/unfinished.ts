@@ -20,6 +20,8 @@ export type Unfinished = {
   retry?: boolean;
   not_before?: string;
   refunds?: { count: number; at: string };
+  lost_at?: string;
+  notified?: boolean;
 };
 export type UnfinishedStore = Record<string, Unfinished>;
 const storePath = (dir: string) => path.join(dir, 'state', 'routine-unfinished.json');
@@ -39,7 +41,9 @@ export function withUnfinished<T>(dir: string, body: (store: UnfinishedStore) =>
     if (!acquireLockWithWait(lock, 5000)) return;
     try {
       const store = readUnfinished(dir);
+      const before = JSON.stringify(store);
       const result = body(store);
+      if (JSON.stringify(store) === before) return result;
       if (Object.keys(store).length) {
         writeFileAtomic(file, JSON.stringify(store) + '\n');
         markRecoveryPending(dir);
@@ -59,6 +63,11 @@ export function markDispatched(dir: string, entry: Omit<Unfinished, 'state' | 'a
 export function markStarted(dir: string, entry: Omit<Unfinished, 'state' | 'attempts'>): void {
   withUnfinished(dir, store => {
     const key = `${entry.routine_id}@${entry.mark}`;
+    // Emits queued behind a busy turn all start under the latest mark; the older ones never will.
+    for (const [other, prior] of Object.entries(store)) {
+      if (prior.routine_id === entry.routine_id && prior.state === 'dispatched'
+          && Date.parse(prior.mark) < Date.parse(entry.mark)) delete store[other];
+    }
     store[key] = { ...store[key], ...entry, state: 'started', attempts: store[key]?.attempts ?? 0 };
   });
 }

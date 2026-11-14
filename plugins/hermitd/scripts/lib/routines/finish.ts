@@ -30,8 +30,7 @@
 import path from 'node:path';
 import { hermitDir } from '../cc-compat';
 import { clearEntries } from './unfinished';
-import { readJson } from '../cli';
-import { emitJson, snakeToken } from '../cli';
+import { emitJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
 import { readRunRecord, markOutcome, statIdentity, identityChanged } from './run-record';

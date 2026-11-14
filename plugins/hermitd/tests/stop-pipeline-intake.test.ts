@@ -306,3 +306,14 @@ for (const kind of ['shell', 'monitor', 'subagent', 'unreachable', 'blocked', 'g
     else expect(entries[0].state).toBe(kind === 'subagent' ? 'awaiting' : 'started');
   }));
 }
+
+test('a later Stop with no delegated work running settles an awaiting routine', withDir(async dir => {
+  markStarted(hermit(dir), { routine_id: 'r', skill: 'test:run', mark: 'm', delivery: 'monitor', session_id: SESSION_ID });
+  const payload = JSON.parse(stopHookInput(dir));
+  payload.background_tasks = [{ type: 'subagent', status: 'running' }];
+  await runStop(dir, JSON.stringify(payload));
+  expect(Object.values(readUnfinished(hermit(dir)))[0].state).toBe('awaiting');
+  payload.background_tasks = [];
+  await runStop(dir, JSON.stringify(payload));
+  expect(readUnfinished(hermit(dir))).toEqual({});
+}));

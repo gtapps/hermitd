@@ -154,6 +154,16 @@ describe('routine-precheck — wake gate in fallback delivery', () => {
     expect(rows[0].detail).toBe('exit:2');
   }), 20000);
 
+  test('SKIP on a fallback retry consumes the occurrence', withDir(async (dir) => {
+    writeGatedConfig(dir, writeGate(dir, '#!/usr/bin/env bash\necho SKIP\n'));
+    const mark = '2026-11-14T09:00:00.000Z';
+    markDispatched(hermit(dir), { routine_id: 'gated', skill: 'my-plugin:thing', mark, delivery: 'cron-create' });
+    stampInterrupted(hermit(dir), 'unclean');
+    const r = await runScript('routines.ts', { args: ['precheck', 'gated', '--retry', mark, '--delivery', 'cron-create'], cwd: dir });
+    expect(JSON.parse(r.stdout).status).toBe('skip');
+    expect(readUnfinished(hermit(dir))).toEqual({});
+  }), 20000);
+
   test('monitor delivery does not re-run the gate — due already decided', withDir(async (dir) => {
     writeGatedConfig(dir, writeGate(dir, [
       '#!/usr/bin/env bash',

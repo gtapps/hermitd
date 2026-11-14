@@ -467,7 +467,7 @@ function checkStaleRuntime(config: Json, sessionName: string): 'unclean' | 'plan
           );
           console.log('[hermit] /resident-start will offer recovery.');
           runtime.last_error = 'unclean_shutdown';
-      cause = 'unclean';
+          cause = 'unclean';
         }
         delete runtime.planned_restart_at;
         writeRuntimeJson(runtime);
@@ -1653,8 +1653,8 @@ async function main(): Promise<void> {
       console.log('[hermit] tmux not found — running in current terminal.');
       console.log('[hermit] Install tmux for persistent sessions.');
     }
-    // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
     stampInterrupted(path.dirname(STATE_DIR), interruptionCause);
+    // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
     writeBootId();
     clearWatchRegistry();
     clearEffortOverrideOnBoot(config);
@@ -1760,8 +1760,8 @@ async function main(): Promise<void> {
   const runtimeMode = isContainer() ? 'docker' : 'tmux';
   if (runtimeMode === 'tmux') registerHostProjectOnBoot();
 
-  // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
   stampInterrupted(path.dirname(STATE_DIR), interruptionCause);
+  // Fresh boot marker for hermit-routines' cron-registry diff (see helper).
   writeBootId();
   clearWatchRegistry();
   clearEffortOverrideOnBoot(config);

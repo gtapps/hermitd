@@ -118,7 +118,7 @@ test('shared marker only clears after both stores empty', () => {
   expect(fs.existsSync(marker)).toBe(false);
 });
 
-import { retryContext, lostRoutine, clearLostRoutine, recoveryReport } from '../scripts/lib/routines/recover';
+import { retryContext, lostRoutine, clearLostRoutine, recoveryReport, stillLostRoutine } from '../scripts/lib/routines/recover';
 import { logMessage } from '../scripts/lib/channel-log';
 import { runScript } from './helpers/run';
 
@@ -156,6 +156,28 @@ test('lost check is a no-op without a lost entry, and clearing only clears lost'
   expect(lostRoutine(dir, key)).toMatchObject({ status: 'lost', routine_id: 'r', cause: 'unclean' });
   clearLostRoutine(dir, key);
   expect(readUnfinished(dir)).toEqual({});
+});
+
+test('a lost notice is spent once and never requeued after the verb starts it', () => {
+  const dir = fixture();
+  withUnfinished(dir, s => { s[key].attempts = 1; });
+  expect(reconcileRoutines(dir, now).entries[0].purpose).toBe(`routine-lost:${key}`);
+  expect(lostRoutine(dir, key).status).toBe('lost');
+  expect(lostRoutine(dir, key).status).toBe('skipped');
+  expect(stillLostRoutine(dir, key)).toBe(false);
+  // The notice turn stopped before --clear-lost: the next scan drops it without requeueing.
+  expect(reconcileRoutines(dir, now)).toEqual({ pending: false, entries: [] });
+  expect(readUnfinished(dir)).toEqual({});
+});
+
+test('a lost notice that no turn starts is abandoned an hour after the loss', () => {
+  const dir = fixture();
+  withUnfinished(dir, s => { s[key].attempts = 1; });
+  expect(reconcileRoutines(dir, now).entries).toHaveLength(1);
+  expect(reconcileRoutines(dir, now + 3600000).entries).toHaveLength(1);
+  expect(reconcileRoutines(dir, now + 3600001)).toEqual({ pending: false, entries: [] });
+  expect(readUnfinished(dir)).toEqual({});
+  expect(rows(dir).filter(row => row.event === 'failed-interrupted')).toHaveLength(1);
 });
 
 test('report bounds retry and closure facts by the previous boot', () => {

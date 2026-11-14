@@ -3,17 +3,17 @@ import path from 'node:path';
 import { ownedTarget, resolve } from '../../resolve-outbound-channel';
 import { conversationHistory, isLoggingEnabled } from '../channel-log';
 import { safeForLLM } from '../sanitize';
-import { clearEntries } from './unfinished';
 import { readJson } from '../cli';
 import { readSettledConfig } from '../config-read';
 import { readTailLines } from '../cc-compat';
 import { isPaused } from '../pause';
 import { recoveryBackoff } from '../recovery-backoff';
 import { logRoutineEvent } from './event';
-import { readUnfinished, withUnfinished, type Unfinished } from './unfinished';
+import { clearEntries, readUnfinished, withUnfinished, type Unfinished } from './unfinished';
 import type { QueueRequest } from '../harness-mod';
 
 export const RETRY_WINDOW_MS = 6 * 3600000;
+const LOST_NOTICE_MS = 3600000;
 const ANCHOR = 'hermitd:heartbeat-restart';
 
 function ledger(dir: string): any[] {
@@ -52,14 +52,15 @@ export function stillPendingRoutine(dir: string, key: string, now = Date.now()):
 }
 
 export function stillLostRoutine(dir: string, key: string): boolean {
-  return readUnfinished(dir)[key]?.state === 'lost';
+  const entry = readUnfinished(dir)[key];
+  return entry?.state === 'lost' && !entry.notified;
 }
 
 export function reconcileRoutines(dir: string, now: number, lastTurnCompleteAt?: number | null): { entries: QueueRequest[]; pending: boolean } {
   const config = readSettledConfig(dir);
   const sessionId = readJson(path.join(dir, 'state/runtime.json'))?.cc_session_id;
   const live = recoveryTurnLive(dir, sessionId, lastTurnCompleteAt);
-  const rows = ledger(dir);
+  let rows: any[] | undefined; // read only when an interrupted occurrence needs it
   return withUnfinished(dir, store => {
     const entries: QueueRequest[] = [];
     let pending = false;
@@ -80,7 +81,7 @@ export function reconcileRoutines(dir: string, now: number, lastTurnCompleteAt?:
       if (entry.state === 'interrupted') {
         const routine = config.routines?.find((r: any) => r.id === entry.routine_id);
         const reason = entry.cause === 'planned' ? 'planned' : !enabledRoutine(config, entry) ? 'disabled'
-          : routine.retry_after_crash === false ? 'optout' : superseded(dir, entry, store, rows) ? 'superseded' : null;
+          : routine.retry_after_crash === false ? 'optout' : superseded(dir, entry, store, rows ??= ledger(dir)) ? 'superseded' : null;
         if (reason) { close(reason); continue; }
       }
       const age = now - Date.parse(entry.started_at ?? entry.dispatched_at ?? entry.mark);
@@ -89,6 +90,13 @@ export function reconcileRoutines(dir: string, now: number, lastTurnCompleteAt?:
         entry.state = 'lost';
       }
       if (entry.state === 'lost') {
+        // At most one notice: spent when the notice turn starts it, abandoned an hour on
+        // so a turn that never reaches the verb cannot requeue it indefinitely.
+        entry.lost_at ??= new Date(now).toISOString();
+        if (entry.notified || now - Date.parse(entry.lost_at) > LOST_NOTICE_MS) {
+          delete store[key];
+          continue;
+        }
         pending = true;
         entries.push({ source: 'recovery', purpose: `routine-lost:${key}`, commands: [{ command: '/hermitd:hermit-routines', arg: `lost ${key} ${entry.cause ?? '-'}` }] });
         continue;
@@ -141,9 +149,14 @@ export function recoveryReport(dir: string) {
     .slice(-50).map(row => ({ routine_id: row.routine_id, ts: row.ts, event: row.event, detail: row.detail }));
 }
 
+/** Spends the occurrence's one lost notice: the first call returns it, later calls skip. */
 export function lostRoutine(dir: string, key: string) {
-  const entry = readUnfinished(dir)[key];
-  return entry?.state === 'lost' ? { status: 'lost', routine_id: entry.routine_id, cause: entry.cause ?? '-' } : { status: 'skipped', reason: 'nothing_lost' };
+  return withUnfinished(dir, store => {
+    const entry = store[key];
+    if (entry?.state !== 'lost' || entry.notified) return { status: 'skipped', reason: 'nothing_lost' };
+    entry.notified = true;
+    return { status: 'lost', routine_id: entry.routine_id, cause: entry.cause ?? '-' };
+  }) ?? { status: 'skipped', reason: 'nothing_lost' };
 }
 
 export function clearLostRoutine(dir: string, key: string): void {

@@ -29,6 +29,15 @@ test('two processes merge concurrent admissions', async () => {
   expect(Object.keys(readUnfinished(dir))).toHaveLength(40);
 });
 
+test('a start drops the same routine\'s older never-started dispatches', () => {
+  const dir = freshDir();
+  markDispatched(dir, { ...entry('one'), mark: '2026-11-14T09:45:00Z' });
+  markDispatched(dir, { ...entry('two'), mark: '2026-11-14T09:45:00Z' });
+  markDispatched(dir, entry('one'));
+  markStarted(dir, { ...entry('one'), session_id: 's' });
+  expect(Object.keys(readUnfinished(dir)).sort()).toEqual(['one@2026-11-14T10:00:00Z', 'two@2026-11-14T09:45:00Z']);
+});
+
 test('unwritable state does not throw', () => {
   const dir = freshDir();
   fs.writeFileSync(path.join(dir, 'state'), 'not a directory');

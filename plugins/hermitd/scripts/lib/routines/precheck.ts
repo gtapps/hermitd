@@ -105,7 +105,9 @@ function reflectGate(routine: Json | null): Json | null {
   const gate = runGate(routine, HERMIT_ROOT, consumedMark() || utcISOStamp());
   if (gate.verdict === 'skip') {
     stamp('skipped-precheck');
-    skipEntry();
+    // A gate skip consumes the occurrence, retry included; leaving it pending would requeue it every scan.
+    if (retryEntry) clearEntries(HERMIT_ROOT, (_entry, key) => key === retryKey);
+    else skipEntry();
     emitJson({ status: 'skip', reason: 'gate_skip' });
   }
   if (gate.verdict === 'error') stamp('precheck-error', gate.detail);
@@ -154,7 +156,8 @@ function captureArtifactBaseline(): void {
     }
 
     const timezone = typeof config.timezone === 'string' ? config.timezone : null;
-    const resolved = resolveArtifactPath(pattern.trim(), timezone, retryEntry ? new Date(retryEntry.mark) : new Date());
+    const resolved = resolveArtifactPath(pattern.trim(), timezone,
+      retryEntry ? new Date(retryEntry.started_at ?? retryEntry.mark) : new Date());
     if (retryEntry) {
       const existing = readRunRecord(HERMIT_ROOT, id);
       if (existing && !existing.outcome && existing.resolved_path === resolved) return;
@@ -196,16 +199,20 @@ if (retryEntry) {
   });
   if (!claimed) retryEntry = undefined;
 }
+// Stamp first: the ledger truncates to whole seconds, so a `started_at` taken before
+// the row could read the occurrence's own `started` row as a newer, superseding start.
+stamp('started', retryEntry ? 'retry' : undefined);
 if (!retryEntry && routine && typeof routine.skill === 'string') {
   const config = readConfigRaw(HERMIT_ROOT);
   const at = new Date();
+  // CronCreate fires within minutes of their mark; an eight-day window covers weekly
+  // schedules without walking a year of minutes on every fallback precheck.
   const mark = delivery === 'monitor' ? consumedMark() : latestFires(routine.schedule, config?.timezone ?? null,
-    new Date(at.getTime() - 366 * 86400000), at, 1)[0]?.toISOString();
+    new Date(at.getTime() - 8 * 86400000), at, 1)[0]?.toISOString();
   markStarted(HERMIT_ROOT, {
     routine_id: id, skill: routine.skill, mark: mark ?? at.toISOString(), delivery,
     started_at: at.toISOString(), session_id: readJson(path.join(HERMIT_ROOT, 'state/runtime.json'))?.cc_session_id,
   });
 }
-stamp('started', retryEntry ? 'retry' : undefined);
 captureArtifactBaseline();
 emitJson({ ...PROCEED, ...(reflect ? { reflect } : {}), ...(retryEntry ? { retry: retryContext(HERMIT_ROOT, retryEntry) } : {}) });

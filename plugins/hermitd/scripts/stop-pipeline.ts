@@ -77,7 +77,7 @@ async function main(): Promise<void> {
         const running = tasks.entries.some(task => task.status === 'running' && delegated.has(task.type));
         withUnfinished(HERMIT_DIR, store => {
           for (const [key, entry] of Object.entries(store)) {
-            if (entry.state !== 'started' || entry.session_id !== sessionId(payload)) continue;
+            if (!['started', 'awaiting'].includes(entry.state) || entry.session_id !== sessionId(payload)) continue;
             if (running) entry.state = 'awaiting';
             else delete store[key];
           }

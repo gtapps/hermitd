@@ -1,7 +1,7 @@
 // Resident-owned state for the native harness command executor: one durable queue that
 // chat, the terminal, the watchdog, shutdown, update and pause write and the core mod
 // drains with `$.command.run`. No tmux fallback.
-import { stillPendingRoutine, stillLostRoutine } from './routines/recover';
+import { recoveryTurnLive, stillPendingRoutine, stillLostRoutine } from './routines/recover';
 import { claimAttempt, stillUnfinished } from './channel-recovery';
 import { isPaused } from './pause';
 import crypto from 'node:crypto';
@@ -12,7 +12,7 @@ import { readJson } from './cli';
 import { readSettledConfig } from './config-read';
 import { ARG_COMMANDS, ARG_RE, BARE_COMMANDS, COMMAND_MARKER_TTL_SECS, type ParsedCommand } from './harness-command';
 import { readRuntimeJson } from './runtime';
-import { readExecution, passesExecutionBoundary } from './tasks';
+import { passesExecutionBoundary } from './tasks';
 
 export type ReplyTarget = { source: string; chat_id: string; thread?: string | null };
 export type HarnessRequest = {
@@ -316,12 +316,9 @@ export function claim(
         // An unreadable recovery state leaves this entry waiting; it never stalls the queue.
         let verdict: 'run' | 'wait' | 'done' = 'wait';
         try {
-          const observed = readExecution(dir);
           // Recovery uses the mod's completion boundary, not the reader's one-hour
           // liveness cutoff: a long-running turn still holds its conversation.
-          const execution = observed.state === 'unknown' ? readJson(path.join(dir, 'state', 'execution.json')) : observed;
-          const live = execution?.state === 'in_flight' && execution.cc_session_id === runtime.cc_session_id
-            && (options.lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > options.lastTurnCompleteAt);
+          const live = recoveryTurnLive(dir, runtime.cc_session_id, options.lastTurnCompleteAt);
           if (!isPaused(dir).paused && !live) {
             const purpose = entry.purpose ?? '';
             if (purpose.startsWith('channel-recover:')) {
