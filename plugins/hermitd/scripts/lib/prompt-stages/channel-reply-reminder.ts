@@ -8,7 +8,7 @@
 // secondary to the reminder: it runs after the reminder is composed, in its
 // own try/catch, and a logging failure never affects the reminder.
 
-import { safeForLLM, safeForLLMMultiline } from '../sanitize';
+import { clip, safeForLLM, safeForLLMMultiline } from '../sanitize';
 import { logMessage, isLoggingEnabled, unaddressedSince, conversationHistory } from '../channel-log';
 import path from 'node:path';
 import { readJson } from '../cli';
@@ -127,7 +127,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const willBlock = passive && !addressed && !admittedConversation;
   if (!willBlock && isAllowedSender(ctx.config(), envelope.source, envelope.userId)) {
     const instructions = await chatInstructions(ctx.dir, ctx.config(), sourceKey, chatIdRaw);
-    if (instructions) reminder += `[chat instructions] ${safeForLLMMultiline(instructions.text).slice(0, 2000)}\n`;
+    if (instructions) reminder += `[chat instructions] ${clip(safeForLLMMultiline(instructions.text), 2000)}\n`;
     const pending = pendingCount(ctx.dir, `${sourceKey}:${chatIdRaw}`);
     if (pending) reminder += `[pending role proposals] ${pending}\n`;
   }
@@ -146,7 +146,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
         reminder += 'Recent messages in this chat (context was reset):\n';
         for (const row of rows) {
           const sender = row.direction === 'out' ? 'you (hermit)' : row.sender ?? '';
-          reminder += `${safeForLLM(sender)} ${safeForLLM(row.ts)} ${safeForLLM(row.text).slice(0, UNADDRESSED_TEXT_CAP)}\n`;
+          reminder += `${safeForLLM(sender)} ${safeForLLM(row.ts)} ${clip(safeForLLM(row.text), UNADDRESSED_TEXT_CAP)}\n`;
         }
       }
     }
@@ -163,7 +163,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     if (rows.length) {
       reminder += 'Earlier messages in this chat since your last recorded reply:\n';
       for (const row of rows) {
-        reminder += `${safeForLLM(row.sender ?? '')} ${row.ts} ${safeForLLM(row.text).slice(0, UNADDRESSED_TEXT_CAP)}\n`;
+        reminder += `${safeForLLM(row.sender ?? '')} ${row.ts} ${clip(safeForLLM(row.text), UNADDRESSED_TEXT_CAP)}\n`;
       }
     }
   }

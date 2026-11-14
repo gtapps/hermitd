@@ -6,6 +6,7 @@ import path from 'node:path';
 import { readConfigRaw } from './config-read';
 import { resolveGate } from './routines/gate';
 import { writeFileAtomic } from './md-write';
+import { clip } from './sanitize';
 
 interface Subject { id: string; terms: string[]; kind: 'routine_id' | 'name'; to?: string }
 interface Candidate { subject: string; file: string; line: number; text: string; tracked: boolean }
@@ -198,7 +199,7 @@ export function leftoverCheck(hermitDir: string, subjects: Subject[]) {
         const checkKey = (pos: number) => file === configFile && subject.kind === 'routine_id' && (text.endsWith('--check-id ', pos) || text.endsWith('--check-id=', pos));
         const terms = hits.filter(hit => hit.positions.some(pos => !checkKey(pos))).map(hit => hit.term);
         if (!terms.length) continue;
-        const candidate = { subject: subject.id, file, line: index + 1, text: text.slice(0, 200), tracked: tracked.has(file) };
+        const candidate = { subject: subject.id, file, line: index + 1, text: clip(text, 200), tracked: tracked.has(file) };
         if (subject.kind === 'routine_id' && terms.every(term => !term.includes('-')) && !/routine/i.test(text)) {
           contextFiltered[subject.id]++;
           if (examples[subject.id].length < 5) examples[subject.id].push(candidate);

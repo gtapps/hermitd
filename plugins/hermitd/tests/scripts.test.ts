@@ -22,7 +22,7 @@ import { assistantEntry } from './helpers/transcript';
 import { logRoutineEvent } from '../scripts/lib/routines/event';
 
 // In-process imports — pure libs with no import-time CWD dependence.
-import { safeForLLM, safeForLLMMultiline } from '../scripts/lib/sanitize';
+import { clip, safeForLLM, safeForLLMMultiline } from '../scripts/lib/sanitize';
 import { normalizeItemKey } from '../scripts/lib/heartbeat-items';
 import * as ccCompat from '../scripts/lib/cc-compat';
 import {
@@ -1294,6 +1294,30 @@ describe('safeForLLM', () => {
     const r = safeForLLM('<System-Reminder>x</System-Reminder>');
     expect(r).not.toContain('<System-Reminder>');
     expect(r).not.toContain('</System-Reminder>');
+  });
+});
+
+describe('clip', () => {
+  test('returns text within the cap unchanged', () => {
+    expect(clip('short 😀', 200)).toBe('short 😀');
+  });
+
+  test('a cap inside a surrogate pair drops the emoji, leaving no lone surrogate', () => {
+    const out = clip('a'.repeat(199) + '😀tail', 200);
+    expect(out).toBe('a'.repeat(199));
+    expect(out.isWellFormed()).toBe(true);
+  });
+
+  test('a cap inside a ZWJ sequence drops the whole cluster', () => {
+    const family = '👨‍👩‍👧';
+    expect(clip('ab' + family + 'c', 6)).toBe('ab');
+    expect(clip('ab' + family + 'c', 10)).toBe('ab' + family);
+  });
+
+  test('a cluster longer than the cap at the start cuts on a code point instead of emptying', () => {
+    expect(clip('a' + '\u0301'.repeat(300), 200)).toBe('a' + '\u0301'.repeat(199));
+    const chain = '😀' + '\u200d😀'.repeat(100);
+    expect(clip(chain, 199)).toBe(chain.slice(0, 198));
   });
 });
 

@@ -5,7 +5,7 @@ import { HELPER_OWNER, mutateTask, threadRecords, type Task, type TaskFlags } fr
 import { readSettledConfig } from './config-read';
 import { sendToOwnedChat, sendOperatorNotice, type SendResult } from './channel-send';
 import { classifyChat } from './channel-chats';
-import { safeForLLM } from './sanitize';
+import { clip, safeForLLM } from './sanitize';
 import { loadMessages } from './messages';
 
 const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 'report_outside_state', 'consent_required', 'not_found']);
@@ -96,7 +96,7 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
       const [chatId, thread] = destination.split('~');
       const label = threadRecords(dir).filter(task => task.conversation === recorded!.conversation).length >= 2
         && await classifyChat(dir, config, source, chatId, thread) === 'shared'
-        ? `${recorded.handle} · ${safeForLLM(recorded.title).slice(0, 60)}: ` : '';
+        ? `${recorded.handle} · ${clip(safeForLLM(recorded.title), 60)}: ` : '';
       delivery = deliveryOf(await sendToOwnedChat(dir, `${source}:${chatId}`, label + text, { config, thread, discordCapNotice: notice }));
     }
     return { report, task: id ?? null, recorded: !noTask, result_rev: recorded?.result_rev ?? null, delivery };

@@ -2,6 +2,7 @@ import { lastRoutineFire, lastRoutineEvent } from './routines/history';
 import { readAlertState } from './alert-state';
 import { readConfigRaw, readSettledConfig } from './config-read';
 import { failJson, printJson, readJson } from './cli';
+import { clip } from './sanitize';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, globDirRecursive } from './frontmatter';
@@ -631,7 +632,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           if (record.approver || (record.kind === 'proposal' && decision?.purpose === 'result')) { record.check = null; append(record, 'Progress', 'hermit', `check passed; approver confirmation still required${line ? ' ' + line : ''}`, now); }
           else {
             // The reason is surfaced by every task report, so it carries a bounded proof; the body keeps the full output.
-            finish(record, 'check', 'hermit', line ? `check:exit-0: ${line.slice(0, 200)}` : 'check:exit-0', now);
+            finish(record, 'check', 'hermit', line ? `check:exit-0: ${clip(line, 200)}` : 'check:exit-0', now);
             if (line) append(record, 'Outcome', 'hermit', line, now);
           }
         } else append(record, 'Progress', 'hermit', `check:exit-${exit} ${line}`, now);
@@ -770,7 +771,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : (r.result.split(/\r?\n/).find(line => line.trim()) ?? '').slice(0, 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

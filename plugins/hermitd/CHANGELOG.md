@@ -29,6 +29,7 @@
 
 - Routine `finish` stores the fire's outcome line instead of discarding it, and routine health reports it as `last_outcome`
 - Managed Docker image layers, including ffmpeg and the browser, reach converted installs on every rebuild; `docker.packages` additions and removals apply through `hermitd restart --build`.
+- Capped text in routine outcomes, recovery, briefs, task and proposal summaries, chat history and instructions, sender and report labels, thread titles, permission notices and audit logs no longer cuts an emoji in half.
 - Workspace trust disclosures no longer list the removed `subagentStatusLine` setting as an active helper command.
 - An `authentication_failed` turn no longer sends a sign-in link while Claude Code reports the stored claude.ai login as usable, so a transient edge block such as a Cloudflare 403 stops asking the operator to sign in again
 - A failed subagent no longer marks the agent idle or counts as the agent's own failed turn

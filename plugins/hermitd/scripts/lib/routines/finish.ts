@@ -35,7 +35,7 @@ import { clearEntries } from './unfinished';
 import { emitJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
-import { safeForLLM } from '../sanitize';
+import { clip, safeForLLM } from '../sanitize';
 import { readRunRecord, markOutcome, statIdentity, identityChanged } from './run-record';
 
 type Json = any;
@@ -85,7 +85,7 @@ export function run(args: string[], outcome = ''): void {
 
   // Model-written, possibly from untrusted input; later turns read it back.
   const firstLine = outcome.split('\n').map(l => l.trim()).find(Boolean);
-  const outcomeLine = firstLine ? safeForLLM(firstLine).slice(0, OUTCOME_MAX) : undefined;
+  const outcomeLine = firstLine ? clip(safeForLLM(firstLine), OUTCOME_MAX) : undefined;
 
   const stamp = (event: string): void => {
     try {

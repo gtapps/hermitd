@@ -12,7 +12,7 @@
 // silent no-op: no state change, no stdout, so the mechanism can't be probed
 // by an unauthorized prompt.
 
-import { safeForLLM } from '../sanitize';
+import { clip, safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
 import { setPause, clearPause, parseSnoozeDuration } from '../pause';
 import { isTrustedController, channelBotIdentity } from '../channel-auth';
@@ -70,7 +70,7 @@ export function run(ctx: StageContext): StageResult | void {
   // channel trusts only the operator's pinned home chat (chat_id === default_chat_id).
   if (!isTrustedController(config, sourceRaw, userId, env.chatId)) return; // unauthorized — silent no-op
 
-  const by = safeForLLM(senderLabel(env).slice(0, MAX_BY_LEN));
+  const by = safeForLLM(clip(senderLabel(env), MAX_BY_LEN));
 
   if (action === 'release') {
     const result = fs.existsSync(path.join(dir, 'state/browser-lease.json'))

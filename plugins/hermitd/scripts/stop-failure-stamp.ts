@@ -20,6 +20,7 @@ import { hermitDir, sessionId } from './lib/cc-compat';
 import { isGuest } from './lib/guest-marker';
 import { runHook } from './lib/hook-input';
 import { localISOStamp } from './lib/time';
+import { clip } from './lib/sanitize';
 
 type Json = any;
 
@@ -46,7 +47,7 @@ function main(payload: Json): void {
     session_id: sessionId(payload),
     at: localISOStamp(),
     last_assistant_message: typeof payload.last_assistant_message === 'string'
-      ? payload.last_assistant_message.slice(0, MESSAGE_MAX_LEN)
+      ? clip(payload.last_assistant_message, MESSAGE_MAX_LEN)
       : null,
   };
 

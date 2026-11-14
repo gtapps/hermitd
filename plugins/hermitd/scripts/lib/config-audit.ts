@@ -19,6 +19,7 @@ import { appendJsonlLine, pruneJsonlIfHeadStale } from './append-jsonl';
 import { readJson } from './cli';
 import { readRuntimeJson } from './runtime';
 import { utcISOStamp } from './time';
+import { clip } from './sanitize';
 
 type Json = any;
 
@@ -68,11 +69,11 @@ function presence(value: Json): string {
 function capValue(value: Json): Json {
   if (value === undefined || value === null) return value;
   if (typeof value === 'string') {
-    return value.length > VALUE_CAP ? value.slice(0, VALUE_CAP) + '…' : value;
+    return value.length > VALUE_CAP ? clip(value, VALUE_CAP) + '…' : value;
   }
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   const encoded = JSON.stringify(value) ?? '';
-  return encoded.length > VALUE_CAP ? encoded.slice(0, VALUE_CAP) + '…' : encoded;
+  return encoded.length > VALUE_CAP ? clip(encoded, VALUE_CAP) + '…' : encoded;
 }
 
 function isPlainObject(v: Json): boolean {

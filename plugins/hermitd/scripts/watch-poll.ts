@@ -5,6 +5,7 @@ import { sha256 } from './lib/hash';
 import { writeFileAtomic } from './lib/md-write';
 import { parseDuration } from './lib/time';
 import { DEFAULT_GATE_TIMEOUT_S, validatePrecheckTimeout } from './lib/routines/gate';
+import { clip } from './lib/sanitize';
 
 interface WatchState {
   check_hash: string;
@@ -87,7 +88,7 @@ for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
 
 function event(kind: string, value: string): void {
   const display = value.replaceAll('\r', '\\r').replaceAll('\n', '\\n');
-  console.log(`${kind}: ${display.length > 300 ? display.slice(0, 300) + '…' : display}`);
+  console.log(`${kind}: ${display.length > 300 ? clip(display, 300) + '…' : display}`);
 }
 
 function save(): void {

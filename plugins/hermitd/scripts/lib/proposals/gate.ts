@@ -32,6 +32,7 @@ import path from 'node:path';
 import { appendJsonlLine } from '../append-jsonl';
 import { utcISOStamp } from '../time';
 import { emitJson, readStdin } from '../cli';
+import { clip } from '../sanitize';
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -67,7 +68,7 @@ export async function run(stateDir: string, args: string[]): Promise<void> {
   function failClosed(): never {
     appendJsonlLine(
       path.join(stateDir, 'state', 'proposal-metrics.jsonl'),
-      JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title, verdict: verdictLine.slice(0, 200) }),
+      JSON.stringify({ ts: utcISOStamp(), type: 'gate-failed', agent, title, verdict: clip(verdictLine, 200) }),
     );
     emitJson({ status: 'gate_failed' });
   }

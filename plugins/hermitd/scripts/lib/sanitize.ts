@@ -45,6 +45,20 @@ function safeForLLMMultiline(s: any): string {
   return defuseTags(safeMultiline(s));
 }
 
+// Built on first use: most hooks import this module and never clip.
+let graphemes: Intl.Segmenter | undefined;
+
+// Caps text at `max` UTF-16 units without cutting inside a grapheme cluster, so a
+// cap that lands inside an emoji drops the whole emoji instead of leaving a lone
+// surrogate (rendered as U+FFFD) or half a ZWJ sequence. A cluster that starts the
+// text (stacked combining marks) cuts on a code point instead of emptying it.
+function clip(s: string, max: number): string {
+  if (s.length <= max) return s;
+  graphemes ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  const { index } = graphemes.segment(s).containing(max)!;
+  return s.slice(0, index || (/[\uD800-\uDBFF]/.test(s[max - 1]) ? max - 1 : max));
+}
+
 // Tight, high-precision markers for content injected into SessionStart
 // context (compiled bodies/stubs, catalog summaries, OPERATOR/SHELL excerpts).
 // Deliberately minimal: hermit's own compiled/ security artifacts quote
@@ -86,4 +100,4 @@ function scanWith(markers: [RegExp, string][], s: any): string | null {
   return null;
 }
 
-export { safe, safeForLLM, INJECTION_TAGS, safeMultiline, safeForLLMMultiline, scanInjected, scanCredentials };
+export { safe, safeForLLM, clip, INJECTION_TAGS, safeMultiline, safeForLLMMultiline, scanInjected, scanCredentials };
