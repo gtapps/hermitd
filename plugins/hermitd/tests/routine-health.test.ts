@@ -28,8 +28,8 @@ const daysAgo = (n: number) => new Date(NOW - n * DAY).toISOString();
  */
 const realDaysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
-const row = (id: string, event: string, ts: string, delivery = 'monitor') =>
-  JSON.stringify({ ts, routine_id: id, event, delivery });
+const row = (id: string, event: string, ts: string, delivery = 'monitor', detail?: string) =>
+  JSON.stringify({ ts, routine_id: id, event, delivery, detail });
 
 const fold = (lines: string[], days = 14) =>
   foldRoutineHistory(lines, NOW - days * DAY, NOW);
@@ -199,6 +199,35 @@ describe('foldRoutineHistory — attempt lifecycle', () => {
       lines.push(row('chatty', 'fired', daysAgo(13 - i * 0.04)));
     }
     expect(only(lines).fires).toBe(300);
+  });
+});
+
+const detailRow = (id: string, event: string, ts: string, detail: string) => row(id, event, ts, 'monitor', detail);
+
+describe('foldRoutineHistory — last_outcome', () => {
+  test('is the newest in-window terminal detail, fired or failed', () => {
+    const e = only([
+      row('dream', 'started', daysAgo(3)), detailRow('dream', 'fired', daysAgo(3), 'merged two notes'),
+      row('dream', 'started', daysAgo(1)), detailRow('dream', 'failed-artifact-missing', daysAgo(1), 'nothing new'),
+    ]);
+    expect(e.last_outcome).toEqual({ ts: daysAgo(1), detail: 'nothing new' });
+  });
+
+  test('ignores interrupted closures, retry starts, and rows outside the window', () => {
+    const e = only([
+      row('dream', 'started', daysAgo(20)), detailRow('dream', 'fired', daysAgo(20), 'old run'),
+      row('dream', 'started', daysAgo(2)), detailRow('dream', 'failed-interrupted', daysAgo(2), 'lost:api'),
+      detailRow('dream', 'started', daysAgo(1), 'retry'),
+    ]);
+    expect(e.last_outcome).toBeNull();
+  });
+
+  test('a newer terminal without detail clears an older outcome', () => {
+    const e = only([
+      row('dream', 'started', daysAgo(3)), detailRow('dream', 'fired', daysAgo(3), 'merged two notes'),
+      row('dream', 'started', daysAgo(1)), row('dream', 'fired', daysAgo(1)),
+    ]);
+    expect(e.last_outcome).toBeNull();
   });
 });
 

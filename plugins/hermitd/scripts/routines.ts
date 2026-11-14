@@ -17,7 +17,7 @@
 //     Terminal gate for a fire. Verifies any declared `expect_artifact` contract
 //     against the baseline `precheck` froze, writes the one terminal ledger row,
 //     and prints a `fired` or `failed` JSON verdict. With --outcome-stdin the
-//     dispatcher drains outcome text; finish does not write a journal.
+//     first non-empty line of stdin is stored as that row's `detail`.
 //
 //   bun routines.ts log-event <routine-id> <event> [delivery]
 //     Appends one line to state/routine-metrics.jsonl.
