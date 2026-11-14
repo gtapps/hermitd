@@ -69,6 +69,15 @@ export function freshDirFactory(prefix: string) {
   };
 }
 
+/** The nearest `.git` at or above `dir`, or null. */
+export function ancestorGit(dir: string): string | null {
+  for (let d = fs.realpathSync(dir); ; d = path.dirname(d)) {
+    const git = path.join(d, '.git');
+    if (fs.existsSync(git)) return git;
+    if (path.dirname(d) === d) return null;
+  }
+}
+
 // Same as setupWorkdir but initialises a git repo (needed by session-diff).
 export function setupGitWorkdir(): Workdir {
   const wd = setupWorkdir();
