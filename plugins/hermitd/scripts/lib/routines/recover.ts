@@ -149,6 +149,12 @@ export function recoveryReport(dir: string) {
     .slice(-50).map(row => ({ routine_id: row.routine_id, ts: row.ts, event: row.event, detail: row.detail }));
 }
 
+/** Interrupted or lost occurrences the mod's next reconcile has yet to retry or close. */
+export function pendingRecovery(dir: string) {
+  return Object.values(readUnfinished(dir)).filter(entry => entry.routine_id !== ANCHOR && ['interrupted', 'lost'].includes(entry.state))
+    .map(entry => ({ routine_id: entry.routine_id, state: entry.state, cause: entry.cause ?? '-', mark: entry.mark }));
+}
+
 /** Spends the occurrence's one lost notice: the first call returns it, later calls skip. */
 export function lostRoutine(dir: string, key: string) {
   return withUnfinished(dir, store => {
