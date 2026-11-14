@@ -39,8 +39,8 @@ echo OK
 HERMIT_FIXTURE
 mkdir -p ".hermit/state"
 cat > '.hermit/state/hypotheses.jsonl' <<'HERMIT_FIXTURE'
-{"id":"00000000-0000-4000-8000-000000000001","claim":"A exportação contém todas as encomendas","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-10-01T13:30:00.000Z","state":"pending","exit":0,"output":"missing orders\n"}
-{"id":"00000000-0000-4000-8000-000000000002","claim":"A fila de entregas está vazia","cmd":"exit 1","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-10-01T13:30:00.000Z","state":"pending","exit":1,"output":""}
+{"id":"00000000-0000-4000-8000-000000000001","claim":"A exportação contém todas as encomendas","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-09-30T12:00:00.000Z","state":"pending","exit":0,"output":"missing orders\n"}
+{"id":"00000000-0000-4000-8000-000000000002","claim":"A fila de entregas está vazia","cmd":"exit 1","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-09-30T12:00:00.000Z","state":"pending","exit":1,"output":""}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

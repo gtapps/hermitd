@@ -38,7 +38,7 @@ echo OK
 HERMIT_FIXTURE
 mkdir -p ".hermit/state"
 cat > '.hermit/state/hypotheses.jsonl' <<'HERMIT_FIXTURE'
-{"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-10-01T13:30:00.000Z","state":"pending","chat":"discord:400000000000000001","exit":0,"output":"missing orders\n"}
+{"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-09-30T12:00:00.000Z","state":"pending","chat":"discord:400000000000000001","exit":0,"output":"missing orders\n"}
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

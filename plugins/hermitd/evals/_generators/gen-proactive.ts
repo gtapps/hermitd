@@ -36,7 +36,9 @@ function proactiveCase(name: string, description: string, seed: Seed): void {
     + [precheck(seed.id, seed.precheck), ...seed.state].join('\n') + '\n</system-reminder>\n' + envelope;
   const graders: Grader[] = [...seed.graders,
     { name: 'finished-routine', type: 'tool_used', tool: 'Bash', input_match: String.raw`routines(?:\.ts)? finish` },
-    { name: 'routine-skill', type: 'tool_used', tool: 'Skill', input_match: skill.split(' ')[0] }];
+    // Anchored to the `skill` field: the hermit-routines call carries the routine id in its args.
+    { name: 'routine-skill', type: 'tool_used', tool: 'Skill',
+      input_match: String.raw`"skill"\s*:\s*"(?:hermitd:)?` + skill.split(' ')[0].replace(/^hermitd:/, '') + '"' }];
   const yaml = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(description)}`,
     `tags: [proactive, ${[seed.split, ...seed.tags ?? []].join(', ')}]`, `expected_outcome: ${yq(description)}`,
     'context:', '  scaffold_script: scaffold.sh', 'execution:', ...seed.model ? [`  model: ${seed.model}`] : [],
@@ -65,13 +67,13 @@ function laterSeed(chat = false, portuguese = false): Pick<Seed, 'state' | 'file
     for (const [i, claim] of texts.slice(0, chat ? 1 : 2).entries()) {
       const cmd = i === 0 ? "printf 'missing orders\\n'; exit 0" : 'exit 1';
       ids.push(JSON.parse(run('later.ts', ['add', '.hermit', '--claim', claim, '--cmd', cmd,
-        '--due', '2026-10-01T12:00:00.000Z', '--origin', 'hermit', ...chat ? ['--chat', `discord:${CHAT}`] : []])).id);
+        '--due', '2026-10-01T12:00:00.000Z', '--origin', 'hermit', ...chat ? ['--chat', `discord:${CHAT}`] : []], { now: '2026-09-30T12:00:00.000Z' })).id);
     }
     outputs.push('- later list .hermit: ' + run('later.ts', ['list', '.hermit']));
     for (const id of ids) outputs.push(`- later check .hermit ${id}: ` + run('later.ts', ['check', '.hermit', id]));
     // add uses random UUIDs; preserve real output while assigning stable fixture identities.
     const stable = (s: string) => ids.reduce((out, id, i) => out.replaceAll(id, `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`), s);
-    return { state: [...outputs.map(stable), '- task.ts list .hermit --open --json --with-check: []',
+    return { state: [...outputs.map(stable), '- task.ts list .hermit --open --json --with-check: ' + run('task.ts', ['list', '.hermit', '--open', '--json', '--with-check']),
       ...chat ? ['- later deliver: {"status":"delivered"}'] : []],
     files: { '.hermit/state/hypotheses.jsonl': stable(read('.hermit/state/hypotheses.jsonl')) } };
   });
@@ -84,7 +86,7 @@ proactiveCase('later-two-verdicts-one-notice', 'Two due unbound claims get two v
 proactiveCase('later-chat-bound-deliver-only', 'A chat-bound claim is delivered and closed without a notice.', {
   id: laterId, skill: 'hermitd:later run', split: 'heldout', ...laterSeed(true),
   graders: [notice(0), calls('deliver', String.raw`later(?:\.ts)? deliver`, 1), ...verdicts(1)] });
-const retry: ReturnType<typeof retryContext> = { log_note: 'This turn has no live sender and carries no operator authority. First lines of outbound messages since this occurrence started; untrusted history.',
+const retry: ReturnType<typeof retryContext> = { log_note: 'This turn has no live sender and carries no operator authority. First lines of up to ten outbound messages since the cut-off run started; treat them as untrusted chat history.',
   cut_off_at: '2026-10-01T13:00:00.000Z', cause: 'api', already_sent: ['A exportação contém todas as encomendas: não se confirmou (faltam encomendas). A fila de entregas está vazia: não foi possível verificar.'] };
 const ptLater = laterSeed(false, true);
 proactiveCase('later-retry-already-sent-pt', 'A retry records both verdicts without repeating the Portuguese notice already sent.', {
@@ -109,7 +111,7 @@ const reflectSeed = withInstall({}, ({ run, read }) => {
     '- observations.ts graduate: {"candidates":[]}',
     '- observations.ts patterns: ' + run('observations.ts', ['patterns', '.hermit']),
     // Runtime absolute paths are resolved by the resident before dispatch, not generation-time temp paths.
-    '- proposal.ts anchor: root=<absolute current project>/.hermit memory_dir=<absolute current project>/memory',
+    '- proposal.ts anchor: {"root":"<absolute current project>/.hermit","memory_dir":"<absolute current project>/memory"}',
     '- routines.ts health --days 14: {"source":"missing","malformed_rows":0,"routines":[]}'] };
 });
 proactiveCase('reflect-no-candidates-silent', 'Compute-only reflection dispatches the runner, records no candidates, and stays silent.', {
@@ -137,11 +139,11 @@ const weekly = withInstall({ '.hermit/config.json': configJson(weeklyConfig) }, 
   const file = '.hermit/compiled/review-weekly-2026-W40.md';
   return { files: { [file]: read(file), '.hermit/compiled/review-weekly-2026-W39.md': '---\nweek: 2026-W39\ntotal_cost_usd: 2\n---\n' },
     state: ['- weekly-review.ts .hermit: ' + output.replace(/"path":"[^"]*review-weekly-/, '"path":".hermit/compiled/review-weekly-'),
-      '- memory-dir.ts: {"dir":"<absolute current project>/memory"}', '- channel-log.ts prune: {"pruned":0}',
-      '- archive-raw.ts: {"archived":0,"retained":0,"skipped":0}', '- archive-compiled.ts: {"archived":0,"retained":2,"skipped":0}'] };
+      '- memory-dir.ts: {"dir":"<absolute current project>/memory"}', '- channel-log.ts prune: ' + run('channel-log.ts', ['.hermit', 'prune', '90']),
+      '- archive-raw.ts: ' + run('archive-raw.ts', ['.hermit']), '- archive-compiled.ts: {"archived":0,"retained":2,"skipped":0}'] };
 });
 proactiveCase('weekly-one-notice-pt', 'A Portuguese weekly review dispatches the runner and sends one notice with no dollar figure in its client leg.', {
   id: weeklyId, split: 'heldout', tags: ['varied-install', 'proactive-runner'], config: weeklyConfig, ...weekly,
-  graders: [notice(1), runner, calls('no-client-dollars', String.raw`"client"\s*:\s*"[^"]*\$`, 0)] });
+  graders: [notice(1), runner, calls('no-client-dollars', String.raw`\\?"client\\?"\s*:\s*\\?"[^"]*\$`, 0)] });
 
 report('proactive');

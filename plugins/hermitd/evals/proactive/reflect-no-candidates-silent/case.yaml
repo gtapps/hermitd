@@ -84,7 +84,7 @@ execution:
     - task.ts list .hermit --open --json: {"rows":[],"total":0,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
     - observations.ts graduate: {"candidates":[]}
     - observations.ts patterns: {"patterns":[]}
-    - proposal.ts anchor: root=<absolute current project>/.hermit memory_dir=<absolute current project>/memory
+    - proposal.ts anchor: {"root":"<absolute current project>/.hermit","memory_dir":"<absolute current project>/memory"}
     - routines.ts health --days 14: {"source":"missing","malformed_rows":0,"routines":[]}
     </system-reminder>
     <task-notification>
@@ -97,4 +97,4 @@ graders:
   - {"name":"real-runner","type":"tool_used","tool":"Agent","input_match":"hermitd:skill-eval-runner"}
   - {"name":"no-candidates-state","type":"tool_used","tool":"Bash","input_match":"update-reflection-state[\\s\\S]*\\\\?\"ran_with_candidates\\\\?\"\\s*:\\s*false"}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}
-  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"hermitd:reflect"}
+  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?reflect\""}

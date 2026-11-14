@@ -92,4 +92,4 @@ graders:
   - {"name":"notice-count","type":"tool_used","tool":"Bash","input_match":"channel-send(\\.ts)?(?=[^\\n]*--notice)","min":0,"max":0}
   - {"name":"mark-notified","type":"tool_used","tool":"Bash","input_match":"--mark-notified","min":0,"max":0}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}
-  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"hermitd:hermit-doctor"}
+  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?hermit-doctor\""}

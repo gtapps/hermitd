@@ -80,9 +80,9 @@ execution:
     Hermit state for this turn: Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Script output the routine needs is listed below; use these lines as the results of those reads. Every other step, including each write, send and real agent dispatch, still has to be called as written.
     - config.json: {"agent_name":"assistant","timezone":"Europe/Lisbon","channels":{"discord":{"enabled":true,"allowed_users":["100000000000000001"],"default_chat_id":"400000000000000001"}},"routines":[{"id":"hermitd:later-check","skill":"hermitd:later run","schedule":"0 9 * * *","enabled":true}]}
     - routines.ts precheck hermitd:later-check monitor: {"status":"proceed"}
-    - later list .hermit: {"rows":[{"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-10-01T13:30:00.000Z","state":"pending","chat":"discord:400000000000000001"}]}
-    - later check .hermit 00000000-0000-4000-8000-000000000001: {"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-10-01T13:30:00.000Z","state":"pending","chat":"discord:400000000000000001","exit":0,"output":"missing orders\n","timed_out":false,"late":false}
-    - task.ts list .hermit --open --json --with-check: []
+    - later list .hermit: {"rows":[{"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-09-30T12:00:00.000Z","state":"pending","chat":"discord:400000000000000001"}]}
+    - later check .hermit 00000000-0000-4000-8000-000000000001: {"id":"00000000-0000-4000-8000-000000000001","claim":"The export contains every order","cmd":"printf 'missing orders\\n'; exit 0","due":"2026-10-01T12:00:00.000Z","origin":"hermit","session":null,"created_at":"2026-09-30T12:00:00.000Z","state":"pending","chat":"discord:400000000000000001","exit":0,"output":"missing orders\n","timed_out":false,"late":false}
+    - task.ts list .hermit --open --json --with-check: {"rows":[],"total":0,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
     - later deliver: {"status":"delivered"}
     </system-reminder>
     <task-notification>
@@ -95,4 +95,4 @@ graders:
   - {"name":"deliver","type":"tool_used","tool":"Bash","input_match":"later(?:\\.ts)? deliver","min":1,"max":1}
   - {"name":"verdict-1","type":"tool_used","tool":"Bash","input_match":"later(?:\\.ts)? verdict[^\\n]*00000000-0000-4000-8000-000000000001","min":1,"max":1}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}
-  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"hermitd:later"}
+  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?later\""}

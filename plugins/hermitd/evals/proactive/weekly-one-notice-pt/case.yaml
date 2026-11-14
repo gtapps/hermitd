@@ -82,8 +82,8 @@ execution:
     - routines.ts precheck hermitd:weekly-review monitor: {"status":"proceed"}
     - weekly-review.ts .hermit: {"path":".hermit/compiled/review-weekly-2026-W40.md","knowledge_findings":0,"usage_docs":0,"dream":{"runs":0,"flagged":0,"changes":0}}
     - memory-dir.ts: {"dir":"<absolute current project>/memory"}
-    - channel-log.ts prune: {"pruned":0}
-    - archive-raw.ts: {"archived":0,"retained":0,"skipped":0}
+    - channel-log.ts prune: {"deleted":0}
+    - archive-raw.ts: {"archived":0,"retained":0,"skipped":[],"pinned":0,"purged":0}
     - archive-compiled.ts: {"archived":0,"retained":2,"skipped":0}
     </system-reminder>
     <task-notification>
@@ -94,6 +94,6 @@ execution:
 graders:
   - {"name":"notice-count","type":"tool_used","tool":"Bash","input_match":"channel-send(\\.ts)?(?=[^\\n]*--notice)","min":1,"max":1}
   - {"name":"real-runner","type":"tool_used","tool":"Agent","input_match":"hermitd:skill-eval-runner"}
-  - {"name":"no-client-dollars","type":"tool_used","tool":"Bash","input_match":"\"client\"\\s*:\\s*\"[^\"]*\\$","min":0,"max":0}
+  - {"name":"no-client-dollars","type":"tool_used","tool":"Bash","input_match":"\\\\?\"client\\\\?\"\\s*:\\s*\\\\?\"[^\"]*\\$","min":0,"max":0}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}
-  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"hermitd:weekly-review"}
+  - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?weekly-review\""}
