@@ -180,6 +180,14 @@ This is a receipt, not a substitute for the skill writing correctly. The skill s
 atomically and validate its own output before returning; the declaration only catches the case
 where it didn't and said otherwise.
 
+## Interrupted runs
+
+An unclean shutdown or resident API failure makes an unfinished occurrence eligible for one retry within six hours. This applies in both monitor and CronCreate fallback modes. Recovery runs through the mod's idle reconciliation, including custom boot skills; a pause holds the retry inside the window. API failures back off by 10, 30, then 60 minutes per new failure stamp.
+
+The retry continues from the cut-off run's chat: `precheck --retry <mark>` returns up to ten outbound first lines in `retry.already_sent`, and the dispatcher passes them to a model-override worker too. Check actions outside the chat before repeating them. Set the optional boolean `retry_after_crash: false` on routines whose external effects cannot be resumed safely. It defaults to true and does not change CronCreate prompt registration.
+
+Artifact retries resolve `{date}` from the original run's start (its schedule mark when it never started), skip and consume the occurrence when a fallback gate returns `SKIP`, and retain an unfinished matching run record's baseline. Planned restarts, opt-outs, changed skills, disabled or removed routines, newer occurrences and Esc-aborted starts close silently. An occurrence past six hours or a retry interrupted again gets one lost-run notice. `failed-interrupted` has `detail: <planned|optout|superseded|disabled|aborted|lost>:<unclean|planned|api|->`; these closures count in health's `interrupted` map, rather than `failure_total`. Recovery starts carry `detail: retry` and do not count the prior attempt as incomplete.
+
 ## Where this fits
 
 - [Config Reference § Routines](config-reference.md#routines) — the `routines` array
@@ -188,6 +196,7 @@ where it didn't and said otherwise.
   and the model-override dispatch behavior cited above.
 - `scripts/heartbeat.ts precheck`, `scripts/reflect-precheck.ts` — the shipped precheck
   archetypes to copy the shape of, not reinvent.
+- `scripts/lib/routines/recover.ts` owns interrupted-run reconciliation, retry context and the recovery report. `unfinished.ts` owns the locked occurrence store.
 - `scripts/lib/routines/finish.ts` — the finalizer that verifies a declared `expect_artifact` and
   owns the fire's terminal ledger row.
 

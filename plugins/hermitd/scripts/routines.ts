@@ -76,6 +76,24 @@ switch (verb) {
     run(rest);
     break;
   }
+  case 'recover': {
+    const { hermitDir } = await import('./lib/cc-compat');
+    const { emit, emitJson } = await import('./lib/cli');
+    const { readUnfinished } = await import('./lib/routines/unfinished');
+    const { retryContext, recoveryReport, lostRoutine, clearLostRoutine } = await import('./lib/routines/recover');
+    const dir = hermitDir();
+    if (rest[0] === '--report') emitJson({ routines: recoveryReport(dir) });
+    else if (rest[0] === '--lost' && rest[1]) emitJson(lostRoutine(dir, rest[1]));
+    else if (rest[0] === '--clear-lost' && rest[1]) {
+      clearLostRoutine(dir, rest[1]);
+      emit('OK');
+    } else if (rest[0] === '--context' && rest[1]) {
+      const entry = Object.values(readUnfinished(dir)).filter(e => e.routine_id === rest[1]
+        && (e.state === 'interrupted' || e.retry)).sort((a, b) => Date.parse(b.mark) - Date.parse(a.mark))[0];
+      emitJson(entry ? { retry: retryContext(dir, entry) } : { status: 'skipped', reason: 'nothing_unfinished' });
+    } else exitError();
+    break;
+  }
   case 'arm': {
     const { run } = await import('./lib/routines/arm');
     await run(rest);

@@ -577,3 +577,34 @@ test('recovery never treats a long-running in-flight turn as completed without a
   expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
   expect(claim(dir, 'resident', VERSION, { lastTurnCompleteAt: at + 1 }, now)?.source).toBe('recovery');
 });
+
+import { markStarted, readUnfinished, stampInterrupted, withUnfinished, clearEntries } from '../scripts/lib/routines/unfinished';
+for (const scenario of ['ready', 'gone', 'live', 'paused', 'skill', 'expired', 'optout', 'disabled', 'superseded', 'lost', 'unknown']) {
+  test(`routine recovery claim checks ${scenario}`, () => {
+    const { dir } = fixture();
+    const now = Date.now();
+    const mark = new Date(now - 1000).toISOString();
+    const key = `r@${mark}`;
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ routines: [{ id: 'r', skill: scenario === 'skill' ? 'changed' : 'test:run',
+      enabled: scenario !== 'disabled', retry_after_crash: scenario !== 'optout' }] }));
+    markStarted(dir, { routine_id: 'r', skill: 'test:run', mark, started_at: mark, delivery: 'monitor', session_id: 'old' });
+    stampInterrupted(dir, 'unclean');
+    if (scenario === 'gone') clearEntries(dir, () => true);
+    if (scenario === 'lost') withUnfinished(dir, s => { s[key].state = 'lost'; });
+    if (scenario === 'expired') withUnfinished(dir, s => { s[key].started_at = new Date(now - 7 * 3600000).toISOString(); });
+    if (scenario === 'superseded') markStarted(dir, { routine_id: 'r', skill: 'test:run', mark: new Date(now).toISOString(), delivery: 'monitor' });
+    if (scenario === 'paused') fs.writeFileSync(path.join(dir, 'state/pause.json'), JSON.stringify({ paused: true, reason: 'operator' }));
+    if (scenario === 'live') fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', cc_session_id: 'resident', at: new Date(now).toISOString() }));
+    const purpose = `${scenario === 'lost' ? 'routine-lost' : scenario === 'unknown' ? 'unknown' : 'routine-retry'}:${key}`;
+    const queued = enqueue(dir, { source: 'recovery', purpose, commands: [{ command: '/hermitd:hermit-routines', arg: `run r --retry ${mark}` }] }, now) as { id: string };
+    const result = claim(dir, 'resident', VERSION, {}, now);
+    if (scenario === 'ready' || scenario === 'lost') {
+      expect(result?.id).toBe(queued.id);
+      expect(readUnfinished(dir)[key].attempts).toBe(0);
+    } else {
+      expect(result).toBeNull();
+      if (scenario === 'live' || scenario === 'paused') expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
+      else expect(readOutcome(dir, queued.id)?.legs[0]).toMatchObject({ status: 'skipped', text: 'nothing_unfinished' });
+    }
+  });
+}

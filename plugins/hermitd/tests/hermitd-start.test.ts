@@ -2625,3 +2625,17 @@ test('launch creates the project skills directory for the first learned skill', 
   await runBuildClaudeCommand({ channels: {}, remote: false }, '#!/bin/sh\nexit 0\n');
   expect(fs.statSync(path.join(tmpdir, '.claude/skills')).isDirectory()).toBe(true);
 });
+
+import { checkStaleRuntime } from '../scripts/hermitd-start';
+import { markStarted, stampInterrupted, readUnfinished } from '../scripts/lib/routines/unfinished';
+for (const mode of ['unclean', 'clean', 'stale-error']) test(`boot routine cause is this boot's verdict: ${mode}`, () => {
+  fs.writeFileSync('.hermit/state/runtime.json', JSON.stringify({ runtime_mode: 'interactive',
+    ...(mode === 'clean' ? { shutdown_completed_at: new Date().toISOString() } : {}),
+    ...(mode === 'stale-error' ? { last_error: 'unclean_shutdown' } : {}),
+  }));
+  fs.writeFileSync('.hermit/state/execution.json', JSON.stringify({ state: mode === 'unclean' ? 'in_flight' : 'idle' }));
+  markStarted('.hermit', { routine_id: 'r', skill: 'test:run', mark: 'm', delivery: 'monitor' });
+  const cause = checkStaleRuntime({}, 'gone');
+  stampInterrupted('.hermit', cause);
+  expect(Object.values(readUnfinished('.hermit'))[0]).toMatchObject({ state: 'interrupted', cause: mode === 'unclean' ? 'unclean' : 'planned' });
+});

@@ -112,3 +112,12 @@ describe('stop-failure-stamp', () => {
     expect(fs.existsSync(stateFile(dir))).toBe(false);
   }));
 });
+
+import { markStarted, readUnfinished } from '../scripts/lib/routines/unfinished';
+for (const kind of ['resident', 'guest', 'subagent']) test(`routine interruption stamp respects ${kind} ownership`, withDir(async dir => {
+  const root = path.join(dir, '.hermit');
+  markStarted(root, { routine_id: 'r', skill: 'test:run', mark: 'm', delivery: 'monitor', session_id: STOP_FAILURE_PAYLOAD.session_id });
+  if (kind === 'guest') markGuest(path.join(root, 'state'), STOP_FAILURE_PAYLOAD.session_id);
+  await run(dir, JSON.stringify({ ...STOP_FAILURE_PAYLOAD, ...(kind === 'subagent' ? { agent_id: 'worker' } : {}) }));
+  expect(Object.values(readUnfinished(root))[0]).toMatchObject(kind === 'resident' ? { state: 'interrupted', cause: 'api' } : { state: 'started' });
+}));

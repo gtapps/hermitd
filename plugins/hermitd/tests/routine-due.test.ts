@@ -504,3 +504,12 @@ describe('hermitd:later-check ledger marks', () => {
     expect((await run(dir, due)).stdout).toBe('');
   }));
 });
+
+
+test('dispatch persists unfinished occurrence with the consumed mark and configured skill', withDir(async dir => {
+  writeConfig(dir, [ROUTINE()]);
+  writeSchedule(dir, { 'test-routine': { last_consumed_mark: '2026-07-15T08:00:00.000Z' } });
+  await run(dir, '2026-07-15T09:00:00Z');
+  const entries = JSON.parse(fs.readFileSync(hermit(dir, 'state/routine-unfinished.json'), 'utf8'));
+  expect(entries['test-routine@2026-07-15T09:00:00.000Z']).toMatchObject({ state: 'dispatched', skill: 'hermitd:reflect', delivery: 'monitor' });
+}));

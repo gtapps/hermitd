@@ -29,7 +29,8 @@
 
 import path from 'node:path';
 import { hermitDir } from '../cc-compat';
-import { emitJson, snakeToken } from '../cli';
+import { clearEntries } from './unfinished';
+import { emitJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
 import { readRunRecord, markOutcome, statIdentity, identityChanged } from './run-record';
@@ -73,6 +74,10 @@ export function run(args: string[], outcome = ''): void {
     // Nothing to verify against and nowhere to log — never claim success.
     report('verification-error', 'hermit dir unresolvable');
   }
+
+  const sessionId = readJson(path.join(hermit, 'state/runtime.json'))?.cc_session_id;
+  clearEntries(hermit, entry => entry.routine_id === id && entry.session_id === sessionId
+    && (entry.state === 'started' || entry.state === 'awaiting'));
 
   const stamp = (event: string): void => {
     try {

@@ -1,3 +1,4 @@
+import { withUnfinished } from './lib/routines/unfinished';
 import { clearConversations } from './lib/channel-recovery';
 import { conversationKey, isKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
@@ -70,6 +71,18 @@ async function main(): Promise<void> {
     } catch (e: any) { console.error(`[stop-pipeline] intake-checkpoint: ${e.message}`); }
     let closedOperatorTurn = false;
     if (!blocked) {
+      const tasks = backgroundTasks(payload);
+      if (tasks.state !== 'unsupported_or_unreachable') {
+        const delegated = new Set(['subagent', 'workflow', 'teammate', 'cloud session', 'MCP task']);
+        const running = tasks.entries.some(task => task.status === 'running' && delegated.has(task.type));
+        withUnfinished(HERMIT_DIR, store => {
+          for (const [key, entry] of Object.entries(store)) {
+            if (!['started', 'awaiting'].includes(entry.state) || entry.session_id !== sessionId(payload)) continue;
+            if (running) entry.state = 'awaiting';
+            else delete store[key];
+          }
+        });
+      }
       try {
         const tPath = transcriptPath(payload);
         if (tPath) {

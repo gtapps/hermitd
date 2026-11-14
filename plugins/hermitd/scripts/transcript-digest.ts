@@ -178,7 +178,7 @@ function digestLines(lines: string[], cutoffMs: number): FileDigest {
     if (isTurnBoundary(entry)) {
       flushTurn();
       turnOpen = true;
-      turnIsWake = isWakeSource(classifySource(entryText(entry)));
+      turnIsWake = isWakeSource(classifySource(entryText(entry), entry));
       continue;
     }
 

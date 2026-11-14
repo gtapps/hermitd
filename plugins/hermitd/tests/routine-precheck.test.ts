@@ -154,6 +154,16 @@ describe('routine-precheck — wake gate in fallback delivery', () => {
     expect(rows[0].detail).toBe('exit:2');
   }), 20000);
 
+  test('SKIP on a fallback retry consumes the occurrence', withDir(async (dir) => {
+    writeGatedConfig(dir, writeGate(dir, '#!/usr/bin/env bash\necho SKIP\n'));
+    const mark = '2026-11-14T09:00:00.000Z';
+    markDispatched(hermit(dir), { routine_id: 'gated', skill: 'my-plugin:thing', mark, delivery: 'cron-create' });
+    stampInterrupted(hermit(dir), 'unclean');
+    const r = await runScript('routines.ts', { args: ['precheck', 'gated', '--retry', mark, '--delivery', 'cron-create'], cwd: dir });
+    expect(JSON.parse(r.stdout).status).toBe('skip');
+    expect(readUnfinished(hermit(dir))).toEqual({});
+  }), 20000);
+
   test('monitor delivery does not re-run the gate — due already decided', withDir(async (dir) => {
     writeGatedConfig(dir, writeGate(dir, [
       '#!/usr/bin/env bash',
@@ -166,3 +176,82 @@ describe('routine-precheck — wake gate in fallback delivery', () => {
     expect(fs.existsSync(hermit(dir, 'state', 'gate-calls.txt'))).toBe(false);
   }), 20000);
 });
+
+import { markDispatched, readUnfinished, stampInterrupted } from '../scripts/lib/routines/unfinished';
+import { readRunRecord, writeRunRecord } from '../scripts/lib/routines/run-record';
+
+const retryRoutine = { id: 'retry-me', skill: 'test:run', schedule: '* * * * *', enabled: true, expect_artifact: 'raw/retry.md' };
+function retryFixture(dir: string) {
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', routines: [retryRoutine] }));
+  fs.writeFileSync(hermit(dir, 'state/runtime.json'), JSON.stringify({ cc_session_id: 'resident' }));
+  fs.writeFileSync(hermit(dir, 'state/routine-schedule.json'), JSON.stringify({ 'retry-me': { last_consumed_mark: '2026-11-14T10:00:00Z' } }));
+  markDispatched(hermit(dir), { routine_id: 'retry-me', skill: 'test:run', mark: '2026-11-14T10:00:00Z', delivery: 'monitor' });
+}
+const retryRun = (dir: string) => runScript('routines.ts', { cwd: dir,
+  args: ['precheck', 'retry-me', '--retry', '2026-11-14T10:00:00Z', '--delivery', 'monitor'] });
+
+test('monitor dispatch proceeds to started; retry preserves its baseline and finish clears it', withDir(async dir => {
+  retryFixture(dir);
+  await runScript('routines.ts', { cwd: dir, args: ['precheck', 'retry-me', 'monitor'] });
+  const original = readRunRecord(hermit(dir), 'retry-me');
+  expect(Object.values(readUnfinished(hermit(dir)))[0]).toMatchObject({ state: 'started', session_id: 'resident', skill: 'test:run' });
+  fs.mkdirSync(hermit(dir, 'raw'), { recursive: true });
+  fs.writeFileSync(hermit(dir, 'raw/retry.md'), 'written before crash');
+  stampInterrupted(hermit(dir), 'unclean');
+  expect((await retryRun(dir)).exitCode).toBe(0);
+  expect(readRunRecord(hermit(dir), 'retry-me')).toEqual(original);
+  expect(readMetricsRows(dir).at(-1).detail).toBe('retry');
+  expect(Object.values(readUnfinished(hermit(dir)))[0].attempts).toBe(1);
+  const result = await runScript('routines.ts', { cwd: dir, args: ['finish', 'retry-me'] });
+  expect(JSON.parse(result.stdout).status).toBe('fired');
+  expect(readUnfinished(hermit(dir))).toEqual({});
+}));
+
+for (const change of ['outcome', 'path']) test(`retry re-captures a baseline with ${change}`, withDir(async dir => {
+  retryFixture(dir);
+  stampInterrupted(hermit(dir), 'unclean');
+  writeRunRecord(hermit(dir), 'retry-me', { started_ts: 'old', resolved_path: change === 'path' ? 'raw/other.md' : 'raw/retry.md',
+    baseline: null, ...(change === 'outcome' ? { outcome: 'fired' } : {}) });
+  await retryRun(dir);
+  expect(readRunRecord(hermit(dir), 'retry-me')).toMatchObject({ resolved_path: 'raw/retry.md' });
+  expect(readRunRecord(hermit(dir), 'retry-me')?.started_ts).not.toBe('old');
+}));
+
+test('forged or changed-skill retry proceeds as manual without spending a retry', withDir(async dir => {
+  retryFixture(dir);
+  await retryRun(dir); // dispatched is not eligible
+  expect(readMetricsRows(dir).at(-1).detail).toBeUndefined();
+  expect(Object.values(readUnfinished(hermit(dir)))[0].attempts).toBe(0);
+  stampInterrupted(hermit(dir), 'unclean');
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ routines: [{ ...retryRoutine, skill: 'test:changed' }] }));
+  await retryRun(dir);
+  expect(readMetricsRows(dir).at(-1).detail).toBeUndefined();
+  expect(Object.values(readUnfinished(hermit(dir)))[0].skill).toBe('test:changed');
+}));
+
+test('paused retry remains interrupted; fallback creates its latest schedule occurrence', withDir(async dir => {
+  retryFixture(dir);
+  stampInterrupted(hermit(dir), 'unclean');
+  setPause(hermit(dir), { reason: 'operator', by: 'test' });
+  expect(JSON.parse((await retryRun(dir)).stdout).status).toBe('skip');
+  expect(Object.values(readUnfinished(hermit(dir)))[0]).toMatchObject({ state: 'interrupted', attempts: 0 });
+}));
+
+test('fallback proceed creates an occurrence using latest schedule fire', withDir(async dir => {
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', routines: [retryRoutine] }));
+  await run('retry-me', dir);
+  const entry = Object.values(readUnfinished(hermit(dir)))[0];
+  expect(entry).toMatchObject({ state: 'started', delivery: 'cron-create', skill: 'test:run' });
+  expect(new Date(entry.mark).getUTCSeconds()).toBe(0);
+}));
+
+test('eligible retry emits an already-sent digest; forged retry emits none', withDir(async dir => {
+  retryFixture(dir);
+  expect(JSON.parse((await retryRun(dir)).stdout).retry).toBeUndefined();
+  stampInterrupted(hermit(dir), 'unclean');
+  const output = JSON.parse((await retryRun(dir)).stdout);
+  expect(output.retry).toMatchObject({ cause: 'unclean', already_sent: [] });
+  expect(output.retry.log_note).toContain('no live sender');
+  const cli = await runScript('routines.ts', { cwd: dir, args: ['recover', '--context', 'retry-me'] });
+  expect(JSON.parse(cli.stdout).retry).toMatchObject({ cause: 'unclean', already_sent: [] });
+}));

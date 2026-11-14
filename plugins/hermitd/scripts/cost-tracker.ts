@@ -118,8 +118,13 @@ const RE_TOOL_USE_ID = /<tool-use-id>([A-Za-z0-9_-]+)<\/tool-use-id>/;
 // divide cost by invocations (doctor's routine-cost $/run) must not count the second, so
 // the flag is persisted on the cost row; see lib/cost-log.ts scanRoutineLedger.
 function resolveTurnSource(lines: string[], billedIndex: number): { source: string; boundaryFound: boolean; inherited: boolean } {
+  const classifyPrompt = (index: number, prompt = turnPromptText(lines, index)): string => {
+    let opener: Json;
+    try { opener = JSON.parse(lines[prompt.index]); } catch {}
+    return classifySource(prompt.text, opener);
+  };
   const prompt = turnPromptText(lines, billedIndex);
-  const direct = classifySource(prompt.text);
+  const direct = classifyPrompt(billedIndex, prompt);
   if (direct !== 'other' || !prompt.boundaryFound) {
     return { source: direct, boundaryFound: prompt.boundaryFound, inherited: false };
   }
@@ -141,12 +146,12 @@ function resolveTurnSource(lines: string[], billedIndex: number): { source: stri
         // Walks from j exclusive; the fallback below passes j+1 because ITS j is a user entry
         // that may itself be the dispatching turn's prompt (the Agent tool_result case).
         if (!toolUseNames(e).some(t => t.id === id)) continue;
-        return { source: classifySource(turnPromptText(lines, j).text), boundaryFound: true, inherited: true };
+        return { source: classifyPrompt(j), boundaryFound: true, inherited: true };
       }
       // A sibling completion notification for the same agent is never the dispatch — keep
       // walking. Narrow on purpose: every other non-classifying match still stops the scan.
       if (RE_TASK_ID.test(entryText(e))) continue;
-      return { source: classifySource(turnPromptText(lines, j + 1).text), boundaryFound: true, inherited: true };
+      return { source: classifyPrompt(j + 1), boundaryFound: true, inherited: true };
     }
   }
   return { source: 'other', boundaryFound: true, inherited: false };

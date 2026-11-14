@@ -290,3 +290,30 @@ for (const scenario of ['opener', 'joined', 'plugin-recovery', 'typed-copy', 'bl
     expect(fs.existsSync(hermit(dir, 'state/recovery-pending'))).toBe(true);
   }));
 }
+
+import { markStarted, readUnfinished } from '../scripts/lib/routines/unfinished';
+for (const kind of ['shell', 'monitor', 'subagent', 'unreachable', 'blocked', 'guest', 'empty']) {
+  test(`routine normal end with ${kind}`, withDir(async dir => {
+    markStarted(hermit(dir), { routine_id: 'r', skill: 'test:run', mark: 'm', delivery: 'monitor', session_id: SESSION_ID });
+    const payload = JSON.parse(stopHookInput(dir));
+    delete payload.background_tasks;
+    if (kind !== 'unreachable') payload.background_tasks = kind === 'empty' ? [] : [{ type: kind, status: 'running' }];
+    if (kind === 'blocked') { writeAck(dir); writeTurn(dir); }
+    if (kind === 'guest') markGuest(hermit(dir, 'state'), SESSION_ID);
+    await runStop(dir, JSON.stringify(payload));
+    const entries = Object.values(readUnfinished(hermit(dir)));
+    if (['shell', 'monitor', 'empty'].includes(kind)) expect(entries).toEqual([]);
+    else expect(entries[0].state).toBe(kind === 'subagent' ? 'awaiting' : 'started');
+  }));
+}
+
+test('a later Stop with no delegated work running settles an awaiting routine', withDir(async dir => {
+  markStarted(hermit(dir), { routine_id: 'r', skill: 'test:run', mark: 'm', delivery: 'monitor', session_id: SESSION_ID });
+  const payload = JSON.parse(stopHookInput(dir));
+  payload.background_tasks = [{ type: 'subagent', status: 'running' }];
+  await runStop(dir, JSON.stringify(payload));
+  expect(Object.values(readUnfinished(hermit(dir)))[0].state).toBe('awaiting');
+  payload.background_tasks = [];
+  await runStop(dir, JSON.stringify(payload));
+  expect(readUnfinished(hermit(dir))).toEqual({});
+}));

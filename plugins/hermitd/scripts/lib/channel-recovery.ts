@@ -1,3 +1,6 @@
+import { recoveryBackoff } from './recovery-backoff';
+import { markRecoveryPending, clearRecoveryPendingIf } from './recovery-marker';
+import { readUnfinished } from './routines/unfinished';
 // Resident-owned unfinished conversations. The chat log remains the message history.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,7 +40,10 @@ function withStore<T>(dir: string, body: (store: Store) => T): T {
   try {
     const store = readStore(dir);
     const result = body(store);
-    if (Object.keys(store).length) writeFileAtomic(file, JSON.stringify(store) + '\n');
+    if (Object.keys(store).length) {
+      writeFileAtomic(file, JSON.stringify(store) + '\n');
+      markRecoveryPending(dir);
+    }
     else { try { fs.unlinkSync(file); } catch {} }
     return result;
   } finally { releaseLock(lock); }
@@ -55,18 +61,13 @@ export function markUnfinished(dir: string, key: string, ts: string): void {
     if (store[key]) {
       if (Date.parse(ts) < Date.parse(store[key].since)) store[key].since = ts;
     } else store[key] = { since: ts, attempts: 0, not_before: null, last_attempt_at: null };
-    fs.writeFileSync(path.join(dir, 'state', 'recovery-pending'), '');
   });
 }
 
 // The bridge calls this only once all producers are empty. Admission takes this
 // same lock, so a new conversation cannot lose its wake marker to an older scan.
 export function clearRecoveryPending(dir: string): void {
-  withStore(dir, store => {
-    if (!Object.keys(store).length) {
-      try { fs.unlinkSync(path.join(dir, 'state', 'recovery-pending')); } catch {}
-    }
-  });
+  clearRecoveryPendingIf(dir, () => !Object.keys(readStore(dir)).length && !Object.keys(readUnfinished(dir)).length);
 }
 
 export function clearConversations(dir: string, keys: string[]): void {
@@ -131,8 +132,7 @@ export async function reconcileChannels(dir: string, now: number): Promise<{ ent
       if (Number.isFinite(failureAt) && entry.refunded_at !== failure.at && failureAt >= Date.parse(entry.since)
           && (entry.last_attempt_at === null || failureAt >= Date.parse(entry.last_attempt_at))) {
         if (entry.last_attempt_at !== null) entry.attempts = Math.max(0, entry.attempts - 1);
-        const delay = [10, 30, 60][Math.min(entry.refunds ?? 0, 2)] * 60000;
-        entry.not_before = new Date(Math.min(failureAt + delay, now + 60 * 60000)).toISOString();
+        entry.not_before = recoveryBackoff(failureAt, entry.refunds ?? 0, now);
         entry.refunds = (entry.refunds ?? 0) + 1;
         entry.refunded_at = failure.at;
       }
