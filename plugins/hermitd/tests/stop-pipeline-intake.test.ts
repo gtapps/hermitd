@@ -266,3 +266,27 @@ test('two DM acknowledgements with two new records pass', withDir(async dir => {
   expect(result.exitCode).toBe(0);
   expect(result.stdout.trim()).toBe('');
 }));
+
+for (const scenario of ['opener', 'joined', 'plugin-recovery', 'typed-copy', 'blocked', 'guest'] as const) {
+  test(`normal Stop clears only this turn's unfinished conversations: ${scenario}`, withDir(async dir => {
+    const { markUnfinished, stillUnfinished } = await import('../scripts/lib/channel-recovery');
+    fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ channels: { custom: { attributes: { thread_id: 'topic' } } } }));
+    const key = 'custom:chat~one';
+    markUnfinished(hermit(dir), key, new Date().toISOString());
+    markUnfinished(hermit(dir), 'custom:unrelated', new Date().toISOString());
+    fs.writeFileSync(hermit(dir, 'state/recovery-pending'), '');
+    const recovery = '<command-name>/hermitd:channel-responder</command-name>\n<command-args>recover custom:chat~one</command-args>';
+    const channel = '<channel source="custom" chat_id="chat" user="u1" topic="one">hello</channel>';
+    const lines: unknown[] = [{ type: 'user', origin: scenario === 'plugin-recovery' ? { kind: 'plugin', name: 'hermitd' } : { kind: 'human' }, message: { role: 'user', content: scenario === 'plugin-recovery' || scenario === 'typed-copy' ? recovery : scenario === 'joined' ? 'work' : channel } }];
+    if (scenario === 'joined') lines.push({ type: 'attachment', attachment: { type: 'queued_command', origin: { kind: 'channel' }, prompt: channel } });
+    if (scenario === 'blocked') { writeTurn(dir); writeAck(dir); }
+    if (scenario === 'guest') markGuest(hermit(dir, 'state'), SESSION_ID);
+    const transcript = path.join(dir, 'recovery-turn.jsonl');
+    fs.writeFileSync(transcript, lines.map(line => JSON.stringify(line)).join('\n') + '\n');
+    const result = await runStop(dir, JSON.stringify({ session_id: SESSION_ID, transcript_path: transcript, stop_hook_active: scenario !== 'blocked' }));
+    expect(result.exitCode).toBe(0);
+    expect(stillUnfinished(hermit(dir), key)).toBe(['typed-copy', 'blocked', 'guest'].includes(scenario));
+    expect(stillUnfinished(hermit(dir), 'custom:unrelated')).toBe(true);
+    expect(fs.existsSync(hermit(dir, 'state/recovery-pending'))).toBe(true);
+  }));
+}

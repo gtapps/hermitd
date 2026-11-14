@@ -518,3 +518,62 @@ test('upgrade purpose is pending while queued and in flight, until finalized', (
   finalize(dir, first.id, { legs: [{ command: '/reload-plugins', status: 'ok', text: 'reloaded' }] });
   expect(pendingPurpose(dir, 'upgrade')).toBeNull();
 });
+
+function queueRecovery(dir: string, now = Date.now()) {
+  const { markUnfinished } = require('../scripts/lib/channel-recovery');
+  markUnfinished(dir, 'telegram:12345', new Date(now).toISOString());
+  return enqueue(dir, { source: 'recovery', purpose: 'channel-recover:telegram:12345', commands: [{ command: '/hermitd:channel-responder', arg: 'recover telegram:12345' }] }, now) as { id: string };
+}
+
+for (const scenario of ['paused', 'live', 'older', 'finished', 'session', 'logging-off', 'muted'] as const) {
+  test(`recovery claim checks ${scenario}`, () => {
+    const { dir } = fixture();
+    const now = Date.now();
+    const queued = queueRecovery(dir, now);
+    if (scenario === 'paused') fs.writeFileSync(path.join(dir, 'state/pause.json'), JSON.stringify({ paused: true, reason: 'operator' }));
+    if (scenario === 'live' || scenario === 'older') fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', cc_session_id: 'resident', at: new Date(now - 1000).toISOString() }));
+    if (scenario === 'finished') fs.unlinkSync(path.join(dir, 'state/channel-unfinished.json'));
+    if (scenario === 'logging-off') fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { telegram: { log_chats: false } } }));
+    if (scenario === 'muted') {
+      const { mutateTask } = require('../scripts/lib/tasks');
+      mutateTask(dir, 'open', undefined, { owner: 'resident', requester: 'telegram:u1', conversation: 'telegram:12345', title: 'Work', done: 'Done', muted: 'true' }, '');
+    }
+    const result = claim(dir, scenario === 'session' ? 'next' : 'resident', VERSION,
+      scenario === 'older' ? { lastTurnCompleteAt: now } : {}, now);
+    if (scenario === 'older') {
+      expect(result?.id).toBe(queued.id);
+      const store = JSON.parse(fs.readFileSync(path.join(dir, 'state/channel-unfinished.json'), 'utf8'));
+      expect(store['telegram:12345']).toMatchObject({ attempts: 1, last_attempt_at: new Date(now).toISOString() });
+    } else {
+      expect(result).toBeNull();
+      if (scenario === 'paused' || scenario === 'live') expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
+      else expect(readOutcome(dir, queued.id)?.legs[0]).toMatchObject({ status: scenario === 'session' ? 'unknown' : 'skipped', text: scenario === 'session' ? 'stale_session' : 'nothing_unfinished' });
+    }
+  });
+}
+
+test('shared reconcile bridge keeps its marker until every producer is done and dedupes requests', async () => {
+  const { dir, wd } = fixture();
+  queueRecovery(dir);
+  const marker = path.join(dir, 'state/recovery-pending');
+  fs.writeFileSync(marker, '');
+  expect(await call(wd, 'reconcile', JSON.stringify({ lastTurnCompleteAt: Date.now() }))).toMatchObject({ decision: 'ok', pending: true });
+  expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
+  expect(fs.existsSync(marker)).toBe(true);
+  fs.unlinkSync(path.join(dir, 'state/channel-unfinished.json'));
+  expect(await call(wd, 'reconcile', '{}')).toMatchObject({ decision: 'ok', pending: false });
+  expect(fs.existsSync(marker)).toBe(false);
+});
+
+
+test('recovery never treats a long-running in-flight turn as completed without a mod boundary', () => {
+  const { dir } = fixture();
+  const now = Date.now();
+  queueRecovery(dir, now);
+  const at = now - 2 * 3600000;
+  fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', cc_session_id: 'resident', at: new Date(at).toISOString() }));
+  expect(claim(dir, 'resident', VERSION, {}, now)).toBeNull();
+  expect(claim(dir, 'resident', VERSION, { lastTurnCompleteAt: at - 1 }, now)).toBeNull();
+  expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
+  expect(claim(dir, 'resident', VERSION, { lastTurnCompleteAt: at + 1 }, now)?.source).toBe('recovery');
+});

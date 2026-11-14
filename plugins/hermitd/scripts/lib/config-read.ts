@@ -140,6 +140,7 @@ export const TABLE: Record<string, Spec> = {
     publish_authorized: bool(null),
     backend: str('claude'),
   }),
+  channel_recovery: shape({ enabled: bool(true), max_age: str('6h', { pattern: 'duration' }) }),
   context_hygiene: shape({
     clear: shape({ enabled: bool(true), quiet: str('1h'), max_age: str('24h'), min_tokens: num(20000) }),
     compact: shape({ enabled: bool(true), min_context_tokens: num(100000), min_interval: str('4h') }),

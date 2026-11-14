@@ -592,3 +592,11 @@ describe('protected chat instructions', () => {
     expect((await run(prompt('other', 'U1', 'review', 'telegram'), dir)).stdout).not.toContain('[chat instructions]');
   }, config({}, 'telegram')));
 });
+
+test('incoming mapped threads are stored and unmapped thread attributes are ignored', withDir(async dir => {
+  write(hermit(dir, 'config.json'), JSON.stringify({ channels: { custom: { attributes: { thread_id: 'topic' } } } }));
+  expect((await run('<channel source="custom" chat_id="chat" user="U1" topic="one">hello</channel>', dir)).exitCode).toBe(0);
+  expect(channelRows(hermit(dir)).rows[0].thread).toBe('one');
+  expect((await run('<channel source="custom" chat_id="chat" user="U1" thread_id="two">hello</channel>', dir)).exitCode).toBe(0);
+  expect(channelRows(hermit(dir)).rows[1].thread).toBeNull();
+}));

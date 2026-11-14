@@ -6,7 +6,10 @@ description: Handles inbound messages tagged <channel source=...> from Claude Co
 # Channel Responder
 
 When a message arrives via a channel:
+With a `recover <key>` argument, follow [recovery.md](recovery.md).
+
 ## Commands
+- `recovery-history`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-recovery.ts .hermit history <key>`
 - `leftover-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/evolve-plan.ts .hermit leftover-check`
 - `routines-health`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts health .hermit`
 - `settings-get-routines`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`

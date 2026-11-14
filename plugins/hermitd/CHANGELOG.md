@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Unfinished channel conversations receive a recovery turn that reads their chat history after a crash, API failure or interrupt.
+
 ### Changed
 
 - `Dockerfile.hermit` and `docker-compose.hermit.yml` are generated from config before host `up`, `restart` and `update`; customization lives in `docker.packages`, `docker-build.hermit-local.sh`, `docker-compose.override.yml` and `docker-entrypoint.hermit-local.sh`.
@@ -22,6 +26,8 @@
 - A failed subagent no longer marks the agent idle or counts as the agent's own failed turn
 
 ### Upgrade Instructions
+
+- Merge the config template into installed `config.json` to add `channel_recovery` while preserving operator values. Set `channel_recovery.enabled: false` to turn recovery off.
 
 1. **Docker agents only:** follow [docker-customize, Convert](skills/docker-customize/SKILL.md#convert) before rebuilding. Snapshot both installed Docker files, migrate the browser default, reconcile Git identity and packages, render to scratch, and place every customization in the operator hook or override before `--convert`, then delete the stale Docker merge state (step 8). Preserve all existing operator content. If any line cannot be placed, leave both installed Docker files untouched and report each unplaced line; do not claim conversion completed. Tmux agents skip this step.
 2. Apply the converted files through the next host `hermitd update`, which renders again, rebuilds and restarts. An update-launched evolve leaves that work to its waiting host update. Keep API keys in `.env`; a host-shell-only `ANTHROPIC_API_KEY` is not forwarded.

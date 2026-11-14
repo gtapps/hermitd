@@ -180,3 +180,17 @@ for (const home of ['', 'HOME']) test(`hook home=${home} eligibility and audit`,
     expect(fs.readFileSync(hermit(dir, 'state/settings-audit.jsonl'), 'utf8')).toContain('channel-hook');
   }
 }));
+
+for (const mapped of [true, false]) test(`outgoing thread capture with mapping=${mapped}`, withDir(async dir => {
+  fs.writeFileSync(hermit(dir, 'config.json'), JSON.stringify({ channels: { custom: { attributes: mapped ? { thread_id: 'topic' } : {} } } }));
+  const result = await runScript('channel-hook.ts', {
+    cwd: dir, env: { AGENT_DIR: hermit(dir) }, stdin: JSON.stringify({
+      tool_name: 'mcp__plugin_custom_custom__reply', tool_input: { chat_id: 'chat', topic: 'one', thread_id: 'two', text: 'hello' },
+    }),
+  });
+  expect(result.exitCode).toBe(0);
+  const db = new Database(hermit(dir, 'state', 'channel-log.sqlite'), { readonly: true });
+  try {
+    expect(db.query('SELECT thread FROM messages').all()).toEqual([{ thread: mapped ? 'one' : null }]);
+  } finally { db.close(); }
+}));

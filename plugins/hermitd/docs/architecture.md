@@ -236,6 +236,8 @@ Per-file update policies for managed files under `.hermit/`:
 
 ## Memory Model
 
+Per-conversation recovery reads the chat log to answer unfinished channel turns; `channel_recovery` controls its enablement and maximum age.
+
 ```
 +----------------------------------------------+
 |  OPERATOR.md                                 |
