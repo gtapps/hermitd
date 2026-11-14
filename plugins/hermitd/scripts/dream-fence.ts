@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
 import { hermitDir, resolvedMemoryDir } from './lib/cc-compat';

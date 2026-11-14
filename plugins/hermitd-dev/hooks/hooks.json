@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/git-push-guard.ts"]
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/scripts/git-push-guard.ts"]
           }
         ]
       },
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/worktree-boundary-guard.ts"]
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-boundary-guard.ts"]
           }
         ]
       }

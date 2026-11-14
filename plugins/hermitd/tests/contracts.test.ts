@@ -3648,7 +3648,7 @@ test('responder invocation evidence has one resident Skill hook writer', () => {
   expect(entries).toHaveLength(1);
   expect(entries[0].hooks).toEqual([{
     type: 'command', command: 'bun',
-    args: ['${CLAUDE_PLUGIN_ROOT}/scripts/channel-responder-invoked.ts'], timeout: 3,
+    args: ['--no-install', '${CLAUDE_PLUGIN_ROOT}/scripts/channel-responder-invoked.ts'], timeout: 3,
   }]);
   const architecture = read(path.join(PLUGIN_ROOT, 'docs/architecture.md'));
   expect(architecture).toContain('state/channel-responder-invoked.json');

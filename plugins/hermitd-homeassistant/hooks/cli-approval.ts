@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { basename, resolve } from 'node:path';
 import { shellCommands } from './shell-words';
 import { gateServiceCall, evaluateReferences, isWellFormedEntityId, PermissionDecision } from '../src/policy';

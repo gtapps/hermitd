@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // PreToolUse hook: gate mcp__homeassistant__* calls targeting sensitive entities.
 //
 // Default-deny chokepoint for the whole homeassistant MCP server: the matcher
