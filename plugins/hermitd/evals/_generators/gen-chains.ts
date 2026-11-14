@@ -309,6 +309,29 @@ chainCase('task-close-outside-skill-shop', 'heldout', 'A close digest flags a sk
     rubric('PASS if the final reply acknowledges the finished task and states no learning outcome when no skill changed. FAIL if it claims a saved skill without a write or adds a nothing-found learning line.')],
   chainScaffold(CLOSE_RECORD, [['skills/task/learn.md', '.hermit/guides/learn.md']]), ['Read', 'Glob', 'Grep'], { resident: true });
 
+// --- close inside the task skill, Portuguese install -> review guide ------
+
+// The same digest as the case above, with the task skill in reach and a pt-PT install: the close already
+// ran (a real one needs a verified sender), so only following the digest's `next` is graded.
+const PT_CONFIG = { ...RESIDENT_CONFIG, language: 'pt-PT' };
+const [PT_CLOSE_PROMPT, PT_CLOSE_RECORD] = withInstall({ '.hermit/config.json': configJson(PT_CONFIG) }, ({ run, read }) => {
+  const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Pôr os chás de outono na página da loja', '--requester', 'operator',
+    '--dedupe-key', 'helper:T-20260814-100044', '--done', 'Os chás de outono estão na página da loja'], { now: '2026-10-19T09:00:00.000Z' })).id;
+  run('task.ts', ['note', '.hermit', id], { stdin: '[guest:shop-page] Adicionei os nove chás de outono e abri o PR #42.\n', now: '2026-10-19T10:00:00.000Z' });
+  const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
+    { stdin: 'PR #42 integrado.\n', now: '2026-10-19T11:00:00.000Z' }));
+  const stood = JSON.stringify({ ...digest, next: digest.next.slice(0, digest.next.indexOf('/')) + '.hermit/guides/learn.md' });
+  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n`
+    + 'O PR #42 foi integrado, por isso a tarefa da página da loja está concluída. Obrigado.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
+});
+chainCase('task-close-in-skill-pt', 'heldout', 'In a Portuguese install with the task skill in reach, a close digest flags a skill review; the resident reads the review guide.',
+  'The review guide is read before the close reply',
+  PT_CLOSE_PROMPT,
+  [{ name: 'read-guide', type: 'tool_used', tool: 'Read', input_match: String.raw`learn\.md`, weight: 3 }],
+  residentScaffold(PT_CONFIG, { '.hermit/OPERATOR.md': '# Operador\n\nGere sozinho uma pequena loja de chá online. Prefere mensagens curtas.\n', ...PT_CLOSE_RECORD },
+    [['skills/task/learn.md', '.hermit/guides/learn.md']]),
+  ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
+
 // --- proposal-create -> triage duplicate (case 8) -------------------------
 
 chainCase('proposal-create-duplicate-shop', 'train', 'proposal-create gates through triage, which finds the open duplicate; nothing is created.',
