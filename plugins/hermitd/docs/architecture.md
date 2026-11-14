@@ -369,7 +369,7 @@ config.voice + config.language -> hermitd-start -> launch overlay outputStyle + 
 
 Truthy ambient values win over configured environment values in every carrier.
 
-**Shell environment:** `CLAUDE_CONFIG_DIR` and authentication values reach the launcher through the shell and are forwarded to its child. OAuth credentials remain in `.credentials.json`.
+**Shell environment:** `CLAUDE_CONFIG_DIR` and authentication values reach the launcher through the shell and are forwarded to its child. In Docker, authentication values come from `.env`; a key exported only in the host shell is not forwarded. OAuth credentials remain in `.credentials.json`.
 
 **Operator user or managed settings:** Claude Code may resolve its own config directory from these scopes inside the session. The startup hook records the effective config directory so the watchdog can use the resident's value.
 
