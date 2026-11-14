@@ -8,6 +8,7 @@ import { readSettledConfig } from './config-read';
 import { dutyRows } from './duty-summary';
 import { pendingDecisions } from './decisions';
 import { homeChatKey } from './home-chat';
+import { clip as clipText } from './sanitize';
 
 export type BriefMode = 'morning' | 'evening' | 'daily';
 
@@ -71,8 +72,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
   const clip = (value: string, limit = 200): string => {
     if (value.length <= limit) return value;
     omitted.clipped++;
-    const end = /[\uD800-\uDBFF]/.test(value[limit - 1]) ? limit - 1 : limit;
-    return value.slice(0, end);
+    return clipText(value, limit);
   };
   const nullable = (value: string | null) => value === null ? null : clip(value);
   const recordRow = (report: TaskReport, latest = false) => {

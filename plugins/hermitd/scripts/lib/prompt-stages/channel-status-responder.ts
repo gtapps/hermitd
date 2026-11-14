@@ -25,6 +25,7 @@ import { readTasks, currentWork, latestWaitIsStall, type Task } from '../tasks';
 import { conversationKey } from '../conversation-key';
 import { homeChatKey } from '../home-chat';
 import { decodeDecision } from '../tasks';
+import { clip } from '../sanitize';
 import type { StageContext, StageResult } from './types';
 
 type Json = any;
@@ -234,8 +235,8 @@ function composeScheduledReply(dir: string, config: Json, chatKey: string, trust
       : pending.has(`watch-enable:${watch.id}`) ? 'scheduled_pending' : 'scheduled_off');
     const description = String(watch.description ?? '');
     rows.push(poll
-      ? m.t('scheduled_watch', { id: String(watch.id), description, every: poll[1] ?? '5m', state, check: poll[2].slice(0, 200) })
-      : m.t('scheduled_stream', { id: String(watch.id), description, state, check: command.slice(0, 200) }));
+      ? m.t('scheduled_watch', { id: String(watch.id), description, every: poll[1] ?? '5m', state, check: clip(poll[2], 200) })
+      : m.t('scheduled_stream', { id: String(watch.id), description, state, check: clip(command, 200) }));
   }
   for (const routine of routines.slice(0, 10 - rows.length)) {
     // HH:MM only for a fixed daily time; any other cron keeps its day fields visible.

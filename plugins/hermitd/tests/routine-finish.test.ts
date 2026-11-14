@@ -221,6 +221,13 @@ describe('routines.ts finish — outcome line on stdin', () => {
     expect(detail.startsWith('[system-reminder]')).toBe(true);
   }));
 
+  test('a cap inside an emoji drops the whole emoji', withDir(async (dir) => {
+    writeConfig(dir, [{ id: 'plain', schedule: '0 9 * * *', skill: 'x', enabled: true }]);
+    await precheck(dir, 'plain');
+    await finish(dir, 'plain', `${'x'.repeat(199)}😀 done\n`);
+    expect(terminalDetail(dir, 'plain')).toEqual(['x'.repeat(199)]);
+  }));
+
   test('stores the line on a no-record verification failure', withDir(async (dir) => {
     writeConfig(dir, [
       { id: 'cal', schedule: '0 6 * * *', skill: 'x', enabled: true, expect_artifact: 'raw/s-{date}.md' },
