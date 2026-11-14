@@ -327,7 +327,7 @@ See the [Upgrade guide](docs/upgrading.md) for details.
 - **Configure:** the [Config Reference](docs/config-reference.md) covers the full schema and tuning details.
 - **Use:** [Getting Started](docs/how-to-use.md) and the [Owner's Guide](docs/owners-guide.md) cover everyday work, decisions, and controls.
 - **Automate:** [Routine Authoring](docs/routine-authoring.md) covers schedules and prechecks. [Channel configuration](docs/config-reference.md#channels) includes third-party channel plugins.
-- **Observe:** [Artifacts](docs/artifacts.md) explains the dashboard, pending decisions, and weekly reviews.
+- **Observe:** [Artifacts](docs/artifacts.md) explains the dashboard, pending decisions, and weekly reviews. [OpenTelemetry](docs/opentelemetry.md) explains how to export each step to a collector you run. Event names and attributes are in [Claude Code's monitoring docs](https://code.claude.com/docs/en/monitoring-usage).
 - **Maintain:** [Upgrading](docs/upgrading.md), [Backup](docs/backup.md), [Troubleshooting](docs/troubleshooting.md), and [Uninstalling](docs/how-to-use.md#install).
 - **Understand:** [Architecture](docs/architecture.md), [Security](docs/security.md), and [FAQ](docs/faq.md).
 
