@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ANCHOR, HOME, SHOP, type Universe, candidate, scaffold as triageScaffold } from './gen-triage';
-import { CHAT, EVALS, type Grader, type Install, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { BASH_FAILURE, CHAT, EVALS, type Grader, type Install, USER, agentBody, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'chains');
 
@@ -225,10 +225,9 @@ const DM_FIXTURES = {
   '.hermit/helper-reports/domain12.md': 'The domain renewal comparison is ready for approval.\n',
   '.hermit/helper-reports/invoice12.md': 'The invoice discrepancy review is ready for approval.\n',
 };
-// The eval host appends a spurious exit code and cwd error to every Bash call, and Bash writes do not reach disk (README § Running).
+// Eval-host Bash may be sandboxed or report a spurious exit code, and Bash writes do not reach disk (README § Running).
 const DM_STATE = 'Hermit state for this turn: this is a Discord DM with two running tasks, not a real thread. Hermit scripts run through `.hermit/bin/hermitd-run <verb> ...` '
-  + '(for example `.hermit/bin/hermitd-run task note .hermit <id> ...`). In this session the Bash tool appends `Exit code 1` and a read-only cwd error to every call; '
-  + 'the stdout before them is the real result. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.';
+  + '(for example `.hermit/bin/hermitd-run task note .hermit <id> ...`). ' + BASH_FAILURE + ' Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.';
 const [DM_PROMPT, DM_RECORDS, DM_IDS, DM_STUB, DM_LABELS] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG), ...DM_FIXTURES }, ({ run, read }) => {
   const ids: string[] = [];
   const records: Record<string, string> = {};

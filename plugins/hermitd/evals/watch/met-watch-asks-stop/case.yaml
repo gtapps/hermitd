@@ -77,7 +77,7 @@ execution:
     - Files in the operator's project follow that project's own conventions.
   prompt: |
     <system-reminder>
-    Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. In this session the Bash tool appends `Exit code 1` and a read-only cwd error to every call; the stdout before them is the real result. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
+    Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     - config.json: operator_profile unset; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator); monitors=[]
     - config.json monitors[0]: {"id":"deploy-finished","chat":"discord:400000000000000001","description":"Tell me when the deploy finishes","command":"watch-poll deploy-finished --every 5m -- bin/deploy-status","enabled":true}
     </system-reminder>

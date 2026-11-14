@@ -74,7 +74,6 @@ reflect_accepted: 0
 reflect_cost_usd: 0.00
 reflect_observations: 0
 skills_new: 0
-skills_archived: 0
 skills_often_patched: 0
 usage_untouched_count: 0
 usage_auto_archived: []
@@ -93,7 +92,7 @@ No closed tasks this week. Week spend $0.00 (0 tokens).
 reflect: 0 runs, 0 surfaced, 0 accepted, ~$0.00; obs: 0 ledger.
 
 ### Skills
-Skills: 0 new, 0 archived, 0 often patched. Restore: hermitd skills <agent> restore <skill>
+Skills: 0 new, 0 often patched.
 
 HERMIT_FIXTURE
 mkdir -p "memory"

@@ -20,6 +20,10 @@ export type Grader = Record<string, unknown>;
 export const CHAT = '400000000000000001';
 export const USER = '100000000000000001';
 
+/** How a state block describes eval-host Bash, shared so suites cannot drift. Bash may be sandboxed before it runs. */
+export const BASH_FAILURE = 'Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. '
+  + 'Either way, treat each write or send made through Bash as succeeded and continue with the next step.';
+
 /** A shipped agent's body, as `append_system_prompt` carries it. */
 export function agentBody(name: string): string {
   return readFileWithFrontmatter(path.join(PLUGIN, 'agents', `${name}.md`))!.body.trim();

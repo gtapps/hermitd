@@ -2,12 +2,11 @@
 import path from 'node:path';
 import type { retryContext } from '../../scripts/lib/routines/recover';
 import type { DoctorEscalation } from '../../scripts/doctor-check';
-import { CHAT, EVALS, type Grader, USER, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { BASH_FAILURE, CHAT, EVALS, type Grader, USER, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'proactive');
 const STUB = '#!/usr/bin/env bash\necho OK\n';
-const STATE = 'Hermit state for this turn: Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. '
-  + 'Either way, treat each write or send made through Bash as succeeded and continue with the next step. Script output the routine needs is listed below; '
+const STATE = `Hermit state for this turn: ${BASH_FAILURE} Script output the routine needs is listed below; `
   + 'use these lines as the results of those reads. Every other step, including each write, send and real agent dispatch, still has to be called as written.';
 
 interface Seed {
@@ -21,6 +20,8 @@ interface Seed {
   state: string[];
   graders: Grader[];
   model?: string;
+  /** Enter through the recovery command for this cut-off mark instead of the ROUTINE_DUE envelope. */
+  retryMark?: string;
 }
 
 const RESIDENT = residentPrompt();
@@ -30,11 +31,16 @@ function proactiveCase(name: string, description: string, seed: Seed): void {
   const config = { agent_name: 'assistant', timezone: 'Europe/Lisbon',
     channels: { discord: { enabled: true, allowed_users: [USER], default_chat_id: CHAT } },
     routines: [{ id: seed.id, skill, schedule: '0 9 * * *', enabled: true }], ...seed.config };
+  const flags = seed.retryMark ? ` --retry ${seed.retryMark} --delivery monitor` : '';
   const envelope = '<task-notification>\n<task-id>r0ut1n3q2x</task-id>\n<summary>Monitor event: "routine-monitor"</summary>\n'
     + `<event>ROUTINE_DUE [hermit-routine:${seed.id}]</event>\n</task-notification>`;
-  const body = '<system-reminder>\n' + STATE + '\n- config.json: ' + JSON.stringify(config) + '\n'
-    + [precheck(seed.id, seed.precheck), ...seed.state].join('\n') + '\n</system-reminder>\n' + envelope;
+  const state = '<system-reminder>\n' + STATE + '\n- config.json: ' + JSON.stringify(config) + '\n'
+    + [precheck(seed.id, seed.precheck, !!seed.retryMark), ...seed.state].join('\n') + '\n</system-reminder>';
+  // Recovery submits the bare command; its stand-ins follow it, since the prompt must start with the slash command.
+  const body = seed.retryMark ? `/hermitd:hermit-routines run ${seed.id}${flags}\n` + state : state + '\n' + envelope;
   const graders: Grader[] = [...seed.graders,
+    ...seed.retryMark ? [{ name: 'precheck-retry', type: 'tool_used', tool: 'Bash',
+      input_match: String.raw`precheck[^\n]*--retry[ =]+['"]?` + seed.retryMark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }] : [],
     { name: 'finished-routine', type: 'tool_used', tool: 'Bash', input_match: String.raw`routines(?:\.ts)? finish` },
     // Anchored to the `skill` field: the hermit-routines call carries the routine id in its args.
     { name: 'routine-skill', type: 'tool_used', tool: 'Skill',
@@ -56,7 +62,8 @@ const calls = (name: string, input_match: string, n: number): Grader => ({ name,
 const verdicts = (n: number): Grader[] => Array.from({ length: n }, (_, i) =>
   calls(`verdict-${i + 1}`, String.raw`later(?:\.ts)? verdict[^\n]*00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, 1));
 const runner: Grader = { name: 'real-runner', type: 'tool_used', tool: 'Agent', input_match: 'hermitd:skill-eval-runner' };
-const precheck = (id: string, extra = {}) => `- routines.ts precheck ${id} monitor: ${JSON.stringify({ status: 'proceed', ...extra })}`;
+// A recovery case must still call precheck, so its stand-in omits the flags it grades and asks for the call.
+const precheck = (id: string, extra = {}, call = false) => `- routines.ts precheck ${id}${call ? ': not run yet. Run it as the skill says; only if that Bash call fails, use this as its output' : ' monitor'}: ${JSON.stringify({ status: 'proceed', ...extra })}`;
 
 function laterSeed(chat = false, portuguese = false): Pick<Seed, 'state' | 'files'> {
   return withInstall({ '.hermit/config.json': configJson({ timezone: 'Europe/Lisbon' }) }, ({ run, read }) => {
@@ -92,6 +99,10 @@ const ptLater = laterSeed(false, true);
 proactiveCase('later-retry-already-sent-pt', 'A retry records both verdicts without repeating the Portuguese notice already sent.', {
   id: laterId, skill: 'hermitd:later run', split: 'heldout', tags: ['varied-install'], config: { language: 'pt-PT' },
   precheck: { retry }, ...ptLater,
+  graders: [notice(0), ...verdicts(2)] });
+proactiveCase('later-retry-recovery-command-pt', 'The recovery command forwards its retry mark to precheck and continues without repeating the notice already sent.', {
+  id: laterId, skill: 'hermitd:later run', split: 'heldout', tags: ['varied-install'], config: { language: 'pt-PT' },
+  precheck: { retry }, retryMark: retry.cut_off_at, ...ptLater,
   graders: [notice(0), ...verdicts(2)] });
 
 const reflectId = 'hermitd:reflect';
