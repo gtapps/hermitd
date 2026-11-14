@@ -12,7 +12,7 @@
 
 Run an always-on Claude Code agent on your own machine, for you or your team.
 
-Start and orchestrate sessions from chat in any project it can reach. Take over the same session in the Claude app or the CLI. Tasks, saved watches, and pending decisions survive a restart.
+Multi-project orchestration: The agent can start and orchestrate sessions from chat across Git projects it can reach. Take over the same session in the Claude app or the CLI. Tasks, saved watches, and pending decisions survive a restart.
 
 Connect Discord, Telegram, iMessage, or a custom Claude Code [channel](https://code.claude.com/docs/en/channels). Use the Claude app via [Remote Control](https://code.claude.com/docs/en/remote-control), or your terminal.
 
@@ -31,14 +31,10 @@ https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 | Option | Why hermitd |
 |--------|-------------|
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://github.com/openclaw/openclaw) | hermitd runs directly inside Claude Code as a plugin, without a wrapper or separate agent loop. You get Claude.ai, the Claude app, [Remote Control](https://code.claude.com/docs/en/remote-control), and the rest of Claude Code, with your tools, permissions, skills, plugins, and MCP. |
-| [Claude Projects](https://code.claude.com/docs/en/claude-projects.md) | The orchestrator runs locally, with your CLIs, tools, and control. Chat through any Claude Code [channel](https://code.claude.com/docs/en/channels). Watches, reports, and tasks survive a restart. Routines stay cheaper: [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) and a [precheck](docs/routine-authoring.md) can skip a run without model tokens. |
-| [Claude Tag](https://claude.com/docs/claude-tag/concepts/how-it-works) | Use Discord, Telegram, iMessage, or custom Claude Code channels, and continue the same session in the Claude app or terminal. Tag currently documents Slack, including with self-hosted runners; [Microsoft Teams is announced](https://claude.com/form/claude-tag-teams-waitlist). |
+| [Claude Projects](https://code.claude.com/docs/en/claude-projects.md) | Orchestrate across projects locally, with your CLIs and tools. Chat through any Claude Code [channel](https://code.claude.com/docs/en/channels). Save model usage on routines: [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) and a [precheck](docs/routine-authoring.md) can skip a run without model tokens. |
+| [Claude Tag](https://claude.com/docs/claude-tag/concepts/how-it-works) | Use Claude Code channels, including Discord, Telegram, iMessage, or a custom channel, and continue the same session in the Claude app or terminal. |
 | [Claude Duet](https://support.claude.com/en/articles/17631495-get-started-with-claude-duet), [ChatGPT Dots](https://learn.chatgpt.com/docs/dots), [Grok Bot](https://docs.x.ai/grok-bot/overview) | It runs locally, fully customizable, yours to control, beside your files, databases, and local services. Duet, Dots, and Grok Bot provide managed cloud agents. |
-| [Self-hosted Claude Managed Agents](https://claude.com/resources/articles/self-hosted-claude-managed-agents) | hermitd runs on your Claude subscription. Self-hosted Managed Agents is a private-beta API you host and operate. |
-
-You keep the host running and maintain its sign-ins. Claude Code runs on your machine. Anthropic still does the compute in the cloud.
-
-Sources checked November 14, 2026.
+| [Self-hosted Claude Managed Agents](https://claude.com/resources/articles/self-hosted-claude-managed-agents) | hermitd runs on your Claude subscription rather than API usage, which can be 10x cheaper depending on usage. |
 
 <a id="quick-start"></a>
 
