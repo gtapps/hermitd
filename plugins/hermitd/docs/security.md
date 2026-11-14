@@ -399,7 +399,7 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 - **Session budget** of $5-10 for overnight sessions
 - **Heartbeat** for 24/7 monitoring — detects stalled agents, changed conditions, rate limits
 - **Network:** allow only `api.anthropic.com`, your channel API, and `github.com` when possible
-- **Secrets:** don't mount `~/.aws/`, `~/.ssh/` into containers. Use scoped API keys.
+- **Secrets:** don't mount `~/.aws/`, `~/.ssh/` into containers. Use a scoped API key, service account, or GitHub App that belongs to the agent. See [GitHub CLI authentication](docker-security.md#gh-cli-authentication).
 - **Review session reports** before pushing — check for leaked paths, credentials, or connection strings
 
 ---

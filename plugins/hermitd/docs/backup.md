@@ -59,7 +59,7 @@ Local paths and `file://` remotes push with no credentials. For an https remote 
 2. `GH_TOKEN`
 3. a `HERMIT_BACKUP_TOKEN=` line in the project-root `.env`
 
-For GitHub, a fine-grained personal access token with **Contents: write** on that one repository is enough.
+For GitHub, a fine-grained personal access token with **Contents: write** on that one repository is enough. Use the agent's own identity for that token, a dedicated bot account or a current GitHub App installation token, as in [GitHub CLI authentication](docker-security.md#gh-cli-authentication). Backup commits are authored as the agent name. The account that accepts the push is whoever owns this token.
 
 The token is passed to git through a credential helper that reads it from the environment. It never appears in a command line, in `.git/config`, or in any file the backup writes.
 

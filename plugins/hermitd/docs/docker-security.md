@@ -131,10 +131,15 @@ address=/internal-host.example/10.0.0.5
 
 `gh` is pre-installed in the hermit Docker baseline image. By default it runs anonymously — fine for read-only public-repo operations, but subject to GitHub's unauthenticated rate limit (60 req/hr per IP).
 
-To authenticate, add a GitHub PAT to your `.env` file:
+When the agent needs authenticated GitHub access, give that agent its own identity. Pull requests, comments, and authenticated pushes then belong to the agent, and revoking its credential cuts the agent off without rotating yours. Leave `HERMIT_GH_TOKEN` unset to keep `gh` anonymous.
+
+Use one of these:
+
+- **GitHub App.** Register an App in the agent's name and install it on the repositories that agent should touch. Grant only the repository permissions its git and `gh` use (Contents, Pull requests, and Issues, as needed). An installation access token expires after one hour. Keep the App's private key outside the container, and write a current installation token into `HERMIT_GH_TOKEN` from outside the agent before start, then again before each expiry. Hermit uses the value of `HERMIT_GH_TOKEN` as-is.
+- **Dedicated bot account.** A separate GitHub account with a fine-grained personal access token scoped to those same repositories. Put that token in `.env`:
 
 ```
-HERMIT_GH_TOKEN=ghp_yourpersonalaccesstoken
+HERMIT_GH_TOKEN=<bot-account-token>
 ```
 
 The Compose template maps `HERMIT_GH_TOKEN` to `GH_TOKEN` inside the container, which `gh` reads natively. Restart the container to pick up the change:
@@ -145,7 +150,11 @@ hermitd-docker down && hermitd-docker up
 
 Verify with `hermitd-docker bash -c 'gh auth status'`.
 
-**Why `HERMIT_GH_TOKEN` instead of `GH_TOKEN` directly?** Hermit uses `HERMIT_*` as the namespace for operator-facing credentials so that future runtime shims — for example, auto-minting a short-lived install token from `HERMIT_GH_APP_*` credentials (mirroring how `hermit-scribe` works) — can swap the token source transparently. The operator-facing var name stays stable; only the internal wiring changes.
+**Why `HERMIT_GH_TOKEN` instead of `GH_TOKEN` directly?** `HERMIT_*` is the namespace for operator-facing credentials. The name stays stable if the way the token is produced changes later. Only the mapping into the container would change.
+
+**Commit author is a different identity.** `docker.git_identity_mount` defaults to `true`, so the container bind-mounts the host `~/.gitconfig` read-only and commits use that name and email. The GitHub account on `gh` and on HTTPS git is the owner of `HERMIT_GH_TOKEN`. To make the commit author match the agent, turn the mount off or point Git at the agent's name and email.
+
+**Other services.** For every other credential the container loads from `.env`, and for every tool sign-in stored for this agent, use a dedicated service account or API key for this agent. One credential serves every chat and routine. See [Connections](access-model.md#connections).
 
 **Netguard note:** No allowlist entry is needed for GitHub API calls. The existing `server=/github.com/` rule in `dnsmasq.allowlist` already covers `api.github.com` and all other `*.github.com` subdomains — dnsmasq's `server=/<domain>/` syntax matches a domain and all its subdomains.
 
