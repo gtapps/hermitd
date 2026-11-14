@@ -16,12 +16,16 @@ type Json = any;
 // Channel tools that only read, so calling one sends the operator nothing.
 const READ_ONLY_TOOL_RE = /(download_attachment|fetch_messages)$/;
 
-export async function replyBlockReason(dir: string, payload: Json): Promise<string | null> {
+// `turn` lets a caller that already reads the turn share that read; null means no transcript.
+export async function replyBlockReason(dir: string, payload: Json, turn = (): ReturnType<typeof readTurn> | null => {
+  const tPath = transcriptPath(payload);
+  return tPath ? readTurn(tPath) : null;
+}): Promise<string | null> {
   try {
-    const tPath = transcriptPath(payload);
-    if (!tPath) return null;
+    const read = turn();
+    if (!read) return null;
 
-    const { lines, prompt } = readTurn(tPath);
+    const { lines, prompt } = read;
     if (!prompt.boundaryFound) return null;
 
     const config = readConfigRaw(dir);

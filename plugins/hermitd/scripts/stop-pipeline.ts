@@ -60,9 +60,14 @@ async function main(): Promise<void> {
   // the starvation class issue #617 fixed, just time-bounded.
   if (!guest) {
     observeExecution(HERMIT_DIR, 'idle', sessionId(payload), null, null);
+    // One transcript read per Stop, shared by the reply checkpoint and the recovery clear.
+    // A failed read is not cached, so each consumer stays fail-open on its own.
+    const tPath = transcriptPath(payload);
+    let turnRead: ReturnType<typeof readTurn> | undefined;
+    const turn = () => tPath ? (turnRead ??= readTurn(tPath)) : null;
     try {
       if (payload.stop_hook_active !== true) {
-        const reason = await intakeBlockReason(HERMIT_DIR, sessionId(payload)) ?? await replyBlockReason(HERMIT_DIR, payload);
+        const reason = await intakeBlockReason(HERMIT_DIR, sessionId(payload)) ?? await replyBlockReason(HERMIT_DIR, payload, turn);
         if (reason) {
           console.log(JSON.stringify({ decision: 'block', reason }));
           blocked = true;
@@ -84,9 +89,9 @@ async function main(): Promise<void> {
         });
       }
       try {
-        const tPath = transcriptPath(payload);
-        if (tPath) {
-          const { lines, prompt } = readTurn(tPath);
+        const read = turn();
+        if (read) {
+          const { lines, prompt } = read;
           const keys: string[] = [];
           const config = readSettledConfig(HERMIT_DIR);
           const add = (text: string) => {
