@@ -242,7 +242,6 @@ for (const scenario of [
   else expect(reason).toContain('reply is still owed');
 }));
 
-
 test('a caller-supplied turn read is used once, without the payload transcript path', withDir(async dir => {
   const { readTurn } = await import('../scripts/lib/cc-compat');
   const { replyBlockReason } = await import('../scripts/lib/reply-checkpoint');
