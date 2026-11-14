@@ -389,12 +389,12 @@ test('reflect cost matches configured reflect routine ids exactly', withHermitDi
   expect(readReview(dir).fm.reflect_cost_usd).toBe('2.00');
 }));
 
-describe('weekly learned-skill retirement', () => {
-  function seedSkills(dir: string, count: number, capture: boolean) {
+describe('weekly learned-skill review', () => {
+  function seedSkills(dir: string, count: number) {
     const configDir = path.join(dir, 'test-claude'); fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ config_dir: configDir }));
     const old = new Date(Date.now() - 40 * 86400000).toISOString();
-    const skillUsage: Record<string, any> = capture ? { 'capture-evidence': { lastUsedAt: Date.now() } } : {};
+    const skillUsage: Record<string, any> = { 'capture-evidence': { lastUsedAt: Date.now() } };
     const rows = [];
     for (let n = 0; n < count; n++) {
       const skill = `learned-${String(n).padStart(2, '0')}`;
@@ -406,46 +406,19 @@ describe('weekly learned-skill retirement', () => {
     fs.writeFileSync(path.join(dir, 'state/skill-ledger.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
     fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage }));
   }
-  test('no capture evidence leaves suggestions', withHermitDir(async dir => {
-    seedSkills(dir, 1, false);
+  test('leaves old unused learned skills in place even with capture evidence', withHermitDir(async dir => {
+    seedSkills(dir, 16);
     expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    expect(readReview(dir).fm.skills_archived).toBe('0');
-    expect(readReview(dir).body).toContain('no recent skillUsage capture evidence');
-  }));
-  test('recent worktree and plugin usage protects learned skills', withHermitDir(async dir => {
-    seedSkills(dir, 2, false);
-    const configDir = path.join(dir, 'test-claude');
-    fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage: {
-      '.claude/worktrees/example:learned-00': { lastUsedAt: Date.now() },
-      'example-plugin:learned-01': { lastUsedAt: new Date().toISOString() },
-    } }));
-    expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    expect(readReview(dir).fm.skills_archived).toBe('0');
-    expect(readReview(dir).body).not.toContain('dormant suggestion');
-    for (const name of ['learned-00', 'learned-01']) {
-      expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name))).toBe(true);
+    for (let n = 0; n < 16; n++) {
+      const name = `learned-${String(n).padStart(2, '0')}`;
+      expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name, 'SKILL.md'))).toBe(true);
     }
-  }));
-  test('cap, pins, routine names, recent patches and operator skills stay protected', withHermitDir(async dir => {
-    seedSkills(dir, 16, true);
-    writeConfig(dir, { routines: [{ skill: 'learned-01 --arg' }] });
-    fs.appendFileSync(path.join(dir, 'state/skill-ledger.jsonl'), JSON.stringify({ ts: new Date().toISOString(), skill: 'learned-00', action: 'pin' }) + '\n' + JSON.stringify({ ts: new Date().toISOString(), skill: 'learned-02', action: 'patch' }) + '\n');
-    const operator = path.join(path.dirname(dir), '.claude/skills/operator'); fs.mkdirSync(operator); fs.writeFileSync(path.join(operator, 'SKILL.md'), 'Operator');
-    expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    expect(readReview(dir).fm.skills_archived).toBe('10');
-    for (const name of ['learned-00', 'learned-01', 'learned-02', 'operator']) expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name))).toBe(true);
-    expect(readReview(dir).body).toContain('dormant suggestion');
     const rows = fs.readFileSync(path.join(dir, 'state/skill-ledger.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(rows.filter(row => row.action === 'archive').length).toBe(10);
-  }));
-  test('restored skills are never archived again', withHermitDir(async dir => {
-    seedSkills(dir, 1, true);
-    expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    const name = 'learned-00';
-    fs.renameSync(path.join(dir, 'state/skill-archive', name), path.join(path.dirname(dir), '.claude/skills', name));
-    expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    expect(readReview(dir).fm.skills_archived).toBe('0');
-    expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name))).toBe(true);
+    expect(rows.filter(row => row.action === 'archive')).toHaveLength(0);
+    expect(fs.existsSync(path.join(dir, 'state/skill-archive'))).toBe(false);
+    const { fm, body } = readReview(dir);
+    expect(fm[['skills', 'archived'].join('_')]).toBeUndefined();
+    expect(body).toContain('### Skills\nSkills: 0 new, 0 often patched.\n\n');
   }));
 });
 

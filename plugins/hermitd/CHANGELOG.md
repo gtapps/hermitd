@@ -10,6 +10,8 @@
 
 ### Changed
 
+- The weekly review no longer archives learned skills; unused ones stay listed and can improve when their task returns.
+
 - Routine health counts interrupted closures separately from contract failures and incomplete attempts; expired runs and interrupted retries receive one operator notice.
 
 - `Dockerfile.hermit` and `docker-compose.hermit.yml` are generated from config before host `up`, `restart` and `update`; customization lives in `docker.packages`, `docker-build.hermit-local.sh`, `docker-compose.override.yml` and `docker-entrypoint.hermit-local.sh`.
@@ -30,6 +32,8 @@
 - A failed subagent no longer marks the agent idle or counts as the agent's own failed turn
 
 ### Upgrade Instructions
+
+- For each folder in `.hermit/state/skill-archive/*/`, run `.hermit/bin/hermitd-run skills restore <name>`. Report every `{"status":"refused","reason":"not_available"}` name to the operator in chat as a skill that already has an active same-named copy; report any other refusal or error rather than claiming success. If the archive folder is absent or empty, nothing is required.
 
 - Inspect installed routines and name those whose skills act outside the chat, such as archival, session closure or external writes. Ask the operator in chat which named routines should set `retry_after_crash: false`, then write only the confirmed choices in installed `config.json`. Preserve every other routine and operator edit; no state migration is required.
 

@@ -19,7 +19,7 @@ import { formatTokens } from './lib/format';
 import { writeFileAtomic } from './lib/md-write';
 import { shortPropId } from './lib/dashboard';
 import { lint as knowledgeLint } from './knowledge-lint';
-import { LearnedSkills, SKILL_NAME, lastSkillUse, usageTime } from './lib/learned-skills';
+import { LearnedSkills, SKILL_NAME } from './lib/learned-skills';
 import { printJson } from './lib/cli';
 
 type Json = any;
@@ -387,40 +387,12 @@ if (usageAutoArchive && compiledEvidence && untouchedDocs.length > 0) {
   }
 }
 
-// Learned skills have their own provenance, usage capture and operator veto.
 const learned = new LearnedSkills(hermitDir);
 const skillLedger = learned.ledger();
 const learnedNames = [...new Set(skillLedger.filter(row => row.action === 'create' && SKILL_NAME.test(row.skill)).map(row => row.skill))].sort();
-const skillPins = learned.pins();
-const skillArchivedOnce = learned.archivedOnce();
-const skillConfig = readSettledConfig(hermitDir);
-const routineSkills = new Set(skillConfig.routines.map((routine: any) => String(routine.skill ?? '').split(/\s+/)[0]));
-const skillUsage = learned.skillUsage();
-const skillCutoff = now.getTime() - 30 * 86400000;
-const skillCapture = Object.values(skillUsage).some(entry => {
-  const at = usageTime(entry);
-  return at >= skillCutoff && at <= now.getTime();
-});
-const skillsArchived: string[] = [];
-const skillsSuggested: string[] = [];
-for (const name of learnedNames) {
-  if (!fs.existsSync(learned.skillDir(name)) || skillPins.has(name) || routineSkills.has(name) || skillArchivedOnce.has(name)) continue;
-  const changes = skillLedger.filter(row => row.skill === name && ['create', 'patch', 'restore', 'rollback'].includes(row.action));
-  const lastChange = Math.max(...changes.map(row => Date.parse(row.ts)));
-  const lastUse = lastSkillUse(skillUsage, name);
-  if (!Number.isFinite(lastChange) || lastChange >= skillCutoff || Number.isFinite(lastUse) && lastUse >= skillCutoff) continue;
-  if (skillCapture && skillsArchived.length < RUN_CAP) {
-    try { if (learned.archive(name)) { skillsArchived.push(name); continue; } } catch { /* report as a suggestion */ }
-  }
-  skillsSuggested.push(name);
-}
 const skillsNew = new Set(skillLedger.filter(row => row.action === 'create' && new Date(row.ts) >= weekStart && new Date(row.ts) < weekEnd).map(row => row.skill)).size;
 const skillsOftenPatched = learnedNames.filter(name => skillLedger.filter(row => row.skill === name && row.action === 'patch' && new Date(row.ts) >= weekStart && new Date(row.ts) < weekEnd).length >= 3).length;
-let skillsSection = `### Skills\nSkills: ${skillsNew} new, ${skillsArchived.length} archived, ${skillsOftenPatched} often patched. Restore: hermitd skills <agent> restore <skill>\n`;
-for (const name of skillsArchived) skillsSection += `- ${name}: archived after 30 days without use or patch\n`;
-for (const name of skillsSuggested.slice(0, RUN_CAP)) skillsSection += `- ${name}: dormant suggestion${!skillCapture ? ' (no recent skillUsage capture evidence)' : ' (run cap or move unavailable)'}\n`;
-if (skillsSuggested.length > RUN_CAP) skillsSection += `- (+${skillsSuggested.length - RUN_CAP} more suggestions)\n`;
-skillsSection += '\n';
+const skillsSection = `### Skills\nSkills: ${skillsNew} new, ${skillsOftenPatched} often patched.\n\n`;
 
 const usageUntouchedCount = untouchedDocs.length;
 
@@ -473,7 +445,6 @@ const frontmatter = [
   `reflect_cost_usd: ${reflectCost.toFixed(2)}`,
   `reflect_observations: ${reflectObsTotal}`,
   `skills_new: ${skillsNew}`,
-  `skills_archived: ${skillsArchived.length}`,
   `skills_often_patched: ${skillsOftenPatched}`,
   `usage_untouched_count: ${usageUntouchedCount}`,
   `usage_auto_archived: [${autoArchived.map(s => `"${s.replace(/,/g, ';')}"`).join(', ')}]`,
