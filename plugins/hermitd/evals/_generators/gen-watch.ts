@@ -10,17 +10,16 @@
 
 import path from 'node:path';
 
-import { CHAT, EVALS, type Grader, type Install, USER, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { BASH_FAILURE, CHAT, EVALS, type Grader, type Install, USER, configJson, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'watch');
 const MEMBER = '100000000000000002';
 const MESSAGE_AT = '2026-10-21T09:00:00.000Z';
 const CONFIG = { agent_name: 'assistant', timezone: 'Europe/Lisbon', channels: { discord: { allowed_users: [USER, MEMBER] } }, monitors: [] };
 const STUB = '#!/usr/bin/env bash\necho OK\n';
-// The eval host appends a spurious exit code and cwd error to every Bash call, and Bash writes do not reach disk (evals/README.md § Running).
+// Eval-host Bash may be sandboxed or report a spurious exit code, and Bash writes do not reach disk (evals/README.md § Running).
 const STATE = 'Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. '
-  + 'In this session the Bash tool appends `Exit code 1` and a read-only cwd error to every call; the stdout before them is the real result. '
-  + 'Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.';
+  + BASH_FAILURE + ' Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.';
 const CONFIG_LINE = `- config.json: operator_profile unset; language unset; channels.discord.allowed_users=["${USER}","${MEMBER}"] (first entry is the primary operator); monitors=[]`;
 
 const SAVE = String.raw`settings-edit[^\n]*append monitors[^\n]*watch-poll [a-z0-9-]+ [^\n]*-- \S`;

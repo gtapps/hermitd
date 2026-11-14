@@ -88,7 +88,7 @@ execution:
     WORKER T-20261021-090000 done domain12
 
     <system-reminder>
-    Hermit state for this turn: this is a Discord DM with two running tasks, not a real thread. Hermit scripts run through `.hermit/bin/hermitd-run <verb> ...` (for example `.hermit/bin/hermitd-run task note .hermit <id> ...`). In this session the Bash tool appends `Exit code 1` and a read-only cwd error to every call; the stdout before them is the real result. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
+    Hermit state for this turn: this is a Discord DM with two running tasks, not a real thread. Hermit scripts run through `.hermit/bin/hermitd-run <verb> ...` (for example `.hermit/bin/hermitd-run task note .hermit <id> ...`). Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
