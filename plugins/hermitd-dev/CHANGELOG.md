@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.27] - 2026-11-14
 
 ### Changed
 - The Claude Code 2.1.302 floor is declared as the native `engines["claude-code"]` range in `plugin.json`.
