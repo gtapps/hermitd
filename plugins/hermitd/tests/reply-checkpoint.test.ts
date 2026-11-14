@@ -241,3 +241,15 @@ for (const scenario of [
   if (scenario.pass) expect(reason).toBeNull();
   else expect(reason).toContain('reply is still owed');
 }));
+
+
+test('a caller-supplied turn read is used once, without the payload transcript path', withDir(async dir => {
+  const { readTurn } = await import('../scripts/lib/cc-compat');
+  const { replyBlockReason } = await import('../scripts/lib/reply-checkpoint');
+  const transcript = writeTranscript(dir, [envelope(), assistantText()]);
+  let reads = 0;
+  const reason = await replyBlockReason(hermit(dir), {}, () => { reads++; return readTurn(transcript); });
+  expect(reason).toContain('reply is still owed');
+  expect(reads).toBe(1);
+  expect(await replyBlockReason(hermit(dir), {}, () => null)).toBeNull();
+}));

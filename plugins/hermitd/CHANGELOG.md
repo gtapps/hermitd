@@ -21,6 +21,7 @@
 - Close-time skill reviews write concrete steps the closed task showed working instead of general method advice, and task procedure reports record the exact commands or tools used
 - A request to reconnect a tool no longer sends a sign-in link to chat; the agent asks an admin to finish it with `/mcp` at its terminal, since Claude Code refuses a callback pasted in a session with a channel
 - The agent's launch sets `CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES=1` by default, skipping subagent spinner-label requests; set it to `0` in `config.env` to keep them
+- The Stop hook reads the current turn's transcript once instead of twice, keeping long turns inside the hook timeout
 
 ### Fixed
 
