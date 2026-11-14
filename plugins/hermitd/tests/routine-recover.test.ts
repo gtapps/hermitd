@@ -118,7 +118,7 @@ test('shared marker only clears after both stores empty', () => {
   expect(fs.existsSync(marker)).toBe(false);
 });
 
-import { retryContext, lostRoutine, clearLostRoutine, recoveryReport, stillLostRoutine } from '../scripts/lib/routines/recover';
+import { retryContext, lostRoutine, clearLostRoutine, recoveryReport, pendingRecovery, stillLostRoutine } from '../scripts/lib/routines/recover';
 import { logMessage } from '../scripts/lib/channel-log';
 import { runScript } from './helpers/run';
 
@@ -190,6 +190,21 @@ test('report bounds retry and closure facts by the previous boot', () => {
     { routine_id: 'normal', ts: mark, event: 'fired' },
   ].map(row => JSON.stringify(row)).join('\n') + '\n');
   expect(recoveryReport(dir).map(row => row.detail)).toEqual(['retry', 'lost:api']);
+});
+
+test('report lists this boot\'s interrupted runs as pending before the first reconcile', async () => {
+  const dir = fixture();
+  // The restart anchor is reconcile bookkeeping, never a pending run.
+  markStarted(dir, { routine_id: 'hermitd:heartbeat-restart', skill: 'x', mark, started_at: mark, delivery: 'monitor', session_id: 'previous' });
+  stampInterrupted(dir, 'unclean');
+  const result = await runScript('routines.ts', { args: ['recover', '--report'], env: { AGENT_DIR: dir } });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ routines: [], pending: [{ routine_id: 'r', cause: 'unclean', mark }] });
+  // An expired run is reported once, as its lost closure, while it awaits the notice.
+  reconcileRoutines(dir, now + 7 * 3600000);
+  expect(readUnfinished(dir)[key].state).toBe('lost');
+  expect(pendingRecovery(dir)).toEqual([]);
+  expect(recoveryReport(dir).map(row => row.detail)).toEqual(['lost:unclean']);
 });
 
 
