@@ -24,6 +24,7 @@
 
 ### Fixed
 
+- Routine `finish` stores the fire's outcome line instead of discarding it, and routine health reports it as `last_outcome`
 - Managed Docker image layers, including ffmpeg and the browser, reach converted installs on every rebuild; `docker.packages` additions and removals apply through `hermitd restart --build`.
 - Workspace trust disclosures no longer list the removed `subagentStatusLine` setting as an active helper command.
 - An `authentication_failed` turn no longer sends a sign-in link while Claude Code reports the stored claude.ai login as usable, so a transient edge block such as a Cloudflare 403 stops asking the operator to sign in again

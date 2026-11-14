@@ -5,8 +5,10 @@
 // session still owns `started` and `fired`. `precheck-error` rows carry a
 // `detail` field naming how the gate failed (timeout | exit:<code> | bad-verdict
 // | spawn | a config reason) — see lib/routines/gate.ts; every other event
-// omits the key, except `started` with detail `retry` and `failed-interrupted`
-// with detail `<planned|optout|superseded|disabled|aborted|lost>:<unclean|planned|api|->`.
+// omits the key, except `started` with detail `retry`, `failed-interrupted`
+// with detail `<planned|optout|superseded|disabled|aborted|lost>:<unclean|planned|api|->`,
+// and the `fired` / `failed-*` terminals finish.ts writes, whose detail is the
+// fire's one-line outcome when the skill supplied one.
 //
 // Ported from log-routine-event.sh, and still emitting the same four keys with
 // the same UTC second-precision stamp. The row shape is pinned (tests assert it,

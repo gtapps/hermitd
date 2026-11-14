@@ -9,7 +9,7 @@ Standing work is what the hermit does without being asked in the moment: routine
 ### Gather (bounded reads only)
 
 - Routines: `settings-get-routines` (Commands) for id, schedule, skill, enabled, precheck.
-- Routine outcomes: `routines-health` (Commands) (JSON; add `--days N` for a longer window). Use `last_fire`, `failure_total`, `last_precheck_error`, `open_attempt`.
+- Routine outcomes: `routines-health` (Commands) (JSON; add `--days N` for a longer window). Use `last_fire`, `last_outcome`, `failure_total`, `last_precheck_error`, `open_attempt`.
 - Config watches: read `.hermit/config.json` → `monitors[]` for id, description, enabled; match by id to `.hermit/state/watch-monitor.runtime.json` → `watches[]` for pid, started_at, restarts, last_exit_code. An enabled watch absent from runtime is pending reconciliation.
 - Ad-hoc and session watches: read `.hermit/state/monitors.runtime.json` for id, description, source, class, started_at.
 - Roles: the `[role` lines already in this turn's context. Hermit-wide ones always apply; a pinned `[role <key>:<chat_id>]` line applies only to that chat (`SKILL.md` § 1). Also list the current chat's `[chat instructions]` line when present.
@@ -24,7 +24,7 @@ Order: problems first, then current activity, then domain standing work.
 
 - A problem is a routine with `failure_total > 0` or a `last_precheck_error`, a `fail` or `warn` entry in the saved doctor report, an ad-hoc watch whose registry entry says it exited, or a config watch whose `watch-monitor.runtime.json` row has no `pid` and a nonzero or null `last_exit_code`.
 - Lead with work aimed at the operator's domain (briefs, domain analyses, watches, rules). Routines that exist to keep the hermit itself running (monitor re-arms, self-reflection, self-checks, session closing) are housekeeping: mention them only when one carries a problem or the operator asks for the internal housekeeping.
-- Per item: plain name, purpose (from the skill name or description), cadence or condition in words, destination when config names one, last known outcome (`last_fire` plus `failure_total`), and persistence: routines and roles persist across restarts. An enabled config watch returns at the next start. A stopped config watch stays disabled. An ad-hoc watch ends with the session.
+- Per item: plain name, purpose (from the skill name or description), cadence or condition in words, destination when config names one, last known outcome (`last_fire` and `last_outcome` plus `failure_total`), and persistence: routines and roles persist across restarts. An enabled config watch returns at the next start. A stopped config watch stays disabled. An ad-hoc watch ends with the session.
 
 ### Matching a named item
 

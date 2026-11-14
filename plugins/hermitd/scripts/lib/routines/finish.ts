@@ -2,8 +2,10 @@
 // owner of a routine fire's terminal ledger row. Called unconditionally after the
 // skill is invoked, replacing the old `log-event <id> fired`.
 //
-// With --outcome-stdin the dispatcher drains supplied outcome text.
-// Finish records only the terminal ledger verdict, without a journal write.
+// With --outcome-stdin, stdin carries the fire's one-line outcome. Its first
+// non-empty line, sanitized and capped, lands as `detail` on the terminal row
+// finish writes; routines health reports the newest one as `last_outcome`. An
+// empty outcome, or a replayed fire, adds nothing.
 //
 // Why a finalizer instead of a verify-then-branch: the old contract asked the
 // model to decide which event to log, so a fire's success was recorded from the
@@ -17,8 +19,8 @@
 //   {"status":"failed","reason":"verification_error","detail":"<detail>"}
 //
 // The failure reason is encoded in the event string (failed-artifact-missing, …)
-// rather than a separate column, because routine-metrics.jsonl's row shape is
-// pinned to four keys. lib/routines/history.ts folds these into typed per-reason
+// rather than a separate column: routine-metrics.jsonl rows keep four keys plus
+// an optional `detail`. lib/routines/history.ts folds these into typed per-reason
 // failure counts, so a contract miss reads as its own outcome rather than as an
 // unexplained gap.
 //
@@ -33,11 +35,13 @@ import { clearEntries } from './unfinished';
 import { emitJson, readJson, snakeToken } from '../cli';
 import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
+import { safeForLLM } from '../sanitize';
 import { readRunRecord, markOutcome, statIdentity, identityChanged } from './run-record';
 
 type Json = any;
 
 const OUTCOME_FLAG = '--outcome-stdin';
+const OUTCOME_MAX = 200;
 
 /**
  * The single exit path: emits `fired`, or a failure reason (as markOutcome records
@@ -79,9 +83,13 @@ export function run(args: string[], outcome = ''): void {
   clearEntries(hermit, entry => entry.routine_id === id && entry.session_id === sessionId
     && (entry.state === 'started' || entry.state === 'awaiting'));
 
+  // Model-written, possibly from untrusted input; later turns read it back.
+  const firstLine = outcome.split('\n').map(l => l.trim()).find(Boolean);
+  const detail = firstLine ? safeForLLM(firstLine).slice(0, OUTCOME_MAX) : undefined;
+
   const stamp = (event: string): void => {
     try {
-      logRoutineEvent(id, event, hermit, delivery);
+      logRoutineEvent(id, event, hermit, delivery, detail);
     } catch { /* a stamp failure must not crash the fire path */ }
   };
 
