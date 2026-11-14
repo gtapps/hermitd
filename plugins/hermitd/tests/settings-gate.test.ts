@@ -1,5 +1,6 @@
 // Spawns the settings-gate hook: the stdout JSON and exit code are the thing
-// Claude Code actually consumes (tests/helpers/run.ts).
+// Claude Code actually consumes (tests/helpers/run.ts). The protected-paths
+// matrix calls protectedMutation in-process instead.
 import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
