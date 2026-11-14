@@ -272,10 +272,6 @@ async function loadedFor($: EngineInterface, id: string) {
   stateDir = result.state;
   idleSince = await $.clock.now();
   await readEffort($, result.state);
-  if (!initialScan && !mainTurn && !busy()) {
-    await reconcile($, id);
-    initialScan = true;
-  }
   if (recovered) return;
   recovered = true;
   const resumed = await bridge($, 'recover');
@@ -314,8 +310,10 @@ async function confirmFromStamp($: EngineInterface, dir: string) {
 }
 
 async function reconcile($: EngineInterface, sessionId: string) {
-  await bridge($, 'reconcile', JSON.stringify({ lastTurnCompleteAt }));
+  initialScan = true;
   lastScan = { at: await $.clock.now(), sessionId, turnCompleteAt: lastTurnCompleteAt };
+  // A failed scan waits for the next scan window; it never holds back the queue below.
+  await bridge($, 'reconcile').catch(() => undefined);
 }
 
 async function tick($: EngineInterface) {
@@ -329,13 +327,12 @@ async function tick($: EngineInterface) {
     const now = await $.clock.now();
     const idle = !mainTurn && !busy();
     if (idle) {
-      if (!initialScan) {
-        await reconcile($, id);
-        initialScan = true;
-      } else if (now - idleSince >= 60_000
+      if (!initialScan) await reconcile($, id);
+      else if (now - idleSince >= 60_000
           && (!lastScan || lastScan.sessionId !== id || lastScan.turnCompleteAt !== lastTurnCompleteAt || now - lastScan.at >= 300_000)) {
         const files = await $.fs.list(stateDir).catch(() => []);
         if (files.some(file => file.kind === 'file' && file.name === 'recovery-pending')) await reconcile($, id);
+        else lastScan = { at: now, sessionId: id, turnCompleteAt: lastTurnCompleteAt };
       }
     }
     const dir = `${stateDir}/harness-queue`;

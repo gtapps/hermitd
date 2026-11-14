@@ -66,8 +66,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
       return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId };
     case 'reconcile': {
-      const options = JSON.parse(payload || '{}');
-      const result = await reconcileChannels(dir, Date.now(), options);
+      const result = await reconcileChannels(dir, Date.now());
       const queued = result.entries.map(entry => enqueue(dir, entry));
       if (!result.pending) clearRecoveryPending(dir);
       return { decision: 'ok', pending: result.pending, queued };

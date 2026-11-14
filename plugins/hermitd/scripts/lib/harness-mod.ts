@@ -312,19 +312,20 @@ export function claim(
       }
       if (options.pauseOnly && entry.source !== 'pause') continue;
       if (entry.source === 'recovery') {
-        const observed = readExecution(dir);
-        // Recovery uses the mod's completion boundary, not the reader's one-hour
-        // liveness cutoff: a long-running turn still holds its conversation.
-        const execution = observed.state === 'unknown' ? readJson(path.join(dir, 'state', 'execution.json')) : observed;
-        const live = execution?.state === 'in_flight' && execution.cc_session_id === runtime.cc_session_id
-          && (options.lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > options.lastTurnCompleteAt);
-        if (isPaused(dir).paused || live) continue;
-        const key = entry.purpose?.startsWith('channel-recover:') ? entry.purpose.slice('channel-recover:'.length) : '';
-        if (!stillUnfinished(dir, key)) {
-          settle(dir, listed, legsFor(entry, 'skipped', 'nothing_unfinished'), unanswered, now);
-          continue;
-        }
-        if (!claimAttempt(dir, key, now)) continue;
+        // An unreadable recovery state leaves this entry waiting; it never stalls the queue.
+        let verdict: 'run' | 'wait' | 'done' = 'wait';
+        try {
+          const observed = readExecution(dir);
+          // Recovery uses the mod's completion boundary, not the reader's one-hour
+          // liveness cutoff: a long-running turn still holds its conversation.
+          const execution = observed.state === 'unknown' ? readJson(path.join(dir, 'state', 'execution.json')) : observed;
+          const live = execution?.state === 'in_flight' && execution.cc_session_id === runtime.cc_session_id
+            && (options.lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > options.lastTurnCompleteAt);
+          const key = entry.purpose?.startsWith('channel-recover:') ? entry.purpose.slice('channel-recover:'.length) : '';
+          if (!isPaused(dir).paused && !live) verdict = !stillUnfinished(dir, key) ? 'done' : claimAttempt(dir, key, now) ? 'run' : 'wait';
+        } catch {}
+        if (verdict === 'done') settle(dir, listed, legsFor(entry, 'skipped', 'nothing_unfinished'), unanswered, now);
+        if (verdict !== 'run') continue;
       }
       if (entry.source === 'watchdog') {
         const boundary = passesExecutionBoundary(dir);

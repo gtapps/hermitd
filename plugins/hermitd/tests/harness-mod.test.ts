@@ -557,11 +557,11 @@ test('shared reconcile bridge keeps its marker until every producer is done and 
   queueRecovery(dir);
   const marker = path.join(dir, 'state/recovery-pending');
   fs.writeFileSync(marker, '');
-  expect(await call(wd, 'reconcile', JSON.stringify({ lastTurnCompleteAt: Date.now() }))).toMatchObject({ decision: 'ok', pending: true });
+  expect(await call(wd, 'reconcile')).toMatchObject({ decision: 'ok', pending: true });
   expect(listing(dir, QUEUE_DIR)).toHaveLength(1);
   expect(fs.existsSync(marker)).toBe(true);
   fs.unlinkSync(path.join(dir, 'state/channel-unfinished.json'));
-  expect(await call(wd, 'reconcile', '{}')).toMatchObject({ decision: 'ok', pending: false });
+  expect(await call(wd, 'reconcile')).toMatchObject({ decision: 'ok', pending: false });
   expect(fs.existsSync(marker)).toBe(false);
 });
 

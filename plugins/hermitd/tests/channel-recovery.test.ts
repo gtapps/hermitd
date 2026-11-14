@@ -16,7 +16,7 @@ function fixture(extra = {}) {
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ channels: { custom: {} }, ...extra }));
   return dir;
 }
-const reconcile = (dir: string, at = now) => reconcileChannels(dir, at, { lastTurnCompleteAt: null });
+const reconcile = (dir: string, at = now) => reconcileChannels(dir, at);
 const stamp = (dir: string, at: number) => fs.writeFileSync(path.join(dir, 'state', 'stop-failure.json'), JSON.stringify({ at: iso(at) }));
 
 test('earliest admission survives repeated writes, each conversation queues independently, clearing is selective', async () => {
@@ -113,6 +113,9 @@ test('history uses the exact conversation and admission time', () => {
   }
   expect(historyFor(dir, 'custom:chat~one')?.rows).toHaveLength(1);
   expect(historyFor(dir, 'custom:other')).toBeNull();
+  markUnfinished(dir, 'custom:chat', iso(now));
+  logMessage(dir, { source: 'custom', chat_id: 'chat', direction: 'in', text: 'top', ts: iso(now) });
+  expect(historyFor(dir, 'custom:chat')?.rows.map(row => row.text)).toEqual(['top']);
 });
 
 async function historyCli(dir: string, key: string) {
@@ -143,7 +146,7 @@ test('history CLI returns framing, sender roles, thread policy and matching task
   expect(result.rows[2].thread_unknown).toBe(true);
   expect(result.tasks).toHaveLength(1);
   expect(result.thread_line).toBe('[task thread custom:chat~one: owner=resident, muted=false, waiting=false]');
-  expect(await historyCli(dir, 'custom:missing')).toEqual({ status: 'nothing_unfinished' });
+  expect(await historyCli(dir, 'custom:missing')).toEqual({ status: 'skipped', reason: 'nothing_unfinished' });
 });
 
 test('history CLI bounds row count, per-row text and serialized row bytes', async () => {
@@ -156,6 +159,7 @@ test('history CLI bounds row count, per-row text and serialized row bytes', asyn
   expect(result.rows.length).toBeLessThanOrEqual(50);
   expect(Buffer.byteLength(JSON.stringify(result.rows))).toBeLessThanOrEqual(64 * 1024);
   for (const row of result.rows) expect(row.text.length).toBeLessThanOrEqual(2000);
+  expect(result.rows.at(-1).ts).toBe(iso(now + 119));
 });
 
 

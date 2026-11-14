@@ -8,7 +8,7 @@ import { readSettledConfig } from './config-read';
 import { isKey } from './conversation-key';
 import { conversationHistory, isLoggingEnabled } from './channel-log';
 import { allowedUserIds } from './channel-auth';
-import { threadRecords } from './tasks';
+import { threadRecords, type Task } from './tasks';
 import { cachedChat, isThreadChannelType, classifyChat } from './channel-chats';
 import { parseDuration } from './time';
 import type { QueueRequest } from './harness-mod';
@@ -73,13 +73,21 @@ export function clearConversations(dir: string, keys: string[]): void {
   withStore(dir, store => { for (const key of keys) delete store[key]; });
 }
 
+// Open records of a recoverable conversation: a logged channel, not muted. Null when ineligible.
+function openRecords(dir: string, key: string, config: any): Task[] | null {
+  if (!isKey(key)) return null;
+  const { source } = conversation(key);
+  if (!config.channels?.[source] || !isLoggingEnabled(config, source)) return null;
+  const records = threadRecords(dir).filter(record => record.conversation === key);
+  return records.some(record => record.muted) ? null : records;
+}
+
 export function stillUnfinished(dir: string, key: string): boolean {
   if (!isKey(key) || !Object.hasOwn(readStore(dir), key)) return false;
   const config = readSettledConfig(dir);
+  const records = config.channel_recovery?.enabled === false ? null : openRecords(dir, key, config);
+  if (!records) return false;
   const { source, chatId, thread } = conversation(key);
-  if (config.channel_recovery?.enabled === false || !config.channels?.[source] || !isLoggingEnabled(config, source)) return false;
-  const records = threadRecords(dir).filter(record => record.conversation === key);
-  if (records.some(record => record.muted)) return false;
   const inThread = source === 'discord' ? isThreadChannelType(cachedChat(dir, chatId)) : thread !== undefined;
   return !inThread || !records.some(record => record.owner !== 'resident');
 }
@@ -95,18 +103,14 @@ export function claimAttempt(dir: string, key: string, now: number): boolean {
 }
 
 async function eligible(dir: string, key: string, config: any): Promise<boolean> {
-  if (!isKey(key)) return false;
+  const records = openRecords(dir, key, config);
+  if (!records) return false;
   const { source, chatId, thread } = conversation(key);
-  if (!config.channels?.[source] || !isLoggingEnabled(config, source)) return false;
-  const records = threadRecords(dir).filter(record => record.conversation === key);
-  if (records.some(record => record.muted)) return false;
   return !records.some(record => record.owner !== 'resident')
     || await classifyChat(dir, config, source, chatId, thread) !== 'thread';
 }
 
-export async function reconcileChannels(
-  dir: string, now: number, _options: { lastTurnCompleteAt?: number | null },
-): Promise<{ entries: QueueRequest[]; pending: boolean }> {
+export async function reconcileChannels(dir: string, now: number): Promise<{ entries: QueueRequest[]; pending: boolean }> {
   const config = readSettledConfig(dir);
   if (config.channel_recovery?.enabled === false) {
     withStore(dir, store => { for (const key of Object.keys(store)) delete store[key]; });
@@ -124,7 +128,7 @@ export async function reconcileChannels(
         delete store[key];
         continue;
       }
-      if (Number.isFinite(failureAt) && entry.refunded_at !== failure.at
+      if (Number.isFinite(failureAt) && entry.refunded_at !== failure.at && failureAt >= Date.parse(entry.since)
           && (entry.last_attempt_at === null || failureAt >= Date.parse(entry.last_attempt_at))) {
         if (entry.last_attempt_at !== null) entry.attempts = Math.max(0, entry.attempts - 1);
         const delay = [10, 30, 60][Math.min(entry.refunds ?? 0, 2)] * 60000;
@@ -147,6 +151,6 @@ export function historyFor(dir: string, key: string) {
   const { source, chatId, thread } = conversation(key);
   const config = readSettledConfig(dir);
   return { conversation: key, source, chatId, thread, rows: conversationHistory(dir, source, chatId, {
-    limit: 100, senderIds: allowedUserIds(config, source), since: entry.since, thread,
+    limit: 50, senderIds: allowedUserIds(config, source), since: entry.since, thread: thread ?? null,
   }) };
 }

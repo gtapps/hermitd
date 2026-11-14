@@ -8,6 +8,10 @@ import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
 
+export function openTasksLine(key: string, work: Task[]): string {
+  return `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]`;
+}
+
 export function taskThreadLine(key: string, record: Task): string {
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
   return `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
@@ -39,7 +43,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   if (work.length > 1) {
     // Admit the thread so the reply reminder does not drop the message before the model can ask.
     ctx.openTasksInChat = true;
-    return { context: `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]` };
+    return { context: openTasksLine(key, work) };
   }
   const record = work[0] ?? questions[0];
   if (!record) {

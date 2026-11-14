@@ -429,7 +429,7 @@ function conversationHistory(
   hermitDir: string,
   source: string,
   chatId: string,
-  { limit, senderIds, since, thread }: { limit: number; senderIds?: string[] | null; since?: string; thread?: string },
+  { limit, senderIds, since, thread }: { limit: number; senderIds?: string[] | null; since?: string; thread?: string | null },
 ): (Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'> & Partial<ChannelRow>)[] {
   try {
     if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir), source)) return [];
@@ -439,12 +439,14 @@ function conversationHistory(
       const params: (string | number)[] = [source, chatId, ...(senderIds ?? [])];
       let filters = '';
       if (since !== undefined) { filters += ' AND ts >= ?'; params.push(since); }
-      if (thread !== undefined) {
+      // A null thread is the chat's top level: messages without the thread attribute.
+      if (thread === null) filters += ' AND thread IS NULL';
+      else if (thread !== undefined) {
         filters += " AND (thread = ? OR (direction = 'out' AND thread IS NULL))";
         params.push(thread);
       }
       const details = since !== undefined || thread !== undefined ? ', sender_id, message_id' : '';
-      const unknown = thread !== undefined ? ", CASE WHEN direction = 'out' AND thread IS NULL THEN 1 ELSE 0 END AS thread_unknown" : '';
+      const unknown = typeof thread === 'string' ? ", CASE WHEN direction = 'out' AND thread IS NULL THEN 1 ELSE 0 END AS thread_unknown" : '';
       const rows = db.query(
         `SELECT ts, direction, sender, text${details}${unknown} FROM messages
          WHERE source = ? AND chat_id = ? ${senderFilter}${filters}

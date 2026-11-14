@@ -5,7 +5,7 @@ import { readSettledConfig } from './lib/config-read';
 import { chatInstructions, isPrimaryOperator } from './lib/channel-auth';
 import { safeForLLM, safeForLLMMultiline } from './lib/sanitize';
 import { agentQuestion, threadRecords } from './lib/tasks';
-import { taskThreadLine } from './lib/prompt-stages/conversation';
+import { openTasksLine, taskThreadLine } from './lib/prompt-stages/conversation';
 import { classifyChat } from './lib/channel-chats';
 
 async function main(): Promise<void> {
@@ -13,11 +13,12 @@ async function main(): Promise<void> {
   if (!argvDir || verb !== 'history' || !key || extra.length) exitError('usage');
   const dir = pinStateDirOrExit(argvDir);
   const history = historyFor(dir, key);
-  if (!history || !stillUnfinished(dir, key)) { printJson({ status: 'nothing_unfinished' }); return; }
+  if (!history || !stillUnfinished(dir, key)) { printJson({ status: 'skipped', reason: 'nothing_unfinished' }); return; }
   const config = readSettledConfig(dir);
   let bytes = 2; // JSON array brackets.
   const rows = [];
-  for (const row of history.rows.slice(-50)) {
+  // Newest first, so the byte cap drops the oldest rows, never the unanswered request.
+  for (const row of history.rows.slice(-50).reverse()) {
     const item = {
       direction: row.direction, ts: row.ts, sender: row.sender === null ? null : safeForLLM(row.sender).slice(0, 160),
       sender_id: row.sender_id ?? null, message_id: row.message_id ?? null,
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
     };
     const size = Buffer.byteLength(JSON.stringify(item)) + (rows.length ? 1 : 0);
     if (bytes + size > 64 * 1024) break;
-    rows.push(item);
+    rows.unshift(item);
     bytes += size;
   }
   const records = threadRecords(dir);
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
   const work = own.filter(record => !agentQuestion(record));
   const record = work[0] ?? own[0];
   const thread_line = work.length > 1
-    ? `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]`
+    ? openTasksLine(key, work)
     : record ? taskThreadLine(key, record) : null;
   const ids = new Set(rows.filter(row => row.direction === 'in').map(row => row.message_id).filter(Boolean));
   const tasks = records.filter(record => record.origin_message_id !== null && ids.has(record.origin_message_id))

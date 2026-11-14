@@ -63,7 +63,7 @@ test('bridge processes use the session root when the shell cwd drifts', async ($
   on('command.run', () => ({}));
   expect((await $.prompt.submit(channel('!clear'))).drop).toBeDefined();
   await clock.settle();
-  expect(r.calls).toEqual(['intake', 'loaded', 'reconcile', 'recover', 'claim']);
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'reconcile', 'claim']);
   expect(r.inits).toEqual(r.calls.map(() => ({ cwd: '/work' })));
 });
 
@@ -105,7 +105,7 @@ test('intake queues through the bridge, then runs and waits for model switch evi
   expect((await $.prompt.submit(channel('!model sonnet'))).drop).toBeDefined();
   expect(r.calls).toEqual(['intake']);
   await clock.settle();
-  expect(r.calls).toEqual(['intake', 'loaded', 'reconcile', 'recover', 'claim', 'model']);
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'reconcile', 'claim', 'model']);
   await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'));
   await $.classic.PostModelSwitch(postSwitch('opus', 'unrelated'));
   await clock.settle();
@@ -568,13 +568,13 @@ test('/effort auto clears the override', async ($, on) => {
 });
 
 
-test('reconcile scans once after load and only after quiet while marked, carrying the last main completion', async ($, on) => {
+test('reconcile scans once after load and only after quiet while marked', async ($, on) => {
   const clock = mock.clock(on);
   const r = rig(on);
   on('turn.complete', () => ({ text: '' }));
   await boot($);
-  await clock.settle();
-  expect(r.payloads.reconcile).toEqual([{ lastTurnCompleteAt: null }]);
+  await clock.advance(2000);
+  expect(r.payloads.reconcile).toHaveLength(1);
   await $.turn.start({ turnId: 'main', text: '' });
   r.files['/state/recovery-pending'] = '';
   await clock.advance(120000);
@@ -584,7 +584,6 @@ test('reconcile scans once after load and only after quiet while marked, carryin
   expect(r.payloads.reconcile).toHaveLength(1);
   await clock.advance(3000);
   expect(r.payloads.reconcile).toHaveLength(2);
-  expect(typeof r.payloads.reconcile![1].lastTurnCompleteAt).toBe('number');
   await clock.advance(296000);
   expect(r.payloads.reconcile).toHaveLength(2);
   await clock.advance(4000);
@@ -592,6 +591,18 @@ test('reconcile scans once after load and only after quiet while marked, carryin
   delete r.files['/state/recovery-pending'];
   await clock.advance(600000);
   expect(r.payloads.reconcile).toHaveLength(3);
+});
+
+test('a failed reconcile still lets the queue drain', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { reconcile: () => { throw new Error('bridge down'); } } });
+  on('session.cwd', () => ({ value: '/work' }));
+  on('command.run', () => ({}));
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'high' }]));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.calls).toContain('reconcile');
+  expect(r.calls).toContain('claim');
 });
 
 test('load during a main turn defers its first reconcile until idle', async ($, on) => {
