@@ -1074,3 +1074,36 @@ for (const scenario of [
     expect(result.stdout).toContain('[channel reply reminder]');
   }
 });
+
+for (const scenario of ['admitted', 'non-allowed', 'logging-off', 'guest', 'shutdown', 'status', 'passive', 'muted', 'harness'] as const) {
+  test(`recovery records only admitted channel prompts: ${scenario}`, async () => {
+    const wd = setupChannelWorkdir(scenario === 'logging-off' ? { log_chats: false } : scenario === 'passive' ? { passive_chats: ['12345'] } : {});
+    if (scenario === 'guest') markGuest(hermit(wd.dir, 'state'), 'guest-session');
+    if (scenario === 'shutdown') writeRuntime(wd, PENDING_SHUTDOWN);
+    if (scenario === 'muted') {
+      fs.writeFileSync(hermit(wd.dir, 'config.json'), JSON.stringify({ channels: { telegram: { allowed_users: ['u1'], attributes: { thread_id: 'topic' } } } }));
+      mutateTask(hermit(wd.dir), 'open', undefined, { owner: 'resident', requester: 'telegram:u1', conversation: 'telegram:12345~one', title: 'Work', done: 'Complete', muted: 'true' }, '');
+    }
+    const stub = startHttpStub();
+    try {
+      const prompt = scenario === 'muted' ? '<channel source="telegram" chat_id="12345" user="u1" topic="one">hello</channel>'
+        : envelope(scenario === 'status' ? '!status' : 'hello', scenario === 'non-allowed' ? 'stranger' : 'u1');
+      const result = scenario === 'harness'
+        ? await runScript('harness-mod.ts', { cwd: wd.dir, args: ['intake', 'session', prompt] })
+        : await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, stdin: JSON.stringify({ prompt, session_id: scenario === 'guest' ? 'guest-session' : undefined }), env: { HERMIT_TELEGRAM_API_URL: stub.url } });
+      expect(result.exitCode).toBe(0);
+      expect(fs.existsSync(hermit(wd.dir, 'state', 'channel-unfinished.json'))).toBe(scenario === 'admitted');
+      expect(fs.existsSync(hermit(wd.dir, 'state', 'recovery-pending'))).toBe(scenario === 'admitted');
+    } finally { stub.stop(); }
+  });
+}
+
+
+for (const timestamp of [undefined, '2026-11-14T00:00:00.000Z']) test(`admission keeps the unanswered message in recovery history: ts=${timestamp}`, async () => {
+  const wd = setupChannelWorkdir();
+  const prompt = `<channel source="telegram" chat_id="12345" user="u1"${timestamp ? ` ts="${timestamp}"` : ''}>Please answer this</channel>`;
+  const result = await runScript('user-prompt-pipeline.ts', { cwd: wd.dir, stdin: JSON.stringify({ prompt }) });
+  expect(result.exitCode).toBe(0);
+  const { historyFor } = await import('../scripts/lib/channel-recovery');
+  expect(historyFor(hermit(wd.dir), 'telegram:12345')?.rows.map(row => row.text)).toContain('Please answer this');
+});

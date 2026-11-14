@@ -37,6 +37,7 @@ interface LogInput {
   sender?: string | null;
   sender_id?: string | null;
   message_id?: string | null;
+  thread?: string | null;
   text: string;
   ts?: string; // ISO; defaults to now
 }
@@ -50,6 +51,8 @@ interface ChannelRow {
   sender: string | null;
   sender_id: string | null;
   message_id: string | null;
+  thread?: string | null;
+  thread_unknown?: true;
   text: string;
 }
 
@@ -144,6 +147,10 @@ function ensureSchema(db: Json): void {
       if (!/duplicate column/i.test(e?.message || '')) throw e;
     }
   }
+  if (!columns.some(c => c.name === 'thread')) {
+    try { db.run('ALTER TABLE messages ADD COLUMN thread TEXT'); }
+    catch (error: any) { if (!/duplicate column/i.test(error?.message || '')) throw error; }
+  }
 }
 
 // Shared by every write path so stored text keeps one redaction and size cap.
@@ -171,8 +178,8 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
 
       const ts = input.ts || new Date().toISOString();
       db.query(
-        `INSERT INTO messages (ts, source, chat_id, direction, sender, sender_id, message_id, text)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO messages (ts, source, chat_id, direction, sender, sender_id, message_id, text, thread)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         ts,
         String(input.source || ''),
@@ -181,7 +188,8 @@ function logMessage(hermitDir: string, input: LogInput): { ok: boolean; error?: 
         input.sender ?? null,
         input.sender_id ?? null,
         input.message_id ?? null,
-        text
+        text,
+        input.thread ?? null
       );
       return { ok: true };
     } finally {
@@ -421,18 +429,33 @@ function conversationHistory(
   hermitDir: string,
   source: string,
   chatId: string,
-  { limit, senderIds }: { limit: number; senderIds?: string[] | null },
-): Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[] {
+  { limit, senderIds, since, thread }: { limit: number; senderIds?: string[] | null; since?: string; thread?: string | null },
+): (Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'> & Partial<ChannelRow>)[] {
   try {
     if (!Number.isInteger(limit) || limit <= 0 || !dbExists(hermitDir) || !isLoggingEnabled(readSettledConfig(hermitDir), source)) return [];
     const db = openDb(hermitDir, { readonly: true });
     try {
       const senderFilter = senderIds ? `AND (direction = 'out' OR sender_id IN (${senderIds.map(() => '?').join(',')}))` : '';
+      const params: (string | number)[] = [source, chatId, ...(senderIds ?? [])];
+      let filters = '';
+      if (since !== undefined) { filters += ' AND ts >= ?'; params.push(since); }
+      // A null thread is the chat's top level: messages without the thread attribute.
+      if (thread === null) filters += ' AND thread IS NULL';
+      else if (thread !== undefined) {
+        filters += " AND (thread = ? OR (direction = 'out' AND thread IS NULL))";
+        params.push(thread);
+      }
+      const details = since !== undefined || thread !== undefined ? ', sender_id, message_id' : '';
+      const unknown = typeof thread === 'string' ? ", CASE WHEN direction = 'out' AND thread IS NULL THEN 1 ELSE 0 END AS thread_unknown" : '';
       const rows = db.query(
-        `SELECT ts, direction, sender, text FROM messages
-         WHERE source = ? AND chat_id = ? ${senderFilter}
+        `SELECT ts, direction, sender, text${details}${unknown} FROM messages
+         WHERE source = ? AND chat_id = ? ${senderFilter}${filters}
          ORDER BY ts DESC, id DESC LIMIT ?`
-      ).all(source, chatId, ...(senderIds ?? []), limit) as Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'>[];
+      ).all(...params, limit) as (Pick<ChannelRow, 'ts' | 'direction' | 'sender' | 'text'> & Partial<ChannelRow>)[];
+      for (const row of rows) {
+        if (row.thread_unknown) row.thread_unknown = true;
+        else delete row.thread_unknown;
+      }
       return rows.reverse();
     } finally { db.close(); }
   } catch { return []; }

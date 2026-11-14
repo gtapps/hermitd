@@ -1,4 +1,5 @@
 // JSON-only bridge between the Claude Code mod and core's resident-owned state.
+import { clearRecoveryPending, reconcileChannels } from './lib/channel-recovery';
 import fs from 'node:fs';
 import path from 'node:path';
 import { hermitDir } from './lib/cc-compat';
@@ -64,9 +65,16 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     case 'loaded':
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
       return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId };
+    case 'reconcile': {
+      const result = await reconcileChannels(dir, Date.now());
+      const queued = result.entries.map(entry => enqueue(dir, entry));
+      if (!result.pending) clearRecoveryPending(dir);
+      return { decision: 'ok', pending: result.pending, queued };
+    }
     case 'claim': {
       const unanswered: Unanswered[] = [];
-      const entry = claim(dir, sessionId, ownVersion(), { pauseOnly: payload === 'pause', unanswered });
+      const options = payload && payload !== 'pause' ? JSON.parse(payload) : {};
+      const entry = claim(dir, sessionId, ownVersion(), { pauseOnly: payload === 'pause', lastTurnCompleteAt: options.lastTurnCompleteAt, unanswered });
       return { ...(entry ? { ...entry, decision: 'run' } : { decision: 'pass' }), ...(await answerUnanswered(dir, unanswered)) };
     }
     case 'recover': {

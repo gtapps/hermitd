@@ -57,6 +57,10 @@ let recovered = false;
 let ticking = false;
 // The main loop's running turn, from turn.start; subagent turns never gate the queue.
 let mainTurn: string | undefined;
+let idleSince = 0;
+let lastTurnCompleteAt: number | null = null;
+let lastScan: { at: number; sessionId: string; turnCompleteAt: number | null } | undefined;
+let initialScan = false;
 let request: Entry | undefined;
 let legs: Leg[] = [];
 // One $.command.run outstanding at a time, held until it settles.
@@ -266,6 +270,7 @@ async function loadedFor($: EngineInterface, id: string) {
     return;
   }
   stateDir = result.state;
+  idleSince = await $.clock.now();
   await readEffort($, result.state);
   if (recovered) return;
   recovered = true;
@@ -304,6 +309,13 @@ async function confirmFromStamp($: EngineInterface, dir: string) {
   } catch {}
 }
 
+async function reconcile($: EngineInterface, sessionId: string) {
+  initialScan = true;
+  lastScan = { at: await $.clock.now(), sessionId, turnCompleteAt: lastTurnCompleteAt };
+  // A failed scan waits for the next scan window; it never holds back the queue below.
+  await bridge($, 'reconcile').catch(() => undefined);
+}
+
 async function tick($: EngineInterface) {
   if (ticking) return;
   ticking = true;
@@ -312,14 +324,24 @@ async function tick($: EngineInterface) {
     if (id !== lastId) await loadedFor($, id).catch(() => undefined);
     if (!stateDir) return;
     await confirmFromStamp($, stateDir);
+    const now = await $.clock.now();
+    const idle = !mainTurn && !busy();
+    if (idle) {
+      if (!initialScan) await reconcile($, id);
+      else if (now - idleSince >= 60_000
+          && (!lastScan || lastScan.sessionId !== id || lastScan.turnCompleteAt !== lastTurnCompleteAt || now - lastScan.at >= 300_000)) {
+        const files = await $.fs.list(stateDir).catch(() => []);
+        if (files.some(file => file.kind === 'file' && file.name === 'recovery-pending')) await reconcile($, id);
+        else lastScan = { at: now, sessionId: id, turnCompleteAt: lastTurnCompleteAt };
+      }
+    }
     const dir = `${stateDir}/harness-queue`;
     const names = (await $.fs.list(dir).catch(() => [])).filter(e => e.kind === 'file' && e.name.endsWith('.json')).map(e => e.name);
     if (names.length === 0) return;
     // Idle: the claim itself puts a pause first. Mid-turn or mid-run, only a pause may
     // go ahead, so the files are read for one only then.
-    const idle = !mainTurn && !busy();
     if (!idle && !(await hasPause($, dir, names))) return;
-    const claimed = await bridge($, 'claim', idle ? '' : 'pause');
+    const claimed = await bridge($, 'claim', idle ? JSON.stringify({ lastTurnCompleteAt }) : 'pause');
     await relayUnanswered($, claimed);
     if (claimed.decision !== 'run') return;
     if (claimed.source === 'pause') await runPause($, claimed);
@@ -440,6 +462,8 @@ export const register: Register = on => {
     const result = await next(e);
     if (!e.agentId) {
       mainTurn = undefined;
+      lastTurnCompleteAt = await $.clock.now();
+      idleSince = lastTurnCompleteAt;
       // A request queued mid-turn is claimed now, before the next turn can start.
       $.clock.after(0, () => tick($));
     }

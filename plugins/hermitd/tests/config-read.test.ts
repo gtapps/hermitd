@@ -235,3 +235,9 @@ test('browser config settles defaults and validates admin entries and nullable i
   expect(validate({ ...template, browser: { default: 'chrome' } }).errors.join(' ')).toContain('chrome: true');
   expect(validate({ ...template, chrome: true, browser: { default: 'chrome' } }).errors).toEqual([]);
 });
+
+
+test('missing channel recovery settings read as enabled with a six-hour age limit', () => {
+  expect(settleConfig({}).channel_recovery).toEqual({ enabled: true, max_age: '6h' });
+  expect(settleConfig({ channel_recovery: { enabled: false } }).channel_recovery).toEqual({ enabled: false, max_age: '6h' });
+});

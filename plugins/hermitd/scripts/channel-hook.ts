@@ -151,10 +151,13 @@ function main() {
       try {
         const text = input.text;
         if (isLoggingEnabled(config, channelKey) && typeof text === 'string' && text) {
+          const threadAttribute = config?.channels?.[channelKey]?.attributes?.thread_id;
+          const thread = threadAttribute ? input[threadAttribute] : null;
           const result = logMessage(HERMIT_DIR, {
             source: channelKey,
             chat_id: chatId != null ? String(chatId) : '',
             direction: 'out',
+            thread: thread == null ? null : String(thread),
             text,
           });
           if (!result.ok) {

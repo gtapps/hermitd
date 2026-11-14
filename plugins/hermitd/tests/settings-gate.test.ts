@@ -1079,6 +1079,14 @@ describe('task sender binding', () => {
   }
   const expectOpaque = (result: { exitCode: number; stdout: string }) => expectDeny(result, 'could not be read');
 
+  test('plugin recovery opener grants no sender authority for task answers or closes', async () => {
+    const entries = [opener('<command-name>/hermitd:channel-responder</command-name>\n<command-args>recover discord:100</command-args>', { kind: 'plugin', name: 'hermitd' })];
+    for (const user of ['member', 'admin']) {
+      expectDeny(await gate(answer(user), entries));
+      expectDeny(await gate(`task close .hermit T-20261101-120000 --chat discord:100 --user ${user} --by confirmed --actor discord:${user} --reason-stdin`, entries));
+    }
+  });
+
   test('channel opener binds the claimed sender and chat in every permission mode', async () => {
     for (const mode of ['default', 'auto', 'bypassPermissions']) {
       expectSilent(await gate(answer('admin'), [opener(channel('admin'))], mode));

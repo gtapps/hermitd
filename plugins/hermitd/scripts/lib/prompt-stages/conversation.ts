@@ -8,6 +8,15 @@ import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
 
+export function openTasksLine(key: string, work: Task[]): string {
+  return `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]`;
+}
+
+export function taskThreadLine(key: string, record: Task): string {
+  const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
+  return `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
+}
+
 export async function run(ctx: StageContext): Promise<StageResult | void> {
   const env = ctx.envelope;
   if (!env || !isAllowedSender(ctx.config(), env.source, env.userId)) return;
@@ -34,7 +43,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   if (work.length > 1) {
     // Admit the thread so the reply reminder does not drop the message before the model can ask.
     ctx.openTasksInChat = true;
-    return { context: `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]` };
+    return { context: openTasksLine(key, work) };
   }
   const record = work[0] ?? questions[0];
   if (!record) {
@@ -107,7 +116,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   }
   ctx.conversation = { key, task_id: record.id, owner: record.owner };
   const owner = record.owner === 'resident' ? 'resident' : record.owner.startsWith('helper:') ? 'helper' : 'worker';
-  let context = `[task thread ${safeForLLM(key)}: owner=${owner}, muted=${record.muted}, waiting=${record.waiting_on !== null}]`;
+  let context = taskThreadLine(key, record);
   if (questions.length > (work.length ? 0 : 1)) context += `\n[agent questions waiting in this thread: ${questions.length}; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
   if (record.kind === 'proposal') context += `\n[agent proposal waits: 1; answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>]`;
   if (record.kind !== 'proposal' && owner !== 'worker' && record.waiting_on !== null) {

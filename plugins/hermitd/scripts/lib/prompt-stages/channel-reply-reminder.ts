@@ -87,6 +87,7 @@ export function capture(ctx: StageContext, envelope: ChannelEnvelope, passive: b
     sender: envelope.userName ?? envelope.userId,
     sender_id: envelope.userId,
     message_id: envelope.messageId,
+    thread: envelope.thread,
     text: envelope.body,
     ts: envelope.ts ?? undefined,
   });

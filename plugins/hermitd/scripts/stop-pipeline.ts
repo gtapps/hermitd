@@ -1,3 +1,8 @@
+import { clearConversations } from './lib/channel-recovery';
+import { conversationKey, isKey } from './lib/conversation-key';
+import { parseChannelEnvelope } from './lib/channel-envelope';
+import { readSettledConfig } from './lib/config-read';
+import { readTurn, transcriptPath } from './lib/cc-compat';
 import { observeExecution } from './lib/tasks';
 // stop-pipeline.ts — unified Stop hook
 // Reads stdin once, runs all stop stages in sequence, touches heartbeat.
@@ -65,6 +70,35 @@ async function main(): Promise<void> {
     } catch (e: any) { console.error(`[stop-pipeline] intake-checkpoint: ${e.message}`); }
     let closedOperatorTurn = false;
     if (!blocked) {
+      try {
+        const tPath = transcriptPath(payload);
+        if (tPath) {
+          const { lines, prompt } = readTurn(tPath);
+          const keys: string[] = [];
+          const config = readSettledConfig(HERMIT_DIR);
+          const add = (text: string) => {
+            const env = parseChannelEnvelope(text, config);
+            if (env) keys.push(conversationKey(env.sourceKey, env.chatId, env.thread));
+          };
+          if (prompt.boundaryFound) {
+            add(prompt.text);
+            const opener = JSON.parse(lines[prompt.index]);
+            if (opener.type === 'user' && opener.origin?.kind === 'plugin' && opener.origin?.name === 'hermitd'
+                && prompt.text.includes('<command-name>/hermitd:channel-responder</command-name>')) {
+              const key = prompt.text.match(/<command-args>recover ([^<]+)<\/command-args>/)?.[1];
+              if (isKey(key)) keys.push(key);
+            }
+            for (const line of lines.slice(prompt.index + 1)) {
+              let entry: Json;
+              try { entry = JSON.parse(line); } catch { continue; }
+              const attachment = entry?.attachment;
+              if (entry?.type === 'attachment' && attachment?.type === 'queued_command'
+                  && attachment.origin?.kind === 'channel' && typeof attachment.prompt === 'string') add(attachment.prompt);
+            }
+            clearConversations(HERMIT_DIR, keys);
+          }
+        }
+      } catch { /* An unreadable transcript never blocks Stop. */ }
       try { fs.unlinkSync(TURN_FILE); closedOperatorTurn = true; } catch {}
       // Quiet time runs from the operator turn's end.
       if (closedOperatorTurn) recordOperatorTurnEnd(resolveHermitNowMs());

@@ -1,6 +1,8 @@
 // Resident-owned state for the native harness command executor: one durable queue that
 // chat, the terminal, the watchdog, shutdown, update and pause write and the core mod
 // drains with `$.command.run`. No tmux fallback.
+import { claimAttempt, stillUnfinished } from './channel-recovery';
+import { isPaused } from './pause';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +11,7 @@ import { readJson } from './cli';
 import { readSettledConfig } from './config-read';
 import { ARG_COMMANDS, ARG_RE, BARE_COMMANDS, COMMAND_MARKER_TTL_SECS, type ParsedCommand } from './harness-command';
 import { readRuntimeJson } from './runtime';
-import { passesExecutionBoundary } from './tasks';
+import { readExecution, passesExecutionBoundary } from './tasks';
 
 export type ReplyTarget = { source: string; chat_id: string; thread?: string | null };
 export type HarnessRequest = {
@@ -32,7 +34,7 @@ export const INFLIGHT_DIR = 'harness-inflight';
 export const OUTCOMES_DIR = 'harness-outcomes';
 const OUTCOME_RETENTION_MS = 24 * 3600 * 1000;
 
-export type QueueSource = 'chat' | 'terminal' | 'watchdog' | 'stop' | 'update' | 'pause';
+export type QueueSource = 'chat' | 'terminal' | 'watchdog' | 'stop' | 'update' | 'pause' | 'recovery';
 export type LegStatus = 'ok' | 'failed' | 'unknown' | 'skipped';
 export type Leg = { command: string; status: LegStatus; text: string; submitted_at?: string };
 export type QueueRequest = {
@@ -280,7 +282,7 @@ function sweep(dir: string, now: number, unanswered: Unanswered[]): Listed[] {
   return live;
 }
 
-const SESSION_BOUND = new Set<QueueSource>(['watchdog', 'stop', 'pause']);
+const SESSION_BOUND = new Set<QueueSource>(['watchdog', 'stop', 'pause', 'recovery']);
 
 /**
  * Admits the next request for the caller's session and moves it in flight. A pause
@@ -290,7 +292,7 @@ const SESSION_BOUND = new Set<QueueSource>(['watchdog', 'stop', 'pause']);
  */
 export function claim(
   dir: string, sessionId: string, claimerVersion: string,
-  options: { pauseOnly?: boolean; unanswered?: Unanswered[] } = {}, now = Date.now(),
+  options: { pauseOnly?: boolean; unanswered?: Unanswered[]; lastTurnCompleteAt?: number | null } = {}, now = Date.now(),
 ): QueueEntry | null {
   const unanswered = options.unanswered ?? [];
   return withQueueLock(dir, () => {
@@ -309,6 +311,22 @@ export function claim(
         continue;
       }
       if (options.pauseOnly && entry.source !== 'pause') continue;
+      if (entry.source === 'recovery') {
+        // An unreadable recovery state leaves this entry waiting; it never stalls the queue.
+        let verdict: 'run' | 'wait' | 'done' = 'wait';
+        try {
+          const observed = readExecution(dir);
+          // Recovery uses the mod's completion boundary, not the reader's one-hour
+          // liveness cutoff: a long-running turn still holds its conversation.
+          const execution = observed.state === 'unknown' ? readJson(path.join(dir, 'state', 'execution.json')) : observed;
+          const live = execution?.state === 'in_flight' && execution.cc_session_id === runtime.cc_session_id
+            && (options.lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > options.lastTurnCompleteAt);
+          const key = entry.purpose?.startsWith('channel-recover:') ? entry.purpose.slice('channel-recover:'.length) : '';
+          if (!isPaused(dir).paused && !live) verdict = !stillUnfinished(dir, key) ? 'done' : claimAttempt(dir, key, now) ? 'run' : 'wait';
+        } catch {}
+        if (verdict === 'done') settle(dir, listed, legsFor(entry, 'skipped', 'nothing_unfinished'), unanswered, now);
+        if (verdict !== 'run') continue;
+      }
       if (entry.source === 'watchdog') {
         const boundary = passesExecutionBoundary(dir);
         if (!boundary.ok) {

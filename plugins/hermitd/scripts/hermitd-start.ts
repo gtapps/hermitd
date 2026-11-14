@@ -253,6 +253,7 @@ const DEFAULT_CONFIG: Json = {
     publish_authorized: null,
     backend: 'claude',
   },
+  channel_recovery: { enabled: true, max_age: '6h' },
   context_hygiene: {
     clear: { enabled: true, quiet: '1h', max_age: '24h', min_tokens: 20000 },
     compact: {

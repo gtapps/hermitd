@@ -35,7 +35,10 @@ process.stdout.on('error', () => {});
 import path from 'node:path';
 import fs from 'node:fs';
 import { resolveCommand } from './lib/prompt-stages/harness-command';
-import { isTrustedController } from './lib/channel-auth';
+import { markUnfinished } from './lib/channel-recovery';
+import { conversationKey } from './lib/conversation-key';
+import { isLoggingEnabled } from './lib/channel-log';
+import { isAllowedSender, isTrustedController } from './lib/channel-auth';
 import type { HarnessDecision } from './lib/harness-mod';
 import { observeExecution } from './lib/tasks';
 import { classifySource } from './lib/trigger-source';
@@ -71,6 +74,8 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
   let residentAdmitted = false;
   let admittedSession: string | null = null;
   let admittedSource: string | null = null;
+  let admittedConversation: string | null = null;
+  let admittedSince = new Date().toISOString();
 
   async function stage(name: string, fn: (ctx: StageContext) => any, ctx: StageContext): Promise<void> {
     if (blockReason) return; // a disposition is already settled
@@ -209,6 +214,11 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // turn destroy the marker with the report unread — stage() skips it entirely
     // once a block is settled, so the marker survives for the next real prompt.
     await stage('harness-verify', harnessVerify, ctx);
+    const env = ctx.envelope;
+    if (!blockReason && env && isAllowedSender(ctx.config(), env.source, env.userId) && isLoggingEnabled(ctx.config(), env.source)) {
+      admittedConversation = conversationKey(env.sourceKey, env.chatId, env.thread);
+      if (env.ts && Number.isFinite(Date.parse(env.ts))) admittedSince = env.ts;
+    }
   }
 
   function emit(): void {
@@ -226,6 +236,11 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // this turn". Written after stdout so a throw on this write can never swallow
     // the decision or the injected context — emit()'s caller catches and exits 0.
     if (operatorActivityKept) openTurnMarker();
+    if (residentAdmitted && admittedConversation) {
+      try {
+        markUnfinished(hermitDir(), admittedConversation, admittedSince);
+      } catch { /* Recovery admission never changes prompt output. */ }
+    }
     if (residentAdmitted) observeExecution(hermitDir(), 'in_flight', admittedSession, admittedSource, null);
   }
 

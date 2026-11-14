@@ -44,7 +44,9 @@ function rig(on: any, options: { id?: () => string; handlers?: Record<string, (p
     } else out = { decision: 'ok' };
     return ran(JSON.stringify(out));
   });
-  on('fs.list', () => ({ value: queue.map(q => ({ name: `${q.id}.json`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }));
+  on('fs.list', ($: unknown, e: any) => ({ value: e.path === '/state'
+    ? Object.keys(files).filter(file => file.startsWith('/state/') && !file.slice(7).includes('/')).map(file => ({ name: file.slice(7), kind: 'file', size: 1, mtimeMs: 0, isLink: false }))
+    : queue.map(q => ({ name: `${q.id}.json`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) }));
   on('fs.read', ($: unknown, e: any) => ({ value: files[e.path] ?? JSON.stringify(queue.find(q => e.path.endsWith(`/${q.id}.json`)) ?? {}) }));
   return { calls, payloads, queue, commands, inits, files };
 }
@@ -61,7 +63,7 @@ test('bridge processes use the session root when the shell cwd drifts', async ($
   on('command.run', () => ({}));
   expect((await $.prompt.submit(channel('!clear'))).drop).toBeDefined();
   await clock.settle();
-  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'claim']);
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'reconcile', 'claim']);
   expect(r.inits).toEqual(r.calls.map(() => ({ cwd: '/work' })));
 });
 
@@ -103,7 +105,7 @@ test('intake queues through the bridge, then runs and waits for model switch evi
   expect((await $.prompt.submit(channel('!model sonnet'))).drop).toBeDefined();
   expect(r.calls).toEqual(['intake']);
   await clock.settle();
-  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'claim', 'model']);
+  expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'reconcile', 'claim', 'model']);
   await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'));
   await $.classic.PostModelSwitch(postSwitch('opus', 'unrelated'));
   await clock.settle();
@@ -563,4 +565,55 @@ test('/effort auto clears the override', async ($, on) => {
   expect(finalized(r).map(f => f.legs[0].status)).toEqual(['ok', 'ok']);
   for await (const _ of ($ as any).turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, effort: 'medium' })) { /* drain */ }
   expect(sent).toEqual(['medium']);
+});
+
+
+test('reconcile scans once after load and only after quiet while marked', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('turn.complete', () => ({ text: '' }));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.payloads.reconcile).toHaveLength(1);
+  await $.turn.start({ turnId: 'main', text: '' });
+  r.files['/state/recovery-pending'] = '';
+  await clock.advance(120000);
+  expect(r.payloads.reconcile).toHaveLength(1);
+  await $.turn.complete(completed('main'));
+  await clock.advance(59000);
+  expect(r.payloads.reconcile).toHaveLength(1);
+  await clock.advance(3000);
+  expect(r.payloads.reconcile).toHaveLength(2);
+  await clock.advance(296000);
+  expect(r.payloads.reconcile).toHaveLength(2);
+  await clock.advance(4000);
+  expect(r.payloads.reconcile).toHaveLength(3);
+  delete r.files['/state/recovery-pending'];
+  await clock.advance(600000);
+  expect(r.payloads.reconcile).toHaveLength(3);
+});
+
+test('a failed reconcile still lets the queue drain', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { reconcile: () => { throw new Error('bridge down'); } } });
+  on('session.cwd', () => ({ value: '/work' }));
+  on('command.run', () => ({}));
+  r.queue.push(entry('a', [{ command: '/effort', arg: 'high' }]));
+  await boot($);
+  await clock.advance(2000);
+  expect(r.calls).toContain('reconcile');
+  expect(r.calls).toContain('claim');
+});
+
+test('load during a main turn defers its first reconcile until idle', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('turn.complete', () => ({ text: '' }));
+  await $.turn.start({ turnId: 'main', text: '' });
+  await boot($);
+  await clock.advance(120000);
+  expect(r.payloads.reconcile).toBeUndefined();
+  await $.turn.complete(completed('main'));
+  await clock.settle();
+  expect(r.payloads.reconcile).toHaveLength(1);
 });

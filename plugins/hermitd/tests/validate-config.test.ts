@@ -94,3 +94,9 @@ test('channel format accepts only declared converters or passthrough', () => {
   for (const format of ['discord', 'telegram', 'signal', 'matrix', 'mattermost', 'sms', 'bluebubbles', 'line', 'irc', 'email', 'ntfy', 'slack', 'google_chat', 'whatsapp', 'passthrough']) expect(errors(format)).toEqual([]);
   for (const format of [null, 1, '', {}, 'MarkdownV2']) expect(errors(format).length).toBe(1);
 });
+
+
+test('channel recovery max_age requires a duration', () => {
+  expect(validate({ channel_recovery: { enabled: true, max_age: '6h' } }).errors.filter(error => error.includes('channel_recovery'))).toEqual([]);
+  expect(validate({ channel_recovery: { max_age: 'tomorrow' } }).errors.some(error => error.includes('channel_recovery.max_age'))).toBe(true);
+});

@@ -122,6 +122,7 @@
     "publish_authorized": null,
     "backend": "claude"
   },
+  "channel_recovery": { "enabled": true, "max_age": "6h" },
   "context_hygiene": {
     "clear": {
       "enabled": true,
