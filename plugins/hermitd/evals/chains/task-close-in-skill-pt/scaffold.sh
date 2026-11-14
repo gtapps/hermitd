@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Seeds a resident hermit state dir for this case (runs only with --scaffold).
+set -e
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p .hermit/tasks .hermit/state
+cp "$here/../../../state-templates/TASKS.md.template" .hermit/TASKS.md
+ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../../../.claude-plugin/plugin.json" | head -1)
+cat > .hermit/config.json <<HERMIT_CONFIG
+{
+  "agent_name": "assistant",
+  "timezone": "Europe/Lisbon",
+  "channels": {
+    "discord": {
+      "allowed_users": [
+        "100000000000000001"
+      ]
+    }
+  },
+  "language": "pt-PT",
+  "_hermit_versions": {
+    "hermitd": "$ver"
+  }
+}
+HERMIT_CONFIG
+mkdir -p ".hermit/guides"
+cp "$here/../../../skills/task/learn.md" ".hermit/guides/learn.md"
+mkdir -p ".hermit"
+cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
+# Operador
+
+Gere sozinho uma pequena loja de chá online. Prefere mensagens curtas.
+HERMIT_FIXTURE
+mkdir -p ".hermit/tasks"
+cat > '.hermit/tasks/T-20261019-090000.md' <<'HERMIT_FIXTURE'
+---
+id: T-20261019-090000
+type: task
+title: "Pôr os chás de outono na página da loja"
+created: 2026-10-19T09:00:00.000Z
+summary: "Os chás de outono estão na página da loja"
+audience: operator
+status: closed
+opened_at: 2026-10-19T09:00:00.000Z
+requester: operator
+handle: p-r-os-ch-s-de-outono-na-p-gina-
+owner: resident
+closed_at: 2026-10-19T11:00:00.000Z
+closed_by: confirmed
+closed_actor: operator
+closed_reason: "PR #42 integrado."
+requester_name: null
+origin_message_id: null
+approver: null
+due: null
+conversation: null
+card_chat_id: null
+card_message_id: null
+waiting_on: null
+waiting_since: null
+result: null
+result_at: null
+stall_at: null
+stall_status: null
+stall_next: null
+dedupe_key: helper:T-20260814-100044
+check: null
+last_worker: null
+kind: null
+decision: null
+approved_rev: null
+approved_by: null
+source: null
+category: null
+muted: false
+delegated: true
+tags: ["task","operator"]
+claims: []
+result_rev: 0
+---
+## Progress
+- 2026-10-19T09:00:00.000Z operator: Opened: Os chás de outono estão na página da loja
+- 2026-10-19T10:00:00.000Z hermit: [guest:shop-page] Adicionei os nove chás de outono e abri o PR #42.
+
+## Decisions
+
+## Approvals
+
+## Lessons
+
+## Outcome
+- 2026-10-19T11:00:00.000Z operator: PR #42 integrado.
+HERMIT_FIXTURE
+mkdir -p "memory"
+cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
+HERMIT_FIXTURE

@@ -292,22 +292,42 @@ mock('two-concurrent-dm-tasks', CARD_MOCK);
 
 // The digest comes from the real script. Its guide path is a machine path, so it points at the
 // scaffold's copy, and leaving Skill out keeps the task skill's own instruction out of reach.
-const [CLOSE_PROMPT, CLOSE_RECORD] = withInstall({ '.hermit/config.json': configJson(RESIDENT_CONFIG) }, ({ run, read }) => {
-  const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Add the autumn teas to the shop page', '--requester', 'operator',
-    '--dedupe-key', 'helper:T-20260814-100044', '--done', 'The autumn teas are live on the shop page'], { now: '2026-10-19T09:00:00.000Z' })).id;
-  run('task.ts', ['note', '.hermit', id], { stdin: '[guest:shop-page] Added the nine autumn teas and opened PR #42.\n', now: '2026-10-19T10:00:00.000Z' });
-  const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
-    { stdin: 'PR #42 merged.\n', now: '2026-10-19T11:00:00.000Z' }));
-  const stood = JSON.stringify({ ...digest, next: digest.next.slice(0, digest.next.indexOf('/')) + '.hermit/guides/learn.md' });
-  return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n`
-    + 'PR #42 merged, so the shop page task is finished. Thanks.', { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
-});
+function closeDigest(config: object, title: string, done: string, note: string, reason: string, reply: string) {
+  return withInstall({ '.hermit/config.json': configJson(config) }, ({ run, read }) => {
+    const id: string = JSON.parse(run('task.ts', ['open', '.hermit', '--title', title, '--requester', 'operator',
+      '--dedupe-key', 'helper:T-20260814-100044', '--done', done], { now: '2026-10-19T09:00:00.000Z' })).id;
+    run('task.ts', ['note', '.hermit', id], { stdin: note, now: '2026-10-19T10:00:00.000Z' });
+    const digest = JSON.parse(run('task.ts', ['close', '.hermit', id, '--by', 'confirmed', '--actor', 'operator', '--reason-stdin'],
+      { stdin: reason, now: '2026-10-19T11:00:00.000Z' }));
+    const stood = JSON.stringify({ ...digest, next: digest.next.slice(0, digest.next.indexOf('/')) + '.hermit/guides/learn.md' });
+    return ['<system-reminder>\n' + NO_SHELL + `\n- task.ts close ${id}, already run this turn: ${stood}\n</system-reminder>\n` + reply,
+      { [`.hermit/tasks/${id}.md`]: read(`.hermit/tasks/${id}.md`) }] as const;
+  });
+}
+const [CLOSE_PROMPT, CLOSE_RECORD] = closeDigest(RESIDENT_CONFIG, 'Add the autumn teas to the shop page', 'The autumn teas are live on the shop page',
+  '[guest:shop-page] Added the nine autumn teas and opened PR #42.\n', 'PR #42 merged.\n', 'PR #42 merged, so the shop page task is finished. Thanks.');
 chainCase('task-close-outside-skill-shop', 'heldout', 'A close digest flags a skill review in a turn without the task skill; the digest alone has to lead the resident to the review guide.',
   'The review guide is read and the reply mentions learning only when a skill changed',
   CLOSE_PROMPT,
   [{ name: 'read-guide', type: 'tool_used', tool: 'Read', input_match: String.raw`learn\.md`, weight: 3 },
     rubric('PASS if the final reply acknowledges the finished task and states no learning outcome when no skill changed. FAIL if it claims a saved skill without a write or adds a nothing-found learning line.')],
   chainScaffold(CLOSE_RECORD, [['skills/task/learn.md', '.hermit/guides/learn.md']]), ['Read', 'Glob', 'Grep'], { resident: true });
+
+// --- close inside the task skill, Portuguese install -> review guide ------
+
+// The same digest as the case above, with the task skill in reach and a pt-PT install: the close already
+// ran (a real one needs a verified sender), so only following the digest's `next` is graded.
+const PT_CONFIG = { ...RESIDENT_CONFIG, language: 'pt-PT' };
+const [PT_CLOSE_PROMPT, PT_CLOSE_RECORD] = closeDigest(PT_CONFIG, 'Pôr os chás de outono na página da loja', 'Os chás de outono estão na página da loja',
+  '[guest:shop-page] Adicionei os nove chás de outono e abri o PR #42.\n', 'PR #42 integrado.\n',
+  'O PR #42 foi integrado, por isso a tarefa da página da loja está concluída. Obrigado.');
+chainCase('task-close-in-skill-pt', 'heldout', 'In a Portuguese install with the task skill in reach, a close digest flags a skill review; the resident reads the review guide.',
+  'The review guide is read before the close reply',
+  PT_CLOSE_PROMPT,
+  [{ name: 'read-guide', type: 'tool_used', tool: 'Read', input_match: String.raw`learn\.md`, weight: 3 }],
+  residentScaffold(PT_CONFIG, { '.hermit/OPERATOR.md': '# Operador\n\nGere sozinho uma pequena loja de chá online. Prefere mensagens curtas.\n', ...PT_CLOSE_RECORD },
+    [['skills/task/learn.md', '.hermit/guides/learn.md']]),
+  ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
 
 // --- proposal-create -> triage duplicate (case 8) -------------------------
 
