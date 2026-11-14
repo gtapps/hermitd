@@ -90,6 +90,6 @@ graders:
   - {"name":"notice-count","type":"tool_used","tool":"Bash","input_match":"channel-send(\\.ts)?(?=[^\\n]*--notice)","min":0,"max":0}
   - {"name":"verdict-1","type":"tool_used","tool":"Bash","input_match":"later(?:\\.ts)? verdict[^\\n]*00000000-0000-4000-8000-000000000001","min":1,"max":1}
   - {"name":"verdict-2","type":"tool_used","tool":"Bash","input_match":"later(?:\\.ts)? verdict[^\\n]*00000000-0000-4000-8000-000000000002","min":1,"max":1}
-  - {"name":"precheck-retry","type":"tool_used","tool":"Bash","input_match":"precheck[^\\n]*--retry[ =]+['\"]?2026-10-01T13:00:00\\.000Z"}
+  - {"name":"precheck-retry","type":"tool_used","tool":"Bash","input_match":"precheck(?=[^\\n]*--retry[ =]+['\"]?2026-10-01T13:00:00\\.000Z)(?=[^\\n]*--delivery[ =]+['\"]?monitor)"}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}
   - {"name":"routine-skill","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?later\""}

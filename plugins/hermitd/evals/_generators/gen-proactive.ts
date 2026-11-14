@@ -31,16 +31,17 @@ function proactiveCase(name: string, description: string, seed: Seed): void {
   const config = { agent_name: 'assistant', timezone: 'Europe/Lisbon',
     channels: { discord: { enabled: true, allowed_users: [USER], default_chat_id: CHAT } },
     routines: [{ id: seed.id, skill, schedule: '0 9 * * *', enabled: true }], ...seed.config };
-  const flags = seed.retryMark ? ` --retry ${seed.retryMark} --delivery monitor` : '';
   const envelope = '<task-notification>\n<task-id>r0ut1n3q2x</task-id>\n<summary>Monitor event: "routine-monitor"</summary>\n'
     + `<event>ROUTINE_DUE [hermit-routine:${seed.id}]</event>\n</task-notification>`;
   const state = '<system-reminder>\n' + STATE + '\n- config.json: ' + JSON.stringify(config) + '\n'
     + [precheck(seed.id, seed.precheck, !!seed.retryMark), ...seed.state].join('\n') + '\n</system-reminder>';
   // Recovery submits the bare command; its stand-ins follow it, since the prompt must start with the slash command.
-  const body = seed.retryMark ? `/hermitd:hermit-routines run ${seed.id}${flags}\n` + state : state + '\n' + envelope;
+  const body = seed.retryMark ? `/hermitd:hermit-routines run ${seed.id} --retry ${seed.retryMark} --delivery monitor\n` + state : state + '\n' + envelope;
+  // precheck falls back to cron-create delivery without `--delivery`, so grade both flags.
   const graders: Grader[] = [...seed.graders,
     ...seed.retryMark ? [{ name: 'precheck-retry', type: 'tool_used', tool: 'Bash',
-      input_match: String.raw`precheck[^\n]*--retry[ =]+['"]?` + seed.retryMark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }] : [],
+      input_match: String.raw`precheck(?=[^\n]*--retry[ =]+['"]?` + seed.retryMark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        + String.raw`)(?=[^\n]*--delivery[ =]+['"]?monitor)` }] : [],
     { name: 'finished-routine', type: 'tool_used', tool: 'Bash', input_match: String.raw`routines(?:\.ts)? finish` },
     // Anchored to the `skill` field: the hermit-routines call carries the routine id in its args.
     { name: 'routine-skill', type: 'tool_used', tool: 'Skill',
