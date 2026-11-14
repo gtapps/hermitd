@@ -199,10 +199,12 @@ test('report lists this boot\'s interrupted runs as pending before the first rec
   stampInterrupted(dir, 'unclean');
   const result = await runScript('routines.ts', { args: ['recover', '--report'], env: { AGENT_DIR: dir } });
   expect(result.exitCode).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual({ routines: [], pending: [{ routine_id: 'r', state: 'interrupted', cause: 'unclean', mark }] });
+  expect(JSON.parse(result.stdout)).toEqual({ routines: [], pending: [{ routine_id: 'r', cause: 'unclean', mark }] });
+  // An expired run is reported once, as its lost closure, while it awaits the notice.
   reconcileRoutines(dir, now + 7 * 3600000);
-  reconcileRoutines(dir, now + 9 * 3600000);
+  expect(readUnfinished(dir)[key].state).toBe('lost');
   expect(pendingRecovery(dir)).toEqual([]);
+  expect(recoveryReport(dir).map(row => row.detail)).toEqual(['lost:unclean']);
 });
 
 

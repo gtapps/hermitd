@@ -82,7 +82,11 @@ switch (verb) {
     const { readUnfinished } = await import('./lib/routines/unfinished');
     const { retryContext, recoveryReport, pendingRecovery, lostRoutine, clearLostRoutine } = await import('./lib/routines/recover');
     const dir = hermitDir();
-    if (rest[0] === '--report') emitJson({ routines: recoveryReport(dir), pending: pendingRecovery(dir) });
+    if (rest[0] === '--report') {
+      // Store before ledger: a reconcile in between shows a run twice instead of dropping it.
+      const pending = pendingRecovery(dir);
+      emitJson({ routines: recoveryReport(dir), pending });
+    }
     else if (rest[0] === '--lost' && rest[1]) emitJson(lostRoutine(dir, rest[1]));
     else if (rest[0] === '--clear-lost' && rest[1]) {
       clearLostRoutine(dir, rest[1]);
