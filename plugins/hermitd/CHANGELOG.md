@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Hook scripts, including the resident's launch hooks, run with Bun's automatic package install disabled (`bun --no-install`)
+
 ## [1.4.33] - 2026-11-14
 
 ### Added

@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * PreToolUse hook: validate WebFetch URLs against the feed-sources.md domain allowlist.
  * Blocks fetches to domains not in feed-sources.md (plus a small hardcoded infra list).

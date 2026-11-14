@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // PreToolUse hook: auto-approve curl/wget calls that target the HA instance.
 //
 // WP8 port of hooks/curl-host-gate.py (standalone, stdlib-only — kept

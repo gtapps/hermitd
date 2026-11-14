@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/fetch-guard.ts"],
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/hooks/fetch-guard.ts"],
             "timeout": 5
           }
         ]
@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/validate-sources.ts"],
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/scripts/validate-sources.ts"],
             "timeout": 10
           }
         ]

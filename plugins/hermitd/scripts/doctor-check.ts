@@ -2142,7 +2142,7 @@ function checkOverlayHooks(p: DoctorPaths = PATHS) {
   for (const [event, entries] of Object.entries(overlayHooks(p.pluginRoot))) {
     for (const expected of entries) {
       const hook = expected.hooks[0];
-      const script = hook.args[0];
+      const script = hook.args[1];
       // Script identity, not the absolute root: hermitd-start writes the overlay from the
       // root bin/hermitd-run resolved (the marketplace clone), while doctor may run from
       // the session's cache copy. The on-disk check below covers a dead root.
@@ -2151,8 +2151,8 @@ function checkOverlayHooks(p: DoctorPaths = PATHS) {
         .filter((entry: Json) => entry?.matcher === expected.matcher && Array.isArray(entry.hooks))
         .flatMap((entry: Json) => entry.hooks)
         .find((c: Json) => c?.type === hook.type && c.command === hook.command && c.timeout === hook.timeout
-          && Array.isArray(c.args) && c.args.length === 1 && typeof c.args[0] === 'string'
-          && path.isAbsolute(c.args[0]) && c.args[0].endsWith(suffix))?.args[0];
+          && Array.isArray(c.args) && c.args.length === 2 && c.args[0] === '--no-install' && typeof c.args[1] === 'string'
+          && path.isAbsolute(c.args[1]) && c.args[1].endsWith(suffix))?.args[1];
       if (!found) {
         return result('warn', `${path.basename(script)} missing or wrong event, matcher, command, timeout or argv (expected ${event}, ${expected.matcher}).`);
       }

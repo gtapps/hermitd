@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * PostToolUse hook: validate feed-sources.md table format.
  * Passes through (exit 0) unless the edited file's basename is feed-sources.md.

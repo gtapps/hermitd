@@ -1468,7 +1468,7 @@ describe('doctor-check', () => {
       hooks: {
         PreToolUse: [{
           matcher: 'Bash',
-          hooks: [{ type: 'command', command: 'bun', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/does-not-exist.ts'] }],
+          hooks: [{ type: 'command', command: 'bun', args: ['--no-install', '${CLAUDE_PLUGIN_ROOT}/scripts/does-not-exist.ts'] }],
         }],
       },
     }));
@@ -1480,9 +1480,9 @@ describe('doctor-check', () => {
   test('hooks: plugin manifest contains exactly the registered shared scripts', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
     const names = Object.values(manifest.hooks).flatMap((entries: any) =>
-      entries.flatMap((entry: any) => entry.hooks.map((hook: any) => path.basename(hook.args[0], '.ts'))));
+      entries.flatMap((entry: any) => entry.hooks.map((hook: any) => path.basename(hook.args.at(-1), '.ts'))));
     const skillLintMatchers = manifest.hooks.PostToolUse
-      .filter((entry: any) => entry.hooks.some((hook: any) => path.basename(hook.args[0], '.ts') === 'skill-lint'))
+      .filter((entry: any) => entry.hooks.some((hook: any) => path.basename(hook.args.at(-1), '.ts') === 'skill-lint'))
       .map((entry: any) => entry.matcher);
     expect(skillLintMatchers).toEqual(['Bash|Edit|Write']);
     expect(names.sort()).toEqual([

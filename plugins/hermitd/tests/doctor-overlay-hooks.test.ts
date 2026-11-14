@@ -31,9 +31,9 @@ function scenario({ missingOverlay, corruptOverlay, booted, missingScript, overl
   fs.mkdirSync(configDir);
   const overlay = { hooks: overlayHooks(writerRoot) };
   for (const entries of Object.values(overlay.hooks)) {
-    for (const entry of entries) fs.writeFileSync(entry.hooks[0].args[0], '');
+    for (const entry of entries) fs.writeFileSync(entry.hooks[0].args[1], '');
   }
-  if (missingScript) fs.unlinkSync(overlay.hooks.PreToolUse[0].hooks[0].args[0]);
+  if (missingScript) fs.unlinkSync(overlay.hooks.PreToolUse[0].hooks[0].args[1]);
   mutate?.(overlay);
   const overlayFile = path.join(stateDir, 'claude-settings.overlay.json');
   if (corruptOverlay) fs.writeFileSync(overlayFile, '{"hooks": {');
@@ -95,9 +95,10 @@ describe('doctor overlay-hooks check', () => {
       (overlay: any) => { delete overlay.hooks.PermissionDenied; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].command = 'node'; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].timeout = 4; },
-      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = ['scripts/pause-gate.ts']; },
+      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = ['--no-install', 'scripts/pause-gate.ts']; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args.push('extra'); },
-      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = [overlay.hooks.PreToolUse[1].hooks[0].args[0]]; },
+      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args.shift(); },
+      (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].args = ['--no-install', overlay.hooks.PreToolUse[1].hooks[0].args[1]]; },
       (overlay: any) => { overlay.hooks.PreToolUse[0].hooks[0].type = 'prompt'; },
     ];
     for (const mutate of mutations) expect(scenario({ mutate }).status).toBe('warn');

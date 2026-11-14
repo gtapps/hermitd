@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/mcp-safety-gate.ts"]
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/hooks/mcp-safety-gate.ts"]
           }
         ]
       },
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/curl-host-gate.ts"],
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/hooks/curl-host-gate.ts"],
             "timeout": 5
           }
         ]
@@ -29,7 +29,7 @@
           {
             "type": "command",
             "command": "bun",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/cli-approval.ts"],
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/hooks/cli-approval.ts"],
             "timeout": 5
           }
         ]

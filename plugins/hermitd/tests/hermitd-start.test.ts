@@ -1797,7 +1797,7 @@ describe('renderLaunchOverlay', () => {
       const entry = hooks[event].find((entry: any) => entry.matcher === matcher);
       expect(entry.hooks).toEqual([{
         type: 'command', command: 'bun',
-        args: [path.join(PLUGIN_ROOT, 'scripts', script)], timeout,
+        args: ['--no-install', path.join(PLUGIN_ROOT, 'scripts', script)], timeout,
       }]);
       // Claude Code warns about and ignores anything outside {matcher, hooks} here.
       expect(Object.keys(entry).sort()).toEqual(['hooks', 'matcher']);
@@ -2364,7 +2364,7 @@ describe('operator launch settings', () => {
     const opB = { hooks: [{ type: 'command', command: 'operator-b' }] };
     fs.writeFileSync(overridePath, JSON.stringify({ hooks: { PreToolUse: [opA], Stop: [opB] } }));
     const overlay = JSON.parse(fs.readFileSync(renderLaunchOverlay({})!, 'utf8'));
-    expect(overlay.hooks.PreToolUse.map((e: any) => e.hooks[0].args?.[0] ?? e.hooks[0].command)).toEqual([
+    expect(overlay.hooks.PreToolUse.map((e: any) => e.hooks[0].args?.at(-1) ?? e.hooks[0].command)).toEqual([
       path.join(PLUGIN_ROOT, 'scripts/pause-gate.ts'), path.join(PLUGIN_ROOT, 'scripts/ask-gate.ts'), 'operator-a',
     ]);
     expect(overlay.hooks.PostToolUse).toHaveLength(1);
