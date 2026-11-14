@@ -737,7 +737,7 @@ function taskSenderClaims(command: string): SenderClaim[] | null {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin, mode: string): string[] | null {
+export function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin, mode: string): string[] | null {
   const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
   const originAsks = () => {
     const value = origin();

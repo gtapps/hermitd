@@ -1,10 +1,12 @@
 // Spawns the settings-gate hook: the stdout JSON and exit code are the thing
-// Claude Code actually consumes (tests/helpers/run.ts).
+// Claude Code actually consumes (tests/helpers/run.ts). The protected-paths
+// matrix calls protectedMutation in-process instead.
 import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
+import { protectedMutation } from '../scripts/settings-gate';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-settings-gate-');
 afterAll(cleanup);
@@ -469,8 +471,9 @@ test('resident instructions and operator overlay are protected for every write t
 });
 
 describe('static settings policy', () => {
-  test('new protected paths ask for both directions and unset', async () => {
+  test('new protected paths ask for both directions and unset', () => {
     const dir = fixture();
+    const terminal = () => ({ kind: 'terminal' as const, proven: true });
     for (const field of ['operator_profile', 'channels.primary', 'channels.discord.state_dir',
       'channels.discord.marketplace', 'channels.discord.enabled', 'channels.discord.passive_chats', 'channels.discord.instructions', 'channels.discord.instructions.0', 'channels.discord.instructions.0.text',
       'telemetry_export.enabled',
@@ -478,12 +481,21 @@ describe('static settings policy', () => {
       'telemetry_export.redact_operator_text', 'artifacts.publish_authorized', 'artifacts.backend',
       'docker.git_identity_mount', 'docker.packages', 'docker.recommended_plugins.0.enabled', 'docker.fleet_mesh', 'browser', 'transcription.enabled', 'transcription.echo', 'remote', 'chrome', 'auth_mode']) {
       for (const rest of [`set ${field} true`, `set ${field} false`, `unset ${field}`, `toggle ${field}`]) {
-        const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }), dir);
-        expectAsk(r.stdout, `Hermit setting: ${field}${rest.startsWith('set ') ? '=' + rest.split(' ').at(-1) : ''}`);
+        expect(protectedMutation(cmd(rest), dir, terminal, 'default'))
+          .toEqual([`${field}${rest.startsWith('set ') ? '=' + rest.split(' ').at(-1) : ''}`]);
       }
     }
-    // 84 sequential gate subprocesses: the 5s default fails under parallel suite load.
-  }, 30_000);
+    // In-process: 100 sequential gate subprocesses timed out on loaded CI runners.
+  });
+
+  test('a protected path ask reaches stdout with the setting in the reason', async () => {
+    const dir = fixture();
+    for (const [rest, reason] of [['set auth_mode true', 'auth_mode=true'], ['set auth_mode false', 'auth_mode=false'], ['unset auth_mode', 'auth_mode']]) {
+      const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(rest) } }), dir);
+      expect(r.exitCode).toBe(0);
+      expectAsk(r.stdout, `Hermit setting: ${reason}`);
+    }
+  });
 
   test('ordinary preferences and routine commands stay silent', async () => {
     const dir = fixture();
