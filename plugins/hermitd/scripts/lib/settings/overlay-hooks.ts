@@ -8,7 +8,7 @@ export function overlayHooks(pluginRoot: string) {
         hooks: [{
           type: 'command',
           command: 'bun',
-          args: [path.resolve(pluginRoot, 'scripts', 'pause-gate.ts')],
+          args: ['--no-install', path.resolve(pluginRoot, 'scripts', 'pause-gate.ts')],
           timeout: 3,
         }],
       },
@@ -17,7 +17,7 @@ export function overlayHooks(pluginRoot: string) {
         hooks: [{
           type: 'command',
           command: 'bun',
-          args: [path.resolve(pluginRoot, 'scripts', 'ask-gate.ts')],
+          args: ['--no-install', path.resolve(pluginRoot, 'scripts', 'ask-gate.ts')],
           timeout: 3,
         }],
       },
@@ -28,7 +28,7 @@ export function overlayHooks(pluginRoot: string) {
         hooks: [{
           type: 'command',
           command: 'bun',
-          args: [path.resolve(pluginRoot, 'scripts', 'permission-denied-notify.ts')],
+          args: ['--no-install', path.resolve(pluginRoot, 'scripts', 'permission-denied-notify.ts')],
           timeout: 12,
         }],
       },
@@ -39,7 +39,7 @@ export function overlayHooks(pluginRoot: string) {
         hooks: [{
           type: 'command',
           command: 'bun',
-          args: [path.resolve(pluginRoot, 'scripts', 'component-privacy.ts')],
+          args: ['--no-install', path.resolve(pluginRoot, 'scripts', 'component-privacy.ts')],
           timeout: 5,
         }],
       },

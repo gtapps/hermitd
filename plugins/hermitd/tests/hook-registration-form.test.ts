@@ -42,13 +42,18 @@ test('form contract: all hook entries are exec-form or bash -c', () => {
                 problems.push(`${file} ${event}: bun hook args must be ["--no-install", "\${CLAUDE_PLUGIN_ROOT}/<file>"]: ${JSON.stringify(args)}`);
               } else {
                 const script = path.join(path.dirname(path.dirname(file)), args[1].slice(prefix.length));
-                if (fs.existsSync(script) && fs.readFileSync(script, 'utf-8').startsWith('#!')) {
+                if (!fs.existsSync(script)) {
+                  problems.push(`${file} ${event}: hook script missing: ${script}`);
+                } else if (fs.readFileSync(script, 'utf-8').startsWith('#!')) {
                   problems.push(`${file} ${event}: hook script has a shebang: ${script}`);
                 }
               }
             }
           } else if (cmd.startsWith('bash -c ')) {
-            // documented escape hatch for stdin/jq/pipes work
+            // documented escape hatch for stdin/jq/pipes work; Bun runs only through the exec form above
+            if (/\bbun\b/.test(cmd)) {
+              problems.push(`${file} ${event}: bash -c hook runs bun, use command "bun" with --no-install: ${JSON.stringify(cmd)}`);
+            }
           } else {
             problems.push(`${file} ${event}: naked shell form: ${JSON.stringify(cmd)}`);
           }

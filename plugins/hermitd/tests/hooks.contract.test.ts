@@ -1468,7 +1468,7 @@ describe('doctor-check', () => {
       hooks: {
         PreToolUse: [{
           matcher: 'Bash',
-          hooks: [{ type: 'command', command: 'bun', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/does-not-exist.ts'] }],
+          hooks: [{ type: 'command', command: 'bun', args: ['--no-install', '${CLAUDE_PLUGIN_ROOT}/scripts/does-not-exist.ts'] }],
         }],
       },
     }));
