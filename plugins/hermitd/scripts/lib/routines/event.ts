@@ -10,7 +10,7 @@
 // and the `fired` / `failed-*` terminals finish.ts writes, whose detail is the
 // fire's one-line outcome when the skill supplied one.
 //
-// Ported from log-routine-event.sh, and still emitting the same four keys with
+// Ported from log-routine-event.sh, and still emitting the same four keys (plus the optional `detail`) with
 // the same UTC second-precision stamp. The row shape is pinned (tests assert it,
 // and run-record.ts exists because of it), but only the shape — no consumer reads
 // the serialized byte order any more. Cost attribution moved to the cost log's

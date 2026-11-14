@@ -222,12 +222,12 @@ describe('foldRoutineHistory — last_outcome', () => {
     expect(e.last_outcome).toBeNull();
   });
 
-  test('a terminal without detail leaves the previous outcome standing', () => {
+  test('a newer terminal without detail clears an older outcome', () => {
     const e = only([
       row('dream', 'started', daysAgo(3)), detailRow('dream', 'fired', daysAgo(3), 'merged two notes'),
       row('dream', 'started', daysAgo(1)), row('dream', 'fired', daysAgo(1)),
     ]);
-    expect(e.last_outcome).toEqual({ ts: daysAgo(3), detail: 'merged two notes' });
+    expect(e.last_outcome).toBeNull();
   });
 });
 

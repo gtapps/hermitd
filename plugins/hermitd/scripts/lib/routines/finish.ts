@@ -85,11 +85,11 @@ export function run(args: string[], outcome = ''): void {
 
   // Model-written, possibly from untrusted input; later turns read it back.
   const firstLine = outcome.split('\n').map(l => l.trim()).find(Boolean);
-  const detail = firstLine ? safeForLLM(firstLine).slice(0, OUTCOME_MAX) : undefined;
+  const outcomeLine = firstLine ? safeForLLM(firstLine).slice(0, OUTCOME_MAX) : undefined;
 
   const stamp = (event: string): void => {
     try {
-      logRoutineEvent(id, event, hermit, delivery, detail);
+      logRoutineEvent(id, event, hermit, delivery, outcomeLine);
     } catch { /* a stamp failure must not crash the fire path */ }
   };
 

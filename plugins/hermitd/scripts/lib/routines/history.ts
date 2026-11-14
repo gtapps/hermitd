@@ -68,9 +68,10 @@ export type RoutineHistoryEntry = {
   last_chat_undelivered: { ts: string; detail: string } | null;
   last_fire: string | null;
   /**
-   * The newest in-window outcome line `finish` stored on a `fired` or `failed-*`
-   * terminal: what the run did or found. Recovery's `failed-interrupted` rows
-   * carry a close reason instead and never set it.
+   * The outcome line `finish` stored on the newest in-window `fired` or `failed-*`
+   * terminal: what the run did or found. Null when that terminal carried none, so
+   * an older run's line never stands in for a newer run. Recovery's
+   * `failed-interrupted` rows carry a close reason instead and never set it.
    */
   last_outcome: { ts: string; detail: string } | null;
   /** `dispatched` rows in-window: one per monitor emit, wrapper or not. */
@@ -231,7 +232,7 @@ export function foldRoutineHistory(
       dispatchedOpen.delete(row.id);
       if (!inWindow) continue;
       if (!wasOpen) entry.orphan_terminals += 1;
-      if (row.detail) entry.last_outcome = { ts: row.tsRaw, detail: row.detail };
+      entry.last_outcome = row.detail ? { ts: row.tsRaw, detail: row.detail } : null;
       if (isFired) {
         entry.fires += 1;
         if (!entry.last_fire || row.tsRaw > entry.last_fire) entry.last_fire = row.tsRaw;
