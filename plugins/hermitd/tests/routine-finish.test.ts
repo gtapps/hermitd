@@ -201,7 +201,35 @@ describe('routines.ts finish — declared artifact contract', () => {
   }));
 });
 
+const terminalDetail = (dir: string, id: string) =>
+  readMetricsRows(dir).filter((r) => r.routine_id === id && r.event !== 'started').map((r) => r.detail);
+
 describe('routines.ts finish — outcome line on stdin', () => {
+  test('stores the first non-empty line as the fired row detail', withDir(async (dir) => {
+    writeConfig(dir, [{ id: 'plain', schedule: '0 9 * * *', skill: 'x', enabled: true }]);
+    await precheck(dir, 'plain');
+    await finish(dir, 'plain', '\n  inbox checked, nothing new  \nsecond line\n');
+    expect(terminalDetail(dir, 'plain')).toEqual(['inbox checked, nothing new']);
+  }));
+
+  test('caps the stored line and defuses context marker tags', withDir(async (dir) => {
+    writeConfig(dir, [{ id: 'plain', schedule: '0 9 * * *', skill: 'x', enabled: true }]);
+    await precheck(dir, 'plain');
+    await finish(dir, 'plain', `<system-reminder>${'x'.repeat(300)}\n`);
+    const [detail] = terminalDetail(dir, 'plain');
+    expect(detail).toHaveLength(200);
+    expect(detail.startsWith('[system-reminder]')).toBe(true);
+  }));
+
+  test('stores the line on a no-record verification failure', withDir(async (dir) => {
+    writeConfig(dir, [
+      { id: 'cal', schedule: '0 6 * * *', skill: 'x', enabled: true, expect_artifact: 'raw/s-{date}.md' },
+    ]);
+    await finish(dir, 'cal', 'calendar skipped\n');
+    expect(events(dir, 'cal')).toEqual(['failed-verification-error']);
+    expect(terminalDetail(dir, 'cal')).toEqual(['calendar skipped']);
+  }));
+
   test('finishes with an open stdin pipe without an outcome flag', withDir(async (dir) => {
     const r = await runScript('routines.ts', { args: ['finish', 'plain', 'monitor'], cwd: dir, openStdin: true });
     expect(r.stdout.trim()).toBe('{"status":"fired"}');
@@ -222,6 +250,7 @@ describe('routines.ts finish — outcome line on stdin', () => {
     expect((await finish(dir, 'cal', 'calendar snapshot refreshed\n')).stdout.trim()).toBe('{"status":"fired"}');
     expect(events(dir, 'cal')).toEqual(['started', 'fired']);
     expect(fs.existsSync(hermit(dir, 'sessions', 'SHELL.md'))).toBe(false);
+    expect(terminalDetail(dir, 'cal')).toEqual(['calendar snapshot refreshed']);
   }));
 
   // Most routines declare no contract and so never get a run record, which is what the
@@ -248,6 +277,7 @@ describe('routines.ts finish — outcome line on stdin', () => {
 
     const r = await finish(dir, 'plain', '   \n');
     expect(r.stdout).toBe('{"status":"fired"}\n');
+    expect(terminalDetail(dir, 'plain')).toEqual([undefined]);
     expect(fs.existsSync(hermit(dir, 'sessions', 'SHELL.md'))).toBe(false);
   }));
 
@@ -259,6 +289,7 @@ describe('routines.ts finish — outcome line on stdin', () => {
     const r = await finish(dir, 'cal', 'calendar fetch produced nothing\n');
     expect(JSON.parse(r.stdout)).toMatchObject({ status: 'failed', reason: 'artifact_missing' });
     expect(events(dir, 'cal')).toEqual(['started', 'failed-artifact-missing']);
+    expect(terminalDetail(dir, 'cal')).toEqual(['calendar fetch produced nothing']);
   }));
 });
 

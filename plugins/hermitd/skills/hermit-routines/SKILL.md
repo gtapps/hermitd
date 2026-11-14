@@ -96,11 +96,11 @@ If its status is "skip", stop. If "proceed":
 - Pass `--routine <id>` to every `channel-send --notice` this fire makes that does not pass `--watch`.
 After it completes, run:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts finish <id> <delivery> --outcome-stdin <<'HERMIT_LINE'
-<one line: the routine id and what the fire actually did or found>
+<one short status line: what the fire actually did or found, not message content>
 HERMIT_LINE
 If the invoked skill or model-override dispatch hands work to a background agent and the turn ends before the skill's final step, the routine stays open: run `finish` exactly once per fire in the turn that completes that final step after the agent's hand-back, never at dispatch.
 ```
-The heredoc line describes the routine outcome recorded by `finish`.
+`finish` stores the heredoc line as the routine's last outcome, which `routines-health` reports as `last_outcome`.
 Copy the already absolute commands and replace `<id>` and `<skill>` (passed verbatim to the slash invocation; `hermitd:brief --morning` becomes `/hermitd:brief --morning`).
 
 **Optional `precheck`: the wake gate.** A routine may declare `precheck`; one of the builtins `"reflect"`, `"doctor"`, `"later"`, `"dream"`, or a project-relative path to an executable the operator owns. The routine monitor runs it at fire time, before waking the session: on `SKIP` the fire is consumed and stamped `skipped-precheck` at **zero token cost**, and nothing is emitted. On `WAKE`, any non-zero exit, a timeout (`precheck_timeout_s`, default 30s, max 300), or unparseable output, the routine fires exactly as it would with no gate, and a failure stamps `precheck-error` with the reason. Contract for an operator script: print `SKIP` or `WAKE` as its **first stdout line and nothing else that matters**; no output reaches the session, so a gate that has found something hands nothing over; the skill re-queries its own source, using the `ROUTINE_LAST_FIRED` env var (ISO timestamp of the last successful fire, empty on the first ever fire; treat empty as "everything is new"). Also in the environment: `HERMIT_DIR`, `ROUTINE_ID`, `PATH`, and, when set, `HOME`, `LANG`, `CLAUDE_CONFIG_DIR`, `HERMIT_PLUGIN_ROOT`. No other monitor variables are forwarded. Gates must be read-only and cheap; anything that mutates state belongs in the skill, which only runs when the gate says so. The hermit may write the script for the operator on request. In CronCreate fallback mode the gate still runs, but after the wake; same behavior, no token saving.
