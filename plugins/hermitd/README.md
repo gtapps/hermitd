@@ -26,6 +26,20 @@ Run it on your Claude subscription and extend it with your own MCP servers, skil
 
 https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 
+## How it compares
+
+| Option | Why hermitd |
+|--------|-------------|
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://github.com/openclaw/openclaw) | hermitd runs directly inside Claude Code as a plugin, without a wrapper or separate agent loop. You get Claude.ai, the Claude app, [Remote Control](https://code.claude.com/docs/en/remote-control), and the rest of Claude Code, with your tools, permissions, skills, plugins, and MCP. |
+| [Claude Projects](https://code.claude.com/docs/en/claude-projects.md) | The orchestrator runs locally, with your CLIs, tools, and control. Chat through any Claude Code [channel](https://code.claude.com/docs/en/channels). Watches, reports, and tasks survive a restart. Routines stay cheaper: [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) and a [precheck](docs/routine-authoring.md) can skip a run without model tokens. |
+| [Claude Tag](https://claude.com/docs/claude-tag/concepts/how-it-works) | Use Discord, Telegram, iMessage, or custom Claude Code channels, and continue the same session in the Claude app or terminal. Tag currently documents Slack, including with self-hosted runners; [Microsoft Teams is announced](https://claude.com/form/claude-tag-teams-waitlist). |
+| [Claude Duet](https://support.claude.com/en/articles/17631495-get-started-with-claude-duet), [ChatGPT Dots](https://learn.chatgpt.com/docs/dots), [Grok Bot](https://docs.x.ai/grok-bot/overview) | It runs locally, fully customizable, yours to control, beside your files, databases, and local services. Duet, Dots, and Grok Bot provide managed cloud agents. |
+| [Self-hosted Claude Managed Agents](https://claude.com/resources/articles/self-hosted-claude-managed-agents) | hermitd runs on your Claude subscription. Self-hosted Managed Agents is a private-beta API you host and operate. |
+
+You keep the host running and maintain its sign-ins. Claude Code runs on your machine. Anthropic still does the compute in the cloud.
+
+Sources checked November 14, 2026.
+
 <a id="quick-start"></a>
 
 ## Set up
@@ -331,6 +345,14 @@ Join the [Discord community](https://discord.gg/54sJqAxhUh) for setup help and d
 ## Credits
 
 [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) inspired the `raw/` → `compiled/` knowledge system.
+
+[Building always-on agents](https://claude.com/resources/articles/building-always-on-agents) describes the surrounding architecture: an event inbox, timers, memory, permissions, and an outbox.
+
+[The components of agent memory](https://www.anthropic.com/research/components-of-agent-memory) describes a small index loaded every session, with the detail behind it.
+
+[Continual-ARC](https://arxiv.org/abs/2611.14505) measures skill acquisition over a working lifetime for agent harnesses (Lenton, Arif, and Mahmood, 11 Nov 2026). The authors' write-up is [Why we built Continual-ARC](https://unify.ai/blog/why-we-built-continual-arc).
+
+[Securing persistent agents like OpenClaw at OpenAI](https://developers.openai.com/blog/securing-persistent-agents-like-openclaw-at-openai) describes how OpenAI isolates, sandboxes, and identifies the persistent agents in its own deployment.
 
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) and [OpenClaw](https://github.com/openclaw/openclaw) are other open source agents.
 
