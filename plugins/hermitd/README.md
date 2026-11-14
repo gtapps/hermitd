@@ -190,39 +190,44 @@ Ask for an update from your terminal or connected chat:
 
 ## Learning loop
 
-The agent reviews evidence from its work and operation. Durable lessons go to memory. When skill learning is enabled, completed work can save or revise reusable skills automatically. Other proposed behavior changes are verified, deduplicated, and brought to you for approval.
-
-The reflection and proposal path works like this:
+The agent learns along three paths: closed work can save or revise its own learned skills when skill learning is enabled, a nightly dream verifies and tidies memory, and reflection keeps durable lessons and brings other behavior changes to you for approval.
 
 ```text
-Work produces evidence
-          │
-          ▼
-Reflect when due
-          │
-          ▼
-Verify and deduplicate
-          │
-     ┌────┴────┐
-     ▼         ▼
-Remember    Propose
-a lesson    a change
-                 │
-                 ▼
-           You approve?
-              │     │
-             no    yes
-              │     │
-         No change  Implement
-                        │
-                        ▼
-                  Verify result
-                        │
-                        ▼
-                  Future evidence
+        Work produces evidence
+  (task records, transcripts, cost logs)
+                   │
+     ┌─────────────┼──────────────┐
+     ▼             ▼              ▼
+Task closes    Nightly dream  Reflect when due
+     │             │              │
+     ▼             ▼              ▼
+Review the     Verify and     Verify the cited
+procedure      tidy memory    evidence
+     │         and topic          │
+     ▼         pages (undo)   ┌───┴────┬─────────┐
+Save or patch                 ▼        ▼         ▼
+a learned skill           Remember  Note it  Candidate
+(pin, rollback)           a lesson  until it change
+                                    recurs       │
+                                                 ▼
+                                          Drop duplicates,
+                    Monthly brainstorm ──► weak cases, and
+                                          what memory covers
+                                                 │
+                                                 ▼
+                                           You approve?
+                                              │     │
+                                             no    yes
+                                              │     │
+                                        No change   Re-check,
+                                                    then implement
+                                                    │
+                                                    ▼
+                                              A check passes, or
+                                              you accept the result
 ```
 
-Reflection runs at eligible task or session pauses, daily, and after routines configured to reflect. Agent proposals are task records waiting for admin consent. An executable check can close an approved proposal in one touch; authored content returns for result confirmation. Questions stay waiting without expiry and receive at most two confirmed reminder deliveries.
+Reflection runs daily when something is due, after routines configured to reflect, and on scheduled skill checks. Suggestion paths check memory first, so nothing memory already records is proposed again. Close-time learning reviews delegated and longer tasks and edits only learned skills; a needed routine or agent becomes a proposal. Proposals are [task records](docs/task-records.md) waiting for admin consent.
 
 ## Ask it from your chat
 
@@ -301,13 +306,7 @@ You can run separate agents for different responsibilities, each with its own wo
 
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
-## Upgrading from claude-code-hermit
-
-Claude Code 2.1.287 blocks plugins named `claude*`, so this project moved from `claude-code-hermit` to `hermitd`. Stop every agent in this Claude config directory, then follow the [migration prompt](docs/upgrading.md#upgrading-from-claude-code-hermit).
-
 ## Upgrading
-
-Coming from `claude-code-hermit`? See [how to migrate](#upgrading-from-claude-code-hermit).
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update waits for a quiet moment, applies migrations, then restarts the agent once and resumes the conversation. External updates finish with a `hermitd doctor --fix` pass and record its result in update history. Run `hermitd doctor [--fix]` to list health findings and their commands, or apply safe repairs and re-check; queued upgrades remain pending until the agent applies them.
 
