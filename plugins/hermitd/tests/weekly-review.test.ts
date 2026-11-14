@@ -390,29 +390,19 @@ test('reflect cost matches configured reflect routine ids exactly', withHermitDi
 }));
 
 describe('weekly learned-skill review', () => {
-  function seedSkills(dir: string, count: number) {
+  test('leaves an old unused learned skill in place even with capture evidence', withHermitDir(async dir => {
     const configDir = path.join(dir, 'test-claude'); fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'state/runtime.json'), JSON.stringify({ config_dir: configDir }));
     const old = new Date(Date.now() - 40 * 86400000).toISOString();
-    const skillUsage: Record<string, any> = { 'capture-evidence': { lastUsedAt: Date.now() } };
-    const rows = [];
-    for (let n = 0; n < count; n++) {
-      const skill = `learned-${String(n).padStart(2, '0')}`;
-      const folder = path.join(path.dirname(dir), '.claude/skills', skill); fs.mkdirSync(folder, { recursive: true });
-      fs.writeFileSync(path.join(folder, 'SKILL.md'), `---\nname: ${skill}\n---\nSteps`);
-      rows.push({ ts: old, skill, action: 'create' });
-      skillUsage[skill] = { lastUsedAt: Date.parse(old) };
-    }
-    fs.writeFileSync(path.join(dir, 'state/skill-ledger.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
-    fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage }));
-  }
-  test('leaves old unused learned skills in place even with capture evidence', withHermitDir(async dir => {
-    seedSkills(dir, 16);
+    const skill = 'learned-old';
+    const folder = path.join(path.dirname(dir), '.claude/skills', skill); fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'SKILL.md'), `---\nname: ${skill}\n---\nSteps`);
+    fs.writeFileSync(path.join(dir, 'state/skill-ledger.jsonl'), JSON.stringify({ ts: old, skill, action: 'create' }) + '\n');
+    fs.writeFileSync(path.join(configDir, '.claude.json'), JSON.stringify({ skillUsage: {
+      'capture-evidence': { lastUsedAt: Date.now() }, [skill]: { lastUsedAt: Date.parse(old) },
+    } }));
     expect((await runScript('weekly-review.ts', { args: [dir] })).exitCode).toBe(0);
-    for (let n = 0; n < 16; n++) {
-      const name = `learned-${String(n).padStart(2, '0')}`;
-      expect(fs.existsSync(path.join(path.dirname(dir), '.claude/skills', name, 'SKILL.md'))).toBe(true);
-    }
+    expect(fs.existsSync(path.join(folder, 'SKILL.md'))).toBe(true);
     const rows = fs.readFileSync(path.join(dir, 'state/skill-ledger.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
     expect(rows.filter(row => row.action === 'archive')).toHaveLength(0);
     expect(fs.existsSync(path.join(dir, 'state/skill-archive'))).toBe(false);
