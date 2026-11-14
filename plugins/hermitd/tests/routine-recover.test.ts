@@ -194,6 +194,7 @@ test('report bounds retry and closure facts by the previous boot', () => {
 
 test('report lists this boot\'s interrupted runs as pending before the first reconcile', async () => {
   const dir = fixture();
+  // The restart anchor is reconcile bookkeeping, never a pending run.
   markStarted(dir, { routine_id: 'hermitd:heartbeat-restart', skill: 'x', mark, started_at: mark, delivery: 'monitor', session_id: 'previous' });
   stampInterrupted(dir, 'unclean');
   const result = await runScript('routines.ts', { args: ['recover', '--report'], env: { AGENT_DIR: dir } });
