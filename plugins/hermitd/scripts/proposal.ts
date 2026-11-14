@@ -15,6 +15,7 @@ import { run as runMetrics } from './lib/proposals/metrics';
 import { run as runEvent } from './lib/proposals/event';
 import { migrate } from './lib/proposals/migrate';
 import { run as runQualityGate } from './lib/proposals/quality-gate';
+import { clip } from './lib/sanitize';
 
 type Json = any;
 type Verdict = Record<string, Json>;
@@ -88,7 +89,7 @@ export function proposalDigest(root: string): Verdict {
     proposals: records.slice(-50).map(record => ({
       id: record.id, handle: record.handle, title: record.title, source: record.source, category: record.category,
       tags: record.tags, status: record.status, closed_by: record.closed_by, reason: record.closed_reason,
-      summary: record.summary, proposal: record.body.slice(0, 1200),
+      summary: record.summary, proposal: clip(record.body, 1200),
     })),
   };
   try {

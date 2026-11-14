@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readChannelToken } from './channel-token';
 import { writeFileAtomic } from './md-write';
+import { clip } from './sanitize';
 
 type Json = any;
 export interface Chat {
@@ -145,7 +146,7 @@ export async function createThread(hermitDir: string, config: Json, chatId: stri
   try {
     const token = readChannelToken(hermitDir, 'discord', config?.channels?.discord);
     if (!token) return null;
-    const title = name.trim().slice(0, 100);
+    const title = clip(name.trim(), 100);
     if (!title) return null;
     const base = process.env.HERMIT_DISCORD_API_URL || 'https://discord.com/api/v10';
     const post = async (route: string, payload: Json) => {

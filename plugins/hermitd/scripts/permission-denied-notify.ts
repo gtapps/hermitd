@@ -31,7 +31,7 @@ import { sendOperatorNotice, appendMaintainerFindings } from './lib/channel-send
 import { readAlertState, writeAlertState } from './lib/alert-state';
 import { acquireLock, releaseLock } from './lib/lockfile';
 import { appendDenial } from './lib/denial-log';
-import { safe } from './lib/sanitize';
+import { clip, safe } from './lib/sanitize';
 import { localISOStamp } from './lib/time';
 import { loadMessages } from './lib/messages';
 
@@ -217,7 +217,7 @@ async function main(raw: string): Promise<void> {
   const key = toolKey(payload.tool_name);
   // PermissionDenied normally supplies the fixed reason "Blocked by classifier";
   // keep it optional so older or synthetic payloads remain fail-open.
-  const reason = typeof payload.reason === 'string' ? safe(payload.reason).slice(0, REASON_MAX_LEN) : '';
+  const reason = typeof payload.reason === 'string' ? clip(safe(payload.reason), REASON_MAX_LEN) : '';
 
   const now = Date.now();
   const claim = recordDenial(dir, key, bashProgram(payload), now);

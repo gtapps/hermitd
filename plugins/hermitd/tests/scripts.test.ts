@@ -1313,6 +1313,12 @@ describe('clip', () => {
     expect(clip('ab' + family + 'c', 6)).toBe('ab');
     expect(clip('ab' + family + 'c', 10)).toBe('ab' + family);
   });
+
+  test('a cluster longer than the cap at the start cuts on a code point instead of emptying', () => {
+    expect(clip('a' + '\u0301'.repeat(300), 200)).toBe('a' + '\u0301'.repeat(199));
+    const chain = '😀' + '\u200d😀'.repeat(100);
+    expect(clip(chain, 199)).toBe(chain.slice(0, 198));
+  });
 });
 
 // -------------------------------------------------------

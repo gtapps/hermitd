@@ -6,6 +6,7 @@ import { readFrontmatter } from './lib/frontmatter';
 import { isDict } from './lib/channel-config';
 import { emitJson, exitError, failJson } from './lib/cli';
 import { ClaudeStateError, markWorkspaceTrusted, readClaudeState, updateClaudeState, writeJsonKeepingMode } from './lib/claude-state';
+import { clip } from './lib/sanitize';
 
 type CheckResult =
   | { status: 'refused'; reason: 'outside_launch_root' | 'not_a_repository' | 'not_repository_root' | 'local_settings_tracked' }
@@ -53,7 +54,7 @@ function activationSummary(root: string): Activates {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     if (list.length >= 20) { out.truncated = true; return; }
     if (text.length > 500) out.truncated = true;
-    list.push(text.slice(0, 500));
+    list.push(clip(text, 500));
   };
   const hooks = (value: unknown, list: string[], file: string) => {
     if (!isDict(value)) return;

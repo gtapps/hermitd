@@ -146,7 +146,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
         reminder += 'Recent messages in this chat (context was reset):\n';
         for (const row of rows) {
           const sender = row.direction === 'out' ? 'you (hermit)' : row.sender ?? '';
-          reminder += `${safeForLLM(sender)} ${safeForLLM(row.ts)} ${safeForLLM(row.text).slice(0, UNADDRESSED_TEXT_CAP)}\n`;
+          reminder += `${safeForLLM(sender)} ${safeForLLM(row.ts)} ${clip(safeForLLM(row.text), UNADDRESSED_TEXT_CAP)}\n`;
         }
       }
     }
@@ -163,7 +163,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     if (rows.length) {
       reminder += 'Earlier messages in this chat since your last recorded reply:\n';
       for (const row of rows) {
-        reminder += `${safeForLLM(row.sender ?? '')} ${row.ts} ${safeForLLM(row.text).slice(0, UNADDRESSED_TEXT_CAP)}\n`;
+        reminder += `${safeForLLM(row.sender ?? '')} ${row.ts} ${clip(safeForLLM(row.text), UNADDRESSED_TEXT_CAP)}\n`;
       }
     }
   }

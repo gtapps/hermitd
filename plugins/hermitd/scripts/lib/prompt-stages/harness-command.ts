@@ -1,6 +1,6 @@
 // Prompt admission for native mod commands and the remaining Stop-hook command.
 
-import { safeForLLM } from '../sanitize';
+import { clip, safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
 import { isTrustedController, channelBotIdentity } from '../channel-auth';
 import { parseHarnessCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
@@ -34,7 +34,7 @@ export function run(ctx: StageContext): StageResult | void {
     }
     return { harness: {
       decision: 'run', commands: [parsed], dir, reply_to,
-      by: safeForLLM(senderLabel(env).slice(0, 64)),
+      by: safeForLLM(clip(senderLabel(env), 64)),
     } };
   }
 
@@ -60,7 +60,7 @@ export function run(ctx: StageContext): StageResult | void {
     }
   }
 
-  const by = safeForLLM(senderLabel(env).slice(0, 64));
+  const by = safeForLLM(clip(senderLabel(env), 64));
   const ok = writePendingCommand(dir, {
     command: parsed.command,
     arg: parsed.arg,

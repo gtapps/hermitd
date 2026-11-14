@@ -24,6 +24,7 @@ import path from 'node:path';
 import { Database } from 'bun:sqlite';
 import { readSettledConfig } from './config-read';
 import { channelEntry } from './channel-auth';
+import { clip } from './sanitize';
 
 type Json = any;
 
@@ -155,9 +156,7 @@ function ensureSchema(db: Json): void {
 
 // Shared by every write path so stored text keeps one redaction and size cap.
 function cleanText(text: string): string {
-  return text
-    .replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]')
-    .slice(0, MAX_TEXT_LEN);
+  return clip(text.replace(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?[?&](?:code|state)=\S*/gi, '[sign-in callback omitted]'), MAX_TEXT_LEN);
 }
 
 /**
@@ -214,7 +213,7 @@ export function enrichInbound(
         if (!row) return { ok: false };
         const suffix = cleanText(`\n🎙️ ${input.transcript}`);
         if (row.text.endsWith(suffix)) return { ok: true };
-        const text = (row.text + suffix).slice(0, MAX_TEXT_LEN);
+        const text = clip(row.text + suffix, MAX_TEXT_LEN);
         if (text === row.text) return { ok: true };
         db.query("INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', ?, ?)").run(row.id, row.text);
         db.query('UPDATE messages SET text = ? WHERE id = ?').run(text, row.id);
