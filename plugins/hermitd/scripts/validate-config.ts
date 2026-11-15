@@ -810,6 +810,10 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
     errors.push('push_notifications: must be a boolean');
   }
 
+  if (config.approvals !== undefined && !['personal', 'team'].includes(config.approvals)) {
+    errors.push('approvals: must be personal or team');
+  }
+
   if (config.ask_gate !== undefined && typeof config.ask_gate !== 'boolean') {
     errors.push('ask_gate: must be a boolean');
   }

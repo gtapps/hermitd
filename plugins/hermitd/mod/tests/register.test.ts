@@ -617,3 +617,105 @@ test('load during a main turn defers its first reconcile until idle', async ($, 
   await clock.settle();
   expect(r.payloads.reconcile).toHaveLength(1);
 });
+
+
+const checkInput = { tool: 'Bash', input: { command: 'docker ps' }, tool_use_id: 'call' };
+const promptInput = { tool_name: 'Bash', tool_input: { command: 'docker ps' }, permission_suggestions: [] };
+function approvalRig(on: any, options: { mode?: string; state?: boolean; park?: (payload: string) => unknown } = {}) {
+  return rig(on, { handlers: {
+    loaded: () => ({ decision: options.state === false ? 'pass' : 'ok', state: options.state === false ? undefined : '/state', approvals: options.mode ?? 'team' }),
+    park: options.park ?? (() => ({ decision: 'deny', reason: 'needs admin' })),
+  } });
+}
+
+test('personal calls preserve verdicts and never invoke park', async ($, on) => {
+  const r = approvalRig(on, { mode: 'personal' });
+  on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
+  on('classic.PermissionRequest', () => ({}));
+  await boot($);
+  expect((await $.tool.check(checkInput)).decision).toBe('ask');
+  expect(await $.classic.PermissionRequest(promptInput)).toEqual({});
+  expect(r.calls.filter(c => c === 'park')).toEqual([]);
+});
+
+for (const source of ['rule', 'hook', 'plugin', 'setting']) {
+  test(`team checks park ${source} asks and preserve other verdicts`, async ($, on) => {
+    const r = approvalRig(on);
+    on('tool.check', () => ({ decision: 'ask', [source]: 'source' }));
+    await boot($);
+    expect(await $.tool.check(checkInput)).toEqual({ decision: 'deny', reason: 'needs admin' });
+    expect(r.payloads.park).toEqual([{ event: 'check', tool: 'Bash', source }]);
+  });
+}
+
+test('team subagents and background sessions refuse without park', async ($, on) => {
+  const r = approvalRig(on, { state: false });
+  on('env.get', () => ({ value: '/jobs/job' }));
+  on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
+  on('classic.PermissionRequest', () => ({}));
+  await boot($);
+  expect((await $.tool.check({ ...checkInput, agentId: 'worker' })).decision).toBe('deny');
+  expect((await $.tool.check(checkInput)).decision).toBe('deny');
+  expect((await $.classic.PermissionRequest(promptInput)).decision?.behavior).toBe('deny');
+  expect(r.calls.filter(c => c === 'park')).toEqual([]);
+});
+
+test('interactive guest keeps its prompt and team pass keeps the ask verdict', async ($, on) => {
+  const r = approvalRig(on, { state: false });
+  on('env.get', () => ({ value: undefined }));
+  on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
+  await boot($);
+  expect((await $.tool.check(checkInput)).decision).toBe('ask');
+  expect(r.calls.filter(c => c === 'park')).toEqual([]);
+});
+
+for (const policy of [{ decision: 'pass' }, { decision: 'decline', after_seconds: 60 }, {}, { decision: 'deny', reason: 'refused' }]) {
+  test(`permission prompt applies policy ${JSON.stringify(policy)}`, async ($, on) => {
+    const r = approvalRig(on, { park: () => policy });
+    on('classic.PermissionRequest', () => ({}));
+    await boot($);
+    const result = await $.classic.PermissionRequest(promptInput);
+    if (policy.decision === 'pass') expect(result).toEqual({});
+    else expect(result.decision?.behavior).toBe('deny');
+    expect(r.payloads.park).toEqual([{ event: 'prompt' }]);
+  });
+}
+
+test('existing permission decisions and non-ask checks survive unchanged', async ($, on) => {
+  const r = approvalRig(on);
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'deny', message: 'hook decided' } }));
+  on('tool.check', () => ({ decision: 'deny', reason: 'classifier' }));
+  await boot($);
+  const decision = (await $.classic.PermissionRequest(promptInput)).decision;
+  expect(decision?.behavior === 'deny' && decision.message).toBe('hook decided');
+  expect(await $.tool.check(checkInput)).toEqual({ decision: 'deny', reason: 'classifier' });
+  expect(r.calls.filter(c => c === 'park')).toEqual([]);
+});
+
+
+test('a known team mode survives repeated load failures and refuses a failed park', async ($, on) => {
+  mock.clock(on);
+  let loads = 0;
+  const r = rig(on, { handlers: {
+    loaded: () => {
+      if (++loads === 1) return { decision: 'ok', state: '/state', approvals: 'team' };
+      throw new Error('bridge unreachable');
+    },
+    park: () => { throw new Error('bridge unreachable'); },
+  } });
+  on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
+  await boot($);
+  await boot($);
+  await boot($);
+  const result = await $.tool.check(checkInput);
+  expect(result.decision).toBe('deny');
+  expect(result.decision === 'deny' && result.reason).toContain('approval check failed');
+  expect(r.calls.filter(c => c === 'park')).toHaveLength(1);
+});
+
+test('ungated calls never load an unknown mode', async ($, on) => {
+  const r = rig(on, { handlers: { loaded: () => { throw new Error('bridge unreachable'); } } });
+  on('tool.check', () => ({ decision: 'allow' }));
+  expect((await $.tool.check(checkInput)).decision).toBe('allow');
+  expect(r.calls).toEqual([]);
+});

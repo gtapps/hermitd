@@ -21,6 +21,9 @@ function getPath(obj: any, dotted: string): any {
 describe('settleConfig degenerate inputs', () => {
   // [case, raw input, dotted path, settled value]
   const CASES: Array<[string, unknown, string, unknown]> = [
+    ...[undefined, '', null, 42, false].map(value => [String(value), { approvals: value }, 'approvals', 'personal'] as [string, unknown, string, unknown]),
+    ['team approvals', { approvals: 'team' }, 'approvals', 'team'],
+    ['custom approvals', { approvals: 'custom' }, 'approvals', 'custom'],
     ['git identity mount defaults on', {}, 'docker.git_identity_mount', true],
     ['git identity mount accepts false', { docker: { git_identity_mount: false } }, 'docker.git_identity_mount', false],
     ['git identity mount rejects strings', { docker: { git_identity_mount: 'false' } }, 'docker.git_identity_mount', true],

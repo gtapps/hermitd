@@ -167,3 +167,56 @@ test('message rewording asks for every spelling, leaving maintenance and reads a
     for (const verb of ['scaffold', 'apply', 'clear', 'list', 'status']) expect(matches(`${spelling} ${verb} .hermit`)).toBe(false);
   }
 });
+
+
+describe('offered ask history', () => {
+  function install(settings: any = {}) {
+    const dir = freshDir();
+    const state = path.join(dir, '.hermit/state');
+    fs.mkdirSync(state, { recursive: true });
+    return { state, file: seedSettings(dir, settings), record: path.join(state, 'ask-offered.json') };
+  }
+  for (const profile of ['standard', 'ask-only']) {
+    test(`${profile} offers once, preserves deletions and adds newly offered entries`, async () => {
+      const { file, record } = install({ permissions: { deny: [DENY[0]] } });
+      const run = () => runScript('apply-settings.ts', { args: [file, 'deny', profile] });
+      expect((await run()).exitCode).toBe(0);
+      expect(JSON.parse(fs.readFileSync(record, 'utf8'))).toEqual(ASK);
+      const settings = readSettings(file);
+      settings.permissions.ask = [];
+      fs.writeFileSync(file, JSON.stringify(settings));
+      expect(JSON.parse((await run()).stdout)).toEqual({ added: [] });
+      expect(readSettings(file).permissions.ask).toEqual([]);
+      // A later seed adds an entry the install has not seen before.
+      fs.writeFileSync(record, JSON.stringify(ASK.slice(1)));
+      expect(JSON.parse((await run()).stdout)).toEqual({ added: [ASK[0]] });
+      expect(readSettings(file).permissions.ask).toEqual([ASK[0]]);
+    });
+  }
+  test('ask-stamp preserves settings bytes and stamps absent ask entries', async () => {
+    const { file, record } = install({ permissions: { deny: [DENY[0]], ask: ['operator'] } });
+    const before = fs.readFileSync(file, 'utf8');
+    const result = await runScript('apply-settings.ts', { args: [file, 'deny', 'ask-stamp'] });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('OK');
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(JSON.parse(fs.readFileSync(record, 'utf8'))).toEqual(ASK);
+    expect(JSON.parse((await runScript('apply-settings.ts', { args: [file, 'deny', 'standard'] })).stdout)).toEqual({ added: [] });
+    expect(readSettings(file).permissions.ask).toEqual(['operator']);
+  });
+  test('ask-stamp skips unseeded settings and missing state', async () => {
+    const { file, record } = install();
+    expect(JSON.parse((await runScript('apply-settings.ts', { args: [file, 'deny', 'ask-stamp'] })).stdout)).toEqual({ status: 'skipped', reason: 'not_seeded' });
+    expect(fs.existsSync(record)).toBe(false);
+    const noState = seedSettings(freshDir(), { permissions: { deny: [DENY[0]] } });
+    expect(JSON.parse((await runScript('apply-settings.ts', { args: [noState, 'deny', 'ask-stamp'] })).stdout)).toEqual({ status: 'skipped', reason: 'no_state_dir' });
+  });
+  test('failed settings write never stamps history', async () => {
+    const { file, record } = install();
+    // A directory at the atomic replacement target forces the write to fail.
+    fs.unlinkSync(file);
+    fs.mkdirSync(file);
+    expect((await runScript('apply-settings.ts', { args: [file, 'deny', 'standard'] })).exitCode).not.toBe(0);
+    expect(fs.existsSync(record)).toBe(false);
+  });
+});

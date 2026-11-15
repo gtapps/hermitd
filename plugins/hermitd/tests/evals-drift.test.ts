@@ -17,6 +17,8 @@ import path from 'node:path';
 
 import { EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
 import { runScript, walkFiles } from './helpers/run';
+import { approvalReason } from '../scripts/lib/harness-mod';
+import { BASH_FAILURE } from '../evals/_generators/lib';
 import { normalizeChannelSource } from '../scripts/lib/channel-envelope';
 import { setupWorkdir } from './helpers/workdir';
 
@@ -28,6 +30,16 @@ const CASES: Case[] = walkFiles(EVALS, n => n === 'case.yaml', new Set(['results
 });
 
 describe('eval case copies of live text', () => {
+  test('approval refusal reasons match the live builder and all cases carry the host note', () => {
+    for (const variant of ['chat', 'unattended'] as const) {
+      const c = CASES.find(c => c.file === `approvals/${variant}-refusal/case.yaml`)!;
+      const reason = approvalReason({ variant, tool: 'Bash', source: 'rule', taskCommand: 'bun "${CLAUDE_PLUGIN_ROOT}/scripts/task.ts"', console: 'test:console' });
+      expect(c.prompt.split('Refusal reason:\n')[1]?.trim()).toBe(reason.trim());
+    }
+    const approvals = CASES.filter(c => c.file.startsWith('approvals/'));
+    expect(approvals).toHaveLength(3);
+    for (const c of approvals) expect(c.prompt).toContain(BASH_FAILURE);
+  });
   test('every append_system_prompt is a shipped agent body or the shipped resident prompt', () => {
     const bodies = fs.readdirSync(path.join(PLUGIN, 'agents'))
       .filter(f => f.endsWith('.md'))

@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.323+ and Bun 1.4+ installed:
+With Claude Code 2.1.325+ and Bun 1.4+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
@@ -143,6 +143,7 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 | `channels.<name>.maintainer_channel_id` | optional separate chat for technical alerts, diagnostics, and usage details |
 | `push_notifications` | native/mobile push on alerts: **`true`** |
 | `remote` | remote control; `false` also requires approval for cross-machine peer messages; **`true`** |
+| `approvals` | auto-mode approval policy: **`personal`** (existing behavior) or `team` (typed turns and DM-paired approvers in the maintainer chat; chat prompts close after 60 seconds); effective at next start |
 | `ask_gate` | route unattended questions to a paired channel: **`true`** |
 | `budget` | optional daily / weekly / monthly caps; **`alert`** or binding `pause` action |
 | `artifacts` | dashboard / weekly review: **dashboard enabled** |

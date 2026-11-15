@@ -1,6 +1,7 @@
 /** Settings requiring native permission or classifier review. */
 export const PROTECTED_PATHS: readonly string[] = [
   'permission_mode',
+  'approvals',
   'operator_profile',
   'env',
   'monitors',

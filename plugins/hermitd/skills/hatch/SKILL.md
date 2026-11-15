@@ -383,6 +383,8 @@ Accept any answer including free-text via Other. Expand Q1–Q3 into OPERATOR.md
 | --- | --- | --- | --- |
 | 5 | Mission | "Who do I serve, and what am I here for?" | Just me / My team / My clients |
 
+After "My team" or "My clients", call `hatch-config` with the project root, `--reinit`, and exactly `{"approvals":"team"}` on stdin, using the re-initialization call form above. Tell the operator that approvals now happen at the terminal, in the Claude app, or through a DM-paired approver in the maintainer chat (with a 60-second prompt deadline). Approving from chat needs `maintainer_channel_id` set to a chat the agent listens in: an approver's DM or an enrolled group. Setting `approvals` to `personal` reverts this at the next start. After "Just me", do nothing.
+
 Tell the operator before Call 1: "I've scanned your project and drafted OPERATOR.md. A few questions to fill in what I couldn't infer:"
 
 All questions use the `AskUserQuestion` structures defined above. Accept short answers or free-text via Other; expand into prose in Phase 4. If the operator selects "Skip", leaves Other blank, or gives a minimal answer, don't include that topic in OPERATOR.md.

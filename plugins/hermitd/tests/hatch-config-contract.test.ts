@@ -33,6 +33,16 @@ async function runHatchConfig(projectRoot: string, answers: any, reinit = false)
 }
 
 describe('hatch-config.ts', () => {
+  test('approvals-only reinit preserves every other field and omission preserves approvals', async () => {
+    const dir = freshDir();
+    expect((await runHatchConfig(dir, { project_name: 'x' })).exitCode).toBe(0);
+    const before = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
+    expect((await runHatchConfig(dir, { approvals: 'team' }, true)).exitCode).toBe(0);
+    const team = JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'));
+    expect(team).toEqual({ ...before, approvals: 'team' });
+    expect((await runHatchConfig(dir, {}, true)).exitCode).toBe(0);
+    expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8'))).toEqual(team);
+  });
   test('reinit overlays state_dir, preserves omitted values, and is byte-idempotent', async () => {
     const dir = freshDir();
     expect((await runHatchConfig(dir, { project_name: 'x', channels: { discord: {} } })).exitCode).toBe(0);

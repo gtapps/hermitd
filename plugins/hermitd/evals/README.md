@@ -157,6 +157,19 @@ Sonnet cost $3.36, Opus $2.50. `later-retry-recovery-command-pt` was added later
 
 Hand-written trigger cases for the `skills/browser/SKILL.md` description: which requests move the resident from web fetch to its browser, plus a bot-check case and a `browser.enabled: false` case. Failed fetches are stood in the prompt with WebFetch withheld, so no run reaches a live site; `browser-off` also stands in the config facts and the wrapper's `disabled` result because Bash is withheld, so it grades only the reply. Update the cases with the description. Run with `--tag browser --ablation none --scaffold`.
 
+## approvals
+
+Three hand-written cases cover team approvals: a Portuguese member request refused into one console-bound pending question, an unattended refusal producing one notice and no task, and an approver's yes recorded with `task answer` before the exact refused command runs once. Origins are narrated without channel envelopes. Refusal reasons are pinned to the live builder by `tests/evals-drift.test.ts`; all three carry `BASH_FAILURE`. Graders check tool actions and trace, without requiring particular wording, language, or a channel tool.
+
+Model runs: pending before merge; not run by the implementation executor. From the repo root:
+
+```bash
+claude plugin eval plugins/hermitd --tag approvals --allow-tools Bash --ablation none --model sonnet --runs 3 --scaffold --max-cost-usd 6 --no-publish
+claude plugin eval plugins/hermitd --tag approvals --allow-tools Bash --ablation none --model opus --runs 1 --scaffold --max-cost-usd 6 --no-publish
+```
+
+Expected: each case passes 3 of 3 Sonnet runs and once on Opus. Record the results here before merging. The host Bash failure described below remains a verification limit.
+
 ## Running
 
 From the repo root:

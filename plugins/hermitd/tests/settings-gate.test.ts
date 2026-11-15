@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
-import { protectedMutation } from '../scripts/settings-gate';
+import { approvalTurn, protectedMutation } from '../scripts/settings-gate';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-settings-gate-');
 afterAll(cleanup);
@@ -1191,5 +1191,47 @@ describe('task sender binding', () => {
     expectDeny(await gate(answer('admin', 'discord:100'), entries, 'default', config));
     expectDeny(await gate(answer('member', 'discord:100~T1'), entries, 'default', config));
     expectDeny(await gate(answer('admin'), [opener(channel('admin', '100', ' user_id="admin"'))]));
+  });
+});
+
+
+describe('approval turn provenance', () => {
+  function classify(text: string, opts: { origin?: string; launch?: string; bg?: boolean; queued?: any[]; paired?: boolean; maintainer?: boolean } = {}) {
+    const dir = fixture({ channels: { test: { maintainer_channel_id: opts.maintainer === false ? null : 'console', attributes: { thread_id: 'thread' } } } });
+    const hermit = path.join(dir, '.hermit');
+    fs.writeFileSync(path.join(hermit, 'state/runtime.json'), JSON.stringify({ launch_prompt: opts.launch ?? null }));
+    const channel = path.join(dir, '.claude.local/channels/test');
+    fs.mkdirSync(channel, { recursive: true });
+    if (opts.paired !== false) fs.writeFileSync(path.join(channel, 'access.json'), JSON.stringify({ allowFrom: ['admin'] }));
+    const transcript = path.join(dir, 'turn.jsonl');
+    fs.writeFileSync(transcript, [
+      { type: 'user', origin: { kind: opts.origin ?? 'human' }, sessionKind: opts.bg ? 'bg' : undefined, message: { content: text } },
+      ...(opts.queued ?? []).map(attachment => ({ type: 'attachment', attachment: { type: 'queued_command', ...attachment } })),
+    ].map(e => JSON.stringify(e)).join('\n') + '\n');
+    return approvalTurn({ transcript_path: transcript }, hermit);
+  }
+  const chat = (user = 'admin', id = 'console', thread = '') => `<channel source="plugin:test:test" chat_id="${id}" user_id="${user}" ${thread}>yes</channel>`;
+  test('typed, app, background, startup and expanded command prompts', () => {
+    expect(classify('hello').kind).toBe('typed');
+    expect(classify('hello', { bg: true }).kind).toBe('other');
+    expect(classify('startup', { launch: 'startup' }).kind).toBe('other');
+    expect(classify('<command-name>/hermitd:resident-start</command-name><command-args>x</command-args>', { launch: '/hermitd:resident-start x' }).kind).toBe('other');
+    expect(classify('wake', { origin: 'plugin' }).kind).toBe('other');
+  });
+  test('only a paired sender in the console itself qualifies', () => {
+    expect(classify(chat()).kind).toBe('admin_chat');
+    for (const text of [chat('member'), chat('admin', 'other'), chat('admin', 'thread'), chat('admin', 'console', 'thread="child"')]) {
+      expect(classify(text)).toMatchObject({ kind: 'other', channel: true });
+    }
+    expect(classify(chat(), { paired: false }).kind).toBe('other');
+    expect(classify(chat(), { maintainer: false }).kind).toBe('other');
+  });
+  test('latest queued prompt decides in either direction', () => {
+    expect(classify(chat('member'), { queued: [{ prompt: chat(), origin: { kind: 'channel' } }] }).kind).toBe('admin_chat');
+    expect(classify(chat(), { queued: [{ prompt: chat('member'), origin: { kind: 'channel' } }] }).kind).toBe('other');
+    expect(classify(chat(), { queued: [{ prompt: 'typed late', origin: { kind: 'human' } }] }).kind).toBe('typed');
+  });
+  test('unreadable transcript refuses', () => {
+    expect(approvalTurn({ transcript_path: '/missing/transcript' })).toEqual({ kind: 'other', channel: false });
   });
 });
