@@ -258,7 +258,8 @@ export function approvalTurn(payload: Json, dir = hermitDir()): ApprovalTurn {
     if (envelope) {
       const conversation = conversationKey(envelope.sourceKey, envelope.chatId, envelope.thread);
       const console = approvalConsole(dir, config);
-      const admin = console && !envelope.thread && envelope.sourceKey === console.channel
+      // A peer can post a forged envelope; only a real channel delivery counts.
+      const admin = console && origin?.kind === 'channel' && !envelope.thread && envelope.sourceKey === console.channel
         && envelope.chatId === console.chat && envelope.userId !== null && console.approvers.includes(envelope.userId);
       return { kind: admin && !background ? 'admin_chat' : 'other', channel: true, conversation };
     }

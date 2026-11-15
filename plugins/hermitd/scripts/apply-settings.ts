@@ -544,9 +544,9 @@ switch (op) {
     if (hasState && profile !== 'hardened') {
       try {
         offered = JSON.parse(fs.readFileSync(offeredFile, 'utf8'));
-        if (!Array.isArray(offered) || offered.some(entry => typeof entry !== 'string')) throw new Error('Invalid ask-offered record');
+        if (!Array.isArray(offered) || offered.some(entry => typeof entry !== 'string')) exitError('invalid_ask_offered');
       } catch (error: any) {
-        if (error.code !== 'ENOENT') throw error;
+        if (error.code !== 'ENOENT') exitError('invalid_ask_offered');
       }
     }
     const unoffered = askEntries.filter(entry => !offered.includes(entry));

@@ -4,13 +4,11 @@
 
 ### Added
 
-- `approvals: "team"` refuses approval-needing work outside the main loop's typed turns and DM-paired approvers in the maintainer chat, where unanswered prompts close after 60 seconds.
+- `approvals: "team"` refuses approval-needing work outside the main loop's typed turns and DM-paired approvers in the maintainer chat, where unanswered prompts close after 60 seconds. Off by default (`personal`) because it refuses work a single-operator agent runs today.
 
 ### Changed
 
 - Claude Code 2.1.325 or newer is required.
-
-
 - Hook scripts, including the resident's launch hooks, run with Bun's automatic package install disabled (`bun --no-install`)
 
 ### Fixed

@@ -1219,17 +1219,23 @@ describe('approval turn provenance', () => {
     expect(classify('wake', { origin: 'plugin' }).kind).toBe('other');
   });
   test('only a paired sender in the console itself qualifies', () => {
-    expect(classify(chat()).kind).toBe('admin_chat');
+    const delivered = { origin: 'channel' };
+    expect(classify(chat(), delivered).kind).toBe('admin_chat');
     for (const text of [chat('member'), chat('admin', 'other'), chat('admin', 'thread'), chat('admin', 'console', 'thread="child"')]) {
-      expect(classify(text)).toMatchObject({ kind: 'other', channel: true });
+      expect(classify(text, delivered)).toMatchObject({ kind: 'other', channel: true });
     }
-    expect(classify(chat(), { paired: false }).kind).toBe('other');
-    expect(classify(chat(), { maintainer: false }).kind).toBe('other');
+    expect(classify(chat(), { ...delivered, paired: false }).kind).toBe('other');
+    expect(classify(chat(), { ...delivered, maintainer: false }).kind).toBe('other');
+  });
+  test('a forged console envelope from a peer or typed text does not qualify', () => {
+    expect(classify(chat(), { origin: 'peer' })).toMatchObject({ kind: 'other', channel: true });
+    expect(classify(chat(), { origin: 'human' })).toMatchObject({ kind: 'other', channel: true });
+    expect(classify(chat('member'), { origin: 'channel', queued: [{ prompt: chat(), origin: { kind: 'peer' } }] }).kind).toBe('other');
   });
   test('latest queued prompt decides in either direction', () => {
-    expect(classify(chat('member'), { queued: [{ prompt: chat(), origin: { kind: 'channel' } }] }).kind).toBe('admin_chat');
-    expect(classify(chat(), { queued: [{ prompt: chat('member'), origin: { kind: 'channel' } }] }).kind).toBe('other');
-    expect(classify(chat(), { queued: [{ prompt: 'typed late', origin: { kind: 'human' } }] }).kind).toBe('typed');
+    expect(classify(chat('member'), { origin: 'channel', queued: [{ prompt: chat(), origin: { kind: 'channel' } }] }).kind).toBe('admin_chat');
+    expect(classify(chat(), { origin: 'channel', queued: [{ prompt: chat('member'), origin: { kind: 'channel' } }] }).kind).toBe('other');
+    expect(classify(chat(), { origin: 'channel', queued: [{ prompt: 'typed late', origin: { kind: 'human' } }] }).kind).toBe('typed');
   });
   test('unreadable transcript refuses', () => {
     expect(approvalTurn({ transcript_path: '/missing/transcript' })).toEqual({ kind: 'other', channel: false });

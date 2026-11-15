@@ -266,7 +266,8 @@ async function loadSession($: EngineInterface, id: string) {
     lastId = undefined;
     throw error;
   });
-  approvals = result.approvals;
+  // A reply without a mode (bridge-internal failure) keeps the mode already known.
+  if (result.approvals !== undefined) approvals = result.approvals;
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
     effort = undefined;

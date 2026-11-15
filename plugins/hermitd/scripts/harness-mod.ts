@@ -4,8 +4,7 @@ import { clearRecoveryPending, reconcileChannels } from './lib/channel-recovery'
 import fs from 'node:fs';
 import path from 'node:path';
 import { readSettledConfig } from './lib/config-read';
-import { transcriptDirFor } from './lib/cc-compat';
-import { hermitDir } from './lib/cc-compat';
+import { hermitDir, transcriptDirFor } from './lib/cc-compat';
 import { readJson } from './lib/cli';
 import { readRuntimeJson } from './lib/runtime';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
@@ -71,7 +70,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       return { decision: 'deny', reason: approvalReason({
         variant: turn.channel ? turn.conversation === console?.key ? 'console' : 'chat' : 'unattended',
         tool: typeof input.tool === 'string' ? input.tool : 'approval', source: input.source,
-        taskCommand: 'hermitd-run task', console: console?.key ?? null,
+        taskCommand: '.hermit/bin/hermitd-run task', console: console?.key ?? null,
       }) };
     } catch {
       return { decision: 'deny', reason: APPROVAL_CHECK_FAILED };

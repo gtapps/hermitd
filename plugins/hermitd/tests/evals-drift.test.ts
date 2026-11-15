@@ -15,10 +15,9 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
+import { BASH_FAILURE, EVALS, PLUGIN, agentBody, residentPrompt } from '../evals/_generators/lib';
 import { runScript, walkFiles } from './helpers/run';
 import { approvalReason } from '../scripts/lib/harness-mod';
-import { BASH_FAILURE } from '../evals/_generators/lib';
 import { normalizeChannelSource } from '../scripts/lib/channel-envelope';
 import { setupWorkdir } from './helpers/workdir';
 
