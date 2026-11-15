@@ -379,3 +379,22 @@ export function recover(dir: string, claimerVersion: string, now = Date.now(), u
     return resumed;
   });
 }
+
+
+export const APPROVAL_CHECK_FAILED = 'This step was not run because the approval check failed. Do not retry or reword it. Tell the operator the check failed; an admin must resolve it.';
+export const APPROVAL_PROMPT_REFUSED = 'This step was not run. This turn cannot open an approval prompt. Do not retry or reword it; report that an admin is needed.';
+
+/** Model-owned request bookkeeping follows the question gate, with one console-bound record. */
+export function approvalReason(input: {
+  variant: 'chat' | 'console' | 'unattended'; tool: string; source: string; taskCommand: string; console: string | null;
+}): string {
+  const { variant, tool, source, taskCommand, console } = input;
+  const start = `This ${tool} step was not run: it needs an admin's approval. Do not retry or reword it. An admin can also run it at the terminal or in the Claude app. `;
+  const rule = source === 'rule' ? 'An approver can ask in the maintainer chat to delete this step’s entry from permissions.ask; it then stops asking for everyone. ' : '';
+  if (variant === 'unattended') return start + 'Send one maintainer notice with channel-send .hermit --notice carrying {"maintainer":"<step and reason>","fallback":"findings"}. Open no task. ' + rule;
+  const consoleNote = variant === 'console' ? 'Only a DM-paired approver’s reply in this console leads to a prompt. Reopen the approval request if it was answered. ' : '';
+  const request = console
+    ? `Open one pending approval question with \`${taskCommand} open .hermit --title "<approval needed>" --done "Answer recorded" --requester agent --dedupe-key "<one key per exact step and asking chat>" --conversation ${JSON.stringify(console)} --waiting-on admin --decision '{"purpose":"input","authority":"chat","generation":1,"resume":"<the exact step, who asked, in which chat>"}'\`. Deliver it once with channel-send .hermit --notice carrying {"maintainer":"<approval request>","decision":{"task":"<id>","generation":1}}. Add a progress note to the work’s own task; do not block that task. If the notice is undelivered, say so in the asking chat. `
+    : 'No reachable admin console with a pairing list is configured. Tell the asking chat the request cannot be delivered; an admin can use the terminal or Claude app. ';
+  return start + 'Tell the asking chat it needs an admin’s approval. ' + consoleNote + request + rule;
+}

@@ -3,13 +3,14 @@ import { reconcileRoutines } from './lib/routines/recover';
 import { clearRecoveryPending, reconcileChannels } from './lib/channel-recovery';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hermitDir } from './lib/cc-compat';
+import { readSettledConfig } from './lib/config-read';
+import { hermitDir, transcriptDirFor } from './lib/cc-compat';
 import { readJson } from './lib/cli';
 import { readRuntimeJson } from './lib/runtime';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
-  claim, enqueue, finalize, MOD_LOADED_FILE, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
+  approvalReason, APPROVAL_CHECK_FAILED, APPROVAL_PROMPT_REFUSED, claim, enqueue, finalize, MOD_LOADED_FILE, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
   type Leg, type QueueEntry, type ReplyTarget, type Unanswered,
 } from './lib/harness-mod';
 
@@ -50,8 +51,34 @@ async function answerUnanswered(dir: string, unanswered: Unanswered[]): Promise<
 
 export async function run(verb: string, sessionId: string, payload = ''): Promise<unknown> {
   const dir = hermitDir();
+  if (verb === 'park') {
+    try {
+      const runtime = readRuntimeJson(path.join(dir, 'state'));
+      if (!sessionId || runtime?.cc_session_id !== sessionId) throw new Error('session mismatch');
+      const input = JSON.parse(payload);
+      if (!['check', 'prompt'].includes(input.event)) throw new Error('invalid event');
+      const { approvalTurn, approvalConsole } = await import('./settings-gate');
+      const tDir = transcriptDirFor(path.dirname(dir), runtime.config_dir);
+      const transcript = path.join(tDir, `${sessionId}.jsonl`);
+      if (path.dirname(transcript) !== tDir) throw new Error('invalid session');
+      const turn = approvalTurn({ transcript_path: transcript }, dir);
+      if (turn.kind === 'typed') return { decision: 'pass' };
+      if (turn.kind === 'admin_chat') return input.event === 'check'
+        ? { decision: 'pass' } : { decision: 'decline', after_seconds: 60 };
+      if (input.event === 'prompt') return { decision: 'deny', reason: APPROVAL_PROMPT_REFUSED };
+      const console = approvalConsole(dir, readSettledConfig(dir));
+      return { decision: 'deny', reason: approvalReason({
+        variant: turn.channel ? turn.conversation === console?.key ? 'console' : 'chat' : 'unattended',
+        tool: typeof input.tool === 'string' ? input.tool : 'approval', source: input.source,
+        taskCommand: '.hermit/bin/hermitd-run task', console: console?.key ?? null,
+      }) };
+    } catch {
+      return { decision: 'deny', reason: APPROVAL_CHECK_FAILED };
+    }
+  }
   const runtime = readRuntimeJson(path.join(dir, 'state'));
-  if (!fs.existsSync(dir) || !sessionId || runtime?.cc_session_id !== sessionId) return { decision: 'pass' };
+  if (!fs.existsSync(dir) || !sessionId || runtime?.cc_session_id !== sessionId) return verb === 'loaded' && fs.existsSync(dir)
+    ? { decision: 'pass', approvals: readSettledConfig(dir).approvals } : { decision: 'pass' };
   switch (verb) {
     case 'intake': {
       // Loaded only here: the other verbs need none of the stages.
@@ -65,7 +92,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     }
     case 'loaded':
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
-      return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId };
+      return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId, approvals: readSettledConfig(dir).approvals };
     case 'reconcile': {
       const options = payload ? JSON.parse(payload) : {};
       const now = Date.now();

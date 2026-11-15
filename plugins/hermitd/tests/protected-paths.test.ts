@@ -4,6 +4,7 @@ import { AUTOMODE_SOFT_DENY_ENTRY } from '../scripts/lib/settings/automode-entri
 
 const EXPECTED_PATHS = [
   'permission_mode',
+  'approvals',
   'operator_profile',
   'env',
   'monitors',

@@ -8,7 +8,7 @@ import { markGuest } from '../scripts/lib/guest-marker';
 import { inboundSince } from '../scripts/lib/channel-log';
 import { startHttpStub } from './helpers/http-stub';
 import {
-  claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, pendingPurpose, readOutcome, recover, recordLegs, validCommand,
+  approvalReason, claim, enqueue, finalize, legReason, outcomeStatus, parseSkill, pendingPurpose, readOutcome, recover, recordLegs, validCommand,
   INFLIGHT_DIR, OUTCOMES_DIR, QUEUE_DIR, QUEUE_PROTOCOL, type QueueEntry, type Unanswered,
 } from '../scripts/lib/harness-mod';
 
@@ -268,7 +268,7 @@ test('guest session and every nonresident verb leave state untouched', async () 
   markGuest(path.join(dir, 'state'), 'guest');
   const before = fs.readdirSync(path.join(dir, 'state'));
   for (const verb of ['intake', 'loaded', 'claim', 'recover', 'leg', 'finalize']) {
-    expect(await call(wd, verb, envelope('!clear'), 'guest')).toEqual({ decision: 'pass' });
+    expect(await call(wd, verb, envelope('!clear'), 'guest')).toEqual(verb === 'loaded' ? { decision: 'pass', approvals: 'personal' } : { decision: 'pass' });
   }
   expect(fs.readdirSync(path.join(dir, 'state'))).toEqual(before);
 });
@@ -290,7 +290,7 @@ test('worker-owned thread passes before audit; resident-owned thread queues', as
 test('loaded stamps the marker and names the state directory', async () => {
   const { wd, dir } = fixture();
   fs.rmSync(path.join(dir, 'state/harness-mod-loaded.json'));
-  expect(await call(wd, 'loaded')).toEqual({ decision: 'ok', state: path.join(dir, 'state'), session_id: 'resident' });
+  expect(await call(wd, 'loaded')).toEqual({ decision: 'ok', state: path.join(dir, 'state'), session_id: 'resident', approvals: 'personal' });
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident', queue: QUEUE_PROTOCOL });
 });
 
@@ -608,3 +608,49 @@ for (const scenario of ['ready', 'gone', 'live', 'paused', 'skill', 'expired', '
     }
   });
 }
+
+
+test('park refuses mismatched sessions and malformed events without falling through to pass', async () => {
+  const { wd } = fixture();
+  for (const [session, payload] of [['guest', '{"event":"check"}'], ['resident', '{bad'], ['resident', '{}']]) {
+    expect(await call(wd, 'park', payload, session)).toMatchObject({ decision: 'deny', reason: expect.stringContaining('approval check failed') });
+  }
+});
+
+test('park classifies typed, admin console and other turns for both events', async () => {
+  const { wd, dir } = fixture();
+  const config = { approvals: 'team', channels: { custom: { maintainer_channel_id: 'console', state_dir: path.join(wd.dir, 'channel') } } };
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+  fs.mkdirSync(path.join(wd.dir, 'channel'), { recursive: true });
+  fs.writeFileSync(path.join(wd.dir, 'channel/access.json'), JSON.stringify({ allowFrom: ['admin'] }));
+  const { transcriptDirFor } = await import('../scripts/lib/cc-compat');
+  const configDir = path.join(wd.dir, 'claude');
+  setRuntime(dir, { config_dir: configDir });
+  const transcripts = transcriptDirFor(wd.dir, configDir);
+  fs.mkdirSync(transcripts, { recursive: true });
+  for (const [text, origin, check, prompt] of [
+    ['typed', 'human', 'pass', 'pass'],
+    ['<channel source="custom" chat_id="console" user_id="admin">yes</channel>', 'channel', 'pass', 'decline'],
+    ['<channel source="custom" chat_id="members" user_id="member">run it</channel>', 'channel', 'deny', 'deny'],
+    ['wake', 'plugin', 'deny', 'deny'],
+  ]) {
+    fs.writeFileSync(path.join(transcripts, 'resident.jsonl'), JSON.stringify({ type: 'user', origin: { kind: origin }, message: { content: text } }) + '\n');
+    expect((await call(wd, 'park', JSON.stringify({ event: 'check', tool: 'Bash', source: 'rule' }))).decision).toBe(check);
+    const reply = await call(wd, 'park', '{"event":"prompt"}');
+    expect(reply.decision).toBe(prompt);
+    if (prompt === 'decline') expect(reply.after_seconds).toBe(60);
+  }
+  expect((await call(wd, 'loaded', '', 'guest')).approvals).toBe('team');
+});
+
+test('approval reasons bind one chat-authority request to the console and reserve ask deletion for rules', () => {
+  const input = { tool: 'Bash', source: 'rule', taskCommand: 'hermitd-run task', console: 'custom:console' };
+  const chat = approvalReason({ ...input, variant: 'chat' });
+  for (const part of ['not run', 'Do not retry or reword', '--requester agent', '--dedupe-key', '--conversation "custom:console"', '"authority":"chat"', 'permissions.ask', 'undelivered']) expect(chat).toContain(part);
+  expect(approvalReason({ ...input, variant: 'console' })).toContain('Reopen');
+  const unattended = approvalReason({ ...input, source: 'hook', variant: 'unattended' });
+  expect(unattended).toContain('"fallback":"findings"');
+  expect(unattended).toContain('Open no task');
+  expect(unattended).not.toContain('permissions.ask');
+  expect(approvalReason({ ...input, console: null, variant: 'chat' })).not.toContain(' open .hermit');
+});

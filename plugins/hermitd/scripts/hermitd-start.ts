@@ -155,6 +155,7 @@ const DEFAULT_CONFIG: Json = {
   chrome: false,
   push_notifications: true,
   ask_gate: true,
+  approvals: 'personal',
   routine_max_lateness_minutes: 60,
   routines: [
     { id: 'hermitd:dream', schedule: '0 1 * * *', skill: 'hermitd:dream', precheck: 'dream', model: 'sonnet', enabled: true },
@@ -1666,6 +1667,7 @@ async function main(): Promise<void> {
         session_id: null,
         created_at: localISOStamp(),
         runtime_mode: 'interactive',
+        launch_prompt: null,
         tmux_session: null,
         peer_name: peerName(config),
         transition: null,
@@ -1680,6 +1682,7 @@ async function main(): Promise<void> {
       // Preserve lifecycle fields for resident-start recovery.
       existing.version = 1;
       existing.runtime_mode = 'interactive';
+      existing.launch_prompt = null;
       existing.tmux_session = null;
       existing.peer_name = peerName(config);
       clearShutdownStampsOnBoot(existing);
@@ -1725,10 +1728,50 @@ async function main(): Promise<void> {
   fs.chmodSync(envFile, 0o600);
 
   const shellCmd = `. ${shlexQuote(envFile)} && rm -f ${shlexQuote(envFile)} && ${shlexJoin(cmd)}`;
+  // Stamp provenance before Claude can consume its argv prompt. Keep the old
+  // lifecycle record byte-for-byte if tmux refuses to create the session.
+  const runtimeFile = path.join(STATE_DIR, 'runtime.json');
+  const runtimeBeforeLaunch = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf8') : null;
+  const runtimeMode = isContainer() ? 'docker' : 'tmux';
+  // Create or update runtime.json as the single source of lifecycle truth
+  const existing = readRuntimeJson();
+  if (existing === null) {
+    writeRuntimeJson({
+      version: 1,
+      session_id: null,
+      created_at: localISOStamp(),
+      runtime_mode: runtimeMode,
+      launch_prompt: willBootstrap ? bootstrap : null,
+      tmux_session: sessionName,
+      peer_name: peerName(config),
+      transition: null,
+      transition_target: null,
+      transition_started_at: null,
+      shutdown_requested_at: null,
+      shutdown_completed_at: null,
+      last_error: null,
+      last_shell_snapshot_at: null,
+    });
+  } else {
+    // Preserve lifecycle fields for resident-start recovery.
+    existing.version = 1;
+    existing.runtime_mode = runtimeMode;
+    existing.launch_prompt = willBootstrap ? bootstrap : null;
+    existing.tmux_session = sessionName;
+    existing.peer_name = peerName(config);
+    existing.last_start_error = null;
+    existing.last_start_error_notified = null;
+    stampFreshSessionOnBoot(existing, resume);
+    clearShutdownStampsOnBoot(existing);
+    writeRuntimeJson(existing);
+  }
+
   const result = spawnSync('tmux', ['new-session', '-d', '-s', sessionName, shellCmd], {
     encoding: 'utf-8',
   });
   if (result.status !== 0) {
+    if (runtimeBeforeLaunch === null) fs.unlinkSync(runtimeFile);
+    else fs.writeFileSync(runtimeFile, runtimeBeforeLaunch);
     // The env file's only cleanup is the `rm -f` inside shellCmd, which runs in
     // the session tmux was asked to create. No session, no cleanup — so a failed
     // launch would strand a 0600 file holding the forwarded API key / setup token
@@ -1757,7 +1800,6 @@ async function main(): Promise<void> {
   console.log(`[hermit] Started tmux session: ${sessionName}`);
 
   // Detect runtime mode
-  const runtimeMode = isContainer() ? 'docker' : 'tmux';
   if (runtimeMode === 'tmux') registerHostProjectOnBoot();
 
   stampInterrupted(path.dirname(STATE_DIR), interruptionCause);
@@ -1765,37 +1807,6 @@ async function main(): Promise<void> {
   writeBootId();
   clearWatchRegistry();
   clearEffortOverrideOnBoot(config);
-
-  // Create or update runtime.json as the single source of lifecycle truth
-  const existing = readRuntimeJson();
-  if (existing === null) {
-    writeRuntimeJson({
-      version: 1,
-      session_id: null,
-      created_at: localISOStamp(),
-      runtime_mode: runtimeMode,
-      tmux_session: sessionName,
-      peer_name: peerName(config),
-      transition: null,
-      transition_target: null,
-      transition_started_at: null,
-      shutdown_requested_at: null,
-      shutdown_completed_at: null,
-      last_error: null,
-      last_shell_snapshot_at: null,
-    });
-  } else {
-    // Preserve lifecycle fields for resident-start recovery.
-    existing.version = 1;
-    existing.runtime_mode = runtimeMode;
-    existing.tmux_session = sessionName;
-    existing.peer_name = peerName(config);
-    existing.last_start_error = null;
-    existing.last_start_error_notified = null;
-    stampFreshSessionOnBoot(existing, resume);
-    clearShutdownStampsOnBoot(existing);
-    writeRuntimeJson(existing);
-  }
 
   // Mark as always-on mode in config
   const alwaysOnBefore = structuredClone(config);

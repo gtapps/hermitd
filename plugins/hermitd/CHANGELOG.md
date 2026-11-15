@@ -2,9 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- `approvals: "team"` refuses approval-needing work outside the main loop's typed turns and DM-paired approvers in the maintainer chat, where unanswered prompts close after 60 seconds. Off by default (`personal`) because it refuses work a single-operator agent runs today.
+
 ### Changed
 
+- Claude Code 2.1.325 or newer is required.
 - Hook scripts, including the resident's launch hooks, run with Bun's automatic package install disabled (`bun --no-install`)
+
+### Fixed
+
+- Removed `permissions.ask` entries stay removed through hatch, Docker setup and later upgrades once recorded in `state/ask-offered.json`.
+
+### Upgrade Instructions
+
+1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-stamp` to record the current seeded ask entries without changing the settings file. Report `OK` or the unseeded/no-state skip. This preserves operator edits; no operator-owned files are removed or renamed, and no leftover check is needed.
+
+An agent serving shared chats can set `approvals` to `team` and restart: approval-needing work is refused unless the latest prompt was typed at the terminal or in the Claude app, or came from a DM-paired approver in the maintainer chat, whose prompts close after 60 seconds.
 
 ## [1.4.33] - 2026-11-14
 

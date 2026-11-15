@@ -541,7 +541,7 @@ Runs whether or not steps 8/8b were skipped. This step sits after the deployment
 **Resolve `hatch_target`** using the same fallback chain as `hermit-evolve` SKILL.md §2a (`.hermit/state/hatch-options.json` `"target"` field → `claude plugin list --json` scope detection). Do not silently default to committed when the state file is absent — that can leak operator-personal hardening into the repo. Map: `hatch_target == "local"` → `.claude/settings.local.json`; `hatch_target == "committed"` → `.claude/settings.json`.
 
 Run: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> deny standard`
-(Reads canonical `deny` + `ask` from `state-templates/deny-patterns.json`. Purely additive and idempotent — it never removes an existing entry, so a hermit hatched Hardened keeps its hard blocks and a hermit already seeded at hatch gets nothing new. Risky ops such as docker/ssh/kubectl land as `permissions.ask`, so future host sessions prompt on them rather than hard-block.)
+(Reads canonical `deny` + `ask` from `state-templates/deny-patterns.json`. Purely additive and idempotent; previously offered ask entries deleted by the operator stay deleted through `state/ask-offered.json`. It never removes an existing entry, so a hermit hatched Hardened keeps its hard blocks and a hermit already seeded at hatch gets nothing new. Risky ops such as docker/ssh/kubectl land as `permissions.ask`, so future host sessions prompt on them rather than hard-block.)
 
 Tell the operator: "Added safety deny rules for always-on operation — protects against destructive commands and casual credential dumps. Risky ops (docker, ssh, kubectl, git push, settings edits) prompt for approval. Written to {.claude/settings.local.json | .claude/settings.json}."
 

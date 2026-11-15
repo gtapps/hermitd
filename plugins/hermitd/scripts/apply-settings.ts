@@ -33,7 +33,7 @@
  *                            answer travels in config.json, written and audited by
  *                            settings-edit, never as caller text. Deliberately NOT in
  *                            SEALED_SETTINGS_OPS.
- *   deny <standard|hardened|ask-only>
+ *   deny <standard|hardened|ask-only|ask-stamp>
  *                            Seed native permissions from state-templates/deny-patterns.json.
  *                            `standard` merges `deny` into permissions.deny and `ask` into
  *                            permissions.ask (purely additive, removes nothing) and prints
@@ -42,6 +42,9 @@
  *                            `ask-only` merges ask (printing {"added":[...]}) when the target
  *                            already carries ≥1 seeded deny entry; otherwise prints
  *                            {"status":"skipped","reason":"not_seeded"} and writes nothing.
+ *                            Offered ask entries are remembered in state/ask-offered.json;
+ *                            deleted entries stay deleted. `ask-stamp` records the current
+ *                            seed on seeded installs without rewriting settings, printing OK.
  *   deny-add <rule>...       Append each exact string to permissions.deny if absent. Creates the
  *                            file and section if missing. Rewrites nothing when every rule is
  *                            already present. Prints {"added": true|false} (true if any was added).
@@ -431,6 +434,8 @@ const settingsBefore = structuredClone(settings);
 // permissions-plan reports without touching the file; every other op falls through
 // to the write below.
 let readOnly = false;
+// Folder-shared install history: persisted only after a successful settings write.
+let askOffered: { file: string; entries: string[] } | undefined;
 
 switch (op) {
   case 'permissions-plan': {
@@ -524,10 +529,32 @@ switch (op) {
 
   case 'deny': {
     const profile = rest[0];
-    if (profile !== 'standard' && profile !== 'hardened' && profile !== 'ask-only') exitError();
+    if (!['standard', 'hardened', 'ask-only', 'ask-stamp'].includes(profile)) exitError();
     const { deny: denyEntries, ask: askEntries } = readSeedPatterns(PLUGIN_ROOT);
 
-    if (profile === 'ask-only') {
+    const stateDir = path.resolve(path.dirname(resolvedTarget), '..', '.hermit/state');
+    const hasState = fs.existsSync(stateDir) && fs.statSync(stateDir).isDirectory();
+    if (profile === 'ask-stamp' && !hasState) {
+      printJson({ status: 'skipped', reason: 'no_state_dir' });
+      readOnly = true;
+      break;
+    }
+    let offered: string[] = [];
+    const offeredFile = path.join(stateDir, 'ask-offered.json');
+    if (hasState && profile !== 'hardened') {
+      try {
+        offered = JSON.parse(fs.readFileSync(offeredFile, 'utf8'));
+        if (!Array.isArray(offered) || offered.some(entry => typeof entry !== 'string')) exitError('invalid_ask_offered');
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') exitError('invalid_ask_offered');
+      }
+    }
+    const unoffered = askEntries.filter(entry => !offered.includes(entry));
+    const stamp = () => {
+      if (hasState) askOffered = { file: offeredFile, entries: [...new Set([...offered, ...askEntries])] };
+    };
+
+    if (profile === 'ask-only' || profile === 'ask-stamp') {
       const existingDeny = new Set<string>(
         Array.isArray(settings?.permissions?.deny) ? settings.permissions.deny : [],
       );
@@ -537,7 +564,13 @@ switch (op) {
         readOnly = true;
         break;
       }
-      const added = mergeAsk(settings, askEntries);
+      stamp();
+      if (profile === 'ask-stamp') {
+        readOnly = true;
+        console.log('OK');
+        break;
+      }
+      const added = mergeAsk(settings, unoffered);
       printJson({ added });
       if (added.length === 0) readOnly = true;
       break;
@@ -550,7 +583,8 @@ switch (op) {
     }
 
     mergeDeny(settings, denyEntries);
-    printJson({ added: mergeAsk(settings, askEntries) });
+    printJson({ added: mergeAsk(settings, unoffered) });
+    stamp();
     break;
   }
 
@@ -589,3 +623,5 @@ if (!readOnly) {
     : '.claude/settings.json';
   auditConfigChange(stateDir, settingsBefore, settings, 'apply-settings', target);
 }
+
+if (askOffered) writeJson(askOffered.file, askOffered.entries);

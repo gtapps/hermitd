@@ -112,3 +112,8 @@ test('retry_after_crash is optional boolean and does not change the registered p
   const { promptHash } = require('../scripts/lib/routines/registry');
   expect(promptHash(routine, routine.schedule, '/plugin')).toBe(promptHash({ ...routine, retry_after_crash: false }, routine.schedule, '/plugin'));
 });
+
+ test('approvals accepts only the two modes', () => {
+  for (const approvals of ['personal', 'team']) expect(validate({ approvals }).errors.filter(e => e.startsWith('approvals:'))).toEqual([]);
+  for (const approvals of ['', null, 1, 'custom']) expect(validate({ approvals }).errors.some(e => e.startsWith('approvals:'))).toBe(true);
+});

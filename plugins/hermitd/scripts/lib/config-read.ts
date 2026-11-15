@@ -74,6 +74,7 @@ export const TABLE: Record<string, Spec> = {
   chrome: bool(false),
   push_notifications: bool(true),
   ask_gate: bool(true),
+  approvals: str('personal'),
   routine_max_lateness_minutes: num(60),
   routines: arr,
   monitors: arr,
@@ -199,6 +200,7 @@ function settleValue(spec: Spec, raw: Json): Json {
 export function settleConfig(raw: unknown): SettledConfig {
   const settled: Record<string, Json> = isPlainObject(raw) ? { ...raw } : {};
   for (const [key, spec] of Object.entries(TABLE)) settled[key] = settleValue(spec, settled[key]);
+  if (typeof settled.approvals !== 'string') settled.approvals = 'personal';
   return settled;
 }
 

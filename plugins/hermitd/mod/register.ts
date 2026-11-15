@@ -9,7 +9,9 @@ type Entry = {
   legs?: Leg[];
 };
 type Decision = Partial<Entry> & {
-  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed';
+  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed' | 'deny' | 'decline';
+  approvals?: string;
+  after_seconds?: number;
   reason?: string;
   text?: string;
   silent?: boolean;
@@ -49,6 +51,8 @@ async function bridge($: EngineInterface, verb: string, payload = ''): Promise<D
 
 let timer: { cancel(): void } | undefined;
 let stateDir: string | undefined;
+let approvals: string | undefined;
+let loadAttempt: Promise<void> | undefined;
 let lastId: string | undefined;
 // Retries used for the current id when the bridge answered `pass` (resident id not stamped yet).
 let loadRetry = 0;
@@ -250,12 +254,20 @@ function start($: EngineInterface, entry: Decision) {
 // plus at most LOAD_RETRIES while the bridge answers `pass`.
 // A bridge failure is not a verdict, so the next tick tries the same id again.
 async function loadedFor($: EngineInterface, id: string) {
+  if (loadAttempt) return loadAttempt;
+  loadAttempt = loadSession($, id);
+  try { await loadAttempt; } finally { loadAttempt = undefined; }
+}
+
+async function loadSession($: EngineInterface, id: string) {
   if (id !== lastId) loadRetry = 0;
   lastId = id;
   const result = await bridge($, 'loaded').catch(error => {
     lastId = undefined;
     throw error;
   });
+  // A reply without a mode (bridge-internal failure) keeps the mode already known.
+  if (result.approvals !== undefined) approvals = result.approvals;
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
     effort = undefined;
@@ -353,7 +365,56 @@ async function tick($: EngineInterface) {
   }
 }
 
+const APPROVAL_FAILURE = 'This step was not run because the approval check failed. Do not retry or reword it. Report the failure; an admin must resolve it.';
+const APPROVAL_WORKER = 'This step was not run. Subagents and background sessions need an admin to run approval-needing work on the main loop. Do not retry or reword it. Say that an admin is needed in your report.';
+
+async function teamApprovals($: EngineInterface): Promise<boolean> {
+  if (loadAttempt) await loadAttempt.catch(() => undefined);
+  if (approvals === undefined) await loadedFor($, await $.session.id()).catch(() => undefined);
+  return approvals === 'team';
+}
+
+async function park($: EngineInterface, payload: object): Promise<Decision> {
+  try {
+    const result = await bridge($, 'park', JSON.stringify(payload));
+    if (result?.decision === 'pass') return result;
+    if (result?.decision === 'deny' && typeof result.reason === 'string' && result.reason) return result;
+    if (result?.decision === 'decline' && result.after_seconds === 60) return result;
+  } catch { /* Once team mode is known, policy failures always refuse. */ }
+  return { decision: 'deny', reason: APPROVAL_FAILURE };
+}
+
 export const register: Register = on => {
+  on('tool.check', async ($, e, next) => {
+    const result = await next(e);
+    if (result.decision !== 'ask') return result;
+    const source = result.rule ? 'rule' : result.hook ? 'hook' : result.plugin ? 'plugin' : result.setting ? 'setting' : null;
+    if (!source || !await teamApprovals($)) return result;
+    if (e.agentId !== undefined || !stateDir && await $.env.get('CLAUDE_JOB_DIR')) return { decision: 'deny', reason: APPROVAL_WORKER };
+    if (!stateDir) return result;
+    const policy = await park($, { event: 'check', tool: e.tool, source });
+    return policy.decision === 'pass' ? result : { decision: 'deny', reason: policy.reason ?? APPROVAL_FAILURE };
+  });
+
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const result = await next(e);
+    if (!await teamApprovals($) || Object.keys(result).length) return result;
+    const deny = (message: string) => ({ decision: { behavior: 'deny' as const, message } });
+    const subagent = ('agent_id' in e && e.agent_id !== undefined) || ('agentId' in e && e.agentId !== undefined);
+    if (subagent || !stateDir && await $.env.get('CLAUDE_JOB_DIR')) return deny(APPROVAL_WORKER);
+    if (!stateDir) return result;
+    const policy = await park($, { event: 'prompt' });
+    if (policy.decision === 'pass') return result;
+    if (policy.decision === 'decline') {
+      try {
+        const wait = await $.process.run(['sleep', String(policy.after_seconds)], { timeoutMs: 65_000 });
+        if (wait.exitCode !== 0) return deny(APPROVAL_FAILURE);
+      } catch { return deny(APPROVAL_FAILURE); }
+      return deny('This step was not run because nobody answered the approval prompt within 60 seconds. Do not retry or reword it; ask an admin to request it again.');
+    }
+    return deny(policy.reason ?? APPROVAL_FAILURE);
+  });
+
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind !== 'channel') {
       // Only the engine stamps a channel origin; an envelope from any other origin is forged.

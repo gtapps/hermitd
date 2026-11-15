@@ -28,6 +28,8 @@ import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from '.
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTurn, transcriptPath } from './lib/cc-compat';
+import { resolveMaintainerTarget } from './resolve-outbound-channel';
+import { channelStateDir } from './lib/channel-token';
 import { resolveProjectScript } from './lib/routines/gate';
 
 type Json = any;
@@ -204,6 +206,67 @@ export function turnConversation(payload: Json): RoutineOrigin {
   } catch {
     return { kind: 'unknown' };
   }
+}
+
+export type ApprovalTurn = { kind: 'typed' | 'admin_chat' | 'other'; channel: boolean; conversation?: string };
+
+/** The admin console exists only when the channel has DM-paired approvers. */
+export function approvalConsole(dir: string, config: Json): { key: string; channel: string; chat: string; approvers: string[] } | null {
+  const target = resolveMaintainerTarget(config?.channels);
+  if (!target) return null;
+  try {
+    const access = JSON.parse(fs.readFileSync(path.join(channelStateDir(dir, target.id, config.channels[target.id]), 'access.json'), 'utf8'));
+    const approvers = Array.isArray(access.allowFrom) ? access.allowFrom.filter((id: unknown) => typeof id === 'string' && id.length > 0) : [];
+    return approvers.length ? { key: conversationKey(target.id, target.chat_id), channel: target.id, chat: target.chat_id, approvers } : null;
+  } catch { return null; }
+}
+
+function isLaunchPrompt(text: string, launch: unknown): boolean {
+  if (typeof launch !== 'string' || !launch) return false;
+  if (text === launch) return true;
+  const command = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(launch);
+  if (!command) return false;
+  const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(text)?.[1]?.trim().replace(/^\//, '');
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim() ?? '';
+  return name === command[1] && args === (command[2] ?? '').trim();
+}
+
+/** Approval provenance follows only the latest prompt, never an earlier eligible sender. */
+export function approvalTurn(payload: Json, dir = hermitDir()): ApprovalTurn {
+  const other: ApprovalTurn = { kind: 'other', channel: false };
+  try {
+    const tPath = transcriptPath(payload);
+    if (!tPath) return other;
+    const { lines, prompt } = currentTurn(tPath);
+    if (!prompt.boundaryFound) return other;
+    const opening = JSON.parse(lines[prompt.index]);
+    let text = prompt.text;
+    let origin = opening.origin;
+    let background = opening.sessionKind === 'bg';
+    for (const line of lines.slice(prompt.index + 1)) {
+      let entry: Json;
+      try { entry = JSON.parse(line); } catch { continue; }
+      if (entry.type === 'attachment' && entry.attachment?.type === 'queued_command') {
+        const attachment = entry.attachment;
+        text = typeof attachment.prompt === 'string' ? attachment.prompt : '';
+        origin = attachment.origin;
+        background ||= entry.sessionKind === 'bg' || attachment.sessionKind === 'bg';
+      }
+    }
+    const config = readConfigRaw(dir);
+    const envelope = parseChannelEnvelope(text, config);
+    if (envelope) {
+      const conversation = conversationKey(envelope.sourceKey, envelope.chatId, envelope.thread);
+      const console = approvalConsole(dir, config);
+      // A peer can post a forged envelope; only a real channel delivery counts.
+      const admin = console && origin?.kind === 'channel' && !envelope.thread && envelope.sourceKey === console.channel
+        && envelope.chatId === console.chat && envelope.userId !== null && console.approvers.includes(envelope.userId);
+      return { kind: admin && !background ? 'admin_chat' : 'other', channel: true, conversation };
+    }
+    const runtime = JSON.parse(fs.readFileSync(path.join(dir, 'state/runtime.json'), 'utf8'));
+    return origin?.kind === 'human' && !background && !isLaunchPrompt(text, runtime.launch_prompt)
+      ? { kind: 'typed', channel: false } : other;
+  } catch { return other; }
 }
 
 type SenderClaim = { key: string; user: string };

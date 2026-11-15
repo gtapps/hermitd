@@ -32,6 +32,7 @@
   },
   "push_notifications": true,
   "ask_gate": true,
+  "approvals": "personal",
   "routine_max_lateness_minutes": 60,
   "routines": [
     {"id": "hermitd:dream", "schedule": "0 1 * * *", "skill": "hermitd:dream", "precheck": "dream", "model": "sonnet", "enabled": true},
