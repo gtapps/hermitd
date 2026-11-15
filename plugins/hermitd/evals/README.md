@@ -170,6 +170,16 @@ claude plugin eval plugins/hermitd --tag approvals --allow-tools Bash --ablation
 
 Expected: each case passes 3 of 3 Sonnet runs and once on Opus. Last run 2026-11-15: all three cases 3/3 on Sonnet ($0.71) and 1/1 on Opus ($0.45). The host Bash failure described below remains a verification limit.
 
+## Channel setup
+
+Two `channel-setup` cases check confirmation before installation and an honest unknown access report. They stand in for interactive stages and live channel delivery; graders check ordering, commands and claims.
+
+From the repo root:
+
+```bash
+claude plugin eval plugins/hermitd --tag channel-setup --allow-tools Bash --ablation none --model sonnet --runs 3 --scaffold --max-cost-usd 6 --no-publish
+```
+
 ## Running
 
 From the repo root:

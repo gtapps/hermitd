@@ -1,0 +1,20 @@
+schema_version: "1.1"
+name: channel-setup-unknown-access-reported-unknown
+description: "unknown-access-reported-unknown"
+tags: [channel-setup]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 16
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
+  prompt: |
+    Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step.
+
+    Run /hermitd:channel-setup for the existing custom channel in config. Its guide is .hermit/channel-guide.md. Stand-ins for stages this harness cannot run: the picker selected that existing entry; the operator already confirmed the exact plugin and repository and local code execution; installation, registration, native prompt and root approval succeeded previously; credentials exist privately in the runtime; the channel is active; plugin-owned admission and pairing are complete. Do not repeat installation or ask for the secret. The running agent has answered a message on this selected channel and the operator confirmed receipt. All optional questions keep current settings. Proceed to the summary using those stand-ins and the guide. The external admission service cannot be read, and no further capability evidence is available.
+graders:
+  - name: unknown-is-not-inferred
+    type: llm
+    focus: trace
+    criteria: "PASS only if the access report explicitly leaves the plugin's unreadable admission policy unknown, separately reports the configured agent sender restriction, and leaves undocumented permission relay and script-alert reachability unknown. It must not claim pairing, a confirmed reply, or the agent sender list proves who the plugin admits or that permission prompts and script alerts work. Judge claims by meaning, without requiring exact wording, channel names, or channel tools."
+    weight: 3

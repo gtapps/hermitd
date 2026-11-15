@@ -6,6 +6,7 @@
  * Operations:
  *   get [dotted.path]        Print {"value":...} at path (whole config if path omitted)
  *   set <dotted.path> <val>  Set a nested leaf, creating parent objects as needed
+ *   channel-register <key> <json>  Merge channel fields and optional Docker boot entry
  *   append <dotted.path> <val>  Append a value to an array, creating it if absent
  *   unset <dotted.path>      Delete a nested leaf (parents are left in place)
  *   toggle <dotted.path>     Boolean flip (absent → true; errors if current isn't boolean)
@@ -499,13 +500,13 @@ if (import.meta.main) {
    * through this path removes the validate-config PostToolUse hook (fs writes
    * never trip it), which is why the check lives here.
    */
-  const persist = (actor = 'settings-edit'): string[] => {
+  const persist = (actor = 'settings-edit', compactError = false): string[] => {
     const { newErrors, newWarnings } = persistConfig({
       hermitDir: stateDir, before: existedBefore ? before : undefined, after: config, actor,
       // A new file forgives what an empty config already fails (missing required keys).
       priorErrors: existedBefore ? undefined : validate({}).errors,
     });
-    if (newErrors.length > 0) emitJson({ error: 'invalid_config', errors: newErrors });
+    if (newErrors.length > 0) emitJson(compactError ? { error: 'invalid_config' } : { error: 'invalid_config', errors: newErrors });
     // Warnings don't block, but they must still be seen: the branches rerouted
     // through this path used to write via Edit/Write, where the validate-config
     // PostToolUse hook surfaced them. Dropping them silently would be a regression.
@@ -549,6 +550,38 @@ if (import.meta.main) {
       if (!result.ok) emitJson({ status: 'refused', reason: result.reason, detail: result.detail });
       const warnings = persist();
       emitJson({ path: result.path, value: result.value, applies: result.applies, ...(warnings.length ? { warnings } : {}) });
+      break;
+    }
+
+    case 'channel-register': {
+      const [key, raw] = rest;
+      if (rest.length !== 2 || !key || !/^[A-Za-z0-9_-]+$/.test(key)
+        || ['primary', '__proto__', 'constructor', 'prototype'].includes(key)) exitError('invalid_channel_key');
+      const payload = parseValue(raw);
+      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'docker_source'];
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) exitError('invalid_registration');
+      if (Object.keys(payload).some(field => !allowed.includes(field))) exitError('unknown_registration_field');
+      const { docker_source: dockerSource, ...fields } = payload;
+      if (Object.hasOwn(payload, 'docker_source')
+        && (typeof dockerSource !== 'string' || !/^[^/\s]+\/[^/\s]+$/.test(dockerSource))) exitError('invalid_docker_source');
+      const existing = getPath(config, `channels.${key}`);
+      if (existing !== undefined && (!existing || typeof existing !== 'object' || Array.isArray(existing))) exitError('invalid_channel_entry');
+      const merged = { ...existing, ...fields };
+      for (const [field, value] of Object.entries({ enabled: true, default_chat_id: null, state_dir: `.claude.local/channels/${key}` })) {
+        if (!Object.hasOwn(merged, field)) merged[field] = value;
+      }
+      setPath(config, `channels.${key}`, merged);
+      if (dockerSource !== undefined) {
+        const plugin = merged.plugin ?? key;
+        const entries = getPath(config, 'docker.recommended_plugins');
+        if (entries !== undefined && !Array.isArray(entries)) exitError('invalid_boot_entries');
+        if (!entries?.some((entry: Json) => entry?.plugin === plugin && entry?.marketplace === dockerSource)) {
+          setPath(config, 'docker.recommended_plugins', [...(entries ?? []), { plugin, marketplace: dockerSource, scope: 'local', enabled: true }]);
+        }
+      }
+      if (JSON.stringify(before) === JSON.stringify(config)) emitJson({ status: 'unchanged' });
+      persist('settings-edit', true);
+      emit('OK');
       break;
     }
 

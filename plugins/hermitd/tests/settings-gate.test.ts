@@ -87,6 +87,21 @@ function expectSilent(r: { exitCode: number; stdout: string }) {
 }
 
 describe('settings-gate ask list', () => {
+  test('channel-register always asks and labels Docker writes and opaque values', async () => {
+    const dir = fixture();
+    for (const [args, labels] of [
+      [`channel-register custom '{"plugin":"bridge"}'`, ['channels.custom']],
+      [`channel-register custom '{"plugin":"bridge","docker_source":"org/repo"}'`, ['channels.custom', 'docker.recommended_plugins']],
+      ['channel-register custom "$PAYLOAD"', ['channels.custom', 'docker.recommended_plugins']],
+    ] as Array<[string, string[]]>) {
+      const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(args) } }), dir);
+      expect(r.exitCode).toBe(0);
+      const output = JSON.parse(r.stdout).hookSpecificOutput;
+      expect(output.permissionDecision).toBe('ask');
+      for (const label of labels) expect(output.permissionDecisionReason).toContain(label);
+    }
+  });
+
   test('each ask path as leaf and as container', async () => {
     const dir = fixture();
     const cases: Array<[string, string]> = [

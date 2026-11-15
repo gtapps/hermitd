@@ -35,10 +35,10 @@ import { resolveProjectScript } from './lib/routines/gate';
 type Json = any;
 
 /** settings-edit verbs that mutate config.json. */
-const WRITE_VERBS = new Set(['set', 'append', 'unset', 'toggle', 'apply-known', 'migrate']);
+const WRITE_VERBS = new Set(['set', 'append', 'unset', 'toggle', 'apply-known', 'migrate', 'channel-register']);
 
 /** Write verbs that take a value after the target; see settings-edit.ts's dispatch. */
-const TAKES_VALUE = new Set(['set', 'append', 'apply-known']);
+const TAKES_VALUE = new Set(['set', 'append', 'apply-known', 'channel-register']);
 
 /** Static protected subtrees. Parent replacements compare only this content. */
 const ASK_PATH = askPathRegex();
@@ -857,6 +857,12 @@ export function protectedMutation(command: string, cwd: string, origin: () => Ro
     // theirs belongs to the shell (a `&&`, a redirect), not to the setting.
     const token = TAKES_VALUE.has(verb) ? (m[4] ?? '') : '';
     const value = stripQuotes(token);
+    if (verb === 'channel-register') {
+      shown.push(`channels.${t || '<unknown>'}`);
+      // Opaque payloads can include a boot entry too; never simulate the merge.
+      if (value.includes('docker_source') || !token || SHELL_EXPANDS.test(token)) shown.push('docker.recommended_plugins');
+      continue;
+    }
     if (SHELL_EXPANDS.test(t)) {
       if (!shown.includes(t)) shown.push(t);
       continue;

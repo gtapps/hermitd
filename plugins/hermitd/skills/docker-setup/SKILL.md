@@ -183,9 +183,9 @@ For each configured channel:
 2. **Ensure state dir:** Record `channels.<channel>.state_dir` as a relative path (e.g. `.claude.local/channels/discord`). `hermitd-start` resolves it against the project root at boot and derives the `*_STATE_DIR` env var — no need to add it to `env`. Absolute paths also work.
 3. **Check local token file** (`.claude.local/channels/<plugin>/.env`):
    - Already configured → "Discord is ready — connects automatically on start."
-   - Not configured → ask with `AskUserQuestion` (header: "Bot token"): **Skip** (write the token to `.claude.local/channels/{channel}/.env` later and restart) / **Enter now** (paste token via Other).
-     - If "Enter now" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved.
-     - If "Skip": "Write it to `.claude.local/channels/<plugin>/.env` later and restart."
+   - Not configured → ask with `AskUserQuestion` (header: "Bot token"): **Private file** (write `.claude.local/channels/{channel}/.env` in your own terminal) / **Paste here** (supply through Other). A pasted value enters the conversation and its history.
+     - If "Private file": have the operator create the folder, run `umask 077`, create the file and `chmod 600` it, then open `.claude.local/channels/<plugin>/.env` in their editor and type the token there. They confirm it is saved, or defer and restart later.
+     - If "Paste here" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved.
 
 ### 7b. Recommended plugins
 

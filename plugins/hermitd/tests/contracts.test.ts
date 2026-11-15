@@ -1415,6 +1415,12 @@ describe('model-invocable inventory', () => {
 describe('channel-setup empty-channels branch', () => {
   const text = read(path.join(SKILLS, 'channel-setup', 'SKILL.md'));
 
+  test('offers Other and Add another channel with a dedicated reference', () => {
+    expect(text).toContain('**Other**');
+    expect(text).toContain('Add another channel');
+    expect(text).toContain('references/other-channel.md');
+  });
+
   test('creates the entry through hatch-config.ts --reinit, reading its stdout', () => {
     expect(text).toContain('hatch-config.ts');
     expect(text).toContain('--reinit');
@@ -1454,6 +1460,16 @@ describe('channel setup ownership', () => {
 
   test('keeps a live host tmux hermit on the local flow', () => {
     expect(channelSetup).toContain('live_owner');
+  });
+
+  test('both token flows put private files first and disclose conversation history', () => {
+    for (const skill of [channelSetup, dockerSetup]) {
+      expect(skill.indexOf('Private file')).toBeLessThan(skill.indexOf('Paste here'));
+      expect(skill).toContain('A pasted value enters the conversation and its history');
+      expect(skill).toContain('umask 077');
+    }
+    expect(channelSetup).not.toContain('Paste your bot token');
+    expect(dockerSetup).not.toContain('paste token via Other');
   });
 
   test('names the hermit command for each Docker host state', () => {
