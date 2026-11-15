@@ -184,8 +184,8 @@ For each configured channel:
 3. **Check local token file** (`.claude.local/channels/<plugin>/.env`):
    - Already configured → "Discord is ready — connects automatically on start."
    - Not configured → ask with `AskUserQuestion` (header: "Bot token"): **Private file** (write `.claude.local/channels/{channel}/.env` in your own terminal) / **Paste here** (supply through Other). A pasted value enters the conversation and its history.
-     - If "Private file": have the operator create the folder, run `umask 077`, create the file and `chmod 600` it, then open `.claude.local/channels/<plugin>/.env` in their editor and type the token there. They confirm it is saved, or defer and restart later.
-     - If "Paste here" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved.
+     - If "Private file": have the operator run `umask 077`, create the folder, create the file and `chmod 600` it, then open `.claude.local/channels/<plugin>/.env` in their editor and type the token there. They confirm it is saved, or defer and restart later.
+     - If "Paste here" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved. If "Paste here" carries no token, ask for it in a plain reply.
 
 ### 7b. Recommended plugins
 

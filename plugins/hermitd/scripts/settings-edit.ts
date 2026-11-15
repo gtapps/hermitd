@@ -500,13 +500,13 @@ if (import.meta.main) {
    * through this path removes the validate-config PostToolUse hook (fs writes
    * never trip it), which is why the check lives here.
    */
-  const persist = (actor = 'settings-edit', compactError = false): string[] => {
+  const persist = (actor = 'settings-edit'): string[] => {
     const { newErrors, newWarnings } = persistConfig({
       hermitDir: stateDir, before: existedBefore ? before : undefined, after: config, actor,
       // A new file forgives what an empty config already fails (missing required keys).
       priorErrors: existedBefore ? undefined : validate({}).errors,
     });
-    if (newErrors.length > 0) emitJson(compactError ? { error: 'invalid_config' } : { error: 'invalid_config', errors: newErrors });
+    if (newErrors.length > 0) emitJson({ error: 'invalid_config', errors: newErrors });
     // Warnings don't block, but they must still be seen: the branches rerouted
     // through this path used to write via Edit/Write, where the validate-config
     // PostToolUse hook surfaced them. Dropping them silently would be a regression.
@@ -580,8 +580,7 @@ if (import.meta.main) {
         }
       }
       if (JSON.stringify(before) === JSON.stringify(config)) emitJson({ status: 'unchanged' });
-      persist('settings-edit', true);
-      emit('OK');
+      done(persist());
       break;
     }
 

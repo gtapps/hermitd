@@ -41,7 +41,7 @@ echo '{"channels":{"<name>":{"enabled":true}}}' | bun ${CLAUDE_PLUGIN_ROOT}/scri
 The script fills `enabled`, `default_chat_id: null`, and `state_dir` (`.claude.local/channels/<name>`), validates the whole config, preserves every other key, and merges onto an existing entry rather than replacing it. It prints `OK`. On `error` nothing was written: report it and stop; never fall through into steps 2 through 6 against a channel that isn't in `config.json`.
 
 - If no channels configured: ask one `AskUserQuestion` (header: "Channel") offering **Discord**, **Telegram**, **Other**, **Cancel**. Cancel stops without writing. Discord or Telegram creates the entry and selects it. Other reads [the Other channel reference](references/other-channel.md) and follows its plugin-owned procedures within the shared stages.
-- If any channels configured: always ask one `AskUserQuestion` listing every existing channel name (mark disabled entries) plus **Add another channel**. Add another channel leads to the same four options above. Selecting a disabled official channel creates the entry to re-enable it; selecting an existing custom channel uses the Other reference. No channel is selected automatically.
+- If any channels configured: always ask one `AskUserQuestion` listing every existing channel name (mark disabled entries) plus **Add another channel**. Add another channel leads to the same four options above. Selecting a disabled channel creates the entry to re-enable it; an existing custom channel then uses the Other reference. No channel is selected automatically.
 
 Run the stages for the selected channel. On a Docker host (runtime routing 4–5), apply those overrides for official channels; the Other reference supplies the custom-channel procedures.
 
@@ -90,7 +90,7 @@ After any install (or if already present): tell the operator to run `/reload-plu
 
 ### 4. Credential (AskUserQuestion)
 
-Before the token question, read the installed plugin's README and skills. Explain its platform steps for someone reading in the operator's configured `language`, using the plugin's guide as the source. Keep the official guide link below.
+Before the token question, read the plugin's README and skills: the installed copy, or its marketplace source when Docker routing skipped the install. Explain its platform steps for someone reading in the operator's configured `language`, using the plugin's guide as the source. Keep the official guide link below.
 
 Read `chrome`, `browser.enabled` and `browser.default` and check the session's available tools to determine browser availability, without preferring one browser. Drive the agent's own browser through `/hermitd:browser`; use Claude in Chrome through its tools when the session has them, following [its requirements](https://code.claude.com/docs/en/chrome). When a browser is available, offer once per run to open the page named in the plugin's guide and walk the steps up to, but not including, creating or revealing the secret. When none is active, suggest the browser options this install can use; continue with guide links if declined. The operator signs in, solves CAPTCHAs, creates and copies the secret. Stop browser inspection before the secret step and do not inspect the page again until the operator says the secret is no longer shown.
 
@@ -121,7 +121,7 @@ questions: [
 ]
 ```
 
-A pasted value enters the conversation and its history. The private file is the first choice; the operator writes it by hand in their own terminal. If Paste here is chosen, the operator supplies it through Other.
+A pasted value enters the conversation and its history. The private file is the first choice; the operator writes it by hand in their own terminal. If Paste here is chosen, the operator supplies it through Other; when the answer carries no token, ask for it in a plain reply.
 
 **If token provided:**
 1. `mkdir -p <state_dir>`
@@ -145,8 +145,8 @@ A pasted value enters the conversation and its history. The private file is the 
 
 **If Private file:** print the manual commands; the operator creates the folder and restricts permissions before typing the secret into their editor:
 ```
-mkdir -p "<state_dir>"
 umask 077
+mkdir -p "<state_dir>"
 touch "<state_dir>/.env" && chmod 600 "<state_dir>/.env"
 ${EDITOR:-vi} "<state_dir>/.env"
 ```
@@ -279,7 +279,7 @@ When it's set, send **one** test message to the maintainer chat to confirm reach
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit --tier maintainer --channel <channel> -
 ```
 
-with a short line on stdin (e.g. "Maintainer channel check: technical and spend alerts will arrive here."). Record the result in the §7 summary: **sent** confirms the id; a **failure** means the id is wrong or the chat isn't reachable, so surface it so the operator fixes it now. If `maintainer_channel_id` is absent, skip silently.
+with a short line on stdin (e.g. "Maintainer channel check: technical and spend alerts will arrive here."). Record the result in the §8 summary: **sent** confirms the id; a **failure** means the id is wrong or the chat isn't reachable, so surface it so the operator fixes it now. If `maintainer_channel_id` is absent, skip silently.
 
 A maintainer-send failure means **the bot isn't present or permissioned in the target server/channel**; the fix is to invite/permission the bot there. This chat is reached by a direct API POST with the bot token, never through `access.json`, so running `/<channel>:access` will not fix a failed send here.
 
@@ -345,15 +345,13 @@ Report three access facts separately: who the plugin admits, the agent's own sen
 
 If anything was skipped, list the remaining steps.
 
-### 8a. Send owner welcome (once, only when exactly one channel was newly paired)
+### 8a. Send owner welcome (once, only when the selected channel was newly paired)
 
-Skip the welcome send on the Other path. Run this once, after step 8's summary, across the *whole* run; not per channel inside the steps 2 through 6 loop.
+Skip the welcome send on the Other path. Run this once, after step 8's summary.
 
-Skip entirely if no channel selected "Ready to pair" in step 5 this run; an operator re-running setup against an already-paired channel ("Already paired") or one they skipped shouldn't get a repeat welcome.
+Skip entirely unless the operator selected "Ready to pair" in §5a this run; an operator re-running setup against an already-paired channel ("Already paired") or one they skipped shouldn't get a repeat welcome.
 
-Also skip, with a note in the summary ("Welcome message skipped; more than one channel was newly paired this run; let the owner know directly"), if *more than one* channel selected "Ready to pair" this run (the "All" path pairing several channels at once). `channel-send.ts` has no per-channel target; it resolves one generic outbound channel (`primary`, else first eligible in config order); so with several freshly-paired channels there's no reliable way to know which one it would reach.
-
-Otherwise (exactly one channel newly paired), compose a short welcome in the operator's configured `language` (`config.json`), in your own voice, so the owner has something the moment the bot can reach them. Not the full guide, just an orientation pointer covering: they can talk to you anytime in plain language; when you have a suggestion or need a decision you will ask, and yes, later, or no is enough; `!pause` stops you until `!resume` (both must start with `!`); you track AI spend and warn when it nears any configured limit; if you go quiet or something is confusing, they should reach whoever set you up (who also has the full written guide). No file paths or internal jargon: it's the owner's first message, and the only chat commands allowed are the five control commands `!pause`, `!stop`, `!resume`, `!snooze`, `!status`. Send it on stdin:
+Otherwise compose a short welcome in the operator's configured `language` (`config.json`), in your own voice, so the owner has something the moment the bot can reach them. Not the full guide, just an orientation pointer covering: they can talk to you anytime in plain language; when you have a suggestion or need a decision you will ask, and yes, later, or no is enough; `!pause` stops you until `!resume` (both must start with `!`); you track AI spend and warn when it nears any configured limit; if you go quiet or something is confusing, they should reach whoever set you up (who also has the full written guide). No file paths or internal jargon: it's the owner's first message, and the only chat commands allowed are the five control commands `!pause`, `!stop`, `!resume`, `!snooze`, `!status`. Send it on stdin:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-send.ts .hermit - <<'HERMIT_WELCOME'

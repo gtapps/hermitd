@@ -93,6 +93,7 @@ describe('settings-gate ask list', () => {
       [`channel-register custom '{"plugin":"bridge"}'`, ['channels.custom']],
       [`channel-register custom '{"plugin":"bridge","docker_source":"org/repo"}'`, ['channels.custom', 'docker.recommended_plugins']],
       ['channel-register custom "$PAYLOAD"', ['channels.custom', 'docker.recommended_plugins']],
+      [`channel-register custom "{\\"plugin\\":\\"bridge\\",\\"docker_source\\":\\"org/repo\\"}"`, ['channels.custom', 'docker.recommended_plugins']],
     ] as Array<[string, string[]]>) {
       const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(args) } }), dir);
       expect(r.exitCode).toBe(0);

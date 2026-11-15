@@ -860,7 +860,8 @@ export function protectedMutation(command: string, cwd: string, origin: () => Ro
     if (verb === 'channel-register') {
       shown.push(`channels.${t || '<unknown>'}`);
       // Opaque payloads can include a boot entry too; never simulate the merge.
-      if (value.includes('docker_source') || !token || SHELL_EXPANDS.test(token)) shown.push('docker.recommended_plugins');
+      // Only a single-quoted literal is read whole: the double-quoted capture stops at an escaped quote.
+      if (value.includes('docker_source') || !token.startsWith("'") || SHELL_EXPANDS.test(token)) shown.push('docker.recommended_plugins');
       continue;
     }
     if (SHELL_EXPANDS.test(t)) {

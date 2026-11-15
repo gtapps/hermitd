@@ -591,7 +591,7 @@ Voice-note transcription is enabled by default, including when the block is abse
 | `scope` | string | `"project"` | Install scope: `"project"` or `"local"`. |
 | `enabled` | boolean | `false` | Whether to install on container boot. |
 
-**Security model:** The entrypoint installs every `enabled` entry regardless of marketplace. The safety gate is at configuration time — entries are only written here when the operator explicitly confirms the list during `/docker-setup` or `/hermit-settings docker`, or confirms the exact channel plugin and repository through `/hermitd:channel-setup` Other. Channel setup uses `channel-register` to merge channel fields and append only missing boot entries, behind the native prompt; activate with `hermitd restart --build`. See [Recommended Plugins](recommended-plugins.md) for details.
+**Security model:** The entrypoint installs every `enabled` entry regardless of marketplace. The safety gate is at configuration time: entries are only written here when the operator explicitly confirms the list during `/docker-setup` or `/hermit-settings docker`, or confirms the exact channel plugin and repository through `/hermitd:channel-setup` Other. Channel setup uses `channel-register` to merge channel fields and append only missing boot entries, behind the native prompt; activate with `hermitd restart --build`. See [Recommended Plugins](recommended-plugins.md) for details.
 
 Modify `packages` and `recommended_plugins` with `/hermit-settings docker`. `docker.git_identity_mount` is protected and controls the generated host Git identity mount.
 

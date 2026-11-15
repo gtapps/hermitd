@@ -228,7 +228,7 @@ Run the guided activation wizard — it picks up the channel preference from `ha
 /hermitd:channel-setup
 ```
 
-It installs the plugin (requires [Bun](https://bun.sh)) and guides credentials and pairing. For official channels, private token entry uses `.claude.local/channels/<plugin>/.env`; pasted tokens enter conversation history. Other follows the plugin's runtime credential location. It can also re-enable a channel you previously turned off. `hermitd-start` passes `--channels` automatically — no manual flag needed. If bun is missing or the token file isn't present, `hermitd-start` prints a clear warning and skips the channel.
+It installs the plugin (requires [Bun](https://bun.sh)) and guides credentials and pairing. For official channels, private token entry uses `.claude.local/channels/<plugin>/.env`; pasted tokens enter conversation history. Other follows the plugin's runtime credential location. It can also re-enable a channel you previously turned off. `hermitd-start` passes `--channels` automatically, so no manual flag is needed. If bun is missing or the token file isn't present, `hermitd-start` prints a clear warning and skips the channel.
 
 ---
 
