@@ -159,16 +159,16 @@ Hand-written trigger cases for the `skills/browser/SKILL.md` description: which 
 
 ## approvals
 
-Three hand-written cases cover team approvals: a Portuguese member request refused into one console-bound pending question, an unattended refusal producing one notice and no task, and an approver's yes recorded with `task answer` before the exact refused command runs once. Origins are narrated without channel envelopes. Refusal reasons are pinned to the live builder by `tests/evals-drift.test.ts`; all three carry `BASH_FAILURE`. Graders check tool actions and trace, without requiring particular wording, language, or a channel tool.
+Three hand-written cases cover team approvals: a Portuguese member request refused into one console-bound pending question, an unattended refusal producing one notice and no task, and an approver's yes recorded with `task answer` before the exact refused command runs once. Origins are narrated without channel envelopes, because the core mod drops a typed prompt that opens with one; for the same reason the approval case cannot pass `task answer`'s sender check, so its prompt stands in the script's `match` result for that refusal. Where the host's Bash failure hides `task open`'s output, the chat case supplies a stand-in task id. Refusal reasons are pinned to the live builder by `tests/evals-drift.test.ts`; all three carry `BASH_FAILURE`. Graders check tool actions and trace, without requiring particular wording, language, or a channel tool. `tool_used` patterns match the JSON-encoded input, so a quoted script path appears as `\"`.
 
-Model runs: pending before merge; not run by the implementation executor. From the repo root:
+Model runs, from the repo root:
 
 ```bash
 claude plugin eval plugins/hermitd --tag approvals --allow-tools Bash --ablation none --model sonnet --runs 3 --scaffold --max-cost-usd 6 --no-publish
 claude plugin eval plugins/hermitd --tag approvals --allow-tools Bash --ablation none --model opus --runs 1 --scaffold --max-cost-usd 6 --no-publish
 ```
 
-Expected: each case passes 3 of 3 Sonnet runs and once on Opus. Record the results here before merging. The host Bash failure described below remains a verification limit.
+Expected: each case passes 3 of 3 Sonnet runs and once on Opus. Last run 2026-11-15: all three cases 3/3 on Sonnet ($0.71) and 1/1 on Opus ($0.45). The host Bash failure described below remains a verification limit.
 
 ## Running
 
