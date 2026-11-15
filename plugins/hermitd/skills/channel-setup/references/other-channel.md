@@ -41,6 +41,6 @@ For Docker activation run `hermitd restart --build`, or `hermitd start --build` 
 
 ## Shared flow boundary
 
-Skip the official-only procedures: `channel-access.ts`, group enrollment, `channel-bot-id.ts`, the `access.json` move, and the welcome send. The official Docker routing shortcuts do not apply to this path.
+Skip the official-only procedures: `channel-access.ts`, group enrollment, `channel-bot-id.ts`, the `access.json` move. The official Docker routing shortcuts do not apply to this path.
 
-Rejoin shared access control with `allowed_users` when the operator supplies ids; use the shared field-preserving settings commands and do not infer ids from an unreadable plugin policy. Continue with recall and record questions, selected-channel conversational proof, and summary. Report plugin admission, the agent's sender restriction, permission relay, and script-alert reachability separately; unreadable facts stay unknown.
+Rejoin shared access control with `allowed_users` when the operator supplies ids; use the shared field-preserving settings commands and do not infer ids from an unreadable plugin policy. Continue with conditional Operators and Primary questions, selected-channel conversational proof, and summary. Report plugin admission, the agent's sender restriction, permission relay, and script-alert reachability separately; unreadable facts stay unknown.

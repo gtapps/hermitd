@@ -569,3 +569,41 @@ test('transcription defaults on and Advanced opt-out preserves echo and custom f
   expect((await runHatchConfig(root, { transcription: false }, true)).exitCode).toBe(0);
   expect(JSON.parse(fs.readFileSync(configPathFor(root), 'utf8')).transcription).toEqual({ enabled: false, echo: false, custom: 'kept' });
 });
+
+test('fresh hatch refuses a timezone the scheduler cannot use without writing config', async () => {
+  const dir = freshDir();
+  const result = await runHatchConfig(dir, { project_name: 'timezone-test', timezone: 'WEST' });
+  expect(result.stdout).toContain('invalid_config');
+  expect(fs.existsSync(configPathFor(dir))).toBe(false);
+});
+
+test('machine timezone defaults only on a fresh hatch with no timezone key', async () => {
+  const dir = freshDir();
+  const result = await runScript('hatch-config.ts', {
+    args: [dir], stdin: JSON.stringify({ project_name: 'zone' }),
+    env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, TZ: 'America/New_York' },
+  });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8')).timezone).toBe('America/New_York');
+  expect((await runHatchConfig(dir, {}, true)).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8')).timezone).toBe('America/New_York');
+  const explicit = freshDir();
+  expect((await runHatchConfig(explicit, { project_name: 'zone', timezone: null })).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(explicit), 'utf8')).timezone).toBeNull();
+});
+
+test('fresh hatch stores team approvals in the initial config', async () => {
+  const dir = freshDir();
+  expect((await runHatchConfig(dir, { project_name: 'team', approvals: 'team' })).exitCode).toBe(0);
+  expect(JSON.parse(fs.readFileSync(configPathFor(dir), 'utf8')).approvals).toBe('team');
+});
+
+test('only a fresh hatch creates first-chat evidence', async () => {
+  const dir = freshDir();
+  expect((await runHatchConfig(dir, { project_name: 'first-chat' })).exitCode).toBe(0);
+  const marker = path.join(dir, '.hermit/state/first-chat-pending.json');
+  expect(JSON.parse(fs.readFileSync(marker, 'utf8'))).toEqual({ private_chats: [] });
+  fs.unlinkSync(marker);
+  expect((await runHatchConfig(dir, {}, true)).exitCode).toBe(0);
+  expect(fs.existsSync(marker)).toBe(false);
+});

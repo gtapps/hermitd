@@ -43,6 +43,7 @@ import { safeForLLM } from './lib/sanitize';
 import { resolveGate, projectRootOf } from './lib/routines/gate';
 import { renameCursors } from './lib/routines/schedule';
 import { chromeAuthNote } from './lib/credential-probe';
+import { isUsableTimeZone } from './lib/time';
 import { dockerfileHasOwnBrowser } from './lib/browser-runtime';
 
 type Json = any;
@@ -63,6 +64,13 @@ const SIBLING_SKILL_RE = new RegExp(`^/${PLUGIN_ID}:[^\\s:]+$`);
 type Rename = { from: string; to: string };
 
 const migrations: Record<string, Migration> = {
+  'timezone-check': noArgs(config => {
+    const timezone = config.timezone;
+    if (timezone == null) return { timezone_check: 'unset' };
+    if (typeof timezone === 'string' && isUsableTimeZone(timezone)) return { timezone_check: 'usable' };
+    return { timezone_check: 'unusable', timezone,
+      note: 'Scheduled routines may not have run at the expected times. Ask the operator for their city and set a scheduler-usable timezone.' };
+  }),
   'task-decisions': {
     run: config => {
       if (config.artifacts && typeof config.artifacts === 'object') delete config.artifacts.proposals;

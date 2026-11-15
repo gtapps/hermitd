@@ -131,8 +131,8 @@ Tune from a terminal with `/hermit-settings`, or change permitted settings from 
 |-----|--------------------------------------|
 | `agent_name` | your assistant's name |
 | `operator_profile` | primary-chat audience: **`technical`** / `non-technical` |
-| `timezone` | detected during setup; fallback **`UTC`** |
-| `language` | detected during setup; fallback **`en`** |
+| `timezone` | machine's zone stored at setup; must be usable by the scheduler |
+| `language` | unset until chosen or learned in the first conversation |
 | `escalation` | how much it does before asking: `conservative` / **`balanced`** / `autonomous` |
 | `model` | session model: **`sonnet`** |
 | `effort` | session reasoning effort: **unset** (Claude Code default) |

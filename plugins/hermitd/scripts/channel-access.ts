@@ -156,6 +156,20 @@ function main(): void {
         home = 'failed';
       }
     }
+    try {
+      const marker = path.join(dir, 'state', 'first-chat-pending.json');
+      // Never create or recreate a marker consumed by a concurrent first chat.
+      const fd = fs.openSync(marker, 'r+');
+      try {
+        const evidence = JSON.parse(fs.readFileSync(fd, 'utf8'));
+        if (Array.isArray(evidence.private_chats)) {
+          evidence.private_chats.push({ channel, chat_id: pending.chatId, sender_id: pending.senderId });
+          const text = JSON.stringify(evidence) + '\n';
+          fs.writeSync(fd, text, 0, 'utf8');
+          fs.ftruncateSync(fd, Buffer.byteLength(text));
+        }
+      } finally { fs.closeSync(fd); }
+    } catch { /* Pairing succeeds even without readable first-chat evidence. */ }
     printJson({ channel, sender_id: pending.senderId, file: label, home });
     return;
   }

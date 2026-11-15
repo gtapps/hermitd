@@ -271,3 +271,21 @@ for (const channel of ['discord', 'telegram']) {
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).dmPolicy).toBe('allowlist');
   });
 }
+
+for (const markerState of ['present', 'absent', 'unreadable']) {
+  test(`pairing tolerates ${markerState} first-chat evidence`, async () => {
+    const f = fixture('telegram');
+    const marker = path.join(f.dir, 'state/first-chat-pending.json');
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    if (markerState !== 'absent') fs.writeFileSync(marker, markerState === 'present' ? '{"private_chats":[]}' : 'bad json');
+    fs.writeFileSync(f.file, JSON.stringify({ ...access, pending: { ABC123: {
+      senderId: '7', chatId: '8', expiresAt: Date.now() + 60000,
+    } } }));
+    expect((await f.run('pair', ['ABC123'])).exitCode).toBe(0);
+    if (markerState === 'present') expect(JSON.parse(fs.readFileSync(marker, 'utf8')).private_chats).toEqual([
+      { channel: 'telegram', chat_id: '8', sender_id: '7' },
+    ]);
+    if (markerState === 'absent') expect(fs.existsSync(marker)).toBe(false);
+    if (markerState === 'unreadable') expect(fs.readFileSync(marker, 'utf8')).toBe('bad json');
+  });
+}

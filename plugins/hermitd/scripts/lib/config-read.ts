@@ -38,7 +38,7 @@ type Json = any;
 export type SettledConfig = Json;
 
 export type Spec =
-  | { kind: 'string'; def: string | null; enum?: readonly string[]; pattern?: 'duration' | 'time'; nullable?: boolean }
+  | { kind: 'string'; def: string | null; enum?: readonly string[]; pattern?: 'duration' | 'time' | 'timezone'; nullable?: boolean }
   | { kind: 'boolean'; def: boolean | null }
   | { kind: 'number'; def: number | null; range?: [number, number]; nullable?: boolean }
   | { kind: 'array' }
@@ -58,7 +58,7 @@ export const TABLE: Record<string, Spec> = {
   _hermit_versions: map,
   agent_name: str(null),
   language: str(null),
-  timezone: str(null),
+  timezone: str(null, { pattern: 'timezone' }),
   escalation: str('balanced', { enum: ESCALATION }),
   operator_profile: str('technical', { enum: OPERATOR_PROFILE }),
   voice: shape({ style: str(null, { enum: VOICE_STYLE }), prose: str(null) }),

@@ -252,3 +252,19 @@ function resolveHermitNowMs(): number {
 }
 
 export { currentHHMM, currentHHMMOrUTC, nowHHMMSS, zonedISOStamp, todayYMD, yesterdayYMD, thisWeekKey, thisMonthYYYYMM, nextBoundaryISO, localISOStamp, utcISOStamp, parseDuration, parseSimpleCronTime, friendlyBoundary, resolveHermitNowMs, elapsedSinceHHMM };
+
+// Both presentation and scheduling must accept a stored zone.
+export function isUsableTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    Bun.cron.parse('0 0 * * *', new Date(), { tz: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function machineTimeZone(): string | null {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isUsableTimeZone(zone) ? zone : null;
+}

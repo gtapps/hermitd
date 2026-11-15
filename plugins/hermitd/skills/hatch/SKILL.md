@@ -23,24 +23,20 @@ Check whether `.hermit/config.json` exists in the current project. That file (wr
 
 Before the setup-mode gate or any file writes, gather context silently. Run all commands in parallel where possible:
 
-1. **Auto-detect language and timezone**:
-   - Language: `echo $LANG | cut -d_ -f1` (fallback: `en`)
-   - Timezone: `cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || date +%Z` (fallback: `UTC`)
-
 2. **Silent hermit detection + core scope detection** (split out so it's available before the mode gate without an operator prompt):
    - **Core scope detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role core-scope`. It emits `{ "core_scope": "local"|"project"|"user"|null, "target": "committed"|"local" }` — set `core_install_scope` from `core_scope` and `hatch_target` from `target`. (project → committed; local/user/null → local, the safer default the operator can override in Advanced.)
    - **Sibling hermit detection:** run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-siblings.ts "$(pwd)" --role siblings --core-root "${CLAUDE_PLUGIN_ROOT}"`. It emits a JSON array of the project-or-local + enabled hermit siblings (each carrying `plugin`, `id`, `marketplace_name`, `installPath`), already excluding user-scope, disabled, cross-project, and `hermitd` itself.
    - Stash the array as `detected_hermits`. Step 3 reads activation metadata from each entry's `installPath` directly.
    - Note: sibling detection is intentionally restrictive. A hermit installed at user scope does NOT auto-detect — operator can install it at project scope and re-run, or activate via `/hermit-settings`.
 
-3. **Detect git-init eligibility** — run in parallel with items 1–2. Set `git_init_eligible = true` if and only if all three hold:
+3. **Detect git-init eligibility** — run in parallel with scope detection. Set `git_init_eligible = true` if and only if all three hold:
    - `is_reinit == false`.
    - `git rev-parse --is-inside-work-tree 2>/dev/null` is falsy (not already under version control).
    - `ls -A` of the project root yields only names from this **explicit allowed set**: `.hermit`, `.claude`, `.gitignore`, `.worktreeinclude`, `.bash_profile`, `.bashrc`, `.zshrc`, `.zprofile`, `.profile`, `.gitconfig`, `.ripgreprc`. The dotfile entries (`.bash_profile` through `.ripgreprc`) come from the sandbox-dotfile block at the bottom of `state-templates/GITIGNORE-APPEND.txt` — keep those in sync if that block changes.
 
 4. **Print one summary line** so the operator sees what was detected:
 
-   > Initializing hermit in `<project-name>`. Detected: language=<lang>, timezone=<tz>, scope=<project|local|user>, target=<committed|local>, hermit candidates=<N> (<comma-separated names or "none">), git=<fresh|existing|n/a>.
+   > Initializing hermit in `<project-name>`. Detected: scope=<project|local|user>, target=<committed|local>, hermit candidates=<N> (<comma-separated names or "none">), git=<fresh|existing|n/a>.
 
 ### 1.6. Setup mode gate
 
@@ -54,7 +50,7 @@ questions: [
     header: "Setup mode",
     question: "How would you like to configure hermit?",
     options: [
-      { label: "Quick", description: "Sensible defaults, ~4 questions, ~3 min. Tweak via /hermit-settings later." },
+      { label: "Quick", description: "Sensible defaults, 5 questions including this choice and confirmation, ~3 min. Tweak via /hermit-settings later." },
       { label: "Advanced", description: "Full wizard — every option exposed (~15 questions, ~15 min)." }
     ]
   }
@@ -104,7 +100,7 @@ Collect project preferences in the phases below. Use `AskUserQuestion` for all q
 
 #### Phase 1 — Auto-detect (already done in Step 1.5)
 
-Step 1.5 already ran the language/timezone detection silently. Reuse those values — do not re-run the commands.
+Step 1.5 gathers scope and sibling metadata. Language and timezone choices follow below.
 
 #### Phase 2 — Identity
 
@@ -113,9 +109,9 @@ Step 1.5 already ran the language/timezone detection silently. Reuse those value
 - If "Skip" or Other left blank: record as `agent_name: null`
 - Otherwise: record the selected or typed value as `agent_name`
 
-**4b+4c. Language + Timezone** — batch both in one `AskUserQuestion` call (header: "Language" / "Timezone"). For each, offer the auto-detected value as the first option and one common alternative (e.g., "en" / "UTC"). If auto-detected already matches the alternative, swap in a different one to avoid duplicates.
+**4b+4c. Language + Timezone** — batch both in one `AskUserQuestion` call (header: "Language" / "Timezone"). Language offers **Match what I write** / **en** / Other. Timezone offers **This machine's zone** / **UTC** / Other.
 
-- Record selected label or Other free-text as the value
+- "Match what I write" omits `language`; "This machine's zone" omits `timezone`. Record any other selected label or Other free-text as the value.
 
 #### Phase 3 — Behavior (AskUserQuestion batch, 2 questions)
 
@@ -135,7 +131,7 @@ questions: [
   {
     header: "Channels",
     question: "How do you want to communicate with your agent?",
-    options: [{ label: "Discord", description: "Communicate with your agent via Discord" }, { label: "Telegram", description: "Communicate with your agent via Telegram" }, { label: "Claude app (for now)", description: "Push notifications + Remote Control. Pair Discord or Telegram anytime later." }]
+    options: [{ label: "Telegram", description: "Communicate with your agent via Telegram" }, { label: "Discord", description: "Communicate with your agent via Discord" }, { label: "Claude app (for now)", description: "One-way one-line pushes; a reply in the app loses its context on /clear. Pair Telegram or Discord anytime later." }]
   }
 ]
 ```
@@ -364,7 +360,7 @@ Write the draft to `.hermit/OPERATOR.md`.
 
 #### Phase 3 — Targeted questions (AskUserQuestion batch)
 
-Questions are split into two `AskUserQuestion` calls (max 4 per call). Q1–Q4 are never skipped and always form the first call. Call 2 always carries the Mission question.
+Advanced only: questions are split into two `AskUserQuestion` calls (max 4 per call). Q1–Q4 are never skipped and always form the first call. Call 2 always carries the Mission question.
 
 **Call 1 — always sent (4 questions):**
 
@@ -383,7 +379,7 @@ Accept any answer including free-text via Other. Expand Q1–Q3 into OPERATOR.md
 | --- | --- | --- | --- |
 | 5 | Mission | "Who do I serve, and what am I here for?" | Just me / My team / My clients |
 
-After "My team" or "My clients", call `hatch-config` with the project root, `--reinit`, and exactly `{"approvals":"team"}` on stdin, using the re-initialization call form above. Tell the operator that approvals now happen at the terminal, in the Claude app, or through a DM-paired approver in the maintainer chat (with a 60-second prompt deadline). Approving from chat needs `maintainer_channel_id` set to a chat the agent listens in: an approver's DM or an enrolled group. Setting `approvals` to `personal` reverts this at the next start. After "Just me", do nothing.
+In Advanced, after "My team" or "My clients", call `hatch-config` with the project root, `--reinit`, and exactly `{"approvals":"team"}` on stdin, using the re-initialization call form above. Tell the operator that approvals now happen at the terminal, in the Claude app, or through a DM-paired approver in the maintainer chat (with a 60-second prompt deadline). Approving from chat needs `maintainer_channel_id` set to a chat the agent listens in: an approver's DM or an enrolled group. Setting `approvals` to `personal` reverts this at the next start. After "Just me", do nothing.
 
 Tell the operator before Call 1: "I've scanned your project and drafted OPERATOR.md. A few questions to fill in what I couldn't infer:"
 
@@ -408,7 +404,7 @@ Write the final version to `.hermit/OPERATOR.md`.
 
 #### Phase 4b — Style
 
-No dialog here — this applies the Q4 answer from Phase 3. The hermit's tone lives in a native Claude Code output style, so it reaches the **system prompt** instead of SessionStart context: it holds for the whole session and survives compaction. `config.json`'s `voice` block is what the operator owns; the style key and the style file are rendered from it, at hatch and again at every boot.
+In Advanced, no dialog here — this applies the Q4 answer from Phase 3. The hermit's tone lives in a native Claude Code output style, so it reaches the **system prompt** instead of SessionStart context: it holds for the whole session and survives compaction. `config.json`'s `voice` block is what the operator owns; the style key and the style file are rendered from it, at hatch and again at every boot.
 
 1. If `.claude/output-styles/hermit-voice.md` already exists, its prose is the operator's — adopt it instead of asking again. Take the text between the closing `-->` of its comment block and the `## Precedence` heading and write it into `voice.prose`, then set `style = custom` (the two commands in step 2's Other branch, in that order). The next render reproduces that prose verbatim. Skip the Q4 answer entirely and go to step 3.
 2. Otherwise write the Q4 answer:
@@ -582,7 +578,7 @@ Note to the operator: "Artifact publishing is on — added `Artifact` to `permis
 
 ## Quick Branch
 
-Replaces Steps 3-4 with batched turns + confirm; resumes shared Steps 5-9 after approval. Same files written, same `config.json` fields populated, same OPERATOR.md questionnaire, same security gates — Quick just defaults incidental decisions and shows the resolved bundle before any config writes.
+Quick asks five core questions: setup mode, deployment, chat, who the agent serves, and confirmation. Conditional hermit activation and extension questions can add to that count. Collect answers before writing config; after approval write config once, draft OPERATOR.md from the scan and Mission answer, then apply voice.
 
 **Entry condition:** Step 1.6 returned `Quick` AND `is_reinit` is `false` (re-init forces Advanced).
 
@@ -592,41 +588,9 @@ Only fires if `detected_hermits` from Step 1.5 is non-empty. Same prompt shape a
 
 If a hermit is selected: record the full entry from `detected_hermits` as `activated_hermit` (carries `plugin`, `id`, `marketplace_name`, `installPath`). Pass only its plugin slug in Step 5’s `hatch-config.ts` answers payload.
 
-### Quick Turn 2 — Identity batch (one `AskUserQuestion`, 3 questions)
+### Quick Turn 2 — Deployment + Chat batch
 
-```
-questions: [
-  {
-    header: "Agent name",
-    question: "What should I be called?",
-    options: [
-      { label: "Atlas", description: "Use Atlas as agent name" },
-      { label: "Hermit", description: "Use Hermit as agent name" },
-      { label: "Skip", description: "Leave agent name unset" }
-    ]
-  },
-  {
-    header: "Language",
-    question: "Primary language?",
-    options: [
-      { label: "<auto-detected from Step 1.5> (auto-detected)", description: "Use detected primary language" },
-      { label: "<one common alternative — e.g. en if auto = pt, otherwise pt>", description: "Use suggested alternative language" }
-    ]
-  },
-  {
-    header: "Timezone",
-    question: "Timezone?",
-    options: [
-      { label: "<auto-detected from Step 1.5> (auto-detected)", description: "Use detected local timezone" },
-      { label: "UTC", description: "Use Coordinated Universal Time" }
-    ]
-  }
-]
-```
-
-Record `agent_name` (null if Skip), `language`, `timezone`.
-
-### Quick Turn 3 — Deployment + Channel batch
+Quick sends no `agent_name`, `language` or `timezone`. The name and language stay unset; the script stores the machine's zone.
 
 Ask both questions in one `AskUserQuestion` call.
 
@@ -645,9 +609,9 @@ questions: [
     header: "Chat",
     question: "How do you want to communicate with your agent?",
     options: [
-      { label: "Claude app (for now)", description: "Push notifications + Remote Control. Pair Discord or Telegram anytime later." },
-      { label: "Discord + Remote Control", description: "Communicate with your agent via Discord + Remote Control if available" },
-      { label: "Telegram + Remote Control", description: "Communicate with your agent via Telegram + Remote Control if available" }
+      { label: "Telegram", description: "Communicate with your agent via Telegram + Remote Control if available" },
+      { label: "Discord", description: "Communicate with your agent via Discord + Remote Control if available" },
+      { label: "Claude app (for now)", description: "One-way one-line pushes; a reply in the app loses its context on /clear. Pair Telegram or Discord anytime later." }
     ]
   }
 ]
@@ -661,11 +625,11 @@ Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one o
 - `permission_mode`: `auto` (same default for both Docker and non-Docker deployments). Generally available to all users across subscription plans and API usage; supported models and provider configuration can vary. If Claude reports it unavailable for the current selection, choose a supported model or run `/hermit-settings permissions` to select another mode.
 - Deny pattern profile: Standard (`deny standard`). Applied at Step 9 silently.
 
-### Quick Turn 4 — OPERATOR.md questionnaire (run "5a. OPERATOR.md onboarding" verbatim)
+### Quick Turn 3 — Mission
 
-Run the existing "5a. OPERATOR.md onboarding" step verbatim: same scan, same draft, same Phase 3 questions (Call 1 and the Call 2 Mission question), same Phase 4 scrub. No changes to scan list, draft logic, or question wording. The questionnaire produces a complete OPERATOR.md before the confirm screen so the operator's answers shape the autonomous-mode context the hermit uses immediately.
+Run the scan from 5a Phase 1 silently without writing OPERATOR.md. Ask only the Mission question from 5a Phase 3, plus any activated hermit's `OPERATOR-QUESTIONS.md` questions. Collect answers without calling `hatch-config --reinit` or writing config. For "My team" or "My clients", include `"approvals":"team"` in the fresh Step 5 payload.
 
-### Quick Turn 5 — Confirm bundle
+### Quick Turn 4 — Confirm bundle
 
 Get the preview data from the script, so what the operator approves is derived from the answers rather than re-typed:
 
@@ -695,7 +659,7 @@ questions: [
 ```
 
 - **Customize**: jump to Step 3 of the Advanced branch (no prefill — Advanced restarts from scratch). Discard all Quick answers.
-- **Yes**: continue to the shared steps below.
+- **Yes**: run shared Step 5 once with the collected payload, including `approvals` when selected. Then draft and write OPERATOR.md using 5a Phases 2 and 4 from the scan and Mission answer. Skip Advanced's Focus, Red lines, Ask first and Comms style questions and its approvals re-init call. Apply 5a Phase 4b with Default (`apply-known voice default`, then `voice-render`), or adopt an existing `hermit-voice.md` as described there. Continue shared Steps 5b-9 without repeating Step 5 or 5a.
 
 The confirm bundle includes one line for `will_apply.browser` (enabled and default browser); Quick asks no browser question.
 
@@ -706,11 +670,11 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Source | Field | Quick value |
 |---|---|---|
 | Advanced Phase 3 equivalent | escalation, remote | template defaults (balanced, true) — don't override |
-| Advanced 5a Phase 4b equivalent | `voice` | Quick Turn 4 runs 5a verbatim, so the comms question and the render happen there too |
+| Advanced 5a Phase 4b equivalent | `voice` | After config and OPERATOR.md, apply Default and render, or adopt an existing `hermit-voice.md`; ask no style question |
 | Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
 | Step 5b | fixed-text localization | run verbatim: generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
-| Quick Turn 3 channel choice | push_notifications | template default (true) — don't override |
+| Quick Turn 2 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 browser equivalent | `browser` | template defaults: enabled, default `agent-browser`; ask no browser question, preserve an existing re-init choice |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
 | Step 7 | .gitignore append | apply silently (per-line idempotent) |
@@ -735,9 +699,9 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deploym
 Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
 
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
-- Otherwise: show one browser line from `browser.enabled` and `browser.default`; when `browser.host_command` is present, print it as a terminal prerequisite. `agent_name` is hatched; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
+- Otherwise: show one browser line from `browser.enabled` and `browser.default`; when `browser.host_command` is present, print it as a terminal prerequisite. say "`agent_name` is hatched" when set, or "Your agent is ready" when unset; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
 
-`--deployment` is the one thing it cannot read: Quick Turn 3 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
+`--deployment` is the one thing it cannot read: Quick Turn 2 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
 
 ---
 

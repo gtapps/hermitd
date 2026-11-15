@@ -1,3 +1,4 @@
+import { machineTimeZone } from './lib/time';
 // hatch-report.ts: the data behind hatch's two operator-facing summaries, as one
 // JSON object each; the hatch skill composes the summary from it.
 //
@@ -106,6 +107,8 @@ export function confirmData(answers: Json): Json {
   for (const k of ['agent_name', 'language', 'timezone', 'deployment', 'channel']) {
     if (answers[k]) choose(k, answers[k]);
   }
+  if (!Object.hasOwn(answers, 'timezone')) will.timezone = machineTimeZone();
+  else if (answers.timezone === null) choose('timezone', null);
   if (answers.activated_hermit?.slug) choose('hermit_extension', answers.activated_hermit.slug);
   if (answers.plugins?.length) choose('plugins', answers.plugins);
 

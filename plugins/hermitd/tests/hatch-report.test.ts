@@ -275,3 +275,9 @@ test('transcription preview and summary carry defaults and explicit opt-out', as
   expect(finalData(observe(hatched()), 'tmux').transcription).toEqual({ enabled: true, echo: true });
   expect(finalData(observe(hatched({ config: { transcription: { enabled: false } } })), 'docker').transcription.enabled).toBe(false);
 });
+
+test('confirm lists the machine timezone as a default', () => {
+  const result = confirmData({});
+  expect(result.defaults).toContain('timezone');
+  expect(result.will_apply.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+});
