@@ -4,10 +4,13 @@
 
 ### Added
 
+- Any conforming channel plugin can be connected through Other in `/hermitd:channel-setup`, with confirmed installation and field-preserving registration.
 - `approvals: "team"` refuses approval-needing work outside the main loop's typed turns and DM-paired approvers in the maintainer chat, where unanswered prompts close after 60 seconds. Off by default (`personal`) because it refuses work a single-operator agent runs today.
 
 ### Changed
 
+- Channel setup offers existing channels and Add another channel, follows plugin-owned guides with optional browser help, and reports selected-channel reply proof and access facts separately.
+- Token setup presents private file entry first and warns that pasted tokens enter conversation history.
 - Claude Code 2.1.325 or newer is required.
 - Hook scripts, including the resident's launch hooks, run with Bun's automatic package install disabled (`bun --no-install`)
 

@@ -14,7 +14,7 @@ Nothing is pre-shipped or pre-configured. During `/docker-setup`, you're asked w
 
 The entrypoint installs every enabled entry in `docker.recommended_plugins`, regardless of marketplace. This includes domain hermits (e.g. `hermitd-homeassistant`) and any other third-party plugin.
 
-The safety gate is at **configuration time**: entries only land in `docker.recommended_plugins` when the operator explicitly confirms the mirrored plugin list during `/docker-setup` or `/hermit-settings docker`. The host-installed list is the vetted set — the operator already installed these plugins on the host before triggering docker-setup.
+The safety gate is at **configuration time**: entries only land in `docker.recommended_plugins` when the operator explicitly confirms the mirrored plugin list during `/docker-setup` or `/hermit-settings docker`, or confirms the exact channel plugin and repository through **Other** in `/hermitd:channel-setup`. Docker setup mirrors the host-installed list; channel setup confirms that the selected plugin runs code locally and is installed at every container start. Channel setup uses the gated `channel-register` verb and requires `hermitd restart --build` for activation.
 
 > **Reminder:** Plugins run with the same permissions as Hermit. If you use `bypassPermissions` for fully unattended Docker operation, this means full unrestricted execution. Only add plugins you trust.
 

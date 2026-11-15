@@ -222,6 +222,8 @@ Usually a UID mismatch between the host and the container user. The generated Do
 
 ## Channel Messages Not Arriving
 
+For a third-party plugin, run `/hermitd:channel-setup` and select its entry or **Add another channel → Other**. Setup follows its guide and uses the gated `channel-register` verb. Re-check [Claude Code approval](https://code.claude.com/docs/en/channels#enterprise-controls) first if conversational proof gets no answer; inspect the plugin's startup error and guide before naming a cause. Docker activation requires `hermitd restart --build`.
+
 **Docker:**
 - Pair or re-pair from the host with `/hermitd:channel-setup`. docker-setup pairs during first run; afterwards use channel-setup. A channel or token added later needs `hermitd-docker restart` first (the bot is offline until then). Inside the container, `/<channel>:access pair <code>` (save access.json to `<state_dir>/` not `~/.claude`) and `/<channel>:access policy allowlist` in the attached REPL.
 - Verify the channel plugin is installed inside the container: `hermitd-docker attach`, then check with `claude plugin list`.

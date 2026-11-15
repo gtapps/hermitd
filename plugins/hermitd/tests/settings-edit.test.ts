@@ -112,6 +112,43 @@ describe('getPath / setPath / togglePath', () => {
 // --- CLI integration tests (subprocess) ---
 
 describe('settings-edit.ts CLI', () => {
+  test('channel-register seeds defaults and preserves all omitted and learned fields on repeat', async () => {
+    const file = seedConfig(freshDir(), {});
+    const register = (payload: any) => runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify(payload)] });
+    expect((await register({ plugin: 'bridge', marketplace: 'registered' })).stdout.trim()).toBe('OK');
+    expect(readConfig(file).channels.custom).toEqual({ plugin: 'bridge', marketplace: 'registered', enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/custom' });
+    const config = readConfig(file);
+    Object.assign(config.channels.custom, { default_chat_id: 'home', allowed_users: ['owner'], operators: ['owner'], state_dir: 'private/channel', unknown: { keep: true } });
+    fs.writeFileSync(file, JSON.stringify(config));
+    expect((await register({ marketplace: 'updated', docker_source: 'org/repo' })).exitCode).toBe(0);
+    expect(readConfig(file).channels.custom).toEqual({ ...config.channels.custom, marketplace: 'updated' });
+    expect(readConfig(file).docker.recommended_plugins).toEqual([{ plugin: 'bridge', marketplace: 'org/repo', scope: 'local', enabled: true }]);
+    const before = fs.readFileSync(file, 'utf8');
+    const modified = fs.statSync(file).mtimeMs;
+    expect(JSON.parse((await register({ marketplace: 'updated', docker_source: 'org/repo' })).stdout)).toEqual({ status: 'unchanged' });
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(fs.statSync(file).mtimeMs).toBe(modified);
+  });
+
+  test('channel-register refuses invalid payloads without writing', async () => {
+    for (const payload of [{ format: 'invalid' }, { docker_source: 'registered' }, { surprise: true }, [], null]) {
+      const file = seedConfig(freshDir(), {});
+      const before = fs.readFileSync(file, 'utf8');
+      const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify(payload)] });
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toMatch(/^[a-z_]+$/);
+      expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    }
+  });
+
+  test('channel-register never edits an existing matching boot entry', async () => {
+    const entry = { plugin: 'bridge', marketplace: 'org/repo', scope: 'project', enabled: false };
+    const file = seedConfig(freshDir(), { docker: { recommended_plugins: [entry] } });
+    const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify({ plugin: 'bridge', docker_source: 'org/repo' })] });
+    expect(result.exitCode).toBe(0);
+    expect(readConfig(file).docker.recommended_plugins).toEqual([entry]);
+  });
+
   test('get with no path prints the whole config', async () => {
     const dir = freshDir();
     const file = seedConfig(dir, { agent_name: 'Atlas', remote: true });

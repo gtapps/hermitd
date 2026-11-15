@@ -142,7 +142,7 @@ questions: [
 
 - **If Claude app (for now):** record `channels: {}`. Proceed to Phase 5. Do not ask channel follow-ups.
 - **If Discord or Telegram:** create a channel entry under the `channels` object (e.g., `channels.discord`). Boot script maps the key to the full plugin identifier. Then ask follow-ups below.
-- Channel plugins require Bun and manual setup (bot creation, token, pairing). After saving the preference to `config.json`, note:
+- Channel plugins require Bun; `/hermitd:channel-setup` guides bot creation, credentials and pairing, with Other for conforming third-party plugins. After saving the preference to `config.json`, note:
 
   > **Channel preference saved.** Activation depends on how you run hermit:
   >
