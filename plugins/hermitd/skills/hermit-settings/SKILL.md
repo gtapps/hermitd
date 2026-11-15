@@ -128,9 +128,6 @@ The enum values, dotted paths, and "applies" notes come from `scripts/lib/settin
 
 The remaining arguments each do more than write one leaf, so they keep their own procedure below.
 
-**Timezone follow-through:**
-After `apply-known timezone` succeeds, run `/hermitd:hermit-routines load` to reload routine registrations.
-
 **If argument is "language":**
 If a value is supplied with the argument, skip locale detection and the question; continue with that value. Otherwise:
 Auto-detect the system locale via Bash as a default suggestion.

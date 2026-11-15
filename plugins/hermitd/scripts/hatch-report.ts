@@ -1,4 +1,3 @@
-import { machineTimeZone } from './lib/time';
 // hatch-report.ts: the data behind hatch's two operator-facing summaries, as one
 // JSON object each; the hatch skill composes the summary from it.
 //
@@ -26,6 +25,7 @@ import path from 'node:path';
 import { readStdin, readJson, flagValue, exitError, printJson } from './lib/cli';
 import { browserHostPrerequisite } from './lib/browser-runtime';
 import { readConfigRaw } from './lib/config-read';
+import { machineTimeZone } from './lib/time';
 
 type Json = any;
 
@@ -116,6 +116,7 @@ export function confirmData(answers: Json): Json {
   // track the shipped defaults instead of prose that drifts. Kept to the
   // consequential ones (autonomy/permission/spend posture); cosmetic defaults
   // (model, notifications, artifact pages) are left out.
+  if (answers.approvals) choose('approvals', answers.approvals);
   if (answers.permission_mode) choose('permission_mode', answers.permission_mode);
   else if (t.permission_mode) will.permission_mode = t.permission_mode;
   if (t.escalation) {

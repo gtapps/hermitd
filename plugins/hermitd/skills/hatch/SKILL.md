@@ -166,7 +166,7 @@ The Visibility question uses the scope-derived `hatch_target` to recommend an op
 
 ```
 questions: [
-  // The Deployment question from Quick Turn 3, verbatim
+  // The Deployment question from Quick Turn 2, verbatim
   {
     header: "Permissions",
     question: "Permission mode for Claude Code?",
@@ -214,7 +214,7 @@ After Phase 5's four questions, make a second `AskUserQuestion` call with these 
 - **Default browser:** "Which browser should tasks use by default?" Options: "Managed browser (recommended)" (`browser.default: agent-browser`) / "Claude in Chrome" (`browser.default: chrome`, also set `chrome: true`, requires Claude login). Do not switch after a failure.
 
 
-Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive` as Quick Turn 3 does.
+Record `deployment`, mapping the labels to `docker` / `tmux` / `interactive` as Quick Turn 2 does.
 
 Record: `permission_mode` (auto/acceptEdits/default/dontAsk/bypassPermissions/plan). `plan` and `dontAsk` (denies every tool not in `permissions.allow`, so it needs a curated allowlist) can be typed via Other.
 
@@ -254,7 +254,7 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
 }
 ```
 
-- **Phase 2** → `agent_name`, `language`, `timezone`.
+- **Phase 2** → `agent_name`, `language`, `timezone`. An `invalid_config` error naming `timezone` wrote nothing: ask for the zone again and re-run.
 - **Phase 3** → `escalation`, `remote`.
 - **Phase 4** → `channels.<name>`: `enabled`, `allowed_users` (omit if the operator skipped access control), `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
 - **Phase 5** → `browser.enabled`, `browser.default`, `transcription` (boolean), `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
@@ -465,7 +465,7 @@ The file contains a managed block bounded by marker comments (`# >>> hermitd ...
 If `git_init_eligible`:
 
 - **Advanced branch:** ask with `AskUserQuestion` (header: "Git init") — "Initialize a local git repo here? The hermit's build output will be tracked; its internal churn (sessions, proposals, state) stays gitignored." — options: **Yes** (default) / **No**. Run `git init` only on Yes.
-- **Quick branch:** announced in the Quick Turn 5 confirm bundle and run as part of the shared steps only after the operator confirms (see "Quick — silent defaults applied to shared steps" table — Step 7.5 row). Never auto-runs before confirmation.
+- **Quick branch:** announced in the Quick Turn 4 confirm bundle and run as part of the shared steps only after the operator confirms (see "Quick — silent defaults applied to shared steps" table — Step 7.5 row). Never auto-runs before confirmation.
 
 When run, `git init` creates the repo at the project root. The `.gitignore` written in Step 7 is immediately in effect.
 
@@ -627,7 +627,7 @@ Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one o
 
 ### Quick Turn 3 — Mission
 
-Run the scan from 5a Phase 1 silently without writing OPERATOR.md. Ask only the Mission question from 5a Phase 3, plus any activated hermit's `OPERATOR-QUESTIONS.md` questions. Collect answers without calling `hatch-config --reinit` or writing config. For "My team" or "My clients", include `"approvals":"team"` in the fresh Step 5 payload.
+Run the scan from 5a Phase 1 silently without writing OPERATOR.md. Ask only the Mission question from 5a Phase 3, plus any activated hermit's `OPERATOR-QUESTIONS.md` questions. Collect answers without calling `hatch-config --reinit` or writing config. For "My team" or "My clients", include `"approvals":"team"` in the fresh Step 5 payload and, after config is written, tell the operator what 5a Phase 3 says about team approvals.
 
 ### Quick Turn 4 — Confirm bundle
 

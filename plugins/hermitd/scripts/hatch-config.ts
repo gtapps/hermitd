@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { machineTimeZone } from './lib/time';
 /**
  * Deterministic config.json assembly and fresh first-chat marker for /hatch Step 5.
  *
@@ -43,6 +42,7 @@ import { validate } from './validate-config';
 import { persistConfig } from './lib/config-write';
 import { configExists, readConfigRaw } from './lib/config-read';
 import { emit, emitJson, exitError } from './lib/cli';
+import { machineTimeZone } from './lib/time';
 
 type Json = any;
 

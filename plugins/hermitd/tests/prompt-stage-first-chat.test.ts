@@ -14,7 +14,8 @@ function fixture(prompt = 'Hello') {
   fs.mkdirSync(path.join(dir, 'state'));
   const marker = path.join(dir, 'state/first-chat-pending.json');
   fs.writeFileSync(marker, JSON.stringify({ private_chats: [{ channel: 'telegram', chat_id: '1', sender_id: '2' }] }));
-  const ctx: StageContext = { dir, prompt, envelope: parseChannelEnvelope(prompt), transcriptPath: null, config: () => ({}), runtime: () => null };
+  const ctx: StageContext = { dir, prompt, sessionId: 'resident', envelope: parseChannelEnvelope(prompt), transcriptPath: null,
+    config: () => ({}), runtime: () => ({ cc_session_id: 'resident' }) };
   return { ctx, marker };
 }
 
@@ -59,6 +60,20 @@ for (const prompt of ['', '  ', '/status', ' !pause',
 test('recorded private chat is eligible', () => withPromptFile(() => {
   expect(run(fixture('<channel source="telegram" chat_id="1" user="2">Hello</channel>').ctx)).toEqual({ context: 'First-chat fixture text' });
 }));
+
+test('plugin-qualified channel source matches the recorded channel key', () => withPromptFile(() => {
+  expect(run(fixture('<channel source="plugin:telegram:telegram" chat_id="1" user="2">Hello</channel>').ctx))
+    .toEqual({ context: 'First-chat fixture text' });
+}));
+
+for (const [label, sessionId, runtime] of [['setup session', 'hatch', { cc_session_id: 'resident' }], ['no resident', 'resident', null],
+  ['unknown session', null, { cc_session_id: 'resident' }]] as const) {
+  test(`non-resident session leaves the marker: ${label}`, () => withPromptFile(() => {
+    const { ctx, marker } = fixture();
+    expect(run({ ...ctx, sessionId, runtime: () => runtime })).toBeUndefined();
+    expect(fs.existsSync(marker)).toBe(true);
+  }));
+}
 
 test('missing prompt preserves the marker', () => withPromptFile(() => {
   const { ctx, marker } = fixture();

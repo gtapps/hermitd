@@ -3782,5 +3782,5 @@ test('doctor config check names an unusable timezone', withTmpdir(async (dir) =>
 test('settings language accepts a supplied value and timezone reloads routines', () => {
   const skill = read(path.join(SKILLS, 'hermit-settings', 'SKILL.md'));
   expect(skill).toContain('skip locale detection and the question; continue with that value');
-  expect(skill).toContain('After `apply-known timezone` succeeds, run `/hermitd:hermit-routines load`');
+  expect(skill).toContain('| `timezone` | `timezone` | string, nullable | any; scheduler-usable zone (UTC, Europe/Lisbon, America/New_York) | immediately; run `/hermitd:hermit-routines load` after success |');
 });

@@ -281,3 +281,9 @@ test('confirm lists the machine timezone as a default', () => {
   expect(result.defaults).toContain('timezone');
   expect(result.will_apply.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
 });
+
+test('confirm shows team approvals chosen in Quick', () => {
+  const result = confirmData({ approvals: 'team' });
+  expect(result.will_apply.approvals).toBe('team');
+  expect(result.defaults).not.toContain('approvals');
+});
