@@ -114,7 +114,7 @@ Special-default keys — the **only** keys this step writes, because their value
 
   A missing `timezone` needs nothing here: the finalizer fills it with the machine's zone.
 
-  (These are 0.0.1 keys, set at hatch, so they are almost never missing at evolve time.)
+  (Both are 0.0.1 keys, set at hatch, so they are almost never missing at evolve time.)
 - All other keys: **do nothing** — the finalizer writes them from `state-templates/config.json.template`, the same source `evolve-plan.ts` derives `new_config_keys[].default` from, and reports what it added as `settings_added`. The operator tunes them via `/hermit-settings` afterward.
 
 ### 4b. Legacy plan-table check

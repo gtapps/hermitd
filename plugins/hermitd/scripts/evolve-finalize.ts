@@ -276,7 +276,7 @@ export function finalize(opts: {
 
   // Missing template defaults, applied here rather than by the runner in prose.
   // Derived against the config just read from disk, so anything an Upgrade
-  // Instruction or the runner's own auto-detect (language/timezone) already wrote
+  // Instruction or the runner's own language auto-detect already wrote
   // is present and therefore never revisited — missing-only, operator values safe.
   // Riding in the single write below is what keeps a half-merged config impossible.
   // No --plugin-root (tests, and only tests, omit it), or no template under it,

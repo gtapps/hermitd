@@ -53,7 +53,7 @@ export function hasPath(obj: Json, dotted: string): boolean {
 
 // Apply missing template defaults to `config` IN PLACE, missing-only. Re-derives
 // the set against the object handed in, so a key written earlier in the run (a
-// migration, or the runner's auto-detected language/timezone) is already present
+// migration, or the runner's auto-detected language) is already present
 // and is therefore never revisited. Returns the dotted paths actually added, which
 // is what the finalizer reports as settings_added — confirmed, not intended.
 export function applyMissingDefaults(config: Json, tmpl: Json): string[] {

@@ -2660,7 +2660,7 @@ function seedDamper(dir: string, opts: {
   const cooldownPart = opts.cooldown === undefined ? '' :
     `,"clean_recheck_cooldown":${opts.cooldown === null ? 'null' : `"${opts.cooldown}"`}`;
   write(hermit(dir, 'config.json'),
-    `{"timezone":"UTC","heartbeat":{"active_hours":{"start":"00:00","end":"23:59"}${cooldownPart}}}`);
+    `{"timezone":"UTC","heartbeat":{"active_hours":{"start":"00:00","end":"24:00"}${cooldownPart}}}`);
   write(hermit(dir, 'state', 'alert-state.json'), JSON.stringify({
     alerts: opts.alerts ?? {},
     last_digest_date: opts.lastDigestDate ?? null,

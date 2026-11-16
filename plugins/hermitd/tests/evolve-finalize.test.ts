@@ -664,7 +664,7 @@ test('scheduler_enabled is adopted while an operator enabled: false survives', w
 
 test('#760: a value written earlier in the run is never overwritten', withTmplRoot(TMPL, async (pr) => {
   await withProj(async (dir) => {
-    // What the runner's language/timezone auto-detect (or a migration) leaves behind.
+    // What the runner's language auto-detect (or a migration) leaves behind.
     writeConfig(dir, '{"language":"pt","_hermit_versions":{"hermitd":"1.2.5"}}');
     const result = finalize({ hermitDir: dir, core: '1.2.6', pluginRoot: pr, siblings: [] });
 
