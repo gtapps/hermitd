@@ -2464,7 +2464,7 @@ function seedHeartbeat(dir: string, opts: {
   checklist?: string | null; // null → no HEARTBEAT.md
 } = {}) {
   write(hermit(dir, 'config.json'),
-    `{"timezone":"UTC","heartbeat":{"active_hours":{"start":"00:00","end":"${opts.end ?? '23:59'}"}}}`);
+    `{"timezone":"UTC","heartbeat":{"active_hours":{"start":"00:00","end":"${opts.end ?? '24:00'}"}}}`);
   write(hermit(dir, 'state', 'alert-state.json'),
     opts.alertState ?? '{"alerts":{},"last_digest_date":null,"self_eval":{},"total_ticks":0}');
   write(hermit(dir, 'state', 'runtime.json'), opts.runtime ?? '{}');

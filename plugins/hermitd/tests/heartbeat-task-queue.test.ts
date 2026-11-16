@@ -10,7 +10,7 @@ const checklist = '# Heartbeat\n- Review `proposals/` for any with `status: prop
 
 async function queuedFixture() {
   const f = taskFixture();
-  f.put('config.json', { tasks: { queue_nudge_minutes: 60 }, heartbeat: { active_hours: { start: '00:00', end: '23:59' } } });
+  f.put('config.json', { tasks: { queue_nudge_minutes: 60 }, heartbeat: { active_hours: { start: '00:00', end: '24:00' } } });
   fs.writeFileSync(path.join(f.dir, 'HEARTBEAT.md'), checklist);
   const opened = await f.open();
   const record = readTasks(f.dir)[0];
