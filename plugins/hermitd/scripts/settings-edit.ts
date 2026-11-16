@@ -43,7 +43,7 @@ import { safeForLLM } from './lib/sanitize';
 import { resolveGate, projectRootOf } from './lib/routines/gate';
 import { renameCursors } from './lib/routines/schedule';
 import { chromeAuthNote } from './lib/credential-probe';
-import { isUsableTimeZone } from './lib/time';
+import { isUsableTimeZone, machineTimeZone } from './lib/time';
 import { dockerfileHasOwnBrowser } from './lib/browser-runtime';
 
 type Json = any;
@@ -70,6 +70,11 @@ const migrations: Record<string, Migration> = {
     if (typeof timezone === 'string' && isUsableTimeZone(timezone)) return { timezone_check: 'usable' };
     return { timezone_check: 'unusable', timezone,
       note: 'Scheduled routines may not have run at the expected times. Ask the operator for their city and set a scheduler-usable timezone.' };
+  }),
+  'machine-timezone': noArgs(config => {
+    if (Object.hasOwn(config, 'timezone')) return;
+    const timezone = machineTimeZone();
+    if (timezone) config.timezone = timezone;
   }),
   'task-decisions': {
     run: config => {

@@ -19,7 +19,7 @@
 
 ### Fixed
 
-- Timezones rejected by the scheduler are refused by setup and settings, and named by the config health check. Timezone changes reload routine registrations.
+- Timezones rejected by the scheduler are refused by setup and settings, and named by the config health check. Timezone changes reload routine registrations, and `/hermitd:hermit-evolve` fills a missing timezone from the machine's zone on Linux, WSL and macOS alike.
 - Removed `permissions.ask` entries stay removed through hatch, Docker setup and later upgrades once recorded in `state/ask-offered.json`.
 
 ### Upgrade Instructions
