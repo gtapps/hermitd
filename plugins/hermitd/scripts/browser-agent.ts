@@ -138,6 +138,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   let epoch: number | undefined;
   if (session) {
     const userAgent = browserUserAgent(chromeVersion, host ? (options.platform ?? browserHostPlatform()) : 'linux');
+    // Chrome's own flag, not AGENT_BROWSER_USER_AGENT: the CDP override empties Sec-CH-UA.
     env.AGENT_BROWSER_ARGS = [...baseArgs, ...userAgent ? [`--user-agent=${userAgent}`] : []].join('\n');
     if (!sessionAdmission(socketDir, session)) {
       printJson({ error: 'session_cap' });
