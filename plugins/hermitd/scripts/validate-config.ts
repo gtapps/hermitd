@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { CHANNEL_FORMATS } from './lib/channel-format';
 import { TABLE, type Spec } from './lib/config-read';
-import { parseDuration } from './lib/time';
+import { parseDuration, isUsableTimeZone } from './lib/time';
 import path from 'node:path';
 import { safeForLLM } from './lib/sanitize';
 import * as ENUM from './lib/settings/enums';
@@ -157,6 +157,7 @@ function validateTable(config: Json, rows: Record<string, Spec>, errors: string[
     }
     if (spec.kind === 'string') {
       if (spec.enum && !spec.enum.includes(value)) errors.push(`${dotted}: "${value}" not in [${spec.enum.join(', ')}]`);
+      if (spec.pattern === 'timezone' && !isUsableTimeZone(value)) errors.push(`${dotted}: "${value}" is not a time zone the scheduler can use`);
       if (spec.pattern === 'duration' && Number.isNaN(parseDuration(value, NaN))) errors.push(`${dotted}: must be a duration string (e.g. "30m")`);
       if (spec.pattern === 'time' && !TIME_RE.test(value)) errors.push(`${dotted}: invalid time "${value}"`);
     }

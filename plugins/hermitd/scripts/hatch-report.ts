@@ -25,6 +25,7 @@ import path from 'node:path';
 import { readStdin, readJson, flagValue, exitError, printJson } from './lib/cli';
 import { browserHostPrerequisite } from './lib/browser-runtime';
 import { readConfigRaw } from './lib/config-read';
+import { machineTimeZone } from './lib/time';
 
 type Json = any;
 
@@ -106,6 +107,8 @@ export function confirmData(answers: Json): Json {
   for (const k of ['agent_name', 'language', 'timezone', 'deployment', 'channel']) {
     if (answers[k]) choose(k, answers[k]);
   }
+  if (!Object.hasOwn(answers, 'timezone')) will.timezone = machineTimeZone();
+  else if (answers.timezone === null) choose('timezone', null);
   if (answers.activated_hermit?.slug) choose('hermit_extension', answers.activated_hermit.slug);
   if (answers.plugins?.length) choose('plugins', answers.plugins);
 
@@ -113,6 +116,7 @@ export function confirmData(answers: Json): Json {
   // track the shipped defaults instead of prose that drifts. Kept to the
   // consequential ones (autonomy/permission/spend posture); cosmetic defaults
   // (model, notifications, artifact pages) are left out.
+  if (answers.approvals) choose('approvals', answers.approvals);
   if (answers.permission_mode) choose('permission_mode', answers.permission_mode);
   else if (t.permission_mode) will.permission_mode = t.permission_mode;
   if (t.escalation) {

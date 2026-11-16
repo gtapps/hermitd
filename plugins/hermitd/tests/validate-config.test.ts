@@ -117,3 +117,12 @@ test('retry_after_crash is optional boolean and does not change the registered p
   for (const approvals of ['personal', 'team']) expect(validate({ approvals }).errors.filter(e => e.startsWith('approvals:'))).toEqual([]);
   for (const approvals of ['', null, 1, 'custom']) expect(validate({ approvals }).errors.some(e => e.startsWith('approvals:'))).toBe(true);
 });
+
+test('timezone validation names unusable values and accepts null', () => {
+  for (const timezone of ['WEST', 'CEST', '+01:00', 'Lisbon', '']) {
+    expect(validate({ timezone }).errors).toContain(`timezone: "${timezone}" is not a time zone the scheduler can use`);
+  }
+  for (const timezone of [null, 'UTC', 'Europe/Lisbon', 'WET', 'EST']) {
+    expect(validate({ timezone }).errors.filter(e => e.startsWith('timezone:'))).toEqual([]);
+  }
+});

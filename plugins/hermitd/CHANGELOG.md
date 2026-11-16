@@ -4,11 +4,14 @@
 
 ### Added
 
+- The first plain operator message on a fresh always-on install receives a one-time introduction, time check and invitation to name ongoing work.
 - Any conforming channel plugin can be connected through Other in `/hermitd:channel-setup`, with confirmed installation and field-preserving registration.
 - `approvals: "team"` refuses approval-needing work outside the main loop's typed turns and DM-paired approvers in the maintainer chat, where unanswered prompts close after 60 seconds. Off by default (`personal`) because it refuses work a single-operator agent runs today.
 
 ### Changed
 
+- Quick setup asks five core questions and saves configuration after confirmation, with the machine timezone and no chosen name or language.
+- Channel pairing leaves group enrolment, recall and recording choices in settings and sends no welcome message.
 - Channel setup offers existing channels and Add another channel, follows plugin-owned guides with optional browser help, and reports selected-channel reply proof and access facts separately.
 - Token setup presents private file entry first and warns that pasted tokens enter conversation history.
 - Claude Code 2.1.325 or newer is required.
@@ -16,11 +19,15 @@
 
 ### Fixed
 
+- Timezones rejected by the scheduler are refused by setup and settings, and named by the config health check. Timezone changes reload routine registrations, and `/hermitd:hermit-evolve` fills a missing timezone with the machine's zone on Linux, WSL and macOS alike.
 - Removed `permissions.ask` entries stay removed through hatch, Docker setup and later upgrades once recorded in `state/ask-offered.json`.
 
 ### Upgrade Instructions
 
 1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny ask-stamp` to record the current seeded ask entries without changing the settings file. Report `OK` or the unseeded/no-state skip. This preserves operator edits; no operator-owned files are removed or renamed, and no leftover check is needed.
+2. Run `bun <plugin_root>/scripts/settings-edit.ts .hermit/config.json migrate timezone-check`. This report leaves the stored value untouched. If it reports an unusable zone, tell the operator that scheduled routines may not have run at the expected times and ask for their city, then set the zone through `/hermitd:hermit-settings timezone`.
+
+   **Operator action required:** When the stored timezone is unusable, provide your city so the agent can set a zone the scheduler accepts.
 
 An agent serving shared chats can set `approvals` to `team` and restart: approval-needing work is refused unless the latest prompt was typed at the terminal or in the Claude app, or came from a DM-paired approver in the maintainer chat, whose prompts close after 60 seconds.
 

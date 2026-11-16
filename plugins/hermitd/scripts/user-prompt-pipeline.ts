@@ -58,6 +58,7 @@ import { run as channelReplyReminder, invokeResponder } from './lib/prompt-stage
 import { run as pauseKeyword } from './lib/prompt-stages/pause-keyword';
 import { run as harnessCommand } from './lib/prompt-stages/harness-command';
 import { run as skillRelay } from './lib/prompt-stages/skill-relay';
+import { run as firstChat } from './lib/prompt-stages/first-chat';
 import { run as harnessVerify } from './lib/prompt-stages/harness-verify';
 import { run as shutdownGate } from './lib/prompt-stages/shutdown-gate';
 import { run as channelStatusResponder } from './lib/prompt-stages/channel-status-responder';
@@ -208,12 +209,13 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // 7. Deterministic status.
     await stage('channel-status-responder', channelStatusResponder, ctx);
 
-    // 8. Switch verification LAST, and specifically after the status responder:
+    // 8. Switch verification after command responders, and specifically after the status responder:
     // its success path clears the verify marker, and a blocked prompt discards all
     // accumulated context (see emit()). Running it earlier let a blocked `status`
     // turn destroy the marker with the report unread — stage() skips it entirely
     // once a block is settled, so the marker survives for the next real prompt.
     await stage('harness-verify', harnessVerify, ctx);
+    if (operatorActivityKept) await stage('first-chat', firstChat, ctx);
     const env = ctx.envelope;
     if (!blockReason && env && isAllowedSender(ctx.config(), env.source, env.userId) && isLoggingEnabled(ctx.config(), env.source)) {
       admittedConversation = conversationKey(env.sourceKey, env.chatId, env.thread);

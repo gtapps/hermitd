@@ -108,11 +108,13 @@ The plan's `new_config_keys` array lists every key in the current `config.json.t
 **Delegated mode:** you write nothing here for most keys — Step 9's finalizer applies every still-missing template default itself. There is no prompting (the subagent can't `AskUserQuestion`), and operator-set values are never listed by the plan, so nothing overwrites a choice. If `new_config_keys` is empty, skip this step.
 
 Special-default keys — the **only** keys this step writes, because their value is detected, not templated:
-- `language` (0.0.1) / `timezone` (0.0.1): when one appears in `new_config_keys`, **auto-detect** the value (`$LANG` / system timezone via `date +%Z`/`timedatectl`) and write it now via a settings-edit verb, so the finalizer sees it as already present and skips it:
+- `language` (0.0.1): when it appears in `new_config_keys`, **auto-detect** the value from `$LANG` and write it now, so the finalizer sees it as already present and skips it:
 
   Run `settings-set` (Commands) with arguments `language <detected>`.
 
-  (These are 0.0.1 keys, set at hatch, so they are almost never missing at evolve time.)
+  A missing `timezone` needs nothing here: the finalizer fills it with the machine's zone.
+
+  (Both are 0.0.1 keys, set at hatch, so they are almost never missing at evolve time.)
 - All other keys: **do nothing** — the finalizer writes them from `state-templates/config.json.template`, the same source `evolve-plan.ts` derives `new_config_keys[].default` from, and reports what it added as `settings_added`. The operator tunes them via `/hermit-settings` afterward.
 
 ### 4b. Legacy plan-table check

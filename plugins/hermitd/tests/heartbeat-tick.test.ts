@@ -28,7 +28,7 @@ const CHECKLIST = '# Heartbeat\n- Review `proposals/` for any with `status: prop
 // `active_hours` is settled to a working-day window when absent, and the gate reads
 // real wall-clock (not HERMIT_NOW) — so an unspecified window makes every verdict
 // depend on when the suite runs.
-const ALWAYS_ON = { start: '00:00', end: '23:59' };
+const ALWAYS_ON = { start: '00:00', end: '24:00' };
 const BASE_CONFIG = { timezone: 'UTC', always_on: true, heartbeat: { every: '30m', active_hours: ALWAYS_ON } };
 
 type Seed = {

@@ -50,7 +50,8 @@ const ROWS: readonly SettingRow[] = [
     label: 'Language', hint: 'locale code (en, pt, es, fr)', tableExempt: true,
     applies: 'also regenerates the artifact chrome translation table' },
   { arg: 'timezone', path: 'timezone', group: 'Identity',
-    label: 'Timezone', hint: 'IANA tz (UTC, Europe/Lisbon, America/New_York)' },
+    label: 'Timezone', hint: 'scheduler-usable zone (UTC, Europe/Lisbon, America/New_York)',
+    applies: 'immediately; run `/hermitd:hermit-routines load` after success' },
   { arg: 'escalation', path: 'escalation', group: 'Identity',
     label: 'Escalation', hint: 'how much it acts without asking' },
   // `custom` needs voice.prose written first and renders a file, so the skill keeps

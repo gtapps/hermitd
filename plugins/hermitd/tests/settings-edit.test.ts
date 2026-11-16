@@ -1197,3 +1197,29 @@ test('task-decisions leaves missing and unparseable artifact files untouched', a
     else expect(fs.readFileSync(artifacts, 'utf8')).toBe(content);
   }
 });
+
+test('timezone writes refuse scheduler-invalid values but preserve prior errors on unrelated edits', async () => {
+  const file = seedConfig(freshDir(), { timezone: 'UTC' });
+  const before = fs.readFileSync(file, 'utf8');
+  const refused = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'timezone', 'WEST'] });
+  expect(JSON.parse(refused.stdout).error).toBe('invalid_config');
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  fs.writeFileSync(file, JSON.stringify({ timezone: 'WEST' }));
+  const kept = await runScript('settings-edit.ts', { args: [file, 'apply-known', 'name', 'Atlas'] });
+  expect(kept.exitCode).toBe(0);
+  expect(readConfig(file)).toMatchObject({ timezone: 'WEST', agent_name: 'Atlas' });
+});
+
+for (const timezone of ['WEST', 'UTC', null]) {
+  test(`timezone-check reports ${timezone} without touching config bytes`, async () => {
+    const file = seedConfig(freshDir(), { timezone });
+    const before = fs.readFileSync(file, 'utf8');
+    const result = await runScript('settings-edit.ts', { args: [file, 'migrate', 'timezone-check'] });
+    expect(result.exitCode).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.timezone_check).toBe(timezone === 'WEST' ? 'unusable' : timezone === null ? 'unset' : 'usable');
+    if (timezone === 'WEST') expect(report.timezone).toBe('WEST');
+    else expect(report).not.toHaveProperty('note');
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+}

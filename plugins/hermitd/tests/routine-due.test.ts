@@ -513,3 +513,14 @@ test('dispatch persists unfinished occurrence with the consumed mark and configu
   const entries = JSON.parse(fs.readFileSync(hermit(dir, 'state/routine-unfinished.json'), 'utf8'));
   expect(entries['test-routine@2026-07-15T09:00:00.000Z']).toMatchObject({ state: 'dispatched', skill: 'hermitd:reflect', delivery: 'monitor' });
 }));
+
+test('next due call uses a changed timezone without a restart', withDir(async (dir) => {
+  writeConfig(dir, [ROUTINE()], 'UTC');
+  writeSchedule(dir, { 'test-routine': { last_consumed_mark: '2026-07-15T12:00:00.000Z' } });
+  expect((await run(dir, '2026-07-15T12:55:00Z')).stdout.trim()).toBe('');
+  writeConfig(dir, [ROUTINE()], 'America/New_York');
+  const next = await run(dir, '2026-07-15T13:05:00Z');
+  expect(next.exitCode).toBe(0);
+  expect(next.stdout.trim()).toBe('ROUTINE_DUE [hermit-routine:test-routine]');
+  expect(readSchedule(dir)['test-routine'].last_consumed_mark).toBe('2026-07-15T13:00:00.000Z');
+}));

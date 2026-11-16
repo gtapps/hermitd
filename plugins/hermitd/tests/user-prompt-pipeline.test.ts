@@ -1107,3 +1107,71 @@ for (const timestamp of [undefined, '2026-11-14T00:00:00.000Z']) test(`admission
   const { historyFor } = await import('../scripts/lib/channel-recovery');
   expect(historyFor(hermit(wd.dir), 'telegram:12345')?.rows.map(row => row.text)).toContain('Please answer this');
 });
+
+const FIRST_CHAT_RESIDENT = 'resident-first';
+
+function firstChatFixture(wd: Workdir, missingPrompt = false) {
+  const root = path.join(wd.dir, 'plugin-fixture');
+  fs.mkdirSync(path.join(root, 'prompts'), { recursive: true });
+  if (!missingPrompt) fs.writeFileSync(path.join(root, 'prompts/first-chat.md'), 'FIRST_CHAT_FIXTURE');
+  const marker = hermit(wd.dir, 'state/first-chat-pending.json');
+  fs.writeFileSync(marker, JSON.stringify({ private_chats: [{ channel: 'telegram', chat_id: '12345', sender_id: 'u1' }] }));
+  writeRuntime(wd, { cc_session_id: FIRST_CHAT_RESIDENT });
+  return { root, marker };
+}
+
+for (const scenario of ['terminal', 'private', 'guest', 'guest-report', 'notification', 'routine', 'heartbeat',
+  'unrecorded', 'group-home', 'non-allowed', 'slash', 'bang', 'shutdown', 'block', 'empty', 'missing-file', 'setup-session',
+  'qualified-source'] as const) {
+  test(`first-chat pipeline admission: ${scenario}`, async () => {
+    const wd = setupChannelWorkdir();
+    const { root, marker } = firstChatFixture(wd, scenario === 'missing-file');
+    if (scenario === 'guest') markGuest(hermit(wd.dir, 'state'), 'guest-first');
+    if (scenario === 'shutdown') writeRuntime(wd, { ...PENDING_SHUTDOWN, cc_session_id: FIRST_CHAT_RESIDENT });
+    let prompt = 'Hello';
+    if (scenario === 'private') prompt = envelope('Hello');
+    if (scenario === 'qualified-source') prompt = envelope('Hello').replace('source="telegram"', 'source="plugin:telegram:telegram"');
+    if (scenario === 'guest-report') prompt = 'GUEST_REPORT: done';
+    if (scenario === 'notification') prompt = '<task-notification>done</task-notification>';
+    if (scenario === 'routine') prompt = '[hermit-routine:test] run';
+    if (scenario === 'heartbeat') prompt = 'HEARTBEAT_EVALUATE';
+    if (scenario === 'unrecorded') prompt = envelope('Hello', 'u1', '987');
+    if (scenario === 'group-home') {
+      const file = hermit(wd.dir, 'config.json');
+      const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+      config.channels.telegram.default_chat_id = '-987';
+      fs.writeFileSync(file, JSON.stringify(config));
+      prompt = envelope('Hello', 'u1', '-987');
+    }
+    if (scenario === 'non-allowed') prompt = envelope('Hello', 'stranger');
+    if (scenario === 'slash') prompt = envelope('/status');
+    if (scenario === 'bang') prompt = envelope('!pause');
+    if (scenario === 'block') prompt = envelope('!status');
+    if (scenario === 'empty') prompt = '';
+    const stub = startHttpStub();
+    try {
+      const invoke = () => runScript('user-prompt-pipeline.ts', {
+        cwd: wd.dir, stdin: JSON.stringify({ prompt, session_id: scenario === 'guest' ? 'guest-first' : scenario === 'setup-session' ? 'hatch-session' : FIRST_CHAT_RESIDENT }),
+        env: { CLAUDE_PLUGIN_ROOT: root, HERMIT_TELEGRAM_API_URL: stub.url },
+      });
+      const result = await invoke();
+      expect(result.exitCode).toBe(0);
+      const eligible = scenario === 'terminal' || scenario === 'private' || scenario === 'qualified-source';
+      expect(result.stdout.includes('FIRST_CHAT_FIXTURE')).toBe(eligible);
+      expect(fs.existsSync(marker)).toBe(!eligible);
+      if (eligible) expect((await invoke()).stdout).not.toContain('FIRST_CHAT_FIXTURE');
+    } finally { stub.stop(); }
+  });
+}
+
+test('two subprocess first-chat claims inject only once', async () => {
+  const wd = trackedWorkdir();
+  const { root, marker } = firstChatFixture(wd);
+  const invoke = () => runScript('user-prompt-pipeline.ts', {
+    cwd: wd.dir, stdin: JSON.stringify({ prompt: 'Hello', session_id: FIRST_CHAT_RESIDENT }), env: { CLAUDE_PLUGIN_ROOT: root },
+  });
+  const results = await Promise.all([invoke(), invoke()]);
+  expect(results.map(r => r.exitCode)).toEqual([0, 0]);
+  expect(results.filter(r => r.stdout.includes('FIRST_CHAT_FIXTURE'))).toHaveLength(1);
+  expect(fs.existsSync(marker)).toBe(false);
+});

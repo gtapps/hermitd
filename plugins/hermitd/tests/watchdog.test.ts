@@ -98,7 +98,7 @@ function writeConfig(h: Hermit, every = '2h', watchdogExtra: Record<string, unkn
     watchdog: { enabled: true, stale_factor: 2, escalate_after: 3, operator_grace: '15m', ...watchdogExtra },
     heartbeat: {
       enabled: true, every,
-      active_hours: { start: '00:00', end: '23:59' },
+      active_hours: { start: '00:00', end: '24:00' },
       stale_threshold: '2h',
     },
   }, null, 2) + '\n');
@@ -2816,7 +2816,7 @@ for (const scenario of [
 const writeRoutineMonitorConfig = (h: Hermit) =>
   fs.writeFileSync(path.join(h.dir, '.hermit', 'config.json'), JSON.stringify({
     watchdog: { enabled: true, stale_factor: 2, escalate_after: 3, operator_grace: '15m' },
-    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '23:59' } },
+    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '24:00' } },
     routines: [{ id: 'scheduled-checks', enabled: true, schedule: '*/30 * * * *' }],
   }, null, 2) + '\n');
 
@@ -4082,7 +4082,7 @@ function writePostCloseClearConfig(h: Hermit): void {
   fs.writeFileSync(path.join(h.dir, '.hermit', 'config.json'), JSON.stringify({
     post_close_clear: true,
     watchdog: { enabled: false },
-    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '23:59' } },
+    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '24:00' } },
   }, null, 2) + '\n');
 }
 
@@ -4102,7 +4102,7 @@ test('standalone clear: frozen status cache cannot trigger a spurious compact',
     fs.writeFileSync(path.join(h.dir, '.hermit', 'config.json'), JSON.stringify({
       watchdog: { enabled: false },
       context_hygiene: { compact: { enabled: true, min_context_tokens: 150000, min_interval: '4h' } },
-      heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '23:59' } },
+      heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '24:00' } },
     }, null, 2) + '\n');
     // The retired status cache is frozen and ignored by context hygiene.
     patchRuntime(h, { session_id: CC_SESSION_ID, cc_session_id: CC_SESSION_ID });
@@ -4205,7 +4205,7 @@ function writeContextCompactConfig(h: Hermit, opts: {
       // Isolates the compact tier: with the resident idle, the clear tier would act first.
       ...(opts.withClear ? {} : { clear: { enabled: false } }),
     },
-    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '23:59' } },
+    heartbeat: { enabled: true, every: '2h', active_hours: { start: '00:00', end: '24:00' } },
     routines: opts.routines ?? [],
     timezone: opts.timezone ?? 'UTC',
   }, null, 2) + '\n');

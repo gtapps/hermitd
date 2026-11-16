@@ -1444,7 +1444,7 @@ describe('channel setup ownership', () => {
     expect(questionnaire.match(/Mention required/g)).toHaveLength(1);
     for (const skill of [channelSetup, dockerSetup, settings]) {
       expect(skill).not.toContain('Mention required');
-      expect(skill).toContain('group-enrollment.md');
+      if (skill === settings) expect(skill).toContain('group-enrollment.md');
       expect(skill).not.toContain('save access.json to');
       expect(skill).not.toMatch(/echo[^\n]*passive_chats":/);
       const lines = skill.split('\n');
@@ -3769,4 +3769,18 @@ describe('doctor applied version and interrupted update', () => {
       }
     }));
   }
+});
+
+test('doctor config check names an unusable timezone', withTmpdir(async (dir) => {
+  writeConfig(dir, { timezone: 'WEST' });
+  const result = checkConfig(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT));
+  expect(result.status).toBe('fail');
+  expect(result.detail).toContain('WEST');
+  expect(result.detail).toContain('scheduler');
+}));
+
+test('settings language accepts a supplied value and timezone reloads routines', () => {
+  const skill = read(path.join(SKILLS, 'hermit-settings', 'SKILL.md'));
+  expect(skill).toContain('skip locale detection and the question; continue with that value');
+  expect(skill).toContain('| `timezone` | `timezone` | string, nullable | any; scheduler-usable zone (UTC, Europe/Lisbon, America/New_York) | immediately; run `/hermitd:hermit-routines load` after success |');
 });

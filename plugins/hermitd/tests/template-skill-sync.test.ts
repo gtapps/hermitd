@@ -98,7 +98,7 @@ describe('channel settings stay referenced in operator skills', () => {
     'shared_chats', 'operators', 'instructions', 'maintainer_channel_id', 'default_chat_id',
   ];
   const WIZARD_CHANNEL_KEYS = [
-    'allowed_users', 'isolate_chats', 'log_chats', 'shared_chats',
+    'allowed_users', 'shared_chats',
     'passive_chats', 'operators', 'channels.primary',
   ];
   const validator = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'validate-config.ts'), 'utf8');

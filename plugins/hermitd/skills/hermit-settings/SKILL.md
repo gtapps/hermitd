@@ -100,7 +100,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | Argument | Config path | Type | Values | Applies |
 |---|---|---|---|---|
 | `name` | `agent_name` | string, nullable | any; any string, or 'none' to clear | immediately |
-| `timezone` | `timezone` | string, nullable | any; IANA tz (UTC, Europe/Lisbon, America/New_York) | immediately |
+| `timezone` | `timezone` | string, nullable | any; scheduler-usable zone (UTC, Europe/Lisbon, America/New_York) | immediately; run `/hermitd:hermit-routines load` after success |
 | `escalation` | `escalation` | enum | conservative / balanced / autonomous; how much it acts without asking | immediately |
 | `remote` | `remote` | boolean | yes / no; connect from claude.ai/code or phone | next hermitd-start |
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
@@ -129,6 +129,7 @@ The enum values, dotted paths, and "applies" notes come from `scripts/lib/settin
 The remaining arguments each do more than write one leaf, so they keep their own procedure below.
 
 **If argument is "language":**
+If a value is supplied with the argument, skip locale detection and the question; continue with that value. Otherwise:
 Auto-detect the system locale via Bash as a default suggestion.
 Ask for the preferred language (e.g. pt, en, es, fr), offering the current value or the detected locale as default.
 Run `settings-edit ... set language <value>`.

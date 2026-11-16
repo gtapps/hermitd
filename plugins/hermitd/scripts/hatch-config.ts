@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Deterministic config.json assembly for /hatch Step 5.
+ * Deterministic config.json assembly and fresh first-chat marker for /hatch Step 5.
  *
  * Step 5 is otherwise a ~40-line hand-assembly algorithm the LLM follows to merge
  * state-templates/config.json.template with wizard answers — the last hand-transcription
@@ -42,6 +42,7 @@ import { validate } from './validate-config';
 import { persistConfig } from './lib/config-write';
 import { configExists, readConfigRaw } from './lib/config-read';
 import { emit, emitJson, exitError } from './lib/cli';
+import { machineTimeZone } from './lib/time';
 
 type Json = any;
 
@@ -115,6 +116,8 @@ if (reinit) {
   if (!answers.project_name) exitError('invalid_answers:project_name');
   config.tmux_session_name = String(config.tmux_session_name).replace('{project_name}', answers.project_name);
 }
+
+if (!reinit && !Object.hasOwn(answers, 'timezone')) config.timezone = machineTimeZone();
 
 // --- scalar overlay (present-by-hasOwn, both modes) ---
 const SCALAR_KEYS = [
@@ -237,4 +240,8 @@ try {
 const { newErrors, keptErrors } = result;
 if (newErrors.length > 0) emitJson({ error: 'invalid_config', errors: newErrors });
 if (keptErrors.length > 0) emitJson({ kept_errors: keptErrors });
+if (!reinit) {
+  fs.mkdirSync(path.join(hermitDir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(hermitDir, 'state', 'first-chat-pending.json'), JSON.stringify({ private_chats: [] }) + '\n');
+}
 emit('OK');

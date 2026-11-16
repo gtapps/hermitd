@@ -11,7 +11,6 @@ type ReadKind = 'commands' | 'prose-only';
 const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
   'hermitd': {
     'hermit-settings -> channel-setup/references/group-enrollment.md': 'commands',
-    'docker-setup -> channel-setup/references/group-enrollment.md': 'commands',
     'task -> watch/session-watch.md': 'commands',
     'task -> watch/notices.md': 'commands',
     'task -> spawn-session/reuse-spawned-helper.md': 'commands',

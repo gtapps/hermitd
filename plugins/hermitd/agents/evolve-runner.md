@@ -52,7 +52,7 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 You have no `AskUserQuestion` and cannot pause to ask. So you never guess on a destructive choice and
 never block:
 
-- **New settings (step 4):** write nothing except the detected `language`/`timezone` values (via a
+- **New settings (step 4):** write nothing except the detected `language` value (via a
   settings-edit verb) — step 9's finalizer applies every other missing template default itself and
   reports them as `settings_added`. Note those for the report ("adjust via /hermit-settings").
 - **Settings target refusal:** if any `apply-settings.ts` call (Step 8's `permissions-plan` or an Upgrade Instructions step) prints `"reason":"not_hatch_target"`, re-run it once against the `settings_file` it names, with the same op and arguments. Report the step from the re-run's output.

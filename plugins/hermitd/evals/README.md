@@ -302,3 +302,7 @@ Claude Code 2.1.318, `--model sonnet`, low effort, `--runs 3`, $7.47 for the tar
 ## Changing routing wording
 
 Change one rule at a time and keep it only when both `train` and `heldout` improve; revert when only `train` rises (overfitting) or either drops. A new misroute seen in the field becomes a `heldout` case first.
+
+## first-chat
+
+Three cases grade the agent's behaviour given the first-chat text: the requested result comes before the introduction, a history-seeded second turn does not repeat the time check, and a non-English first message leads to a supplied-value language call after the reply. The generator reads `prompts/first-chat.md` verbatim for first-turn prompts and the second-turn history. Graders check ordering and actions, without requiring a particular greeting or channel. These cases do not verify the hook, admission or marker consumption; the prompt-stage and pipeline tests own those contracts. Generate with `bun evals/_generators/gen-first-chat.ts`. Running the suite uses model spend and remains an operator choice.

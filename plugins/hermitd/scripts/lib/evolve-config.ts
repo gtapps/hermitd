@@ -3,6 +3,8 @@
 // One traversal, two consumers — a second copy would let the report and the write
 // disagree about what "missing" means.
 
+import { machineTimeZone } from './time';
+
 type Json = any;
 
 export function isPlainObject(v: Json): boolean {
@@ -51,7 +53,7 @@ export function hasPath(obj: Json, dotted: string): boolean {
 
 // Apply missing template defaults to `config` IN PLACE, missing-only. Re-derives
 // the set against the object handed in, so a key written earlier in the run (a
-// migration, or the runner's auto-detected language/timezone) is already present
+// migration, or the runner's auto-detected language) is already present
 // and is therefore never revisited. Returns the dotted paths actually added, which
 // is what the finalizer reports as settings_added — confirmed, not intended.
 export function applyMissingDefaults(config: Json, tmpl: Json): string[] {
@@ -68,7 +70,8 @@ export function applyMissingDefaults(config: Json, tmpl: Json): string[] {
       cursor = cursor[seg];
     }
     if (cursor === null) continue;
-    cursor[parts[parts.length - 1]] = structuredClone(value);
+    // A missing timezone takes the machine's zone, as hatch does, rather than the template's null.
+    cursor[parts[parts.length - 1]] = dotted === 'timezone' ? machineTimeZone() : structuredClone(value);
     added.push(dotted);
   }
   return added;

@@ -14,9 +14,6 @@ Generate Docker scaffolding for running hermit as an always-on autonomous agent 
 
 Templates live in `${CLAUDE_SKILL_DIR}/../../state-templates/docker/`.
 
-## Commands
-- `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
-
 ## Plan
 
 ### 0. Refuse to run inside the hermit container
@@ -501,14 +498,14 @@ If the token is present, ask if already paired. If not:
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <plugin>
    ```
    Relay `ack` (`set` or `kept`); an empty string or custom reaction stays unchanged. Stop this channel on `{"error"}`.
-7. **Server channel / group chat (optional)** (run even if "Already paired" was chosen; skip only if `imessage`, if "Skip this channel" was chosen, or if pairing returned "No response"):
-   Run [the group questionnaire](../channel-setup/references/group-enrollment.md) with the channel key, absolute `<project_path>/.hermit` state directory, and native `AskUserQuestion` prompts. Then continue to sub-step 8.
-8. **Capture the bot's own identity** (host-side, like `channel-access.ts` — `config.json` and the channel `.env` are both on the host):
+7. **Capture the bot's own identity** (host-side, like `channel-access.ts` — `config.json` and the channel `.env` are both on the host):
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts <project_path>/.hermit <plugin> --write
    ```
    Records `bot_user_id` (and `bot_username`) so the hermit reads a mention of itself as addressed to it, rather than as third-party traffic. A `skip` status is a non-event — report it and continue.
-9. Confirm: "Paired and locked down. If the bot doesn't respond to your first message, give it up to 2 minutes — the hermit may still be booting or running initial checks (plugin installs, workspace trust, auto-memory seeding)."
+8. Confirm: "Paired and locked down. If the bot doesn't respond to your first message, give it up to 2 minutes — the hermit may still be booting or running initial checks (plugin installs, workspace trust, auto-memory seeding)."
+
+Later changes: `/hermitd:hermit-settings channels` (groups, recall, recording, operators).
 
 If "skip": tell them to DM the bot later and run the commands manually.
 
