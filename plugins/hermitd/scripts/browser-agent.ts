@@ -98,8 +98,8 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   env.AGENT_BROWSER_SOCKET_DIR = socketDir;
   const taskIndex = argv.indexOf('--task');
   const task = taskIndex >= 0 ? argv[taskIndex + 1] : argv.find(arg => arg.startsWith('--task='))?.slice('--task='.length);
-  // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy or headed
-  // mode. --task is the wrapper's own, so it never reaches the real binary.
+  // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy, headed
+  // mode or user agent. --task is the wrapper's own, so it never reaches the real binary.
   if (task && host && (options.platform ?? browserHostPlatform()) === 'darwin') {
     printJson({ error: 'takeover_unsupported' }); return 1;
   }

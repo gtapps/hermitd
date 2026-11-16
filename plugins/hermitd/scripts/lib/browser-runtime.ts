@@ -50,7 +50,7 @@ export function dockerfileHasOwnBrowser(file: string): boolean {
 
 export function browserHostPlatform(): NodeJS.Platform { return process.platform; }
 
-export function browserUserAgent(version: string | undefined, platform = browserHostPlatform()): string | undefined {
+export function browserUserAgent(version: string | undefined, platform: NodeJS.Platform): string | undefined {
   const major = version?.match(/^(\d+)\.\d+\.\d+\.\d+$/)?.[1];
   if (!major || !['linux', 'darwin'].includes(platform)) return undefined;
   const token = platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64';
