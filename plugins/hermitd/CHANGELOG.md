@@ -10,6 +10,7 @@
 
 ### Changed
 
+- Anonymous browser sessions present a regular Chrome user agent, and the managed browser no longer reports `navigator.webdriver`.
 - Quick setup asks five core questions and saves configuration after confirmation, with the machine timezone and no chosen name or language.
 - Channel pairing leaves group enrolment, recall and recording choices in settings and sends no welcome message.
 - Channel setup offers existing channels and Add another channel, follows plugin-owned guides with optional browser help, and reports selected-channel reply proof and access facts separately.

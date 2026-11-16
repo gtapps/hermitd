@@ -66,7 +66,7 @@ function browserBlock(): string {
     '    mkdir -p /opt/novnc && tar xzf /tmp/novnc.tgz -C /opt/novnc --strip-components=1 && rm /tmp/novnc.tgz && \\',
     "    printf '%s\\n' '#!/bin/sh' 'if [ ! -f \"${HERMIT_PLUGIN_ROOT:-}/scripts/browser-agent.ts\" ]; then echo \"agent-browser: hermit plugin unavailable\" >&2; exit 1; fi' 'exec bun \"${HERMIT_PLUGIN_ROOT}/scripts/browser-agent.ts\" \"$@\"' > /usr/local/bin/agent-browser && \\",
     '    chmod 755 /usr/local/bin/agent-browser && \\',
-    "    mkdir -p /etc/hermit && printf 'display=plugin\\n' > /etc/hermit/managed-browser; \\",
+    `    mkdir -p /etc/hermit && printf 'display=plugin\\nchrome=${BROWSER_PINS.chrome.version}\\n' > /etc/hermit/managed-browser; \\`,
     '    fi',
     '# --- end managed browser ---',
   ].join('\n');

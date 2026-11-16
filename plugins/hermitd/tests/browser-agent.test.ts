@@ -2,12 +2,21 @@ import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { browserSocketDir } from '../scripts/browser-agent';
+import { ensureDisplay } from '../scripts/browser-display';
 import { browserLease } from '../scripts/lib/browser-lease';
+import { browserUserAgent } from '../scripts/lib/browser-runtime';
 import { freshDirFactory } from './helpers/workdir';
 import { PLUGIN_ROOT } from './helpers/run';
 const { freshDir, cleanup } = freshDirFactory('browser-agent-');
 const sockets: string[] = [];
 afterAll(() => { cleanup(); for (const dir of sockets) fs.rmSync(dir, { recursive: true }); });
+
+test('reduced user agent requires a valid Chrome version and supported platform', () => {
+  expect(browserUserAgent('156.0.8078.80', 'linux')).toBe('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36');
+  expect(browserUserAgent('156.0.8078.80', 'darwin')).toBe('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36');
+  for (const version of [undefined, '', '156', '156.0.8078.80-extra']) expect(browserUserAgent(version, 'linux')).toBeUndefined();
+  expect(browserUserAgent('156.0.8078.80', 'win32')).toBeUndefined();
+});
 
 function fixture() {
   const root = freshDir();
@@ -19,8 +28,8 @@ function fixture() {
   fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ display: ':17', vncSocket: path.join(socket, 'vnc.sock') }));
   const binary = path.join(root, 'real-browser');
   fs.writeFileSync(binary, `#!${process.execPath}\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
-  const run = async (argv: string[], env: Record<string, string> = {}) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', marker: ${JSON.stringify(path.join(root, 'marker'))}, ensureDisplay: async () => {
+  const run = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}) => {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
       return process.env.TEST_BLOCKER ? { blocker: process.env.TEST_BLOCKER } : JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, 'state/browser-display.json'))}, 'utf8'));
@@ -41,7 +50,7 @@ test('persistent commands require a live claim, renew it and preserve argv and e
   const result = await run(['--task', 'task-a', 'open', 'https://example.com/a?x=1&y=two words'], { TEST_EXIT: '7' });
   expect(result.code).toBe(7);
   expect(result.data.argv).toEqual(['open', 'https://example.com/a?x=1&y=two words']);
-  expect(result.data.env).toMatchObject({ DISPLAY: ':17', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: '--no-sandbox,--host-resolver-rules=MAP 169.254.* ^NOTFOUND,--window-size=500,1082,--window-position=0,0', AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
+  expect(result.data.env).toMatchObject({ DISPLAY: ':17', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: ['--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', '--window-size=500,1082', '--window-position=0,0'].join('\n'), AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
   expect(browserLease('status', undefined, dir).expires_at!).toBeGreaterThan(before);
 });
 
@@ -86,13 +95,15 @@ test('plugin root env is unnecessary and hermits do not share sockets', async ()
 test('explicit launch flags cannot override the managed profile or anonymous isolation', async () => {
   const { dir, run } = fixture();
   browserLease('claim', 'task', dir);
-  const flags = ['--profile', '/unmanaged', '--args=--bad', '--executable-path', '/bad', '--namespace', 'other', '--session-name', 'kept', '--config', '/bad.json', '--idle-timeout', '10s', '--headed', 'false'];
-  const persistent = await run(['--task', 'task', ...flags, 'open', 'https://example.com']);
+  const flags = ['--profile', '/unmanaged', '--args=--bad', '--executable-path', '/bad', '--namespace', 'other', '--session-name', 'kept', '--config', '/bad.json', '--idle-timeout', '10s', '--headed', 'false', '--user-agent', 'bad', '--user-agent=also-bad'];
+  const persistent = await run(['--task', 'task', ...flags, 'open', 'https://example.com'], { AGENT_BROWSER_USER_AGENT: 'ambient' });
   expect(persistent.data.argv).toEqual(['open', 'https://example.com']);
   expect(persistent.data.env.AGENT_BROWSER_PROFILE).toBe('/home/claude/.claude/browser/profile');
-  const anonymous = await run(['--session', 'public', ...flags, 'open', 'https://example.com']);
+  expect(persistent.data.env.AGENT_BROWSER_USER_AGENT).toBeUndefined();
+  const anonymous = await run(['--session', 'public', ...flags, 'open', 'https://example.com'], { AGENT_BROWSER_USER_AGENT: 'ambient' });
   expect(anonymous.data.argv).toEqual(['--session', 'public', 'open', 'https://example.com']);
   expect(anonymous.data.env.AGENT_BROWSER_PROFILE).toBeUndefined();
+  expect(anonymous.data.env.AGENT_BROWSER_USER_AGENT).toBeUndefined();
 });
 
 
@@ -163,8 +174,42 @@ test('container executable path follows the managed image marker', async () => {
   const { dir, run } = fixture();
   const argv = ['--session', 'public', 'snapshot'];
   expect((await run(argv, { AGENT_BROWSER_EXECUTABLE_PATH: '/stale' })).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBeUndefined();
-  fs.writeFileSync(path.join(dir, '../marker'), 'display=plugin\n');
-  expect((await run(argv)).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe('/opt/chrome-linux64/chrome');
+  const marker = path.join(dir, '../marker');
+  fs.writeFileSync(marker, 'display=plugin\n');
+  const oldImage = await run(argv);
+  expect(oldImage.data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe('/opt/chrome-linux64/chrome');
+  expect(oldImage.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
+    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+  ]);
+  fs.writeFileSync(marker, 'display=plugin\nchrome=156.0.8078.80\n');
+  const result = await run(argv);
+  expect(result.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
+    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+  ]);
+  expect(await ensureDisplay(dir, { deployment: 'container', platform: 'linux', marker, available: false })).toEqual({ blocker: 'display_start_failed' });
+  fs.writeFileSync(marker, 'display=plugin\nchrome=156.bad\n');
+  expect((await run(argv)).data.env.AGENT_BROWSER_ARGS).not.toContain('--user-agent=');
+});
+
+test('host anonymous sessions derive the Chrome major from the installed directory', async () => {
+  const { dir, run } = fixture();
+  const data = path.join(dir, '../browser-data');
+  const install = path.join(data, '0.41.0-156.0.8078.80');
+  fs.mkdirSync(path.join(install, 'chrome'), { recursive: true });
+  for (const file of ['agent-browser', 'chrome/chrome']) fs.writeFileSync(path.join(install, file), '', { mode: 0o755 });
+  fs.writeFileSync(path.join(install, 'config.json'), '{}');
+  fs.writeFileSync(path.join(install, 'complete.json'), '{"binary":"agent-browser","chrome":"chrome/chrome"}');
+  const options = { deployment: 'host' as const, data, platform: 'linux' as const };
+  const result = await run(['--session', 'public', 'snapshot'], {}, options);
+  expect(result.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
+    '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+  ]);
+  fs.renameSync(install, path.join(data, '0.41.0-preview-157.0.1.2'));
+  expect((await run(['--session', 'public', 'snapshot'], {}, options)).data.env.AGENT_BROWSER_ARGS).toContain('Chrome/157.0.0.0');
+  fs.renameSync(path.join(data, '0.41.0-preview-157.0.1.2'), path.join(data, '0.41.0-unknown'));
+  expect((await run(['--session', 'public', 'snapshot'], {}, options)).data.env.AGENT_BROWSER_ARGS).not.toContain('--user-agent=');
 });
 
 test('Docker display blockers name the image rebuild', async () => {
