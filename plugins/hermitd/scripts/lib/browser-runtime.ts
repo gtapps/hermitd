@@ -50,6 +50,13 @@ export function dockerfileHasOwnBrowser(file: string): boolean {
 
 export function browserHostPlatform(): NodeJS.Platform { return process.platform; }
 
+export function browserUserAgent(version: string | undefined, platform: NodeJS.Platform): string | undefined {
+  const major = version?.match(/^(\d+)\.\d+\.\d+\.\d+$/)?.[1];
+  if (!major || !['linux', 'darwin'].includes(platform)) return undefined;
+  const token = platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64';
+  return `Mozilla/5.0 (${token}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
+
 export function installedBrowser(data = browserDataDir()) {
   if (!fs.existsSync(data)) return null;
   const dirs = fs.readdirSync(data).filter(name => /^\d[^/]*$/.test(name)).map(name => path.join(data, name))
@@ -62,7 +69,8 @@ export function installedBrowser(data = browserDataDir()) {
       const binary = path.join(dir, record.binary), chrome = path.join(dir, record.chrome);
       fs.accessSync(binary, fs.constants.X_OK); fs.accessSync(chrome, fs.constants.X_OK);
       if (fs.readFileSync(path.join(dir, 'config.json'), 'utf8').trim() !== '{}') continue;
-      return { dir, binary, chrome, config: path.join(dir, 'config.json'), novnc: path.join(dir, 'novnc') };
+      const chromeVersion = path.basename(dir).match(/-(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+      return { dir, binary, chrome, chromeVersion, config: path.join(dir, 'config.json'), novnc: path.join(dir, 'novnc') };
     } catch {}
   }
   return null;

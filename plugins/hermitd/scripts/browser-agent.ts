@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
+import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, browserUserAgent, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
 import { ensureDisplay, type DisplayResult } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
@@ -81,6 +81,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   delete env.AGENT_BROWSER_PROFILE;
   delete env.AGENT_BROWSER_HEADED;
   delete env.AGENT_BROWSER_CONFIG;
+  delete env.AGENT_BROWSER_USER_AGENT;
   // Anonymous sessions keep upstream's idle backstop: one nobody closed frees its cap slot.
   delete env.AGENT_BROWSER_IDLE_TIMEOUT_MS;
   delete env.DISPLAY;
@@ -97,19 +98,24 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   env.AGENT_BROWSER_SOCKET_DIR = socketDir;
   const taskIndex = argv.indexOf('--task');
   const task = taskIndex >= 0 ? argv[taskIndex + 1] : argv.find(arg => arg.startsWith('--task='))?.slice('--task='.length);
-  // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy or headed
-  // mode. --task is the wrapper's own, so it never reaches the real binary.
+  // Launch-policy flags cannot override the wrapper's profile, socket dir, idle policy, headed
+  // mode or user agent. --task is the wrapper's own, so it never reaches the real binary.
   if (task && host && (options.platform ?? browserHostPlatform()) === 'darwin') {
     printJson({ error: 'takeover_unsupported' }); return 1;
   }
   env.AGENT_BROWSER_CONFIG = install?.config ?? path.join(socketDir, 'config.json');
   if (!install) writeFileAtomic(env.AGENT_BROWSER_CONFIG, '{}\n', 0o600);
+  let chromeVersion = install?.chromeVersion;
+  const marker = options.marker ?? '/etc/hermit/managed-browser';
   if (host && install) env.AGENT_BROWSER_EXECUTABLE_PATH = install.chrome;
   else if (host) delete env.AGENT_BROWSER_EXECUTABLE_PATH;
-  else if (fs.existsSync(options.marker ?? '/etc/hermit/managed-browser')) env.AGENT_BROWSER_EXECUTABLE_PATH = '/opt/chrome-linux64/chrome';
+  else if (fs.existsSync(marker)) {
+    env.AGENT_BROWSER_EXECUTABLE_PATH = '/opt/chrome-linux64/chrome';
+    chromeVersion = fs.readFileSync(marker, 'utf8').split('\n').find(line => line.startsWith('chrome='))?.slice('chrome='.length);
+  }
   else delete env.AGENT_BROWSER_EXECUTABLE_PATH;
-  const resolver = '--host-resolver-rules=MAP 169.254.* ^NOTFOUND';
-  const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task']);
+  const baseArgs = [...host ? [] : ['--no-sandbox'], '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled'];
+  const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task', '--user-agent']);
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (policyFlags.has(argv[i])) { i++; continue; }
@@ -131,7 +137,9 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   let epoch: number | undefined;
   if (session) {
-    env.AGENT_BROWSER_ARGS = host ? resolver : `--no-sandbox,${resolver}`;
+    const userAgent = browserUserAgent(chromeVersion, host ? (options.platform ?? browserHostPlatform()) : 'linux');
+    // Chrome's own flag, not AGENT_BROWSER_USER_AGENT: the CDP override empties Sec-CH-UA.
+    env.AGENT_BROWSER_ARGS = [...baseArgs, ...userAgent ? [`--user-agent=${userAgent}`] : []].join('\n');
     if (!sessionAdmission(socketDir, session)) {
       printJson({ error: 'session_cap' });
       return 1;
@@ -160,7 +168,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     env.AGENT_BROWSER_IDLE_TIMEOUT_MS = '0';
     env.AGENT_BROWSER_HEADED = '1';
     env.AGENT_BROWSER_PROFILE = browserProfile(dir, deployment);
-    env.AGENT_BROWSER_ARGS = `${host ? '' : '--no-sandbox,'}${resolver},--window-size=500,1082,--window-position=0,0`;
+    env.AGENT_BROWSER_ARGS = [...baseArgs, '--window-size=500,1082', '--window-position=0,0'].join('\n');
   }
   try {
     const child = Bun.spawn([realBinary, ...args], { env, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' });

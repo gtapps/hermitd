@@ -11,6 +11,7 @@ import { runScript, PLUGIN_ROOT } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 import { renderSources } from '../scripts/render-docker-templates';
 import { deriveRenderInputs } from '../scripts/lib/derive-render-inputs';
+import { BROWSER_PINS } from '../scripts/lib/browser-pins';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-rdt-');
 afterAll(cleanup);
@@ -355,7 +356,7 @@ test('browser false is byte-identical to absent and keeps the gated browser bloc
   expect(dockerfile(disabled)).toBe(dockerfile(absent));
   expect(compose(disabled)).toBe(compose(absent));
   expect(dockerfile(disabled)).toContain('# --- managed browser ---\nARG HERMIT_BROWSER=1\nRUN if [ "$HERMIT_BROWSER" = 1 ]; then');
-  expect(dockerfile(disabled)).toContain("printf 'display=plugin\\n' > /etc/hermit/managed-browser");
+  expect(dockerfile(disabled)).toContain(`printf 'display=plugin\\nchrome=${BROWSER_PINS.chrome.version}\\n' > /etc/hermit/managed-browser`);
   expect(dockerfile(disabled)).not.toContain('ENV AGENT_BROWSER_');
   expect(compose(disabled)).toContain('HERMIT_BROWSER: ${HERMIT_BROWSER:-1}');
 });
