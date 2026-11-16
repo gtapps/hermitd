@@ -33,7 +33,6 @@ Your plugin root is `${CLAUDE_PLUGIN_ROOT}`. Resolve non-command files named in 
 - `messages-scaffold`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/messages.ts scaffold .hermit`
 - `permissions-plan`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts <resolved-settings-file> permissions-plan`
 - `settings-get`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get`
-- `settings-machine-timezone`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate machine-timezone`
 - `settings-set`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set`
 - `settings-unset`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json unset`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`

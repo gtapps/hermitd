@@ -11,6 +11,8 @@ import path from 'node:path';
 
 import { finalize, writeSnapshot } from '../scripts/evolve-finalize';
 import { auditConfigChange } from '../scripts/lib/config-audit';
+import { applyMissingDefaults } from '../scripts/lib/evolve-config';
+import { machineTimeZone } from '../scripts/lib/time';
 import { runScript, runPinnedScript } from './helpers/run';
 
 // Fake plugin root with plugin.json version "1.2.6" (shared, read-only across tests).
@@ -350,6 +352,17 @@ test('process exit 1 on mismatch (core_version_mismatch)', withProj(async (dir) 
   expect(out.error).toBe('finalize_failed');
   expect(out.errors.map((e: any) => e.code)).toContain('core_version_mismatch');
 }));
+
+test('a missing timezone takes the machine zone; a stored one is kept', () => {
+  const tmpl = { timezone: null, language: null };
+  const missing: any = {};
+  expect(applyMissingDefaults(missing, tmpl)).toEqual(['timezone', 'language']);
+  expect(missing).toEqual({ timezone: machineTimeZone(), language: null });
+
+  const stored: any = { timezone: null, language: 'en' };
+  expect(applyMissingDefaults(stored, tmpl)).toEqual([]);
+  expect(stored.timezone).toBeNull();
+});
 
 // -------------------------------------------------------
 // 11. malformed --sibling: goes to siblings_skipped, does not affect ok

@@ -1223,20 +1223,3 @@ for (const timezone of ['WEST', 'UTC', null]) {
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
   });
 }
-
-test('machine-timezone stores the Intl zone only when the key is absent', async () => {
-  const env = { TZ: 'America/New_York' };
-  const absent = seedConfig(freshDir(), {});
-  const config = readConfig(absent);
-  delete config.timezone;
-  fs.writeFileSync(absent, JSON.stringify(config));
-  expect((await runScript('settings-edit.ts', { args: [absent, 'migrate', 'machine-timezone'], env })).exitCode).toBe(0);
-  expect(readConfig(absent).timezone).toBe('America/New_York');
-
-  for (const timezone of [null, 'Europe/Lisbon']) {
-    const file = seedConfig(freshDir(), { timezone });
-    const before = fs.readFileSync(file, 'utf8');
-    expect((await runScript('settings-edit.ts', { args: [file, 'migrate', 'machine-timezone'], env })).exitCode).toBe(0);
-    expect(fs.readFileSync(file, 'utf8')).toBe(before);
-  }
-});
