@@ -11,7 +11,7 @@
       "name": "hermitd",
       "source": "./plugins/hermitd",
       "description": "Your own local Claude Tag, in the Claude app, Discord, Telegram, or a custom Claude Code channel.",
-      "version": "1.4.33",
+      "version": "1.4.34",
       "category": "productivity",
       "author": {
         "name": "gtapps",
