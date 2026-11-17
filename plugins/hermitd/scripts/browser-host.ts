@@ -47,6 +47,7 @@ export function securityRenderInput(security: any): RenderInput {
       resources: { enabled: resources.enabled, memLimit: resources.mem_limit, memswapLimit: resources.memswap_limit,
         cpus: resources.cpus, sysctlsEnabled: resources.sysctls_enabled },
       audit: { enabled: security.audit?.plugin_installs },
+      credproxy: { enabled: security.credential_proxy?.enabled },
     },
     publishPorts: network.publish_ports ?? [], lanAllowlist: network.lan_allowlist ?? [],
     additionalDomains: network.additional_domains ?? [], fleetDomains: [],

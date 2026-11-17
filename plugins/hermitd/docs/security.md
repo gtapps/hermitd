@@ -340,7 +340,7 @@ Turn the sandbox on with `/sandbox` or [`sandbox.enabled`](https://code.claude.c
 - [`network.allowedDomains`](https://code.claude.com/docs/en/settings-reference#sandbox-network-alloweddomains): the hosts of enabled channels, remote MCP servers and package registries. A request to a listed host that redirects to an unlisted one is refused, so list redirect targets too.
 - [`filesystem.allowWrite`](https://code.claude.com/docs/en/settings-reference#sandbox-filesystem-allowwrite): tool caches outside the project, such as `~/.npm`.
 - [`filesystem.denyWrite`](https://code.claude.com/docs/en/settings-reference#sandbox-filesystem-denywrite): `.hermit/bin`. Its wrappers run outside the sandbox, and Claude Code's [protected paths](https://code.claude.com/docs/en/sandboxing#protected-paths) do not include them.
-- [`credentials`](https://code.claude.com/docs/en/sandboxing#protect-credentials): see Credential protection above.
+- [`credentials`](https://code.claude.com/docs/en/sandboxing#protect-credentials): see Credential protection above, and Claude Code's [Mask credentials](https://code.claude.com/docs/en/sandboxing#mask-credentials).
 - [`excludedCommands`](https://code.claude.com/docs/en/settings-reference#sandbox-excludedcommands): `bun */scripts/browser-agent.ts *`, so the managed browser keeps Chrome's own sandbox.
 
 Limits:

@@ -78,6 +78,21 @@ test('named sessions strip headed and ambient profile/display and cap live sessi
   expect((await run(['--session', 'four', 'open', 'https://example.com'])).code).toBe(0);
 });
 
+test('the browser never goes through the credential proxy; other proxies reach it', async () => {
+  const { dir, run } = fixture();
+  const mount = path.join(path.dirname(dir), 'credproxy');
+  fs.mkdirSync(mount);
+  fs.writeFileSync(path.join(mount, 'proxy.json'), JSON.stringify({ address: 'http://127.0.0.1:18443', hosts: [] }));
+  const proxied = { HTTPS_PROXY: 'http://127.0.0.1:18443', https_proxy: 'http://127.0.0.1:18443', HTTP_PROXY: 'http://corp:3128' };
+  const on = await run(['--session', 'one', 'open', 'https://example.com'], { ...proxied, HERMIT_CREDPROXY_DIR: mount });
+  expect(on.code).toBe(0);
+  expect(on.data.env.HTTPS_PROXY).toBeUndefined();
+  expect(on.data.env.https_proxy).toBeUndefined();
+  expect(on.data.env.HTTP_PROXY).toBe('http://corp:3128');
+  const off = await run(['--session', 'one', 'open', 'https://example.com'], { HTTPS_PROXY: 'http://corp:3128', HERMIT_CREDPROXY_DIR: path.join(mount, 'absent') });
+  expect(off.data.env.HTTPS_PROXY).toBe('http://corp:3128');
+});
+
 test('the cap ignores the dashboard pid file and reads no invalid pid as live', async () => {
   const { run, socket } = fixture();
   for (const name of ['one', 'two']) fs.writeFileSync(path.join(socket, `${name}.pid`), String(process.pid));

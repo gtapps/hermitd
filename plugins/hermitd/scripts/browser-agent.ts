@@ -9,6 +9,7 @@ import { browserLease, persistentChromeAlive } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { failJson, printJson, readJson } from './lib/cli';
+import { readProxyInfo } from './lib/credproxy-env';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 
@@ -74,6 +75,10 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   realBinary ??= host ? install!.binary : REAL_BINARY;
   const env = { ...process.env };
+  // The browser keeps each site's own certificate: it never goes through the credential proxy.
+  const proxyKeys = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
+  const credproxy = proxyKeys.some(key => env[key]) ? readProxyInfo()?.address : undefined;
+  for (const key of proxyKeys) if (credproxy && env[key] === credproxy) delete env[key];
   // Ambient session/profile switches must not silently change the supported path.
   delete env.AGENT_BROWSER_SESSION;
   delete env.AGENT_BROWSER_SESSION_NAME;

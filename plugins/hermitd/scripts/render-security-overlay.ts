@@ -29,7 +29,8 @@ import { composeFiles } from './lib/compose-files';
  *         "toggles": {
  *           "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
  *           "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },
- *           "audit":     { "enabled": true }
+ *           "audit":     { "enabled": true },
+ *           "credproxy": { "enabled": true }
  *         },
  *         "publishPorts": [ { "target": 3000, "published": "3000", "protocol": "tcp", "host_ip": "0.0.0.0", "mode": "ingress" } ],
  *         "lanAllowlist": ["192.168.1.50", ...],
@@ -37,6 +38,8 @@ import { composeFiles } from './lib/compose-files';
  *         "additionalDomains": ["example.org", ...]
  *       }
  *     network is required only when toggles.lan.enabled; pick-subnet's `chosen` passes as-is.
+ *     toggles.credproxy adds the hermit-credproxy sidecar, run as the caller's uid and gid, mounting
+ *     this project's host-only credential store (outside the project folder).
  */
 
 import fs from 'node:fs';
@@ -46,6 +49,8 @@ import { renderTemplate } from './lib/render-template';
 import { exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
 import { featureDomains } from './lib/netguard-hosts';
+import { storeDir } from './lib/credproxy';
+import { CREDPROXY_MOUNT } from './lib/credproxy-env';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const SECURITY_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'security');
@@ -210,6 +215,7 @@ interface Toggles {
   lan?: { enabled?: boolean; dnsMode?: 'log-only' | 'enforce' };
   resources?: { enabled?: boolean; memLimit?: string; memswapLimit?: string; cpus?: number | string; sysctlsEnabled?: boolean };
   audit?: { enabled?: boolean };
+  credproxy?: { enabled?: boolean };
 }
 export interface RenderInput {
   network?: Chosen;
@@ -287,7 +293,28 @@ function netguardService(net: Chosen, dnsMode: string, sysctls: string, ports: s
   return lines.join('\n');
 }
 
-export function renderOverlay(input: RenderInput): string {
+/** The credential proxy's host side: its store and the uid and gid the sidecar runs as. */
+export interface CredproxyHost { store: string; uid: number; gid: number }
+
+function credproxyService(host: CredproxyHost, lanOn: boolean): string {
+  return [
+    '  hermit-credproxy:',
+    '    image: envoyproxy/envoy:distroless-v1.40.2',
+    '    command: ["-c", "/etc/envoy/envoy.yaml", "--concurrency", "1", "-l", "warn"]',
+    `    user: "${host.uid}:${host.gid}"`,
+    // Loopback inside the agent's network namespace: only the agent reaches it.
+    `    network_mode: "service:${lanOn ? 'hermit-netguard' : 'hermit'}"`,
+    '    cap_drop: [ALL]',
+    '    security_opt:',
+    '      - no-new-privileges:true',
+    '    pids_limit: 256',
+    '    restart: unless-stopped',
+    '    volumes:',
+    `      - ${JSON.stringify(`${path.join(host.store, 'sidecar')}:/etc/envoy:ro`)}`,
+  ].join('\n');
+}
+
+export function renderOverlay(input: RenderInput, credproxy?: CredproxyHost): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'docker-compose.security.yml.template'), 'utf8');
   const lanOn = input.toggles.lan?.enabled === true;
   const resOn = input.toggles.resources?.enabled === true;
@@ -296,6 +323,12 @@ export function renderOverlay(input: RenderInput): string {
   const ports = input.publishPorts ?? [];
 
   if (lanOn && !input.network) throw new Error('toggles.lan.enabled requires network {subnet,gateway,netguard_ip}');
+  const proxyOn = input.toggles.credproxy?.enabled === true;
+  if (proxyOn && !credproxy) throw new Error('toggles.credproxy.enabled requires the credential store');
+  // netguard exempts uid 100 (dnsmasq) from its DNS redirect; a sidecar in its namespace must not share it.
+  if (proxyOn && lanOn && String(credproxy!.uid) === DNSMASQ_UID) {
+    throw new Error(`credential proxy cannot run as uid ${DNSMASQ_UID} with LAN containment: netguard exempts that uid from its DNS rules; run as another user`);
+  }
 
   const networksBlock = lanOn
     ? [
@@ -336,14 +369,17 @@ export function renderOverlay(input: RenderInput): string {
   const auditEnv = auditOn
     ? ['    environment:', '      - HERMIT_PLUGIN_INSTALL_AUDIT=1'].join('\n')
     : '';
+  const agentMount = proxyOn
+    ? ['    volumes:', `      - ${JSON.stringify(`${path.join(credproxy!.store, 'agent')}:${CREDPROXY_MOUNT}:ro`)}`].join('\n')
+    : '';
 
   return renderTemplate(template, {
     NETWORKS_BLOCK: networksBlock,
-    HERMIT_NETGUARD_SERVICE: netguardBlock,
+    HERMIT_NETGUARD_SERVICE: [netguardBlock, proxyOn ? credproxyService(credproxy!, lanOn) : ''].filter(Boolean).join('\n\n'),
     HERMIT_NETWORK_MODE: hermitNetworkMode,
     HERMIT_RESOURCE_BOUNDS: resourceBounds,
     HERMIT_SYSCTLS_ON_HERMIT: hermitSysctls,
-    HERMIT_AUDIT_ENV: auditEnv,
+    HERMIT_AUDIT_ENV: [auditEnv, agentMount].filter(Boolean).join('\n'),
   });
 }
 
@@ -415,7 +451,9 @@ function runPickSubnet(projectRoot: string, candidate: string | null): void {
 function runRender(projectRoot: string, raw: string): void {
   const input = JSON.parse(raw) as RenderInput;
   // Render + validate all three in memory before any write.
-  const overlay = renderOverlay(input);
+  const proxyOn = input.toggles.credproxy?.enabled === true;
+  const credproxy = proxyOn ? { store: storeDir(projectRoot), uid: process.getuid!(), gid: process.getgid!() } : undefined;
+  const overlay = renderOverlay(input, credproxy);
   const nftables = renderNftables(input.lanAllowlist ?? [], input.toggles.lan?.dnsMode ?? 'log-only');
   const features = featureDomains(readSettledConfig(path.join(projectRoot, '.hermit')));
   const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? [], features);
@@ -432,6 +470,12 @@ function runRender(projectRoot: string, raw: string): void {
     fs.writeFileSync(nftPath, nftables);
     fs.writeFileSync(allowPath, dnsmasq);
     written.push(nftPath, allowPath);
+  }
+
+  // Made here so Docker never creates the bind-mount sources as root; the host lifecycle fills them.
+  if (credproxy) {
+    fs.mkdirSync(path.join(credproxy.store, 'sidecar'), { recursive: true, mode: 0o700 });
+    fs.mkdirSync(path.join(credproxy.store, 'agent'), { recursive: true, mode: 0o755 });
   }
 
   console.log(JSON.stringify({ written }));

@@ -170,6 +170,18 @@ _render_docker() {
     *'"reason":"not_converted"'*) echo '[hermit] Docker files are not converted; run /hermitd:docker-customize "Convert".' ;;
     *'"reason":"newer_renderer"'*) echo '[hermit] Docker files use a newer renderer; update the host plugin.' ;;
   esac
+  # Credential proxy files come from the host-only store, never from project config; run from
+  # outside the project so bun reads no project file. No bindings: nothing runs or prints.
+  local here
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if ! result=$(cd / && bun "$here/credproxy.ts" render "$PROJECT_DIR"); then
+    echo "[hermit] Credential proxy render failed: ${result:-no output}" >&2
+    echo "[hermit] The credential change was not applied; nothing was stopped." >&2
+    return 1
+  fi
+  case "$result" in
+    *'"missing_values":[{'*) echo '[hermit] Credential proxy: some mapped headers have no value yet; see hermitd credproxy status.' ;;
+  esac
 }
 
 _validate_compose() {
