@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Docker images carry a root-owned never-allowed deny floor and a bypass lock unless the agent config opts into bypass mode.
+
 ### Fixed
 
 - Managed Chrome launches in Docker when an operator volume or build hook leaves `~/.config` owned by root
@@ -11,6 +15,7 @@
 
 1. **Docker agents only:** when `docker-build.hermit-local.sh` and `.dockerignore` both exist at the project root and `.dockerignore` has no `!docker-build.hermit-local.sh` line, append it as its own last line, preserving every existing line.
 2. The next host `hermitd update` renders the Dockerfile with the claude-owned `~/.config` and rebuilds; no state migration is required.
+3. The next host `hermitd update` rebuilds Docker agents with the managed deny floor. Agents whose operator removed a never-allowed rule get it back as a hard block; `docker.security.managed_ceiling: false` plus a rebuild opts out.
 
 ## [1.4.34] - 2026-11-16
 

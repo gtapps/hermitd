@@ -34,6 +34,7 @@ export const PROTECTED_PATHS: readonly string[] = [
   'artifacts.publish_authorized',
   'artifacts.backend',
   'docker.git_identity_mount',
+  'docker.security.managed_ceiling',
   'docker.packages',
   'docker.recommended_plugins',
   'docker.fleet_mesh', 'browser',

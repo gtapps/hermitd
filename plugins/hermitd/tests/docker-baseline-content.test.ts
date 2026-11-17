@@ -674,6 +674,6 @@ test('entrypoint rechecks tmux for 60 seconds before exiting', () => {
   expect(dockerfile).not.toContain('# --- operator:');
   expect(compose).not.toContain('AUTH_ENV_LINE');
   expect(compose).not.toContain('ANTHROPIC_API_KEY=');
-  expect(dockerfile).toContain('USER root\nCOPY docker-build.hermit-local.sh* /opt/hermit-build/');
+  expect(dockerfile).toContain('USER root\n# After the Claude Code and Bun layers so a policy change keeps their cache.\n{{MANAGED_CEILING_BLOCK}}\nCOPY docker-build.hermit-local.sh* /opt/hermit-build/');
   expect(dockerfile.lastIndexOf('USER claude')).toBeGreaterThan(dockerfile.indexOf('bash /opt/hermit-build/'));
 });

@@ -10,7 +10,8 @@
 export function renderTemplate(text: string, vars: Record<string, string>): string {
   let out = text;
   for (const [key, value] of Object.entries(vars)) {
-    out = out.replaceAll(`{{${key}}}`, value);
+    // A replacer function keeps `$&`/`$'` in values (deny patterns) literal.
+    out = out.replaceAll(`{{${key}}}`, () => value);
   }
   // Real placeholders are UPPER_SNAKE (`{{PACKAGES_BLOCK}}`). Templates also
   // carry literal `{{...}}` in documentation prose — those are not placeholders

@@ -27,7 +27,7 @@ import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
 import { markWorkspaceTrusted, updateClaudeState } from './lib/claude-state';
 import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
-import { isContainer } from './lib/container';
+import { isContainer, MANAGED_SECURITY_SETTINGS } from './lib/container';
 import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
 import { cmpSemver } from './lib/semver';
@@ -749,7 +749,7 @@ function writeSystemPrompts(residentName: string): void {
 }
 
 /** Build the claude launch command from config. */
-function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string }): string[] {
+function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string; managedSettingsPath?: string }): string[] {
   // Claude Code watches new skills live only when this directory exists at launch.
   fs.mkdirSync(path.join(process.cwd(), '.claude', 'skills'), { recursive: true });
   const cmd = ['claude'];
@@ -888,7 +888,14 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
     cmd.push('--effort', config.effort);
   }
 
-  const mode = 'permission_mode' in config ? config.permission_mode : 'auto';
+  let mode = 'permission_mode' in config ? config.permission_mode : 'auto';
+  // Exiting here would crash-loop the container under its restart policy, so a
+  // locked image starts in auto mode and says how to apply the config change.
+  if (mode === 'bypassPermissions' && isContainer()
+    && readJson(opts?.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS)?.permissions?.disableBypassPermissionsMode === 'disable') {
+    console.log('[hermit] WARNING: the image locks bypass mode; starting in auto mode. hermitd restart --build applies the config change.');
+    mode = 'auto';
+  }
   if (mode === 'bypassPermissions') {
     if (!isContainer()) {
       console.log('[hermit] WARNING: bypassPermissions is intended for containers/VMs only.');

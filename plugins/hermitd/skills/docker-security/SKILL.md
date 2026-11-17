@@ -256,7 +256,7 @@ Then `AskUserQuestion` (header: `"Confirm all-off"`):
 - `"Yes — proceed (I'll restore override ports if needed)"`
 - `"No — cancel"`
 
-On Yes: continue to overlay deletion, clear `docker.security.*`, tell the operator "All toggles off — overlay removed and config cleared." Skip to step 9.
+On Yes: continue to overlay deletion, clear `docker.security.*` except `managed_ceiling`, tell the operator "All toggles off — overlay removed and config cleared." Skip to step 9.
 On No: exit wizard, write nothing.
 
 If `persisted_publish_ports` is empty: proceed directly to deletion without the prompt.
