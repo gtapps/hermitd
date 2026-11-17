@@ -67,10 +67,14 @@ function procStartOf(pid: number): string | null {
   }
 }
 
+let ownId: string | undefined;
 function ownIdentity(): string {
-  const ns = pidNamespace();
-  const start = procStartOf(process.pid);
-  return ns && start ? `${process.pid} ${ns} ${start}` : String(process.pid);
+  if (ownId === undefined) {
+    const ns = pidNamespace();
+    const start = procStartOf(process.pid);
+    ownId = !ns ? String(process.pid) : start ? `${process.pid} ${ns} ${start}` : `${process.pid} ${ns}`;
+  }
+  return ownId;
 }
 
 // Atomic create-with-content: write the PID to a private temp file, then
@@ -139,9 +143,11 @@ function heldByOther(content: string, mtimeMs: number, staleMs: number): boolean
   if (holderPid === process.pid && !crossNs) return false; // ours: reentrant
   const age = Date.now() - mtimeMs;
   if (crossNs) return age < Math.min(CROSS_NS_HOLD_MS, staleMs);
-  // A recorded start time that no longer matches means the pid was reused.
-  const sameProcess = m[3] === undefined || procStartOf(holderPid) === m[3];
-  return pidAlive(holderPid) && sameProcess && age < staleMs;
+  if (age >= staleMs || !pidAlive(holderPid)) return false;
+  // A recorded start time that no longer matches means the pid was reused. An
+  // unreadable one is unknown, not a mismatch: the live pid keeps the lock.
+  const start = m[3] === undefined ? null : procStartOf(holderPid);
+  return start === null || start === m[3];
 }
 
 /** Read-only: whether someone other than this process holds the lock now. */
