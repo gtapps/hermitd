@@ -58,6 +58,18 @@ describe('evaluateBackupDue', () => {
     expect(evaluateBackupDue(CONF(), h, new Date('2026-09-01T03:10:00Z'))).toBe(false);
   });
 
+  test('defers while a live run holds the lock, which records pid and pid namespace', () => {
+    const h = hermitAt(freshDir());
+    evaluateBackupDue(CONF(), h, new Date('2026-09-01T02:50:00Z'));
+    const holder = Bun.spawn(['sleep', '30']);
+    try {
+      fs.writeFileSync(path.join(h, 'state', '.backup.lock'), `${holder.pid} pid:[4026531836]`);
+      expect(evaluateBackupDue(CONF(), h, new Date('2026-09-01T03:05:00Z'))).toBe(false);
+    } finally {
+      holder.kill();
+    }
+  });
+
   test('advances past a dead window without firing', () => {
     const h = hermitAt(freshDir());
     evaluateBackupDue(CONF(), h, new Date('2026-09-01T04:00:00Z'));

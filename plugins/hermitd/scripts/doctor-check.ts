@@ -42,7 +42,7 @@ import { readJson, writeStdout } from './lib/cli';
 import { cmpSemver } from './lib/semver';
 import { modLoadedForResident, pendingPurpose } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
-import { findResident } from './lib/session-registry';
+import { findResident, residentInOtherPidNamespace } from './lib/session-registry';
 import { bootMismatch } from './lib/monitor-health';
 import { routineHealth } from './lib/routines/arm';
 import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
@@ -2090,6 +2090,7 @@ async function checkPeerInbox(p: DoctorPaths = PATHS) {
     }
     const resident = findResident(rt);
     if (!resident) {
+      if (residentInOtherPidNamespace(rt)) return { id, status: 'ok', detail: `pid ${rt.session_pid} is in another pid namespace (sandboxed command), not checked` };
       return { id, status: 'warn', detail: `no live registry entry for pid ${rt.session_pid} — wedge nudge will type` };
     }
 

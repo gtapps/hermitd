@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultConfigDir } from './setup-token';
-import { pidAlive } from './lockfile';
+import { pidAlive, pidNamespace } from './lockfile';
 
 export type SessionStatus = 'idle' | 'busy' | 'shell' | 'waiting';
 
@@ -71,8 +71,8 @@ function localPidDomain(): string | null {
   if (os.platform() !== 'linux') return null;
   try {
     const machineId = fs.readFileSync('/etc/machine-id', 'utf-8').trim();
-    const ns = fs.readlinkSync('/proc/self/ns/pid');
-    return `linux:${machineId}:${ns}`;
+    const ns = pidNamespace();
+    return ns ? `linux:${machineId}:${ns}` : null;
   } catch {
     return null;
   }
@@ -153,6 +153,25 @@ export function findResident(runtime: any, configDir?: string): SessionEntry | n
   const pid = runtime?.session_pid;
   if (typeof pid !== 'number') return null;
   return readRegistry(configDir).find((e) => e.pid === pid) ?? null;
+}
+
+/**
+ * Whether the stamped resident has a registry entry from another pid domain, the
+ * case where `findResident` returns null without meaning "gone". A shell command
+ * in Claude Code's sandbox runs in its own pid namespace, so from there the
+ * resident's pid cannot be probed. True only on that evidence; any read failure,
+ * a missing stamp, or a platform without pid domains reads false.
+ */
+export function residentInOtherPidNamespace(runtime: any, configDir?: string): boolean {
+  const pid = runtime?.session_pid;
+  const domain = localPidDomain();
+  if (typeof pid !== 'number' || domain === null) return false;
+  try {
+    const entry = parseEntry(fs.readFileSync(path.join(configDir ?? defaultConfigDir(), 'sessions', `${pid}.json`), 'utf-8'));
+    return typeof entry?.pidDomain === 'string' && entry.pidDomain !== domain;
+  } catch {
+    return false;
+  }
 }
 
 /**

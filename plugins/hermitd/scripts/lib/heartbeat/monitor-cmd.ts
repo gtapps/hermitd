@@ -10,6 +10,7 @@
 import path from 'node:path';
 import { readJson } from '../cli';
 import { pidAlive } from '../lockfile';
+import { residentInOtherPidNamespace } from '../session-registry';
 import { installedRootFor } from '../plugin-siblings';
 import { bootMismatch, heartbeatPredatesGraceSecs, monitorFreshness, STARTUP_GRACE_SECS } from '../monitor-health';
 import { readBootId } from '../routines/registry';
@@ -45,10 +46,15 @@ export function livenessReason(reason: string): string {
 /**
  * Command drift under a live supervisor cannot be re-armed: the arming verbs answer
  * restart_required, so every consumer reads `restart-required` instead of re-checking.
+ * From a sandboxed command the supervisor's pid cannot be probed, so a resident in
+ * another pid namespace counts as a live supervisor.
  */
 export function commandDriftReason(hermitDir: string, livenessFile: string): string {
   const live = readJson(path.join(hermitDir, 'state', livenessFile));
-  return typeof live?.pid === 'number' && pidAlive(live.pid) ? 'restart-required' : 'command-drift';
+  if (typeof live?.pid !== 'number') return 'command-drift';
+  if (pidAlive(live.pid)) return 'restart-required';
+  const runtime = readJson(path.join(hermitDir, 'state', 'runtime.json'));
+  return residentInOtherPidNamespace(runtime, runtime?.config_dir) ? 'restart-required' : 'command-drift';
 }
 
 /** Poll interval in whole seconds, floored at 1 so a `0m` config can't spin. */
