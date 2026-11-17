@@ -5492,3 +5492,64 @@ esac
     }
   } finally { wd.cleanup(); }
 });
+
+describe('Docker lifecycle renders the credential proxy from the host-only store', () => {
+  const { storeDir, writeBindings } = require('../scripts/lib/credproxy');
+  function project(config: object) {
+    const wd = setupWorkdir();
+    const proj = wd.dir;
+    fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
+    write(hermit(proj, 'config.json'), JSON.stringify({ channels: {}, ...config }));
+    write(path.join(proj, 'docker-compose.hermit.yml'), 'services: {}');
+    write(path.join(proj, 'Dockerfile.hermit'), 'FROM ubuntu:26.04\n');
+    const stub = path.join(proj, '.stub'); fs.mkdirSync(stub);
+    const calls = path.join(stub, 'calls');
+    write(path.join(stub, 'sleep'), '#!/bin/sh\nexit 0\n');
+    write(path.join(stub, 'docker'), `#!/bin/sh\necho "$*" >> "${calls}"\ncase "$*" in\n  *"ps --status running"*) echo hermit ;;\n  *"claude --version"*) echo 2.1.325 ;;\nesac\n`);
+    for (const name of ['sleep', 'docker']) fs.chmodSync(path.join(stub, name), 0o755);
+    const configDir = path.join(proj, '..', path.basename(proj) + '-config');
+    const run = (args: string[]) => runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
+      args, cwd: proj, env: { PATH: `${stub}:${process.env.PATH}`, HOME: configDir },
+    });
+    const store = () => storeDir(proj, path.join(configDir, '.claude'));
+    const cleanup = () => { wd.cleanup(); fs.rmSync(configDir, { recursive: true, force: true }); };
+    return { proj, run, store, cleanup, calls: () => fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8') : '' };
+  }
+
+  for (const config of [{}, { docker: { security: { credential_proxy: { enabled: false } } } }]) {
+    test(`renders when the store has a binding, config ${JSON.stringify(config)}`, async () => {
+      const p = project(config);
+      try {
+        writeBindings(p.store(), p.proj, [{ host: 'api.example.com', header: 'X-Key', secret: 'k' }]);
+        const r = await p.run(['restart']);
+        expect(r.exitCode).toBe(0);
+        expect(fs.existsSync(path.join(p.store(), 'sidecar/envoy.yaml'))).toBe(true);
+        expect(r.stdout).toContain('Credential proxy: some mapped headers have no value yet');
+      } finally { p.cleanup(); }
+    });
+  }
+
+  test('does nothing without a binding', async () => {
+    const p = project({ docker: { security: { credential_proxy: { enabled: true } } } });
+    try {
+      const r = await p.run(['up']);
+      expect(r.exitCode).toBe(0);
+      expect(fs.existsSync(p.store())).toBe(false);
+      expect(r.stdout + r.stderr).not.toContain('Credential proxy');
+    } finally { p.cleanup(); }
+  });
+
+  test('a failed render stops restart before anything is stopped', async () => {
+    const p = project({});
+    try {
+      fs.mkdirSync(p.store(), { recursive: true });
+      fs.writeFileSync(path.join(p.store(), 'map.json'), '{not json');
+      const r = await p.run(['restart']);
+      expect(r.exitCode).not.toBe(0);
+      expect(r.stderr).toContain('Credential proxy render failed');
+      expect(r.stderr).toContain('credential change was not applied');
+      expect(p.calls()).not.toContain('down');
+      expect(p.calls()).not.toContain('up -d');
+    } finally { p.cleanup(); }
+  });
+});

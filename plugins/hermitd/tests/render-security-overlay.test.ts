@@ -14,8 +14,9 @@ import path from 'node:path';
 import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 import {
-  cidrToRange, overlaps, pickSubnet, validateCandidate, ipv4SubnetsFromInspect,
+  cidrToRange, overlaps, pickSubnet, validateCandidate, ipv4SubnetsFromInspect, renderOverlay as renderOverlayText,
 } from '../scripts/render-security-overlay';
+import { storeDir } from '../scripts/lib/credproxy';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-rso-');
 afterAll(cleanup);
@@ -281,6 +282,60 @@ describe('render subcommand: egress enforcement', () => {
     expect(overlay.services['hermit-netguard'].logging).toEqual({
       driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' },
     });
+  });
+});
+
+describe('credential proxy sidecar', () => {
+  const host = { store: '/cfg/hermitd/credproxy/p-0123', uid: 1000, gid: 1000 };
+  const LAN = { network: ALL_ON.network, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const } } };
+
+  test('joins the agent and mounts only the store folders read-only', () => {
+    const overlay = Bun.YAML.parse(renderOverlayText({ toggles: { credproxy: { enabled: true } } }, host)) as any;
+    const proxy = overlay.services['hermit-credproxy'];
+    expect(proxy).toMatchObject({
+      image: 'envoyproxy/envoy:distroless-v1.40.2', user: '1000:1000', network_mode: 'service:hermit',
+      cap_drop: ['ALL'], security_opt: ['no-new-privileges:true'], pids_limit: 256, restart: 'unless-stopped',
+      volumes: [`${host.store}/sidecar:/etc/envoy:ro`],
+    });
+    expect(proxy.ports).toBeUndefined();
+    expect(proxy.networks).toBeUndefined();
+    expect(overlay.services.hermit.volumes).toEqual([`${host.store}/agent:/run/hermit-credproxy:ro`]);
+    expect(overlay.services.hermit.depends_on).toBeUndefined();
+  });
+
+  test('joins netguard with LAN containment on', () => {
+    const overlay = Bun.YAML.parse(renderOverlayText({ ...LAN, toggles: { ...LAN.toggles, credproxy: { enabled: true } } }, host)) as any;
+    expect(overlay.services['hermit-credproxy'].network_mode).toBe('service:hermit-netguard');
+    expect(overlay.services.hermit.network_mode).toBe('service:hermit-netguard');
+    expect(overlay.services.hermit.volumes).toEqual([`${host.store}/agent:/run/hermit-credproxy:ro`]);
+  });
+
+  test('off or absent leaves the overlay byte-identical', () => {
+    for (const input of [ALL_ON, LAN, { toggles: {} }]) {
+      const off = renderOverlayText({ ...input, toggles: { ...input.toggles, credproxy: { enabled: false } } } as any, host);
+      expect(off).toBe(renderOverlayText(input as any));
+      expect(off).not.toContain('credproxy');
+    }
+  });
+
+  test('uid 100 with LAN containment is refused', () => {
+    expect(() => renderOverlayText({ ...LAN, toggles: { ...LAN.toggles, credproxy: { enabled: true } } }, { ...host, uid: 100 })).toThrow(/uid 100/);
+  });
+
+  test('the render subcommand mounts this project\'s store and prepares its folders', async () => {
+    const dir = freshDir();
+    const home = freshDir();
+    const config = path.join(home, '.claude');
+    const r = await runScript('render-security-overlay.ts', {
+      args: ['render', dir], stdin: JSON.stringify({ toggles: { credproxy: { enabled: true } } }), env: { HOME: home },
+    });
+    expect(r.exitCode).toBe(0);
+    const store = storeDir(dir, config);
+    const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
+    expect(overlay.services['hermit-credproxy'].user).toBe(`${process.getuid!()}:${process.getgid!()}`);
+    expect(overlay.services['hermit-credproxy'].volumes).toEqual([`${store}/sidecar:/etc/envoy:ro`]);
+    expect(fs.statSync(path.join(store, 'sidecar')).mode & 0o777).toBe(0o700);
+    expect(fs.existsSync(path.join(store, 'agent'))).toBe(true);
   });
 });
 

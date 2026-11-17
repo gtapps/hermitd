@@ -8,6 +8,7 @@ import { marketplace, readRegistry, registerProject, prune } from './lib/host-re
 import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatus, inspect } from './lib/hermit-status';
 import { verdictLine } from './doctor-check';
 import { printJson } from './lib/cli';
+import { inside } from './lib/credproxy';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
 function execute(command: string, args: string[], project: string, env: Record<string, string> = {}): number {
@@ -31,6 +32,7 @@ function target(args: string[], verb: string, cwd: string, root: string): string
     skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
     docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
+    credproxy: ['map', 'unmap', 'status', 'set', 'unset', 'render'],
   };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
   if (matches.length > 1) throw new Error(`Ambiguous name ${first}: ${matches.map(row => row.project_dir).join(', ')}`);
@@ -203,8 +205,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy [name] [args]');
   }
   const project = target(args, verb, cwd, root);
   if (verb === 'register') {
@@ -223,6 +225,15 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
       if (docker === 'up') return dockerScript(project, ['skills', ...args], hostInstall(project).installPath);
     }
     return wrapper(project, 'hermitd-skills', args);
+  }
+  if (verb === 'credproxy') {
+    if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
+    // Runs only the installed plugin's script, from outside the project (bun reads bunfig.toml
+    // from its cwd), so no file the agent can write executes.
+    const install = fs.realpathSync(hostInstall(project).installPath);
+    if (inside(install, project)) { printJson({ error: 'untrusted_install' }); return 1; }
+    const [sub, ...rest] = args;
+    return execute(process.execPath, [path.join(install, 'scripts/credproxy.ts'), sub ?? '', project, ...rest], '/');
   }
   if (verb === 'pause' || verb === 'watchdog') return wrapper(project, `hermitd-${verb}`, args);
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);

@@ -27,6 +27,7 @@ DNS enforce mode limits the browser, like every other process, to allowlisted na
 |--------|--------------|-------------|
 | **LAN containment + DNS policy** (Prompt 1) | Spins up a `hermit-netguard` Alpine sidecar with nftables + dnsmasq. Hermit shares the sidecar's network namespace via `network_mode: "service:hermit-netguard"`. nftables drops RFC1918 + link-local egress AND redirects all egress :53 to local dnsmasq for actual DNS-policy enforcement. In enforce mode, outbound connections go only to addresses that allowlisted names resolved and to carve-outs (see [limitations](#documented-limitations)). | **Yes — categorical.** Today: a compromised hermit on your home network can scan your router, NAS, HA, printer, etc. After: it cannot. In enforce mode it also cannot reach a public host that is not on the allowlist. |
 | **Resource bounds + kernel hygiene** (Prompt 2) | `mem_limit` / `cpus` caps + a network sysctl bundle (`accept_redirects=0`, `accept_source_route=0`, …). Sysctls placed on the netns owner: hermit-netguard if Prompt 1 is on, hermit otherwise. Sysctls **omitted entirely** in `network_mode: host` — Docker rejects them. | Resource caps are hygiene, not a security primitive. Sysctls block exotic ICMP-redirect / source-routing tricks. |
+| **Credential proxy** (Prompt 4) | Adds a `hermit-credproxy` Envoy sidecar that adds the real header to the agent's shell HTTPS requests for hosts you map from a host terminal. See [Credential proxy](#credential-proxy). | **Yes, for mapped hosts.** The key leaves the container; the agent can still use it on its mapped host. |
 | **Boot-time plugin install audit log** (Prompt 3) | The entrypoint appends a JSONL line to `.hermit/state/plugin-installs.jsonl` for every `claude plugin install` it performs (hermit core, channels, recommended plugins). | Cheap paper trail, not a security primitive on its own. **Honest scope:** post-boot installs run by the operator via tmux are NOT captured. **Empty-log expectation:** the log only grows when an install actually fires — on subsequent boots when the marketplace + plugin set is unchanged, the entrypoint short-circuits the install path and writes nothing. An empty log on a boot where nothing changed is normal, not a failure. |
 
 ## Documented limitations
@@ -38,7 +39,7 @@ The wizard makes the container *meaningfully harder to abuse*. It does not make 
 - **Log-only mode does not constrain public egress.** Only enforce mode drops connections. Log-only shows name lookups, not connections, so a tool that connects to a literal IP never appears in the log and fails after the switch to enforce until that IP gets a carve-out.
 - **Enforce mode filters by IP, not by site.** dnsmasq adds every address an allowlisted name resolves to the firewall's allowed set, so another site served from the same CDN address is reachable too. The set grows while the sidecar runs, as allowlisted names resolve to new addresses, and clears when it restarts.
 - **Allowed hosts are still exfiltration routes.** GitHub, npm and PyPI are on every allowlist and accept uploads, as do channel platforms. The allowlist narrows where data can go; it does not stop data leaving through an allowed host.
-- **The rules are built into the netguard image, but their sources stay writable.** `nftables.conf` and `dnsmasq.allowlist` are copied into the image at build, so an edit inside the running container changes nothing until the operator rebuilds (`hermitd restart --build`, `hermitd update`, or the wizard). The files under `.hermit/docker/`, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild. `docker-compose.override.yml` is applied after the security overlay and is also writable, so a change there applies at the next start. This is a known limit: a staged change applies only at an operator rebuild or start on the host, the same boundary as the deny floor, and the agent writes the generated Docker files itself during an upgrade.
+- **The rules are built into the netguard image, but their sources stay writable.** `nftables.conf` and `dnsmasq.allowlist` are copied into the image at build, so an edit inside the running container changes nothing until the operator rebuilds (`hermitd restart --build`, `hermitd update`, or the wizard). The files under `.hermit/docker/`, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild. `docker-compose.override.yml` is applied after the security overlay and is also writable, so a change there applies at the next start. This is a known limit: a staged change applies only at an operator rebuild or start on the host, the same boundary as the deny floor, and the agent writes the generated Docker files itself during an upgrade. With the [credential proxy](#credential-proxy) on, a staged Compose change could also mount its host-only store into the agent's container.
 - **No per-host filter for shell commands.** Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) filters shell commands by host, but it does not run inside the agent's container without relaxing the container's seccomp and AppArmor profiles ([Bash Sandbox](security.md#bash-sandbox)), so netguard's IP filter is the only egress control here.
 - **Docker's default bridge (172.17.0.0/16) is dropped** by the LAN block — it sits inside `172.16.0.0/12`. Operators with adjacent Compose stacks must add carve-outs for the relevant bridge IPs (Prompt 1b "Extra LAN carve-outs").
 - **Compose service-name DNS doesn't work through dnsmasq** — Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the allowlist:
@@ -163,6 +164,66 @@ Verify with `hermitd-docker bash -c 'gh auth status'`.
 **Other services.** For every other credential the container loads from `.env`, and for every tool sign-in stored for this agent, use a dedicated service account or API key for this agent. One credential serves every chat and routine. See [Connections](access-model.md#connections).
 
 **Netguard note:** No allowlist entry is needed for GitHub API calls. The existing `server=/github.com/` rule in `dnsmasq.allowlist` already covers `api.github.com` and all other `*.github.com` subdomains — dnsmasq's `server=/<domain>/` syntax matches a domain and all its subdomains.
+
+## Credential proxy
+
+The credential proxy keeps API credentials for hosts you choose outside the agent's container. A sidecar running [Envoy](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/credential_injector_filter) shares the agent's network namespace and listens on loopback. When one of the agent's shell commands sends an HTTPS request to a mapped host, the sidecar replaces the mapped header with the real value. Requests to every other host pass through untouched.
+
+**What it promises:** a credential for a mapped host is absent from the agent container's environment and files; the agent's shell sends a placeholder and the mapped host receives the real header. **What it does not promise:** the agent can still use a mapped credential on its mapped host, and a mapped service that echoes request headers can hand the value back in a response.
+
+### Enable it
+
+Run `/hermitd:docker-security` from a host terminal and answer Yes to "Credential proxy". Then map each host and header and store the value, from the project folder in a host terminal:
+
+```
+hermitd credproxy map api.datadoghq.com --header DD-API-KEY --secret dd_api
+hermitd credproxy map api.datadoghq.com --header DD-APPLICATION-KEY --secret dd_app
+hermitd credproxy set dd_api        (typed, not shown)
+hermitd credproxy set dd_app
+hermitd credproxy status
+hermitd restart
+```
+
+- `map <host> --header <name> --secret <name>` adds one header for one host. `--prefix "Bearer "` puts text before the value; `--basic-user <user>` sends `Basic` authentication with the value as the password.
+- `set <name>` reads the value with echo off, or from standard input. `unset <name>` deletes it. `unmap <host> [--header <name>]` removes a mapping. `set`, `unset`, `map` and `unmap` drop a replaced or removed value from the sidecar's rendered config right away; new hosts, and a running sidecar's in-memory copy, wait for `hermitd restart`.
+- `status` lists hosts, headers, and whether each value is set. No command prints a value.
+- `hermitd restart` applies every change. `start`, `restart` and `update` render the sidecar's files from the store; a failed render stops the command before anything is stopped.
+
+After mapping a credential, remove it from the project `.env`. The agent's tools keep sending the header with any placeholder value, and the proxy replaces it.
+
+The map, the values and the proxy's certificate authority live in a host-only folder, `~/.claude/hermitd/credproxy/` (always under your home folder, whatever `CLAUDE_CONFIG_DIR` says), outside the project. The `hermitd credproxy` commands run only from the installed plugin, never from a file in the project. Certificates are made with the host's `openssl`.
+
+In DNS enforce mode a mapped host must also be on the allowlist; the wizard offers mapped hosts there, and `/hermitd:hermit-doctor` warns about any that are missing.
+
+### What it covers
+
+Only the agent's shell commands (Bash and Monitor) use the proxy: the SessionStart hook points them at it and adds its authority to the trust bundle `curl`, `git`, `gh`, `bun`, `node` and Python read. MCP servers, hooks, channel plugins and Claude Code's own traffic go direct. The managed browser is kept off the proxy and sees each site's own certificate.
+
+A tool shell in the container can still read the Claude login, channel bot tokens, MCP tokens, and anything left in `.env`.
+
+### Limits
+
+- The store is not yet fully out of the agent's reach: the host still runs or applies some files the agent can rewrite (project wrappers, Compose inputs). Tracked in [#1466](https://github.com/gtapps/hermitd/issues/1466).
+- Fixed headers only: no request signing (AWS SigV4), no token refresh, no credentials in a URL path or query string.
+- Not available under `network_mode: host`.
+- Not used when the agent's session already has its own `HTTPS_PROXY`; an operator's own HTTPS proxy is not chained.
+- A host that echoes request headers returns the value to the agent.
+- A tool that ignores the proxy variables, or pins certificates, sends the placeholder and gets a 401 from the mapped host.
+- Without LAN containment, when the agent's container restarts on its own, mapped hosts answer 401 until `hermitd restart`. With LAN containment the proxy stays reachable.
+- If the sidecar stops, sessions that start afterwards go direct: mapped hosts answer 401, everything else keeps working. A session that started while the proxy answered keeps pointing its shell commands at it, so their HTTPS fails until that session's `/clear` or a new session. Chat, model traffic, MCP and channels are unaffected. `/hermitd:hermit-doctor` warns when the proxy does not answer.
+
+### GitHub without `HERMIT_GH_TOKEN`
+
+Set `HERMIT_GH_TOKEN=placeholder` in the project `.env` (`gh` sends nothing without a token, and the proxy replaces the placeholder on the wire) and map the agent's token:
+
+```
+hermitd credproxy map api.github.com --header Authorization --secret gh --prefix "Bearer "
+hermitd credproxy map github.com --header Authorization --secret gh --basic-user x-access-token
+hermitd credproxy set gh
+hermitd restart
+```
+
+`gh api` calls and HTTPS `git` pushes then carry the token while it stays outside the container.
 
 ## Reversal
 

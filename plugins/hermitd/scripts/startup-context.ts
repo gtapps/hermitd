@@ -32,6 +32,7 @@ import { recordContextPolicy } from './lib/context-policy';
 import { applyContextReset } from './lib/context-reset';
 import { writeFileAtomic } from './lib/md-write';
 import { readJson } from './lib/cli';
+import { exportCredproxyEnv } from './lib/credproxy-env';
 
 type Json = any;
 
@@ -292,6 +293,8 @@ function main(source: string | null, sessionId: string | null) {
   const stateDir = path.resolve(AGENT_DIR, 'state');
   stampSessionEnv(stateDir, sessionId);
   pruneGuestMarkers(stateDir);
+  // Every session (resident, helper, guest) points its shell commands at the credential proxy.
+  try { exportCredproxyEnv(); } catch { /* fail-open: the shell keeps going direct */ }
   const flagged = process.env.HERMIT_RESIDENT === '1' || process.env.EVAL_HERMIT_RESIDENT === '1';
   if (!flagged || !ownsResidentIdentity(readRuntimeJson(stateDir))) {
     // The banner only reaches the model; the marker is what the state-writing

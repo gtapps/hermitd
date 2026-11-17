@@ -109,6 +109,13 @@ describe('docker-security SKILL.md', () => {
   test('SKILL.md: step 6c forces --no-cache netguard build (prevents stale image on upgrade)', () => {
     expect(skill).toContain('build --no-cache hermit-netguard');
   });
+
+  test('SKILL.md: the credential proxy runs through the host hermitd command, never a project wrapper', () => {
+    expect(skill).toContain('hermitd credproxy');
+    expect(skill).toContain('credential_proxy');
+    expect(skill).not.toContain('hermitd run credproxy');
+    expect(skill).toContain('hermitd restart --build');
+  });
 });
 
 // -------------------------------------------------------

@@ -317,3 +317,23 @@ test('doctor explains failed install lookup and rejects malformed checks and fla
   }
   expect((await f.run(['doctor', '--json'], f.p)).exitCode).toBe(1);
 });
+test('credproxy runs the installed script from outside the project and never a project wrapper', async () => {
+  const f = fixture(); write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.core, 'scripts/credproxy.ts'), `require('fs').appendFileSync(process.env.CALLS, 'credproxy|' + process.cwd() + '|' + process.argv.slice(2).join(' ') + '\\n');\n`);
+  const r = await f.run(['credproxy', 'status'], f.p);
+  expect(r.exitCode).toBe(0);
+  expect(f.calls()).toBe(`credproxy|/|status ${f.p}\n`);
+  expect((await f.run(['credproxy', 'demo', 'map', 'api.example.com', '--header', 'X'])).exitCode).toBe(0);
+  expect(f.calls()).toContain(`credproxy|/|map ${f.p} api.example.com --header X\n`);
+  expect(f.calls()).not.toContain('run|');
+});
+test('credproxy refuses an install inside the project and runs nothing', async () => {
+  const f = fixture();
+  const inner = path.join(f.p, 'plugins/hermitd');
+  write(path.join(inner, 'scripts/credproxy.ts'), `require('fs').appendFileSync(process.env.CALLS, 'inner\\n');\n`);
+  write(f.env.LIST, JSON.stringify([{ id: 'hermitd@mp', scope: 'project', enabled: true, projectPath: f.p, installPath: inner }]));
+  const r = await f.run(['credproxy', 'status'], f.p);
+  expect(r.exitCode).toBe(1);
+  expect(JSON.parse(r.stdout)).toEqual({ error: 'untrusted_install' });
+  expect(f.calls()).toBe('');
+});

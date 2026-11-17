@@ -1,6 +1,6 @@
 ---
 name: docker-security
-description: Opt-in advanced Docker security hardening beyond the docker-setup baseline — LAN containment with DNS policy, resource bounds with kernel-hygiene sysctls, and a boot-time plugin install audit log. Applied as a reversible docker-compose overlay (does not touch the base compose file) and verified against the live container. Run after /docker-setup; requires bridge networking.
+description: Opt-in advanced Docker security hardening beyond the docker-setup baseline — LAN containment with DNS policy, resource bounds with kernel-hygiene sysctls, a boot-time plugin install audit log, and a credential proxy that keeps API keys for mapped hosts outside the container. Applied as a reversible docker-compose overlay (does not touch the base compose file) and verified against the live container. Run after /docker-setup; requires bridge networking.
 disable-model-invocation: true
 ---
 
@@ -57,6 +57,7 @@ Use `docker compose "${COMPOSE_FILES[@]}"`: base, security overlay, then operato
      LAN containment: off
      Resource bounds: off
      Audit log: off
+     Credential proxy: off
 
    Baseline (always on):
      cap_drop: ALL, no-new-privileges, pids_limit: 2048
@@ -172,6 +173,8 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts mcp-hosts <PROJECT_
 
 It prints `{ "hosts": [{ "host", "server" }] }`. When the list is non-empty, show each host with its server name and ask once (header: `"MCP hosts"`) with the same `"Include all"` (Recommended) / `"Pick each"` / `"Skip all"` flow as 3a. Confirmed hosts join `additional_domains`.
 
+In enforce mode, also offer the hosts mapped for the credential proxy: run `hermitd credproxy status` (a host terminal command; skip silently if it fails) and offer each `host` from its `bindings` with the same flow. Mapping a host never adds it to the allowlist by itself.
+
 Channel and voice-note hosts are not asked here: the render adds them from `config.json` for enabled channels and while transcription is enabled.
 
 `AskUserQuestion` (header: `"Extra domains"`):
@@ -240,6 +243,23 @@ options:
 
 Persist `docker.security.audit.plugin_installs` accordingly.
 
+### 5a. Prompt 4: Credential proxy
+
+If `HOST_NETWORK_MODE` is true, do not present this prompt. Tell the operator: "Skipping the credential proxy: not available with `network_mode: host`." Continue to step 6.
+
+Otherwise, ask with `AskUserQuestion` (header: `"Credential proxy"`):
+
+```
+question: "Keep API credentials for chosen hosts outside the agent's container?"
+options:
+  - label: "Yes"
+    description: "A sidecar adds the real header to the agent's shell HTTPS requests to hosts you map from a host terminal. The agent can still use a mapped credential on its host; it cannot read it."
+  - label: "No"
+    description: "Skip this toggle."
+```
+
+Persist `docker.security.credential_proxy.enabled` and pass `"credproxy": { "enabled": true|false }` in the 6b toggles. On Yes, run `hermitd credproxy status` and show its bindings. Never ask for, read or print a secret value; the operator sets values in a host terminal (step 9).
+
 ### 6. Render overlay
 
 **Browser viewer publishing:** When `browser.port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. After persisting config, run `.hermit/bin/hermitd-run render-docker-templates <project-root>` and check its verdict before recreating; enabled LAN containment makes the config-driven renderer omit the base browser mapping. On a skipped or error verdict, stop and follow the renderer reason before proceeding. Never publish the same viewer in both services. With containment off, base rendering owns it; host networking uses the loopback bind environment instead of a mapping.
@@ -251,7 +271,7 @@ Read `docker.security.network.publish_ports` from the existing config.json (if p
 - If the operator chose "Skip LAN containment (keep ports on hermit)": set `persisted_publish_ports = []` (LAN containment is off; ports stay on hermit in the merged stack).
 
 **All-off branch — warn before deletion if `publish_ports` was set:**
-Otherwise (all toggles off): before deleting the overlay, check if `persisted_publish_ports` is non-empty. If so, surface:
+Otherwise (all toggles off, the credential proxy included): before deleting the overlay, check if `persisted_publish_ports` is non-empty. If so, surface:
 
 ```
 Heads up: turning all toggles off will remove the overlay, including these
@@ -311,7 +331,8 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROO
   "toggles": {
     "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
     "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },
-    "audit":     { "enabled": true }
+    "audit":     { "enabled": true },
+    "credproxy": { "enabled": true }
   },
   "publishPorts": [ { "target": 3000, "published": "3000", "protocol": "tcp", "host_ip": "0.0.0.0", "mode": "ingress" } ],
   "lanAllowlist": [...],
@@ -374,7 +395,7 @@ If operator chose to restart now AND container was running before this skill (an
 
 1. Run `.hermit/bin/hermitd-docker down`.
 2. Run `.hermit/bin/hermitd-docker up` (the wrapper picks up the overlay automatically). The first up will trigger `docker compose build hermit-netguard` if Prompt 1 was enabled — wait for completion (can be 30-60s on first build).
-3. Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 30s; expect `hermit` (and `hermit-netguard` if Prompt 1 enabled). If either is missing after 30s: run `docker compose "${COMPOSE_FILES[@]}" logs <missing-service> --tail=30` (substitute `hermit` or `hermit-netguard` per the missing service; omit the service name if both are down), surface output, and suggest:
+3. Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 30s; expect `hermit` (and `hermit-netguard` if Prompt 1 enabled, `hermit-credproxy` if Prompt 4 enabled). If either is missing after 30s: run `docker compose "${COMPOSE_FILES[@]}" logs <missing-service> --tail=30` (substitute `hermit` or `hermit-netguard` per the missing service; omit the service name if both are down), surface output, and suggest:
    - **hermit-netguard won't start** → nftables or dnsmasq config error; read the log for the line number
    - **hermit won't start** → check if the base `ports:` conflict was fully resolved (re-run the hard gate port check above)
    - **Both down** → Docker daemon issue; `docker info` to confirm daemon is healthy
@@ -399,6 +420,7 @@ docker-security applied — current posture:
   LAN containment:   on  (DNS log-only)  | LAN carve-outs: 192.168.1.50
   Resource bounds:   on  (mem 4g, cpus 2.0)
   Audit log:         on
+  Credential proxy:  on  (2 mapped hosts)
 
 Reverse: re-run /docker-security and answer No to every prompt, OR
          delete docker-compose.security.yml and re-run hermitd-docker up.
@@ -406,6 +428,17 @@ Reverse: re-run /docker-security and answer No to every prompt, OR
 Tune DNS allowlist: edit .hermit/docker/dnsmasq.allowlist,
          then `hermitd restart --build` (it is built into the netguard image).
 ```
+
+When the credential proxy is on, also print the host terminal commands, run from the project folder, with the operator's own host, header and secret names:
+
+```
+hermitd credproxy map <host> --header <Header-Name> --secret <name> [--prefix "Bearer "] [--basic-user <user>]
+hermitd credproxy set <name>        (typed, not shown)
+hermitd credproxy status
+hermitd restart
+```
+
+Add one line: "After mapping a credential, remove it from the project `.env`; the agent's shell then sends a placeholder and the proxy adds the real value."
 
 ## Notes
 

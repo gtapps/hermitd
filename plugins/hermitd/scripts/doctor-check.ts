@@ -42,6 +42,7 @@ import { readJson, writeStdout } from './lib/cli';
 import { cmpSemver } from './lib/semver';
 import { modLoadedForResident, pendingPurpose } from './lib/harness-mod';
 import { secondMostRecentMatch } from './lib/backup';
+import { credproxyDir, proxyAnswers, readProxyInfo } from './lib/credproxy-env';
 import { findResident, residentInOtherPidNamespace } from './lib/session-registry';
 import { bootMismatch } from './lib/monitor-health';
 import { routineHealth } from './lib/routines/arm';
@@ -561,7 +562,14 @@ function cidrOverlap(a: string, b: string): boolean {
   } catch { return false; }
 }
 
-function checkDockerSecurity(p: DoctorPaths = PATHS) {
+/** True when an allowlist `server=/.../` line names the host or one of its parent domains. */
+function allowlistCovers(allow: string, host: string): boolean {
+  const named = new Set(allow.split('\n').filter(line => line.startsWith('server=/')).flatMap(line => line.split('/').slice(1, -1)));
+  const labels = host.split('.');
+  return labels.some((_, i) => i < labels.length - 1 && named.has(labels.slice(i).join('.')));
+}
+
+function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()) {
   const { hermitDir } = p;
   // Presence check between docker.security.* in config.json and the rendered
   // docker-compose.security.yml overlay. When both are present, also shells out
@@ -603,6 +611,8 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
     const net = sec.network;
     const dnsMode = net?.enabled ? (net.dns_mode === 'enforce' ? 'enforce' : 'log-only') : null;
     const posture = `posture declared and overlay present${dnsMode ? ` (DNS ${dnsMode})` : ''}`;
+    // The credential proxy's host list and address come from its read-only mount (container only).
+    const proxy = sec.credential_proxy?.enabled === true ? readProxyInfo(proxyMount) : null;
     // Enforce-mode rule drift: rules rendered before IP filtering existed only
     // filter names, and a channel or transcription enabled after the last render
     // has no hosts on the allowlist. The rendered files sit in the project mount,
@@ -619,13 +629,19 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
       const missing = allow ? [...channels, ...transcription].filter((d) => !allow.includes(`server=/${d}/`)) : [];
       if (nft && !nft.includes('@allow4')) drift = 'DNS enforce rules predate IP filtering, so connections to literal IPs still pass';
       else if (missing.length) drift = `DNS allowlist lacks ${missing.join(', ')} for enabled features, so those connections are refused`;
+      const uncovered = allow && proxy ? proxy.hosts.map((h) => h.host).filter((h) => !allowlistCovers(allow, h)) : [];
+      if (!drift && uncovered.length) drift = `DNS allowlist lacks credential proxy hosts ${uncovered.join(', ')}, so those requests are refused`;
     }
+    const proxyDown = proxy && !proxyAnswers(proxy.address)
+      ? `the credential proxy does not answer at ${proxy.address}, so mapped hosts get no credentials; run \`hermitd restart\` on the host`
+      : null;
     const settled = (detail: string) => drift
       ? {
           id: 'docker-security',
           status: 'warn',
           detail: `${drift}; ask your operator to re-run /docker-security from a terminal or the Claude app`,
         }
+      : proxyDown ? { id: 'docker-security', status: 'warn', detail: proxyDown }
       : { id: 'docker-security', status: 'ok', detail };
 
     // Both declared and overlay present. The deep checks below need the docker CLI,
