@@ -2641,7 +2641,7 @@ for (const mode of ['unclean', 'clean', 'stale-error']) test(`boot routine cause
 });
 
 describe('managed image bypass lock', () => {
-  for (const [file, mode, blocked] of [
+  for (const [file, mode, fellBack] of [
     ['locked', 'bypassPermissions', true],
     ['locked', 'auto', false],
     ['missing', 'bypassPermissions', false],
@@ -2666,10 +2666,11 @@ describe('managed image bypass lock', () => {
       });
       const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
       expect(err).toBe('');
-      expect(code).toBe(blocked ? 1 : 0);
-      if (blocked) {
-        expect(out).toContain('[hermit] The image locks bypass mode');
+      expect(code).toBe(0);
+      if (fellBack) {
+        expect(out).toContain('the image locks bypass mode; starting in auto mode');
         expect(out).toContain('hermitd restart --build');
+        expect(out).toContain('"--permission-mode","auto"');
         expect(out).not.toContain('--dangerously-skip-permissions');
       } else expect(out).toContain(mode === 'auto' ? '--permission-mode' : '--dangerously-skip-permissions');
     });

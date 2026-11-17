@@ -169,7 +169,7 @@ Existing installs that hatched Hardened (or the older hardened extras) keep thos
 
 Docker images carry a deny floor the agent cannot edit from inside the running container: root-owned, mode 644 `/etc/claude-code/managed-settings.d/hermitd-security.json`. It holds the never-allowed seed `permissions.deny` array on every hatch tier, separate from the conditional `hermitd-channels.json` approval drop-in. It also sets `permissions.disableBypassPermissionsMode: "disable"` unless config opts into `permission_mode: bypassPermissions`.
 
-Changing to `bypassPermissions` needs `hermitd restart --build`; start refuses bypass against an image that still carries the lock. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
+Changing to `bypassPermissions` needs `hermitd restart --build`; against an image that still carries the lock, start logs a warning and launches in auto mode. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
 
 The agent's user can still write the image build inputs and the `claude` binary, so a change can be staged for the next rebuild or start. Organization server-managed settings outrank local files and can cause this drop-in to be skipped. Check `/status` and `claude doctor` for the settings source in force.
 

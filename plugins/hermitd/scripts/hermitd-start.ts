@@ -888,12 +888,15 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string;
     cmd.push('--effort', config.effort);
   }
 
-  const mode = 'permission_mode' in config ? config.permission_mode : 'auto';
+  let mode = 'permission_mode' in config ? config.permission_mode : 'auto';
+  // Exiting here would crash-loop the container under its restart policy, so a
+  // locked image starts in auto mode and says how to apply the config change.
+  if (mode === 'bypassPermissions' && isContainer()
+    && readJson(opts?.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS)?.permissions?.disableBypassPermissionsMode === 'disable') {
+    console.log('[hermit] WARNING: the image locks bypass mode; starting in auto mode. hermitd restart --build applies the config change.');
+    mode = 'auto';
+  }
   if (mode === 'bypassPermissions') {
-    if (isContainer() && readJson(opts?.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS)?.permissions?.disableBypassPermissionsMode === 'disable') {
-      console.log('[hermit] The image locks bypass mode; hermitd restart --build applies the config change.');
-      process.exit(1);
-    }
     if (!isContainer()) {
       console.log('[hermit] WARNING: bypassPermissions is intended for containers/VMs only.');
       console.log('[hermit] You appear to be running on a host machine.');
