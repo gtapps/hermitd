@@ -204,6 +204,27 @@ describe('render', () => {
     expect(fs.readFileSync(path.join(f.store(), 'sidecar/envoy.yaml'), 'utf8')).not.toContain('DD-APPLICATION-KEY');
   });
 
+  test('unset and unmap remove the value from an already rendered config', async () => {
+    const f = await mapped();
+    await f.run('render');
+    const config = path.join(f.store(), 'sidecar/envoy.yaml');
+    expect((await f.run('unset', ['gh'])).json).toEqual({ status: 'unset', secret: 'gh', apply: 'hermitd restart' });
+    expect(holding(f.root, f.values.gh)).toEqual([]);
+    await f.run('unmap', ['api.example.com']);
+    expect(fs.readFileSync(config, 'utf8')).not.toContain(f.values.dd_api);
+    expect(holding(f.root, f.values.dd_api).map(file => path.relative(f.store(), file))).toEqual(['secrets/dd_api']);
+  });
+
+  test('when the re-render fails, unset drops the config rather than keep the value', async () => {
+    const f = await mapped();
+    await f.run('render');
+    await f.run('map', ['new.example.com', '--header', 'X-Key', '--secret', 'dd_api']);
+    const r = await f.run('unset', ['gh'], { env: { PATH: path.join(f.root, 'empty-bin') } });
+    expect(r.json).toEqual({ status: 'unset', secret: 'gh', apply: 'hermitd restart' });
+    expect(fs.existsSync(path.join(f.store(), 'sidecar/envoy.yaml'))).toBe(false);
+    expect(holding(f.root, f.values.gh)).toEqual([]);
+  });
+
   test('a host name longer than 64 characters still renders', async () => {
     const f = fixture();
     const host = 'my-very-long-function-name-abcdef1234567.lambda-url.eu-central-1.on.aws';

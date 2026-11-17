@@ -24,6 +24,13 @@ import {
 
 const APPLY = 'hermitd restart';
 
+/** A removed value must not outlive its command in a rendered sidecar config: re-render, or drop the config. */
+function scrub(store: string, project: string): void {
+  const config = path.join(store, 'sidecar', 'envoy.yaml');
+  if (!fs.existsSync(config)) return;
+  try { render(store, project); } catch { fs.rmSync(config, { force: true }); }
+}
+
 /** Read a value from the terminal with echo off; Enter ends it, Ctrl-C cancels. */
 function readHidden(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -90,13 +97,13 @@ export async function run(argv: string[], container = isContainer): Promise<obje
     const header = flagValue(args, '--header');
     const before = readBindings(store);
     const after = removeBindings(before, host, header);
-    if (after.length !== before.length) writeBindings(store, project, after);
+    if (after.length !== before.length) { writeBindings(store, project, after); scrub(store, project); }
     return { status: 'unmapped', host, removed: before.length - after.length, apply: APPLY };
   }
   if (sub === 'set' || sub === 'unset') {
     const name = args[0];
     if (!name || !validSecretName(name)) throw new Error('invalid_secret_name');
-    if (sub === 'unset') { deleteSecret(store, name); return { status: 'unset', secret: name, apply: APPLY }; }
+    if (sub === 'unset') { deleteSecret(store, name); scrub(store, project); return { status: 'unset', secret: name, apply: APPLY }; }
     const value = await readValue(name);
     if (!value) throw new Error('empty_value');
     if (!validText(value)) throw new Error('invalid_value');
