@@ -351,7 +351,7 @@ case "$CMD" in
     _refuse_if_host_tmux_owner
     # `hermitd start --build` builds here: check the hook before the new image replaces the container.
     if [ "$UP_BUILD" = true ]; then
-      (cd "$PROJECT_DIR" && _dc build) || { echo "[hermit] Image build failed: old container still running, no changes applied." >&2; exit 1; }
+      (cd "$PROJECT_DIR" && _dc build) || { echo "[hermit] Image build failed: no changes applied." >&2; exit 1; }
       _require_build_hook_in_image
     fi
     echo "[hermit] Starting Docker container..."
