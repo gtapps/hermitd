@@ -2639,3 +2639,39 @@ for (const mode of ['unclean', 'clean', 'stale-error']) test(`boot routine cause
   stampInterrupted('.hermit', cause);
   expect(Object.values(readUnfinished('.hermit'))[0]).toMatchObject({ state: 'interrupted', cause: mode === 'unclean' ? 'unclean' : 'planned' });
 });
+
+describe('managed image bypass lock', () => {
+  for (const [file, mode, blocked] of [
+    ['locked', 'bypassPermissions', true],
+    ['locked', 'auto', false],
+    ['missing', 'bypassPermissions', false],
+    ['invalid', 'bypassPermissions', false],
+    ['unlocked', 'bypassPermissions', false],
+  ] as const) {
+    test(`${file} image with ${mode}`, async () => {
+      const managedSettingsPath = path.join(tmpdir, 'hermitd-security.json');
+      if (file !== 'missing') fs.writeFileSync(managedSettingsPath, file === 'invalid' ? '{' : JSON.stringify({
+        permissions: file === 'locked' ? { disableBypassPermissionsMode: 'disable' } : {},
+      }));
+      const proc = Bun.spawn({
+        cmd: [process.execPath, '-e', `
+          import { buildClaudeCommand } from ${JSON.stringify(HERMIT_START_TS)};
+          const cmd = buildClaudeCommand({ permission_mode: ${JSON.stringify(mode)} }, { bun: true },
+            { managedSettingsPath: ${JSON.stringify(managedSettingsPath)} });
+          console.log(JSON.stringify(cmd));
+        `],
+        cwd: tmpdir,
+        env: { ...process.env, container: 'docker' },
+        stdout: 'pipe', stderr: 'pipe',
+      });
+      const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+      expect(err).toBe('');
+      expect(code).toBe(blocked ? 1 : 0);
+      if (blocked) {
+        expect(out).toContain('[hermit] The image locks bypass mode');
+        expect(out).toContain('hermitd restart --build');
+        expect(out).not.toContain('--dangerously-skip-permissions');
+      } else expect(out).toContain(mode === 'auto' ? '--permission-mode' : '--dangerously-skip-permissions');
+    });
+  }
+});

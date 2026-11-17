@@ -32,6 +32,8 @@ RUN userdel -r ubuntu 2>/dev/null; \
 
 {{CHANNEL_ALLOWLIST_BLOCK}}
 
+{{MANAGED_CEILING_BLOCK}}
+
 USER claude
 
 # Pre-create the config dirs so named volumes inherit claude ownership on first mount

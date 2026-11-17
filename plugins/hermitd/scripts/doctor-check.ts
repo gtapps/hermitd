@@ -705,14 +705,23 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
 // moved to bypass is running with no guard at all on the very commands the seed
 // named. `deny hardened` is the fix — the deny array is enforced in every mode.
 // Read-only: this check never rewrites the settings file.
-function checkPermissionRules(p: DoctorPaths = PATHS) {
+function checkPermissionRules(p: DoctorPaths = PATHS, options: { container?: boolean; managedSettingsPath?: string } = {}) {
   const id = 'permission-rules';
   try {
     const read = readConfigOrCovered(id, p);
     if ('covered' in read) return read.covered;
     const mode = read.config.permission_mode;
+    const managedWarning = (() => {
+      if (!(options.container ?? isContainer()) || read.config.docker?.security?.managed_ceiling === false) return null;
+      const file = options.managedSettingsPath ?? '/etc/claude-code/managed-settings.d/hermitd-security.json';
+      if (!fs.existsSync(file)) return { id, status: 'warn', detail: 'deny floor missing; rebuild with hermitd update' };
+      if (mode !== 'bypassPermissions' && readJson(file)?.permissions?.disableBypassPermissionsMode !== 'disable') {
+        return { id, status: 'warn', detail: 'bypass lock missing; rebuild to apply' };
+      }
+      return null;
+    })();
     if (mode !== 'bypassPermissions') {
-      return { id, status: 'ok', detail: `permission_mode ${mode ? `"${mode}"` : 'unset'} enforces ask rules` };
+      return managedWarning ?? { id, status: 'ok', detail: `permission_mode ${mode ? `"${mode}"` : 'unset'} enforces ask rules` };
     }
 
     // Both project scopes, not the first that exists: Claude Code unions
@@ -734,7 +743,7 @@ function checkPermissionRules(p: DoctorPaths = PATHS) {
           deny: Array.isArray(perms.deny) ? (perms.deny as string[]) : [],
         };
       });
-    if (scopes.length === 0) return { id, status: 'ok', detail: 'no settings file to carry permission rules' };
+    if (scopes.length === 0) return managedWarning ?? { id, status: 'ok', detail: 'no settings file to carry permission rules' };
 
     // An unparseable scope makes the posture unknowable, and no other check reads
     // these files — so say so rather than reporting the rules it could parse as ok.
@@ -753,7 +762,7 @@ function checkPermissionRules(p: DoctorPaths = PATHS) {
 
     const names = scopes.map(s => path.basename(s.file)).join(' + ');
     if (carrying.length === 0) {
-      return { id, status: 'ok', detail: `no seeded ask rules left inert in ${names}` };
+      return managedWarning ?? { id, status: 'ok', detail: `no seeded ask rules left inert in ${names}` };
     }
     const count = new Set(carrying.flatMap(s => s.inert)).size;
     const { target } = readTargetState(p.hermitDir, { core_scope: null, target: 'local' });

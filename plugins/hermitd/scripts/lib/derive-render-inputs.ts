@@ -42,7 +42,11 @@ export function deriveRenderInputs(configPath: string): Inputs | null {
   const gitIdentityMount = config.docker.git_identity_mount ?? true;
   if (typeof gitIdentityMount !== 'boolean') return null;
 
+  const managedCeiling = config.docker.security?.managed_ceiling;
+  if (managedCeiling !== undefined && typeof managedCeiling !== 'boolean') return null;
+
   return {
+    managedCeiling: managedCeiling === false ? false : { bypassLock: config.permission_mode !== 'bypassPermissions' },
     packages: [...packages],
     channels: { envLines, volumeLines },
     // Built-in channels boot from claude-plugins-official whatever their config says (hermitd-start).

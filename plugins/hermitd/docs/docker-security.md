@@ -31,6 +31,9 @@ DNS enforce mode limits browser name lookups to the allowlist. It does not conta
 
 ## Documented limitations
 
+Images also carry [a managed deny floor](security.md#managed-deny-floor-in-docker) at `/etc/claude-code/managed-settings.d/hermitd-security.json`, separate from the channel drop-in: never-allowed seed rules plus a bypass lock unless config opts into bypass. It is a deny floor the agent cannot edit from inside the running container, but the agent's user can still write image build inputs and the `claude` binary to stage changes for the next rebuild or start. Protected `docker.security.managed_ceiling: false` plus a rebuild omits it; switching to `bypassPermissions` needs `hermitd restart --build`. Organization server-managed settings outrank local files and can cause the drop-in to be skipped; `/status` and `claude doctor` name the source in force.
+
+
 The wizard makes the container *meaningfully harder to abuse*. It does not make it bulletproof. Operators should know the gaps:
 
 - **Public-IP egress is unconstrained.** A compromised process can still `connect()` to a hardcoded public IP and skip DNS entirely. The DNS policy makes off-the-shelf C2 / exfil that uses domains harder, but doesn't close direct-IP egress. v1.1 may add nftset-driven IP allowlisting (dnsmasq populates an `nftset` of resolved-and-allowed IPs; nftables defaults to deny on output).

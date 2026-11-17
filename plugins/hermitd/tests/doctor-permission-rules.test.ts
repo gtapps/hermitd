@@ -34,7 +34,7 @@ function scenario({ mode, local, project, target }: Fixture) {
   if (project !== undefined) writeSettings('settings.json', project);
 
   return {
-    result: checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT)),
+    result: checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT), { container: false }),
     dir,
   };
 }
@@ -114,8 +114,44 @@ describe('doctor permission-rules check', () => {
       JSON.stringify({ permission_mode: 'bypassPermissions' }),
     );
     fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{"permissions":');
-    const result = checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT));
+    const result = checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT), { container: false });
     expect(result.status).toBe('warn');
     expect(result.detail).toContain('unparseable');
+  });
+});
+
+describe('container managed deny floor', () => {
+  for (const [file, mode, enabled, container, detail] of [
+    ['missing', 'auto', true, true, 'deny floor missing; rebuild with hermitd update'],
+    ['missing', 'bypassPermissions', true, true, 'deny floor missing'],
+    ['unlocked', 'auto', true, true, 'bypass lock missing; rebuild to apply'],
+    ['invalid', 'auto', true, true, 'bypass lock missing'],
+    ['locked', 'auto', true, true, null],
+    ['unlocked', 'bypassPermissions', true, true, null],
+    ['missing', 'auto', false, true, null],
+    ['missing', 'auto', true, false, null],
+  ] as const) {
+    test(`${file}, ${mode}, enabled=${enabled}, container=${container}`, () => {
+      const { dir } = scenario({ mode });
+      fs.writeFileSync(path.join(dir, '.hermit/config.json'), JSON.stringify({
+        permission_mode: mode, docker: { security: { managed_ceiling: enabled } },
+      }));
+      const managedSettingsPath = path.join(dir, 'hermitd-security.json');
+      if (file !== 'missing') fs.writeFileSync(managedSettingsPath, file === 'invalid' ? '{' : JSON.stringify({
+        permissions: file === 'locked' ? { disableBypassPermissionsMode: 'disable' } : {},
+      }));
+      const result = checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT), { container, managedSettingsPath });
+      expect(result.status).toBe(detail ? 'warn' : 'ok');
+      if (detail) expect(result.detail).toContain(detail);
+    });
+  }
+
+  test('existing bypass ask warning takes priority over the missing floor', () => {
+    const { dir } = scenario({ mode: 'bypassPermissions', local: standard });
+    const result = checkPermissionRules(resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT), {
+      container: true, managedSettingsPath: path.join(dir, 'missing.json'),
+    });
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('seeded ask rules never fire');
   });
 });

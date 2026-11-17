@@ -225,6 +225,7 @@ describe('render-docker-templates.ts', () => {
       networkMode: 'host' as const,
       gitIdentityMount: false,
       fleetMesh: true,
+      managedCeiling: { bypassLock: true },
     };
     await render(dir, input);
     const configPath = path.join(dir, 'config.json');
@@ -446,4 +447,44 @@ test('a channel key that is not a shell identifier renders without state-dir wir
   const derived = deriveRenderInputs(configPath);
   expect(derived?.channels).toEqual({ envLines: [], volumeLines: [] });
   expect(derived?.channelPlugins).toEqual([{ marketplace: 'claude-plugins-official', plugin: 'my-chat' }]);
+});
+
+test('managed ceiling derivation defaults on, follows bypass mode, and validates its leaf', () => {
+  const configPath = path.join(freshDir(), 'config.json');
+  for (const [security, permission_mode, expected] of [
+    [undefined, undefined, { bypassLock: true }],
+    [{ network: { enabled: true } }, 'auto', { bypassLock: true }],
+    [{ managed_ceiling: true }, 'bypassPermissions', { bypassLock: false }],
+    [{ managed_ceiling: false }, undefined, false],
+    [{ managed_ceiling: 'false' }, undefined, null],
+    [{ managed_ceiling: null }, undefined, null],
+  ] as const) {
+    fs.writeFileSync(configPath, JSON.stringify({ docker: { packages: [], security }, channels: {}, permission_mode }));
+    const inputs = deriveRenderInputs(configPath);
+    if (expected === null) expect(inputs).toBeNull();
+    else expect(inputs?.managedCeiling).toEqual(expected);
+  }
+});
+
+test('managed security drop-in contains the seed deny floor and conditional bypass lock', () => {
+  const templates = {
+    dockerfile: fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/docker/Dockerfile.hermit.template'), 'utf8'),
+    compose: fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/docker/docker-compose.hermit.yml.template'), 'utf8'),
+  };
+  const deny = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/deny-patterns.json'), 'utf8')).deny;
+  const channelPlugins = [{ marketplace: 'custom-market', plugin: 'custom-plugin' }];
+  for (const managedCeiling of [undefined, { bypassLock: true }, { bypassLock: false }, false] as const) {
+    const df = renderSources({ ...BASE_INPUT, managedCeiling, channelPlugins }, templates).dockerfile;
+    expect(df).toContain(JSON.stringify({ channelsEnabled: true, allowedChannelPlugins: channelPlugins }));
+    if (managedCeiling === false) {
+      expect(df).not.toContain('hermitd-security.json');
+      continue;
+    }
+    const line = df.split('\n').find(line => line.includes('hermitd-security.json'))!;
+    const policy = JSON.parse(line.match(/printf '%s\\n' '(.*?)' >/)![1]);
+    expect(policy.permissions.deny).toEqual(deny);
+    if (managedCeiling?.bypassLock === false) expect(policy.permissions).not.toHaveProperty('disableBypassPermissionsMode');
+    else expect(policy.permissions.disableBypassPermissionsMode).toBe('disable');
+    expect(df.indexOf('hermitd-security.json')).toBeLessThan(df.indexOf('USER claude'));
+  }
 });

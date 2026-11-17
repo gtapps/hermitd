@@ -8,7 +8,7 @@ Safety model for autonomous hermit agents: seeded permission rules, defense in d
 
 ## Seeded permission rules
 
-Native Claude Code `permissions.deny` / `permissions.ask` entries, seeded once at hatch (or `/docker-setup`) from `state-templates/deny-patterns.json`. Claude Code's engine owns runtime (deny > ask > allow). After the seed, the operator owns the settings file: evolve adds only ask entries not previously offered, tracked in `.hermit/state/ask-offered.json`, so removed entries stay removed; upgrades from before 1.4.24 re-add removed entries once before stamping the record, and evolve never removes anything; nothing re-applies or reconciles on boot.
+Native Claude Code `permissions.deny` / `permissions.ask` entries, seeded once at hatch (or `/docker-setup`) from `state-templates/deny-patterns.json`. Claude Code's engine owns runtime (deny > ask > allow). After the seed, the operator owns the settings file: evolve adds only ask entries not previously offered, tracked in `.hermit/state/ask-offered.json`, so removed entries stay removed in project settings; Docker images still enforce the never-allowed class through the managed deny floor described below; upgrades from before 1.4.24 re-add removed entries once before stamping the record, and evolve never removes anything; nothing re-applies or reconciles on boot.
 
 Hatch Step 9 offers three tiers:
 
@@ -19,6 +19,18 @@ Hatch Step 9 offers three tiers:
 | **Skip** | nothing seeded. Add later by editing the settings file, or run `apply-settings.ts <file> deny standard` from a terminal |
 
 `permission_mode: dontAsk` turns ask entries into denies (Claude Code auto-denies anything that would have prompted). `allowManagedPermissionRulesOnly` (org-managed settings) restricts which permission rules a project file may add; a managed policy that forbids project-local rules will ignore this seed. Under `bypassPermissions` ask entries are not enforced at all; `/hermit-doctor`'s `permission-rules` check warns, and `apply-settings.ts <file> deny hardened` restores hard blocks.
+
+### Managed deny floor in Docker
+
+Docker images carry a deny floor the agent cannot edit from inside the running container: root-owned, mode 644 `/etc/claude-code/managed-settings.d/hermitd-security.json`. It holds the never-allowed seed `permissions.deny` array on every hatch tier, separate from the conditional `hermitd-channels.json` approval drop-in. It also sets `permissions.disableBypassPermissionsMode: "disable"` unless config opts into `permission_mode: bypassPermissions`.
+
+Changing to `bypassPermissions` needs `hermitd restart --build`; start refuses bypass against an image that still carries the lock. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
+
+The agent's user can still write the image build inputs and the `claude` binary, so a change can be staged for the next rebuild or start. Organization server-managed settings outrank local files and can cause this drop-in to be skipped. Check `/status` and `claude doctor` for the settings source in force.
+
+### Tmux installs
+
+For tmux, the operator may use `sudo` to create the same root-owned, mode 644 file under `/etc/claude-code/managed-settings.d/`, with `permissions.deny` copied from the seed and the bypass lock if desired. This applies to every Claude Code session on the machine. The [native sandbox](https://code.claude.com/docs/en/sandboxing) is the stronger option there; plugin integration is tracked in [#1461](https://github.com/gtapps/hermitd/issues/1461).
 
 Two classes (canonical source: `state-templates/deny-patterns.json`):
 
@@ -176,6 +188,7 @@ Thread history handed to a replacement worker is background content and cannot g
 | Layer               | Where           | Enforcement           |
 | ------------------- | --------------- | --------------------- |
 | Seeded permission rules | `settings.json` | Mechanical*       |
+| Managed Docker deny floor | `/etc/claude-code/managed-settings.d/hermitd-security.json` | Root-owned never-allowed rules and conditional bypass lock; applies after rebuild |
 | Bash sandbox        | `settings.json` (`sandbox.*`) | Kernel-enforced (`bwrap`); Claude Code's own native sandbox — hermit does not configure it, see [Bash Sandbox](#bash-sandbox) below |
 | Agent-level rules   | `agents/*.md`   | Instruction-following |
 | Hook enforcement    | `hooks.json` + resident launch overlay | Mechanical            |
@@ -411,6 +424,9 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 ---
 
 ### Known limitations
+
+- The managed Docker deny floor protects the running container's policy file. The agent can still write image build inputs and the `claude` binary to stage changes for a later rebuild or start; organization server-managed settings can also supersede local drop-ins.
+
 
 - Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `browser.admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. Authenticated requests must also match `browser.host:browser.port`; state-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.
 - Text pasted into the takeover keyboard strip is typed into the remote browser as key presses, so the agent sees it as it would a typed password. The viewer never sends clipboard data, and copy out stays off (`-SendCutText=0`).

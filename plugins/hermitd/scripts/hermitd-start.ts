@@ -749,7 +749,7 @@ function writeSystemPrompts(residentName: string): void {
 }
 
 /** Build the claude launch command from config. */
-function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string }): string[] {
+function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string; managedSettingsPath?: string }): string[] {
   // Claude Code watches new skills live only when this directory exists at launch.
   fs.mkdirSync(path.join(process.cwd(), '.claude', 'skills'), { recursive: true });
   const cmd = ['claude'];
@@ -890,6 +890,10 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string 
 
   const mode = 'permission_mode' in config ? config.permission_mode : 'auto';
   if (mode === 'bypassPermissions') {
+    if (isContainer() && readJson(opts?.managedSettingsPath ?? '/etc/claude-code/managed-settings.d/hermitd-security.json')?.permissions?.disableBypassPermissionsMode === 'disable') {
+      console.log('[hermit] The image locks bypass mode; hermitd restart --build applies the config change.');
+      process.exit(1);
+    }
     if (!isContainer()) {
       console.log('[hermit] WARNING: bypassPermissions is intended for containers/VMs only.');
       console.log('[hermit] You appear to be running on a host machine.');

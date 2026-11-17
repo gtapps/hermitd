@@ -7,6 +7,7 @@ import path from 'node:path';
 import { renderTemplate } from './lib/render-template';
 import { emitJson, exitError } from './lib/cli';
 import { writeFileAtomic } from './lib/md-write';
+import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { deriveRenderInputs } from './lib/derive-render-inputs';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
@@ -19,6 +20,7 @@ export interface Channels {
   volumeLines?: string[];
 }
 export interface Inputs {
+  managedCeiling?: false | { bypassLock: boolean };
   packages?: string[];
   channels?: Channels;
   channelPlugins?: Array<{ marketplace: string; plugin: string }>;
@@ -83,6 +85,18 @@ function channelAllowlistBlock(plugins: NonNullable<Inputs['channelPlugins']>): 
   return `RUN mkdir -p /etc/claude-code/managed-settings.d && printf '%s\\n' ${quoted} > /etc/claude-code/managed-settings.d/hermitd-channels.json`;
 }
 
+function managedCeilingBlock(ceiling: Inputs['managedCeiling']): string {
+  if (ceiling === false) return '';
+  const policy = JSON.stringify({
+    permissions: {
+      deny: readSeedPatterns(PLUGIN_ROOT).deny,
+      ...((ceiling?.bypassLock ?? true) ? { disableBypassPermissionsMode: 'disable' } : {}),
+    },
+  });
+  const quoted = "'" + policy.replaceAll("'", "'\\''") + "'";
+  return `RUN mkdir -p /etc/claude-code/managed-settings.d && printf '%s\\n' ${quoted} > /etc/claude-code/managed-settings.d/hermitd-security.json && chmod 644 /etc/claude-code/managed-settings.d/hermitd-security.json`;
+}
+
 /** Build every rendered file from supplied template sources. */
 export function renderSources(
   inputs: Inputs,
@@ -126,6 +140,7 @@ export function renderSources(
     PACKAGES_BLOCK: [packagesBlock(packages), browserBlock(),
       '# --- transcription ---\nARG HERMIT_TRANSCRIPTION=1\nRUN if [ "$HERMIT_TRANSCRIPTION" = 1 ]; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r /var/lib/apt/lists/*; fi',
     ].filter(Boolean).join('\n\n'),
+    MANAGED_CEILING_BLOCK: managedCeilingBlock(inputs.managedCeiling),
     CHANNEL_ALLOWLIST_BLOCK: channelAllowlistBlock(inputs.channelPlugins ?? []),
   });
 
