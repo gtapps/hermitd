@@ -223,21 +223,6 @@ _warn_if_entrypoint_stale() {
   return 0
 }
 
-# The generated Dockerfile copies the operator build hook through an optional glob,
-# so a build context that drops it (an allowlist .dockerignore) skips the hook with
-# no build error. Fail open on any docker error; stop only on a confirmed absence.
-_require_build_hook_in_image() {
-  [ -f "$PROJECT_DIR/docker-build.hermit-local.sh" ] || return 0
-  local image rc=0
-  image="$(cd "$PROJECT_DIR" && _dc config --images "$SERVICE" 2>/dev/null | head -1 || true)"
-  [ -n "$image" ] || return 0
-  docker run --rm --network none --entrypoint test "$image" -f /opt/hermit-build/docker-build.hermit-local.sh 2>/dev/null || rc=$?
-  [ "$rc" = 1 ] || return 0
-  echo "[hermit] The image build skipped docker-build.hermit-local.sh: the build context excludes it." >&2
-  echo "[hermit] Add !docker-build.hermit-local.sh to .dockerignore and rerun. The running container was not replaced." >&2
-  exit 1
-}
-
 # Guard a subcommand whose backing script shipped in a specific core version. A
 # container whose marketplace clone predates that version can't run it — surface
 # the version skew and point at `update`, instead of letting the in-container
@@ -333,12 +318,9 @@ case "$CMD" in
     ;;
   up)
     UP_ARGS=()
-    UP_BUILD=false
     for arg in "$@"; do
       if [ "$arg" = "--resume" ]; then
         export HERMIT_RESUME=1
-      elif [ "$arg" = "--build" ]; then
-        UP_BUILD=true
       else
         UP_ARGS+=("$arg")
       fi
@@ -349,11 +331,6 @@ case "$CMD" in
     _render_docker
     _validate_compose
     _refuse_if_host_tmux_owner
-    # `hermitd start --build` builds here: check the hook before the new image replaces the container.
-    if [ "$UP_BUILD" = true ]; then
-      (cd "$PROJECT_DIR" && _dc build) || { echo "[hermit] Image build failed: no changes applied." >&2; exit 1; }
-      _require_build_hook_in_image
-    fi
     echo "[hermit] Starting Docker container..."
     # Clear any stale conflict marker from a prior inert boot before starting, so
     # the poll below only trips on a marker THIS boot's entrypoint writes.
@@ -571,7 +548,6 @@ case "$CMD" in
         echo "[hermit] Image build failed: old container still running, no changes applied." >&2
         exit 1
       fi
-      _require_build_hook_in_image
     fi
     echo "[hermit] Restarting container..."
     cd "$PROJECT_DIR" && _dc down && _dc up -d
@@ -846,7 +822,6 @@ case "$CMD" in
         echo "[hermit] Image build failed — old container still running, no changes applied." >&2
         exit 1
       fi
-      _require_build_hook_in_image
       IMAGE_BUILT=true
       # The rebuilt image's Claude Code meets the held plugins' ranges. A one-off container
       # shares the config volume, so the pins move now and boot runs the pending evolve.
