@@ -5509,9 +5509,9 @@ describe('Docker lifecycle renders the credential proxy from the host-only store
     for (const name of ['sleep', 'docker']) fs.chmodSync(path.join(stub, name), 0o755);
     const configDir = path.join(proj, '..', path.basename(proj) + '-config');
     const run = (args: string[]) => runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
-      args, cwd: proj, env: { PATH: `${stub}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: configDir },
+      args, cwd: proj, env: { PATH: `${stub}:${process.env.PATH}`, HOME: configDir },
     });
-    const store = () => storeDir(proj, configDir);
+    const store = () => storeDir(proj, path.join(configDir, '.claude'));
     const cleanup = () => { wd.cleanup(); fs.rmSync(configDir, { recursive: true, force: true }); };
     return { proj, run, store, cleanup, calls: () => fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8') : '' };
   }

@@ -191,7 +191,7 @@ hermitd restart
 
 After mapping a credential, remove it from the project `.env`. The agent's tools keep sending the header with any placeholder value, and the proxy replaces it.
 
-The map, the values and the proxy's certificate authority live in a host-only folder under your Claude Code config folder (`~/.claude/hermitd/credproxy/`), outside the project. The `hermitd credproxy` commands run only from the installed plugin, never from a file in the project. Certificates are made with the host's `openssl`.
+The map, the values and the proxy's certificate authority live in a host-only folder, `~/.claude/hermitd/credproxy/` (always under your home folder, whatever `CLAUDE_CONFIG_DIR` says), outside the project. The `hermitd credproxy` commands run only from the installed plugin, never from a file in the project. Certificates are made with the host's `openssl`.
 
 In DNS enforce mode a mapped host must also be on the allowlist; the wizard offers mapped hosts there, and `/hermitd:hermit-doctor` warns about any that are missing.
 

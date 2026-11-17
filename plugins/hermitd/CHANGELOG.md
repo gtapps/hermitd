@@ -6,7 +6,7 @@
 
 - Docker images carry a root-owned never-allowed deny floor and a bypass lock unless the agent config opts into bypass mode.
 - `/docker-security` offers the hosts of remote servers in the project `.mcp.json` as allowlist entries.
-- Docker agents can keep API credentials for mapped hosts outside the container through an opt-in credential proxy in `/docker-security`, managed with `hermitd credproxy`.
+- Docker agents can keep API credentials for mapped hosts outside the container through a credential proxy in `/docker-security`, managed with `hermitd credproxy`; it is opt-in because the operator maps each host and stores its credential from a host terminal.
 
 ### Changed
 

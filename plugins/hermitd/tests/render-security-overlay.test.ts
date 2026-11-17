@@ -324,9 +324,10 @@ describe('credential proxy sidecar', () => {
 
   test('the render subcommand mounts this project\'s store and prepares its folders', async () => {
     const dir = freshDir();
-    const config = path.join(freshDir(), 'config');
+    const home = freshDir();
+    const config = path.join(home, '.claude');
     const r = await runScript('render-security-overlay.ts', {
-      args: ['render', dir], stdin: JSON.stringify({ toggles: { credproxy: { enabled: true } } }), env: { CLAUDE_CONFIG_DIR: config },
+      args: ['render', dir], stdin: JSON.stringify({ toggles: { credproxy: { enabled: true } } }), env: { HOME: home },
     });
     expect(r.exitCode).toBe(0);
     const store = storeDir(dir, config);

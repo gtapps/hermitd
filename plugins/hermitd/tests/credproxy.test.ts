@@ -16,8 +16,8 @@ function fixture(docker = true) {
   fs.mkdirSync(path.join(project, '.hermit'), { recursive: true });
   fs.writeFileSync(path.join(project, '.hermit/config.json'), '{}');
   if (docker) fs.writeFileSync(path.join(project, 'docker-compose.hermit.yml'), 'services: {}\n');
-  const config = path.join(root, 'config');
-  const env = { ...process.env, CLAUDE_CONFIG_DIR: config, container: '' };
+  const config = path.join(root, 'home', '.claude');
+  const env = { ...process.env, HOME: path.join(root, 'home'), container: '' };
   const run = async (sub: string, args: string[] = [], options: { stdin?: string; env?: Record<string, string> } = {}) => {
     const proc = Bun.spawn([process.execPath, SCRIPT, sub, project, ...args], { cwd: '/', env: { ...env, ...options.env }, stdin: Buffer.from(options.stdin ?? ''), stdout: 'pipe', stderr: 'pipe' });
     const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -167,6 +167,9 @@ describe('render', () => {
     expect(config).not.toContain('admin');
     expect(fs.statSync(path.join(store, 'sidecar/envoy.yaml')).mode & 0o777).toBe(0o600);
     expect(fs.statSync(path.join(store, 'ca.key')).mode & 0o777).toBe(0o600);
+    // The agent's container user may not be the host user.
+    expect(fs.statSync(path.join(store, 'agent/proxy.json')).mode & 0o777).toBe(0o644);
+    expect(fs.statSync(path.join(store, 'agent/ca.pem')).mode & 0o777).toBe(0o644);
     // Secret values and the authority's key stay in their own files.
     for (const value of Object.values(f.values)) {
       expect(holding(f.root, value).map(file => path.relative(store, file)).sort()).toEqual(['secrets/' + Object.entries(f.values).find(([, v]) => v === value)![0], 'sidecar/envoy.yaml'].sort());
@@ -199,6 +202,16 @@ describe('render', () => {
     expect(r.code).toBe(0);
     expect(r.json.missing_values).toEqual([{ host: 'api.example.com', header: 'DD-APPLICATION-KEY', secret: 'dd_app' }]);
     expect(fs.readFileSync(path.join(f.store(), 'sidecar/envoy.yaml'), 'utf8')).not.toContain('DD-APPLICATION-KEY');
+  });
+
+  test('a host name longer than 64 characters still renders', async () => {
+    const f = fixture();
+    const host = 'my-very-long-function-name-abcdef1234567.lambda-url.eu-central-1.on.aws';
+    await f.run('map', [host, '--header', 'X-Key', '--secret', 'k']);
+    await f.run('set', ['k'], { stdin: 'v' });
+    const r = await f.run('render');
+    expect(r.code).toBe(0);
+    expect(r.json.hosts).toEqual([host]);
   });
 
   test('a missing openssl fails and leaves the previous set untouched', async () => {

@@ -171,7 +171,7 @@ _render_docker() {
     *'"reason":"newer_renderer"'*) echo '[hermit] Docker files use a newer renderer; update the host plugin.' ;;
   esac
   # Credential proxy files come from the host-only store, never from project config; run from
-  # outside the project so bun reads no project file. No bindings: nothing runs or prints.
+  # outside the project so bun reads no project file. No bindings: the render writes nothing.
   local here
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if ! result=$(cd / && bun "$here/credproxy.ts" render "$PROJECT_DIR"); then

@@ -33,7 +33,9 @@ export const validSecretName = (name: string) => SECRET_RE.test(name ?? '');
 export const validText = (text: string) => !CONTROL_RE.test(text);
 
 /** The store for a project: named from its real path plus a hash of that path, so punctuation never collides. */
-export function storeDir(project: string, configRoot = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')): string {
+// Fixed under the home folder, never CLAUDE_CONFIG_DIR: the wizard's session, the operator's shell and
+// a project's runtime.config_dir can each carry a different value, and all of them must name one store.
+export function storeDir(project: string, configRoot = path.join(os.homedir(), '.claude')): string {
   const real = fs.realpathSync(project);
   const slug = real.replace(/[^a-zA-Z0-9]/g, '-').slice(-100);
   return path.join(path.resolve(configRoot), 'hermitd', 'credproxy', `${slug}-${sha256(real).slice(0, 16)}`);
@@ -225,11 +227,12 @@ basicConstraints = critical,CA:TRUE
 keyUsage = critical,keyCertSign,cRLSign
 subjectKeyIdentifier = hash
 `;
+// A fixed CN: X.509 caps it at 64 characters, and clients match the SAN list anyway.
 const leafConfig = (hosts: string[]) => `[req]
 distinguished_name = dn
 prompt = no
 [dn]
-CN = ${hosts[0]}
+CN = hermitd credential proxy
 [v3_leaf]
 basicConstraints = critical,CA:FALSE
 keyUsage = critical,digitalSignature,keyEncipherment
@@ -325,7 +328,8 @@ export function render(store: string, project: string): RenderResult {
     }
     fs.writeFileSync(path.join(sidecar, 'envoy.yaml'), JSON.stringify(envoyConfig(mapped), null, 2) + '\n', { mode: 0o600 });
     const list = mapped.map(m => ({ host: m.host, headers: m.headers.map(h => h.header) }));
-    fs.writeFileSync(path.join(agent, 'proxy.json'), JSON.stringify({ address: PROXY_ADDRESS, hosts: list }, null, 2) + '\n', { mode: 0o644 });
+    fs.writeFileSync(path.join(agent, 'proxy.json'), JSON.stringify({ address: PROXY_ADDRESS, hosts: list }, null, 2) + '\n');
+    fs.chmodSync(path.join(agent, 'proxy.json'), 0o644); // the 077 umask above would leave it 0600
     for (const name of commits) fs.renameSync(path.join(keys, name), path.join(store, name));
     replaceFolder(sidecar, path.join(store, 'sidecar'), 0o700);
     replaceFolder(agent, path.join(store, 'agent'), 0o755);
