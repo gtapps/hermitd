@@ -38,14 +38,14 @@ The wizard makes the container *meaningfully harder to abuse*. It does not make 
 - **Log-only mode does not constrain public egress.** Only enforce mode drops connections. Log-only shows name lookups, not connections, so a tool that connects to a literal IP never appears in the log and fails after the switch to enforce until that IP gets a carve-out.
 - **Enforce mode filters by IP, not by site.** dnsmasq adds every address an allowlisted name resolves to the firewall's allowed set, so another site served from the same CDN address is reachable too. The set grows while the sidecar runs, as allowlisted names resolve to new addresses, and clears when it restarts.
 - **Allowed hosts are still exfiltration routes.** GitHub, npm and PyPI are on every allowlist and accept uploads, as do channel platforms. The allowlist narrows where data can go; it does not stop data leaving through an allowed host.
-- **The rule files are read-only only inside the container.** The netguard Dockerfile and entrypoint, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild.
+- **The rules are built into the netguard image, but their sources stay writable.** `nftables.conf` and `dnsmasq.allowlist` are copied into the image at build, so an edit inside the running container changes nothing until the operator rebuilds (`hermitd restart --build`, `hermitd update`, or the wizard). The files under `.hermit/docker/`, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild. `docker-compose.override.yml` is applied after the security overlay and is also writable, so a change there applies at the next start. Blocking shell writes to these paths is Claude Code sandbox filesystem work ([#1461](https://github.com/gtapps/hermitd/issues/1461)).
 - **Shell-command filtering by host is Claude Code's own sandbox.** For a per-host filter on shell commands and web fetches, with a denylist inside broad wildcards, use Claude Code's [sandbox network settings](https://code.claude.com/docs/en/sandboxing) (`sandbox.network.allowedDomains`, `deniedDomains`, and the managed `allowManagedDomainsOnly`). They cover shell commands only; netguard covers every process in the container.
 - **Docker's default bridge (172.17.0.0/16) is dropped** by the LAN block — it sits inside `172.16.0.0/12`. Operators with adjacent Compose stacks must add carve-outs for the relevant bridge IPs (Prompt 1b "Extra LAN carve-outs").
 - **Compose service-name DNS doesn't work through dnsmasq** — Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the allowlist:
   ```
   server=/db/127.0.0.11
   ```
-  Edit `.hermit/docker/dnsmasq.allowlist`, then `hermitd-docker down && hermitd-docker up` (restarting only the sidecar leaves hermit with stale resolver state until hermit itself is bounced).
+  Edit `.hermit/docker/dnsmasq.allowlist`, then `hermitd restart --build` (the file is built into the netguard image).
 - **mDNS / `.local`** doesn't resolve through dnsmasq. Services must be referenced by IP address (with a LAN carve-out) rather than `.local` hostnames.
 - **Host-bound services unreachable in bridge+containment mode** — `localhost`/`127.0.0.1` on the host is only reachable when `network_mode: host`. Operators wanting both LAN containment AND host-bound access need to refactor their host service to bind on the bridge IP and add a carve-out for that IP.
 - **Sidecar crash isolates hermit** — because hermit shares hermit-netguard's network namespace, if the sidecar dies hermit loses *all* networking until you bring it back up. The sidecar has `restart: unless-stopped` and a fail-safe entrypoint (loads-rules-or-tail-stay-up rather than crash-loop), but a misconfigured `nftables.conf` can still strand hermit. If this happens, `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml logs hermit-netguard` will tell you what went wrong.
@@ -116,11 +116,11 @@ In **enforce mode**, the same command shows every query, and a denied name appea
    ```
    server=/example-vendor.com/1.1.1.1
    ```
-2. Restart hermit and the sidecar:
+2. Rebuild the netguard image, which carries the allowlist, and restart hermit and the sidecar together:
    ```
-   hermitd-docker down && hermitd-docker up
+   hermitd restart --build
    ```
-   (Restarting only `hermit-netguard` leaves `hermit` with stale resolver/conntrack state — DNS fails for all domains until hermit itself is bounced.)
+   (Restarting only `hermit-netguard` leaves `hermit` with stale resolver/conntrack state, and DNS fails for all domains until hermit itself is bounced.)
 3. When the log goes quiet, re-run `/docker-security` and switch from "Yes — recommended (log-only)" to "Yes — strict (enforce)".
 
 The wizard does not auto-promote blocked domains. Manual review keeps the trust boundary at the operator.
@@ -131,7 +131,7 @@ The wizard does not auto-promote blocked domains. Manual review keeps the trust 
 ```
 address=/internal-host.example/10.0.0.5
 ```
-— above the `address=/#/` catchall, then apply it with `hermitd-docker down && hermitd-docker up` (restarting `hermit-netguard` alone leaves `hermit` with stale resolver state). In enforce mode a public pinned IP also needs a carve-out, because pinned answers do not reach the firewall's allowed set. Resolution works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here — hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
+— above the `address=/#/` catchall, then apply it with `hermitd restart --build`. In enforce mode a public pinned IP also needs a carve-out, because pinned answers do not reach the firewall's allowed set. Resolution works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here — hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
 
 ## GitHub CLI authentication {#gh-cli-authentication}
 

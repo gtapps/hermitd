@@ -14,4 +14,10 @@ RUN apk add --no-cache nftables dnsmasq-dnssec-nftset
 COPY netguard-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# The rules ship inside the image, never as a mount from the project folder the
+# agent can write: a change takes effect only when the operator rebuilds, and
+# the rules always match the entrypoint that fills their address sets.
+COPY nftables.conf /etc/nftables.conf
+COPY dnsmasq.allowlist /etc/dnsmasq.allowlist
+
 ENTRYPOINT ["/entrypoint.sh"]

@@ -227,6 +227,7 @@ describe('render subcommand: egress enforcement', () => {
     expect(nft).toMatch(/^ {8}ip daddr @allow4 accept$/m);
     expect(nft).toMatch(/^ {8}ip6 daddr @allow6 accept$/m);
     expect(nft).toMatch(/^ {8}meta skuid 100 meta l4proto \{ tcp, udp \} th dport 53 accept$/m);
+    expect(nft).toMatch(/^ {8}icmpv6 type \{ nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit \} accept$/m);
     // Carve-outs accept before the default drop.
     expect(nft.indexOf('ip daddr 192.168.1.50 accept')).toBeLessThan(nft.indexOf('@allow4 accept'));
   });
@@ -261,15 +262,25 @@ describe('render subcommand: egress enforcement', () => {
     expect(allow).not.toContain('telegram.org');
   });
 
-  test('the agent service mounts the rendered rule files read-only', async () => {
+  test('rule files are image build inputs, never mounted from the project folder', async () => {
     const dir = freshDir();
     await renderOverlay(dir, LOG_ONLY);
     const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
-    expect(overlay.services.hermit.volumes).toEqual([
-      '${PWD}/docker-compose.security.yml:${PWD}/docker-compose.security.yml:ro',
-      '${PWD}/.hermit/docker/nftables.conf:${PWD}/.hermit/docker/nftables.conf:ro',
-      '${PWD}/.hermit/docker/dnsmasq.allowlist:${PWD}/.hermit/docker/dnsmasq.allowlist:ro',
-    ]);
+    expect(overlay.services['hermit-netguard'].volumes).toBeUndefined();
+    expect(overlay.services.hermit.volumes).toBeUndefined();
+    const dockerfile = fs.readFileSync(path.join(import.meta.dir, '..', 'state-templates', 'docker', 'security',
+      'Dockerfile.hermit-netguard.template'), 'utf8');
+    expect(dockerfile).toContain('COPY nftables.conf /etc/nftables.conf');
+    expect(dockerfile).toContain('COPY dnsmasq.allowlist /etc/dnsmasq.allowlist');
+  });
+
+  test('netguard logs are capped on a pinned json-file driver', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, LOG_ONLY);
+    const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
+    expect(overlay.services['hermit-netguard'].logging).toEqual({
+      driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' },
+    });
   });
 });
 
@@ -278,7 +289,8 @@ describe('mcp-hosts subcommand', () => {
     const dir = freshDir();
     fs.writeFileSync(path.join(dir, '.mcp.json'), JSON.stringify({ mcpServers: {
       linear: { type: 'http', url: 'https://mcp.linear.app/mcp' },
-      linear2: { type: 'sse', url: 'https://MCP.linear.app/sse' },
+      linear2: { type: 'sse', url: 'https://MCP.linear.app./sse' },
+      templated: { type: 'http', url: 'https://mcp.example.com:${PORT}/mcp' },
       local: { command: 'node', args: ['server.js'] },
       lan: { type: 'http', url: 'http://192.168.1.9:8080/mcp' },
       dev: { type: 'http', url: 'http://localhost:3000/mcp' },

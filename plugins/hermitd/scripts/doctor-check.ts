@@ -24,6 +24,7 @@ import { claudeStateFile } from './lib/setup-token';
 import { readRuntimeJson } from './lib/runtime';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { getEnabledChannels, isDict } from './lib/channel-config';
+import { featureDomains } from './lib/netguard-hosts';
 import { browserDeployment, browserEnabled, browserHostPlatform, browserHostPrerequisite, browserImageProbe, browserRuntimeMode, type BrowserPrerequisiteOptions } from './lib/browser-runtime';
 import { readiness, type ReadinessOptions } from './lib/transcription';
 import { isContainer, MANAGED_SECURITY_SETTINGS } from './lib/container';
@@ -602,19 +603,30 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
     const net = sec.network;
     const dnsMode = net?.enabled ? (net.dns_mode === 'enforce' ? 'enforce' : 'log-only') : null;
     const posture = `posture declared and overlay present${dnsMode ? ` (DNS ${dnsMode})` : ''}`;
-    // Enforce-mode rules rendered before IP filtering existed only filter names.
-    // The rule file sits in the project mount, so this runs in the container too.
+    // Enforce-mode rule drift: rules rendered before IP filtering existed only
+    // filter names, and a channel or transcription enabled after the last render
+    // has no hosts on the allowlist. The rendered files sit in the project mount,
+    // so this runs in the container too. Drift downgrades only an ok verdict, so
+    // the host checks below still surface.
+    let drift: string | null = null;
     if (dnsMode === 'enforce') {
-      let nft = '';
-      try { nft = fs.readFileSync(path.join(hermitDir, 'docker', 'nftables.conf'), 'utf8'); } catch {}
-      if (nft && !nft.includes('@allow4')) {
-        return {
+      const read = (file: string) => {
+        try { return fs.readFileSync(path.join(hermitDir, 'docker', file), 'utf8'); } catch { return ''; }
+      };
+      const nft = read('nftables.conf');
+      const allow = read('dnsmasq.allowlist');
+      const { channels, transcription } = featureDomains(config);
+      const missing = allow ? [...channels, ...transcription].filter((d) => !allow.includes(`server=/${d}/`)) : [];
+      if (nft && !nft.includes('@allow4')) drift = 'DNS enforce rules predate IP filtering, so connections to literal IPs still pass';
+      else if (missing.length) drift = `DNS allowlist lacks ${missing.join(', ')} for enabled features, so those connections are refused`;
+    }
+    const settled = (detail: string) => drift
+      ? {
           id: 'docker-security',
           status: 'warn',
-          detail: 'DNS enforce rules predate IP filtering, so connections to literal IPs still pass; ask your operator to re-run /docker-security from a terminal or the Claude app',
-        };
-      }
-    }
+          detail: `${drift}; ask your operator to re-run /docker-security from a terminal or the Claude app`,
+        }
+      : { id: 'docker-security', status: 'ok', detail };
 
     // Both declared and overlay present. The deep checks below need the docker CLI,
     // which does not exist inside the hermit container — verification is a host-side
@@ -624,17 +636,13 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
     // and stays 'docker' in the bind-mounted state dir the host reads, so keying off
     // it would silently disable the host-side checks for every dockerized hermit.
     if (isContainer()) {
-      return {
-        id: 'docker-security',
-        status: 'ok',
-        detail: `${posture} (in-container: compose verification runs on the host)`,
-      };
+      return settled(`${posture} (in-container: compose verification runs on the host)`);
     }
 
     // Both declared and overlay present — run deeper checks via subprocess.
     const baseCompose = path.join(projectRoot, 'docker-compose.hermit.yml');
     if (!fs.existsSync(baseCompose)) {
-      return { id: 'docker-security', status: 'ok', detail: posture };
+      return settled(posture);
     }
 
     let composeCfg: Json;
@@ -712,7 +720,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
       }
     }
 
-    return { id: 'docker-security', status: 'ok', detail: posture };
+    return settled(posture);
   } catch (e: any) {
     return { id: 'docker-security', status: 'fail', detail: `check failed: ${e.message}` };
   }

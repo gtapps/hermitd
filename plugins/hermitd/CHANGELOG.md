@@ -11,8 +11,9 @@
 
 - Netguard DNS enforce mode drops outbound connections to any address that no allowlisted name resolved, unless it is a carve-out, and logs every query.
 - The netguard allowlist includes channel hosts only for enabled channels and voice-note hosts only while transcription is enabled.
-- The agent's container sees `nftables.conf`, `dnsmasq.allowlist` and `docker-compose.security.yml` read-only, and `docker.security` is a protected config subtree.
-- Doctor's `docker-security` check names the DNS mode and warns when enforce-mode rules predate IP filtering.
+- Netguard's `nftables.conf` and `dnsmasq.allowlist` are built into its image instead of mounted from the project folder, so allowlist edits apply with `hermitd restart --build`; the sidecar's log is capped at 3 × 10 MB.
+- `docker.security` is a protected config subtree.
+- Doctor's `docker-security` check names the DNS mode and, in enforce mode, warns when the rules predate IP filtering or an enabled channel's or transcription's hosts are missing.
 
 ### Fixed
 

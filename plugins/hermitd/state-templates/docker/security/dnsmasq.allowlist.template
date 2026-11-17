@@ -13,10 +13,8 @@
 # server= name in this file returned, so a new server= line is the whole
 # change. A literal IP, or the IP behind an address= pin, needs a carve-out.
 #
-# To add a domain at runtime, edit this file in
-# .hermit/docker/dnsmasq.allowlist and run
-# `hermitd-docker down && hermitd-docker up`
-# (restart hermit-netguard alone leaves hermit with stale resolver state).
+# This file is built into the netguard image. To add a domain, edit
+# .hermit/docker/dnsmasq.allowlist on the host and run `hermitd restart --build`.
 
 listen-address=127.0.0.1
 no-hosts

@@ -45,19 +45,18 @@ import { spawnSync } from 'node:child_process';
 import { renderTemplate } from './lib/render-template';
 import { exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
-import { getEnabledChannels } from './lib/channel-config';
+import { featureDomains } from './lib/netguard-hosts';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const SECURITY_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'security');
 
 const DNSMASQ_UID = '100'; // Alpine dnsmasq's static UID — see docker-security SKILL step 6a.
 
-// Project-relative files `render` writes; with LAN containment on, the agent's
-// container mounts all three read-only.
+// Project-relative files `render` writes. The two rule files are netguard
+// image build inputs (Dockerfile.hermit-netguard COPYs them).
 const OVERLAY_FILE = 'docker-compose.security.yml';
 const NFTABLES_FILE = '.hermit/docker/nftables.conf';
 const DNSMASQ_FILE = '.hermit/docker/dnsmasq.allowlist';
-const LOCKED_RULE_FILES = [OVERLAY_FILE, NFTABLES_FILE, DNSMASQ_FILE];
 
 const CANDIDATES = [
   '172.28.0.0/24', '172.29.0.0/24', '172.30.0.0/24', '172.31.0.0/24',
@@ -264,9 +263,13 @@ function netguardService(net: Chosen, dnsMode: string, sysctls: string, ports: s
     '    networks:',
     '      hermit-net:',
     `        ipv4_address: ${net.netguard_ip}`,
-    '    volumes:',
-    '      - ./.hermit/docker/nftables.conf:/etc/nftables.conf:ro',
-    '      - ./.hermit/docker/dnsmasq.allowlist:/etc/dnsmasq.allowlist:ro',
+    // Enforce mode logs every query; json-file is pinned so the size options
+    // are valid whatever the daemon's default driver is.
+    '    logging:',
+    '      driver: json-file',
+    '      options:',
+    '        max-size: "10m"',
+    '        max-file: "3"',
     '    environment:',
     `      - DNS_LOG_ONLY=${dnsLogOnly}`,
     '    restart: unless-stopped',
@@ -318,11 +321,6 @@ export function renderOverlay(input: RenderInput): string {
         '    depends_on:',
         '      hermit-netguard:',
         '        condition: service_healthy',
-        // The project bind mount is writable by the agent's user; these files
-        // are written on the host by /docker-security, so the agent sees them
-        // read-only and cannot widen the egress rules for the next start.
-        '    volumes:',
-        ...LOCKED_RULE_FILES.map((f) => `      - \${PWD}/${f}:\${PWD}/${f}:ro`),
       ].join('\n')
     : '';
 
@@ -361,6 +359,8 @@ export function renderNftables(lanAllowlist: string[], dnsMode: string): string 
     OUTPUT_POLICY: enforce ? 'drop' : 'accept',
     EGRESS_ALLOW_RULES: enforce ? chainBody([
       `meta skuid ${DNSMASQ_UID} meta l4proto { tcp, udp } th dport 53 accept`,
+      // IPv6 neighbor and router discovery, without which IPv6 connects hang.
+      'icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit } accept',
       'ip daddr @allow4 accept',
       'ip6 daddr @allow6 accept',
     ]) : '',
@@ -368,34 +368,14 @@ export function renderNftables(lanAllowlist: string[], dnsMode: string): string 
   });
 }
 
-/** Hosts each channel's API needs; channels not listed contribute none. */
-const CHANNEL_DOMAINS: Record<string, string[]> = {
-  discord: ['discord.com', 'discordapp.com', 'discord.gg'],
-  telegram: ['telegram.org'],
-};
-
-/** Voice-note engine and model downloads, plus the credential-enabled cloud fallback. */
-const TRANSCRIPTION_DOMAINS = [
-  'archive.ubuntu.com', 'ports.ubuntu.com', 'huggingface.co', 'hf.co', 'api.groq.com', 'api.openai.com',
-];
-
-export interface AllowlistFeatures {
-  channels: string[];
-  transcription: boolean;
-}
-
-/** Feature-gated allowlist inputs from the project's config.json. */
-export function allowlistFeatures(projectRoot: string): AllowlistFeatures {
-  const config = readSettledConfig(path.join(projectRoot, '.hermit'));
-  return { channels: getEnabledChannels(config), transcription: config.transcription?.enabled !== false };
-}
-
-export function renderDnsmasq(fleetDomains: string[], additionalDomains: string[], features: AllowlistFeatures): string {
+export function renderDnsmasq(
+  fleetDomains: string[], additionalDomains: string[], features: ReturnType<typeof featureDomains>,
+): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'dnsmasq.allowlist.template'), 'utf8');
   const toServers = (domains: string[]) => domains.map((d) => `server=/${d}/1.1.1.1`).join('\n');
   return renderTemplate(template, {
-    CHANNEL_DOMAINS: toServers(features.channels.flatMap((c) => CHANNEL_DOMAINS[c] ?? [])),
-    TRANSCRIPTION_DOMAINS: toServers(features.transcription ? TRANSCRIPTION_DOMAINS : []),
+    CHANNEL_DOMAINS: toServers(features.channels),
+    TRANSCRIPTION_DOMAINS: toServers(features.transcription),
     FLEET_DOMAINS: toServers(fleetDomains),
     ADDITIONAL_DOMAINS: toServers(additionalDomains),
   });
@@ -411,7 +391,8 @@ export function mcpHosts(projectRoot: string): { host: string; server: string }[
   const out: { host: string; server: string }[] = [];
   for (const [server, cfg] of Object.entries(servers)) {
     let host: string;
-    try { host = new URL(cfg?.url).hostname.toLowerCase(); } catch { continue; }
+    // A ${VAR} placeholder fails to parse; Claude Code expands it only at runtime.
+    try { host = new URL(cfg?.url).hostname.toLowerCase().replace(/\.$/, ''); } catch { continue; }
     // IP literals and localhost belong in carve-outs, not the DNS allowlist.
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) || /^[0-9.]+$/.test(host) || seen.has(host)) continue;
     seen.add(host);
@@ -436,7 +417,8 @@ function runRender(projectRoot: string, raw: string): void {
   // Render + validate all three in memory before any write.
   const overlay = renderOverlay(input);
   const nftables = renderNftables(input.lanAllowlist ?? [], input.toggles.lan?.dnsMode ?? 'log-only');
-  const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? [], allowlistFeatures(projectRoot));
+  const features = featureDomains(readSettledConfig(path.join(projectRoot, '.hermit')));
+  const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? [], features);
 
   const lanOn = input.toggles.lan?.enabled === true;
   const overlayPath = path.join(projectRoot, OVERLAY_FILE);

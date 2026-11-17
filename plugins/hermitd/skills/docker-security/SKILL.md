@@ -302,7 +302,7 @@ After the netguard files are rendered (step 6c), the wizard runs an explicit `--
 
 #### 6b. Render the overlay + nftables + dnsmasq
 
-`render-security-overlay.ts render` derives every `{{PLACEHOLDER}}` (networks block, netguard service with cap_add/healthcheck, `DNS_LOG_ONLY` from `dns_mode`, per-toggle hermit blocks, sysctls placement, ports, LAN rules at the chain-body indent, the enforce-mode default drop, `DNSMASQ_UID=100`, `server=` domain lines including enabled channels' and voice-note hosts from `config.json`) and fails loud (exit 1, nothing written) if any survives. It writes `docker-compose.security.yml` to the project root, and — only when LAN containment is on — `nftables.conf` + `dnsmasq.allowlist` into `.hermit/docker/`, which the agent's container then sees read-only. Pipe the resolved selections:
+`render-security-overlay.ts render` derives every `{{PLACEHOLDER}}` (networks block, netguard service with cap_add/healthcheck, `DNS_LOG_ONLY` from `dns_mode`, per-toggle hermit blocks, sysctls placement, ports, LAN rules at the chain-body indent, the enforce-mode default drop, `DNSMASQ_UID=100`, `server=` domain lines including enabled channels' and voice-note hosts from `config.json`) and fails loud (exit 1, nothing written) if any survives. It writes `docker-compose.security.yml` to the project root, and — only when LAN containment is on — `nftables.conf` + `dnsmasq.allowlist` into `.hermit/docker/`, which 6c builds into the netguard image. Pipe the resolved selections:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROOT> <<'HERMIT_SEC_JSON'
@@ -404,8 +404,7 @@ Reverse: re-run /docker-security and answer No to every prompt, OR
          delete docker-compose.security.yml and re-run hermitd-docker up.
 
 Tune DNS allowlist: edit .hermit/docker/dnsmasq.allowlist,
-         then `hermitd-docker down && hermitd-docker up`
-         (restart hermit-netguard alone leaves hermit with stale resolver state).
+         then `hermitd restart --build` (it is built into the netguard image).
 ```
 
 ## Notes

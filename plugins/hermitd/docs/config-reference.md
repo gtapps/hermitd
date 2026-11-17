@@ -581,7 +581,7 @@ Voice-note transcription is enabled by default, including when the block is abse
 | `recommended_plugins` | array | `[]` | Plugins installed on container boot after confirmation through `/docker-setup`, settings, or `/hermitd:channel-setup` Other. |
 | `git_identity_mount` | boolean | `true` | Mount the host Git identity into the container. |
 | `security.managed_ceiling` | boolean | `true` | Protected `docker.security.managed_ceiling` controls the managed never-allowed deny floor and conditional bypass lock. Takes effect on rebuild; `false` omits the file. Switching to `bypassPermissions` also needs `hermitd restart --build`. See [Managed deny floor](security.md#managed-deny-floor-in-docker). |
-| `security.network`, `security.resources`, `security.audit` | object | absent | Protected. Written by `/hermitd:docker-security` on the host; the agent's container mounts the rendered rule files read-only. See [Docker Security](docker-security.md). |
+| `security.network`, `security.resources`, `security.audit` | object | absent | Protected. Written by `/hermitd:docker-security` on the host. See [Docker Security](docker-security.md). |
 | `fleet_mesh` | boolean | `false` | Opt-in, same-box Docker peer discovery and messaging. Requires the two external volumes and the pid namespace holder documented in [Always-On Mode](always-on.md#fleet-mesh-opt-in). Set it in `config.json`, then re-run `/docker-setup`. |
 
 ### `recommended_plugins` entry schema
