@@ -54,7 +54,21 @@ if [ -f /etc/dnsmasq.allowlist ]; then
       --server=1.1.1.1 "$@" \
       --listen-address=127.0.0.1 2>&1 &
   else
-    dnsmasq -k --log-facility=- --conf-file=/etc/dnsmasq.allowlist \
+    # Enforce mode: every name the allowlist forwards (server=) has its
+    # upstream answers added to the nftables sets that the output chain
+    # accepts, so a connection to an address no allowlisted name returned is
+    # dropped. Deriving the list here keeps hand-added lines in step with the
+    # firewall. Static address= pins never reach the sets; their IPs need a
+    # carve-out. Queries are logged so denials are visible.
+    names=''
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        server=/*) rest=${line#server=/}; names="$names/${rest%/*}" ;;
+      esac
+    done < /etc/dnsmasq.allowlist
+    set --
+    [ -z "$names" ] || set -- "--nftset=$names/4#inet#firewall#allow4,6#inet#firewall#allow6"
+    dnsmasq -k --log-queries --log-facility=- --conf-file=/etc/dnsmasq.allowlist "$@" \
       --listen-address=127.0.0.1 2>&1 &
   fi
   sleep 1

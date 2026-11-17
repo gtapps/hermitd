@@ -5,6 +5,14 @@
 ### Added
 
 - Docker images carry a root-owned never-allowed deny floor and a bypass lock unless the agent config opts into bypass mode.
+- `/docker-security` offers the hosts of remote servers in the project `.mcp.json` as allowlist entries.
+
+### Changed
+
+- Netguard DNS enforce mode drops outbound connections to any address that no allowlisted name resolved, unless it is a carve-out, and logs every query.
+- The netguard allowlist includes channel hosts only for enabled channels and voice-note hosts only while transcription is enabled.
+- The agent's container sees `nftables.conf`, `dnsmasq.allowlist` and `docker-compose.security.yml` read-only, and `docker.security` is a protected config subtree.
+- Doctor's `docker-security` check names the DNS mode and warns when enforce-mode rules predate IP filtering.
 
 ### Fixed
 
@@ -16,6 +24,8 @@
 1. **Docker agents only:** when `docker-build.hermit-local.sh` and `.dockerignore` both exist at the project root and `.dockerignore` has no `!docker-build.hermit-local.sh` line, append it as its own last line, preserving every existing line.
 2. The next host `hermitd update` renders the Dockerfile with the claude-owned `~/.config` and rebuilds; no state migration is required.
 3. The next host `hermitd update` rebuilds Docker agents with the managed deny floor. Agents whose operator removed a never-allowed rule get it back as a hard block; `docker.security.managed_ceiling: false` plus a rebuild opts out.
+4. **Docker agents with `docker.security.network.enabled: true` only:** the update does not re-render the netguard files, so the agent keeps its current rules until the wizard runs again. Tell the operator once in chat.
+   **Operator action required:** re-run `/hermitd:docker-security` from the host. In enforce mode the new rules drop connections to literal IPs and to hosts of disabled channels; a tool that needs a literal IP, or the IP behind an `address=` pin, needs a carve-out in Prompt 1b. The wizard regenerates `dnsmasq.allowlist`, so back up hand-added lines first. Doctor's `docker-security` check warns until this is done.
 
 ## [1.4.34] - 2026-11-16
 

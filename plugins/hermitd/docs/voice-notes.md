@@ -24,7 +24,7 @@ A run has one 540-second deadline. A silent clip produces a request to resend or
 
 When local transcription is unavailable, a present `GROQ_API_KEY` enables an audio upload to Groq with `whisper-large-v3-turbo`; `OPENAI_API_KEY` enables the OpenAI `whisper-1` fallback. Groq takes priority. Keep keys in ignored environment files, never in config or chat. Without either key, audio remains local. Cloud requests have a maximum 60-second timeout within the shared deadline, and files over 25 MB are not uploaded. Silence detected locally does not trigger an upload.
 
-Netguard templates allow `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`. Existing Docker agents need the refreshed security templates and a subsequent `hermitd update` to receive the allowlist and ffmpeg layer. See [security](security.md#script-argument-trust) for download and attachment trust boundaries.
+While transcription is enabled, the netguard allowlist includes `archive.ubuntu.com`, `ports.ubuntu.com`, `huggingface.co`, `hf.co`, `api.groq.com` and `api.openai.com`; enabling it on an agent with netguard needs `/hermitd:docker-security` re-run on the host. Existing Docker agents need the refreshed security templates and a subsequent `hermitd update` to receive the allowlist and ffmpeg layer. See [security](security.md#script-argument-trust) for download and attachment trust boundaries.
 
 ## Other engines
 

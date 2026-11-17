@@ -1,7 +1,12 @@
 #!/usr/bin/env bun
 import { composeFiles } from './lib/compose-files';
 /**
- * Deterministic rendering for /docker-security. Two subcommands:
+ * Deterministic rendering for /docker-security. Three subcommands:
+ *
+ *   mcp-hosts <project-root>
+ *     Hostnames of remote (url-based) servers in the project's .mcp.json, for
+ *     the wizard to offer as allowlist entries. Always exits 0.
+ *     Output: { hosts: [{ host, server }] }
  *
  *   pick-subnet <project-root> [--candidate <cidr>]
  *     Enumerates occupied Docker subnets, excludes this project's own
@@ -17,6 +22,7 @@ import { composeFiles } from './lib/compose-files';
  *     from operator selections on stdin. All three render in memory and pass the
  *     fail-loud placeholder check before anything is written; any failure →
  *     {"error":"render_failed:<detail>"}, exit 1, nothing written. Output: { written: [...] }.
+ *     Channel and transcription hosts come from <project-root>/.hermit/config.json.
  *     stdin JSON:
  *       {
  *         "network": { "subnet": "172.28.0.0/24", "gateway": "172.28.0.1", "netguard_ip": "172.28.0.2" },
@@ -38,11 +44,20 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { renderTemplate } from './lib/render-template';
 import { exitError } from './lib/cli';
+import { readSettledConfig } from './lib/config-read';
+import { getEnabledChannels } from './lib/channel-config';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const SECURITY_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'security');
 
 const DNSMASQ_UID = '100'; // Alpine dnsmasq's static UID — see docker-security SKILL step 6a.
+
+// Project-relative files `render` writes; with LAN containment on, the agent's
+// container mounts all three read-only.
+const OVERLAY_FILE = 'docker-compose.security.yml';
+const NFTABLES_FILE = '.hermit/docker/nftables.conf';
+const DNSMASQ_FILE = '.hermit/docker/dnsmasq.allowlist';
+const LOCKED_RULE_FILES = [OVERLAY_FILE, NFTABLES_FILE, DNSMASQ_FILE];
 
 const CANDIDATES = [
   '172.28.0.0/24', '172.29.0.0/24', '172.30.0.0/24', '172.31.0.0/24',
@@ -303,6 +318,11 @@ export function renderOverlay(input: RenderInput): string {
         '    depends_on:',
         '      hermit-netguard:',
         '        condition: service_healthy',
+        // The project bind mount is writable by the agent's user; these files
+        // are written on the host by /docker-security, so the agent sees them
+        // read-only and cannot widen the egress rules for the next start.
+        '    volumes:',
+        ...LOCKED_RULE_FILES.map((f) => `      - \${PWD}/${f}:\${PWD}/${f}:ro`),
       ].join('\n')
     : '';
 
@@ -329,27 +349,75 @@ export function renderOverlay(input: RenderInput): string {
   });
 }
 
-export function renderNftables(lanAllowlist: string[]): string {
+// Template lines for rule placeholders sit at the 8-space chain-body indent.
+// The first rule takes the template's indent; the rest are prefixed to align.
+const chainBody = (rules: string[]) => rules.map((r, i) => (i === 0 ? '' : '        ') + r).join('\n');
+
+export function renderNftables(lanAllowlist: string[], dnsMode: string): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'nftables.conf.template'), 'utf8');
-  // The template line is `        {{LAN_ALLOWLIST_RULES}}` (8 leading spaces).
-  // Leave the first entry unindented (the template supplies its indent); prefix
-  // every subsequent entry with the same 8 spaces so they align.
-  const rules = lanAllowlist
-    .map((e, i) => (i === 0 ? '' : '        ') + `ip daddr ${e} accept`)
-    .join('\n');
+  const enforce = dnsMode === 'enforce';
   return renderTemplate(template, {
-    LAN_ALLOWLIST_RULES: rules,
+    LAN_ALLOWLIST_RULES: chainBody(lanAllowlist.map((e) => `ip daddr ${e} accept`)),
+    OUTPUT_POLICY: enforce ? 'drop' : 'accept',
+    EGRESS_ALLOW_RULES: enforce ? chainBody([
+      `meta skuid ${DNSMASQ_UID} meta l4proto { tcp, udp } th dport 53 accept`,
+      'ip daddr @allow4 accept',
+      'ip6 daddr @allow6 accept',
+    ]) : '',
     DNSMASQ_UID,
   });
 }
 
-export function renderDnsmasq(fleetDomains: string[], additionalDomains: string[]): string {
+/** Hosts each channel's API needs; channels not listed contribute none. */
+const CHANNEL_DOMAINS: Record<string, string[]> = {
+  discord: ['discord.com', 'discordapp.com', 'discord.gg'],
+  telegram: ['telegram.org'],
+};
+
+/** Voice-note engine and model downloads, plus the credential-enabled cloud fallback. */
+const TRANSCRIPTION_DOMAINS = [
+  'archive.ubuntu.com', 'ports.ubuntu.com', 'huggingface.co', 'hf.co', 'api.groq.com', 'api.openai.com',
+];
+
+export interface AllowlistFeatures {
+  channels: string[];
+  transcription: boolean;
+}
+
+/** Feature-gated allowlist inputs from the project's config.json. */
+export function allowlistFeatures(projectRoot: string): AllowlistFeatures {
+  const config = readSettledConfig(path.join(projectRoot, '.hermit'));
+  return { channels: getEnabledChannels(config), transcription: config.transcription?.enabled !== false };
+}
+
+export function renderDnsmasq(fleetDomains: string[], additionalDomains: string[], features: AllowlistFeatures): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'dnsmasq.allowlist.template'), 'utf8');
   const toServers = (domains: string[]) => domains.map((d) => `server=/${d}/1.1.1.1`).join('\n');
   return renderTemplate(template, {
+    CHANNEL_DOMAINS: toServers(features.channels.flatMap((c) => CHANNEL_DOMAINS[c] ?? [])),
+    TRANSCRIPTION_DOMAINS: toServers(features.transcription ? TRANSCRIPTION_DOMAINS : []),
     FLEET_DOMAINS: toServers(fleetDomains),
     ADDITIONAL_DOMAINS: toServers(additionalDomains),
   });
+}
+
+/** Hostnames of remote (url-based) servers in the project's .mcp.json, for the wizard to offer. */
+export function mcpHosts(projectRoot: string): { host: string; server: string }[] {
+  let servers: Record<string, any> = {};
+  try {
+    servers = JSON.parse(fs.readFileSync(path.join(projectRoot, '.mcp.json'), 'utf8')).mcpServers ?? {};
+  } catch { return []; }
+  const seen = new Set<string>();
+  const out: { host: string; server: string }[] = [];
+  for (const [server, cfg] of Object.entries(servers)) {
+    let host: string;
+    try { host = new URL(cfg?.url).hostname.toLowerCase(); } catch { continue; }
+    // IP literals and localhost belong in carve-outs, not the DNS allowlist.
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) || /^[0-9.]+$/.test(host) || seen.has(host)) continue;
+    seen.add(host);
+    out.push({ host, server });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,19 +435,18 @@ function runRender(projectRoot: string, raw: string): void {
   const input = JSON.parse(raw) as RenderInput;
   // Render + validate all three in memory before any write.
   const overlay = renderOverlay(input);
-  const nftables = renderNftables(input.lanAllowlist ?? []);
-  const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? []);
+  const nftables = renderNftables(input.lanAllowlist ?? [], input.toggles.lan?.dnsMode ?? 'log-only');
+  const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? [], allowlistFeatures(projectRoot));
 
   const lanOn = input.toggles.lan?.enabled === true;
-  const overlayPath = path.join(projectRoot, 'docker-compose.security.yml');
+  const overlayPath = path.join(projectRoot, OVERLAY_FILE);
   const written: string[] = [overlayPath];
   fs.writeFileSync(overlayPath, overlay);
 
   if (lanOn) {
-    const dockerDir = path.join(projectRoot, '.hermit', 'docker');
-    fs.mkdirSync(dockerDir, { recursive: true });
-    const nftPath = path.join(dockerDir, 'nftables.conf');
-    const allowPath = path.join(dockerDir, 'dnsmasq.allowlist');
+    const nftPath = path.join(projectRoot, NFTABLES_FILE);
+    const allowPath = path.join(projectRoot, DNSMASQ_FILE);
+    fs.mkdirSync(path.dirname(nftPath), { recursive: true });
     fs.writeFileSync(nftPath, nftables);
     fs.writeFileSync(allowPath, dnsmasq);
     written.push(nftPath, allowPath);
@@ -393,7 +460,10 @@ if (import.meta.main) {
   const sub = process.argv[2];
   const projectRoot = path.resolve(process.argv[3] || process.cwd());
 
-  if (sub === 'pick-subnet') {
+  if (sub === 'mcp-hosts') {
+    console.log(JSON.stringify({ hosts: mcpHosts(projectRoot) }));
+    process.exit(0);
+  } else if (sub === 'pick-subnet') {
     const ci = process.argv.indexOf('--candidate');
     const candidate = ci >= 0 ? process.argv[ci + 1] ?? null : null;
     runPickSubnet(projectRoot, candidate);

@@ -19,13 +19,13 @@
 
 New and existing Docker hermits include a browser through hatch or upgrade unless `browser.enabled` is false or the Dockerfile already installs `agent-browser`. Decline through `/hermitd:hermit-settings`, then run `hermitd update` to remove it. Full parallel use needs 4 GiB; the resource wizard defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory shared by all containers, so an 8 GiB host needs that limit raised in Docker Desktop's Resources settings or `.wslconfig`.
 
-DNS enforce mode limits browser name lookups to the allowlist. It does not contain the browser: a page can fetch a public IP directly, the same limitation as `curl`. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. Metadata URL refusal is a guard, not containment. This adds no vault or network filter. Host Chrome separately keeps its own sandbox; avoid shared hosts because local users can reach debugging ports and forge loopback viewer headers. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
+DNS enforce mode limits the browser, like every other process, to allowlisted names and the addresses they resolved. It does not contain the browser: a page can still send data to any allowlisted host. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. Metadata URL refusal is a guard, not containment. This adds no vault or network filter. Host Chrome separately keeps its own sandbox; avoid shared hosts because local users can reach debugging ports and forge loopback viewer headers. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
 
 ## What each toggle does
 
 | Toggle | What it does | Real teeth? |
 |--------|--------------|-------------|
-| **LAN containment + DNS policy** (Prompt 1) | Spins up a `hermit-netguard` Alpine sidecar with nftables + dnsmasq. Hermit shares the sidecar's network namespace via `network_mode: "service:hermit-netguard"`. nftables drops RFC1918 + link-local egress AND redirects all egress :53 to local dnsmasq for actual DNS-policy enforcement. | **Yes — categorical.** Today: a compromised hermit on your home network can scan your router, NAS, HA, printer, etc. After: it cannot. |
+| **LAN containment + DNS policy** (Prompt 1) | Spins up a `hermit-netguard` Alpine sidecar with nftables + dnsmasq. Hermit shares the sidecar's network namespace via `network_mode: "service:hermit-netguard"`. nftables drops RFC1918 + link-local egress AND redirects all egress :53 to local dnsmasq for actual DNS-policy enforcement. In enforce mode, outbound connections go only to addresses that allowlisted names resolved and to carve-outs (see [limitations](#documented-limitations)). | **Yes — categorical.** Today: a compromised hermit on your home network can scan your router, NAS, HA, printer, etc. After: it cannot. In enforce mode it also cannot reach a public host that is not on the allowlist. |
 | **Resource bounds + kernel hygiene** (Prompt 2) | `mem_limit` / `cpus` caps + a network sysctl bundle (`accept_redirects=0`, `accept_source_route=0`, …). Sysctls placed on the netns owner: hermit-netguard if Prompt 1 is on, hermit otherwise. Sysctls **omitted entirely** in `network_mode: host` — Docker rejects them. | Resource caps are hygiene, not a security primitive. Sysctls block exotic ICMP-redirect / source-routing tricks. |
 | **Boot-time plugin install audit log** (Prompt 3) | The entrypoint appends a JSONL line to `.hermit/state/plugin-installs.jsonl` for every `claude plugin install` it performs (hermit core, channels, recommended plugins). | Cheap paper trail, not a security primitive on its own. **Honest scope:** post-boot installs run by the operator via tmux are NOT captured. **Empty-log expectation:** the log only grows when an install actually fires — on subsequent boots when the marketplace + plugin set is unchanged, the entrypoint short-circuits the install path and writes nothing. An empty log on a boot where nothing changed is normal, not a failure. |
 
@@ -35,7 +35,11 @@ Images also carry [a managed deny floor](security.md#managed-deny-floor-in-docke
 
 The wizard makes the container *meaningfully harder to abuse*. It does not make it bulletproof. Operators should know the gaps:
 
-- **Public-IP egress is unconstrained.** A compromised process can still `connect()` to a hardcoded public IP and skip DNS entirely. The DNS policy makes off-the-shelf C2 / exfil that uses domains harder, but doesn't close direct-IP egress. v1.1 may add nftset-driven IP allowlisting (dnsmasq populates an `nftset` of resolved-and-allowed IPs; nftables defaults to deny on output).
+- **Log-only mode does not constrain public egress.** Only enforce mode drops connections. Log-only shows name lookups, not connections, so a tool that connects to a literal IP never appears in the log and fails after the switch to enforce until that IP gets a carve-out.
+- **Enforce mode filters by IP, not by site.** dnsmasq adds every address an allowlisted name resolves to the firewall's allowed set, so another site served from the same CDN address is reachable too. The set grows while the sidecar runs, as allowlisted names resolve to new addresses, and clears when it restarts.
+- **Allowed hosts are still exfiltration routes.** GitHub, npm and PyPI are on every allowlist and accept uploads, as do channel platforms. The allowlist narrows where data can go; it does not stop data leaving through an allowed host.
+- **The rule files are read-only only inside the container.** The netguard Dockerfile and entrypoint, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild.
+- **Shell-command filtering by host is Claude Code's own sandbox.** For a per-host filter on shell commands and web fetches, with a denylist inside broad wildcards, use Claude Code's [sandbox network settings](https://code.claude.com/docs/en/sandboxing) (`sandbox.network.allowedDomains`, `deniedDomains`, and the managed `allowManagedDomainsOnly`). They cover shell commands only; netguard covers every process in the container.
 - **Docker's default bridge (172.17.0.0/16) is dropped** by the LAN block — it sits inside `172.16.0.0/12`. Operators with adjacent Compose stacks must add carve-outs for the relevant bridge IPs (Prompt 1b "Extra LAN carve-outs").
 - **Compose service-name DNS doesn't work through dnsmasq** — Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the allowlist:
   ```
@@ -106,7 +110,7 @@ COMPOSE_FILES=(-f docker-compose.hermit.yml -f docker-compose.security.yml)
 docker compose "${COMPOSE_FILES[@]}" logs hermit-netguard
 ```
 
-In **enforce mode**, the same command surfaces NXDOMAIN denials. Decide which domains to allow, then:
+In **enforce mode**, the same command shows every query, and a denied name appears as `config <name> is NXDOMAIN`. A connection to an address no allowlisted name returned is dropped without a log line; give that IP a carve-out by re-running `/docker-security`. Decide which domains to allow, then:
 
 1. Edit `.hermit/docker/dnsmasq.allowlist`. Add lines like:
    ```
@@ -127,7 +131,7 @@ The wizard does not auto-promote blocked domains. Manual review keeps the trust 
 ```
 address=/internal-host.example/10.0.0.5
 ```
-— above the `address=/#/` catchall, then apply it with `hermitd-docker down && hermitd-docker up` (restarting `hermit-netguard` alone leaves `hermit` with stale resolver state). This works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here — hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
+— above the `address=/#/` catchall, then apply it with `hermitd-docker down && hermitd-docker up` (restarting `hermit-netguard` alone leaves `hermit` with stale resolver state). In enforce mode a public pinned IP also needs a carve-out, because pinned answers do not reach the firewall's allowed set. Resolution works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here — hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
 
 ## GitHub CLI authentication {#gh-cli-authentication}
 

@@ -599,6 +599,23 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
       };
     }
 
+    const net = sec.network;
+    const dnsMode = net?.enabled ? (net.dns_mode === 'enforce' ? 'enforce' : 'log-only') : null;
+    const posture = `posture declared and overlay present${dnsMode ? ` (DNS ${dnsMode})` : ''}`;
+    // Enforce-mode rules rendered before IP filtering existed only filter names.
+    // The rule file sits in the project mount, so this runs in the container too.
+    if (dnsMode === 'enforce') {
+      let nft = '';
+      try { nft = fs.readFileSync(path.join(hermitDir, 'docker', 'nftables.conf'), 'utf8'); } catch {}
+      if (nft && !nft.includes('@allow4')) {
+        return {
+          id: 'docker-security',
+          status: 'warn',
+          detail: 'DNS enforce rules predate IP filtering, so connections to literal IPs still pass; ask your operator to re-run /docker-security from a terminal or the Claude app',
+        };
+      }
+    }
+
     // Both declared and overlay present. The deep checks below need the docker CLI,
     // which does not exist inside the hermit container — verification is a host-side
     // concern. Gating here (rather than degrading the ENOENT to warn) keeps a
@@ -610,14 +627,14 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
       return {
         id: 'docker-security',
         status: 'ok',
-        detail: 'posture declared and overlay present (in-container: compose verification runs on the host)',
+        detail: `${posture} (in-container: compose verification runs on the host)`,
       };
     }
 
     // Both declared and overlay present — run deeper checks via subprocess.
     const baseCompose = path.join(projectRoot, 'docker-compose.hermit.yml');
     if (!fs.existsSync(baseCompose)) {
-      return { id: 'docker-security', status: 'ok', detail: 'posture declared and overlay present' };
+      return { id: 'docker-security', status: 'ok', detail: posture };
     }
 
     let composeCfg: Json;
@@ -695,7 +712,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS) {
       }
     }
 
-    return { id: 'docker-security', status: 'ok', detail: 'posture declared and overlay present' };
+    return { id: 'docker-security', status: 'ok', detail: posture };
   } catch (e: any) {
     return { id: 'docker-security', status: 'fail', detail: `check failed: ${e.message}` };
   }

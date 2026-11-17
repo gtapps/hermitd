@@ -81,7 +81,7 @@ options:
   - label: "Yes — recommended (LAN block + DNS log-only)"
     description: "Blocks RFC1918 + cloud metadata. DNS in log-only mode: allows everything, logs blocked queries for tuning."
   - label: "Yes — strict (LAN block + DNS enforce)"
-    description: "Same LAN block. DNS returns NXDOMAIN for any domain not on the allowlist."
+    description: "Same LAN block. DNS returns NXDOMAIN for any domain not on the allowlist, and connections go only to addresses those domains resolved or to carve-outs."
   - label: "No"
     description: "Skip this toggle."
 ```
@@ -153,6 +153,8 @@ If the fleet list is empty: skip silently.
 
 #### 3b. Extra LAN carve-outs
 
+In enforce mode a carve-out is also how a literal public IP, or the IP behind a pinned hostname, is allowed.
+
 `AskUserQuestion` (header: `"Extra LAN carve-outs"`):
 
 - `"None"`
@@ -161,6 +163,16 @@ If the fleet list is empty: skip silently.
 Persist to `lan_allowlist` (combined with `fleet_lan_allowlist`).
 
 #### 3c. Extra domains
+
+First offer the project's remote MCP servers:
+
+```bash
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts mcp-hosts <PROJECT_ROOT>
+```
+
+It prints `{ "hosts": [{ "host", "server" }] }`. When the list is non-empty, show each host with its server name and ask once (header: `"MCP hosts"`) with the same `"Include all"` (Recommended) / `"Pick each"` / `"Skip all"` flow as 3a. Confirmed hosts join `additional_domains`.
+
+Channel and voice-note hosts are not asked here: the render adds them from `config.json` for enabled channels and while transcription is enabled.
 
 `AskUserQuestion` (header: `"Extra domains"`):
 
@@ -290,7 +302,7 @@ After the netguard files are rendered (step 6c), the wizard runs an explicit `--
 
 #### 6b. Render the overlay + nftables + dnsmasq
 
-`render-security-overlay.ts render` derives every `{{PLACEHOLDER}}` (networks block, netguard service with cap_add/healthcheck, `DNS_LOG_ONLY` from `dns_mode`, per-toggle hermit blocks, sysctls placement, ports, LAN rules at the chain-body indent, `DNSMASQ_UID=100`, `server=` domain lines) and fails loud (exit 1, nothing written) if any survives. It writes `docker-compose.security.yml` to the project root, and — only when LAN containment is on — `nftables.conf` + `dnsmasq.allowlist` into `.hermit/docker/`. Pipe the resolved selections:
+`render-security-overlay.ts render` derives every `{{PLACEHOLDER}}` (networks block, netguard service with cap_add/healthcheck, `DNS_LOG_ONLY` from `dns_mode`, per-toggle hermit blocks, sysctls placement, ports, LAN rules at the chain-body indent, the enforce-mode default drop, `DNSMASQ_UID=100`, `server=` domain lines including enabled channels' and voice-note hosts from `config.json`) and fails loud (exit 1, nothing written) if any survives. It writes `docker-compose.security.yml` to the project root, and — only when LAN containment is on — `nftables.conf` + `dnsmasq.allowlist` into `.hermit/docker/`, which the agent's container then sees read-only. Pipe the resolved selections:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROOT> <<'HERMIT_SEC_JSON'

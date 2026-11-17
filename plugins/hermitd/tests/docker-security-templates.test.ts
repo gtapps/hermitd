@@ -49,8 +49,12 @@ describe('netguard-entrypoint.sh.template', () => {
     expect(entrypoint).toContain('dnsmasq -k --log-queries --log-facility=-');
   });
 
-  test('entrypoint: --log-facility=- on enforce dnsmasq line', () => {
-    expect(entrypoint).toContain('dnsmasq -k --log-facility=- --conf-file');
+  test('entrypoint: enforce dnsmasq line logs queries to stdout', () => {
+    expect(entrypoint).toContain('dnsmasq -k --log-queries --log-facility=- --conf-file');
+  });
+
+  test('entrypoint: enforce mode feeds server= names into the firewall sets', () => {
+    expect(entrypoint).toContain('--nftset=$names/4#inet#firewall#allow4,6#inet#firewall#allow6');
   });
 
   test('entrypoint: pgrep dnsmasq used for liveness check', () => {
