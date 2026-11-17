@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readRegistry, findResident } from '../scripts/lib/session-registry';
+import { readRegistry, findResident, residentInOtherPidNamespace } from '../scripts/lib/session-registry';
 import { procStartOf, localPidDomain } from './helpers/registry-fixture';
 
 const dirs: string[] = [];
@@ -119,5 +119,21 @@ describe('findResident', () => {
     const c = registryDir();
     writeEntry(c, process.pid);
     expect(findResident({ session_pid: 4_194_304 }, c)).toBeNull();
+  });
+});
+
+describe('residentInOtherPidNamespace', () => {
+  test.skipIf(process.platform !== 'linux')('true for the stamped pid registered from another pid domain', () => {
+    const c = registryDir();
+    writeEntry(c, 4_194_000, { pidDomain: 'linux:0000:pid:[4026999999]' });
+    expect(residentInOtherPidNamespace({ session_pid: 4_194_000 }, c)).toBe(true);
+  });
+
+  test('false for an entry in this pid domain, a missing entry, or no stamp', () => {
+    const c = registryDir();
+    writeEntry(c, process.pid);
+    expect(residentInOtherPidNamespace({ session_pid: process.pid }, c)).toBe(false);
+    expect(residentInOtherPidNamespace({ session_pid: 4_194_001 }, c)).toBe(false);
+    expect(residentInOtherPidNamespace({}, c)).toBe(false);
   });
 });

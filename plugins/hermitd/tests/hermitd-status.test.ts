@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { projectStatus, renderStatus } from '../scripts/lib/hermit-status';
 import { mutateTask } from '../scripts/lib/tasks';
+import { writeRegistryEntry } from './helpers/registry-fixture';
 const dirs: string[] = [];
 const originalPath = process.env.PATH;
 afterEach(() => { process.env.PATH = originalPath; for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true }); });
@@ -27,6 +28,18 @@ test('sidecar-only is down; human output and JSON are distinct', () => {
 });
 test('Docker unavailable is unknown', () => {
   expect(projectStatus(fixture('', 127).project).transport).toBe('unknown');
+});
+test.skipIf(process.platform !== 'linux')('an interactive resident registered from another pid namespace is unknown, not down', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-status-')); dirs.push(project);
+  const dir = path.join(project, '.hermit');
+  const configDir = path.join(project, 'cfg');
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), '{}');
+  fs.writeFileSync(path.join(dir, 'state', 'runtime.json'), JSON.stringify({ runtime_mode: 'interactive', session_pid: 4194000, config_dir: configDir }));
+  writeRegistryEntry(configDir, 4194000, { pidDomain: 'linux:0000:pid:[4026999999]' });
+  expect(projectStatus(project).transport).toBe('unknown');
+  fs.rmSync(path.join(configDir, 'sessions', '4194000.json'));
+  expect(projectStatus(project).transport).toBe('down');
 });
 test('counts all open tasks and reads do not write or consult the host registry for Docker', () => {
   const { project, dir } = fixture('hermit');

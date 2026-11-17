@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { currentWork, readExecution, readTasks } from './tasks';
-import { findResident } from './session-registry';
+import { findResident, residentInOtherPidNamespace } from './session-registry';
 import { readConfigRaw } from './config-read';
 
 export type Transport = 'up' | 'down' | 'unknown';
@@ -26,6 +26,10 @@ export function tmuxTransport(project: string, session?: string): Transport {
   if (result.error || (result.status !== 0 && result.status !== 1)) return 'unknown';
   return result.status === 0 ? 'up' : 'down';
 }
+function interactiveTransport(runtime: ReturnType<typeof readRuntime>): Transport {
+  if (findResident(runtime, runtime.config_dir)) return 'up';
+  return residentInOtherPidNamespace(runtime, runtime.config_dir) ? 'unknown' : 'down';
+}
 export function readRuntime(project: string): { runtime_mode?: string; tmux_session?: string; session_pid?: number; config_dir?: string } {
   try { return JSON.parse(fs.readFileSync(path.join(project, '.hermit/state/runtime.json'), 'utf8')); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error; }
@@ -39,7 +43,7 @@ export function projectStatus(project: string) {
   const execution = readExecution(dir, docker ? {} : { registryFallback: true });
   const records = readTasks(dir);
   const transport = docker ? dockerTransport(project) : runtime.runtime_mode === 'interactive'
-    ? (findResident(runtime, runtime.config_dir) ? 'up' : 'down') : tmuxTransport(project, runtime.tmux_session);
+    ? interactiveTransport(runtime) : tmuxTransport(project, runtime.tmux_session);
   return {
     project_dir: project, name: path.basename(project), agent_name: config.agent_name ?? path.basename(project),
     runtime: runtime.runtime_mode ?? (docker ? 'docker' : 'tmux'), transport,

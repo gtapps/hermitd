@@ -11,7 +11,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { latestFires } from './cron';
 import { validateCronSchedule } from '../validate-config';
-import { pidAlive } from './lockfile';
+import { lockHeld } from './lockfile';
 import { scanCredentials } from './sanitize';
 import { transcriptPathKey } from './cc-compat';
 import { readJson, snakeToken } from './cli';
@@ -333,8 +333,7 @@ export function evaluateBackupDue(config: Json, hermitDir: string, now: Date): b
   // A live run still holds the lock: defer without consuming, so its window is
   // not silently spent while it works. This is the primary mutual-exclusion gate;
   // the lock itself is the backstop (an old mtime is reclaimable even alive).
-  const holder = readLockPid(hermitDir);
-  if (holder !== null && holder !== process.pid && pidAlive(holder)) return false;
+  if (lockHeld(lockPath(hermitDir), Infinity)) return false;
 
   const tz: string | null = typeof config?.timezone === 'string' ? config.timezone : null;
   const nowMinute = floorToMinute(now);
@@ -359,15 +358,6 @@ export function evaluateBackupDue(config: Json, hermitDir: string, now: Date): b
   }
   writeBackupSchedule(hermitDir, { version: 1, last_consumed_mark: latest.toISOString() });
   return true;
-}
-
-function readLockPid(hermitDir: string): number | null {
-  try {
-    const pid = parseInt(fs.readFileSync(lockPath(hermitDir), 'utf-8').trim(), 10);
-    return Number.isFinite(pid) ? pid : null;
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------

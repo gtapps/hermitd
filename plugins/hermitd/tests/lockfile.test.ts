@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { acquireLock, releaseLock, claimPathFor } from '../scripts/lib/lockfile';
+import { acquireLock, releaseLock, claimPathFor, pidNamespace, procStartOf, ownIdentity, CROSS_NS_HOLD_MS } from '../scripts/lib/lockfile';
 
 function makeDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-lock-'));
@@ -68,6 +68,16 @@ const FOREIGN_PID = foreignUserPid();
 // Content that cannot be mistaken for this process. Liveness is irrelevant
 // wherever this is used; only the string comparison against our own pid is.
 const NOT_OUR_PID = String(process.pid + 1);
+const OWN_NS = pidNamespace();
+const OWN = ownIdentity();
+// Our own pid number in a namespace that is not ours: what a sandboxed command,
+// or a container sharing the project folder, would write.
+const OTHER_NS_SAME_PID = `${process.pid} pid:[1]`;
+
+function age(file: string, ms: number): void {
+  const t = new Date(Date.now() - ms);
+  fs.utimesSync(file, t, t);
+}
 
 describe('lockfile', () => {
   test('acquire on clean state succeeds and records our pid', () => {
@@ -75,7 +85,7 @@ describe('lockfile', () => {
     try {
       const lock = path.join(dir, '.lifecycle.lock');
       expect(acquireLock(lock)).toBe(true);
-      expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -109,7 +119,7 @@ describe('lockfile', () => {
       // lock naming it is still taken over immediately.
       fs.writeFileSync(lock, String(FOREIGN_PID)); // mtime = now (fresh)
       expect(acquireLock(lock)).toBe(true);
-      expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -124,7 +134,7 @@ describe('lockfile', () => {
       const deadPid = proc.pid ?? 99999;
       fs.writeFileSync(lock, String(deadPid));
       expect(acquireLock(lock)).toBe(true);
-      expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -136,7 +146,7 @@ describe('lockfile', () => {
       const lock = path.join(dir, '.lifecycle.lock');
       fs.writeFileSync(lock, '');
       expect(acquireLock(lock)).toBe(true);
-      expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -164,7 +174,7 @@ describe('lockfile', () => {
         const old = new Date(Date.now() - 60 * 60 * 1000);
         fs.utimesSync(lock, old, old);
         expect(acquireLock(lock, 15 * 60 * 1000)).toBe(true);
-        expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+        expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
       } finally {
         holder.kill();
       }
@@ -237,7 +247,7 @@ describe('lockfile', () => {
       fs.writeFileSync(claim, '4242');
       fs.utimesSync(claim, old, old); // stealer died mid-swap an hour ago
       expect(acquireLock(lock)).toBe(true);
-      expect(fs.readFileSync(lock, 'utf-8')).toBe(String(process.pid));
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
       expect(fs.existsSync(claim)).toBe(false); // and the marker is cleaned up
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -279,6 +289,97 @@ describe('lockfile', () => {
       const winners = outs.filter((o) => o === 'WON');
       expect(winners.length).toBe(1);
       expect(outs.filter((o) => o === 'LOST').length).toBe(7);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(OWN_NS === null)('lockfile across pid namespaces', () => {
+  test('a fresh lock from another namespace is held, even when its pid number is ours', () => {
+    const dir = makeDir();
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, OTHER_NS_SAME_PID);
+      expect(acquireLock(lock)).toBe(false);
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OTHER_NS_SAME_PID);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('past the cross-namespace window the lock is taken', () => {
+    const dir = makeDir();
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, OTHER_NS_SAME_PID);
+      age(lock, CROSS_NS_HOLD_MS + 5000);
+      expect(acquireLock(lock)).toBe(true);
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a caller stale window shorter than the cross-namespace window still applies', () => {
+    const dir = makeDir();
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, OTHER_NS_SAME_PID);
+      age(lock, 10_000);
+      expect(acquireLock(lock, 5000)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('release leaves a lock that names our pid number in another namespace', () => {
+    const dir = makeDir();
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, OTHER_NS_SAME_PID);
+      releaseLock(lock);
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OTHER_NS_SAME_PID);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a live same-namespace holder with its recorded start time is held', () => {
+    const dir = makeDir();
+    const holder = Bun.spawn(['sleep', '30']);
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, `${holder.pid} ${OWN_NS} ${procStartOf(holder.pid)}`);
+      expect(acquireLock(lock)).toBe(false);
+    } finally {
+      holder.kill();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a reused pid (live process, different start time) does not hold the lock', () => {
+    const dir = makeDir();
+    const holder = Bun.spawn(['sleep', '30']);
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, `${holder.pid} ${OWN_NS} 1`);
+      expect(acquireLock(lock)).toBe(true);
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
+    } finally {
+      holder.kill();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('racers over an expired cross-namespace lock yield exactly one holder', async () => {
+    const dir = makeDir();
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, OTHER_NS_SAME_PID);
+      age(lock, CROSS_NS_HOLD_MS + 5000);
+      const outs = await raceAcquirers(lock);
+      expect(outs.filter((o) => o === 'WON').length).toBe(1);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

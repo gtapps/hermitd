@@ -3,7 +3,15 @@
  *
  * Semantics: lock held ⇔ the file exists AND contains a live PID AND its mtime
  * is fresh. flock's auto-release-on-death is replaced by the liveness check;
- * the mtime staleness window covers PID reuse after a reboot. Legacy installs
+ * the mtime staleness window covers PID reuse after a reboot.
+ *
+ * Content is `<pid> <pid namespace> <start time>` where the platform publishes
+ * them (Linux), else the bare PID. A shell command in Claude Code's sandbox
+ * runs in its own PID namespace, where the holder's PID is invisible
+ * (kill(pid, 0) says ESRCH) and small PIDs repeat. So identity is the whole
+ * string, a holder in another namespace counts as held for CROSS_NS_HOLD_MS
+ * instead of being probed, and a same-namespace holder whose start time no
+ * longer matches is a reused pid. A bare-PID file is judged as before. Legacy installs
  * have an empty .lifecycle.lock left behind by the old Python flock holders
  * (which created but never unlinked it) — an empty/unparseable file is treated
  * as stale and taken over.
@@ -15,6 +23,10 @@ const DEFAULT_STALE_MS = 15 * 60 * 1000;
 // A takeover is a handful of syscalls; a claim marker older than this was left
 // behind by a stealer that died mid-swap.
 const STALE_CLAIM_MS = 30 * 1000;
+// How long a fresh lock whose holder sits in another PID namespace is honored.
+// The holder cannot be probed from here; past this age it is taken over, so a
+// lock left by a killed container does not block the next boot for staleMs.
+const CROSS_NS_HOLD_MS = 2 * 60 * 1000;
 
 function pidAlive(pid: number): boolean {
   try {
@@ -30,14 +42,50 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** This process's PID namespace (`pid:[<inode>]`), or null where the platform
+ *  publishes none (macOS). */
+let ownNamespace: string | null | undefined;
+function pidNamespace(): string | null {
+  if (ownNamespace === undefined) {
+    try {
+      ownNamespace = fs.readlinkSync('/proc/self/ns/pid');
+    } catch {
+      ownNamespace = null;
+    }
+  }
+  return ownNamespace;
+}
+
+/** Field 22 of /proc/<pid>/stat: the process start time in clock ticks.
+ *  Parsed from the last ')' because a process name can hold spaces and parens. */
+function procStartOf(pid: number): string | null {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+let ownId: string | undefined;
+function ownIdentity(): string {
+  if (ownId === undefined) {
+    const ns = pidNamespace();
+    const start = procStartOf(process.pid);
+    ownId = !ns ? String(process.pid) : start ? `${process.pid} ${ns} ${start}` : `${process.pid} ${ns}`;
+  }
+  return ownId;
+}
+
 // Atomic create-with-content: write the PID to a private temp file, then
 // link() it into place — link fails with EEXIST if the lock exists, and the
 // lock is never observable in a half-written (empty) state, which a plain
 // open('wx')+write would expose to concurrent acquirers.
 function tryCreate(lockPath: string): boolean {
-  const tmp = `${lockPath}.${process.pid}.tmp`;
+  // Random suffix: two sandboxed commands can share a pid number.
+  const tmp = `${lockPath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
-    fs.writeFileSync(tmp, String(process.pid));
+    fs.writeFileSync(tmp, ownIdentity());
     fs.linkSync(tmp, lockPath);
     return true;
   } catch (e: any) {
@@ -83,6 +131,44 @@ function claimStale(claimPath: string): boolean {
 }
 
 /**
+ * Whether lock content written `mtimeMs` ago names a holder other than this
+ * process that still counts as holding it. The one judgment both acquireLock
+ * and read-only gates (lockHeld) use.
+ */
+function heldByOther(content: string, mtimeMs: number, staleMs: number): boolean {
+  const m = /^(\d+)(?: (\S+)(?: (\d+))?)?$/.exec(content);
+  if (!m) return false; // empty or garbage: legacy flock file, stale
+  const holderPid = parseInt(m[1], 10);
+  const crossNs = m[2] !== undefined && m[2] !== pidNamespace();
+  if (holderPid === process.pid && !crossNs) return false; // ours: reentrant
+  const age = Date.now() - mtimeMs;
+  if (crossNs) return age < Math.min(CROSS_NS_HOLD_MS, staleMs);
+  if (age >= staleMs || !pidAlive(holderPid)) return false;
+  // A recorded start time that no longer matches means the pid was reused. An
+  // unreadable one is unknown, not a mismatch: the live pid keeps the lock.
+  const start = m[3] === undefined ? null : procStartOf(holderPid);
+  return start === null || start === m[3];
+}
+
+/** Read-only: whether someone other than this process holds the lock now. */
+function lockHeld(lockPath: string, staleMs: number = DEFAULT_STALE_MS): boolean {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(lockPath, 'r');
+    const mtimeMs = fs.fstatSync(fd).mtimeMs;
+    return heldByOther(fs.readFileSync(fd, 'utf-8').trim(), mtimeMs, staleMs);
+  } catch {
+    return false; // absent or unreadable: not held
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+  }
+}
+
+/**
  * Try to acquire the lock. Returns true on success, false on live contention.
  * Stale locks (dead PID, empty/unparseable content, or mtime older than
  * staleMs) are removed and re-acquired.
@@ -90,7 +176,7 @@ function claimStale(claimPath: string): boolean {
 function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): boolean {
   if (tryCreate(lockPath)) return true;
 
-  let holderPid: number | null = null;
+  let content = '';
   let mtimeMs = 0;
   let ino = 0;
   // Read the PID and the identity through ONE descriptor: a separate open for
@@ -102,8 +188,7 @@ function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): bool
     const st = fs.fstatSync(fd);
     mtimeMs = st.mtimeMs;
     ino = st.ino;
-    const content = fs.readFileSync(fd, 'utf-8').trim();
-    holderPid = /^\d+$/.test(content) ? parseInt(content, 10) : null;
+    content = fs.readFileSync(fd, 'utf-8').trim();
   } catch {
     // Vanished between create-attempt and read — retry once.
     return tryCreate(lockPath);
@@ -115,14 +200,12 @@ function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): bool
     }
   }
 
-  const fresh = Date.now() - mtimeMs < staleMs;
-  if (holderPid !== null && holderPid !== process.pid && pidAlive(holderPid) && fresh) {
-    return false; // genuinely held
-  }
+  if (heldByOther(content, mtimeMs, staleMs)) return false; // genuinely held
 
-  // Stale: dead holder, no/garbage PID (legacy empty flock file), or expired
-  // mtime. Two racers that both judged THIS file stale must not both replace
-  // it, so serialize on a marker naming the exact file they judged. Neither
+  // Stale: dead holder, no/garbage PID (legacy empty flock file), expired
+  // mtime, or a cross-namespace holder past CROSS_NS_HOLD_MS. Two racers that
+  // both judged THIS file stale must not both replace it, so serialize on a
+  // marker naming the exact file they judged. Neither
   // rename nor unlink can do this: both act on a path, not an inode, so a slow
   // racer would move or delete the winner's brand-new lock and acquire on top
   // of it → double-acquire.
@@ -168,8 +251,8 @@ function acquireLockWithWait(lockPath: string, waitMs: number, staleMs: number =
 function releaseLock(lockPath: string): void {
   try {
     const content = fs.readFileSync(lockPath, 'utf-8').trim();
-    if (content === String(process.pid)) fs.unlinkSync(lockPath);
+    if (content === ownIdentity()) fs.unlinkSync(lockPath);
   } catch {}
 }
 
-export { acquireLock, acquireLockWithWait, releaseLock, pidAlive, claimPathFor, DEFAULT_STALE_MS };
+export { acquireLock, acquireLockWithWait, releaseLock, lockHeld, pidAlive, pidNamespace, procStartOf, ownIdentity, claimPathFor, DEFAULT_STALE_MS, CROSS_NS_HOLD_MS };

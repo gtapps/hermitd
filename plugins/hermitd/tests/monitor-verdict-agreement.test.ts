@@ -1,9 +1,12 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { checkHeartbeat, checkRoutineMonitor } from '../scripts/doctor-check';
-import { heartbeatHealth } from '../scripts/lib/heartbeat/monitor-cmd';
+import { commandDriftReason, heartbeatHealth } from '../scripts/lib/heartbeat/monitor-cmd';
 import { routineHealth } from '../scripts/lib/routines/arm';
 import { monitorFixture, type FixtureOpts } from './helpers/monitor-fixture';
 import { freshDirFactory } from './helpers/workdir';
+import { writeRegistryEntry } from './helpers/registry-fixture';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const { freshDir, cleanup } = freshDirFactory('monitor-verdict-agreement-');
 afterAll(cleanup);
@@ -35,3 +38,18 @@ for (const [name, opts] of variants) {
     });
   });
 }
+
+describe('commandDriftReason', () => {
+  // The supervisor pid is not visible from a sandboxed command; the resident's
+  // registry entry in another pid namespace is what says it is still running.
+  test.skipIf(process.platform !== 'linux')('a resident in another pid namespace counts as a live supervisor', () => {
+    const hermitDir = path.join(freshDir(), '.hermit');
+    const configDir = path.join(hermitDir, 'cfg');
+    fs.mkdirSync(path.join(hermitDir, 'state'), { recursive: true });
+    fs.writeFileSync(path.join(hermitDir, 'state', 'heartbeat-liveness.json'), JSON.stringify({ last_peek_at: new Date().toISOString(), pid: 4194000 }));
+    fs.writeFileSync(path.join(hermitDir, 'state', 'runtime.json'), JSON.stringify({ session_pid: 4194001, config_dir: configDir }));
+    expect(commandDriftReason(hermitDir, 'heartbeat-liveness.json')).toBe('command-drift');
+    writeRegistryEntry(configDir, 4194001, { pidDomain: 'linux:0000:pid:[4026999999]' });
+    expect(commandDriftReason(hermitDir, 'heartbeat-liveness.json')).toBe('restart-required');
+  });
+});

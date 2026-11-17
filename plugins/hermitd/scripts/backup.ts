@@ -62,7 +62,7 @@ import {
 const HERMIT_DIR = '.hermit';
 // A first push of a repo carrying raw/ binaries can run for many minutes; the lock
 // window has to clear that, because lockfile treats an old mtime as stale even when
-// the holder is alive. Mutual exclusion proper is evaluateBackupDue's pidAlive gate.
+// the holder is alive. Mutual exclusion proper is evaluateBackupDue's lockHeld gate.
 const LOCK_STALE_MS = 2 * 60 * 60 * 1000;
 const PUSH_TIMEOUT_MS = 120_000;
 const REFUSED_CAP = 50;

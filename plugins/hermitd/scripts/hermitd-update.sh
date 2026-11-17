@@ -127,7 +127,7 @@ _core_cc_floor_host() {
 
 # The pinned core version in a row list (TAB rows with the id in field 2 and the version in field 4).
 _core_version() {
-  printf '%s\n' "$1" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }'
+  printf '%s\n' "$1" | awk -F'\t' '!f && $2 ~ /^hermitd@/ { print $4; f = 1 }'
 }
 
 # Apply the newly installed core's sealed permission list. Runs only when the core pin moved,
@@ -358,7 +358,7 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   done
   # The new core version the reloaded mod copy reports, so a reload that replaces the
   # mod is recognised by that copy and the evolve leg still runs once.
-  CORE_VERSION=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | awk -F'\t' '$2 ~ /^hermitd@/ { print $4; exit }' | sed -E 's/-[0-9a-f]{12}$//')
+  CORE_VERSION=$(printf '%s\n' "$UPDATE_ROWS_AFTER" | awk -F'\t' '!f && $2 ~ /^hermitd@/ { print $4; f = 1 }' | sed -E 's/-[0-9a-f]{12}$//')
   # hermit-evolve stops on a Claude Code below the new core's minimum, so a queued evolve
   # would never stamp the versions and the wait below would time out. This applies only to a
   # Claude Code that ignores engines and moved the pin anyway; the next start on a newer Claude

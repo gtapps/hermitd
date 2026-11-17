@@ -106,6 +106,13 @@ describe('doctor peer-inbox', () => {
     expect(r.detail).toContain('no live registry entry');
   });
 
+  test.serial.skipIf(process.platform !== 'linux')('resident registered from another pid namespace → ok, not checked', async () => {
+    // What a sandboxed doctor run sees: the entry exists, but its pid domain is not ours.
+    const r = await scenario({ registry: { pidDomain: 'linux:0000:pid:[4026999999]' }, listen: true });
+    expect(r.status).toBe('ok');
+    expect(r.detail).toContain('another pid namespace');
+  });
+
   test.serial('nothing listening on the inbox socket → warn', async () => {
     const r = await scenario({ listen: false });
     expect(r.status).toBe('warn');

@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultConfigDir } from './setup-token';
-import { pidAlive } from './lockfile';
+import { pidAlive, pidNamespace, procStartOf } from './lockfile';
 
 export type SessionStatus = 'idle' | 'busy' | 'shell' | 'waiting';
 
@@ -44,20 +44,6 @@ export interface SessionEntry {
   pidDomain: string;
 }
 
-/** Field 22 of /proc/<pid>/stat — the kernel's process start time in clock
- *  ticks. The registry records it so an entry can be told apart from a
- *  different process that later inherited the same pid. Parsed from the last
- *  ')' because a process name can itself contain spaces and parentheses. */
-function procStartOf(pid: number): string | null {
-  try {
-    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return fields[19] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /** This machine's pid domain, in the registry's own spelling, read off a live
  *  entry: `linux:<contents of /etc/machine-id>:<the /proc/self/ns/pid link
  *  target>`. Distinguishes a container's pid namespace from the host's when both
@@ -71,8 +57,8 @@ function localPidDomain(): string | null {
   if (os.platform() !== 'linux') return null;
   try {
     const machineId = fs.readFileSync('/etc/machine-id', 'utf-8').trim();
-    const ns = fs.readlinkSync('/proc/self/ns/pid');
-    return `linux:${machineId}:${ns}`;
+    const ns = pidNamespace();
+    return ns ? `linux:${machineId}:${ns}` : null;
   } catch {
     return null;
   }
@@ -153,6 +139,25 @@ export function findResident(runtime: any, configDir?: string): SessionEntry | n
   const pid = runtime?.session_pid;
   if (typeof pid !== 'number') return null;
   return readRegistry(configDir).find((e) => e.pid === pid) ?? null;
+}
+
+/**
+ * Whether the stamped resident has a registry entry from another pid domain, the
+ * case where `findResident` returns null without meaning "gone". A shell command
+ * in Claude Code's sandbox runs in its own pid namespace, so from there the
+ * resident's pid cannot be probed. True only on that evidence; any read failure,
+ * a missing stamp, or a platform without pid domains reads false.
+ */
+export function residentInOtherPidNamespace(runtime: any, configDir?: string): boolean {
+  const pid = runtime?.session_pid;
+  const domain = localPidDomain();
+  if (typeof pid !== 'number' || domain === null) return false;
+  try {
+    const entry = parseEntry(fs.readFileSync(path.join(configDir ?? defaultConfigDir(), 'sessions', `${pid}.json`), 'utf-8'));
+    return typeof entry?.pidDomain === 'string' && entry.pidDomain !== domain;
+  } catch {
+    return false;
+  }
 }
 
 /**
