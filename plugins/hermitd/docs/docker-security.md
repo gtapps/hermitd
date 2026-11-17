@@ -213,7 +213,7 @@ A tool shell in the container can still read the Claude login, channel bot token
 
 ### GitHub without `HERMIT_GH_TOKEN`
 
-Leave `HERMIT_GH_TOKEN` unset and map the agent's token instead:
+Set `HERMIT_GH_TOKEN=placeholder` in the project `.env` (`gh` sends nothing without a token, and the proxy replaces the placeholder on the wire) and map the agent's token:
 
 ```
 hermitd credproxy map api.github.com --header Authorization --secret gh --prefix "Bearer "
