@@ -5,11 +5,11 @@
 ### Fixed
 
 - Managed Chrome launches in Docker when an operator volume or build hook leaves `~/.config` owned by root
-- An allowlist `.dockerignore` no longer keeps `docker-build.hermit-local.sh` out of the image after the upgrade
+- An allowlist `.dockerignore` no longer keeps `docker-build.hermit-local.sh` out of images built after the upgrade
 
 ### Upgrade Instructions
 
-1. **Docker agents only:** when `docker-build.hermit-local.sh` and `.dockerignore` both exist at the project root and `.dockerignore` has no `!docker-build.hermit-local.sh` line, append that line, preserving every existing line.
+1. **Docker agents only:** when `docker-build.hermit-local.sh` and `.dockerignore` both exist at the project root and `.dockerignore` has no `!docker-build.hermit-local.sh` line, append it as its own last line, preserving every existing line.
 2. The next host `hermitd update` renders the Dockerfile with the claude-owned `~/.config` and rebuilds; no state migration is required.
 
 ## [1.4.34] - 2026-11-16

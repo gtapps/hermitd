@@ -264,11 +264,12 @@ describe('Dockerfile: base image', () => {
 describe('Dockerfile: claude owns ~/.config', () => {
   test('pre-created as claude, before the root build hook', () => {
     const userLine = dockerfileLines.findIndex((l) => l === 'USER claude');
-    const cfgLine = dockerfileLines.findIndex((l) => l.startsWith('RUN mkdir -p') && l.includes('/home/claude/.config'));
+    const cfgLine = dockerfileLines.findIndex((l) => l.startsWith('RUN mkdir -p') && l.split(' ').includes('/home/claude/.config'));
     const hookLine = dockerfileLines.findIndex((l) => l.startsWith('COPY docker-build.hermit-local.sh*'));
     expect(userLine).toBeGreaterThanOrEqual(0);
     expect(cfgLine).toBeGreaterThan(userLine);
     expect(hookLine).toBeGreaterThan(cfgLine);
+    expect(dockerfileLines.slice(userLine, cfgLine).some((l) => l.startsWith('USER ') && l !== 'USER claude')).toBe(false);
   });
 });
 

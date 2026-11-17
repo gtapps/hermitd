@@ -19,7 +19,7 @@ Rebuild on the host with `hermitd restart --build`; from stopped, use `hermitd s
 
 ## Root and toolchain installs
 
-Put root-only image setup in `<project-root>/docker-build.hermit-local.sh`. The image runs it with Bash as root after Claude Code and Bun are installed, then returns to `USER claude`. The file is optional and needs no executable bit. Preserve existing commands. Use `set -euo pipefail` so a failed install fails the build. For directories under `/home/claude`, use `install -d -o claude -g claude` and name every directory it creates, parents included (`install -d -o claude -g claude /home/claude/.local /home/claude/.local/share/tool`); it sets ownership only on the paths it names. The image's build context must include this file: if `.dockerignore` excludes everything by default, add `!docker-build.hermit-local.sh`.
+Put root-only image setup in `<project-root>/docker-build.hermit-local.sh`. The image runs it with Bash as root after Claude Code and Bun are installed, then returns to `USER claude`. The file is optional and needs no executable bit. Preserve existing commands. Use `set -euo pipefail` so a failed install fails the build. For directories under `/home/claude`, use `install -d -o claude -g claude` and name every directory it creates, parents included (`install -d -o claude -g claude /home/claude/.local /home/claude/.local/share /home/claude/.local/share/tool`); it sets ownership only on the paths it names. The image's build context must include this file: if `.dockerignore` excludes everything by default, add `!docker-build.hermit-local.sh`.
 
 Run `bash -n` on the hook. Apply it through the same host rebuild command as apt packages. The plugin never writes this file.
 
