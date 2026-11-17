@@ -215,14 +215,31 @@ describe('render', () => {
     expect(holding(f.root, f.values.dd_api).map(file => path.relative(f.store(), file))).toEqual(['secrets/dd_api']);
   });
 
-  test('when the re-render fails, unset drops the config rather than keep the value', async () => {
+  test('unset rewrites only the config and applies no pending change', async () => {
     const f = await mapped();
     await f.run('render');
+    const read = (name: string) => fs.readFileSync(path.join(f.store(), name), 'utf8');
+    const agent = read('agent/proxy.json'); const crt = read('sidecar/server.crt');
     await f.run('map', ['new.example.com', '--header', 'X-Key', '--secret', 'dd_api']);
     const r = await f.run('unset', ['gh'], { env: { PATH: path.join(f.root, 'empty-bin') } });
     expect(r.json).toEqual({ status: 'unset', secret: 'gh', apply: 'hermitd restart' });
-    expect(fs.existsSync(path.join(f.store(), 'sidecar/envoy.yaml'))).toBe(false);
     expect(holding(f.root, f.values.gh)).toEqual([]);
+    expect(read('sidecar/envoy.yaml')).toContain(f.values.dd_api);
+    expect(read('sidecar/envoy.yaml')).not.toContain('new.example.com');
+    expect(read('agent/proxy.json')).toBe(agent);
+    expect(read('sidecar/server.crt')).toBe(crt);
+  });
+
+  test('rotating a value or remapping a header drops the old value from a rendered config', async () => {
+    const f = await mapped();
+    await f.run('render');
+    const config = () => fs.readFileSync(path.join(f.store(), 'sidecar/envoy.yaml'), 'utf8');
+    const rotated = 'v-rotated-' + crypto.randomUUID();
+    await f.run('set', ['gh'], { stdin: rotated });
+    expect(holding(f.root, f.values.gh)).toEqual([]);
+    expect(config()).toContain(`"Bearer ${rotated}"`);
+    await f.run('map', ['api.example.com', '--header', 'DD-API-KEY', '--secret', 'dd_app']);
+    expect(config()).not.toContain(f.values.dd_api);
   });
 
   test('a host name longer than 64 characters still renders', async () => {

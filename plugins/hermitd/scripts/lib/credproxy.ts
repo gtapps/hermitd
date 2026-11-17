@@ -280,12 +280,7 @@ function replaceFolder(src: string, dest: string, mode: number): void {
   for (const name of fs.readdirSync(dest)) if (!fresh.has(name)) fs.rmSync(path.join(dest, name), { recursive: true, force: true });
 }
 
-export function render(store: string, project: string): RenderResult {
-  const bindings = readBindings(store);
-  // A sidecar folder (made by the overlay render, or an earlier render) still needs a config,
-  // so unmapping the last host clears it and an enabled sidecar has something to start on.
-  if (!bindings.length && !fs.existsSync(path.join(store, 'sidecar'))) return { status: 'skipped', reason: 'no_bindings' };
-  assertOutside(store, project);
+function withValues(store: string, bindings: Binding[]): { mapped: Mapped[]; missing: Binding[] } {
   const missing: Binding[] = [];
   const byHost = new Map<string, Mapped>();
   for (const b of bindings) {
@@ -295,7 +290,31 @@ export function render(store: string, project: string): RenderResult {
     entry.headers.push({ header: b.header, value: headerValue(b, value) });
     byHost.set(b.host, entry);
   }
-  const mapped = [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host));
+  return { mapped: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)), missing };
+}
+
+/**
+ * Rewrite only the rendered sidecar config, without values the store no longer maps. Other rendered
+ * files stay as they are, and it keeps only host and header pairs already rendered, so the
+ * certificate still covers every host and no pending change is applied before `hermitd restart`.
+ */
+export function scrubConfig(store: string): void {
+  const config = path.join(store, 'sidecar', 'envoy.yaml');
+  if (!fs.existsSync(config)) return;
+  let rendered: { host: string; headers: string[] }[] = [];
+  try { rendered = JSON.parse(fs.readFileSync(path.join(store, 'agent', 'proxy.json'), 'utf8')).hosts ?? []; } catch {}
+  const keep = (b: Binding) => rendered.some(r => r.host === b.host && r.headers.some(h => sameHeader(h, b.header)));
+  const { mapped } = withValues(store, readBindings(store).filter(keep));
+  writeFileAtomic(config, JSON.stringify(envoyConfig(mapped), null, 2) + '\n', 0o600);
+}
+
+export function render(store: string, project: string): RenderResult {
+  const bindings = readBindings(store);
+  // A sidecar folder (made by the overlay render, or an earlier render) still needs a config,
+  // so unmapping the last host clears it and an enabled sidecar has something to start on.
+  if (!bindings.length && !fs.existsSync(path.join(store, 'sidecar'))) return { status: 'skipped', reason: 'no_bindings' };
+  assertOutside(store, project);
+  const { mapped, missing } = withValues(store, bindings);
   const hosts = mapped.map(m => m.host);
 
   const umask = process.umask(0o077);

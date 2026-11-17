@@ -185,7 +185,7 @@ hermitd restart
 ```
 
 - `map <host> --header <name> --secret <name>` adds one header for one host. `--prefix "Bearer "` puts text before the value; `--basic-user <user>` sends `Basic` authentication with the value as the password.
-- `set <name>` reads the value with echo off, or from standard input. `unset <name>` deletes it. `unmap <host> [--header <name>]` removes a mapping. Both also remove the value from the sidecar's rendered config right away; a running sidecar keeps it in memory until `hermitd restart`.
+- `set <name>` reads the value with echo off, or from standard input. `unset <name>` deletes it. `unmap <host> [--header <name>]` removes a mapping. `set`, `unset`, `map` and `unmap` drop a replaced or removed value from the sidecar's rendered config right away; new hosts, and a running sidecar's in-memory copy, wait for `hermitd restart`.
 - `status` lists hosts, headers, and whether each value is set. No command prints a value.
 - `hermitd restart` applies every change. `start`, `restart` and `update` render the sidecar's files from the store; a failed render stops the command before anything is stopped.
 

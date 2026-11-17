@@ -19,17 +19,10 @@ import { isContainer } from './lib/container';
 import { failJson, flagValue, printJson, readStdin } from './lib/cli';
 import {
   type Binding, assertOutside, deleteSecret, hasValue, normalizeHost, readBindings, removeBindings, render,
-  storeDir, upsertBinding, validHeader, validSecretName, validText, writeBindings, writeSecret,
+  scrubConfig, storeDir, upsertBinding, validHeader, validSecretName, validText, writeBindings, writeSecret,
 } from './lib/credproxy';
 
 const APPLY = 'hermitd restart';
-
-/** A removed value must not outlive its command in a rendered sidecar config: re-render, or drop the config. */
-function scrub(store: string, project: string): void {
-  const config = path.join(store, 'sidecar', 'envoy.yaml');
-  if (!fs.existsSync(config)) return;
-  try { render(store, project); } catch { fs.rmSync(config, { force: true }); }
-}
 
 /** Read a value from the terminal with echo off; Enter ends it, Ctrl-C cancels. */
 function readHidden(prompt: string): Promise<string> {
@@ -89,6 +82,7 @@ export async function run(argv: string[], container = isContainer): Promise<obje
     const binding: Binding = { host, header, secret, ...(prefix !== undefined ? { prefix } : {}), ...(user !== undefined ? { basic_user: user } : {}) };
     assertOutside(store, project);
     writeBindings(store, project, upsertBinding(readBindings(store), binding));
+    scrubConfig(store);
     return { status: 'mapped', host, header, secret, has_value: hasValue(store, secret), apply: APPLY };
   }
   if (sub === 'unmap') {
@@ -97,18 +91,19 @@ export async function run(argv: string[], container = isContainer): Promise<obje
     const header = flagValue(args, '--header');
     const before = readBindings(store);
     const after = removeBindings(before, host, header);
-    if (after.length !== before.length) { writeBindings(store, project, after); scrub(store, project); }
+    if (after.length !== before.length) { writeBindings(store, project, after); scrubConfig(store); }
     return { status: 'unmapped', host, removed: before.length - after.length, apply: APPLY };
   }
   if (sub === 'set' || sub === 'unset') {
     const name = args[0];
     if (!name || !validSecretName(name)) throw new Error('invalid_secret_name');
-    if (sub === 'unset') { deleteSecret(store, name); scrub(store, project); return { status: 'unset', secret: name, apply: APPLY }; }
+    if (sub === 'unset') { deleteSecret(store, name); scrubConfig(store); return { status: 'unset', secret: name, apply: APPLY }; }
     const value = await readValue(name);
     if (!value) throw new Error('empty_value');
     if (!validText(value)) throw new Error('invalid_value');
     assertOutside(store, project);
     writeSecret(store, name, value);
+    scrubConfig(store);
     return { status: 'set', secret: name, apply: APPLY };
   }
   if (sub === 'render') return render(store, project);
