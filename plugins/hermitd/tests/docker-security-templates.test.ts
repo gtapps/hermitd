@@ -49,8 +49,12 @@ describe('netguard-entrypoint.sh.template', () => {
     expect(entrypoint).toContain('dnsmasq -k --log-queries --log-facility=-');
   });
 
-  test('entrypoint: --log-facility=- on enforce dnsmasq line', () => {
-    expect(entrypoint).toContain('dnsmasq -k --log-facility=- --conf-file');
+  test('entrypoint: enforce dnsmasq line logs queries to stdout', () => {
+    expect(entrypoint).toContain('dnsmasq -k --log-queries --log-facility=- --conf-file');
+  });
+
+  test('entrypoint: enforce mode feeds server= names into the firewall sets', () => {
+    expect(entrypoint).toContain('--nftset=$names/4#inet#firewall#allow4,6#inet#firewall#allow6');
   });
 
   test('entrypoint: pgrep dnsmasq used for liveness check', () => {
@@ -164,15 +168,16 @@ describe('dnsmasq.allowlist.template', () => {
 });
 
 // -------------------------------------------------------
-// SKILL.md + docs: tune instruction says down && up, not restart hermit-netguard
+// SKILL.md + docs: tune instruction rebuilds the netguard image and bounces both
+// services (restart --build runs down + up), never restarts hermit-netguard alone
 // -------------------------------------------------------
 describe('tune instruction (SKILL.md + docs)', () => {
-  test("SKILL.md: tune instruction uses 'hermitd-docker down && hermitd-docker up' not restart", () => {
-    expect(skill).toContain('hermitd-docker down && hermitd-docker up');
+  test("SKILL.md: tune instruction uses 'hermitd restart --build'", () => {
+    expect(skill).toContain('hermitd restart --build');
   });
 
-  test('docs/docker-security.md: tune instruction uses down && up', () => {
-    expect(docs).toContain('hermitd-docker down && hermitd-docker up');
+  test('docs/docker-security.md: tune instruction uses restart --build', () => {
+    expect(docs).toContain('hermitd restart --build');
   });
 
   test("docs/docker-security.md: no stale 'restart hermit-netguard' instruction in tune section", () => {

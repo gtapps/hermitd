@@ -16,17 +16,26 @@
 # fail-safe (set +e + tail-stay-up on rule-load failure) catches it
 # without crash-looping; operator can `docker exec` in to inspect.
 
+#
+# OUTPUT_POLICY is `drop` in DNS enforce mode, where EGRESS_ALLOW_RULES accept
+# only allow4/allow6 (filled by dnsmasq, see netguard-entrypoint.sh) and
+# dnsmasq's own upstream DNS; log-only mode keeps `accept`.
+
 flush ruleset
 
 table inet firewall {
+    set allow4 { type ipv4_addr; }
+    set allow6 { type ipv6_addr; }
+
     chain output {
-        type filter hook output priority 0; policy accept;
+        type filter hook output priority 0; policy {{OUTPUT_POLICY}};
 
         oifname lo accept
         ct state vmap { established : accept, related : accept, invalid : drop }
 
-        # Operator-confirmed LAN carve-outs. Rendered first so they accept
-        # before the RFC1918 drop below. Empty by default.
+        # Operator-confirmed carve-outs (LAN or public IPs). Rendered first so
+        # they accept before the RFC1918 drop below and the enforce-mode
+        # default drop. Empty by default.
         {{LAN_ALLOWLIST_RULES}}
 
         # Block private RFC1918 + link-local (cloud metadata at 169.254/16).
@@ -35,6 +44,8 @@ table inet firewall {
         # add carve-outs for the relevant bridge IPs.
         ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop
         ip6 daddr { fc00::/7, fe80::/10 } drop
+
+        {{EGRESS_ALLOW_RULES}}
     }
 
     # Redirect all egress UDP/TCP :53 to local dnsmasq. THIS is what makes

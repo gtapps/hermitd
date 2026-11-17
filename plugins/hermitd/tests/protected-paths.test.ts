@@ -37,7 +37,7 @@ const EXPECTED_PATHS = [
   'artifacts.publish_authorized',
   'artifacts.backend',
   'docker.git_identity_mount',
-  'docker.security.managed_ceiling',
+  'docker.security',
   'docker.packages',
   'docker.recommended_plugins',
   'docker.fleet_mesh', 'browser',

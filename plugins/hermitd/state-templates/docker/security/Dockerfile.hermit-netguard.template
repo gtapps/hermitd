@@ -7,9 +7,17 @@
 # https://alpinelinux.org/releases/
 FROM alpine:3.23
 
-RUN apk add --no-cache nftables dnsmasq
+# The nftset build lets enforce mode add resolved addresses to the firewall
+# sets; Alpine's default dnsmasq build has no nftset support.
+RUN apk add --no-cache nftables dnsmasq-dnssec-nftset
 
 COPY netguard-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# The rules ship inside the image, never as a mount from the project folder the
+# agent can write: a change takes effect only when the operator rebuilds, and
+# the rules always match the entrypoint that fills their address sets.
+COPY nftables.conf /etc/nftables.conf
+COPY dnsmasq.allowlist /etc/dnsmasq.allowlist
 
 ENTRYPOINT ["/entrypoint.sh"]

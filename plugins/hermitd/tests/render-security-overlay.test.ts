@@ -211,6 +211,101 @@ describe('render subcommand — all toggles on', () => {
   });
 });
 
+describe('render subcommand: egress enforcement', () => {
+  const LOG_ONLY = {
+    network: ALL_ON.network,
+    toggles: { lan: { enabled: true, dnsMode: 'log-only' } },
+    lanAllowlist: [], fleetDomains: [], additionalDomains: [],
+  };
+
+  test('enforce mode drops by default and accepts only resolved sets and dnsmasq upstream', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, ALL_ON);
+    const nft = fs.readFileSync(nftPath(dir), 'utf8');
+    expect(nft).toContain('policy drop;');
+    expect(nft).toMatch(/^ {4}set allow4 \{ type ipv4_addr; \}$/m);
+    expect(nft).toMatch(/^ {8}ip daddr @allow4 accept$/m);
+    expect(nft).toMatch(/^ {8}ip6 daddr @allow6 accept$/m);
+    expect(nft).toMatch(/^ {8}meta skuid 100 meta l4proto \{ tcp, udp \} th dport 53 accept$/m);
+    expect(nft).toMatch(/^ {8}icmpv6 type \{ nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit \} accept$/m);
+    // Carve-outs accept before the default drop.
+    expect(nft.indexOf('ip daddr 192.168.1.50 accept')).toBeLessThan(nft.indexOf('@allow4 accept'));
+  });
+
+  test('log-only mode keeps the accept policy and adds no egress rules', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, LOG_ONLY);
+    const nft = fs.readFileSync(nftPath(dir), 'utf8');
+    expect(nft).toContain('policy accept;');
+    expect(nft).not.toContain('@allow4 accept');
+  });
+
+  test('channel and voice-note hosts follow config.json', async () => {
+    const dir = freshDir();
+    fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({
+      channels: { telegram: { enabled: true }, discord: { enabled: false } },
+      transcription: { enabled: false },
+    }));
+    await renderOverlay(dir, LOG_ONLY);
+    const allow = fs.readFileSync(allowPath(dir), 'utf8');
+    expect(allow).toContain('server=/telegram.org/1.1.1.1');
+    expect(allow).not.toContain('discord.com');
+    expect(allow).not.toContain('huggingface.co');
+  });
+
+  test('transcription hosts render when the block is absent (enabled by default)', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, LOG_ONLY);
+    const allow = fs.readFileSync(allowPath(dir), 'utf8');
+    expect(allow).toContain('server=/huggingface.co/1.1.1.1');
+    expect(allow).not.toContain('telegram.org');
+  });
+
+  test('rule files are image build inputs, never mounted from the project folder', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, LOG_ONLY);
+    const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
+    expect(overlay.services['hermit-netguard'].volumes).toBeUndefined();
+    expect(overlay.services.hermit.volumes).toBeUndefined();
+    const dockerfile = fs.readFileSync(path.join(import.meta.dir, '..', 'state-templates', 'docker', 'security',
+      'Dockerfile.hermit-netguard.template'), 'utf8');
+    expect(dockerfile).toContain('COPY nftables.conf /etc/nftables.conf');
+    expect(dockerfile).toContain('COPY dnsmasq.allowlist /etc/dnsmasq.allowlist');
+  });
+
+  test('netguard logs are capped on a pinned json-file driver', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, LOG_ONLY);
+    const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
+    expect(overlay.services['hermit-netguard'].logging).toEqual({
+      driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' },
+    });
+  });
+});
+
+describe('mcp-hosts subcommand', () => {
+  test('lists remote server hostnames once, skipping stdio, IPs and localhost', async () => {
+    const dir = freshDir();
+    fs.writeFileSync(path.join(dir, '.mcp.json'), JSON.stringify({ mcpServers: {
+      linear: { type: 'http', url: 'https://mcp.linear.app/mcp' },
+      linear2: { type: 'sse', url: 'https://MCP.linear.app./sse' },
+      templated: { type: 'http', url: 'https://mcp.example.com:${PORT}/mcp' },
+      local: { command: 'node', args: ['server.js'] },
+      lan: { type: 'http', url: 'http://192.168.1.9:8080/mcp' },
+      dev: { type: 'http', url: 'http://localhost:3000/mcp' },
+    } }));
+    const r = await runScript('render-security-overlay.ts', { args: ['mcp-hosts', dir] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ hosts: [{ host: 'mcp.linear.app', server: 'linear' }] });
+  });
+
+  test('a missing .mcp.json yields no hosts', async () => {
+    const r = await runScript('render-security-overlay.ts', { args: ['mcp-hosts', freshDir()] });
+    expect(JSON.parse(r.stdout)).toEqual({ hosts: [] });
+  });
+});
+
 describe('render subcommand — partial toggles', () => {
   test('resources-only (no LAN) writes only the overlay, sysctls on hermit', async () => {
     const dir = freshDir();
