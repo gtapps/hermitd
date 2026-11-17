@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Managed Chrome launches in Docker when an operator volume or build hook leaves `~/.config` owned by root
+- `hermitd start --build`, `hermitd restart --build` and `hermitd update` stop with the reason when the build context excludes an existing `docker-build.hermit-local.sh`, instead of building an image that skipped it
+
+### Upgrade Instructions
+
+1. **Docker agents only:** when both `docker-build.hermit-local.sh` and `.dockerignore` exist at the project root and `.dockerignore` has no `!docker-build.hermit-local.sh` line, append that line, preserving every existing line, and tell the operator in chat that it was added so the build hook reaches the image. Tmux agents and installs without a hook skip this step.
+2. The next host `hermitd update` renders the Dockerfile with the claude-owned `~/.config` and rebuilds; no state migration is required.
+
 ## [1.4.34] - 2026-11-16
 
 ### Added

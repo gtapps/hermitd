@@ -1178,9 +1178,11 @@ describe('hermitd-docker up host tmux guard', () => {
   // The fake tmux reports only the exact-match `=hermit-demo` target alive; the
   // fake docker records its argv so a refused boot shows no `up -d`, and reports
   // the service running so restart gets past its running check.
-  async function up(runtime: object, env: Record<string, string> = {}, cmd = 'up') {
+  // `hook` writes an operator build hook; FAKE_HOOK_RC is the exit of the in-image `test -f`.
+  async function up(runtime: object, env: Record<string, string> = {}, cmd = 'up', hook = false) {
     const wd = setupWorkdir();
     const proj = wd.dir;
+    if (hook) write(path.join(proj, 'docker-build.hermit-local.sh'), 'set -euo pipefail\n');
     fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
     fs.mkdirSync(hermit(proj, 'state'), { recursive: true });
     fs.copyFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'bin', 'hermitd-docker'), hermit(proj, 'bin', 'hermitd-docker'));
@@ -1193,7 +1195,7 @@ describe('hermitd-docker up host tmux guard', () => {
     const stub = path.join(proj, '.stub');
     const dockerLog = path.join(stub, 'docker.log');
     fs.mkdirSync(stub);
-    write(path.join(stub, 'docker'), `#!/usr/bin/env bash\necho "$*" >> "${dockerLog}"\ncase "$*" in *" ps "*) echo hermit ;; *"up -d"*) echo "HERMIT_RESUME=\${HERMIT_RESUME:-unset}" >> "${dockerLog}" ;; esac\nexit 0\n`);
+    write(path.join(stub, 'docker'), `#!/usr/bin/env bash\necho "$*" >> "${dockerLog}"\ncase "$*" in *"config --images"*) echo demo-hermit ;; *"--entrypoint test"*) exit "\${FAKE_HOOK_RC:-0}" ;; *" ps "*) echo hermit ;; *"up -d"*) echo "HERMIT_RESUME=\${HERMIT_RESUME:-unset}" >> "${dockerLog}" ;; esac\nexit 0\n`);
     write(path.join(stub, 'tmux'), '#!/usr/bin/env bash\n[ "$1 $2 $3" = "has-session -t =hermit-demo" ] && exit 0\nexit 1\n');
     write(path.join(stub, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
     for (const f of ['docker', 'tmux', 'sleep']) fs.chmodSync(path.join(stub, f), 0o755);
@@ -1202,7 +1204,7 @@ describe('hermitd-docker up host tmux guard', () => {
         args: cmd.split(' '), cwd: proj, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}`, ...env },
       });
       const calls = fs.existsSync(dockerLog) ? fs.readFileSync(dockerLog, 'utf8') : '';
-      return { ...r, booted: calls.includes('up -d'), resume: /HERMIT_RESUME=(\S+)/.exec(calls)?.[1] };
+      return { ...r, calls, booted: calls.includes('up -d'), resume: /HERMIT_RESUME=(\S+)/.exec(calls)?.[1] };
     } finally { wd.cleanup(); }
   }
 
@@ -1234,6 +1236,45 @@ describe('hermitd-docker up host tmux guard', () => {
     expect((await up(docker, {}, 'restart --resume')).resume).toBe('1');
     expect((await up(docker, {}, 'restart --fresh')).resume).toBe('0');
     expect((await up(docker)).resume).toBe('unset');
+  });
+
+  // The optional COPY glob lets a build context that drops the operator hook build
+  // cleanly; the check stops before the new image replaces the container.
+  test('build stops when the image skipped an existing build hook', async () => {
+    const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
+    for (const cmd of ['restart --build', 'up --build']) {
+      const r = await up(docker, { FAKE_HOOK_RC: '1' }, cmd, true);
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain('!docker-build.hermit-local.sh');
+      expect(r.booted).toBe(false);
+    }
+  });
+
+  test('build hook check passes, fails open, and runs only for a hook and a build', async () => {
+    const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
+    expect((await up(docker, { FAKE_HOOK_RC: '0' }, 'restart --build', true)).booted).toBe(true);
+    expect((await up(docker, { FAKE_HOOK_RC: '125' }, 'restart --build', true)).booted).toBe(true);
+    const noHook = await up(docker, { FAKE_HOOK_RC: '1' }, 'restart --build');
+    expect(noHook.booted).toBe(true);
+    expect(noHook.calls).not.toContain('--entrypoint test');
+    const plain = await up(docker, { FAKE_HOOK_RC: '1' }, 'up', true);
+    expect(plain.booted).toBe(true);
+    expect(plain.calls).not.toContain('--entrypoint test');
+    expect(plain.calls).not.toMatch(/ build( |$)/m);
+    // `up --build` builds once, before the check, and `up -d` reuses that image.
+    const built = await up(docker, { FAKE_HOOK_RC: '0' }, 'up --build', true);
+    expect(built.booted).toBe(true);
+    expect(built.calls.match(/ build( |$)/gm)?.length).toBe(1);
+    expect(built.calls).not.toContain('--build');
+  });
+
+  test('update checks the build hook after its image build, before the held updates', () => {
+    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-docker.sh'), 'utf8');
+    const buildIdx = src.indexOf('_dc build --pull');
+    const checkIdx = src.indexOf('_require_build_hook_in_image', buildIdx);
+    expect(buildIdx).toBeGreaterThan(-1);
+    expect(checkIdx).toBeGreaterThan(buildIdx);
+    expect(checkIdx).toBeLessThan(src.indexOf('IMAGE_BUILT=true', buildIdx));
   });
 });
 

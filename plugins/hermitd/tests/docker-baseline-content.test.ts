@@ -259,6 +259,19 @@ describe('Dockerfile: base image', () => {
   });
 });
 
+// A volume or root hook under ~/.config must find the parent owned by claude, or
+// Chrome's crashpad handler has no database and the managed browser cannot launch.
+describe('Dockerfile: claude owns ~/.config', () => {
+  test('pre-created as claude, before the root build hook', () => {
+    const userLine = dockerfileLines.findIndex((l) => l === 'USER claude');
+    const cfgLine = dockerfileLines.findIndex((l) => l.startsWith('RUN mkdir -p') && l.includes('/home/claude/.config'));
+    const hookLine = dockerfileLines.findIndex((l) => l.startsWith('COPY docker-build.hermit-local.sh*'));
+    expect(userLine).toBeGreaterThanOrEqual(0);
+    expect(cfgLine).toBeGreaterThan(userLine);
+    expect(hookLine).toBeGreaterThan(cfgLine);
+  });
+});
+
 describe('Dockerfile: locale', () => {
   test('Dockerfile: UTF-8 locale for attached tmux clients', () => {
     expect(dockerfile).toContain('ENV LANG=C.UTF-8');

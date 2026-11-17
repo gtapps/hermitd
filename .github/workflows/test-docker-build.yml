@@ -60,6 +60,9 @@ jobs:
         if: matrix.shape == 'hook'
         run: docker run --rm --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'test -f /opt/hermit-build/hook-ran-as-root && test "$(id -un)" = claude'
 
+      - name: Verify home config ownership under a mount
+        run: docker run --rm --tmpfs /home/claude/.config/probe --entrypoint bash hermit-ci:${{ matrix.shape }} -lc 'test "$(stat -c %U /home/claude/.config)" = claude'
+
       # The pin is the point: a floating install would still build fine.
       - name: Verify the pinned runtime inside the image
         run: |
