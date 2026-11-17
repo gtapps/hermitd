@@ -8,7 +8,7 @@ Hermit is backwards compatible — nothing breaks if you don't upgrade. But upgr
 
 ### One command (recommended)
 
-From the project root, run the wrapper for your deployment: it waits for quiet, moves the durable plugin pins, and queues `/reload-plugins` for the running session's core mod, followed by `hermit-evolve` for version gaps; evolve runs only after the reload completes. It waits for migrations, builds the Docker image from the merged files when applicable, waits for quiet again, then restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
+From the project root, run `hermitd update`. It waits for quiet, moves the durable plugin pins and queues `/reload-plugins` for the running session's core mod. For version gaps it runs `hermit-evolve` after the reload. It waits for migrations, builds the Docker image from approved copies when applicable, waits for quiet again and restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
 
 ```bash
 # Docker hermits:
@@ -17,7 +17,9 @@ hermitd update
 hermitd update
 ```
 
-Docker hermits also accept `--plugins-only` (update plugins and restart the container once, without rebuilding the image), `--cc-only` (rebuild with the latest Claude Code, without updating plugins), `--dry-run` (show the plan and change nothing) and `--yes` (skip the confirmation). Local hermits accept `--dry-run`. A Docker update is refused while a host tmux session runs the project's hermit; stop it first with `hermitd stop`.
+Docker agents also accept `--plugins-only` (update plugins and restart the container without rebuilding the image), `--cc-only` (rebuild with the latest Claude Code without updating plugins), `--dry-run` (show the plan) and `--yes` (skip the update confirmation). Local agents accept `--dry-run`. A Docker update requires the project's host tmux session to be stopped.
+
+Docker updates check for pending Docker input changes before updating the host plugin. The upgrade inside the container can also change those inputs and trigger a second check before rebuilding or restarting. Approval requires a terminal `y`, including with `--yes`. If the command stops for approval, run `hermitd approve` in a terminal, then rerun `hermitd update` to finish. See the [host trust boundary](docker-security.md#host-trust-boundary).
 
 Always-on hermits do this on their own: the resident-start upgrade banner triggers `hermit-evolve unattended` automatically.
 

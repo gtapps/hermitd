@@ -24,7 +24,7 @@ Run: `[ -f /.dockerenv ] || [ -f /run/.containerenv ] && echo container || echo 
 
 If the output is `container`, **stop immediately** — do not proceed to step 1. Print:
 
-> This skill generates host-side Docker scaffolding and then drives `docker compose up`. Run it from your host shell in the project root. To pair a channel later, run `/hermitd:channel-setup` from the host. To check what's already configured *inside* the running container, run `/hermitd:hermit-doctor`.
+> For an existing install, run `hermitd setup docker-setup` from a host terminal at the project root. For a first-time install, open Claude Code on the host and run `/hermitd:docker-setup`. To pair a channel later, run `hermitd setup channel-setup`. To check the running container from inside it, run `/hermitd:hermit-doctor`.
 
 ### 1. Prerequisites
 
@@ -365,7 +365,7 @@ docker-compose.hermit.yml      — orchestration config
 Install the host operator command from the project root before either deployment path:
 
 ```bash
-.hermit/bin/hermitd-run hermitd-cli install
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/hermitd-cli.ts" install
 ```
 
 **Quick:** silently treat as `Yes — build now` and proceed directly to the build sub-section below. No prompt.
@@ -394,23 +394,25 @@ Manual deployment guide
      - bypassPermissions: arrow keys → "Yes, I accept" → Enter.
      - auto: "Enable auto mode?" → press 1 then Enter (persists in the named volume).
 
-4. (Channels only) From a normal host session, pair each bot:
-   /hermitd:channel-setup
+4. (Channels only) Pair each bot from a host terminal:
+   hermitd setup channel-setup
 
 5. Verify everything is healthy:
    hermitd status
 
-Re-run /hermitd:docker-setup any time you want guided help.
+For guided help on this install, run hermitd setup docker-setup.
 ```
 
 **If "Yes — build now":**
-1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount — if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each configured channel run `mkdir -p .claude.local/channels/<plugin>`. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt so channel pairing commands land on an idle REPL, not a busy session turn), and `rm -f .hermit/state/.boot-conflict` — the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose "${COMPOSE_FILES[@]}" up -d --build` — builds and starts. Help fix errors (daemon not running, network, disk). Use `docker compose` directly here rather than `.hermit/bin/hermitd-docker up`: its trailing attach/detach echo is operator hand-off text, which step 9 delivers at the right moment.
+1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount — if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each configured channel run `mkdir -p .claude.local/channels/<plugin>`. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt so channel pairing commands land on an idle REPL, not a busy session turn), and `rm -f .hermit/state/.boot-conflict` — the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose "${COMPOSE_FILES[@]}" up -d --build` — builds and starts. Help fix errors (daemon not running, network, disk). Step 9 supplies the attach and detach instructions.
 2. **Verify the container stayed running:** Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 10s, checking `.hermit/state/.boot-conflict` on each tick. If the marker exists, the container is up but **inert**: the entrypoint found a live non-Docker instance owning this project's state and is holding PID 1 without starting claude, so `ps --status running` reports it healthy and every later step (login, trust, pairing) would run against a container with no tmux session. Show the marker's contents, then stop with: "Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`." (Step 1's `live_owner` gate catches this before the build; this poll covers a host hermit restarted mid-wizard.) An absent marker at this point is **not** an all-clear: the entrypoint writes it at §4b, after the credential wait and the first-run plugin install, so on a first boot it cannot exist yet — the first-run acceptance poll below re-checks it once the container has had time to get there. If the service appears and no marker exists — continue to the next sub-section. If it never appears after 10s, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit` and show the output. Suggest a targeted fix based on the log:
    - **Daemon not running** → `docker info` errors → start Docker Desktop or `sudo systemctl start docker`, then re-run this skill
    - **Build failure** → read the build error line in the log above; fix the Dockerfile or missing dependency
    - **Missing `.env` var** → `docker compose "${COMPOSE_FILES[@]}" config 2>&1 | grep -i error` names it
    - **Port conflict** → `ss -tlnp | grep <port>` finds what's using the published port
    **Do not continue to Login / Workspace trust / Channel pairing while the container is down or inert — stop here and ask the operator to fix and re-run the skill.**
+
+After the first successful start, run `hermitd approve` from the project root to record the initial Docker inputs. If it reports pending changes on an existing install, ask the operator to run `hermitd approve` in their terminal and wait for confirmation before continuing.
 
 **Login (subscription auth only):** If operator chose subscription auth, proceed only once the container is confirmed running. Guide them through login:
 1. Tell them: "The container is waiting for you to log in. Run this from another terminal:"
@@ -423,7 +425,7 @@ Re-run /hermitd:docker-setup any time you want guided help.
    - **OAuth URL unreachable** → copy the URL from the log and open it manually in a browser
    - **Code expired / rejected** → re-run `hermitd-docker login` (codes expire in ~10 min)
    - **Credentials not written** → `docker compose "${COMPOSE_FILES[@]}" exec -T hermit ls /home/claude/.claude/.credentials.json` (should exist after login); missing = named volume not mounted — check `docker-compose.hermit.yml` volume entry
-   Then **stop** — operator re-runs `/hermitd:docker-setup` after resolving the issue.
+   Then **stop** — operator runs `hermitd setup docker-setup` after resolving the issue.
 
 **Post-login decision — which credential this hermit runs on:** ask immediately after the login above succeeds. The attended login is still required first — the first-launch wizard demands an interactive login and will not accept the env token (confirmed live), and initial setup is attended anyway.
 
@@ -434,7 +436,7 @@ Ask with `AskUserQuestion` (header: `"Auth method"`) — **Sign in with claude.a
 **Sign in with claude.ai:**
 1. Record the choice — the hermit is already running on this credential, so nothing else has to happen:
    ```
-   .hermit/bin/hermitd-run settings-edit .hermit/config.json set auth_mode login
+   bun "${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts" .hermit/config.json set auth_mode login
    ```
 2. Note for the summary: renewal is due in about 30 days, the hermit asks over the channel 3 days ahead, and it takes one browser tap with no server access — it stages the new sign-in and applies it on its own restart. Remote Control is available on this credential; converting to a long-lived token any time is `hermitd docker setup-token`. Continue to first-run acceptance.
 
@@ -477,7 +479,7 @@ Wait for the operator to confirm they have detached before continuing.
 
 **Channel pairing** (skip if no channels or no tokens configured):
 
-For each channel, **first verify the token is configured** — check that `.claude.local/channels/<plugin>/.env` exists and contains the expected `*_BOT_TOKEN` var. If missing, skip pairing for this channel and tell the operator: "No token configured for `<channel>` — write it to `.claude.local/channels/<plugin>/.env`, restart the container, then re-run `/hermitd:channel-setup` to pair." Move to the next channel.
+For each channel, **first verify the token is configured** — check that `.claude.local/channels/<plugin>/.env` exists and contains the expected `*_BOT_TOKEN` var. If missing, skip pairing for this channel and tell the operator: "No token configured for `<channel>` — write it to `.claude.local/channels/<plugin>/.env`, restart the container, then run `hermitd setup channel-setup` to pair." Move to the next channel.
 
 If the token is present, ask if already paired. If not:
 1. Ask with `AskUserQuestion` (header: `"<channel> pairing"`) — `"I have the code"` / `"Skip this channel"`. On `"I have the code"`: ask for the 6-char code via `Other` (header: `"Bot code"`).
@@ -492,7 +494,7 @@ If the token is present, ask if already paired. If not:
    ```
    Relay the result or stop on `{"error"}`.
 4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
-5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `/hermitd:channel-setup` from the host to complete its home-to-state location check before proceeding.
+5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `hermitd setup channel-setup` in a host terminal to complete its home-to-state location check before proceeding.
 6. **Default delivery settings** (skip if pairing was skipped this run):
    ```bash
    bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <plugin>
@@ -519,9 +521,9 @@ Tell the operator (set expectations — this step takes ~30-60s and otherwise lo
 
 Then run, in sequence:
 
-1. `.hermit/bin/hermitd-docker down`; sends the configured shutdown skill, if any, and polls for a fresh execution boundary up to 60s before removing the container. If it prints "Timed out waiting for graceful close; forcing stop", flag it in the final summary (session that witnessed setup didn't close cleanly; not blocking but worth noting).
+1. `hermitd stop`; sends the configured shutdown skill, if any, and polls for a fresh execution boundary up to 60s before removing the container. If it prints "Timed out waiting for graceful close; forcing stop", flag it in the final summary (session that witnessed setup didn't close cleanly; not blocking but worth noting).
 
-2. `docker compose "${COMPOSE_FILES[@]}" up -d` — recreates the container. Use `docker compose` directly, as in step 8, not `hermitd-docker up`. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
+2. `docker compose "${COMPOSE_FILES[@]}" up -d` — recreates the container. Use the same Compose stack as in Step 8. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
 
 3. Re-verify the container stayed running (same poll as step 8.2). If it failed to come back up, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit`, show the output, and apply the same targeted hints as step 8.2 (daemon down, build failure, port conflict). Stop — don't proceed to step 9.
 
@@ -552,7 +554,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set watch
 
 This only flips `.watchdog.enabled` — the other watchdog tuning keys (`stale_factor`, `wedge_floor`, `escalate_after`, `operator_grace`) are preserved, the whole config is validated, and the change lands in the settings ledger. Never write `config.json` with Edit/Write or a shell redirect; direct `Edit` calls raise an approval prompt (seeded ask rule) and skip validation and the ledger.
 
-Run `.hermit/bin/hermitd-status` and show output. The table reports transport, execution and its age, open and waiting task counts, and the task in progress, including one a worker or helper runs. Transport `up` means the `hermit` service is running; a sidecar alone reports `down`. Execution can be `unknown` until the first execution stamp appears. Do **not** add `sleep` before the status check.
+Run `hermitd status` and show output. The table reports transport, execution and its age, open and waiting task counts, and the task in progress, including one a worker or helper runs. Transport `up` means the `hermit` service is running; a sidecar alone reports `down`. Execution can be `unknown` until the first execution stamp appears. Do **not** add `sleep` before the status check.
 
 If healthy:
 ```

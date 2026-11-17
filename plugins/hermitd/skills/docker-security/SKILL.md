@@ -30,7 +30,7 @@ Run: `[ -f /.dockerenv ] || [ -f /run/.containerenv ] && echo container || echo 
 
 If the output is `container`, **stop immediately** — do not proceed to step 1. Print:
 
-> This skill writes a `docker-compose.security.yml` overlay on the host and recreates the container with stronger isolation. Run it from your host shell in the project root. To inspect the live security posture *inside* the running container, run `/hermitd:hermit-doctor` — it includes a `docker-security` check.
+> Run `hermitd setup docker-security` from a host terminal at the project root. To inspect live security inside the container, run `/hermitd:hermit-doctor`.
 
 For every direct Compose command, rebuild `COMPOSE_FILES` immediately before use in the same Bash call:
 
@@ -49,7 +49,7 @@ Use `docker compose "${COMPOSE_FILES[@]}"`: base, security overlay, then operato
 3. **Docker daemon check**: run `timeout 10s docker info >/dev/null 2>&1`. If it fails or times out: tell the operator "Docker daemon is not reachable or timed out. Start Docker before re-running `/docker-security`." Stop.
 4. Read `docker.network_mode` from config (default: `"bridge"`). If `"host"`, set `HOST_NETWORK_MODE=true` and surface to operator: "Detected `network_mode: host` in your config. The LAN containment toggle (Prompt 1) will be skipped — it would replace host mode and break your HA / host-bound service access. Resource bounds (Prompt 2) will not apply network sysctls in host mode either; Docker rejects them and the container would fail to start."
 5. **Detect hermit ports**: run `timeout 10s docker compose "${COMPOSE_FILES[@]}" config --format json 2>/dev/null` and parse `.services.hermit.ports`. Store as in-memory `detected_hermit_ports` (array of long-form Compose port objects: `{target, published, host_ip, protocol, mode}`). If the command fails or returns no JSON, scan the selected Compose files for `ports:` keys and set `detected_hermit_ports_unparsed=true` if found. Either way, a non-empty result means ports are present.
-6. Check whether the container is currently running: `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x hermit`. If absent: tell the operator "Container is not running. The wizard will still write the overlay; you'll see the live verification only after starting the container with `hermitd-docker up`."
+6. Check whether the container is currently running: `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}' 2>/dev/null | grep -x hermit`. If absent, tell the operator "The wizard will write the overlay. Start the container with `hermitd start --build` before live verification."
 7. Read current `docker.security.*` from config.json. Also read `sandbox.enabled` from the target settings file (same `hatch_target` routing as hatch/docker-setup: `hatch_target == "local"` → `.claude/settings.local.json`; else → `.claude/settings.json`) — display only, hermit does not configure this key. Print a "current posture" summary. Example:
 
    ```
@@ -262,7 +262,7 @@ Persist `docker.security.credential_proxy.enabled` and pass `"credproxy": { "ena
 
 ### 6. Render overlay
 
-**Browser viewer publishing:** When `browser.port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. After persisting config, run `.hermit/bin/hermitd-run render-docker-templates <project-root>` and check its verdict before recreating; enabled LAN containment makes the config-driven renderer omit the base browser mapping. On a skipped or error verdict, stop and follow the renderer reason before proceeding. Never publish the same viewer in both services. With containment off, base rendering owns it; host networking uses the loopback bind environment instead of a mapping.
+**Browser viewer publishing:** When `browser.port` is set and LAN containment is on, keep exactly one `{target: 6080, published: "<port>", host_ip: "127.0.0.1", protocol: "tcp"}` in `publish_ports` on netguard. After persisting config, run `bun "${CLAUDE_PLUGIN_ROOT}/scripts/render-docker-templates.ts" <project-root>` and check its verdict before recreating. Enabled LAN containment makes the renderer omit the base browser mapping. On a skipped or error verdict, stop and follow the renderer reason before proceeding. Never publish the same viewer in both services. With containment off, base rendering owns it. Host networking uses the loopback bind environment.
 
 **Before rendering — preserve `publish_ports` across reruns:**
 Read `docker.security.network.publish_ports` from the existing config.json (if present). Keep this as `persisted_publish_ports`. In the current wizard run:
@@ -354,28 +354,16 @@ Notes:
 - `Dockerfile.hermit-netguard.template` → `Dockerfile.hermit-netguard`
 - `netguard-entrypoint.sh.template` → `netguard-entrypoint.sh` (chmod +x)
 
-After both are copied, force a fresh netguard image build:
-
-```bash
-timeout 180s docker compose "${COMPOSE_FILES[@]}" build --no-cache hermit-netguard
-```
-
-If the build exits non-zero, run `docker compose "${COMPOSE_FILES[@]}" logs hermit-netguard --tail=30`, surface the output, and suggest a targeted fix:
-- **`apk add` fails** → DNS not reachable at build time; check host network and Docker DNS config (`/etc/docker/daemon.json`)
-- **Syntax error in nftables.conf or dnsmasq.allowlist** → read the error line; it usually names the file and line number
-- **Port already in use** → a published port in the overlay conflicts; `ss -tlnp | grep <port>` finds the owner
-Then stop. Do not proceed to step 6d.
-
 #### 6d. Show diff + confirm
 
 Print a one-screen summary of files written (paths + line counts). Ask `AskUserQuestion` (header: `"Apply"`) — `"Yes — restart container now"` / `"No — I'll restart manually later"`.
 
-On `"No — I'll restart manually later"`: skip to step 9 with the note "Overlay written. Run `hermitd-docker down` then `hermitd-docker up` when ready to apply. Re-run `/docker-security` at any time to verify."
+On `"No — I'll restart manually later"`, skip to step 9. Tell the operator the overlay is written and to run `hermitd restart --build` in their terminal when ready to review and apply it. They can open the wizard again with `hermitd setup docker-security`.
 
 ### 7. Restart + smoke test
 
 **Hard gate — re-check merged ports before starting:**
-Before running `hermitd-docker up`, re-run the step 5 port detection: `timeout 10s docker compose "${COMPOSE_FILES[@]}" config --format json 2>/dev/null | bun -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log((((d.services ?? {}).hermit ?? {}).ports ?? []).length)'`. If the result is non-zero (or the command output from the grep fallback is non-empty) AND `docker.security.network.enabled === true` (LAN containment is on):
+Before asking for terminal approval, re-run the step 5 port detection with `timeout 10s docker compose "${COMPOSE_FILES[@]}" config --format json 2>/dev/null | bun -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log((((d.services ?? {}).hermit ?? {}).ports ?? []).length)'`. If the result is non-zero (or the command output from the grep fallback is non-empty) AND `docker.security.network.enabled === true` (LAN containment is on):
 
 Ask with `AskUserQuestion` (header: `"Ports conflict"`):
 - `"Auto-fix — I'll clear hermit ports in the override (backup first)"` (Recommended)
@@ -391,11 +379,10 @@ then validate the merged stack and run hermitd start.
 ```
 Stop here. Tell the operator the overlay and config have been written and the override must clear the conflicting hermit ports.
 
-If operator chose to restart now AND container was running before this skill (and the hard gate passed):
+If the operator chose to restart now and the port check passed, tell them "Run `hermitd approve` in your terminal, review the changes, then tell me whether you approved them." Wait for their reply. If they decline, stop and report that the overlay is still pending.
 
-1. Run `.hermit/bin/hermitd-docker down`.
-2. Run `.hermit/bin/hermitd-docker up` (the wrapper picks up the overlay automatically). The first up will trigger `docker compose build hermit-netguard` if Prompt 1 was enabled — wait for completion (can be 30-60s on first build).
-3. Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 30s; expect `hermit` (and `hermit-netguard` if Prompt 1 enabled, `hermit-credproxy` if Prompt 4 enabled). If either is missing after 30s: run `docker compose "${COMPOSE_FILES[@]}" logs <missing-service> --tail=30` (substitute `hermit` or `hermit-netguard` per the missing service; omit the service name if both are down), surface output, and suggest:
+1. Run `hermitd restart --build` if the container was running. If it was stopped, run `hermitd start --build`. Wait for the build and surface any failure before proceeding.
+2. Poll the applied stack with `bun "${CLAUDE_PLUGIN_ROOT}/scripts/lib/compose-files.ts" "$(pwd -P)" "" ps --status running --format '{{.Service}}'` every 2s for up to 30s. Expect `hermit`, `hermit-netguard` if Prompt 1 was enabled, and `hermit-credproxy` if Prompt 4 was enabled. If a service is missing, run `hermitd docker logs --tail=30 <missing-service>`, surface the output, and suggest:
    - **hermit-netguard won't start** → nftables or dnsmasq config error; read the log for the line number
    - **hermit won't start** → check if the base `ports:` conflict was fully resolved (re-run the hard gate port check above)
    - **Both down** → Docker daemon issue; `docker info` to confirm daemon is healthy
@@ -405,7 +392,7 @@ If operator chose to restart now AND container was running before this skill (an
 Stream the static verification script into the live container. It is placeholder-free (hardcoded probe values) and uses only tools the hermit base image ships — `bun`, `jq`, `curl`, glibc `getent` (no `python3`, `nc`, or `nslookup`):
 
 ```bash
-docker compose "${COMPOSE_FILES[@]}" \
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/lib/compose-files.ts" "$(pwd -P)" "" \
   exec -T hermit sh -s < "${CLAUDE_PLUGIN_ROOT}/state-templates/docker/security/verify-security.sh"
 ```
 

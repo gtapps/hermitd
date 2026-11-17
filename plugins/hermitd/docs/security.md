@@ -171,7 +171,7 @@ Docker images carry a deny floor the agent cannot edit from inside the running c
 
 Changing to `bypassPermissions` needs `hermitd restart --build`; against an image that still carries the lock, start logs a warning and launches in auto mode. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
 
-The agent's user can still write the image build inputs and the `claude` binary, so a change can be staged for the next rebuild or start. Organization server-managed settings outrank local files and can cause this drop-in to be skipped. Check `/status` and `claude doctor` for the settings source in force.
+The agent can write image build inputs. A staged change to tracked inputs requires a terminal `y` before a host rebuild or start applies it. Organization server-managed settings can supersede this drop-in. Check `/status` and `claude doctor` for the active source. See the [host trust boundary](docker-security.md#host-trust-boundary).
 
 ### Tmux installs
 

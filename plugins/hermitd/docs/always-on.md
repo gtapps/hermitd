@@ -158,11 +158,10 @@ The generated Compose file uses `pid: "container:hermit-fleet-pidns"` so peer re
 | Restart   | `hermitd restart`               |
 | Status    | `hermitd status`                       |
 
-`hermitd-docker up` starts the container and prints the attach command.
-`hermitd-docker attach` connects to the hermit's tmux session. Detach with Ctrl+B, D.
-`hermitd-docker down` sends a graceful session close before stopping. Use `--force` to skip.
-`hermitd-docker bash` opens a shell inside the container. Use `hermitd-docker bash -c "cmd"` for one-off commands.
-All bin scripts are pure bash — no Claude Code process, no tokens burned.
+`hermitd start` starts the container and prints the attach command.
+`hermitd attach` connects to the agent's tmux session. Detach with Ctrl+B, D.
+`hermitd stop` sends a graceful session close before stopping. Use `--force` to skip.
+`hermitd docker bash` opens a shell inside the container. Use `hermitd docker bash -c "cmd"` for one-off commands.
 
 ---
 

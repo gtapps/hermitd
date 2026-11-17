@@ -2,6 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { approveProject } from '../scripts/lib/approval';
 
 const roots: string[] = [];
 afterAll(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true }); });
@@ -16,7 +17,15 @@ function fixture() {
   const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, '.claude'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, CALLS: log, LIST: path.join(root, 'list.json'), FRESH_LIST: path.join(root, 'fresh-list.json'), TMUX_LIVE: '1', DOCKER_LIVE: '', PROJECTS: '', container: '' };
   const project = (name: string, agentName = name) => {
     const p = path.join(root, name); write(path.join(p, '.hermit/config.json'), JSON.stringify({ agent_name: agentName }));
-    for (const verb of ['start', 'stop', 'attach', 'pause', 'watchdog', 'skills', 'run']) write(path.join(p, `.hermit/bin/hermitd-${verb}`), `#!/bin/sh\nprintf '%s|%s|%s\\n' '${verb}' "$PWD" "$*" >> "$CALLS"\nexit \${WRAPPER_EXIT:-0}\n`);
+    for (const verb of ['start', 'stop', 'attach', 'pause', 'watchdog', 'skills', 'run']) {
+      write(path.join(p, `.hermit/bin/hermitd-${verb}`), `#!/bin/sh
+printf '%s|%s|%s\n' '${verb}' "$PWD" "$*" >> "$CALLS"
+if [ -n "\${RECORD_ENV:-}" ]; then
+  printf '%s|%s\n' "\${BUN_OPTIONS-unset}" "\${TMUX_DOTENV-unset}" > "$RECORD_ENV"
+fi
+exit \${WRAPPER_EXIT:-0}
+`);
+    }
     return p;
   };
   const p = project('demo');
@@ -24,14 +33,22 @@ function fixture() {
     write(path.join(dir, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'hermitd', version: '1' }));
     write(path.join(dir, 'scripts/hermitd-docker.sh'), `printf '%s|%s|%s\\n' '${label}' "$PWD" "$*" >> "$CALLS"\n`);
     write(path.join(dir, 'scripts/hermitd-update.sh'), `printf 'host|%s|%s\\n' "$PWD" "$*" >> "$CALLS"\n`);
+    const approval = path.resolve(import.meta.dir, '../scripts/approve.ts');
+    fs.copyFileSync(approval, path.join(dir, 'scripts/approve.ts'));
+    const lib = path.join(dir, 'scripts/lib');
+    fs.symlinkSync(path.resolve(import.meta.dir, '../scripts/lib'), lib, 'dir');
   }
   write(path.join(core, 'state-templates/host/hermitd'), fs.readFileSync(path.resolve(import.meta.dir, '../state-templates/host/hermitd'), 'utf8'));
   const listing = (dir: string) => JSON.stringify([{ id: 'hermitd@mp', scope: 'project', enabled: true, projectPath: p, installPath: dir }]);
   write(env.LIST, listing(core)); write(env.FRESH_LIST, listing(fresh));
   write(path.join(bin, 'tmux'), '#!/bin/sh\nif [ "$1" = list-sessions ]; then printf "%s\\n" "$PROJECTS"; exit 0; fi\nexit "$TMUX_LIVE"\n');
   write(path.join(bin, 'docker'), '#!/bin/sh\nif [ "$1" = ps ]; then printf "%s\\n" "$PROJECTS"; else printf "%s\\n" "$DOCKER_LIVE"; fi\n');
-  write(path.join(bin, 'claude'), '#!/bin/sh\nif [ "$1" = agents ]; then printf "claude|%s|%s|%s\\n" "$PWD" "$CLAUDE_CONFIG_DIR" "$*" >> "$CALLS"; exit "${AGENTS_EXIT:-0}"; fi\nif [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; cp "$FRESH_LIST" "$LIST"; fi\n');
-  const register = (projects = [p]) => write(path.join(root, 'plugins/data/hermitd-mp/instances.json'), JSON.stringify(projects.map(project_dir => ({ project_dir, name: path.basename(project_dir), agent_name: JSON.parse(fs.readFileSync(path.join(project_dir, '.hermit/config.json'), 'utf8')).agent_name, runtime_hint: 'tmux', registered_at: new Date().toISOString() }))));
+  write(path.join(bin, 'claude'), `#!/bin/sh
+if [ "$1" = agents ]; then printf "claude|%s|%s|%s\\n" "$PWD" "$CLAUDE_CONFIG_DIR" "$*" >> "$CALLS"; exit "\${AGENTS_EXIT:-0}"; fi
+if [ "$1" = --setting-sources ]; then printf 'setup|%s|%s|%s\\n' "$PWD" "$BUN_OPTIONS" "$*" >> "$CALLS"; exit 0; fi
+if [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; cp "$FRESH_LIST" "$LIST"; fi
+`);
+  const register = (projects = [p], runtimeHint = 'tmux') => write(path.join(root, 'plugins/data/hermitd-mp/instances.json'), JSON.stringify(projects.map(project_dir => ({ project_dir, name: path.basename(project_dir), agent_name: JSON.parse(fs.readFileSync(path.join(project_dir, '.hermit/config.json'), 'utf8')).agent_name, runtime_hint: runtimeHint, registered_at: new Date().toISOString() }))));
   register();
   const run = async (args: string[], cwd = root, extra: Record<string, string> = {}) => {
     const code = `import { main } from ${JSON.stringify(cli)}; try { process.exitCode = main(${JSON.stringify(args)}, ${JSON.stringify(cwd)}, ${JSON.stringify(core)}); } catch (e) { console.error(String(e)); process.exitCode = 1; }`;
@@ -81,6 +98,33 @@ test('Docker updates host first then runs fresh script; dry-run skips host', asy
   expect((await f.run(['update', 'demo', '--dry-run'])).stdout).toContain('skipping the host');
   expect(f.calls()).toBe(`fresh|${f.p}|update --dry-run\n`);
 });
+test('Docker update stops before the host update when approval is pending', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  expect(await f.run(['approve', 'demo'])).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('Recorded Docker approval baseline') });
+  write(path.join(f.p, 'docker-compose.override.yml'), 'services: {}');
+  expect(await f.run(['update', 'demo', '--yes'])).toMatchObject({
+    exitCode: 1, stdout: expect.stringContaining('Run hermitd approve in a terminal'), stderr: expect.stringContaining('Nothing was applied'),
+  });
+  expect(f.calls()).toBe('');
+});
+test('Docker stop and status load only applied Compose inputs after approval', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const result = await approveProject(f.p, { configRoot: path.join(f.root, '.claude'), report: () => {} });
+  expect(result.code).toBe(0);
+  write(path.join(f.p, 'docker-compose.override.yml'), 'services: {}');
+  const lifecycle = path.resolve(import.meta.dir, '../scripts/hermitd-docker.sh');
+  write(path.join(f.core, 'scripts/hermitd-docker.sh'), `exec bash "${lifecycle}" "$@"\n`);
+  write(path.join(f.bin, 'docker'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\necho hermit\n');
+  expect((await f.run(['status', 'demo'])).exitCode).toBe(0);
+  expect((await f.run(['stop', 'demo'])).exitCode).toBe(0);
+  expect(f.calls()).toContain(' down');
+  for (const line of f.calls().trim().split('\n')) {
+    expect(line).toContain(`--env-file ${result.applied}/.env -f ${result.applied}/docker-compose.hermit.yml`);
+    expect(line).not.toContain('docker-compose.override.yml');
+  }
+});
 test('failed tmux discovery retains discovered Docker rows and corrupt projects', async () => {
   const f = fixture(); const other = f.project('other'); write(path.join(other, 'docker-compose.hermit.yml'), 'services: {}');
   write(path.join(f.bin, 'tmux'), '#!/bin/sh\nexit 127\n');
@@ -121,6 +165,54 @@ test('core lookup matches a projectPath reported through a symlink', async () =>
   const r = await f.run(['docker', 'logs'], f.p);
   expect(r.stderr).not.toContain('not installed'); expect(r.exitCode).toBe(0);
   expect(f.calls()).toContain(`old|${f.p}|logs`);
+});
+async function launcher(f: ReturnType<typeof fixture>) {
+  expect((await f.run(['install'], f.p)).exitCode).toBe(0);
+  write(path.join(f.core, 'scripts/hermitd-exec.sh'), fs.readFileSync(path.join(path.dirname(cli), 'hermitd-exec.sh'), 'utf8'));
+  write(path.join(f.core, 'scripts/hermitd-cli.ts'), `import { main } from ${JSON.stringify(cli)};
+process.exitCode = main(process.argv.slice(2), process.cwd(), ${JSON.stringify(f.core)});`);
+  return async (args: string[], extra: Record<string, string> = {}) => {
+    const shim = path.join(f.root, '.local/bin/hermitd');
+    const child = Bun.spawn(['bash', shim, ...args], { cwd: f.p, env: { ...f.env, ...extra }, stdout: 'pipe', stderr: 'pipe' });
+    const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    return { stdout, stderr, exitCode };
+  };
+}
+test('Docker host launcher and its children ignore project Bun and Bash startup files', async () => {
+  const f = fixture();
+  const run = await launcher(f);
+  const marker = path.join(f.root, 'startup-marker');
+  write(marker, '');
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.p, 'bunfig.toml'), 'preload = ["./preload.ts"]\n');
+  write(path.join(f.p, 'preload.ts'), `require('fs').appendFileSync(${JSON.stringify(marker)}, 'preload\\n');\n`);
+  const bashEnv = path.join(f.p, 'bash-env');
+  write(bashEnv, 'echo bash-env >> "$HERM_TEST_MARKER"\n');
+  write(path.join(f.p, '.env'), `BASH_ENV="${bashEnv}"\n`);
+  write(path.join(f.core, 'scripts/hermitd-docker.sh'), `set -e
+bun -e 'if (process.env.BASH_ENV) process.exit(2)'
+bash -c ':'
+echo "docker $1"
+`);
+  write(path.join(f.core, 'scripts/credproxy.ts'), 'console.log(process.argv[2]);\n');
+  for (const [args, expected] of [
+    [['status', '--json'], '"project_dir"'],
+    [['start'], 'docker up'],
+    [['restart'], 'docker restart'],
+    [['credproxy', 'status'], 'status'],
+  ] as const) {
+    const result = await run([...args], { HERM_TEST_MARKER: marker });
+    expect(result).toMatchObject({ exitCode: 0, stdout: expect.stringContaining(expected) });
+    expect(fs.readFileSync(marker, 'utf8')).toBe('');
+  }
+});
+test('tmux launcher passes project dotenv values and removes Bun isolation for wrappers', async () => {
+  const f = fixture();
+  const run = await launcher(f);
+  const marker = path.join(f.root, 'wrapper-env');
+  write(path.join(f.p, '.env'), 'TMUX_DOTENV=from-project\n');
+  expect(await run(['start'], { RECORD_ENV: marker })).toMatchObject({ exitCode: 0 });
+  expect(fs.readFileSync(marker, 'utf8')).toBe('unset|from-project\n');
 });
 test('shim falls back by scope precedence when the bound install is gone', async () => {
   const f = fixture(); const shim = path.join(f.root, '.local/bin/hermitd');
@@ -182,12 +274,28 @@ test('agents routes a Docker hermit into the container and refuses a live-owner 
   expect((await f.run(['agents', 'demo', '--json'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
   expect((await f.run(['docker', 'agents', '--json'], f.p)).exitCode).toBe(0);
   expect(f.calls()).toBe(`old|${f.p}|agents --json\nold|${f.p}|agents --json\n`);
-  write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive"}');
+  write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive","config_dir":"/forged"}');
   expect((await f.run(['agents', 'demo'])).exitCode).toBe(0);
-  expect(f.calls()).toContain(`claude|${f.p}|${path.join(f.root, '.claude')}|agents\n`);
+  expect(f.calls()).toBe(`old|${f.p}|agents --json\nold|${f.p}|agents --json\nold|${f.p}|agents\n`);
   write(path.join(f.p, '.hermit/state/runtime.json'), '{"tmux_session":"hermit-demo"}');
   const r = await f.run(['agents', 'demo'], f.root, { TMUX_LIVE: '0', DOCKER_LIVE: 'hermit' });
   expect(r.exitCode).toBe(1); expect(r.stderr).toContain('Live-owner conflict');
+});
+test('a registered Docker project with its Compose file deleted cannot fall back to the host', async () => {
+  const f = fixture();
+  const compose = path.join(f.p, 'docker-compose.hermit.yml');
+  write(compose, 'services: {}');
+  f.register([f.p], 'docker');
+  fs.unlinkSync(compose);
+  write(path.join(f.p, '.hermit/state/runtime.json'), '{"runtime_mode":"interactive","config_dir":"/forged","tmux_session":"host"}');
+  for (const verb of ['start', 'restart', 'update']) {
+    expect(await f.run([verb, 'demo'], f.root, { TMUX_LIVE: '0' })).toMatchObject({
+      exitCode: 1, stderr: expect.stringContaining('No docker-compose.hermit.yml found'),
+    });
+  }
+  expect(JSON.parse((await f.run(['status', 'demo', '--json'])).stdout)).toMatchObject({ runtime: 'docker', transport: 'down' });
+  expect(JSON.parse((await f.run(['list', '--json'])).stdout)).toMatchObject([{ runtime: 'docker', transport: 'down' }]);
+  expect(f.calls()).toBe('');
 });
 test('skills resolves named and nearest projects and routes Docker mutations', async () => {
   const f = fixture();
@@ -198,6 +306,40 @@ test('skills resolves named and nearest projects and routes Docker mutations', a
   write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
   expect((await f.run(['skills', 'demo', 'rollback', 'sample'], f.root, { DOCKER_LIVE: 'hermit' })).exitCode).toBe(0);
   expect(f.calls()).toContain(`old|${f.p}|skills rollback sample\n`);
+});
+test('Docker verbs dispatch through the installed plugin without invoking project wrappers', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const calls = [
+    [['run', 'demo', 'backup'], 'old', 'run backup'],
+    [['pause', 'demo', 'status'], 'old', 'pause status'],
+    [['skills', 'demo', 'status'], 'old', 'skills status'],
+    [['watchdog', 'demo', 'run'], 'old', 'watchdog run'],
+    [['stop', 'demo'], 'old', 'down'],
+    [['start', 'demo'], 'old', 'up'],
+    [['restart', 'demo'], 'old', 'restart'],
+    [['update', 'demo'], 'fresh', 'update'],
+  ] as const;
+  for (const [args] of calls) expect((await f.run([...args])).exitCode).toBe(0);
+  expect(f.calls()).toBe(calls.map(([args, install, command]) =>
+    (args[0] === 'update' ? 'update-host\n' : '') + `${install}|${f.p}|${command}\n`).join(''));
+});
+test('Docker browser-host runs the installed script on the host', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.core, 'scripts/browser-host.ts'), "console.log(process.cwd(), process.argv[2]); process.exitCode = 7;");
+  expect(await f.run(['run', 'demo', 'browser-host', 'sample'])).toMatchObject({ exitCode: 7, stdout: `${f.p} sample\n` });
+  expect(f.calls()).toBe('');
+});
+test('Docker commands warn if the host Claude configuration overlaps the project', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  const result = await f.run(['start', 'demo'], f.root, { CLAUDE_CONFIG_DIR: path.join(f.p, '.claude') });
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr.trim().split('\n')).toEqual([
+    '[hermit] Warning: this project contains the host Claude configuration or plugin. The agent can change code the host runs.',
+  ]);
+  expect(f.calls()).toBe(`old|${f.p}|up\n`);
 });
 
 function doctorFixture(rows: object[]) {
@@ -335,5 +477,51 @@ test('credproxy refuses an install inside the project and runs nothing', async (
   const r = await f.run(['credproxy', 'status'], f.p);
   expect(r.exitCode).toBe(1);
   expect(JSON.parse(r.stdout)).toEqual({ error: 'untrusted_install' });
+  expect(f.calls()).toBe('');
+});
+test('approve calls the installed host script from outside the Docker project', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.core, 'scripts/approve.ts'), 'console.log(process.cwd(), process.argv[2]);');
+  expect(await f.run(['approve'], f.p)).toMatchObject({ exitCode: 0, stdout: `/ ${f.p}\n` });
+  expect(await f.run(['approve', 'demo'], f.root)).toMatchObject({ exitCode: 0, stdout: `/ ${f.p}\n` });
+  expect((await f.run(['approve', '--yes'], f.p)).exitCode).toBe(1);
+  const container = await f.run(['approve', 'unknown', '--yes'], f.root, { container: 'docker' });
+  expect(container.exitCode).toBe(1);
+  expect(JSON.parse(container.stdout)).toEqual({ error: 'host_only' });
+  expect(f.calls()).toBe('');
+});
+test('setup opens a project-scope skill with user settings even when the skill matches an agent name', async () => {
+  const f = fixture();
+  f.register([f.p, f.project('docker-security')]);
+  expect((await f.run(['setup', 'docker-security'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`setup|${f.p}|--config=/dev/null --no-env-file|--setting-sources user --plugin-dir ${f.core} /hermitd:docker-security\n`);
+});
+test('setup for a user-scope install relies on the enabled plugin and accepts no skill', async () => {
+  const f = fixture();
+  write(f.env.LIST, JSON.stringify([{ id: 'hermitd@mp', scope: 'user', enabled: true, installPath: f.core }]));
+  expect((await f.run(['setup'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`setup|${f.p}|--config=/dev/null --no-env-file|--setting-sources user\n`);
+});
+for (const docker of [false, true]) {
+  test(`setup warns about an in-project plugin and continues (Docker=${docker})`, async () => {
+    const f = fixture();
+    const installPath = path.join(f.p, 'plugin');
+    fs.mkdirSync(installPath);
+    if (docker) write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+    write(f.env.LIST, JSON.stringify([{ id: 'hermitd@mp', scope: 'project', enabled: true, projectPath: f.p, installPath }]));
+    const result = await f.run(['setup'], f.p);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim().split('\n')).toEqual([
+      '[hermit] Warning: this project contains the host Claude configuration or plugin. The agent can change code the host runs.',
+    ]);
+    expect(f.calls()).toContain(`--setting-sources user --plugin-dir ${installPath}`);
+  });
+}
+test('setup is host-only before resolving a project or skill', async () => {
+  const f = fixture();
+  const result = await f.run(['setup', 'docker-security'], f.root, { container: 'docker' });
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout)).toEqual({ error: 'host_only' });
   expect(f.calls()).toBe('');
 });

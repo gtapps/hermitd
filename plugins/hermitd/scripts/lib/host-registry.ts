@@ -36,6 +36,11 @@ export function entryState(entry: HostEntry): EntryState {
 export function readRegistry(mp: string) {
   return load(mp).map(entry => ({ ...entry, state: entryState(entry) }));
 }
+export function isDockerProject(project: string, coreRoot = path.resolve(import.meta.dir, '../..')): boolean {
+  if (fs.existsSync(path.join(project, 'docker-compose.hermit.yml'))) return true;
+  const mp = marketplace(coreRoot);
+  return mp !== null && load(mp).some(row => row.project_dir === project && row.runtime_hint === 'docker');
+}
 function update(mp: string, change: (rows: HostEntry[]) => HostEntry[]): void {
   const dir = registryDir(mp);
   fs.mkdirSync(dir, { recursive: true });
@@ -53,7 +58,7 @@ export function registerInMarketplace(mp: string, project: string, runtimeHint: 
   const config = JSON.parse(fs.readFileSync(path.join(canonical, '.hermit/config.json'), 'utf8'));
   update(mp, rows => {
     const previous = rows.find(row => row.project_dir === canonical);
-    const entry: HostEntry = { project_dir: canonical, name: path.basename(canonical), agent_name: config.agent_name ?? path.basename(canonical), runtime_hint: runtimeHint, registered_at: previous?.registered_at ?? new Date().toISOString() };
+    const entry: HostEntry = { project_dir: canonical, name: path.basename(canonical), agent_name: config.agent_name ?? path.basename(canonical), runtime_hint: previous?.runtime_hint === 'docker' ? 'docker' : runtimeHint, registered_at: previous?.registered_at ?? new Date().toISOString() };
     return [...rows.filter(row => row.project_dir !== canonical), entry];
   });
 }

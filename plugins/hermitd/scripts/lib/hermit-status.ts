@@ -5,15 +5,17 @@ import { spawnSync } from 'node:child_process';
 import { currentWork, readExecution, readTasks } from './tasks';
 import { findResident, residentInOtherPidNamespace } from './session-registry';
 import { readConfigRaw } from './config-read';
+import { isDockerProject } from './host-registry';
 
 export type Transport = 'up' | 'down' | 'unknown';
 export function inspect(command: string, args: string[], cwd: string) {
   return spawnSync(command, args, { cwd, env: { ...process.env }, encoding: 'utf8', timeout: 10000 });
 }
-export function dockerTransport(project: string): Transport {
-  const compose = path.join(project, 'docker-compose.hermit.yml');
-  if (!fs.existsSync(compose)) return 'down';
-  const args = ['compose', ...composeFiles(project)];
+export function dockerTransport(project: string, docker = isDockerProject(project)): Transport {
+  if (!docker) return 'down';
+  const files = composeFiles(project);
+  if (files[0] === '-f' && !fs.existsSync(files[1])) return 'down';
+  const args = ['compose', ...files];
   const result = inspect('docker', [...args, 'ps', '--status', 'running', '--format', '{{.Service}}'], project);
   if (result.error || result.status !== 0) return 'unknown';
   return result.stdout.split(/\r?\n/).includes('hermit') ? 'up' : 'down';
@@ -34,15 +36,14 @@ export function readRuntime(project: string): { runtime_mode?: string; tmux_sess
   try { return JSON.parse(fs.readFileSync(path.join(project, '.hermit/state/runtime.json'), 'utf8')); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error; }
 }
-export function projectStatus(project: string) {
+export function projectStatus(project: string, docker = isDockerProject(project)) {
   const dir = path.join(project, '.hermit');
   const config = readConfigRaw(dir);
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error(`Unreadable or invalid config in ${dir}`);
-  const runtime = readRuntime(project);
-  const docker = fs.existsSync(path.join(project, 'docker-compose.hermit.yml'));
+  const runtime = docker ? {} : readRuntime(project);
   const execution = readExecution(dir, docker ? {} : { registryFallback: true });
   const records = readTasks(dir);
-  const transport = docker ? dockerTransport(project) : runtime.runtime_mode === 'interactive'
+  const transport = docker ? dockerTransport(project, docker) : runtime.runtime_mode === 'interactive'
     ? interactiveTransport(runtime) : tmuxTransport(project, runtime.tmux_session);
   return {
     project_dir: project, name: path.basename(project), agent_name: config.agent_name ?? path.basename(project),

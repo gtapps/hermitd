@@ -50,7 +50,7 @@ function fixture(lan = false) {
       routes.TCP[port] = { HTTPS: true }; routes.Web['hermit.tail.test:' + port] = { Handlers: { '/': { Proxy: args.at(-1) } } };
       fs.writeFileSync(${JSON.stringify(routesFile)}, JSON.stringify(routes)); }
   `);
-  fs.writeFileSync(path.join(dir, 'bin/hermitd-docker'), `#!/bin/bash\nprintf '%s\\n' "$@" >> '${logFile}'\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'bin/hermitd-docker'), '#!/bin/sh\necho project-wrapper-ran >&2\nexit 8\n', { mode: 0o755 });
   const oldPath = process.env.PATH;
   process.env.PATH = bin + ':' + oldPath;
   if (tailscaleCLI() !== path.join(bin, 'tailscale') || Bun.which('docker', { PATH: process.env.PATH }) !== path.join(bin, 'docker')) {
@@ -58,7 +58,17 @@ function fixture(lan = false) {
     throw new Error('Fixture refused: Tailscale lookup escaped fake-bin');
   }
   const messages: string[] = [];
-  const opts = { container: () => false, log: (message: string) => messages.push(message), verifyWaitMs: 0, fetch: (async () => Response.json({ error: 'browser_identity_refused' }, { status: 403 })) };
+  const opts = {
+    container: () => false,
+    log: (message: string) => messages.push(message),
+    verifyWaitMs: 0,
+    fetch: async () => Response.json({ error: 'browser_identity_refused' }, { status: 403 }),
+    interactive: async (args: string[]) => {
+      expect(args.slice(0, 2)).toEqual(['bash', path.resolve(import.meta.dir, '../scripts/hermitd-docker.sh')]);
+      fs.appendFileSync(logFile, args.slice(2).join('\n') + '\n');
+      return 0;
+    },
+  };
   return { project, dir, config, opts, messages, versionFile, routesFile, deniedFile, logFile, bin, stop() { process.env.PATH = oldPath; } };
 }
 
@@ -149,7 +159,7 @@ test.serial('an unconverted install is left untouched and is not recreated', asy
     const file = path.join(f.project, 'Dockerfile.hermit');
     fs.writeFileSync(file, 'FROM operator-image\n');
     const compose = fs.readFileSync(path.join(f.project, 'docker-compose.hermit.yml'), 'utf8');
-    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('docker-customize "Convert"');
+    await expect(setupBrowserHost(f.project, f.opts)).rejects.toThrow('hermitd setup docker-customize');
     expect(fs.readFileSync(file, 'utf8')).toBe('FROM operator-image\n');
     expect(fs.readFileSync(path.join(f.project, 'docker-compose.hermit.yml'), 'utf8')).toBe(compose);
     expect(fs.readFileSync(f.logFile, 'utf8')).not.toContain('--force-recreate');

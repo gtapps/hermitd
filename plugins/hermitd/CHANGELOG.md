@@ -7,6 +7,7 @@
 - Docker images carry a root-owned never-allowed deny floor and a bypass lock unless the agent config opts into bypass mode.
 - `/docker-security` offers the hosts of remote servers in the project `.mcp.json` as allowlist entries.
 - Docker agents can keep API credentials for mapped hosts outside the container through a credential proxy in `/docker-security`, managed with `hermitd credproxy`; it is opt-in because the operator maps each host and stores its credential from a host terminal.
+- `hermitd setup [skill]` opens a host setup session without the project's Claude Code settings, hooks or instructions.
 
 ### Changed
 
@@ -15,6 +16,9 @@
 - Netguard's `nftables.conf` and `dnsmasq.allowlist` are built into its image instead of mounted from the project folder, so allowlist edits apply with `hermitd restart --build`; the sidecar's log is capped at 3 × 10 MB.
 - `docker.security` is a protected config subtree.
 - Doctor's `docker-security` check names the DNS mode and, in enforce mode, warns when the rules predate IP filtering or an enabled channel's or transcription's hosts are missing.
+- `hermitd start`, `restart` and `update` build and start Docker agents from approved copies. Changes to tracked inputs require terminal approval, which can be given in advance with `hermitd approve`.
+- `hermitd run`, `pause`, `skills` and `watchdog run` execute inside the running container on Docker installs. `hermitd run browser-host` uses the installed plugin on the host.
+- Bun 1.4.2 or newer is required.
 
 ### Fixed
 
@@ -22,6 +26,7 @@
 - Doctor's `peer-inbox` check, `hermitd status` and the monitor drift verdict no longer report the session as gone when run from a sandboxed command
 - Managed Chrome launches in Docker when an operator volume or build hook leaves `~/.config` owned by root
 - An allowlist `.dockerignore` no longer keeps `docker-build.hermit-local.sh` out of images built after the upgrade
+- Host `hermitd` commands bypass Docker agents' project wrappers and Bun startup files.
 
 ### Upgrade Instructions
 
@@ -29,7 +34,11 @@
 2. The next host `hermitd update` renders the Dockerfile with the claude-owned `~/.config` and rebuilds; no state migration is required.
 3. The next host `hermitd update` rebuilds Docker agents with the managed deny floor. Agents whose operator removed a never-allowed rule get it back as a hard block; `docker.security.managed_ceiling: false` plus a rebuild opts out.
 4. **Docker agents with `docker.security.network.enabled: true` only:** the update does not re-render the netguard files, so the agent keeps its current rules until the wizard runs again. Tell the operator once in chat.
-   **Operator action required:** re-run `/hermitd:docker-security` from the host. In enforce mode the new rules drop connections to literal IPs and to hosts of disabled channels; a tool that needs a literal IP, or the IP behind an `address=` pin, needs a carve-out in Prompt 1b. The wizard regenerates `dnsmasq.allowlist`, so back up hand-added lines first. Doctor's `docker-security` check warns until this is done.
+   **Operator action required:** run `hermitd setup docker-security` from a host terminal. In enforce mode the new rules drop connections to literal IPs and to hosts of disabled channels. A tool that needs a literal IP or the IP behind an `address=` pin needs a carve-out in Prompt 1b. The wizard regenerates `dnsmasq.allowlist`, so back up hand-added lines first. Doctor's `docker-security` check warns until this is done.
+
+The next `hermitd start`, `restart` or `update` records the current Docker inputs as approved. Later tracked changes ask once in the terminal.
+
+**Operator action required:** Run `bun upgrade` on any host with Bun older than 1.4.2.
 
 ## [1.4.34] - 2026-11-16
 

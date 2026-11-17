@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # hermitd: managed host CLI
 set -euo pipefail
+export BUN_OPTIONS="--config=/dev/null --no-env-file"
 BINDING=__HERMIT_BINDING__
 UPDATE_ID=__HERMIT_UPDATE_ID__
 # Prefer the install recorded at `hermitd-cli install`; when that one is gone (its

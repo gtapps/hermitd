@@ -224,11 +224,15 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
     } else {
       const rendered = JSON.parse(await required([process.execPath, script('render-docker-templates'), project]));
       if (rendered.status === 'skipped') throw new Error(rendered.reason === 'not_converted'
-        ? 'Docker files are not converted; run /hermitd:docker-customize "Convert".'
+        ? 'The image still builds from the project folder. Run hermitd setup docker-customize, then ask for Convert.'
         : 'Docker files use a newer renderer; update the host plugin.');
     }
     log('Recreating the hermit container to enable the viewer; the image will not be rebuilt.');
-    await required(['bash', path.join(dir, 'bin/hermitd-docker'), 'up', '--force-recreate', '--no-build']);
+    const recreate = ['bash', path.join(import.meta.dir, 'hermitd-docker.sh'), 'up', '--force-recreate', '--no-build'];
+    const status = await (options.interactive?.(recreate) ?? Bun.spawn(recreate, {
+      cwd: project, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit',
+    }).exited);
+    if (status !== 0) throw new Error(`hermitd-docker up failed (exit ${status})`);
   } else startDisplay();
   if (!configured) {
     const serveArgs = ['serve', '--bg', '--https', String(port), target];

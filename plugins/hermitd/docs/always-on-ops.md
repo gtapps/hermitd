@@ -38,6 +38,8 @@ To pause/resume the running session without stopping it (also triggerable from a
 hermitd pause on|off|snooze <dur>|status
 ```
 
+For a Docker agent, run `hermitd start` before using `hermitd pause`.
+
 **Config options:** If `remote: true`, adds `--remote-control` and names the session after `agent_name`. If `remote: false`, boot writes `isolatePeerMachines: true`, so cross-machine peer messages require operator approval. If `model` is set, passes it to Claude Code.
 
 **Restarting dead sessions.** The first tmux always-on boot (`hermitd-start`) registers the watchdog scheduler on a 5-minute schedule (systemd user timer on Linux/WSL2, LaunchAgent on macOS, a cron line printed as fallback). That tick restarts dead sessions, nudges wedged ones, and keeps long-running context compacted. A boot that cannot write the resident launch overlay refuses to start; the watchdog keeps retrying until the cause is cleared. The overlay carries `pause-gate`, `ask-gate`, `component-privacy`, and `permission-denied-notify` instead of plugin-manifest entries and is read at launch only. The first registration also sets `watchdog.enabled: true` in `config.json`; a repair re-run of install leaves that setting as you have it. Opt out with `hermitd watchdog uninstall` — it removes the timer and sets both flags off. Setting `watchdog.scheduler_enabled: false` by hand only stops future boots from re-registering; an already-installed timer keeps ticking. On Linux add `loginctl enable-linger` if the hermit has to come back after a reboot before anyone logs in. Docker hermits need none of this: the entrypoint runs the same watchdog on its own cycle, and the container restart policy handles a dead session.

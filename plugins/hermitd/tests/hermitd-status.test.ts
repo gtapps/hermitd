@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { projectStatus, renderStatus } from '../scripts/lib/hermit-status';
 import { mutateTask } from '../scripts/lib/tasks';
+import { isDockerProject, registerProject } from '../scripts/lib/host-registry';
 import { writeRegistryEntry } from './helpers/registry-fixture';
 const dirs: string[] = [];
 const originalPath = process.env.PATH;
@@ -28,6 +29,22 @@ test('sidecar-only is down; human output and JSON are distinct', () => {
 });
 test('Docker unavailable is unknown', () => {
   expect(projectStatus(fixture('', 127).project).transport).toBe('unknown');
+});
+test('registered Docker status ignores runtime.json when Compose is absent', () => {
+  const { project, dir } = fixture();
+  const canonical = fs.realpathSync(project);
+  const root = path.join(project, 'cache/mp/hermitd/1');
+  const previous = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
+  process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = path.join(project, 'plugins');
+  try {
+    registerProject(canonical, root, 'docker');
+    fs.unlinkSync(path.join(project, 'docker-compose.hermit.yml'));
+    fs.writeFileSync(path.join(dir, 'state/runtime.json'), '{"runtime_mode":"interactive","tmux_session":"host"}');
+    expect(projectStatus(canonical, isDockerProject(canonical, root))).toMatchObject({ runtime: 'docker', transport: 'down' });
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
+    else process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = previous;
+  }
 });
 test.skipIf(process.platform !== 'linux')('an interactive resident registered from another pid namespace is unknown, not down', () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-status-')); dirs.push(project);

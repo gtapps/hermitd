@@ -105,9 +105,12 @@ describe('docker-security SKILL.md', () => {
     expect(invocations).toEqual([]);
   });
 
-  // --no-cache netguard rebuild (operational step 6c — stays in the skill)
-  test('SKILL.md: step 6c forces --no-cache netguard build (prevents stale image on upgrade)', () => {
-    expect(skill).toContain('build --no-cache hermit-netguard');
+  test('SKILL.md: approval precedes the lifecycle rebuild, which rebuilds netguard without cache', () => {
+    const lifecycle = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts/hermitd-docker.sh'), 'utf8');
+    expect(skill).not.toContain('build --no-cache hermit-netguard');
+    expect(skill).toContain('hermitd approve');
+    expect(skill).toContain('hermitd restart --build');
+    expect(lifecycle).toContain('build --no-cache hermit-netguard');
   });
 
   test('SKILL.md: the credential proxy runs through the host hermitd command, never a project wrapper', () => {
