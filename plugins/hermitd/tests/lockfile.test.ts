@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { acquireLock, releaseLock, claimPathFor, pidNamespace, ownIdentity, CROSS_NS_HOLD_MS } from '../scripts/lib/lockfile';
+import { acquireLock, releaseLock, claimPathFor, pidNamespace, procStartOf, ownIdentity, CROSS_NS_HOLD_MS } from '../scripts/lib/lockfile';
 
 function makeDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-lock-'));
@@ -341,6 +341,33 @@ describe.skipIf(OWN_NS === null)('lockfile across pid namespaces', () => {
       releaseLock(lock);
       expect(fs.readFileSync(lock, 'utf-8')).toBe(OTHER_NS_SAME_PID);
     } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a live same-namespace holder with its recorded start time is held', () => {
+    const dir = makeDir();
+    const holder = Bun.spawn(['sleep', '30']);
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, `${holder.pid} ${OWN_NS} ${procStartOf(holder.pid)}`);
+      expect(acquireLock(lock)).toBe(false);
+    } finally {
+      holder.kill();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a reused pid (live process, different start time) does not hold the lock', () => {
+    const dir = makeDir();
+    const holder = Bun.spawn(['sleep', '30']);
+    try {
+      const lock = path.join(dir, '.lifecycle.lock');
+      fs.writeFileSync(lock, `${holder.pid} ${OWN_NS} 1`);
+      expect(acquireLock(lock)).toBe(true);
+      expect(fs.readFileSync(lock, 'utf-8')).toBe(OWN);
+    } finally {
+      holder.kill();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

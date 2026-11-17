@@ -5,12 +5,13 @@
  * is fresh. flock's auto-release-on-death is replaced by the liveness check;
  * the mtime staleness window covers PID reuse after a reboot.
  *
- * Content is `<pid> <pid namespace>` where the platform publishes the namespace
- * (Linux), else the bare PID. A shell command in Claude Code's sandbox runs in
- * its own PID namespace, where the holder's PID is invisible (kill(pid, 0) says
- * ESRCH) and small PIDs repeat. So identity is PID plus namespace, and a holder
- * in another namespace counts as held for CROSS_NS_HOLD_MS instead of being
- * probed. A bare-PID file is judged as before. Legacy installs
+ * Content is `<pid> <pid namespace> <start time>` where the platform publishes
+ * them (Linux), else the bare PID. A shell command in Claude Code's sandbox
+ * runs in its own PID namespace, where the holder's PID is invisible
+ * (kill(pid, 0) says ESRCH) and small PIDs repeat. So identity is the whole
+ * string, a holder in another namespace counts as held for CROSS_NS_HOLD_MS
+ * instead of being probed, and a same-namespace holder whose start time no
+ * longer matches is a reused pid. A bare-PID file is judged as before. Legacy installs
  * have an empty .lifecycle.lock left behind by the old Python flock holders
  * (which created but never unlinked it) — an empty/unparseable file is treated
  * as stale and taken over.
@@ -55,9 +56,21 @@ function pidNamespace(): string | null {
   return ownNamespace;
 }
 
+/** Field 22 of /proc/<pid>/stat: the process start time in clock ticks.
+ *  Parsed from the last ')' because a process name can hold spaces and parens. */
+function procStartOf(pid: number): string | null {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function ownIdentity(): string {
   const ns = pidNamespace();
-  return ns ? `${process.pid} ${ns}` : String(process.pid);
+  const start = procStartOf(process.pid);
+  return ns && start ? `${process.pid} ${ns} ${start}` : String(process.pid);
 }
 
 // Atomic create-with-content: write the PID to a private temp file, then
@@ -119,13 +132,16 @@ function claimStale(claimPath: string): boolean {
  * and read-only gates (lockHeld) use.
  */
 function heldByOther(content: string, mtimeMs: number, staleMs: number): boolean {
-  const m = /^(\d+)(?: (\S+))?$/.exec(content);
+  const m = /^(\d+)(?: (\S+)(?: (\d+))?)?$/.exec(content);
   if (!m) return false; // empty or garbage: legacy flock file, stale
   const holderPid = parseInt(m[1], 10);
   const crossNs = m[2] !== undefined && m[2] !== pidNamespace();
   if (holderPid === process.pid && !crossNs) return false; // ours: reentrant
   const age = Date.now() - mtimeMs;
-  return crossNs ? age < Math.min(CROSS_NS_HOLD_MS, staleMs) : pidAlive(holderPid) && age < staleMs;
+  if (crossNs) return age < Math.min(CROSS_NS_HOLD_MS, staleMs);
+  // A recorded start time that no longer matches means the pid was reused.
+  const sameProcess = m[3] === undefined || procStartOf(holderPid) === m[3];
+  return pidAlive(holderPid) && sameProcess && age < staleMs;
 }
 
 /** Read-only: whether someone other than this process holds the lock now. */
@@ -233,4 +249,4 @@ function releaseLock(lockPath: string): void {
   } catch {}
 }
 
-export { acquireLock, acquireLockWithWait, releaseLock, lockHeld, pidAlive, pidNamespace, ownIdentity, claimPathFor, DEFAULT_STALE_MS, CROSS_NS_HOLD_MS };
+export { acquireLock, acquireLockWithWait, releaseLock, lockHeld, pidAlive, pidNamespace, procStartOf, ownIdentity, claimPathFor, DEFAULT_STALE_MS, CROSS_NS_HOLD_MS };

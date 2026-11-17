@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultConfigDir } from './setup-token';
-import { pidAlive, pidNamespace } from './lockfile';
+import { pidAlive, pidNamespace, procStartOf } from './lockfile';
 
 export type SessionStatus = 'idle' | 'busy' | 'shell' | 'waiting';
 
@@ -42,20 +42,6 @@ export interface SessionEntry {
   messagingSocketPath: string;
   procStart: string;
   pidDomain: string;
-}
-
-/** Field 22 of /proc/<pid>/stat — the kernel's process start time in clock
- *  ticks. The registry records it so an entry can be told apart from a
- *  different process that later inherited the same pid. Parsed from the last
- *  ')' because a process name can itself contain spaces and parentheses. */
-function procStartOf(pid: number): string | null {
-  try {
-    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return fields[19] ?? null;
-  } catch {
-    return null;
-  }
 }
 
 /** This machine's pid domain, in the registry's own spelling, read off a live
