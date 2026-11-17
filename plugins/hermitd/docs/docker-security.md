@@ -209,7 +209,7 @@ A tool shell in the container can still read the Claude login, channel bot token
 - A host that echoes request headers returns the value to the agent.
 - A tool that ignores the proxy variables, or pins certificates, sends the placeholder and gets a 401 from the mapped host.
 - Without LAN containment, when the agent's container restarts on its own, mapped hosts answer 401 until `hermitd restart`. With LAN containment the proxy stays reachable.
-- If the sidecar stops, mapped hosts answer 401; everything else keeps working. `/hermitd:hermit-doctor` warns when the proxy does not answer.
+- If the sidecar stops, sessions that start afterwards go direct: mapped hosts answer 401, everything else keeps working. A session that started while the proxy answered keeps pointing its shell commands at it, so their HTTPS fails until that session's `/clear` or a new session. Chat, model traffic, MCP and channels are unaffected. `/hermitd:hermit-doctor` warns when the proxy does not answer.
 
 ### GitHub without `HERMIT_GH_TOKEN`
 
