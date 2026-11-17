@@ -144,7 +144,7 @@ _update_outcome() {
 
 # The pinned core version in a plugin row list (TAB rows: id, scope, version).
 _core_version() {
-  printf '%s\n' "$1" | awk -F'\t' '$1 ~ /^hermitd@/ { print $3; exit }'
+  printf '%s\n' "$1" | awk -F'\t' '!f && $1 ~ /^hermitd@/ { print $3; f = 1 }'
 }
 
 # Apply the newly installed core's sealed permission list inside the container (its working
@@ -231,7 +231,7 @@ _warn_if_entrypoint_stale() {
 # error still catches it, just with less-precise wording.
 _require_core_version_at_least() {
   local need="$1" subcmd="$2" have
-  have="$(_enumerate_plugins 2>/dev/null | awk -F'\t' '$1 ~ /^hermitd@/ {print $3; exit}')"
+  have="$(_enumerate_plugins 2>/dev/null | awk -F'\t' '!f && $1 ~ /^hermitd@/ { print $3; f = 1 }')"
   [ -n "$have" ] || return 0
   if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -1)" != "$need" ]; then
     echo "[hermit] Container plugin v$have predates '$subcmd' (needs v$need)." >&2
@@ -784,7 +784,7 @@ case "$CMD" in
       done
       # The new core version the reloaded mod copy reports, so a reload that replaces the
       # mod is recognised by that copy and the evolve leg still runs once.
-      CORE_VERSION=$(printf '%s\n' "$PLUGIN_ROWS_AFTER" | awk -F'\t' '$1 ~ /^hermitd@/ { print $3; exit }' | sed -E 's/-[0-9a-f]{12}$//')
+      CORE_VERSION=$(printf '%s\n' "$PLUGIN_ROWS_AFTER" | awk -F'\t' '!f && $1 ~ /^hermitd@/ { print $3; f = 1 }' | sed -E 's/-[0-9a-f]{12}$//')
       REQUEST_ARGS=(/reload-plugins)
       BATCH=false
       if [ "$HERMIT_GAP" = "1" ] && [ "$CORE_FAILED" = false ]; then
