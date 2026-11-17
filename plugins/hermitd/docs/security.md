@@ -20,18 +20,6 @@ Hatch Step 9 offers three tiers:
 
 `permission_mode: dontAsk` turns ask entries into denies (Claude Code auto-denies anything that would have prompted). `allowManagedPermissionRulesOnly` (org-managed settings) restricts which permission rules a project file may add; a managed policy that forbids project-local rules will ignore this seed. Under `bypassPermissions` ask entries are not enforced at all; `/hermit-doctor`'s `permission-rules` check warns, and `apply-settings.ts <file> deny hardened` restores hard blocks.
 
-### Managed deny floor in Docker
-
-Docker images carry a deny floor the agent cannot edit from inside the running container: root-owned, mode 644 `/etc/claude-code/managed-settings.d/hermitd-security.json`. It holds the never-allowed seed `permissions.deny` array on every hatch tier, separate from the conditional `hermitd-channels.json` approval drop-in. It also sets `permissions.disableBypassPermissionsMode: "disable"` unless config opts into `permission_mode: bypassPermissions`.
-
-Changing to `bypassPermissions` needs `hermitd restart --build`; start refuses bypass against an image that still carries the lock. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
-
-The agent's user can still write the image build inputs and the `claude` binary, so a change can be staged for the next rebuild or start. Organization server-managed settings outrank local files and can cause this drop-in to be skipped. Check `/status` and `claude doctor` for the settings source in force.
-
-### Tmux installs
-
-For tmux, the operator may use `sudo` to create the same root-owned, mode 644 file under `/etc/claude-code/managed-settings.d/`, with `permissions.deny` copied from the seed and the bypass lock if desired. This applies to every Claude Code session on the machine. The [native sandbox](https://code.claude.com/docs/en/sandboxing) is the stronger option there; plugin integration is tracked in [#1461](https://github.com/gtapps/hermitd/issues/1461).
-
 Two classes (canonical source: `state-templates/deny-patterns.json`):
 
 ### Never-allowed (`permissions.deny`)
@@ -177,6 +165,18 @@ remove `projects["<key>"]` from Claude Code's `.claude.json` state file and run
 
 Existing installs that hatched Hardened (or the older hardened extras) keep those five git/npm/`--no-verify` strings in `permissions.deny` until the operator edits `permissions.deny` by hand. `deny standard` is purely additive and never removes an existing deny, so no seeding path (hatch, docker-setup, evolve) can demote a Hardened install. Deny outranks ask, so that is stricter than the new default, never wider without consent.
 
+### Managed deny floor in Docker
+
+Docker images carry a deny floor the agent cannot edit from inside the running container: root-owned, mode 644 `/etc/claude-code/managed-settings.d/hermitd-security.json`. It holds the never-allowed seed `permissions.deny` array on every hatch tier, separate from the conditional `hermitd-channels.json` approval drop-in. It also sets `permissions.disableBypassPermissionsMode: "disable"` unless config opts into `permission_mode: bypassPermissions`.
+
+Changing to `bypassPermissions` needs `hermitd restart --build`; start refuses bypass against an image that still carries the lock. Protected `docker.security.managed_ceiling` defaults to `true`; set it to `false` and rebuild to omit the whole file. Doctor warns when the expected file or bypass lock is missing.
+
+The agent's user can still write the image build inputs and the `claude` binary, so a change can be staged for the next rebuild or start. Organization server-managed settings outrank local files and can cause this drop-in to be skipped. Check `/status` and `claude doctor` for the settings source in force.
+
+### Tmux installs
+
+For tmux, the operator may use `sudo` to create the same root-owned, mode 644 file under `/etc/claude-code/managed-settings.d/`, with `permissions.deny` copied from the seed and the bypass lock if desired. This applies to every Claude Code session on the machine. The [native sandbox](https://code.claude.com/docs/en/sandboxing) is the stronger option there; plugin integration is tracked in [#1461](https://github.com/gtapps/hermitd/issues/1461).
+
 ---
 
 ## Defense in Depth
@@ -259,7 +259,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | Channel routing | `channels.primary` |
   | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
-  | Tools and credentials | `docker.packages`, `docker.git_identity_mount`, `docker.recommended_plugins`, `docker.fleet_mesh`, `browser`, `remote`, `chrome`, `auth_mode` |
+  | Tools and credentials | `docker.packages`, `docker.git_identity_mount`, `docker.security.managed_ceiling`, `docker.recommended_plugins`, `docker.fleet_mesh`, `browser`, `remote`, `chrome`, `auth_mode` |
 
   Direct protected writes ask in either direction, including unset and redundant writes, except for the watch rules below. A parent replacement asks only when protected content is added, changed, or removed. Replacing `voice` while keeping its prose unchanged, or replacing a channel while changing only `morning_brief`, is everyday. Creating a channel entry is the exception that needs no protected key of its own: absent `enabled` means enabled and absent `allowed_users` means accept-all, so a parent write that adds `channels.<name>` asks even for a bare `{}`; dropping one is de-escalation and names only the protected keys it removes. Comparison uses raw stored values: absent and null differ, object key order does not matter, and array order does. An opaque parent write or unreadable comparison baseline asks rather than assuming protected content is unchanged. A parent write after another shell command also asks because that command may change its working directory or baseline. So does an unquoted `{…,…}` value, which the shell brace-expands into argv the command text does not show.
 
@@ -426,8 +426,6 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 ### Known limitations
 
 - The managed Docker deny floor protects the running container's policy file. The agent can still write image build inputs and the `claude` binary to stage changes for a later rebuild or start; organization server-managed settings can also supersede local drop-ins.
-
-
 - Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `browser.admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. Authenticated requests must also match `browser.host:browser.port`; state-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.
 - Text pasted into the takeover keyboard strip is typed into the remote browser as key presses, so the agent sees it as it would a typed password. The viewer never sends clipboard data, and copy out stays off (`-SendCutText=0`).
 - The agent in the container can forge `Tailscale-User-Login`. A host process reaching the loopback viewer port and another container on the same Docker network reaching port 6080 can forge it too. Serve identity is not a security boundary against any of these three. No public/Funnel route is created. Docker server 28.0.0 is a hard floor because older localhost publishing could be reached by peers on the same L2 network.

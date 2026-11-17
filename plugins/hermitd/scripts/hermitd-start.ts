@@ -27,7 +27,7 @@ import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
 import { markWorkspaceTrusted, updateClaudeState } from './lib/claude-state';
 import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
-import { isContainer } from './lib/container';
+import { isContainer, MANAGED_SECURITY_SETTINGS } from './lib/container';
 import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
 import { cmpSemver } from './lib/semver';
@@ -890,7 +890,7 @@ function buildClaudeCommand(config: Json, tools: Json, opts?: { resume?: string;
 
   const mode = 'permission_mode' in config ? config.permission_mode : 'auto';
   if (mode === 'bypassPermissions') {
-    if (isContainer() && readJson(opts?.managedSettingsPath ?? '/etc/claude-code/managed-settings.d/hermitd-security.json')?.permissions?.disableBypassPermissionsMode === 'disable') {
+    if (isContainer() && readJson(opts?.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS)?.permissions?.disableBypassPermissionsMode === 'disable') {
       console.log('[hermit] The image locks bypass mode; hermitd restart --build applies the config change.');
       process.exit(1);
     }

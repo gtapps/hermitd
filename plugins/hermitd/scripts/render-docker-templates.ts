@@ -8,6 +8,7 @@ import { renderTemplate } from './lib/render-template';
 import { emitJson, exitError } from './lib/cli';
 import { writeFileAtomic } from './lib/md-write';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
+import { MANAGED_SECURITY_SETTINGS } from './lib/container';
 import { deriveRenderInputs } from './lib/derive-render-inputs';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
@@ -94,7 +95,7 @@ function managedCeilingBlock(ceiling: Inputs['managedCeiling']): string {
     },
   });
   const quoted = "'" + policy.replaceAll("'", "'\\''") + "'";
-  return `RUN mkdir -p /etc/claude-code/managed-settings.d && printf '%s\\n' ${quoted} > /etc/claude-code/managed-settings.d/hermitd-security.json && chmod 644 /etc/claude-code/managed-settings.d/hermitd-security.json`;
+  return `RUN mkdir -p /etc/claude-code/managed-settings.d && printf '%s\\n' ${quoted} > ${MANAGED_SECURITY_SETTINGS} && chmod 644 ${MANAGED_SECURITY_SETTINGS}`;
 }
 
 /** Build every rendered file from supplied template sources. */

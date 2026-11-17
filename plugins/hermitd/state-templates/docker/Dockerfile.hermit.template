@@ -32,8 +32,6 @@ RUN userdel -r ubuntu 2>/dev/null; \
 
 {{CHANNEL_ALLOWLIST_BLOCK}}
 
-{{MANAGED_CEILING_BLOCK}}
-
 USER claude
 
 # Pre-create the config dirs so named volumes inherit claude ownership on first mount
@@ -50,6 +48,8 @@ ENV PATH=/home/claude/.bun/bin:$PATH
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 
 USER root
+# After the Claude Code and Bun layers so a policy change keeps their cache.
+{{MANAGED_CEILING_BLOCK}}
 COPY docker-build.hermit-local.sh* /opt/hermit-build/
 RUN if [ -f /opt/hermit-build/docker-build.hermit-local.sh ]; then bash /opt/hermit-build/docker-build.hermit-local.sh; fi
 USER claude

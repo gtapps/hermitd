@@ -127,8 +127,10 @@ describe('render-docker-templates.ts', () => {
     const dir = freshDir(); await render(dir);
     const image = dockerfile(dir);
     expect(image).not.toContain('# --- operator:');
-    const hook = 'USER root\nCOPY docker-build.hermit-local.sh* /opt/hermit-build/\nRUN if [ -f /opt/hermit-build/docker-build.hermit-local.sh ]; then bash /opt/hermit-build/docker-build.hermit-local.sh; fi\nUSER claude';
+    const hook = 'COPY docker-build.hermit-local.sh* /opt/hermit-build/\nRUN if [ -f /opt/hermit-build/docker-build.hermit-local.sh ]; then bash /opt/hermit-build/docker-build.hermit-local.sh; fi\nUSER claude';
     expect(image).toContain(hook);
+    expect(image.lastIndexOf('USER root')).toBeLessThan(image.indexOf(hook));
+    expect(image.lastIndexOf('USER root')).toBeGreaterThan(image.indexOf('bun.sh/install'));
     expect(image.indexOf(hook)).toBeGreaterThan(image.indexOf('bun.sh/install'));
     expect(image.indexOf(hook)).toBeGreaterThan(image.indexOf('npm install -g @anthropic-ai/claude-code'));
     expect(image.indexOf(hook)).toBeLessThan(image.indexOf('COPY --chmod=755'));
@@ -485,6 +487,8 @@ test('managed security drop-in contains the seed deny floor and conditional bypa
     expect(policy.permissions.deny).toEqual(deny);
     if (managedCeiling?.bypassLock === false) expect(policy.permissions).not.toHaveProperty('disableBypassPermissionsMode');
     else expect(policy.permissions.disableBypassPermissionsMode).toBe('disable');
-    expect(df.indexOf('hermitd-security.json')).toBeLessThan(df.indexOf('USER claude'));
+    expect(df.indexOf('hermitd-security.json')).toBeGreaterThan(df.lastIndexOf('USER root'));
+    expect(df.indexOf('hermitd-security.json')).toBeLessThan(df.lastIndexOf('USER claude'));
+    expect(df.indexOf('hermitd-security.json')).toBeGreaterThan(df.indexOf('npm install -g @anthropic-ai/claude-code'));
   }
 });

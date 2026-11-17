@@ -90,7 +90,7 @@ const ROWS: readonly SettingRow[] = [
     applies: 'next hermitd-start' },
   { arg: 'permissions', path: 'permission_mode', values: PERMISSION_MODE,
     group: 'Operational', label: 'Permission mode', hint: 'how much Claude Code asks before acting',
-    applies: 'next hermitd-start' },
+    applies: 'next hermitd-start (Docker, to or from bypassPermissions: hermitd restart --build)' },
   { arg: 'push-notifications', path: 'push_notifications', group: 'Operational',
     label: 'Push notifications', hint: 'doorbell when no channel is reachable' },
   { arg: 'quality-gate', path: 'quality_gate.tier',

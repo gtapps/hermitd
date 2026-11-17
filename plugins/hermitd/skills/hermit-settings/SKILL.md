@@ -111,7 +111,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |
-| `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start |
+| `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start (Docker, to or from bypassPermissions: hermitd restart --build) |
 | `push-notifications` | `push_notifications` | boolean | yes / no; doorbell when no channel is reachable | immediately |
 | `skills-learning` | `skills.learning` | boolean | yes / no; review reusable procedures at task close | immediately |
 | `skills-notify` | `skills.notify` | enum | off / on / verbose; off, on, or verbose close replies | immediately |
