@@ -17,7 +17,7 @@
 
 ### Fixed
 
-- Locks held by a live process are no longer taken by commands running in Claude Code's sandbox or in another PID namespace
+- Locks held by a live process are no longer taken at once by commands running in Claude Code's sandbox or in another PID namespace
 - Doctor's `peer-inbox` check, `hermitd status` and the monitor drift verdict no longer report the session as gone when run from a sandboxed command
 - Managed Chrome launches in Docker when an operator volume or build hook leaves `~/.config` owned by root
 - An allowlist `.dockerignore` no longer keeps `docker-build.hermit-local.sh` out of images built after the upgrade

@@ -348,7 +348,7 @@ Limits:
 - `.hermit/config.json` stays writable from shell commands, because the agent's settings scripts write it through Bash. The settings gate covers the edits it recognizes, not arbitrary shell writes.
 - Plugin installs and updates write under Claude Code's config folder, which the sandbox denies. They need the [unsandboxed retry](https://code.claude.com/docs/en/sandboxing#the-unsandboxed-retry-escape-hatch) or an operator terminal.
 - Hooks, MCP servers, plugin monitors and channel plugins [run outside the sandbox](https://code.claude.com/docs/en/sandboxing#what-runs-outside-the-sandbox).
-- From a sandboxed command the agent's session is in another PID namespace. Locks, `hermitd status` and doctor account for that; `status` reports the session as `unknown` there instead of `down`.
+- From a sandboxed command the agent's session is in another PID namespace. Locks, `hermitd status` and doctor account for that; for an interactive session, `status` reports `unknown` there instead of `down`.
 
 To lock these settings for every Claude Code session on the machine, use a [managed settings file](https://code.claude.com/docs/en/sandboxing#enforce-sandboxing-with-managed-settings), which needs `sudo`. [`failIfUnavailable`](https://code.claude.com/docs/en/settings-reference#sandbox-failifunavailable) checks only at startup: in testing, Claude Code started with it on and then refused every command, which leaves an unattended agent with no shell until an operator fixes the host.
 

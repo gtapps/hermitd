@@ -114,6 +114,39 @@ function claimStale(claimPath: string): boolean {
 }
 
 /**
+ * Whether lock content written `mtimeMs` ago names a holder other than this
+ * process that still counts as holding it. The one judgment both acquireLock
+ * and read-only gates (lockHeld) use.
+ */
+function heldByOther(content: string, mtimeMs: number, staleMs: number): boolean {
+  const m = /^(\d+)(?: (\S+))?$/.exec(content);
+  if (!m) return false; // empty or garbage: legacy flock file, stale
+  const holderPid = parseInt(m[1], 10);
+  const crossNs = m[2] !== undefined && m[2] !== pidNamespace();
+  if (holderPid === process.pid && !crossNs) return false; // ours: reentrant
+  const age = Date.now() - mtimeMs;
+  return crossNs ? age < Math.min(CROSS_NS_HOLD_MS, staleMs) : pidAlive(holderPid) && age < staleMs;
+}
+
+/** Read-only: whether someone other than this process holds the lock now. */
+function lockHeld(lockPath: string, staleMs: number = DEFAULT_STALE_MS): boolean {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(lockPath, 'r');
+    const mtimeMs = fs.fstatSync(fd).mtimeMs;
+    return heldByOther(fs.readFileSync(fd, 'utf-8').trim(), mtimeMs, staleMs);
+  } catch {
+    return false; // absent or unreadable: not held
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+  }
+}
+
+/**
  * Try to acquire the lock. Returns true on success, false on live contention.
  * Stale locks (dead PID, empty/unparseable content, or mtime older than
  * staleMs) are removed and re-acquired.
@@ -121,8 +154,7 @@ function claimStale(claimPath: string): boolean {
 function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): boolean {
   if (tryCreate(lockPath)) return true;
 
-  let holderPid: number | null = null;
-  let holderNs: string | null = null;
+  let content = '';
   let mtimeMs = 0;
   let ino = 0;
   // Read the PID and the identity through ONE descriptor: a separate open for
@@ -134,12 +166,7 @@ function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): bool
     const st = fs.fstatSync(fd);
     mtimeMs = st.mtimeMs;
     ino = st.ino;
-    const content = fs.readFileSync(fd, 'utf-8').trim();
-    const m = /^(\d+)(?: (\S+))?$/.exec(content);
-    if (m) {
-      holderPid = parseInt(m[1], 10);
-      holderNs = m[2] ?? null;
-    }
+    content = fs.readFileSync(fd, 'utf-8').trim();
   } catch {
     // Vanished between create-attempt and read — retry once.
     return tryCreate(lockPath);
@@ -151,12 +178,7 @@ function acquireLock(lockPath: string, staleMs: number = DEFAULT_STALE_MS): bool
     }
   }
 
-  const age = Date.now() - mtimeMs;
-  const crossNs = holderNs !== null && holderNs !== pidNamespace();
-  const ours = holderPid === process.pid && !crossNs;
-  const held = holderPid !== null && !ours
-    && (crossNs ? age < Math.min(CROSS_NS_HOLD_MS, staleMs) : pidAlive(holderPid) && age < staleMs);
-  if (held) return false; // genuinely held
+  if (heldByOther(content, mtimeMs, staleMs)) return false; // genuinely held
 
   // Stale: dead holder, no/garbage PID (legacy empty flock file), expired
   // mtime, or a cross-namespace holder past CROSS_NS_HOLD_MS. Two racers that
@@ -211,4 +233,4 @@ function releaseLock(lockPath: string): void {
   } catch {}
 }
 
-export { acquireLock, acquireLockWithWait, releaseLock, pidAlive, pidNamespace, ownIdentity, claimPathFor, DEFAULT_STALE_MS, CROSS_NS_HOLD_MS };
+export { acquireLock, acquireLockWithWait, releaseLock, lockHeld, pidAlive, pidNamespace, ownIdentity, claimPathFor, DEFAULT_STALE_MS, CROSS_NS_HOLD_MS };

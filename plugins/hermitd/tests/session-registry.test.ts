@@ -123,7 +123,7 @@ describe('findResident', () => {
 });
 
 describe('residentInOtherPidNamespace', () => {
-  test.skipIf(localPidDomain() === null)('true for the stamped pid registered from another pid domain', () => {
+  test.skipIf(process.platform !== 'linux')('true for the stamped pid registered from another pid domain', () => {
     const c = registryDir();
     writeEntry(c, 4_194_000, { pidDomain: 'linux:0000:pid:[4026999999]' });
     expect(residentInOtherPidNamespace({ session_pid: 4_194_000 }, c)).toBe(true);
