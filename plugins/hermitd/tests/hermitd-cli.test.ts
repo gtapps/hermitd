@@ -64,6 +64,12 @@ test('named and nested targets dispatch at project root', async () => {
   fs.mkdirSync(path.join(f.p, 'nested')); expect((await f.run(['start'], path.join(f.p, 'nested'))).exitCode).toBe(0);
   expect(f.calls()).toBe(`start|${f.p}|\nstart|${f.p}|\n`);
 });
+test('a projected .hermit inside a project dispatches at the real root', async () => {
+  const f = fixture(); const child = path.join(f.p, 'child');
+  fs.mkdirSync(path.join(f.p, '.hermit/state')); write(path.join(child, '.hermit/config.json'), '{}');
+  expect((await f.run(['start'], child)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`start|${f.p}|\n`);
+});
 test('ambiguous agent name lists candidates', async () => {
   const f = fixture(); const a = f.project('a', 'same'); const b = f.project('b', 'same'); f.register([a, b]);
   const r = await f.run(['start', 'same']); expect(r.exitCode).toBe(1); expect(r.stderr).toContain(a); expect(r.stderr).toContain(b);

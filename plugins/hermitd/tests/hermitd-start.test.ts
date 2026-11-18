@@ -690,6 +690,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
   // their own missing-key logic (not part of loadConfig merge).
   const TEMPLATE_ONLY_KEYS = new Set([
     'routines', 'monitors',
+    // Settled by config-read.ts browser and transcription shapes; kept out of the loadConfig merge so boot write-back does not stamp them.
     'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host',
     'transcription', 'transcription.enabled', 'transcription.echo',
     'docker.recommended_plugins',

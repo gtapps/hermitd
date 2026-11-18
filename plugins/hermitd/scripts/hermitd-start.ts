@@ -22,7 +22,7 @@ import { acquireLock, releaseLock } from './lib/lockfile';
 import { readConfigRaw } from './lib/config-read';
 import { readJson } from './lib/cli';
 import { auditConfigChange } from './lib/config-audit';
-import { writeRuntimeJson, readRuntimeJson, readRuntimeState, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
+import { writeRuntimeJson, readRuntimeJson, readRuntimeState, refuseProjectionRoot, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
 import { localISOStamp } from './lib/time';
 import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
@@ -1556,6 +1556,7 @@ async function main(): Promise<void> {
   const noTmuxFlag = process.argv.includes('--no-tmux');
   const resumeIndex = process.argv.indexOf('--resume');
 
+  refuseProjectionRoot('hermitd-start');
   // Config first: which credential to hydrate is a config question now, and the
   // answer decides whether a token file is read at all.
   const config = loadConfig();

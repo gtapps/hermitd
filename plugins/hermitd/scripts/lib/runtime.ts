@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { localISOStamp } from './time';
+import { resolveProjection } from './cc-compat';
 
 type Json = any;
 
@@ -102,5 +103,19 @@ function updateRuntimeField(updates: Json): void {
   writeRuntimeJson(runtime);
 }
 
-export { writeRuntimeJson, readRuntimeJson, readRuntimeState, updateRuntimeField, runtimeTmpPath, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK };
+/**
+ * Refuse a lifecycle script run from a checkout whose `.hermit/` projects a real
+ * root above it. STATE_DIR is cwd-relative, so any state write here would create
+ * `state/` inside the projection and turn it into a root of its own.
+ */
+function refuseProjectionRoot(script: string): void {
+  const here = path.resolve('.hermit');
+  const root = resolveProjection(here);
+  if (root === here) return;
+  console.log(`[hermit] ${process.cwd()} is a checkout inside the agent project at ${path.dirname(root)}.`);
+  console.log(`[hermit] Run ${script} from that folder.`);
+  process.exit(1);
+}
+
+export { writeRuntimeJson, readRuntimeJson, readRuntimeState, updateRuntimeField, refuseProjectionRoot, runtimeTmpPath, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK };
 export type { RuntimeRead };
