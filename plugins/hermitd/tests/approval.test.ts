@@ -145,3 +145,23 @@ test('an in-project store warns without making a copy', async () => {
   expect(f.messages[0]).toContain('approval store is inside the project');
   expect(fs.existsSync(configRoot)).toBe(false);
 });
+
+test('a symlinked build input is kept as a link and its target is never copied', async () => {
+  const f = fixture();
+  const secret = path.join(path.dirname(f.project), 'host-secret');
+  fs.writeFileSync(secret, 'TOP-SECRET\n', { mode: 0o644 });
+  fs.symlinkSync(secret, path.join(f.project, 'docker-build.hermit-local.sh'));
+  const first = await f.approve();
+  expect(first.code).toBe(0);
+  const copy = path.join(first.applied!, 'docker-build.hermit-local.sh');
+  expect(fs.lstatSync(copy).isSymbolicLink()).toBe(true);
+  expect(fs.readlinkSync(copy)).toBe(secret);
+  expect(fs.statSync(secret).mode & 0o777).toBe(0o644);
+
+  fs.rmSync(path.join(f.project, 'docker-build.hermit-local.sh'));
+  f.write('docker-build.hermit-local.sh', 'echo hi\n');
+  const second = await f.approve(() => 'n');
+  expect(second.code).toBe(1);
+  expect(f.messages.join('\n')).toContain('docker-build.hermit-local.sh: symbolic link -> ' + secret + ' -> file');
+  expect(f.messages.join('\n')).not.toContain('TOP-SECRET');
+});
