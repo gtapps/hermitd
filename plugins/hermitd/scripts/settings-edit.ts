@@ -566,7 +566,7 @@ if (import.meta.main) {
       if (rest.length !== 2 || !key || !/^[A-Za-z0-9_-]+$/.test(key)
         || ['primary', '__proto__', 'constructor', 'prototype'].includes(key)) exitError('invalid_channel_key');
       const payload = parseValue(raw);
-      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'docker_source'];
+      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'members_only', 'docker_source'];
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) exitError('invalid_registration');
       if (Object.keys(payload).some(field => !allowed.includes(field))) exitError('unknown_registration_field');
       const { docker_source: dockerSource, ...fields } = payload;

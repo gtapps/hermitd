@@ -476,6 +476,26 @@ test('credproxy runs the installed script from outside the project and never a p
   expect(f.calls()).toContain(`credproxy|/|map ${f.p} api.example.com --header X\n`);
   expect(f.calls()).not.toContain('run|');
 });
+test('help flags print usage and dispatch nothing', async () => {
+  const f = fixture();
+  for (const flag of ['--help', '-h']) {
+    const top = await f.run([flag]);
+    expect(top.exitCode).toBe(0);
+    expect(top.stdout).toContain('Usage: hermitd list|status');
+  }
+  const connector = await f.run(['connector', '--help']);
+  expect(connector.exitCode).toBe(0);
+  expect(connector.stdout).toContain('Usage: hermitd connector [name] enable|disable|status|pair|list|revoke|render [args]');
+  for (const [args, cwd] of [[['stop', '--help'], f.p], [['restart', 'demo', '--help'], f.root], [['doctor', '-h'], f.p], [['run', '--help'], f.p], [['run', 'demo', '--help'], f.root]] as const) {
+    const result = await f.run([...args], cwd);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toStartWith('Usage: hermitd');
+  }
+  expect(f.calls()).toBe('');
+  expect((await f.run(['run', 'demo', 'backup', '--help'])).exitCode).toBe(0);
+  expect(f.calls()).toBe(`run|${f.p}|backup --help\n`);
+});
+
 test('connector runs the installed script from outside the project, on tmux projects too', async () => {
   const f = fixture();
   write(path.join(f.core, 'scripts/connector.ts'), `require('fs').appendFileSync(process.env.CALLS, 'connector|' + process.cwd() + '|' + process.argv.slice(2).join(' ') + '\\n');\n`);

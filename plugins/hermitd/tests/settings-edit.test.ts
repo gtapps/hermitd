@@ -130,8 +130,15 @@ describe('settings-edit.ts CLI', () => {
     expect(fs.statSync(file).mtimeMs).toBe(modified);
   });
 
+  test('channel-register writes members_only', async () => {
+    const file = seedConfig(freshDir(), {});
+    const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify({ plugin: 'bridge', members_only: true })] });
+    expect(result.stdout.trim()).toBe('OK');
+    expect(readConfig(file).channels.custom).toEqual({ plugin: 'bridge', members_only: true, enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/custom' });
+  });
+
   test('channel-register refuses invalid payloads without writing', async () => {
-    for (const payload of [{ format: 'invalid' }, { docker_source: 'registered' }, { surprise: true }, [], null]) {
+    for (const payload of [{ format: 'invalid' }, { members_only: 'yes' }, { docker_source: 'registered' }, { surprise: true }, [], null]) {
       const file = seedConfig(freshDir(), {});
       const before = fs.readFileSync(file, 'utf8');
       const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify(payload)] });
