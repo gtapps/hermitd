@@ -165,3 +165,19 @@ test('a symlinked build input is kept as a link and its target is never copied',
   expect(f.messages.join('\n')).toContain('docker-build.hermit-local.sh: symbolic link -> ' + secret + ' -> file');
   expect(f.messages.join('\n')).not.toContain('TOP-SECRET');
 });
+
+test('an approval keeps only the new set and the one before it', async () => {
+  const f = fixture();
+  const sets = () => fs.readdirSync(f.store).filter(name => name.startsWith('set-')).sort();
+  const first = await f.approve();
+  f.write('docker-compose.override.yml', 'services: {a: {}}\n');
+  const second = await f.approve(() => 'y');
+  f.write('docker-compose.override.yml', 'services: {b: {}}\n');
+  const third = await f.approve(() => 'y');
+  expect(third.code).toBe(0);
+  expect(sets()).toEqual([path.basename(second.applied!), path.basename(third.applied!)].sort());
+  expect(fs.existsSync(first.applied!)).toBe(false);
+  f.write('docker-compose.override.yml', 'services: {c: {}}\n');
+  expect((await f.approve(() => 'n')).code).toBe(1);
+  expect(sets()).toEqual([path.basename(second.applied!), path.basename(third.applied!)].sort());
+});

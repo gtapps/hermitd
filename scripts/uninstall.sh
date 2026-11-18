@@ -134,20 +134,45 @@ docker_install() {
   ) 2>/dev/null
 }
 
+# The installed core's root, chosen the way the host launcher chooses it, for a
+# Docker uninstall on a host whose managed launcher is missing.
+installed_core() {
+  claude plugin list --json 2>/dev/null | (cd / && bun -e '
+    const fs = require("fs");
+    try {
+      const rows = JSON.parse(fs.readFileSync(0, "utf8"));
+      const usable = p => typeof p.id === "string" && p.id.startsWith("hermitd@") && typeof p.installPath === "string"
+        && fs.existsSync(p.installPath + "/scripts/hermitd-exec.sh");
+      const rank = p => p.projectPath === process.argv[1] && p.scope === "local" ? 0
+        : p.projectPath === process.argv[1] && p.scope === "project" ? 1 : p.scope === "user" ? 2 : 3;
+      const pick = rows.filter(usable).sort((a, b) => rank(a) - rank(b))[0];
+      if (!pick) process.exit(1);
+      console.log(pick.installPath);
+    } catch { process.exit(1); }
+  ' "$PROJECT_ROOT")
+}
+
+host_cli() {
+  if [ -n "$HOST_SHIM" ]; then "$HOST_SHIM" "$@"; else bash "$HOST_CORE/scripts/hermitd-exec.sh" hermitd-cli "$@"; fi
+}
+
 uninstall_docker() {
   local shim="$HOME/.local/bin/hermitd"
   export BUN_OPTIONS="--config=/dev/null --no-env-file"
-  if [ ! -x "$shim" ] || ! grep -Fxq '# hermitd: managed host CLI' "$shim"; then
-    record_failure "Docker session stop failed" "docker" "host hermitd launcher missing; the claude-config volume was kept"
+  HOST_SHIM="" HOST_CORE=""
+  if [ -x "$shim" ] && grep -Fxq '# hermitd: managed host CLI' "$shim"; then
+    HOST_SHIM="$shim"
+  elif ! HOST_CORE="$(installed_core)"; then
+    record_failure "Docker session stop failed" "docker" "no installed hermitd core found; the claude-config volume was kept"
     return
   fi
   work "docker" "stopping the hermit container..."
-  if "$shim" docker down; then
+  if host_cli docker down; then
     ok "docker" "container stopped; the claude-config volume was kept"
   else
     record_failure "Docker session stop failed" "docker" "hermitd docker down failed; the claude-config volume was kept"
   fi
-  if ! "$shim" prune "$PROJECT_ROOT"; then
+  if ! host_cli prune "$PROJECT_ROOT"; then
     record_failure "host registry cleanup failed" "registry" "could not remove this project's registration"
   fi
 }

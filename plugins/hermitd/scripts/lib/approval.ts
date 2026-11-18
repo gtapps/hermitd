@@ -299,6 +299,11 @@ export async function approveProject(project: string, options: ApprovalOptions =
     writeFileAtomic(path.join(store, 'record.json'), JSON.stringify(next, null, 2) + '\n', 0o600);
     const applied = candidate;
     candidate = undefined;
+    // Keep the new set and the one before it (a command already building from it), drop the rest.
+    const keep = new Set([path.basename(applied), previous?.applied]);
+    for (const name of fs.readdirSync(store)) {
+      if (name.startsWith('set-') && !keep.has(name)) fs.rmSync(path.join(store, name), { recursive: true, force: true });
+    }
     if (!previous) report('Recorded Docker approval baseline: ' + (names.length ? names.join(', ') : composeNames[0]) + '.');
     return { code: 0, applied };
   } finally {

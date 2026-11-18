@@ -10,7 +10,7 @@ function write(file: string, content: string) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content, { mode: 0o755 });
 }
-async function uninstall(remaining: boolean, foreign = false, docker = false) {
+async function uninstall(remaining: boolean, foreign = false, docker = false, launcher = true) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-uninstall-'))); roots.push(root);
   const project = path.join(root, 'project');
   const state = path.join(project, '.hermit');
@@ -28,11 +28,14 @@ async function uninstall(remaining: boolean, foreign = false, docker = false) {
       write(path.join(state, `bin/hermitd-${verb}`), '#!/bin/sh\necho project-wrapper-ran >&2\nexit 8\n');
     }
     write(shim, '#!/bin/sh\n# hermitd: managed host CLI\nif [ "$*" = "docker down" ]; then exit 0; fi\nexec "$TEST_BUN" "$HOME/prune.ts" "$@"\n');
+    if (!launcher) fs.rmSync(shim);
   }
+  const core = path.join(root, 'plugins/cache/mp/hermitd/1');
+  write(path.join(core, 'scripts/hermitd-exec.sh'), '#!/bin/sh\nshift\nif [ "$*" = "docker down" ]; then echo installed-core-down >&2; exit 0; fi\nexec "$TEST_BUN" "$HOME/prune.ts" "$@"\n');
   const bin = path.join(root, 'bin');
   write(path.join(bin, 'claude'), '#!/bin/sh\nif [ "$2" = list ]; then printf "%s\\n" "$TEST_INSTALLS"; fi\nexit 0\n');
   for (const name of ['tmux', 'docker', 'crontab']) write(path.join(bin, name), '#!/bin/sh\nexit 1\n');
-  const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, TEST_BUN: process.execPath, TEST_CORE_ROOT: path.join(root, 'plugins/cache/mp/hermitd/1'), TEST_INSTALLS: JSON.stringify(remaining ? [{ id: 'hermitd@other' }] : []) };
+  const env = { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(root, 'plugins'), PATH: `${bin}:${process.env.PATH}`, TEST_BUN: process.execPath, TEST_CORE_ROOT: path.join(root, 'plugins/cache/mp/hermitd/1'), TEST_INSTALLS: JSON.stringify(remaining ? [{ id: 'hermitd@other' }] : launcher ? [] : [{ id: 'hermitd@hermitd', scope: 'user', installPath: core }]) };
   const child = Bun.spawn(['bash', path.join(repo, 'scripts/uninstall.sh')], { cwd: project, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   return { shim, registry, stdout, stderr, exitCode };
@@ -57,6 +60,14 @@ test('a registered Docker project with Compose deleted never runs project wrappe
   const result = await uninstall(false, false, true);
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain('container stopped');
+  expect(result.stderr).not.toContain('project-wrapper-ran');
+  expect(JSON.parse(fs.readFileSync(result.registry, 'utf8'))).toEqual([]);
+});
+test('a Docker uninstall without the managed launcher stops the container through the installed core', async () => {
+  const result = await uninstall(false, false, true, false);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain('container stopped');
+  expect(result.stderr).toContain('installed-core-down');
   expect(result.stderr).not.toContain('project-wrapper-ran');
   expect(JSON.parse(fs.readFileSync(result.registry, 'utf8'))).toEqual([]);
 });
