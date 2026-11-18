@@ -38,6 +38,7 @@ import { artifactGrantApplies, generatedAutoMode, mergeOperatorAutoMode, operato
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
+import { resolveProjection } from './lib/cc-compat';
 import { renderTemplate } from './lib/render-template';
 import { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
 export { resolveResumeTarget } from './lib/resident-prompt';
@@ -296,6 +297,20 @@ function shlexJoin(args: string[]): string {
 
 /** True when config.json exists but could not be parsed — gates the write-back. */
 let configReadFailed = false;
+
+/**
+ * Refuse to boot from a checkout whose `.hermit/` projects a real root above it.
+ * Every lifecycle state path is cwd-relative, so a boot here would create
+ * `state/` inside the projection and turn it into a root of its own.
+ */
+function refuseProjectionBoot(): void {
+  const here = path.resolve('.hermit');
+  const root = resolveProjection(here);
+  if (root === here) return;
+  console.log(`[hermit] ${process.cwd()} is a checkout inside the agent project at ${path.dirname(root)}.`);
+  console.log('[hermit] Run hermitd-start from that folder.');
+  process.exit(1);
+}
 
 /** Load config.json or return defaults. */
 function loadConfig(): Json {
@@ -1556,6 +1571,7 @@ async function main(): Promise<void> {
   const noTmuxFlag = process.argv.includes('--no-tmux');
   const resumeIndex = process.argv.indexOf('--resume');
 
+  refuseProjectionBoot();
   // Config first: which credential to hydrate is a config question now, and the
   // answer decides whether a token file is read at all.
   const config = loadConfig();

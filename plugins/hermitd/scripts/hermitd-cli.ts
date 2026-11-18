@@ -11,6 +11,7 @@ import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatu
 import { verdictLine } from './doctor-check';
 import { printJson } from './lib/cli';
 import { inside } from './lib/credproxy';
+import { resolveProjection } from './lib/cc-compat';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
 const bunIsolation = '--config=/dev/null --no-env-file';
@@ -36,7 +37,11 @@ function wrapper(project: string, name: string, args: string[]): number {
 }
 function findProject(cwd: string): string | undefined {
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, '.hermit/config.json'))) return fs.realpathSync(dir);
+    // A projected .hermit/ resolves to the real root above it.
+    if (fs.existsSync(path.join(dir, '.hermit/config.json'))) {
+      const hermit = resolveProjection(path.join(dir, '.hermit'));
+      return fs.realpathSync(path.dirname(hermit));
+    }
     if (dir === path.dirname(dir)) return;
   }
 }
