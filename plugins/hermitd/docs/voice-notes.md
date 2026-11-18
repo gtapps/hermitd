@@ -6,7 +6,7 @@ Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled
 
 ## Local transcription
 
-The default engine is pinned whisper.cpp with the `base` model and Silero voice activity detection. On Linux glibc x64 and arm64, hatch starts binary preparation in the background for tmux and interactive deployments. Missing binaries can also install on the first note. The pinned libgomp library ships beside whisper-cli; a pinned ffmpeg is installed only when ffmpeg is absent from PATH. Docker images include ffmpeg by default, controlled by the `HERMIT_TRANSCRIPTION` build argument.
+The default engine is pinned whisper.cpp with the `base` model and Silero voice activity detection. On Linux glibc x64 and arm64, hatch starts binary preparation in the background for tmux and interactive deployments. Missing binaries can also install on the first note. The pinned libgomp library ships beside whisper-cli; on a host, a pinned ffmpeg is installed only when ffmpeg is absent from PATH. Docker images include ffmpeg by default, controlled by the `HERMIT_TRANSCRIPTION` build argument; a container never downloads ffmpeg, so an image built without it skips local transcription.
 
 Tools already on PATH (`whisper-cli` and `ffmpeg`) take priority. Otherwise the engine lives under `.claude.local/whisper.cpp/<platform>-<arch>/<version>/` in the agent project. The first note downloads the base and Silero models into `.claude.local/whisper.cpp/models/`; hatch does not prefetch them. Downloads are checked against pinned SHA-256 hashes. There is no Python requirement, background transcription service or per-note local API charge.
 

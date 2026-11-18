@@ -97,11 +97,11 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
     remaining(deadline);
     let binary = which('whisper-cli');
     let ffmpeg = which('ffmpeg');
-    // A container gets ffmpeg from its image; the bundled download is for hosts only.
-    if (!ffmpeg && (options.container ?? isContainer())) localReason = 'image_has_no_ffmpeg';
-    else if (!binary || !ffmpeg) {
+    if (!binary || !ffmpeg) {
       let installed = installedWhisper(path.dirname(dir));
-      if (!installed || (!ffmpeg && !installed.ffmpeg)) {
+      // A container gets ffmpeg from its image; the bundled download is for hosts only.
+      if (!ffmpeg && !installed?.ffmpeg && (options.container ?? isContainer())) localReason = 'image_has_no_ffmpeg';
+      else if (!installed || (!ffmpeg && !installed.ffmpeg)) {
         const result = await (options.install ?? installEngine)(engineOptions);
         if ('error' in result) localReason = result.error;
         installed = installedWhisper(path.dirname(dir));
