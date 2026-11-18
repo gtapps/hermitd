@@ -11,7 +11,7 @@ if (import.meta.main) {
   const [hermitDir, ...rest] = process.argv.slice(2);
   const check = rest[0] === '--check';
   const flags = check ? rest.slice(1) : rest;
-  if (!hermitDir || (flags.length !== 0 && (flags.length !== 2 || flags[0] !== '--session-id'))) exitError();
+  if (!hermitDir || (flags.length !== 0 && (flags.length !== 2 || flags[0] !== '--session-id' || !flags[1]))) exitError();
   const dir = pinStateDirOrExit(hermitDir);
   const guest = isGuest(path.join(dir, 'state'), flags[1]);
   if (check) emitJson({ status: guest ? 'guest' : 'resident' });

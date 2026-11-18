@@ -44,8 +44,7 @@ mv watchdog.tmp watchdog.receipt
 }
 
 test.serial('the channel helper requests a detached watchdog restart', async () => {
-  const { out, reason } = await withWatchdog(() =>
-    runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project }));
+  const { out, reason } = await withWatchdog(() => restart());
   expect(out.exitCode).toBe(0);
   expect(JSON.parse(out.stdout)).toEqual({ status: 'requested' });
   expect(reason).toBe('requested');
@@ -73,10 +72,11 @@ test.serial('the channel helper check reports the residency verdict', async () =
 
 test.serial('the channel helper rejects malformed flags', async () => {
   expect((await restart('--session-id')).exitCode).toBe(1);
+  expect((await restart('--session-id', '')).exitCode).toBe(1);
 });
 
 test.serial('the channel helper reports a missing watchdog', async () => {
-  const out = await runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project });
+  const out = await restart();
   expect(out.exitCode).toBe(1);
   expect(JSON.parse(out.stdout)).toEqual({ error: 'watchdog_missing' });
 });

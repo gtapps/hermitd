@@ -39,7 +39,7 @@ ${EDITOR:-vi} "<state_dir>/.env"
 
 Tell the operator to enter `<TOKEN_VAR>=` followed by the secret. Wait for confirmation and check for a nonempty token without printing it. If deferred, return to the calling wizard with the credential skipped.
 
-**Paste here:** create `<state_dir>/.env` with mode `600` by running the Private file commands except the editor line, in one Bash call. Then Write `<TOKEN_VAR>=<pasted-token>` into it, replacing its contents, so the token never appears in a shell command. Ensure `.claude.local/` is in `.gitignore`, appending it if missing.
+**Paste here:** create `<state_dir>/.env` with mode `600` by running the Private file commands except the editor line, plus `: > "<state_dir>/.env"` to empty it, in one Bash call. Read the empty file, then Write `<TOKEN_VAR>=<pasted-token>` into it, replacing its contents, so the token never appears in a shell command. Ensure `.claude.local/` is in `.gitignore`, appending it if missing.
 
 ## Validate the saved credential
 
