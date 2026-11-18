@@ -6,7 +6,7 @@ import { test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkConnector } from '../scripts/doctor-check';
+import { checkConnector, resolvePaths } from '../scripts/doctor-check';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-connector-'));
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -17,8 +17,13 @@ function standIn(name: string, body: object) {
   return { sock, stop: () => server.stop(true) };
 }
 
-test('unset: ok, not enabled', async () => {
-  expect(await checkConnector(undefined, undefined)).toEqual({ id: 'connector', status: 'ok', detail: 'not enabled' });
+test('unset and no enabled store: ok, not enabled', async () => {
+  const saved = process.env.HERMIT_CONNECTOR_SOCKET;
+  delete process.env.HERMIT_CONNECTOR_SOCKET;
+  try {
+    const paths = resolvePaths(path.join(fs.mkdtempSync(path.join(dir, 'p-')), '.hermit'), dir);
+    expect(await checkConnector(paths)).toEqual({ id: 'connector', status: 'ok', detail: 'not enabled' });
+  } finally { if (saved !== undefined) process.env.HERMIT_CONNECTOR_SOCKET = saved; }
 });
 
 test('set but nothing answers: warn', async () => {

@@ -378,6 +378,22 @@ describe('connector service', () => {
     }
   });
 
+  test('host networking or a corrupt settings file leaves the connector out instead of failing the render', async () => {
+    for (const [extra, settings] of [[{ docker: { network_mode: 'host' } }, null], [{}, '{"port":']] as const) {
+      const dir = freshDir();
+      const home = freshDir();
+      const real = freshDir();
+      fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({ docker: { ...(extra as any).docker, security: { audit: { plugin_installs: true } } } }));
+      const store = connectorStoreDir(real, path.join(home, '.claude'));
+      writeConnectorConfig(store, { port: 8790, public_url: 'https://agent.example.com', wait_seconds: 25, rate_per_hour: 60 });
+      if (settings) fs.writeFileSync(path.join(store, 'sidecar', 'connector.json'), settings);
+      const r = await runScript('render-security-overlay.ts', { args: ['render', dir, '--store-project', real], env: { HOME: home } });
+      expect(r.exitCode).toBe(0);
+      expect(fs.readFileSync(overlayPath(dir), 'utf8')).not.toContain('hermit-connector');
+    }
+  });
+
   test('the render subcommand renders the overlay when the connector is the only thing on', async () => {
     const dir = freshDir();
     const home = freshDir();

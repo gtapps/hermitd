@@ -51,7 +51,7 @@ import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
 import { effectiveHeartbeatMode } from './lib/heartbeat/control';
 import { readBootId } from './lib/routines/registry';
 import { probeDeclaredCredentials, strayTokenNote, chromeAuthNote } from './lib/credential-probe';
-import { socketStatus } from './lib/connector';
+import { CONTAINER_SOCKET, isEnabled as connectorEnabled, socketPath as connectorSocketPath, socketStatus, storeDir as connectorStore } from './lib/connector';
 
 type Json = any;
 
@@ -2073,10 +2073,20 @@ function overlayAcceptsInbound(stateDir: string): boolean {
 }
 
 /**
- * Is the connector's trusted server answering this agent? Reads only the socket the
- * launcher named; the host store stays out of the agent's reach, so nothing else is read.
+ * The socket the launcher named, or, for a run outside the agent's session (`hermitd doctor`),
+ * the one it would have named: the container mount, or an enabled host store's socket.
  */
-async function checkConnector(_p: DoctorPaths = PATHS, socket = process.env.HERMIT_CONNECTOR_SOCKET) {
+function connectorSocket(p: DoctorPaths): string | undefined {
+  if (process.env.HERMIT_CONNECTOR_SOCKET) return process.env.HERMIT_CONNECTOR_SOCKET;
+  if (isContainer()) return fs.existsSync(path.dirname(CONTAINER_SOCKET)) ? CONTAINER_SOCKET : undefined;
+  try {
+    const store = connectorStore(path.dirname(p.hermitDir));
+    return connectorEnabled(store) ? connectorSocketPath(store) : undefined;
+  } catch { return undefined; }
+}
+
+/** Is the connector's trusted server answering this agent? Asks only its socket for status. */
+async function checkConnector(p: DoctorPaths = PATHS, socket = connectorSocket(p)) {
   const id = 'connector';
   if (!socket) return { id, status: 'ok', detail: 'not enabled' };
   const body = await socketStatus(socket, 3000);

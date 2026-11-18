@@ -22,7 +22,7 @@
 
 ### Upgrade Instructions
 
-**Leftover check:** the operator's own files and MCP client configs may launch the control surface as `.hermit/bin/hermitd-run mcp-server`; the supported launch is now `hermitd mcp serve` with the same arguments.
+**Leftover check:** the operator's own files and MCP client configs may launch the control surface as `.hermit/bin/hermitd-run mcp-server`; the supported launch is now `hermitd mcp serve` with the same arguments. A launch through `docker exec` moves to the host, with the host project folder as the root instead of the container path.
 
 ## [1.4.35] - 2026-11-18
 

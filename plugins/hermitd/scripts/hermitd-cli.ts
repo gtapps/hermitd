@@ -268,10 +268,9 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     // The control surface runs from installed code, never a project wrapper. It runs from `/`,
     // so relative roots are resolved against the caller's folder first.
     if (args[0] !== 'serve') throw new Error('Usage: hermitd mcp serve [--roots <dir,dir>]');
-    const rest = args.slice(1);
     const absolute = (list: string) => list.split(',').map(r => r.trim()).filter(Boolean).map(r => path.resolve(cwd, r)).join(',');
-    const at = rest.indexOf('--roots');
-    if (at !== -1 && rest[at + 1]) rest[at + 1] = absolute(rest[at + 1]);
+    const rest = args.slice(1).map((arg, i, all) => all[i - 1] === '--roots' ? absolute(arg)
+      : arg.startsWith('--roots=') ? '--roots=' + absolute(arg.slice('--roots='.length)) : arg);
     const env: Record<string, string> = { BUN_OPTIONS: bunIsolation };
     if (process.env.HERMIT_MCP_ROOTS) env.HERMIT_MCP_ROOTS = absolute(process.env.HERMIT_MCP_ROOTS);
     return execute(process.execPath, [path.join(root, 'scripts/mcp-server.ts'), ...rest], '/', env);

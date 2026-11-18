@@ -48,7 +48,7 @@ import { exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
 import { BUILTIN_FEATURE_HOSTS, featureDomains } from './lib/netguard-hosts';
 import { storeDir } from './lib/credproxy';
-import { CONTAINER_SOCKET, isEnabled as connectorEnabled, readConfig as readConnector, storeDir as connectorStore } from './lib/connector';
+import { CONTAINER_SOCKET, readConfig as readConnector, storeDir as connectorStore } from './lib/connector';
 import { CREDPROXY_MOUNT } from './lib/credproxy-env';
 import { NETGUARD_FILES, OVERLAY_FILE, SECURITY_FILES, isLink, writeExclusive } from './lib/security-files';
 
@@ -331,7 +331,7 @@ function connectorService(host: ConnectorHost): string {
     '    cap_drop: [ALL]',
     '    security_opt:',
     '      - no-new-privileges:true',
-    '    pids_limit: 64',
+    '    pids_limit: 256',
     '    restart: unless-stopped',
     '    ports:',
     `      - "127.0.0.1:${host.port}:${host.port}"`,
@@ -668,7 +668,10 @@ export function renderSecurity(root: string, storeProject = root): RenderOutcome
   if (plan.status === 'skipped') return plan;
   const user = { uid: process.getuid!(), gid: process.getgid!() };
   const connectorDir = connectorStore(storeProject);
-  const connectorSettings = connectorEnabled(connectorDir) ? readConnector(connectorDir) : null;
+  // Never on host networking, where the agent could bind the server's port first; and a corrupt
+  // settings file must not stop the agent starting, so doctor reports the connector missing instead.
+  let connectorSettings = null;
+  try { if (config.docker?.network_mode !== 'host') connectorSettings = readConnector(connectorDir); } catch {}
   const connector = connectorSettings ? { store: connectorDir, port: connectorSettings.port, ...user } : undefined;
   if (plan.status === 'disabled' && !connector) return { status: 'disabled', removed: SECURITY_FILES.filter((rel) => removeFile(root, rel)) };
   // The connector alone still needs the overlay for its service and the agent's socket mount.

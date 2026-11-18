@@ -487,6 +487,8 @@ test('mcp serve runs the installed control surface from / with absolute roots an
   expect(r.stdout.trim().split('\n')).toHaveLength(1);
   expect(JSON.parse(r.stdout)).toEqual({ cwd: '/', argv: ['--roots', `${f.root}/demo,${f.root}/other`], env: `${f.root}/demo` });
   expect(f.calls()).not.toContain('run|');
+  const eq = await f.run(['mcp', 'serve', '--roots=demo'], f.root);
+  expect(JSON.parse(eq.stdout).argv).toEqual([`--roots=${f.root}/demo`]);
   expect((await f.run(['mcp'], f.root)).exitCode).toBe(1);
 });
 test('connector refuses an install inside the project and runs nothing', async () => {
