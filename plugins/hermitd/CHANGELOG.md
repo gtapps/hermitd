@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands run there target that root, so a stray boot no longer splits state or blocks helper reports
+
 ## [1.4.36] - 2026-11-18
 
 ### Added
