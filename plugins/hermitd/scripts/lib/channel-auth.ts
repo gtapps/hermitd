@@ -80,6 +80,9 @@ export function isAllowedSender(config: Json, source: string, userId: string | n
 }
 
 /**
+ * A `members_only: true` channel grants no control, operator or unscoped-recall
+ * authority to anyone on it; admission still follows `allowed_users`.
+ *
  * Stricter gate for state-mutating (pause/resume/snooze) and disclosure (status)
  * paths. An explicit allowed_users list still wins — but when none is configured
  * this does NOT fall back to accept-all (as isAllowedSender does). Instead it
@@ -101,6 +104,7 @@ export function isTrustedController(
   config: Json, source: string, userId: string | null, chatId: string | null,
 ): boolean {
   const ch = channelEntry(config, source);
+  if (ch?.members_only === true) return false;
   if (Array.isArray(ch?.allowed_users)) {
     return isAllowedSender(config, source, userId); // explicit list (incl. [] lockdown) wins
   }
@@ -111,6 +115,7 @@ export function isTrustedController(
 /** Primary-operator precedence mirrors channel-responder §1c; empty lists name nobody. */
 export function isPrimaryOperator(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
   const ch = channelEntry(config, source);
+  if (ch?.members_only === true) return false;
   if (ch?.operators !== undefined) return Array.isArray(ch.operators) && userId !== null && ch.operators.includes(userId);
   const allowed = allowedUserIds(config, source);
   if (allowed !== null) return userId !== null && allowed[0] === userId;
@@ -126,18 +131,21 @@ export function canCompleteAuthentication(config: Json, source: string, userId: 
     && isTrustedController(config, source, userId, chatId);
 }
 
-// Home/maintainer rule has its prose twin in channel-responder §1c.
+// Home/maintainer rule has its prose twin in channel-responder §1c. A
+// `members_only` channel has neither: every sender there is a plain member.
 export function recallScope(config: Json, key: string, chatId: string, hermitDir: string): Json | null {
   const ch = channelEntry(config, key);
   const own = { source: key, chat_id: chatId };
   if (!ch) return { own, shared: [] };
-  const home = ch.default_chat_id;
-  if (chatId && (chatId === ch.maintainer_channel_id
+  const elevated = ch.members_only !== true;
+  const home = elevated ? ch.default_chat_id : undefined;
+  const maintainer = elevated ? ch.maintainer_channel_id : undefined;
+  if (chatId && (chatId === maintainer
     || (chatId === home && config.operator_profile !== 'non-technical'))) return null;
   const shared: { source: string; chat_id: string }[] = [];
   const chat = normalizeChannelSource(key) === 'discord' ? cachedChat(hermitDir, chatId) : null;
   if (chat && [10, 11, 12].includes(chat.type) && chat.parent_id) {
-    if (chat.parent_id === ch.maintainer_channel_id
+    if (chat.parent_id === maintainer
       || (chat.parent_id === home && config.operator_profile !== 'non-technical')) return null;
     shared.push({ source: key, chat_id: chat.parent_id });
   }

@@ -8,7 +8,7 @@ function fixture() {
   for (const dir of ['scripts', 'bin', 'logs']) fs.mkdirSync(path.join(root, dir));
   fs.copyFileSync(path.resolve(import.meta.dir, '../../scripts/test-all.sh'), path.join(root, 'scripts/test-all.sh'));
   for (const slug of [
-    'hermitd', 'hermitd-homeassistant', 'hermitd-feed',
+    'hermitd', 'hermitd-homeassistant', 'hermitd-feed', 'hermitd-connector',
     'hermitd-dev', 'hermitd-fitness', 'hermitd-scribe', 'hermitd-laravel-forge',
   ]) {
     const dir = path.join(root, 'plugins', slug, 'tests');

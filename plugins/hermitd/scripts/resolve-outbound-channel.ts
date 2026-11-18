@@ -37,7 +37,7 @@ function resolveTarget(
 
 function eligible(ch: Json): boolean {
   if (!ch || typeof ch !== 'object') return false;
-  if (ch.enabled === false) return false;
+  if (ch.enabled === false || ch.members_only === true) return false;
   if (Array.isArray(ch.allowed_users) && ch.allowed_users.length === 0) return false;
   return !!proactiveChatId(ch);
 }

@@ -158,7 +158,7 @@ describe('settings-gate ask list', () => {
     expectSilent(r);
   });
 
-  for (const [key, value] of [['isolate_chats', 'false'], ['shared_chats', "'[]'"], ['operators', "'[]'"], ['instructions', "'[]'"]]) {
+  for (const [key, value] of [['isolate_chats', 'false'], ['members_only', 'true'], ['shared_chats', "'[]'"], ['operators', "'[]'"], ['instructions', "'[]'"]]) {
     test(`channel ${key} asks`, async () => {
       const dir = fixture();
       const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.${key} ${value}`) } }), dir);
