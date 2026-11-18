@@ -17,7 +17,8 @@ Activate a channel, adding the `config.json` entry first when there isn't one. T
 - `channel-bot-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts "<hermit_state_dir>" <channel> --write`
 - `channel-config-merge`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit`
 - `channel-env-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json channel-env <CHANNEL_UPPERCASE> "<absolute_state_dir>"`
-- `channel-restart`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/request-restart.ts "<hermit_state_dir>"`
+- `channel-session-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/request-restart.ts "<hermit_state_dir>" --check --session-id "${CLAUDE_SESSION_ID}"`
+- `channel-restart`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/request-restart.ts "<hermit_state_dir>" --session-id "${CLAUDE_SESSION_ID}"`
 
 ## Plan
 
@@ -29,7 +30,7 @@ Activate a channel, adding the `config.json` entry first when there isn't one. T
    > DM the bot for a code, then run `hermitd setup channel-setup` from a host terminal at the project root.
    If no enabled channel, print only the host-run sentence and stop. No `AskUserQuestion` on this path.
 
-2. **Own managed host session.** Check whether `HERMIT_MANAGED=1`. If so, use the own-session path in Step 5. A `claude` started from the agent's own pane inherits this variable, so tell the operator to run the wizard in the agent's own session or in a separate terminal, not in a session launched from that pane. If an enabled channel already has a home chat, direct the operator to a separate host session for channel setup and stop before the picker.
+2. **Own managed host session.** When `HERMIT_MANAGED=1`, run `channel-session-check` (Commands). On `resident`, this is the agent's own session: if an enabled channel already has a home chat, direct the operator to a separate host session for channel setup and stop before the picker; otherwise use the own-session path in Step 5. On `guest`, continue to routing 3.
 3. **Live host owner.** Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/docker-preflight.ts "$(pwd)"`. Use `live_owner.mode` to identify a running host agent (`tmux` or `interactive`). A live host owner takes precedence over a compose file.
 4. **Compose present without a live host owner.** Build the stack in its precedence order, `COMPOSE_FILES=(-f docker-compose.hermit.yml); [ ! -f docker-compose.security.yml ] || COMPOSE_FILES+=(-f docker-compose.security.yml); [ ! -f docker-compose.override.yml ] || COMPOSE_FILES+=(-f docker-compose.override.yml)`, then run `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'`. On a nonzero exit, show its output and stop. Record whether `hermit` is running.
 5. **Docker host.** Follow Step 4 on the host and use the operator-run lifecycle handoff in Step 5. Skip Step 3 because the container installs its plugins at boot. Without compose, use the host flow.
@@ -60,7 +61,7 @@ bun --version 2>/dev/null; uname -s
 
   Stop for this channel.
 
-- **iMessage on non-macOS**: if `uname -s` is not `Darwin` and the channel is `imessage`, note it's macOS-only and skip this channel.
+- **iMessage on non-macOS or Docker**: if the channel is `imessage` and `uname -s` is not `Darwin` or this is a Docker host, note it's macOS-only and skip this channel.
 
 ### 3. Install: plugin
 
@@ -97,7 +98,7 @@ Follow the [channel credential stage](references/credential.md).
 Invocation arguments: `$ARGUMENTS`. The `start` argument selects always-on host setup before first boot has recorded `always_on`.
 
 - **Docker host:** When `hermit` is running and this run neither created or re-enabled the entry nor wrote the credential, the container already loads the channel: continue to access, and use the handoff below only if the bot sends no code. Otherwise, when the credential is configured, ask the operator to run `hermitd start` if the service is stopped, or `hermitd restart` if it is running. Add `--build` when the channel has its own `marketplace`. The operator runs this in their own terminal at the project root, where they can review and answer any approval diff. Wait for them to confirm success. Repeat the Compose check from routing 4 and continue only once `hermit` is running. If the bot stays silent after activation, inspect `hermitd docker logs --tail=60` and the plugin guide before naming a cause. State what was checked when the cause is unknown.
-- **Own managed host session:** If the selected channel's reply tool is available, continue to access. Otherwise, when the credential is configured, tell the operator that you are requesting a restart that resumes this conversation. Tell them to DM the bot and type `/hermitd:channel-setup` here again to finish admission. If the channel stays unavailable, they can run the wizard again from the saved credential. Run `channel-restart` (Commands) as the final act. This requests the restart through the watchdog. If it returns `watchdog_missing`, relay the error and stop.
+- **Own managed host session:** If the selected channel's reply tool is available, continue to access. Otherwise, when the credential is configured, tell the operator that you are requesting a restart that resumes this conversation. Tell them to DM the bot and type `/hermitd:channel-setup` here again to finish admission. If the channel stays unavailable, they can run the wizard again from the saved credential. Run `channel-restart` (Commands) as the final act. This requests the restart through the watchdog. If it returns `watchdog_missing`, relay the error and stop. If it returns `refused`, this is a separate session: run routing 3 and use the matching separate-session branch below.
 - **Separate session, running host tmux agent (`live_owner.mode` is `tmux`):** When this run neither created or re-enabled the entry nor wrote the credential, the agent already loads the channel: continue to access. Otherwise, when the credential is configured, ask once, **Restart now** or **Later**. Explain that restart keeps the conversation. On Later, summarize what was saved and stop before access. On Restart now, run plain `hermitd restart`.
 - **Separate session, stopped always-on host agent:** If `live_owner` is null and either `always_on` is true in config or the invocation includes `start`, run `hermitd start` without asking, even if the credential was skipped.
 - **Foreground interactive:** If the selected channel's reply tool is available, continue to access. Otherwise tell the operator to restart Claude Code with `claude --channels plugin:<plugin>@<marketplace>` using the plugin and marketplace resolved in Step 3. They can also use `hermitd-start`, which passes `--channels` automatically. Stop here.

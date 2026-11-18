@@ -24,6 +24,9 @@
 
 - Voice notes in a Docker image without ffmpeg report that they could not be transcribed instead of attempting a bundled ffmpeg download that needs `xz`, and doctor shows this as informational rather than a warning or an earlier install error
 - Upgrade reports on unconverted Docker installs name the host Convert step instead of asking for a rebuild that changes nothing
+- `channel-setup` no longer restarts the agent when run from a helper or from a session launched in the agent's pane
+- `channel-setup` sets up channels without a core bot token, such as iMessage, through the plugin's own setup and access steps
+- `channel-setup` creates a pasted channel token file with private permissions before writing the token
 
 ### Upgrade Instructions
 

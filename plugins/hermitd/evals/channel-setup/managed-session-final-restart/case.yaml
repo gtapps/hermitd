@@ -8,6 +8,7 @@ execution:
   max_turns: 20
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     I typed /hermitd:channel-setup in the host agent’s own managed tmux session. In this fixture HERMIT_MANAGED=1, there is no reachable channel or home chat, and the Telegram entry is selected. The private token is saved and valid. I accept the native prompt for the restart request. There is no pairing code yet.
 
@@ -16,7 +17,7 @@ graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: 'bun[^\n]*scripts/request-restart\.ts'
+    input_match: 'bun[^\n]*scripts/request-restart\.ts(?![^\n]*--check)'
     min: 1
     max: 1
     weight: 3
