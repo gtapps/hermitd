@@ -11,6 +11,7 @@ import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatu
 import { verdictLine } from './doctor-check';
 import { printJson } from './lib/cli';
 import { inside } from './lib/credproxy';
+import { resolveProjection } from './lib/cc-compat';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
 const bunIsolation = '--config=/dev/null --no-env-file';
@@ -36,7 +37,11 @@ function wrapper(project: string, name: string, args: string[]): number {
 }
 function findProject(cwd: string): string | undefined {
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, '.hermit/config.json'))) return fs.realpathSync(dir);
+    // A projected .hermit/ resolves to the real root above it.
+    if (fs.existsSync(path.join(dir, '.hermit/config.json'))) {
+      const hermit = resolveProjection(path.join(dir, '.hermit'));
+      return fs.realpathSync(path.dirname(hermit));
+    }
     if (dir === path.dirname(dir)) return;
   }
 }
@@ -223,7 +228,7 @@ function list(root: string, cwd: string, json: boolean): void {
   const projects = new Map(entries.map(entry => [entry.project_dir, { registered: true, state: entry.state, name: entry.name }]));
   const discover = (dir: string) => {
     if (!dir || !fs.existsSync(path.join(dir, '.hermit/config.json'))) return;
-    const canonical = fs.realpathSync(dir);
+    const canonical = fs.realpathSync(path.dirname(resolveProjection(path.join(dir, '.hermit'))));
     if (!projects.has(canonical)) projects.set(canonical, { registered: false, state: 'present', name: path.basename(canonical) });
   };
   const docker = inspect('docker', ['ps', '-a', '--filter', 'label=com.docker.compose.service=hermit', '--format', '{{.Label "com.docker.compose.project.working_dir"}}'], cwd);

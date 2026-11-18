@@ -33,7 +33,7 @@ import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
 import { readExecution, passesExecutionBoundary, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
-import { writeRuntimeJson, readRuntimeJson, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
+import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
 import { tmuxSessionAlive, getSessionName as deriveSessionName } from './lib/tmux';
 import { enqueue, failedLeg, readOutcome, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
@@ -2541,6 +2541,7 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
 }
 
 if (import.meta.main) {
+  refuseProjectionRoot('hermitd-watchdog');
   const subcommand = process.argv[2] ?? 'run';
   if (subcommand === 'run' || subcommand === '') {
     try {
