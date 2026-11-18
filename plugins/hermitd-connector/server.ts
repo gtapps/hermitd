@@ -10,8 +10,22 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const SOCKET = process.env.HERMIT_CONNECTOR_SOCKET || '';
+
+/**
+ * Claude Code starts this server in every session that enables the plugin, but only a session
+ * launched with it in a channel flag delivers its events. The parent `claude` command line is the
+ * one place that differs, so any other session stays idle and never takes a message.
+ */
+function launchedAsChannel(): boolean {
+  let args: string;
+  try { args = readFileSync(`/proc/${process.ppid}/cmdline`, 'utf8').replace(/\0/g, ' '); }
+  catch { args = spawnSync('ps', ['-o', 'args=', '-p', String(process.ppid)], { encoding: 'utf8' }).stdout ?? ''; }
+  return args.includes('plugin:hermitd-connector@');
+}
 const INSTANCE = randomBytes(8).toString('hex');
 const RETRY_MS = 2000;
 
@@ -57,7 +71,7 @@ async function reply(args: any): Promise<object> {
 
 let polling = false;
 async function poll(): Promise<void> {
-  if (polling || !SOCKET) return;
+  if (polling || !SOCKET || !launchedAsChannel()) return;
   polling = true;
   let after = 0;
   for (;;) {

@@ -13,8 +13,15 @@ afterAll(() => { for (const dir of dirs) fs.rmSync(dir, { recursive: true, force
 
 type Proc = ReturnType<typeof Bun.spawn>;
 
-function channel(env: Record<string, string>) {
-  const proc = Bun.spawn([process.execPath, SERVER], { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore', env: { PATH: process.env.PATH ?? '', ...env } });
+/**
+ * Starts the server under a parent shell whose command line plays the `claude` process: with
+ * `asChannel` it names the plugin after a channel flag, as a session launched with it would.
+ * The trailing `; :` keeps the shell alive as the parent instead of exec'ing the server.
+ */
+function channel(env: Record<string, string>, asChannel = true) {
+  const flag = asChannel ? ['--channels', 'plugin:hermitd-connector@hermitd'] : ['--model', 'haiku'];
+  const proc = Bun.spawn(['sh', '-c', `"${process.execPath}" "${SERVER}"; :`, 'claude', ...flag],
+    { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore', env: { PATH: process.env.PATH ?? '', ...env } });
   const lines: any[] = [];
   const waiters: { match: (m: any) => boolean; resolve: (m: any) => void }[] = [];
   (async () => {
@@ -112,6 +119,17 @@ describe('channel server', () => {
       const later = s.polls.at(-1)!;
       expect(later.get('after')).toBe('7');
       expect(new Set(s.polls.map(p => p.get('instance'))).size).toBe(1);
+    } finally { c.proc.kill(); s.stop(); }
+  });
+
+  test('a session that did not enable the channel never polls, so it cannot take a message', async () => {
+    const s = standIn();
+    const c = channel({ HERMIT_CONNECTOR_SOCKET: s.sock }, false);
+    try {
+      await c.init();
+      await c.request('ping');
+      await Bun.sleep(300);
+      expect(s.polls).toHaveLength(0);
     } finally { c.proc.kill(); s.stop(); }
   });
 
