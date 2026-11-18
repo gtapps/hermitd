@@ -169,7 +169,7 @@ Channel setup complete!
   State dir:      <state_dir>
 
   hermitd-start passes --channels automatically on next boot.
-  Later changes: /hermitd:hermit-settings channels (groups, recall, recording, operators)
+  Later changes: /hermitd:hermit-settings channels (groups, recall, recording, operators, members-only)
 ```
 
 When `channels.<channel>.marketplace` is set in `config.json` (third-party channel), also print this line after the block; never for built-in channels:

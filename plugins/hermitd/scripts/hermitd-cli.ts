@@ -50,20 +50,34 @@ function warnProjectContainsHostConfig(project: string, root: string): void {
   }
 }
 function registry(root: string) { const mp = marketplace(root); return mp ? readRegistry(mp) : []; }
+const SUBCOMMANDS: Record<string, string[]> = {
+  skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
+  pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
+  docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
+  credproxy: ['map', 'unmap', 'status', 'set', 'unset', 'render'],
+  connector: ['enable', 'disable', 'status', 'pair', 'list', 'revoke', 'render'],
+  approve: [],
+};
+const VERBS = ['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'connector', 'approve', 'setup', 'mcp'];
+const USAGE = 'Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup|mcp [name] [args]';
+const VERB_USAGE: Record<string, string> = {
+  list: 'hermitd list [--json]', status: 'hermitd status [name] [--json]', prune: 'hermitd prune [name]',
+  restart: 'hermitd restart [name] [--fresh]', doctor: 'hermitd doctor [name] [--fix]', setup: 'hermitd setup [skill]',
+  mcp: 'hermitd mcp serve [--roots <dir,dir>]', approve: 'hermitd approve [name]', run: 'hermitd run [name] <script> [args]',
+};
+const HELP = ['--help', '-h'];
+function usage(verb: string): string {
+  if (VERB_USAGE[verb]) return `Usage: ${VERB_USAGE[verb]}`;
+  if (!VERBS.includes(verb)) return USAGE;
+  const subs = SUBCOMMANDS[verb];
+  return subs?.length ? `Usage: hermitd ${verb} [name] ${subs.join('|')} [args]` : `Usage: hermitd ${verb} [name]`;
+}
 function target(args: string[], verb: string, cwd: string, root: string): string {
   const first = verb === 'setup' ? undefined : args[0];
-  const reserved: Record<string, string[]> = {
-    skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
-    pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
-    docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
-    credproxy: ['map', 'unmap', 'status', 'set', 'unset', 'render'],
-    connector: ['enable', 'disable', 'status', 'pair', 'list', 'revoke', 'render'],
-    approve: [],
-  };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
   if (matches.length > 1) throw new Error(`Ambiguous name ${first}: ${matches.map(row => row.project_dir).join(', ')}`);
   if (matches.length === 1) { args.shift(); return matches[0].project_dir; }
-  if (first && !first.startsWith('-') && verb !== 'run' && !(reserved[verb] ?? []).includes(first)) throw new Error(`Unknown hermit: ${first}`);
+  if (first && !first.startsWith('-') && verb !== 'run' && !(SUBCOMMANDS[verb] ?? []).includes(first)) throw new Error(`Unknown hermit: ${first}`);
   const project = findProject(cwd);
   if (!project) throw new Error('No hermit project here. Pass a registered name.');
   return project;
@@ -110,7 +124,7 @@ function updateProject(project: string, args: string[], docker: boolean): number
 type DoctorCheck = { id: string; status: 'ok' | 'warn' | 'fail'; detail: string; fix?: string; installed_version?: string };
 function doctorProject(project: string, args: string[], useDocker: boolean, up: boolean): number {
   const fix = args[0] === '--fix';
-  if (args.length > (fix ? 1 : 0)) throw new Error('Usage: hermitd doctor [name] [--fix]');
+  if (args.length > (fix ? 1 : 0)) throw new Error(usage('doctor'));
   if (useDocker && !up) {
     console.log('start it with `hermitd start`, then rerun `hermitd doctor`');
     return 1;
@@ -234,6 +248,12 @@ function list(root: string, cwd: string, json: boolean): void {
 }
 export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = coreRoot): number {
   const [verb, ...args] = argv;
+  // Help never resolves a project or runs a verb. `run` and `agents` pass later arguments on.
+  if (HELP.includes(verb)) { console.log(USAGE); return 0; }
+  if (verb === 'run' || verb === 'agents' ? HELP.includes(args[0]) : args.some(arg => HELP.includes(arg))) {
+    console.log(usage(verb));
+    return 0;
+  }
   if (verb === 'install') return install(args, cwd, root);
   if (verb === 'register' && isContainer()) return 0;
   if (verb === 'list' || verb === 'prune') {
@@ -250,12 +270,10 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     for (const row of kept) console.error(`[hermit] kept ${row.project_dir}: ${row.reason}`);
     return kept.length ? 1 : 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'connector', 'approve', 'setup', 'mcp'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup|mcp [name] [args]');
-  }
+  if (!VERBS.includes(verb)) throw new Error(USAGE);
   if (verb === 'setup') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
-    if (args.length > 1) throw new Error('Usage: hermitd setup [skill]');
+    if (args.length > 1) throw new Error(usage('setup'));
     const project = target(args, verb, cwd, root);
     const host = hostInstall(project);
     warnProjectContainsHostConfig(project, host.installPath);
@@ -267,7 +285,7 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'mcp') {
     // The control surface runs from installed code, never a project wrapper. It runs from `/`,
     // so relative roots are resolved against the caller's folder first.
-    if (args[0] !== 'serve') throw new Error('Usage: hermitd mcp serve [--roots <dir,dir>]');
+    if (args[0] !== 'serve') throw new Error(usage('mcp'));
     const absolute = (list: string) => list.split(',').map(r => r.trim()).filter(Boolean).map(r => path.resolve(cwd, r)).join(',');
     const rest = args.slice(1).map((arg, i, all) => all[i - 1] === '--roots' ? absolute(arg)
       : arg.startsWith('--roots=') ? '--roots=' + absolute(arg.slice('--roots='.length)) : arg);
@@ -278,7 +296,7 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   if (verb === 'approve') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
     const project = target(args, verb, cwd, root);
-    if (args.length) throw new Error('Usage: hermitd approve [name]');
+    if (args.length) throw new Error(usage('approve'));
     if (!isDockerProject(project, root)) throw new Error('hermitd approve requires a Docker project');
     warnProjectContainsHostConfig(project, root);
     const install = hostInstall(project).installPath;

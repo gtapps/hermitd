@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `channel-setup` asks whether a new third-party channel is members-only and registers the answer; `/hermitd:hermit-settings channels` can set or clear `members_only`
+- `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
+
 ## [1.4.36] - 2026-11-18
 
 ### Added
