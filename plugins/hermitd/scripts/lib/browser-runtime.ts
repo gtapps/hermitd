@@ -5,16 +5,16 @@ import { createHash } from 'node:crypto';
 import { hermitDir } from './cc-compat';
 import { isContainer } from './container';
 import { readSettledConfig } from './config-read';
-import { marketplace, registryDir } from './host-registry';
+import { isDockerProject, marketplace, registryDir } from './host-registry';
 import { readJson } from './cli';
 
 export type BrowserDeployment = 'container' | 'docker_host' | 'host';
 export function browserRuntimeMode(dir = hermitDir()): string {
   return readJson(path.join(dir, 'state/runtime.json'))?.runtime_mode ?? '';
 }
-export function browserDeployment(dir = hermitDir(), container = isContainer()): BrowserDeployment {
+export function browserDeployment(dir = hermitDir(), container = isContainer(), root?: string): BrowserDeployment {
   if (container) return 'container';
-  return browserRuntimeMode(dir) !== 'tmux' && fs.existsSync(path.join(dir, '../docker-compose.hermit.yml')) ? 'docker_host' : 'host';
+  return isDockerProject(path.dirname(dir), root) ? 'docker_host' : 'host';
 }
 export function browserDataDir(root = path.resolve(import.meta.dir, '../..')): string {
   const mp = marketplace(root);

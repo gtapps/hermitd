@@ -1,5 +1,5 @@
 {
-  "required_bun_version": ">=1.4.0",
+  "required_bun_version": ">=1.4.2",
   "credentials": [
     {
       "name": "claude-subscription",

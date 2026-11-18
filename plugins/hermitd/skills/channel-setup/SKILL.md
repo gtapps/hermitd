@@ -19,7 +19,7 @@ Activate a channel, adding the `config.json` entry first when there isn't one. L
 **Runtime routing (first):** evaluate in this order.
 
 1. **Inside the container.** Run `[ -f /.dockerenv ] || [ -f /run/.containerenv ] && echo container || echo host`. If `container`: read `.hermit/config.json`. For each enabled channel object, resolve `state_dir` as step 4 does (config `state_dir`, default `.claude.local/channels/<channel>`; if relative, make it absolute against the project root) and print that absolute path literally. Print and stop:
-   > DM the bot for a code, then run `/hermitd:channel-setup` from a normal host session at the project root.
+   > DM the bot for a code, then run `hermitd setup channel-setup` from a host terminal at the project root.
    If no enabled channel, print only the host-run sentence and stop. No `AskUserQuestion` on this path.
 
 2. **No compose file.** If `docker-compose.hermit.yml` is absent at the project root, continue with the local/tmux flow below.
@@ -218,7 +218,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy 
 
 Run the policy command only after pairing succeeds. Relay the result, retaining pairing's `file` (`state`, `home` or `home+state`) for §6. `home: "set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop. Pairing and policy each raise the native permission prompt; bypass-mode callers are refused. Verify the location in §6.
 
-If Skip: "DM the bot later, then run `/hermitd:channel-setup` from a normal host session." Stop.
+If Skip: "DM the bot later, then run `hermitd setup channel-setup` from a host terminal at the project root." Stop.
 
 ### 6. Access: verify access.json location
 

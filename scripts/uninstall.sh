@@ -81,8 +81,7 @@ remove_watchdog() {
 # ---------------------------------------------------------------- session ----
 
 stop_session() {
-  local docker_wrapper stop_wrapper runtime_file
-  docker_wrapper=".hermit/bin/hermitd-docker"
+  local stop_wrapper runtime_file
   stop_wrapper=".hermit/bin/hermitd-stop"
   runtime_file=".hermit/state/runtime.json"
 
@@ -97,20 +96,7 @@ stop_session() {
     warn "session" "interactive Claude session detected; close it in its terminal first"
   fi
 
-  if [ -f "docker-compose.hermit.yml" ]; then
-    if [ -x "$docker_wrapper" ]; then
-      work "docker" "stopping the hermit container..."
-      if "$docker_wrapper" down; then
-        ok "docker" "container stopped; the claude-config volume was kept"
-      else
-        record_failure "Docker session stop failed" "docker" "hermitd-docker down failed; the claude-config volume was kept"
-      fi
-    else
-      warn "docker" "compose file remains, but the hermitd-docker wrapper is absent"
-    fi
-  else
-    ok "docker" "compose file already absent"
-  fi
+  ok "docker" "compose file already absent"
 
   if [ -x "$stop_wrapper" ]; then
     work "session" "stopping the tmux session..."
@@ -123,6 +109,74 @@ stop_session() {
     record_failure "session stop wrapper is not executable" "session" "could not run $stop_wrapper"
   else
     ok "session" "stop wrapper already absent"
+  fi
+}
+
+docker_install() {
+  [ ! -f docker-compose.hermit.yml ] || return 0
+  (
+    cd / || exit 1
+    BUN_OPTIONS="--config=/dev/null --no-env-file" bun -e '
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const cache = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR
+        || path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require("node:os").homedir(), ".claude"), "plugins");
+      const data = path.join(cache, "data");
+      for (const dir of fs.readdirSync(data, {throwIfNoEntry: false}) || []) {
+        if (!dir.startsWith("hermitd-")) continue;
+        try {
+          const rows = JSON.parse(fs.readFileSync(path.join(data, dir, "instances.json"), "utf8"));
+          if (rows.some(row => row.project_dir === process.argv[1] && row.runtime_hint === "docker")) process.exit(0);
+        } catch {}
+      }
+      process.exit(1);
+    ' "$PROJECT_ROOT"
+  ) 2>/dev/null
+}
+
+# The root of the core install this script removes, preferring this project's own
+# install, for a Docker uninstall on a host whose managed launcher is missing.
+installed_core() {
+  claude plugin list --json 2>/dev/null | (cd / && bun -e '
+    const fs = require("fs");
+    try {
+      const rows = JSON.parse(fs.readFileSync(0, "utf8"));
+      const usable = p => p.id === process.argv[2] && typeof p.installPath === "string"
+        && fs.existsSync(p.installPath + "/scripts/hermitd-exec.sh");
+      const rank = p => p.projectPath === process.argv[1] && p.scope === "local" ? 0
+        : p.projectPath === process.argv[1] && p.scope === "project" ? 1 : p.scope === "user" ? 2 : 3;
+      const pick = rows.filter(usable).sort((a, b) => rank(a) - rank(b))[0];
+      if (!pick) process.exit(1);
+      console.log(pick.installPath);
+    } catch { process.exit(1); }
+  ' "$PROJECT_ROOT" "$PLUGIN")
+}
+
+host_cli() {
+  if [ -n "$HOST_SHIM" ]; then "$HOST_SHIM" "$@"; else bash "$HOST_CORE/scripts/hermitd-exec.sh" hermitd-cli "$@"; fi
+}
+
+uninstall_docker() {
+  local shim="$HOME/.local/bin/hermitd"
+  export BUN_OPTIONS="--config=/dev/null --no-env-file"
+  HOST_SHIM="" HOST_CORE=""
+  if [ -x "$shim" ] && grep -Fxq '# hermitd: managed host CLI' "$shim"; then
+    HOST_SHIM="$shim"
+  elif ! command -v claude >/dev/null 2>&1; then
+    record_failure "Docker session stop failed" "docker" "host hermitd launcher missing and claude is not on PATH; the claude-config volume was kept"
+    return
+  elif ! HOST_CORE="$(installed_core)"; then
+    record_failure "Docker session stop failed" "docker" "no installed hermitd core found; the claude-config volume was kept"
+    return
+  fi
+  work "docker" "stopping the hermit container..."
+  if host_cli docker down; then
+    ok "docker" "container stopped; the claude-config volume was kept"
+  else
+    record_failure "Docker session stop failed" "docker" "hermitd docker down failed; the claude-config volume was kept"
+  fi
+  if ! host_cli prune "$PROJECT_ROOT"; then
+    record_failure "host registry cleanup failed" "registry" "could not remove this project's registration"
   fi
 }
 
@@ -299,9 +353,13 @@ main() {
 
   PROJECT_ROOT="$(pwd -P)"
 
-  remove_watchdog
-  stop_session
-  remove_host_registration
+  if docker_install; then
+    uninstall_docker
+  else
+    remove_watchdog
+    stop_session
+    remove_host_registration
+  fi
   uninstall_plugin
   remove_unused_host_shim
   maybe_delete_state

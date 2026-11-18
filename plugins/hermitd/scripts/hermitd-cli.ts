@@ -1,16 +1,31 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parseEnv } from 'node:util';
 import { installHost } from './lib/host-install';
 import { isContainer } from './lib/container';
 import { resolvePlugin, isResolveError } from './lib/domain-hatch/resolve';
-import { marketplace, readRegistry, registerProject, prune } from './lib/host-registry';
+import { isDockerProject, marketplace, readRegistry, registerProject, prune } from './lib/host-registry';
 import { dockerTransport, tmuxTransport, readRuntime, projectStatus, renderStatus, inspect } from './lib/hermit-status';
 import { verdictLine } from './doctor-check';
 import { printJson } from './lib/cli';
 import { inside } from './lib/credproxy';
 
 const coreRoot = path.resolve(import.meta.dir, '..');
+const bunIsolation = '--config=/dev/null --no-env-file';
+function restoreTmuxEnvironment(project: string): void {
+  delete process.env.BUN_OPTIONS;
+  let contents: string;
+  try { contents = fs.readFileSync(path.join(project, '.env'), 'utf8'); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  for (const [key, value] of Object.entries(parseEnv(contents))) {
+    if (key !== 'BUN_OPTIONS' && key !== 'BASH_ENV') process.env[key] ??= value;
+  }
+}
 function execute(command: string, args: string[], project: string, env: Record<string, string> = {}): number {
   const result = spawnSync(command, args, { cwd: project, env: { ...process.env, ...env }, stdio: 'inherit' });
   if (result.error) console.error(`[hermit] ${result.error.message}`);
@@ -19,26 +34,38 @@ function execute(command: string, args: string[], project: string, env: Record<s
 function wrapper(project: string, name: string, args: string[]): number {
   return execute('bash', [path.join(project, '.hermit/bin', name), ...args], project);
 }
-function nearestProject(cwd: string): string {
+function findProject(cwd: string): string | undefined {
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
     if (fs.existsSync(path.join(dir, '.hermit/config.json'))) return fs.realpathSync(dir);
-    if (dir === path.dirname(dir)) throw new Error('No hermit project here. Pass a registered name.');
+    if (dir === path.dirname(dir)) return;
+  }
+}
+function warnProjectContainsHostConfig(project: string, root: string): void {
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const canonical = (candidate: string) => {
+    try { return fs.realpathSync(candidate); } catch { return path.resolve(candidate); }
+  };
+  if (inside(canonical(root), project) || inside(canonical(configDir), project)) {
+    console.error('[hermit] Warning: this project contains the host Claude configuration or plugin. The agent can change code the host runs.');
   }
 }
 function registry(root: string) { const mp = marketplace(root); return mp ? readRegistry(mp) : []; }
 function target(args: string[], verb: string, cwd: string, root: string): string {
-  const first = args[0];
+  const first = verb === 'setup' ? undefined : args[0];
   const reserved: Record<string, string[]> = {
     skills: ['status', 'restore', 'archive', 'pin', 'unpin', 'rollback'],
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
     docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
     credproxy: ['map', 'unmap', 'status', 'set', 'unset', 'render'],
+    approve: [],
   };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
   if (matches.length > 1) throw new Error(`Ambiguous name ${first}: ${matches.map(row => row.project_dir).join(', ')}`);
   if (matches.length === 1) { args.shift(); return matches[0].project_dir; }
   if (first && !first.startsWith('-') && verb !== 'run' && !(reserved[verb] ?? []).includes(first)) throw new Error(`Unknown hermit: ${first}`);
-  return nearestProject(cwd);
+  const project = findProject(cwd);
+  if (!project) throw new Error('No hermit project here. Pass a registered name.');
+  return project;
 }
 export function hostInstall(project: string) {
   const result = inspect('claude', ['plugin', 'list', '--json'], project);
@@ -65,6 +92,11 @@ function updateProject(project: string, args: string[], docker: boolean): number
     console.log('[hermit] Dry run: skipping the host core update.');
     return dockerScript(project, ['update', ...args], host.installPath);
   }
+  const approval = execute(process.execPath, [path.join(host.installPath, 'scripts/approve.ts'), project], '/', { BUN_OPTIONS: bunIsolation });
+  if (approval !== 0) {
+    console.error('[hermit] Nothing was applied.');
+    return approval;
+  }
   if (host.scope === 'user') console.error(`[hermit] Skipping shared user-scope host update: ${host.id}`);
   else {
     const code = execute('claude', ['plugin', 'update', host.id, '--scope', host.scope], project);
@@ -87,7 +119,7 @@ function doctorProject(project: string, args: string[], useDocker: boolean, up: 
     console.error(`doctor needs \`claude plugin list\` to find the installed plugin: ${error instanceof Error ? error.message : error}. Check \`claude --version\`.`);
     return 1;
   }
-  const runtime = readRuntime(project);
+  const runtime = useDocker ? {} : readRuntime(project);
   const env = { ...process.env, CLAUDE_PLUGIN_ROOT: host.installPath,
     ...(runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {}) };
   const capture = (command: string, argv: string[]) => {
@@ -158,6 +190,7 @@ function install(args: string[], cwd: string, root: string): number {
   try {
     if (isContainer()) { printJson({ status: 'skip', reason: 'container' }); return 0; }
     const project = target(args, 'install', cwd, root);
+    if (isDockerProject(project, root)) warnProjectContainsHostConfig(project, root);
     if (!marketplace(root)) { printJson({ status: 'skip', reason: 'no_marketplace' }); return 0; }
     const { id, scope, projectPath } = hostInstall(project);
     const skipped = installHost(project, root, { id, scope, projectPath });
@@ -187,7 +220,7 @@ function list(root: string, cwd: string, json: boolean): void {
   const rows = [...projects].map(([project, entry]) => {
     try {
       if (entry.state !== 'present') return { ...entry, project_dir: project, transport: 'unknown', execution: 'unknown' };
-      return { ...projectStatus(project), ...entry };
+      return { ...projectStatus(project, isDockerProject(project, root)), ...entry };
     } catch (error) {
       console.error(`[hermit] ${project}: ${error instanceof Error ? error.message : error}`);
       return { ...entry, project_dir: project, state: 'error', transport: 'unknown', error: String(error) };
@@ -201,30 +234,67 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   const [verb, ...args] = argv;
   if (verb === 'install') return install(args, cwd, root);
   if (verb === 'register' && isContainer()) return 0;
+  if (verb === 'list' || verb === 'prune') {
+    const project = verb === 'prune' && args[0]
+      ? registry(root).find(row => [row.project_dir, row.name, row.agent_name].includes(args[0]))?.project_dir
+      : findProject(cwd);
+    if (project && isDockerProject(project, root)) warnProjectContainsHostConfig(project, root);
+  }
   if (verb === 'list') { list(root, cwd, args.includes('--json')); return 0; }
   if (verb === 'prune') {
     const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'approve', 'setup'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|approve|setup [name] [args]');
+  }
+  if (verb === 'setup') {
+    if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
+    if (args.length > 1) throw new Error('Usage: hermitd setup [skill]');
+    const project = target(args, verb, cwd, root);
+    const host = hostInstall(project);
+    warnProjectContainsHostConfig(project, host.installPath);
+    const options = ['--setting-sources', 'user'];
+    if (host.scope !== 'user') options.push('--plugin-dir', host.installPath);
+    if (args[0]) options.push('/hermitd:' + args[0]);
+    return execute('claude', options, project, { BUN_OPTIONS: bunIsolation });
+  }
+  if (verb === 'approve') {
+    if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
+    const project = target(args, verb, cwd, root);
+    if (args.length) throw new Error('Usage: hermitd approve [name]');
+    if (!isDockerProject(project, root)) throw new Error('hermitd approve requires a Docker project');
+    warnProjectContainsHostConfig(project, root);
+    const install = hostInstall(project).installPath;
+    return execute(process.execPath, [path.join(install, 'scripts/approve.ts'), project], '/', { BUN_OPTIONS: bunIsolation });
   }
   const project = target(args, verb, cwd, root);
+  const useDocker = isDockerProject(project, root);
+  if (useDocker && verb !== 'credproxy') warnProjectContainsHostConfig(project, root);
+  if (verb !== 'credproxy' && verb !== 'docker' && !useDocker) {
+    restoreTmuxEnvironment(project);
+  }
   if (verb === 'register') {
-    registerProject(project, root, fs.existsSync(path.join(project, 'docker-compose.hermit.yml')) ? 'docker' : 'tmux');
+    registerProject(project, root, useDocker ? 'docker' : 'tmux');
     return 0;
   }
-  if (verb === 'status') { console.log(renderStatus([projectStatus(project)], args.includes('--json'))); return 0; }
+  if (verb === 'status') { console.log(renderStatus([projectStatus(project, useDocker)], args.includes('--json'))); return 0; }
+  if (useDocker && (['start', 'restart', 'update'].includes(verb) || (verb === 'docker' && ['up', 'restart', 'update'].includes(args[0])))
+    && !fs.existsSync(path.join(project, 'docker-compose.hermit.yml'))) {
+    throw new Error(`No docker-compose.hermit.yml found in ${project}`);
+  }
   if (verb === 'run') {
-    if (args[0]?.replace(/\.ts$/, '') === 'hermitd-cli') throw new Error('hermitd run refuses recursive hermitd-cli dispatch');
+    const script = args[0]?.replace(/\.ts$/, '');
+    if (script === 'hermitd-cli') throw new Error('hermitd run refuses recursive hermitd-cli dispatch');
+    if (useDocker && script === 'browser-host') {
+      const install = hostInstall(project).installPath;
+      return execute(process.execPath, [path.join(install, 'scripts/browser-host.ts'), ...args.slice(1)], project);
+    }
+    if (useDocker) return dockerScript(project, [verb, ...args], hostInstall(project).installPath);
     return wrapper(project, 'hermitd-run', args);
   }
-  if (verb === 'skills') {
-    if (args[0] !== 'status') {
-      const docker = dockerTransport(project);
-      if (docker === 'unknown') throw new Error('Owner inspection failed: Docker runtime is unknown');
-      if (docker === 'up') return dockerScript(project, ['skills', ...args], hostInstall(project).installPath);
-    }
-    return wrapper(project, 'hermitd-skills', args);
+  if (['pause', 'watchdog', 'skills'].includes(verb)) {
+    if (useDocker) return dockerScript(project, [verb, ...args], hostInstall(project).installPath);
+    return wrapper(project, `hermitd-${verb}`, args);
   }
   if (verb === 'credproxy') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
@@ -233,21 +303,20 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     const install = fs.realpathSync(hostInstall(project).installPath);
     if (inside(install, project)) { printJson({ error: 'untrusted_install' }); return 1; }
     const [sub, ...rest] = args;
-    return execute(process.execPath, [path.join(install, 'scripts/credproxy.ts'), sub ?? '', project, ...rest], '/');
+    return execute(process.execPath, [path.join(install, 'scripts/credproxy.ts'), sub ?? '', project, ...rest], '/', { BUN_OPTIONS: bunIsolation });
   }
-  if (verb === 'pause' || verb === 'watchdog') return wrapper(project, `hermitd-${verb}`, args);
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);
-  const runtime = readRuntime(project);
-  const docker = dockerTransport(project);
+  const docker = dockerTransport(project, useDocker);
+  // A live conflict still deserves a diagnostic; Docker routing never falls back to tmux.
+  const runtime = !useDocker || docker === 'up' ? readRuntime(project) : {};
   const tmux = tmuxTransport(project, runtime.tmux_session);
   if (docker === 'up' && tmux === 'up') throw new Error(`Live-owner conflict: Docker hermit and host tmux ${runtime.tmux_session} are both running`);
   if (docker === 'unknown' || tmux === 'unknown') throw new Error('Owner inspection failed: runtime is unknown');
-  const interactive = runtime.runtime_mode === 'interactive' && docker !== 'up' && tmux !== 'up';
-  const useDocker = docker === 'up' || (tmux !== 'up' && fs.existsSync(path.join(project, 'docker-compose.hermit.yml')));
+  const interactive = !useDocker && runtime.runtime_mode === 'interactive' && tmux !== 'up';
   if (verb === 'doctor') return doctorProject(project, args, useDocker, useDocker ? docker === 'up' : tmux === 'up');
   if (verb === 'update') return updateProject(project, args, useDocker);
   if (verb === 'agents') {
-    if (useDocker && !interactive) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);
+    if (useDocker) return dockerScript(project, ['agents', ...args], hostInstall(project).installPath);
     return execute('claude', ['agents', ...args], project, runtime.config_dir ? { CLAUDE_CONFIG_DIR: runtime.config_dir } : {});
   }
   if (interactive && verb === 'attach') { console.error('[hermit] Interactive session: nothing to attach to.'); return 1; }

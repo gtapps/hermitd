@@ -1,6 +1,6 @@
 # Docker Security — Advanced Hardening
 
-`/hermitd:docker-security` is an opt-in advanced wizard for hermit operators who want stronger container isolation than the v1.0.26 baseline (`cap_drop: ALL`, `no-new-privileges`, `pids_limit: 2048`). It applies a `docker-compose.security.yml` overlay alongside the base compose file — never modifying it. The `hermitd-docker` wrapper auto-detects the overlay and chains it onto every command.
+`hermitd setup docker-security` opens the opt-in wizard for stronger container isolation beyond the default `cap_drop: ALL`, `no-new-privileges` and `pids_limit: 2048` settings. The wizard writes `docker-compose.security.yml`. The host includes that overlay in the Docker inputs it checks for approval.
 
 > **Trust model.** Installing a plugin runs that plugin's hooks and skills with the same authority as hermit. The hardening here reduces what a *compromised* plugin can do to the host kernel and your local network — it does not vet the plugin's intent, sandbox its file access within the project, or prevent it from acting on your behalf via the agent. A malicious or careless plugin still runs as you. See [Plugin Security](security.md#plugin-security).
 
@@ -30,16 +30,32 @@ DNS enforce mode limits the browser, like every other process, to allowlisted na
 | **Credential proxy** (Prompt 4) | Adds a `hermit-credproxy` Envoy sidecar that adds the real header to the agent's shell HTTPS requests for hosts you map from a host terminal. See [Credential proxy](#credential-proxy). | **Yes, for mapped hosts.** The key leaves the container; the agent can still use it on its mapped host. |
 | **Boot-time plugin install audit log** (Prompt 3) | The entrypoint appends a JSONL line to `.hermit/state/plugin-installs.jsonl` for every `claude plugin install` it performs (hermit core, channels, recommended plugins). | Cheap paper trail, not a security primitive on its own. **Honest scope:** post-boot installs run by the operator via tmux are NOT captured. **Empty-log expectation:** the log only grows when an install actually fires — on subsequent boots when the marketplace + plugin set is unchanged, the entrypoint short-circuits the install path and writes nothing. An empty log on a boot where nothing changed is normal, not a failure. |
 
+## Host trust boundary
+
+On a Docker install, the host `hermitd` command runs the installed plugin's code and ignores the project's `bunfig.toml` and automatic Bun `.env` loading. It leaves project wrappers to the container. The agent must be running for `hermitd run`, `pause`, `skills` and `watchdog run`. The `browser-host` script runs from the installed plugin on the host. The host registry remembers that a project uses Docker even if its Compose file is deleted. `hermitd prune <name>` removes that registry entry.
+
+`hermitd start`, `restart` and `update` freeze Docker's inputs under `~/.claude/hermitd/approvals/` and build and start from those copies. The first check records the current inputs as approved and prints a summary. Later changes to the override, security overlay, build hook, files under `.hermit/docker/`, build-related configuration or Compose-referenced `.env` variables require approval because they can change what the image does or what the container can reach. Operator-authored Dockerfiles and base Compose files also require approval when changed. Generated versions are compared through their configuration inputs. Entrypoint changes, `HERMIT_GH_TOKEN`, unreferenced environment variables and unrelated config keys pass without a prompt. The approval check displays environment variable names only.
+
+When changes need approval, the terminal displays the diff and asks `Apply these changes? [y/N]`. Enter `y` to approve the displayed copies. Declining leaves the running agent and project files alone and prints the location of the last approved copies. Without a terminal, the command stops and names the changed inputs. Run `hermitd approve` in a terminal to review them before retrying. A file swapped in the project after the check cannot replace the frozen copy.
+
+`hermitd setup [skill]` opens a host Claude Code session at the project root. The session excludes project settings, hooks, instructions, MCP servers, skills and agents. Text in project files the session reads can still steer the model. See [Claude Code's CLI reference for `--setting-sources`](https://code.claude.com/docs/en/cli-reference#cli-flags).
+
+- Commands you run separately on the host still use the project files. This includes `docker compose` typed by hand, git hooks, package scripts, a plain Claude Code session and an external MCP client that starts the project's wrapper. First-time Docker setup starts directly from the project before recording its baseline. An older launcher still follows its previous startup behavior until a lifecycle command refreshes it.
+- Approval covers the frozen inputs. Compose can still read files referred to by `include`, `extends` or `additional_contexts`, and a `provider` service can run a host program. A changed Compose file that adds one of those keys displays a warning in the terminal review. Bind mounts and the agent's own `env_file` still refer to the project.
+- On an unconverted install, the agent image still builds from the project directory. Open `hermitd setup docker-customize` and ask for Convert to use the managed build context.
+- If the project contains the host's Claude configuration or plugin, the agent can rewrite code the host runs. The host warns and continues. If the approval store would be inside the project, the host warns and uses project files without recording approval.
+- The agent can still make its own start fail, for example by deleting a required file.
+
 ## Documented limitations
 
-Images also carry [a managed deny floor](security.md#managed-deny-floor-in-docker) at `/etc/claude-code/managed-settings.d/hermitd-security.json`, separate from the channel drop-in: never-allowed seed rules plus a bypass lock unless config opts into bypass. It is a deny floor the agent cannot edit from inside the running container, but the agent's user can still write image build inputs and the `claude` binary to stage changes for the next rebuild or start. Protected `docker.security.managed_ceiling: false` plus a rebuild omits it; switching to `bypassPermissions` needs `hermitd restart --build`. Organization server-managed settings outrank local files and can cause the drop-in to be skipped; `/status` and `claude doctor` name the source in force.
+Images carry a managed deny floor at `/etc/claude-code/managed-settings.d/hermitd-security.json`, with never-allowed seed rules and a bypass lock unless config opts into bypass. The agent can write image build inputs, and a staged change to tracked inputs requires terminal approval. Protected `docker.security.managed_ceiling: false` plus a rebuild omits the drop-in. Switching to `bypassPermissions` needs `hermitd restart --build`. Organization server-managed settings can supersede the drop-in. `/status` and `claude doctor` show the active source. See the [managed deny floor](security.md#managed-deny-floor-in-docker).
 
 The wizard makes the container *meaningfully harder to abuse*. It does not make it bulletproof. Operators should know the gaps:
 
 - **Log-only mode does not constrain public egress.** Only enforce mode drops connections. Log-only shows name lookups, not connections, so a tool that connects to a literal IP never appears in the log and fails after the switch to enforce until that IP gets a carve-out.
 - **Enforce mode filters by IP, not by site.** dnsmasq adds every address an allowlisted name resolves to the firewall's allowed set, so another site served from the same CDN address is reachable too. The set grows while the sidecar runs, as allowlisted names resolve to new addresses, and clears when it restarts.
 - **Allowed hosts are still exfiltration routes.** GitHub, npm and PyPI are on every allowlist and accept uploads, as do channel platforms. The allowlist narrows where data can go; it does not stop data leaving through an allowed host.
-- **The rules are built into the netguard image, but their sources stay writable.** `nftables.conf` and `dnsmasq.allowlist` are copied into the image at build, so an edit inside the running container changes nothing until the operator rebuilds (`hermitd restart --build`, `hermitd update`, or the wizard). The files under `.hermit/docker/`, the agent's own image build inputs and the `claude` binary stay writable by the agent's user, so a change staged there applies at the next rebuild. `docker-compose.override.yml` is applied after the security overlay and is also writable, so a change there applies at the next start. This is a known limit: a staged change applies only at an operator rebuild or start on the host, the same boundary as the deny floor, and the agent writes the generated Docker files itself during an upgrade. With the [credential proxy](#credential-proxy) on, a staged Compose change could also mount its host-only store into the agent's container.
+- **The netguard rule sources stay writable.** Docker copies `nftables.conf` and `dnsmasq.allowlist` into the netguard image. An agent can stage edits in `.hermit/docker/` or change the Compose override. The host requires a terminal `y` before it applies those changes, and rule changes reach the running agent after a rebuild.
 - **No per-host filter for shell commands.** Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) filters shell commands by host, but it does not run inside the agent's container without relaxing the container's seccomp and AppArmor profiles ([Bash Sandbox](security.md#bash-sandbox)), so netguard's IP filter is the only egress control here.
 - **Docker's default bridge (172.17.0.0/16) is dropped** by the LAN block — it sits inside `172.16.0.0/12`. Operators with adjacent Compose stacks must add carve-outs for the relevant bridge IPs (Prompt 1b "Extra LAN carve-outs").
 - **Compose service-name DNS doesn't work through dnsmasq** — Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the allowlist:
@@ -54,12 +70,12 @@ The wizard makes the container *meaningfully harder to abuse*. It does not make 
 
 ## How to run it
 
-1. Run `/hermitd:docker-security` in Claude Code.
-2. Answer each of the 3 prompts. The wizard will:
+1. Run `hermitd setup docker-security` from a terminal at the project root.
+2. Answer the wizard's questions. The wizard will:
    - Detect host-network mode and gate Prompt 1 / Prompt 2 sysctls accordingly.
    - Scan installed fleet plugins (`hermitd-homeassistant`, `hermitd-fitness`, etc.) for declared `## Docker network requirements`. Surface their domain/LAN suggestions for per-entry confirmation.
    - Render `docker-compose.security.yml` and (if Prompt 1) the `.hermit/docker/{Dockerfile.hermit-netguard,netguard-entrypoint.sh,nftables.conf,dnsmasq.allowlist}` files.
-   - Bring the container down and back up so the new settings take effect (Docker only applies `cap_drop`, `network_mode`, etc. at container creation, not on `restart`).
+   - Ask you to run `hermitd approve` in your terminal. After you confirm approval, it rebuilds and recreates the container so the new settings take effect.
    - Run a verification pass and print a per-toggle pass/fail table.
 3. Re-run the wizard at any time to change toggles. Answer No to a prompt to disable that toggle.
 
@@ -203,7 +219,6 @@ A tool shell in the container can still read the Claude login, channel bot token
 
 ### Limits
 
-- The store is not yet fully out of the agent's reach: the host still runs or applies some files the agent can rewrite (project wrappers, Compose inputs). Tracked in [#1466](https://github.com/gtapps/hermitd/issues/1466).
 - Fixed headers only: no request signing (AWS SigV4), no token refresh, no credentials in a URL path or query string.
 - Not available under `network_mode: host`.
 - Not used when the agent's session already has its own `HTTPS_PROXY`; an operator's own HTTPS proxy is not chained.

@@ -423,7 +423,7 @@ function checkPrerequisites(): Json {
   } else {
     // Already running under bun, so Bun.version is a free in-process probe.
     const bunVersion = Bun.version.trim();
-    let required = '1.4.0';
+    let required = '1.4.2';
     try {
       const metaPath = path.join(PLUGIN_ROOT, '.claude-plugin', 'hermit-meta.json');
       const declared = JSON.parse(fs.readFileSync(metaPath, 'utf-8')).required_bun_version;

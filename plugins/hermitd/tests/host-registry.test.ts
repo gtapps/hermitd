@@ -31,6 +31,12 @@ test('inline core registration silently writes nothing', () => {
   const f = fixture(); registerProject(f.project('a'), f.root);
   expect(fs.existsSync(registryDir('mp'))).toBe(false);
 });
+test('Docker registrations cannot be downgraded to tmux', () => {
+  const f = fixture(); const project = f.project('a');
+  registerProject(project, f.core, 'docker');
+  registerProject(project, f.core, 'tmux');
+  expect(readRegistry('mp')[0]?.runtime_hint).toBe('docker');
+});
 test('concurrent processes preserve both registrations', async () => {
   const f = fixture(); const module = path.resolve(import.meta.dir, '../scripts/lib/host-registry.ts');
   const children = ['a', 'b'].map(name => Bun.spawn([process.execPath, '-e', `import { registerProject } from ${JSON.stringify(module)}; registerProject(${JSON.stringify(f.project(name))}, ${JSON.stringify(f.core)});`], { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' }));

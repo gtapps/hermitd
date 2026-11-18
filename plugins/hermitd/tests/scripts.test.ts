@@ -33,6 +33,7 @@ import * as costLog from '../scripts/lib/cost-log';
 import { costIndexPath, readCostIndex, updateCostIndex } from '../scripts/lib/cost-log';
 import * as pricing from '../scripts/lib/pricing';
 import { calculateCost } from '../scripts/lib/pricing';
+import { appliedSet, contextsName } from '../scripts/lib/approval';
 import { search } from '../scripts/lib/search';
 import { logMessage, searchLog, rows as channelRows, unaddressedSince, prune, dbExists } from '../scripts/lib/channel-log';
 
@@ -41,7 +42,8 @@ import { logMessage, searchLog, rows as channelRows, unaddressedSince, prune, db
 // Fixtures handed out as bare paths (no per-test teardown hook to hang cleanup on).
 const { freshDir: freshCredRoot, cleanup: cleanupCredRoots } = freshDirFactory('hermit-credroot-');
 const { freshDir: freshModelDir, cleanup: cleanupModelDirs } = freshDirFactory('last-model-');
-afterAll(() => { cleanupCredRoots(); cleanupModelDirs(); });
+const { freshDir: freshDockerHome, cleanup: cleanupDockerHomes } = freshDirFactory('hermit-docker-home-');
+afterAll(() => { cleanupCredRoots(); cleanupModelDirs(); cleanupDockerHomes(); });
 
 const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
 const write = (p: string, content: string) => fs.writeFileSync(p, content);
@@ -474,7 +476,7 @@ exit 0
       callsFile,
       env: {
         PATH: `${stubDir}:${process.env.PATH}`,
-        HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'),
+        HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: freshDockerHome(), CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'),
         DOCKER_STUB_CALLS: callsFile,
         DOCKER_STUB_MODE: mode,
       },
@@ -623,9 +625,11 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only', 'engine-held']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'timeout-first', 'timeout-later', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only', 'engine-held', 'symlink-log', 'symlink-state']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
+    const dockerHome = freshDockerHome();
+    const outerState = scenario.startsWith('symlink-') ? setupWorkdir() : undefined;
     const proj = wd.dir;
     try {
       fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
@@ -635,9 +639,7 @@ describe('hermitd-docker update plugin loop', () => {
         fs.chmodSync(dest, 0o755);
       }
       const runner = hermit(proj, 'bin/hermitd-run');
-      fs.renameSync(runner, `${runner}.real`);
-      write(runner, `#!/usr/bin/env bash\n${doctorPassStub}exec "$(dirname "$0")/hermitd-run.real" "$@"\n`);
-      fs.chmodSync(runner, 0o755);
+      write(runner, '#!/bin/sh\necho project-wrapper-ran >&2\nexit 8\n');
       write(hermit(proj, 'config.json'), JSON.stringify({ channels: {}, docker: { packages: ['poppler-utils'] }, tmux_session_name: 'hermit-test', _hermit_versions: scenario.startsWith('evolve-') || scenario.startsWith('below-floor') ? { hermitd: '0.0.1', 'hermitd-scribe': '0.0.1' } : {} }));
       write(path.join(proj, 'docker-compose.hermit.yml'), 'services:\n  hermit:\n    image: test\n');
       write(path.join(proj, 'Dockerfile.hermit'), 'FROM ubuntu:26.04\n');
@@ -645,6 +647,30 @@ describe('hermitd-docker update plugin loop', () => {
       const stub = path.join(proj, '.stub');
       fs.mkdirSync(stub);
       const callsFile = path.join(stub, 'docker-calls.txt');
+      if (outerState) {
+        write(path.join(outerState.dir, 'update-history.jsonl'), 'host log\n');
+        write(path.join(outerState.dir, 'update-in-progress.json'), 'host marker\n');
+        if (scenario === 'symlink-state') {
+          fs.rmdirSync(hermit(proj, 'state'));
+          fs.symlinkSync(outerState.dir, hermit(proj, 'state'));
+        } else {
+          for (const name of ['update-history.jsonl', 'update-in-progress.json']) {
+            fs.symlinkSync(path.join(outerState.dir, name), hermit(proj, 'state', name));
+          }
+        }
+      }
+      write(path.join(stub, 'bun'), `#!/usr/bin/env bash
+case "$1" in
+  */hermitd-cli.ts)
+    shift
+    if [ "$1" = install ]; then echo OK; exit 0; fi
+    set -- hermitd-cli "$@"
+    ${doctorPassStub}
+    exit 8 ;;
+  *) exec "${process.execPath}" "$@" ;;
+esac
+`);
+      fs.chmodSync(path.join(stub, 'bun'), 0o755);
       const suffix = scenario === 'evolve-suffix' ? '-467be32f41fc' : '';
       const list = JSON.parse(listDuplicateScopes(proj, suffix));
       if (scenario.startsWith('below-floor')) for (const p of list) p.installPath = `/cache/${p.id.split('@')[0]}/${p.version}`;
@@ -654,7 +680,13 @@ printf '%s\\n' "$*" >> "$DOCKER_STUB_CALLS"
 echo "HERMIT_BROWSER=$HERMIT_BROWSER" >> "$DOCKER_STUB_CALLS"
 if [[ " $* " == *" up -d "* ]]; then echo "HERMIT_RESUME=$HERMIT_RESUME" >> "$DOCKER_STUB_CALLS"; fi
 if [[ " $* " == *" build "* ]]; then
-  if grep -q 'poppler-utils' Dockerfile.hermit; then echo RENDERED_BEFORE_BUILD >> "$DOCKER_STUB_CALLS"; fi
+  for arg in "$@"; do
+    case "$arg" in
+      */docker-compose.hermit.yml)
+        if grep -q 'poppler-utils' "$(dirname "$arg")/Dockerfile.hermit"; then echo RENDERED_BEFORE_BUILD >> "$DOCKER_STUB_CALLS"; fi
+        break ;;
+    esac
+  done
 fi
 if [[ " $* " == *" exec "* ]]; then
   cat >/dev/null
@@ -692,15 +724,22 @@ exit 0
       const runUpdate = scenario === 'interrupted'
         ? (script: string, opts: NonNullable<Parameters<typeof runBash>[1]>) => runInterruptedBash(script, opts, `${callsFile}.ready`)
         : runBash;
-      const r = await runUpdate(hermit(proj, 'bin', 'hermitd-docker'), {
+      const r = await runUpdate(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
         args: ['update', ...(scenario === 'plugins-only' || scenario === 'below-floor-plugins-only' ? ['--plugins-only'] : scenario === 'cc-only' ? ['--cc-only'] : []), '--yes'], cwd: proj,
         env: {
           PATH: `${stub}:${process.env.PATH}`, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT,
-          HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'),
+          HOME: dockerHome, CLAUDE_CONFIG_DIR: path.join(proj, 'config'),
           CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'),
           UPDATE_SCENARIO: scenario, DOCKER_STUB_CALLS: callsFile, DOCKER_STUB_LIST: path.join(stub, 'list.json'),
         },
       });
+      expect(r.stderr).not.toContain('project-wrapper-ran');
+      if (outerState) {
+        expect(fs.readFileSync(path.join(outerState.dir, 'update-history.jsonl'), 'utf8')).toBe('host log\n');
+        expect(fs.readFileSync(path.join(outerState.dir, 'update-in-progress.json'), 'utf8')).toBe('host marker\n');
+        expect(r.exitCode).toBe(scenario === 'symlink-state' ? 1 : 0);
+        return;
+      }
       if (scenario === 'interrupted') {
         expect(r.exitCode).toBe(130);
         expect(r.stderr).toContain('Update interrupted before the restart; rerun `hermitd update` to finish.');
@@ -712,11 +751,12 @@ exit 0
       const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
       if (['full', 'evolve-ready', 'below-floor'].includes(scenario)) expect(calls).toContain('RENDERED_BEFORE_BUILD');
       if (scenario === 'evolve-ready') {
-        const override = '-f ' + path.join(proj, 'docker-compose.override.yml');
+        const set = appliedSet(proj, path.join(dockerHome, '.claude'))!;
+        const override = '-f ' + path.join(set, 'docker-compose.override.yml');
         expect(calls.find(line => line.includes(' build '))).toContain(override);
         expect(calls.find(line => line.endsWith(' up -d'))).toContain(override);
       }
-      if (scenario === 'cc-only') expect(r.stdout).toContain('docker-customize "Convert"');
+      if (scenario === 'cc-only') expect(r.stdout).toContain('hermitd setup docker-customize');
       const entry = readJson(hermit(proj, 'state', 'update-history.jsonl'));
       expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
       expect(calls).toContain('HERMIT_BROWSER=1');
@@ -818,7 +858,7 @@ exit 0
         expect(r.stderr.split('await-upgrade unavailable')).toHaveLength(2);
       }
 
-    } finally { wd.cleanup(); }
+    } finally { outerState?.cleanup(); wd.cleanup(); }
   }, 30000);
   }
 });
@@ -1199,7 +1239,7 @@ describe('hermitd-docker up host tmux guard', () => {
     for (const f of ['docker', 'tmux', 'sleep']) fs.chmodSync(path.join(stub, f), 0o755);
     try {
       const r = await runBash(hermit(proj, 'bin', 'hermitd-docker'), {
-        args: cmd.split(' '), cwd: proj, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}`, ...env },
+        args: cmd.split(' '), cwd: proj, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: freshDockerHome(), CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}`, ...env },
       });
       const calls = fs.existsSync(dockerLog) ? fs.readFileSync(dockerLog, 'utf8') : '';
       return { ...r, booted: calls.includes('up -d'), resume: /HERMIT_RESUME=(\S+)/.exec(calls)?.[1] };
@@ -5422,6 +5462,42 @@ describe('session-check config validation', () => {
 });
 
 
+test('Docker run, pause, skills and watchdog dispatch only into a running container', async () => {
+  const wd = setupWorkdir();
+  try {
+    const project = wd.dir;
+    const bin = hermit(project, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    write(hermit(project, 'config.json'), '{}');
+    write(path.join(project, 'docker-compose.hermit.yml'), 'services: {}');
+    const stub = path.join(project, 'docker');
+    fs.writeFileSync(stub, `#!/bin/sh
+case " $* " in
+  *" ps "*) [ "$RUNNING" != yes ] || echo hermit ;;
+  *" exec "*) printf '%s\\n' "$*"; exit 7 ;;
+esac
+`, { mode: 0o755 });
+    const home = freshDockerHome();
+    const invoke = (args: string[], running: boolean) => runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
+      args, cwd: project, env: { HOME: home, PATH: `${project}:${process.env.PATH}`, RUNNING: running ? 'yes' : 'no' },
+    });
+    for (const [verb, command] of [['run', 'backup'], ['pause', 'status'], ['skills', 'status'], ['watchdog', 'run']]) {
+      fs.writeFileSync(path.join(bin, `hermitd-${verb}`), '#!/bin/sh\necho project-wrapper-ran >&2\nexit 8\n', { mode: 0o755 });
+      expect(await invoke([verb, command], true)).toMatchObject({
+        exitCode: 7, stdout: expect.stringContaining(`exec -T hermit .hermit/bin/hermitd-${verb} ${command}`), stderr: '',
+      });
+      expect(await invoke([verb, command], false)).toMatchObject({
+        exitCode: 1, stderr: expect.stringContaining('hermitd start'),
+      });
+    }
+    for (const command of ['install', 'uninstall']) {
+      expect(await invoke(['watchdog', command], true)).toMatchObject({
+        exitCode: 1, stderr: expect.stringContaining('The container runs its own watchdog.'),
+      });
+    }
+  } finally { wd.cleanup(); }
+});
+
 describe('hermitd-docker restart build arguments', () => {
   for (const enabled of [false, true, undefined]) {
     test(`restart --build exports browser and transcription=${enabled}`, async () => {
@@ -5441,7 +5517,7 @@ describe('hermitd-docker restart build arguments', () => {
         fs.chmodSync(hermit(proj, 'bin', 'hermitd-run'), 0o755);
         const result = await runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
           args: ['restart', '--build'], cwd: proj,
-          env: { PATH: `${stub}:${process.env.PATH}`, DOCKER_STUB_CALLS: callsFile },
+          env: { HOME: freshDockerHome(), PATH: `${stub}:${process.env.PATH}`, DOCKER_STUB_CALLS: callsFile },
         });
         expect(result.exitCode).toBe(0);
         const calls = fs.readFileSync(callsFile, 'utf8').trim().split('\n');
@@ -5464,7 +5540,7 @@ describe('rowAudience', () => {
   });
 });
 
-test('Docker lifecycle renders config before compose validation on up and both restart modes', async () => {
+test('Docker lifecycle renders config in the applied set before validation on up and both restart modes', async () => {
   const wd = setupWorkdir();
   const proj = wd.dir;
   try {
@@ -5475,7 +5551,12 @@ test('Docker lifecycle renders config before compose validation on up and both r
     write(path.join(stub, 'sleep'), '#!/bin/sh\nexit 0\n');
     write(path.join(stub, 'docker'), `#!/bin/sh
 case "$*" in
-  *"config -q"*) grep -q "$EXPECTED_PACKAGE" Dockerfile.hermit || exit 42 ;;
+  *"config -q"*)
+    for arg in "$@"; do
+      case "$arg" in
+        */docker-compose.hermit.yml) grep -q "$EXPECTED_PACKAGE" "$(dirname "$arg")/Dockerfile.hermit" || exit 42; break ;;
+      esac
+    done ;;
   *"ps --status running"*) echo hermit ;;
   *"claude --version"*) echo 2.1.325 ;;
 esac
@@ -5483,15 +5564,98 @@ esac
     for (const name of ['sleep', 'docker']) fs.chmodSync(path.join(stub, name), 0o755);
     for (const [index, args] of [['up'], ['restart'], ['restart', '--build']].entries()) {
       const pkg = ['curl', 'git', 'jq'][index];
+      const home = freshDockerHome();
       write(hermit(proj, 'config.json'), JSON.stringify({ channels: {}, docker: { packages: [pkg] } }));
       const result = await runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
-        args, cwd: proj, env: { PATH: `${stub}:${process.env.PATH}`, EXPECTED_PACKAGE: pkg },
+        args, cwd: proj, env: { HOME: home, PATH: `${stub}:${process.env.PATH}`, EXPECTED_PACKAGE: pkg },
       });
       expect(result.exitCode).toBe(0);
-      expect(fs.readFileSync(path.join(proj, 'Dockerfile.hermit'), 'utf8')).toContain(`      ${pkg} &&`);
+      const set = appliedSet(proj, path.join(home, '.claude'))!;
+      expect(fs.readFileSync(path.join(set, 'Dockerfile.hermit'), 'utf8')).toContain(`      ${pkg} &&`);
+      expect(fs.readFileSync(path.join(proj, 'Dockerfile.hermit'), 'utf8')).toContain('stale');
     }
   } finally { wd.cleanup(); }
 });
+
+test('Docker lifecycle pins approved inputs through build and refuses pending changes without a terminal', async () => {
+  const wd = setupWorkdir();
+  const project = wd.dir;
+  const home = freshDockerHome();
+  const configRoot = path.join(home, '.claude');
+  const stub = path.join(project, 'stub');
+  const log = path.join(stub, 'calls.jsonl');
+  const override = 'services: {hermit: {environment: [COLOR=approved]}}\n';
+  try {
+    fs.mkdirSync(hermit(project, 'bin'), { recursive: true });
+    fs.mkdirSync(hermit(project, 'docker'), { recursive: true });
+    fs.mkdirSync(stub);
+    write(hermit(project, 'config.json'), '{"channels":{},"docker":{"packages":[]},"browser":{"enabled":false}}');
+    write(path.join(project, 'docker-compose.hermit.yml'), 'services: {}\n');
+    write(path.join(project, 'docker-compose.override.yml'), override);
+    write(path.join(project, 'docker-compose.security.yml'), 'services: {hermit-netguard: {build: ./.hermit/docker}}\n');
+    write(hermit(project, 'docker', 'Dockerfile.hermit-netguard'), 'FROM scratch\n');
+    write(path.join(project, 'Dockerfile.hermit'), '# Generated by hermitd 0.0.1\nstale\n');
+    write(path.join(project, '.env'), 'UID=4242\n');
+    fs.writeFileSync(path.join(stub, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(stub, 'docker'), `#!${process.execPath}
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+const files = args.flatMap((arg, i) => arg === '-f' ? [args[i + 1]] : []);
+const command = args[args.lastIndexOf('-f') + 2];
+const envFile = args[args.indexOf('--env-file') + 1];
+const overlay = files.find(file => file.endsWith('docker-compose.override.yml'));
+const contexts = files.find(file => file.endsWith(${JSON.stringify(contextsName)}));
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, files, command, envFile,
+  override: overlay && fs.readFileSync(overlay, 'utf8'),
+  contexts: contexts && JSON.parse(fs.readFileSync(contexts, 'utf8')),
+  browser: process.env.HERMIT_BROWSER,
+}) + '\\n');
+if (command === 'build' && process.env.SWAP === 'yes') {
+  fs.writeFileSync('docker-compose.override.yml', 'services: {}\\n');
+  fs.writeFileSync('.env', 'UID=99\\n');
+}
+const text = args.join(' ');
+if (text.includes('ps --status running')) console.log('hermit');
+else if (text.includes('config --services')) console.log('hermit\\nhermit-netguard');
+else if (text.includes('claude --version')) console.log('2.1.325');
+else if (text.includes('npm view')) console.log('2.1.325');
+else if (text.includes('await-upgrade')) console.log('{"status":"ready"}');
+`, { mode: 0o755 });
+    const run = (args: string[], swap = false) => runBash(path.join(SCRIPTS_DIR, 'hermitd-docker.sh'), {
+      args, cwd: project, env: { HOME: home, PATH: `${stub}:${process.env.PATH}`, SWAP: swap ? 'yes' : 'no' },
+    });
+    const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+    expect(await run(['up'])).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('Recorded Docker approval baseline') });
+    const set = appliedSet(project, configRoot)!;
+    expect(calls().map(row => row.command)).toEqual(['config', 'up', 'ps']);
+    write(log, '');
+    expect((await run(['up'])).exitCode).toBe(0);
+    expect(calls().map(row => row.command)).toEqual(['config', 'up', 'ps']);
+    write(log, '');
+    expect(await run(['restart', '--build'], true)).toMatchObject({ exitCode: 0 });
+    const rebuild = calls();
+    expect(rebuild.find(row => row.command === 'up')?.override).toBe(override);
+    expect(rebuild.some(row => row.args.slice(-3).join(' ') === 'build --no-cache hermit-netguard')).toBe(true);
+    for (const row of rebuild) {
+      expect(row.envFile).toBe(path.join(set, '.env'));
+      expect(row.files.every((file: string) => file.startsWith(set + path.sep))).toBe(true);
+      expect(row.contexts.services.hermit.build.context).toBe(set);
+      expect(row.contexts.services['hermit-netguard'].build.context).toBe(path.join(set, '.hermit/docker'));
+      expect(row.browser).toBe('0');
+    }
+    expect(fs.readFileSync(path.join(set, '.env'), 'utf8')).toBe('UID=4242\n');
+    for (const args of [['up'], ['restart', '--build'], ['update', '--yes', '--cc-only']]) {
+      write(log, '');
+      const declined = await run(args);
+      expect(declined.exitCode).toBe(1);
+      expect(declined.stdout).toContain('Run hermitd approve in a terminal');
+      expect(declined.stderr).toContain('Nothing was applied');
+      expect(calls().map(row => row.command).filter(command => ['build', 'down', 'up', 'run'].includes(command))).toEqual([]);
+      expect(fs.existsSync(hermit(project, 'state', 'update-in-progress.json'))).toBe(false);
+      if (args[0] === 'update') expect(declined.stderr).toContain('The upgrade inside the container already ran');
+    }
+  } finally { wd.cleanup(); }
+}, 30000);
 
 describe('Docker lifecycle renders the credential proxy from the host-only store', () => {
   const { storeDir, writeBindings } = require('../scripts/lib/credproxy');
