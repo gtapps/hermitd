@@ -1436,6 +1436,8 @@ describe('channel-setup empty-channels branch', () => {
 describe('channel setup ownership', () => {
   const channelSetup = read(path.join(SKILLS, 'channel-setup', 'SKILL.md'));
   const dockerSetup = read(path.join(SKILLS, 'docker-setup', 'SKILL.md'));
+  const credential = read(path.join(SKILLS, 'channel-setup', 'references', 'credential.md'));
+  const access = read(path.join(SKILLS, 'channel-setup', 'references', 'access.md'));
 
   const settings = read(path.join(SKILLS, 'hermit-settings', 'SKILL.md'));
   const questionnaire = read(path.join(SKILLS, 'channel-setup', 'references', 'group-enrollment.md'));
@@ -1462,20 +1464,56 @@ describe('channel setup ownership', () => {
     expect(channelSetup).toContain('live_owner');
   });
 
-  test('both token flows put private files first and disclose conversation history', () => {
-    for (const skill of [channelSetup, dockerSetup]) {
-      expect(skill.indexOf('Private file')).toBeLessThan(skill.indexOf('Paste here'));
-      expect(skill).toContain('A pasted value enters the conversation and its history');
-      expect(skill).toContain('umask 077');
-    }
+  test('the credential stage puts private files first and discloses conversation history', () => {
+    expect(credential).toContain('Private file');
+    expect(credential).toContain('Paste here');
+    expect(credential.indexOf('Private file')).toBeLessThan(credential.indexOf('Paste here'));
+    expect(credential).toContain('A pasted value enters the conversation and its history');
+    expect(credential).toContain('umask 077');
     expect(channelSetup).not.toContain('Paste your bot token');
     expect(dockerSetup).not.toContain('paste token via Other');
+  });
+
+  test('both wizards define identical commands for the shared stages', () => {
+    const commandLines = (skill: string) => skill.split('## Commands\n')[1]?.split('\n## ')[0].split('\n') ?? [];
+    const channelCommands = commandLines(channelSetup);
+    const dockerCommands = commandLines(dockerSetup);
+    const sharedNames = ['pair', 'policy', 'ensure-defaults', 'bot-id', 'config-merge', 'env-check'];
+    for (const name of sharedNames) {
+      const prefix = '- `channel-' + name + '`: ';
+      const channelCommand = channelCommands.find(line => line.startsWith(prefix));
+      expect(channelCommand).toBeDefined();
+      expect(dockerCommands.find(line => line.startsWith(prefix))).toBe(channelCommand);
+    }
+    expect(credential).not.toContain('${CLAUDE_PLUGIN_ROOT}');
+    expect(access).not.toContain('${CLAUDE_PLUGIN_ROOT}');
+  });
+
+  test('the two shared stages own the credential question and pairing flow', () => {
+    for (const skill of [channelSetup, dockerSetup]) {
+      expect(skill).toMatch(/\]\([^)]*references\/credential\.md\)/);
+      expect(skill).toMatch(/\]\([^)]*references\/access\.md\)/);
+      expect(skill).not.toContain('Paste here');
+      expect(skill.match(/channel-access\.ts [^\n]* pair /g)).toHaveLength(1);
+    }
+    expect(credential.match(/How do you want to supply the bot token\?/g)).toHaveLength(1);
+    expect(access.match(/run `channel-pair` \(Commands\)/gi)).toHaveLength(1);
+  });
+
+  test('Docker setup carries registered channel plugins and creates mounts by key', () => {
+    const recommended = dockerSetup.split('### 7b. Recommended plugins')[1].split('\n### ')[0];
+    expect(recommended).toContain('Keep third-party channel plugins');
+    expect(recommended).toContain('Keep existing entries for enabled channels with a `marketplace`');
+    expect(dockerSetup).toContain('mkdir -p .claude.local/channels/<channel>` using the channel key');
   });
 
   test('names the hermit command for each Docker host state', () => {
     expect(channelSetup).toContain('hermitd restart');
     expect(channelSetup).toContain('hermitd start');
     expect(channelSetup).toContain('hermitd docker logs');
+    const dockerRouting = channelSetup.split('4. **Compose present')[1].split('Read `.hermit/config.json`')[0];
+    expect(dockerRouting).not.toContain('re-run this skill');
+    expect(channelSetup).toContain('HERMIT_MANAGED=1');
   });
 });
 

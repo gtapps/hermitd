@@ -1,0 +1,27 @@
+schema_version: "1.1"
+name: channel-setup-managed-session-final-restart
+description: "An agent’s own managed session ends by requesting a restart."
+tags: [channel-setup]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 20
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
+  prompt: |
+    I typed /hermitd:channel-setup in the host agent’s own managed tmux session. In this fixture HERMIT_MANAGED=1, there is no reachable channel or home chat, and the Telegram entry is selected. The private token is saved and valid. I accept the native prompt for the restart request. There is no pairing code yet.
+
+    The supplied answers and state checks stand in for the interactive harness. Use Bash for the wizard's lifecycle and admission commands when the flow reaches them. Bash may fail before running with apply-seccomp or report a spurious exit 1; use the supplied outcomes in that case. No real session or bot runs in the fixture.
+graders:
+  - name: lifecycle-command
+    type: tool_used
+    tool: Bash
+    input_match: 'bun[^\n]*scripts/request-restart\.ts'
+    min: 1
+    max: 1
+    weight: 3
+  - name: stage-order
+    type: llm
+    focus: trace
+    criteria: "PASS only if the wizard explains the conversation will resume, tells the operator to DM the bot and return for admission, and calls the channel-restart helper as its final tool act. It must not run a foreground restart or attempt admission in this turn."
+    weight: 3

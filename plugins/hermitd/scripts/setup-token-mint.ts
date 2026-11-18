@@ -49,7 +49,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   AuthMode,
   defaultConfigDir,
@@ -74,6 +74,7 @@ import { LOCKED, loadMessages, friendlyDate } from './lib/messages';
 import { readRuntimeJson } from './lib/runtime';
 import { flagValue, exitError, printJson, snakeToken } from './lib/cli';
 import { writeFileAtomic } from './lib/md-write';
+import { requestRestart } from './lib/request-restart';
 
 const HERMIT_DIR = process.env.HERMIT_DIR || '.hermit';
 const MINT_SESSION = mintSessionName();
@@ -565,22 +566,6 @@ function abortMint(reason: string): number {
   return fail(reason);
 }
 
-/**
- * Bounce the claude process so it picks up the new token (credentials are read
- * at process start).
- *
- * Detached and unawaited, because the proactive path runs this from inside the
- * very session being restarted: anything that waited would be killed mid-call,
- * and the caller must be free to exit immediately.
- */
-function requestRestart(): boolean {
-  const bin = path.join(HERMIT_DIR, 'bin', 'hermitd-watchdog');
-  if (!fs.existsSync(bin)) return false;
-  const child = spawn(bin, ['restart', 'reauth'], { detached: true, stdio: 'ignore' });
-  child.unref();
-  return true;
-}
-
 // ---------- verbs ----------
 
 /**
@@ -627,7 +612,7 @@ async function main(): Promise<void> {
       try {
         code = await runMintFlow(channelIO, 'relay', true);
         succeeded = code === 0;
-        if (succeeded) requestRestart();
+        if (succeeded) requestRestart(HERMIT_DIR, 'reauth');
       } finally {
         // A successful login-mode run deliberately leaves the staged credential and
         // its pointer behind for the watchdog. Only a failure gets the full teardown.
@@ -707,7 +692,7 @@ async function main(): Promise<void> {
     // sealed permission entry — a skill that runs over a channel can't afford a
     // command that prompts, since an unanswerable prompt is a denial.
     case 'finish':
-      if (requestRestart()) printJson({ ok: true, stage: 'restarting' });
+      if (requestRestart(HERMIT_DIR, 'reauth')) printJson({ ok: true, stage: 'restarting' });
       else code = fail('watchdog_missing');
       break;
 

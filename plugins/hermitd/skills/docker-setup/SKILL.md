@@ -10,9 +10,18 @@ Generate Docker scaffolding for running hermit as an always-on autonomous agent 
 
 **Tone:** Friendly guided wizard. Celebrate progress. When something fails, help fix it.
 
-**Important:** Step 0's container check is a hard short-circuit — run it first and abort on `container` before anything else. After confirming host execution, run `docker-preflight.ts` once (Step 1) — it gathers all the read-only signals (docker presence, config existence, WSL path, existing docker files, host `~/.gitconfig`, auto-memory seed, a live non-Docker owner of the state dir) as a single JSON blob, so don't fan those probes out into separate Bash calls. Reuse its result for the git-identity (Step 4) and auto-memory (Step 5) decisions rather than re-probing. Step 2's project-dependency scan stays normal file reads (Read tool) plus analysis. Everything that mutates state or drives the container (file backups, `docker compose`, `tmux`, `mkdir`/`touch` setup-mode, status polls, channel `send-keys`) must run strictly sequentially in its documented order — never batch those.
+**Important:** Step 0's container check is a hard short-circuit — run it first and abort on `container` before anything else. After confirming host execution, run `docker-preflight.ts` once (Step 1) — it gathers all the read-only signals (docker presence, config existence, WSL path, existing docker files, host `~/.gitconfig`, auto-memory seed, a live non-Docker owner of the state dir) as a single JSON blob, so don't fan those probes out into separate Bash calls. Reuse its result for the git-identity (Step 4) and auto-memory (Step 5) decisions rather than re-probing. Step 2's project-dependency scan stays normal file reads (Read tool) plus analysis. Everything that mutates state or drives the container (file backups, `docker compose`, `tmux`, `mkdir`/`touch` setup-mode, status polls) must run strictly sequentially in its documented order — never batch those.
 
 Templates live in `${CLAUDE_SKILL_DIR}/../../state-templates/docker/`.
+
+## Commands
+
+- `channel-pair`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code>`
+- `channel-policy`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy <channel> allowlist`
+- `channel-ensure-defaults`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" ensure-defaults <channel>`
+- `channel-bot-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts "<hermit_state_dir>" <channel> --write`
+- `channel-config-merge`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit`
+- `channel-env-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json channel-env <CHANNEL_UPPERCASE> "<absolute_state_dir>"`
 
 ## Plan
 
@@ -164,25 +173,9 @@ Only the top-level project memory is seeded — not agent-scoped memories at `<p
 
 Skip if no enabled channels in `config.json`. Read `.hermit/config.json` from the project root (same root verified in Step 1 — do not rely on cwd). A channel counts as present when `config.channels[<name>].enabled !== false` (missing `enabled` is treated as enabled). Empty `channels: {}` skips.
 
-**Token locations in Docker:** Always use `.claude.local/channels/<plugin>/.env` (project-local scope). Never read or copy from global `~/.claude/channels/`.
+For each enabled channel, follow the [channel credential stage](../channel-setup/references/credential.md) on the host and keep its outcome for Step 8. Skip iMessage after noting it is macOS-only.
 
-| Plugin   | Token var            | Docker compatible |
-|----------|----------------------|-------------------|
-| discord  | `DISCORD_BOT_TOKEN`  | Yes               |
-| telegram | `TELEGRAM_BOT_TOKEN` | Yes               |
-| imessage | —                    | No (macOS only)   |
-
-If iMessage detected, note it won't work in Docker and skip.
-
-For each configured channel:
-
-1. **Install plugin locally** (if not already): `claude plugin install <plugin>@claude-plugins-official --scope local`
-2. **Ensure state dir:** Record `channels.<channel>.state_dir` as a relative path (e.g. `.claude.local/channels/discord`). `hermitd-start` resolves it against the project root at boot and derives the `*_STATE_DIR` env var — no need to add it to `env`. Absolute paths also work.
-3. **Check local token file** (`.claude.local/channels/<plugin>/.env`):
-   - Already configured → "Discord is ready — connects automatically on start."
-   - Not configured → ask with `AskUserQuestion` (header: "Bot token"): **Private file** (write `.claude.local/channels/{channel}/.env` in your own terminal) / **Paste here** (supply through Other). A pasted value enters the conversation and its history.
-     - If "Private file": have the operator run `umask 077`, create the folder, create the file and `chmod 600` it, then open `.claude.local/channels/<plugin>/.env` in their editor and type the token there. They confirm it is saved, or defer and restart later.
-     - If "Paste here" and a token was typed via Other: `mkdir -p`, write `.env`, `chmod 600`, ensure `.claude.local/` in `.gitignore`, clean stale token from `.claude/settings.local.json` `env` if present. Confirm saved. If "Paste here" carries no token, ask for it in a plain reply.
+Record `channels.<channel>.state_dir` for Step 7b.6 as `.claude.local/channels/<channel>`. The directory uses the channel key. The renderer and launch environment supply the state folder to the channel.
 
 ### 7b. Recommended plugins
 
@@ -195,7 +188,7 @@ Mirror host-installed plugins into the container so the container starts with th
    If the operator wants a user-scope plugin in the container, they install it at `project` scope on the host first and re-run this skill.
 2. Filter out additionally:
    - `hermitd@hermitd` — the entrypoint already handles it unconditionally.
-   - Any channel plugins already picked up via `config.channels` (they flow through the entrypoint's channel branch).
+   - Only built-in channel plugins installed by the entrypoint via `config.channels`. Keep third-party channel plugins in scope for the recommended-plugin install path.
 3. Run `claude plugin marketplace list --json` and build a `marketplace_name → repo` map from each entry's `name` and `repo` fields. Split each plugin `id` as `<plugin>@<marketplace_name>` and look up `marketplace_name` in the map to get the `org/repo`. Only the `org/repo` is recorded on each `docker.recommended_plugins` entry — the entrypoint resolves the canonical marketplace name at boot via the same `marketplace list --json` lookup, so storing it twice would just duplicate the source of truth.
    - If a marketplace entry has `source != "github"` or no `repo` field (e.g. a locally-added marketplace), ask: "What's the GitHub source for the `<marketplace_name>` marketplace? (e.g. `org/repo`)" before presenting the plugin list.
 
@@ -269,7 +262,7 @@ Record the confirmed selection as `docker.recommended_plugins`. Each entry has:
 ```
 The entrypoint installs every enabled entry on first boot with `claude plugin install <plugin> --marketplace <org/repo>`, which adds the marketplace if missing, so the entry needs no marketplace name. See [Recommended Plugins](../../docs/recommended-plugins.md) for the full policy.
 
-This step always rebuilds `docker.recommended_plugins` from the current host plugin list; existing entries are replaced, not merged. The entrypoint warns and skips any entry whose `marketplace` is not an `org/repo` until this skill is re-run.
+This step rebuilds `docker.recommended_plugins` from the confirmed host plugin list. Keep existing entries for enabled channels with a `marketplace` by matching the resolved plugin name and marketplace repository, preserving their scope and enabled flag and taking precedence over duplicate selections. The entrypoint warns and skips any entry whose `marketplace` is not an `org/repo` until this skill is re-run.
 
 **On container-side `claude plugin install` failure (either in entrypoint logs or when re-running the command manually after boot):** if the error mentions SSH auth, HTTPS credentials, `gh` not found, or `.gitconfig` read-only, **stop immediately — do not attempt workarounds inside the container.** The container has no SSH client, no `gh` CLI, and `.gitconfig` is bind-mounted read-only by design. Iterating on `GIT_CONFIG_NOSYSTEM`, `git config --global url...insteadOf`, or similar is guaranteed to fail and wastes the operator's time. Surface the error to the operator verbatim and move on — no retry unless the operator changes something host-side (makes the repo public, mirrors it, etc.) and asks to retry.
 
@@ -404,7 +397,7 @@ For guided help on this install, run hermitd setup docker-setup.
 ```
 
 **If "Yes — build now":**
-1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount: if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each configured channel run `mkdir -p .claude.local/channels/<plugin>`. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt so channel pairing commands land on an idle REPL, not a busy session turn), and `rm -f .hermit/state/.boot-conflict`, because the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose "${COMPOSE_FILES[@]}" up -d --build` to build and start. Help fix errors (daemon not running, network, disk). Step 9 supplies the attach and detach instructions.
+1. Pre-create all channel state directories on the host so Docker doesn't create them as root on first mount: if a bind-mount source doesn't exist, `docker compose up` creates it owned by root, making it unwritable by the `claude` user inside the container. For each enabled channel run `mkdir -p .claude.local/channels/<channel>` using the channel key. Then run `mkdir -p .hermit/state && touch .hermit/state/.setup-mode` to put the container in setup mode (suppresses the bootstrap prompt while setup runs), and `rm -f .hermit/state/.boot-conflict`, because the entrypoint only clears that marker at its own §4b guard, minutes into the boot, so a marker left by an earlier inert container would otherwise read as this boot's verdict. Export the browser and transcription build arguments from config with `export HERMIT_BROWSER=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.browser?.enabled === false ? '0' : '1')")` and `export HERMIT_TRANSCRIPTION=$(bun -e "const c = JSON.parse(require('fs').readFileSync('.hermit/config.json', 'utf8')); console.log(c.transcription?.enabled === false ? '0' : '1')")`. Then run `docker compose "${COMPOSE_FILES[@]}" up -d --build` to build and start. Help fix errors (daemon not running, network, disk). Step 9 supplies the attach and detach instructions.
 2. **Verify the container stayed running:** Poll `docker compose "${COMPOSE_FILES[@]}" ps --status running --format '{{.Service}}'` every 2s for up to 10s, checking `.hermit/state/.boot-conflict` on each tick. If the marker exists, the container is up but **inert**: the entrypoint found a live non-Docker instance owning this project's state and is holding PID 1 without starting claude, so `ps --status running` reports it healthy and every later step (login, trust, pairing) would run against a container with no tmux session. Show the marker's contents, then stop with: "Container is up but inert. Stop the other instance (`hermitd stop`), then `hermitd restart`." (Step 1's `live_owner` gate catches this before the build; this poll covers a host hermit restarted mid-wizard.) An absent marker at this point is **not** an all-clear: the entrypoint writes it at §4b, after the credential wait and the first-run plugin install, so on a first boot it cannot exist yet — the first-run acceptance poll below re-checks it once the container has had time to get there. If the service appears and no marker exists — continue to the next sub-section. If it never appears after 10s, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit` and show the output. Suggest a targeted fix based on the log:
    - **Daemon not running** → `docker info` errors → start Docker Desktop or `sudo systemctl start docker`, then re-run this skill
    - **Build failure** → read the build error line in the log above; fix the Dockerfile or missing dependency
@@ -469,7 +462,7 @@ Once the session exists, tell the operator:
 > - If `bypassPermissions`: you'll see the `--dangerously-skip-permissions` acknowledgement. Use the **arrow keys** to select **"Yes, I accept"**, then press **Enter**.
 > - If `auto`: you'll see "Enable auto mode?" with three options. Press **1** then **Enter** ("Yes, and make it my default mode") so the acknowledgement persists in the named volume and won't re-prompt on future restarts.
 >
-> After accepting, you'll see a **blank claude prompt** — that's expected during setup. The skill will send pair commands from here; don't type a command yourself.
+> After accepting, you'll see a **blank claude prompt** — that's expected during setup. Leave the agent at that prompt while setup continues on the host.
 >
 > Then press **Ctrl+B, D** to detach.
 
@@ -477,35 +470,11 @@ Read `config.permission_mode` from `.hermit/config.json`. If it is NOT `bypassPe
 
 Wait for the operator to confirm they have detached before continuing.
 
-**Channel pairing** (skip if no channels or no tokens configured):
+**Channel pairing** (skip if no enabled channels):
 
-For each channel, **first verify the token is configured**: check that `.claude.local/channels/<plugin>/.env` exists and contains the expected `*_BOT_TOKEN` var. If missing, skip pairing for this channel and tell the operator: "No token configured for `<channel>`. Write it to `.claude.local/channels/<plugin>/.env`, restart the container, then run `hermitd setup channel-setup` to pair." Move to the next channel.
+For each enabled Docker-compatible channel with a configured credential from Step 7, follow the [channel access stage](../channel-setup/references/access.md). For a skipped credential, tell the operator to run `hermitd setup channel-setup` from the host when ready, then move to the next channel.
 
-If the token is present, ask if already paired. If not:
-1. Ask with `AskUserQuestion` (header: `"<channel> pairing"`) — `"I have the code"` / `"Skip this channel"`. On `"I have the code"`: ask for the 6-char code via `Other` (header: `"Bot code"`).
-2. Pair against the host-visible Hermit state directory:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" pair <plugin> <code>
-   ```
-   `"file":"state"` confirms the access write and approval marker. Retain a `home` or `home+state` result for sub-step 5. `"home":"set"` means the paired DM became the briefing chat; `kept` leaves `default_chat_id` unchanged, possibly still empty. `failed` means pairing succeeded and the home chat is learned from the first message. On `{"error"}`, report the token and stop this channel. The native permission prompt names the code; bypass-mode callers are refused.
-3. Set policy after successful pairing:
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" policy <plugin> allowlist
-   ```
-   Relay the result or stop on `{"error"}`.
-4. Ask with `AskUserQuestion` (header: `"Pair result"`) — `"Bot confirmed paired"` / `"No response"` (description: `Still nothing after waiting up to 1 min`). On `"No response"`: run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show output, and skip `access.json` verification for this channel — don't fail the whole setup.
-5. **Verify the host-side pairing and policy results** (only on "Bot confirmed paired"): use the `channel-access.ts` results from sub-steps 2 and 3 and read the configured channel's `access.json` under `<project_path>`. If pairing reported `home` (not `home+state`, which already updated the state file), the bot that issued the code is using the host's Claude home directory; run `hermitd setup channel-setup` in a host terminal to complete its home-to-state location check before proceeding.
-6. **Default delivery settings** (skip if pairing was skipped this run):
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<project_path>/.hermit" ensure-defaults <plugin>
-   ```
-   Relay `ack` (`set` or `kept`); an empty string or custom reaction stays unchanged. Stop this channel on `{"error"}`.
-7. **Capture the bot's own identity** (host-side, like `channel-access.ts` — `config.json` and the channel `.env` are both on the host):
-   ```bash
-   bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts <project_path>/.hermit <plugin> --write
-   ```
-   Records `bot_user_id` (and `bot_username`) so the hermit reads a mention of itself as addressed to it, rather than as third-party traffic. A `skip` status is a non-event — report it and continue.
-8. Confirm: "Paired and locked down. If the bot doesn't respond to your first message, give it up to 2 minutes — the hermit may still be booting or running initial checks (plugin installs, workspace trust, auto-memory seeding)."
+If the bot is silent, run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show the output, and continue setup with the next channel.
 
 Later changes: `/hermitd:hermit-settings channels` (groups, recall, recording, operators).
 

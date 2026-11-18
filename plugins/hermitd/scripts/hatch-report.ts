@@ -172,8 +172,7 @@ export function finalData(o: Observed, deployment: string): Json {
   // of anything that would use them.
   const steps: Array<{ run: string; purpose: string }> = [{ run: '/reload-plugins', purpose: 'load_new_plugins' }];
   const pair = { run: '/hermitd:channel-setup', purpose: 'set_bot_token_and_pair' };
-  // running_after_step names the step that actually starts something, not "the
-  // last step": on tmux with a channel, pairing comes after the boot.
+  // running_after_step names the step that starts the agent.
   let runningAfter: number;
   if (deployment === 'docker') {
     // A re-init of a hermit docker-setup already built only needs the container
@@ -185,10 +184,10 @@ export function finalData(o: Observed, deployment: string): Json {
     // docker-setup pairs channels itself; a re-init that adds one pairs it after the restart.
     if (o.dockerSetUp && chans.length) steps.push(pair);
   } else if (deployment === 'tmux') {
-    // The only shell command here; ! makes it runnable in the current session.
-    steps.push({ run: '!hermitd start', purpose: 'boot_always_on_session' });
+    steps.push(chans.length
+      ? { run: '/hermitd:channel-setup start', purpose: 'set_credential_start_and_admit' }
+      : { run: '!hermitd start', purpose: 'boot_always_on_session' });
     runningAfter = steps.length;
-    if (chans.length) steps.push(pair);
   } else {
     if (chans.length) steps.push(pair);
     steps.push({ run: '/hermitd:resident-start', purpose: 'start_agent' });

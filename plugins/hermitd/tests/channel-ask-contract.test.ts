@@ -45,7 +45,7 @@ const PROHIBITION_RE = /\b(?:Never|Do not|Don't)\s+(?:call|use|invoke)\s+AskUser
 // default, and every entry is re-verified below to still exist.
 const TERMINAL_ONLY: Record<string, string> = {
   hatch: 'first-run setup wizard; channels do not exist yet when this runs',
-  'channel-setup': 'configures channels; runs before any channel is usable',
+  'channel-setup': 'typed-only setup from the host or from the agent’s own session before its first home chat',
   'docker-setup': 'one-time container scaffolding wizard, terminal by nature',
   'docker-security': 'one-time container hardening wizard, terminal by nature',
   'hermit-evolve': 'plugin upgrade wizard, run interactively by the maintainer',

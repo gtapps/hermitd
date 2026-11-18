@@ -73,13 +73,13 @@ After setup, follow the printed next steps to start your agent.
 
 ### On your machine
 
-Run in a persistent tmux session:
+To start without a chat channel, run:
 
 ```bash
 hermitd start
 ```
 
-Requires tmux. The watchdog recovers failed sessions while your machine stays on. Claude Code's `/sandbox` is recommended for unattended use. To connect a chat, run `/hermitd:channel-setup` as directed by the setup handoff.
+Requires tmux. The watchdog recovers failed sessions while your machine stays on. Claude Code's `/sandbox` is recommended for unattended use. If you selected a chat channel at hatch, type `/hermitd:channel-setup start` to configure the credential, start the agent, and pair. To add a channel to a running agent, type `/hermitd:channel-setup`.
 
 [Host setup and operations](docs/always-on-ops.md)
 

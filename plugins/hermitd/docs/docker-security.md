@@ -38,6 +38,8 @@ On a Docker install, the host `hermitd` command runs the installed plugin's code
 
 When changes need approval, the terminal displays the diff and asks `Apply these changes? [y/N]`. Enter `y` to approve the displayed copies. Declining leaves the running agent and project files alone and prints the location of the last approved copies. Without a terminal (cron, systemd, ssh without a tty), the command stops, names the changed inputs and sends a one-time notice to the agent's maintainer chat; if that notice fails, the command says so and `/hermitd:hermit-doctor` reports the pending change. Run `hermitd approve` in a terminal to review them before retrying. A file swapped in the project after the check cannot replace the frozen copy.
 
+For Docker channel activation, run the start or restart in your own terminal as directed by `channel-setup`. The wizard waits for you to finish reviewing any approval diff and checks that the service is running before pairing.
+
 `hermitd setup [skill]` opens a host Claude Code session at the project root. The session excludes project settings, hooks, instructions, MCP servers, skills and agents. Text in project files the session reads can still steer the model. See [Claude Code's CLI reference for `--setting-sources`](https://code.claude.com/docs/en/cli-reference#cli-flags).
 
 - Commands you run separately on the host still use the project files. This includes `docker compose` typed by hand, git hooks, package scripts, a plain Claude Code session and an external MCP client that starts the project's wrapper. First-time Docker setup starts directly from the project before recording its baseline. An older launcher still follows its previous startup behavior until a lifecycle command refreshes it.

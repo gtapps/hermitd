@@ -199,7 +199,7 @@ hermitd start
 hermitd stop
 ```
 
-To activate a channel in tmux mode, run `/hermitd:channel-setup` — it adds the channel to `config.json` if you skipped that at hatch, installs the plugin, configures the token, and guides pairing. `hermitd-start` passes `--channels` automatically on boot.
+For a first tmux install with chat, type `/hermitd:channel-setup start` after reloading plugins. It configures the channel, starts the agent, and guides pairing. For an already running tmux agent, type `/hermitd:channel-setup` to add a channel and choose when to restart.
 
 See [Always-On Operations](always-on-ops.md) for tmux setup and operational details.
 

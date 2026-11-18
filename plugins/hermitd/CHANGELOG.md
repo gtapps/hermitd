@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `docker-setup` and `channel-setup` share credential and admission steps, including private token entry and a single wake-access question after pairing.
+- On hosts, `channel-setup start` starts a new always-on agent before pairing, and `channel-setup` can restart a running agent with consent while keeping its conversation. The agent’s own Claude app session supports adding its first channel.
+- For Docker channel changes, `channel-setup` waits for the operator’s terminal start or restart and continues to pairing after checking the service. First-time Docker setup keeps registered third-party channel plugins in the boot list.
+
 ### Fixed
 
 - Voice notes in a Docker image without ffmpeg report that they could not be transcribed instead of attempting a bundled ffmpeg download that needs `xz`, and doctor shows this as informational rather than a warning or an earlier install error

@@ -10,6 +10,8 @@ const TEACHING = 'Runnable plugin paths go only in SKILL.md or agent bodies as $
 type ReadKind = 'commands' | 'prose-only';
 const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
   'hermitd': {
+    'docker-setup -> channel-setup/references/credential.md': 'commands',
+    'docker-setup -> channel-setup/references/access.md': 'commands',
     'hermit-settings -> channel-setup/references/group-enrollment.md': 'commands',
     'task -> watch/session-watch.md': 'commands',
     'task -> watch/notices.md': 'commands',

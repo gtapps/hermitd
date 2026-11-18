@@ -142,19 +142,17 @@ questions: [
 
   > **Channel preference saved.** Activation depends on how you run hermit:
   >
-  > - **Docker (always-on):** `/hermitd:docker-setup` pairs during first run. Afterwards run `/hermitd:channel-setup` from the host to pair or re-pair. A channel or token added later needs `hermitd-docker restart` first (the bot is offline until then). For pairing, use `/hermitd:channel-setup` from the host.
-  > - **tmux (always-on, host):** boot with `hermitd start` (passes `--channels` automatically), then run `/hermitd:channel-setup` to set the token and pair.
+  > - **Docker (always-on):** `/hermitd:docker-setup` pairs during first run. For channels or tokens added later, run `hermitd setup channel-setup` from the host. The wizard tells you when to start or restart in your terminal and continues with pairing.
+  > - **tmux (always-on, host):** type `/hermitd:channel-setup start` to set the token, start the agent, and pair.
   > - **Interactive (just trying it):** run `/hermitd:channel-setup` for token + pairing, then restart with `claude --channels plugin:<channel>@claude-plugins-official` so the channel is active in your session.
   > - Full guide: https://code.claude.com/docs/en/channels
 
-**Channel follow-ups (only if Discord or Telegram was selected above — AskUserQuestion batch, 2 questions; the option marked `(default)` is the Recommended pre-selection):**
+**Channel follow-up (only if Discord or Telegram was selected above — one AskUserQuestion call; the option marked `(default)` is the Recommended pre-selection):**
 
 | Header | Question | Options (`label`: description) |
 |---|---|---|
-| Access ctrl | Restrict who can send commands via this channel? | `Allow everyone`: no restrictions on who can message (default) / `Restrict`: type your Discord/Telegram user ID via Other |
 | Brief | Enable morning brief delivery via channel? | `Yes — 07:00`: daily summary delivered each morning / `No`: no automated brief delivery (default) |
 
-- **Access control:** If "Restrict" and a numeric ID was typed via Other, record in `channels.<channel>.allowed_users` as `["<id>"]`. If "Allow everyone" or no ID provided, omit the key (absent = accept all). Note: "Add more user IDs later with `/hermitd:hermit-settings channels`. An empty array [] blocks all messages."
 - **Morning brief:** If "Yes — 07:00", record as `channels.<channel>.morning_brief: { "enabled": true, "time": "07:00" }`. If "No", omit the key (or set to `null`).
 
 #### Phase 5 — Deployment (AskUserQuestion batch, 4 questions)
@@ -250,13 +248,13 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
   "escalation": "...", "remote": true,
   "permission_mode": "...",
   "routines": { "enabled": true, "morning_time": "08:30", "evening_time": "22:30" },
-  "channels": { "discord": { "enabled": true, "allowed_users": ["<id>"], "morning_brief_time": "07:00" } }
+  "channels": { "discord": { "enabled": true, "morning_brief_time": "07:00" } }
 }
 ```
 
 - **Phase 2** → `agent_name`, `language`, `timezone`. An `invalid_config` error naming `timezone` wrote nothing: ask for the zone again and re-run.
 - **Phase 3** → `escalation`, `remote`.
-- **Phase 4** → `channels.<name>`: `enabled`, `allowed_users` (omit if the operator skipped access control), `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
+- **Phase 4** → `channels.<name>`: `enabled`, `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
 - **Phase 5** → `browser.enabled`, `browser.default`, `transcription` (boolean), `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
 - **Never in a hatch payload** → `auth_mode`. It records which credential the hermit already runs on, and hatch has not established one yet; it stays at the template default (`null`, resolved from the credential volume at read time) and is written later by `/docker-setup`, `hermitd-docker login`, or a completed renewal.
 - **Step 3 hermit activation** → `activated_hermit`. `slug` is `activated_hermit.plugin`. Hatch never writes the operator’s startup skill.
@@ -673,7 +671,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Advanced 5a Phase 4b equivalent | `voice` | After config and OPERATOR.md, apply Default and render, or adopt an existing `hermit-voice.md`; ask no style question |
 | Step 5 (end) | persist hatch options | run `ensure-target` with this run's final `hatch_target` before settings or CLAUDE writes |
 | Step 5b | fixed-text localization | run verbatim: generate both translated tables only when `language` is set and not `en`; skip silently otherwise |
-| Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit allowed_users + morning_brief |
+| Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit morning_brief |
 | Quick Turn 2 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 browser equivalent | `browser` | template defaults: enabled, default `agent-browser`; ask no browser question, preserve an existing re-init choice |
 | Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
