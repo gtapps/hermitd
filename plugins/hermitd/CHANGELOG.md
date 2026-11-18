@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.35] - 2026-11-18
 
 ### Added
 
