@@ -43,6 +43,24 @@ test('hermitd-stop refuses to run in a projection and creates no state there', a
   expect(fs.existsSync(path.join(nested, '.hermit', 'state'))).toBe(false);
 });
 
+test('hermitd-status in a projection reports on the real root', async () => {
+  const root = freshDir();
+  const nested = path.join(root, 'nested');
+  writeConfig(root, { agent_name: 'real-root' });
+  writeConfig(nested, { agent_name: 'projection' });
+  fs.mkdirSync(path.join(root, '.hermit', 'state'));
+
+  const result = await runScript('hermitd-status.ts', {
+    cwd: nested,
+    args: ['--json'],
+    env: { AGENT_DIR: '', CLAUDE_PROJECT_DIR: '' },
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).agent_name).toBe('real-root');
+  expect(fs.existsSync(path.join(nested, '.hermit', 'state'))).toBe(false);
+});
+
 test('hermitd-watchdog refuses to run in a projection and creates no state there', async () => {
   const root = freshDir();
   const nested = path.join(root, 'nested');
