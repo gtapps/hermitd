@@ -28,13 +28,11 @@ The connector server ships with core `hermitd` and starts and stops with the age
 
 ## Set up
 
-**Let the agent do it.** Open the tunnel (step 1) first, then send this to the agent from its terminal or the Claude app:
+**Let an AI assistant do it.** On the agent's machine, open Claude Code, Codex or another coding assistant in the agent's folder and send this, with your tunnel filled in:
 
 ```text
-Set up the hermitd-connector channel by following its README. My public address is https://agent.example.com, tunneled to local port 8790. Do every step you can and list what I must run myself.
+Set up the hermitd connector for the agent in this folder by following https://github.com/gtapps/hermitd/blob/main/plugins/hermitd-connector/README.md. For the tunnel I want <Tailscale Funnel, or Cloudflare Tunnel on agent.example.com>. Stop and tell me when something needs my login or approval, and before restarting the agent.
 ```
-
-It hands back what only you can do, such as host commands and the restart, and asks you to approve the `members_only` setting.
 
 **Or do it by hand.** Run these on the agent's machine, from the agent's folder.
 
@@ -69,7 +67,7 @@ It hands back what only you can do, such as host commands and the restart, and a
    claude plugin install hermitd-connector --marketplace gtapps/hermitd --scope local
    ```
 
-   Type `/hermitd:channel-setup`, choose **Other**, and use channel key `connector`. Then ask the agent to set `channels.connector.members_only` to `true` (a protected setting, so it asks for your approval), so nobody on it gets operator authority and the agent never sends notices there. Leave `allowed_users` unset: only people you pair get through the connector server.
+   In Claude Code, type `/hermitd:channel-setup`, choose **Other**, and use channel key `connector`. Then ask the agent to set `channels.connector.members_only` to `true` (a protected setting, so it asks for your approval), so nobody on it gets operator authority and the agent never sends notices there. Leave `allowed_users` unset: only people you pair get through the connector server.
 
 4. **Restart the agent** with `hermitd restart`, or `hermitd restart --build` on Docker, where the image must allow the new channel and the approval prompt names it. On a tmux install, first add the Claude Code channel policy that `/hermitd:channel-setup` gives you. `hermitd connector status` should show the server `running` and the channel connected.
 
