@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runScript, type RunResult } from './helpers/run';
+import { runPinnedScript, runScript, type RunResult } from './helpers/run';
 
 let project: string;
 let hermitDir: string;
@@ -41,16 +41,24 @@ mv watchdog.tmp watchdog.receipt
 
 test('the channel helper requests a detached watchdog restart', async () => {
   const { out, reason } = await withWatchdog(() =>
-    runScript('request-restart.ts', { args: [hermitDir], cwd: project }));
+    runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project }));
   expect(out.exitCode).toBe(0);
   expect(JSON.parse(out.stdout)).toEqual({ status: 'requested' });
   expect(reason).toBe('requested');
 });
 
 test('the channel helper reports a missing watchdog', async () => {
-  const out = await runScript('request-restart.ts', { args: [hermitDir], cwd: project });
+  const out = await runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project });
   expect(out.exitCode).toBe(1);
   expect(JSON.parse(out.stdout)).toEqual({ error: 'watchdog_missing' });
+});
+
+test('the channel helper refuses a foreign state directory', async () => {
+  const foreign = path.join(project, 'other', '.hermit');
+  fs.mkdirSync(path.join(foreign, 'bin'), { recursive: true });
+  const out = await runPinnedScript('request-restart.ts', hermitDir, [foreign], { cwd: project });
+  expect(out.exitCode).toBe(1);
+  expect(JSON.parse(out.stdout).error).toStartWith('foreign_state_dir:');
 });
 
 test('the token mint finish path still requests a reauth restart', async () => {

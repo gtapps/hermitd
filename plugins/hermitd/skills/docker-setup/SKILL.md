@@ -474,7 +474,7 @@ Wait for the operator to confirm they have detached before continuing.
 
 For each enabled Docker-compatible channel with a configured credential from Step 7, follow the [channel access stage](../channel-setup/references/access.md). For a skipped credential, tell the operator to run `hermitd setup channel-setup` from the host when ready, then move to the next channel.
 
-If the bot is silent, run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show the output, and continue setup with the next channel.
+If the operator reports that the bot sent no code, run `docker compose "${COMPOSE_FILES[@]}" exec -T hermit tmux capture-pane -t <session> -p`, show the output, and continue setup with the next channel.
 
 Later changes: `/hermitd:hermit-settings channels` (groups, recall, recording, operators).
 
