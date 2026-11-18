@@ -5628,8 +5628,8 @@ else if (text.includes('await-upgrade')) console.log('{"status":"ready"}');
     const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     expect(await run(['up'])).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('Recorded Docker approval baseline') });
     const set = appliedSet(project, configRoot)!;
-    // Validate, cached netguard build, stale-sidecar check (a plain `docker ps -aq`), start.
-    const start = ['config', 'config', 'build', 'config', '-aq', 'up', 'ps'];
+    // Validate, cached netguard build, stale-sidecar checks (a plain `docker ps -aq` per absent sidecar), start.
+    const start = ['config', 'config', 'build', 'config', '-aq', '-aq', 'up', 'ps'];
     expect(calls().map(row => row.command)).toEqual(start);
     expect(calls().find(row => row.command === 'build').args.slice(-2)).toEqual(['build', 'hermit-netguard']);
     write(log, '');

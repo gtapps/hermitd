@@ -2,7 +2,7 @@ import { composeFiles } from './lib/compose-files';
 // MCP stdio control surface — discover, observe, and wake hermits without
 // coupling to `.hermit/` internals.
 //
-// Launch: `.hermit/bin/hermitd-run mcp-server --roots <dir,dir>`
+// Launch: `hermitd mcp serve --roots <dir,dir>`
 // Inventory is explicit (arg wins over HERMIT_MCP_ROOTS). Stdout is JSON-RPC
 // frames only; logs go to stderr. The process never writes under a hermit root.
 

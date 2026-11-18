@@ -250,8 +250,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     for (const row of kept) console.error(`[hermit] kept ${row.project_dir}: ${row.reason}`);
     return kept.length ? 1 : 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'connector', 'approve', 'setup'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'connector', 'approve', 'setup', 'mcp'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup|mcp [name] [args]');
   }
   if (verb === 'setup') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
@@ -263,6 +263,18 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     if (host.scope !== 'user') options.push('--plugin-dir', host.installPath);
     if (args[0]) options.push('/hermitd:' + args[0]);
     return execute('claude', options, project, { BUN_OPTIONS: bunIsolation });
+  }
+  if (verb === 'mcp') {
+    // The control surface runs from installed code, never a project wrapper. It runs from `/`,
+    // so relative roots are resolved against the caller's folder first.
+    if (args[0] !== 'serve') throw new Error('Usage: hermitd mcp serve [--roots <dir,dir>]');
+    const rest = args.slice(1);
+    const absolute = (list: string) => list.split(',').map(r => r.trim()).filter(Boolean).map(r => path.resolve(cwd, r)).join(',');
+    const at = rest.indexOf('--roots');
+    if (at !== -1 && rest[at + 1]) rest[at + 1] = absolute(rest[at + 1]);
+    const env: Record<string, string> = { BUN_OPTIONS: bunIsolation };
+    if (process.env.HERMIT_MCP_ROOTS) env.HERMIT_MCP_ROOTS = absolute(process.env.HERMIT_MCP_ROOTS);
+    return execute(process.execPath, [path.join(root, 'scripts/mcp-server.ts'), ...rest], '/', env);
   }
   if (verb === 'approve') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }

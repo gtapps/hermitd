@@ -238,6 +238,12 @@ _approve_docker_inputs() {
   case "$result" in
     *'"missing_values":[{'*) echo '[hermit] Credential proxy: some mapped headers have no value yet; see hermitd credproxy status.' ;;
   esac
+  # The connector server's code comes from the installed plugin into its host-only store, the same way.
+  if ! result=$(cd / && bun "$HOST_SCRIPTS/connector.ts" render "$PROJECT_DIR"); then
+    echo "[hermit] Connector render failed: ${result:-no output}" >&2
+    echo "[hermit] The connector change was not applied; nothing was stopped." >&2
+    return 1
+  fi
 }
 
 # Without an argument the build is cached: Docker rebuilds only when a rendered rule or other input changed.
@@ -249,14 +255,14 @@ _build_netguard() {
   fi
 }
 
-# A sidecar the new stack no longer has (netguard or the credential proxy turned off) is
-# `restart: unless-stopped` and would keep the published ports. Remove only these two
+# A sidecar the new stack no longer has (netguard, the credential proxy or the connector turned
+# off) is `restart: unless-stopped` and would keep the published ports. Remove only these
 # plugin services of this project: the Compose project name is the folder default, so
 # --remove-orphans would also take an operator's own Compose containers from that folder.
 _remove_stale_sidecars() {
   local services svc ids
   services="$(_dc config --services)" || return 1
-  for svc in hermit-netguard hermit-credproxy; do
+  for svc in hermit-netguard hermit-credproxy hermit-connector; do
     printf '%s\n' "$services" | grep -qx "$svc" && continue
     ids="$(docker ps -aq --filter "label=com.docker.compose.project.working_dir=$PROJECT_DIR" --filter "label=com.docker.compose.service=$svc")" || return 1
     if [ -n "$ids" ]; then

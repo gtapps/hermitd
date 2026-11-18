@@ -445,6 +445,8 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 
 ### Known limitations
 
+- **The connector's trusted server is a boundary only on Docker.** On a tmux install it runs as the same user as the agent. Its pairing is not a verified Claude account, replies reach every paired person, and the words it delivers are written by Claude in each person's app. See [connector limits](connector.md#limits).
+
 - The managed Docker deny floor protects the running container's policy file. The agent can still write image build inputs and the `claude` binary to stage changes for a later rebuild or start; organization server-managed settings can also supersede local drop-ins.
 - Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `browser.admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. Authenticated requests must also match `browser.host:browser.port`; state-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.
 - Text pasted into the takeover keyboard strip is typed into the remote browser as key presses, so the agent sees it as it would a typed password. The viewer never sends clipboard data, and copy out stays off (`-SendCutText=0`).

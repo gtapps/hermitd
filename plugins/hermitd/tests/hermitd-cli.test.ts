@@ -479,6 +479,16 @@ test('connector runs the installed script from outside the project, on tmux proj
   expect(f.calls()).toContain(`connector|/|pair ${f.p} ABCD2345 --name Ana\n`);
   expect(f.calls()).not.toContain('run|');
 });
+test('mcp serve runs the installed control surface from / with absolute roots and adds nothing to stdout', async () => {
+  const f = fixture();
+  write(path.join(f.core, 'scripts/mcp-server.ts'), `console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2), env: process.env.HERMIT_MCP_ROOTS ?? null }));\n`);
+  const r = await f.run(['mcp', 'serve', '--roots', 'demo,./other'], f.root, { HERMIT_MCP_ROOTS: 'demo' });
+  expect(r.exitCode).toBe(0);
+  expect(r.stdout.trim().split('\n')).toHaveLength(1);
+  expect(JSON.parse(r.stdout)).toEqual({ cwd: '/', argv: ['--roots', `${f.root}/demo,${f.root}/other`], env: `${f.root}/demo` });
+  expect(f.calls()).not.toContain('run|');
+  expect((await f.run(['mcp'], f.root)).exitCode).toBe(1);
+});
 test('connector refuses an install inside the project and runs nothing', async () => {
   const f = fixture();
   const inner = path.join(f.p, 'plugins/hermitd');

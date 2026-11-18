@@ -48,6 +48,7 @@ import { exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
 import { BUILTIN_FEATURE_HOSTS, featureDomains } from './lib/netguard-hosts';
 import { storeDir } from './lib/credproxy';
+import { CONTAINER_SOCKET, isEnabled as connectorEnabled, readConfig as readConnector, storeDir as connectorStore } from './lib/connector';
 import { CREDPROXY_MOUNT } from './lib/credproxy-env';
 import { NETGUARD_FILES, OVERLAY_FILE, SECURITY_FILES, isLink, writeExclusive } from './lib/security-files';
 
@@ -313,7 +314,35 @@ function credproxyService(host: CredproxyHost, lanOn: boolean): string {
   ].join('\n');
 }
 
-export function renderOverlay(input: RenderInput, credproxy?: CredproxyHost): string {
+/** The connector's host side: its store, the public port it listens on, and the uid and gid it runs as. */
+export interface ConnectorHost { store: string; port: number; uid: number; gid: number }
+
+// Its own network namespace: the agent reaches it only through the read-only socket mount, and
+// cannot bind or take over its port. The port is published on host loopback for the tunnel.
+function connectorService(host: ConnectorHost): string {
+  const mount = (sub: string, ro = false) => `      - ${JSON.stringify(`${path.join(host.store, sub)}:/connector/${sub}${ro ? ':ro' : ''}`)}`;
+  return [
+    '  hermit-connector:',
+    '    image: oven/bun:1.4.2-distroless',
+    '    command: ["/connector/sidecar/gateway.ts", "/connector"]',
+    `    user: "${host.uid}:${host.gid}"`,
+    '    environment:',
+    '      - CONNECTOR_HOSTNAME=0.0.0.0',
+    '    cap_drop: [ALL]',
+    '    security_opt:',
+    '      - no-new-privileges:true',
+    '    pids_limit: 64',
+    '    restart: unless-stopped',
+    '    ports:',
+    `      - "127.0.0.1:${host.port}:${host.port}"`,
+    '    volumes:',
+    mount('sidecar', true),
+    mount('data'),
+    mount('bridge'),
+  ].join('\n');
+}
+
+export function renderOverlay(input: RenderInput, credproxy?: CredproxyHost, connector?: ConnectorHost): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'docker-compose.security.yml.template'), 'utf8');
   const lanOn = input.toggles.lan?.enabled === true;
   const resOn = input.toggles.resources?.enabled === true;
@@ -368,13 +397,15 @@ export function renderOverlay(input: RenderInput, credproxy?: CredproxyHost): st
   const auditEnv = auditOn
     ? ['    environment:', '      - HERMIT_PLUGIN_INSTALL_AUDIT=1'].join('\n')
     : '';
-  const agentMount = proxyOn
-    ? ['    volumes:', `      - ${JSON.stringify(`${path.join(credproxy!.store, 'agent')}:${CREDPROXY_MOUNT}:ro`)}`].join('\n')
-    : '';
+  const agentMounts = [
+    ...(proxyOn ? [`${path.join(credproxy!.store, 'agent')}:${CREDPROXY_MOUNT}:ro`] : []),
+    ...(connector ? [`${path.join(connector.store, 'bridge')}:${path.dirname(CONTAINER_SOCKET)}:ro`] : []),
+  ];
+  const agentMount = agentMounts.length ? ['    volumes:', ...agentMounts.map(m => `      - ${JSON.stringify(m)}`)].join('\n') : '';
 
   return renderTemplate(template, {
     NETWORKS_BLOCK: networksBlock,
-    HERMIT_NETGUARD_SERVICE: [netguardBlock, proxyOn ? credproxyService(credproxy!, lanOn) : ''].filter(Boolean).join('\n\n'),
+    HERMIT_NETGUARD_SERVICE: [netguardBlock, proxyOn ? credproxyService(credproxy!, lanOn) : '', connector ? connectorService(connector) : ''].filter(Boolean).join('\n\n'),
     HERMIT_NETWORK_MODE: hermitNetworkMode,
     HERMIT_RESOURCE_BOUNDS: resourceBounds,
     HERMIT_SYSCTLS_ON_HERMIT: hermitSysctls,
@@ -635,13 +666,18 @@ export function renderSecurity(root: string, storeProject = root): RenderOutcome
   const config = readSettledConfig(path.join(root, '.hermit'));
   const plan = securityInput(config.docker?.security);
   if (plan.status === 'skipped') return plan;
-  if (plan.status === 'disabled') return { status: 'disabled', removed: SECURITY_FILES.filter((rel) => removeFile(root, rel)) };
-  const input = plan.input;
+  const user = { uid: process.getuid!(), gid: process.getgid!() };
+  const connectorDir = connectorStore(storeProject);
+  const connectorSettings = connectorEnabled(connectorDir) ? readConnector(connectorDir) : null;
+  const connector = connectorSettings ? { store: connectorDir, port: connectorSettings.port, ...user } : undefined;
+  if (plan.status === 'disabled' && !connector) return { status: 'disabled', removed: SECURITY_FILES.filter((rel) => removeFile(root, rel)) };
+  // The connector alone still needs the overlay for its service and the agent's socket mount.
+  const input: RenderInput = plan.status === 'rendered' ? plan.input : { toggles: {} };
   const lanOn = input.toggles.lan?.enabled === true;
   const proxyOn = input.toggles.credproxy?.enabled === true;
-  const credproxy = proxyOn ? { store: storeDir(storeProject), uid: process.getuid!(), gid: process.getgid!() } : undefined;
+  const credproxy = proxyOn ? { store: storeDir(storeProject), ...user } : undefined;
   // Every file in memory first, so a render failure writes nothing.
-  const files: [string, string, number][] = [[OVERLAY_FILE, renderOverlay(input, credproxy), 0o644]];
+  const files: [string, string, number][] = [[OVERLAY_FILE, renderOverlay(input, credproxy, connector), 0o644]];
   if (lanOn) {
     const additional = input.additionalDomains ?? [];
     files.push(

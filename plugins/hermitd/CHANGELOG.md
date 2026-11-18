@@ -5,7 +5,9 @@
 ### Added
 
 - `channels.<name>.members_only: true` makes every sender on a channel a plain member: no control commands, primary-operator or sign-in authority, unscoped recall, home pin or notice routing. It is a protected setting.
-- `hermitd connector` enables a trusted server per agent that lets paired people reach it from their own Claude app through a custom connector, with sign-in, pairing approved at the host terminal, a per-person hourly cap and a message record kept in a host-only store the agent cannot read. Default off, since it needs a public HTTPS address from the operator; on host installs it starts and stops with the agent. The in-agent half is the `hermitd-connector` channel plugin.
+- Doctor reports whether the connector server answers and its channel is connected.
+- `hermitd mcp serve` starts the external control surface from the installed plugin instead of a project file, resolving relative roots against the caller's folder.
+- `hermitd connector` enables a trusted server per agent that lets paired people reach it from their own Claude app through a custom connector, with sign-in, pairing approved at the host terminal, a per-person hourly cap and a message record kept in a host-only store the agent cannot read. Default off, since it needs a public HTTPS address from the operator; it starts and stops with the agent, on Docker as its own `hermit-connector` service. The in-agent half is the `hermitd-connector` channel plugin. Guide: `docs/connector.md`.
 
 ### Changed
 
@@ -17,6 +19,10 @@
 
 - Voice notes in a Docker image without ffmpeg report that they could not be transcribed instead of attempting a bundled ffmpeg download that needs `xz`, and doctor shows this as informational rather than a warning or an earlier install error
 - Upgrade reports on unconverted Docker installs name the host Convert step instead of asking for a rebuild that changes nothing
+
+### Upgrade Instructions
+
+**Leftover check:** the operator's own files and MCP client configs may launch the control surface as `.hermit/bin/hermitd-run mcp-server`; the supported launch is now `hermitd mcp serve` with the same arguments.
 
 ## [1.4.35] - 2026-11-18
 

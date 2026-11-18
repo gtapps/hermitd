@@ -16,7 +16,7 @@ export type ConnectorConfig = { port: number; public_url: string; wait_seconds: 
 export const DEFAULT_WAIT_SECONDS = 25;
 export const MAX_WAIT_SECONDS = 200;
 export const DEFAULT_RATE_PER_HOUR = 60;
-const CONTAINER_SOCKET = '/run/hermit-connector/connector.sock';
+export const CONTAINER_SOCKET = '/run/hermit-connector/connector.sock';
 const ADMIN_WAIT_MS = 5000;
 
 /** Same naming and root as the credential proxy store, so one project names one store. */
@@ -122,11 +122,14 @@ export function stopConnector(resident: string, spawn = spawnSync, sessionAlive:
   if (sessionAlive(session)) spawn('tmux', ['kill-session', '-t', `=${session}`], { stdio: 'ignore' });
 }
 
-/** The trusted server's own status over the socket, or null when nothing answers. */
-export async function serverStatus(store: string, timeoutMs = ADMIN_WAIT_MS): Promise<Record<string, unknown> | null> {
-  if (!fs.existsSync(socketPath(store))) return null;
+export type ServerStatus = { channel_connected?: boolean; grants?: number };
+
+/** The trusted server's status from a socket path, or null when nothing answers. */
+export async function socketStatus(socket: string, timeoutMs = ADMIN_WAIT_MS): Promise<ServerStatus | null> {
   try {
-    const res = await fetch('http://connector/status', { unix: socketPath(store), signal: AbortSignal.timeout(timeoutMs) });
-    return res.ok ? await res.json() as Record<string, unknown> : null;
+    const res = await fetch('http://connector/status', { unix: socket, signal: AbortSignal.timeout(timeoutMs) });
+    return res.ok ? await res.json() as ServerStatus : null;
   } catch { return null; }
 }
+
+export const serverStatus = (store: string) => socketStatus(socketPath(store));
