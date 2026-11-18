@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Docker Security
 
-Advanced hardening for already-deployed hermit containers. Each toggle is opt-in, presented with honest cost/benefit framing, and applied as a `docker-compose.security.yml` overlay that the `hermitd-docker` wrapper auto-detects. Reversal: re-run and answer No to every prompt, or delete `docker-compose.security.yml` directly.
+Advanced hardening for already-deployed agent containers. Each toggle is opt-in, presented with honest cost/benefit framing, and applied as a `docker-compose.security.yml` overlay that the `hermitd-docker` wrapper auto-detects. Reversal: re-run and answer No to every prompt, or turn the toggles off under `docker.security` in config and run `hermitd restart`.
 
 **Tone:** Honest about tradeoffs. Tell operators what each toggle does AND does not protect. Do not oversell.
 
@@ -18,7 +18,7 @@ Templates live in `${CLAUDE_SKILL_DIR}/../../state-templates/docker/security/`.
 
 > Installing a plugin runs that plugin's hooks and skills with the same authority as hermit. The container hardening here reduces what a *compromised* plugin can do to the host kernel and your local network — it does not vet the plugin's intent, sandbox its file access within the project, or prevent it from acting on your behalf via the agent. A malicious or careless plugin still runs as you.
 >
-> **Honest limitation:** DNS policy below blocks domain-based exfil/C2 but cannot stop direct-IP egress to a hardcoded public address.
+> **Honest limitation:** DNS policy below blocks domain-based exfil/C2. In log-only mode it cannot stop direct-IP egress to a hardcoded public address; enforce mode drops connections to addresses no allowed name returned, except carve-outs.
 
 ## Plan
 
@@ -258,7 +258,7 @@ options:
     description: "Skip this toggle."
 ```
 
-Persist `docker.security.credential_proxy.enabled` and pass `"credproxy": { "enabled": true|false }` in the 6b toggles. On Yes, run `hermitd credproxy status` and show its bindings. Never ask for, read or print a secret value; the operator sets values in a host terminal (step 9).
+Persist `docker.security.credential_proxy.enabled`. On Yes, run `hermitd credproxy status` and show its bindings. Never ask for, read or print a secret value; the operator sets values in a host terminal (step 9).
 
 ### 6. Render overlay
 
@@ -288,7 +288,7 @@ Then `AskUserQuestion` (header: `"Confirm all-off"`):
 - `"Yes — proceed (I'll restore override ports if needed)"`
 - `"No — cancel"`
 
-On Yes: continue to overlay deletion, clear `docker.security.*` except `managed_ceiling`, tell the operator "All toggles off — overlay removed and config cleared." Skip to step 9.
+On Yes: clear `docker.security.*` except `managed_ceiling`, run the 6b render (its `disabled` verdict removes the overlay and netguard files), tell the operator "All toggles off: overlay removed and config cleared." Skip to step 9.
 On No: exit wizard, write nothing.
 
 If `persisted_publish_ports` is empty: proceed directly to deletion without the prompt.
@@ -318,43 +318,26 @@ If at least one toggle is enabled, render the overlay. Otherwise (all-off): hand
 
 Render `100` directly into `nftables.conf` as the dnsmasq UID — no probe step. Rationale and recovery path if Alpine ever changes it: see [docs/docker-security.md#design-rationale](https://github.com/gtapps/hermitd/blob/main/plugins/hermitd/docs/docker-security.md#design-rationale).
 
-After the netguard files are rendered (step 6c), the wizard runs an explicit `--no-cache` build of `hermit-netguard` to prevent stale Docker cache artifacts from surviving a hermit upgrade. Do not rely on `hermitd-docker up` to trigger a rebuild.
+The host lifecycle renders these files from config and builds `hermit-netguard` before every start, so a plain `hermitd restart` applies them.
 
-#### 6b. Render the overlay + nftables + dnsmasq
+#### 6b. Render the overlay and netguard files
 
-`render-security-overlay.ts render` derives every `{{PLACEHOLDER}}` (networks block, netguard service with cap_add/healthcheck, `DNS_LOG_ONLY` from `dns_mode`, per-toggle hermit blocks, sysctls placement, ports, LAN rules at the chain-body indent, the enforce-mode default drop, `DNSMASQ_UID=100`, `server=` domain lines including enabled channels' and voice-note hosts from `config.json`) and fails loud (exit 1, nothing written) if any survives. It writes `docker-compose.security.yml` to the project root, and — only when LAN containment is on — `nftables.conf` + `dnsmasq.allowlist` into `.hermit/docker/`, which 6c builds into the netguard image. Pipe the resolved selections:
+With config persisted, render once:
 
 ```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROOT> <<'HERMIT_SEC_JSON'
-{
-  "network": { "subnet": "...", "gateway": "...", "netguard_ip": "..." },
-  "toggles": {
-    "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
-    "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },
-    "audit":     { "enabled": true },
-    "credproxy": { "enabled": true }
-  },
-  "publishPorts": [ { "target": 3000, "published": "3000", "protocol": "tcp", "host_ip": "0.0.0.0", "mode": "ingress" } ],
-  "lanAllowlist": [...],
-  "fleetDomains": [...],
-  "additionalDomains": [...]
-}
-HERMIT_SEC_JSON
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/render-security-overlay.ts render <PROJECT_ROOT>
 ```
 
-Notes:
-- `network` is required only when `toggles.lan.enabled`. The script places sysctls on netguard when LAN is on, on hermit when LAN is off (Prompt 2 only). `host_ip: "0.0.0.0"` and `mode: "ingress"` (Compose defaults) are omitted from rendered port entries.
-- If base ports were detected via the grep fallback (`detected_hermit_ports_unparsed=true`) with no parsed shape, pass `publishPorts: []` and tell the operator: "Could not parse port shapes from the compose config — configure `docker.security.network.publish_ports` and re-render the security overlay, then clear `services.hermit.ports` in docker-compose.override.yml using the Step 7 procedure."
-- The script prints `{ "written": [...] }`.
+It reads `docker.security` from `.hermit/config.json`, validates every value, and writes `docker-compose.security.yml` plus `.hermit/docker/{Dockerfile.hermit-netguard, netguard-entrypoint.sh, nftables.conf, dnsmasq.allowlist}` (domain lines include enabled channels' and voice-note hosts; the operator's `.hermit/docker/dnsmasq.hermit-local.conf` lines go above the catchall). Verdicts:
 
-#### 6c. Copy the netguard Dockerfile + entrypoint (only if Prompt 1 enabled)
+- `{ "status": "rendered", "written": [...] }`: continue.
+- `{ "status": "disabled", "removed": [...] }`: no toggle is on; the files are gone.
+- `{ "status": "skipped", "reason": "incomplete_config" }`: LAN containment is on without a subnet; return to subnet detection.
+- Exit 1 with `{ "error": "invalid_value:<path>" }`: fix that config value and re-render.
 
-`render` (6b) already wrote `nftables.conf` + `dnsmasq.allowlist`. Copy the two static netguard files from `state-templates/docker/security/` into `.hermit/docker/`:
+The script places sysctls on netguard when LAN is on, on hermit when LAN is off (Prompt 2 only). If base ports were detected via the grep fallback (`detected_hermit_ports_unparsed=true`) with no parsed shape, persist `publish_ports: []` and tell the operator: "Could not parse port shapes from the compose config. Configure `docker.security.network.publish_ports`, run `hermitd restart`, then clear `services.hermit.ports` in docker-compose.override.yml using the Step 7 procedure."
 
-- `Dockerfile.hermit-netguard.template` → `Dockerfile.hermit-netguard`
-- `netguard-entrypoint.sh.template` → `netguard-entrypoint.sh` (chmod +x)
-
-#### 6d. Show diff + confirm
+#### 6c. Show diff + confirm
 
 Print a one-screen summary of files written (paths + line counts). Ask `AskUserQuestion` (header: `"Apply"`) — `"Yes — restart container now"` / `"No — I'll restart manually later"`.
 
@@ -410,10 +393,10 @@ docker-security applied — current posture:
   Credential proxy:  on  (2 mapped hosts)
 
 Reverse: re-run /docker-security and answer No to every prompt, OR
-         delete docker-compose.security.yml and re-run hermitd-docker up.
+         turn the toggles off under docker.security in config, then `hermitd restart`.
 
-Tune DNS allowlist: edit .hermit/docker/dnsmasq.allowlist,
-         then `hermitd restart --build` (it is built into the netguard image).
+Tune DNS allowlist: add domains to docker.security.network.additional_domains
+         or lines to .hermit/docker/dnsmasq.hermit-local.conf, then `hermitd restart`.
 ```
 
 When the credential proxy is on, also print the host terminal commands, run from the project folder, with the operator's own host, header and secret names:

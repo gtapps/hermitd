@@ -3,7 +3,7 @@ const test = bunTest.serial;
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { prune, readRegistry, registerProject, registryDir } from '../scripts/lib/host-registry';
+import { hostStores, prune, readRegistry, registerProject, registryDir } from '../scripts/lib/host-registry';
 const dirs: string[] = [];
 const previous = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
 afterEach(() => { if (previous === undefined) delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = previous; for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true }); });
@@ -26,6 +26,37 @@ test('canonical dedupe, read-only reads, missing and unreadable pruning', () => 
   expect(readRegistry('mp').find(row => row.name === 'c')?.state).toBe('unreadable');
   prune('mp'); expect(readRegistry('mp').map(row => row.name)).toEqual(['c', 'a']);
   prune('mp', 'c'); expect(readRegistry('mp')).toHaveLength(1);
+});
+test('prune removes both host stores before the row, and keeps both while containers run or Docker cannot answer', () => {
+  const f = fixture(); const home = path.join(f.root, 'home');
+  const a = fs.realpathSync(f.project('a')); registerProject(a, f.core);
+  const stores = hostStores(a, home);
+  const seed = () => { for (const store of stores) { fs.mkdirSync(store, { recursive: true }); fs.writeFileSync(path.join(store, '.env'), 'X=1'); } };
+  seed();
+  fs.rmSync(path.join(a, '.hermit'), { recursive: true });
+  const asked: string[] = [];
+  expect(prune('mp', undefined, { home, running: p => { asked.push(p); return 'abc123'; } })).toEqual({ removed: [], kept: [{ project_dir: a, reason: 'containers_running' }] });
+  expect(prune('mp', undefined, { home, running: () => null }).kept[0].reason).toBe('docker_unavailable');
+  expect(stores.every(store => fs.existsSync(store))).toBe(true);
+  expect(readRegistry('mp')).toHaveLength(1);
+  expect(asked).toEqual([a]);
+  expect(prune('mp', undefined, { home, running: () => '' })).toEqual({ removed: [a], kept: [] });
+  expect(stores.some(store => fs.existsSync(store))).toBe(false);
+  expect(readRegistry('mp')).toHaveLength(0);
+});
+test('prune without stores asks no Docker; a failed or linked store keeps the row for a retry', () => {
+  const f = fixture(); const home = path.join(f.root, 'home');
+  const a = fs.realpathSync(f.project('a')); const b = fs.realpathSync(f.project('b'));
+  registerProject(a, f.core); registerProject(b, f.core);
+  const never = () => { throw new Error('docker asked'); };
+  expect(prune('mp', 'a', { home, running: never }).removed).toEqual([a]);
+  const [approvals] = hostStores(b, home);
+  fs.mkdirSync(path.dirname(approvals), { recursive: true });
+  const outside = path.join(f.root, 'outside'); fs.mkdirSync(outside);
+  fs.symlinkSync(outside, approvals);
+  expect(prune('mp', b, { home, running: () => '' }).kept).toEqual([{ project_dir: b, reason: 'store_is_link' }]);
+  expect(fs.existsSync(outside)).toBe(true);
+  expect(readRegistry('mp').map(row => row.project_dir)).toEqual([b]);
 });
 test('inline core registration silently writes nothing', () => {
   const f = fixture(); registerProject(f.project('a'), f.root);

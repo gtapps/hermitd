@@ -163,10 +163,10 @@ uninstall_docker() {
   if [ -x "$shim" ] && grep -Fxq '# hermitd: managed host CLI' "$shim"; then
     HOST_SHIM="$shim"
   elif ! command -v claude >/dev/null 2>&1; then
-    record_failure "Docker session stop failed" "docker" "host hermitd launcher missing and claude is not on PATH; the claude-config volume was kept"
+    record_failure "Docker session stop failed" "docker" "host hermitd launcher missing and claude is not on PATH; the claude-config volume was kept; remove this project's folders under ~/.claude/hermitd/approvals and ~/.claude/hermitd/credproxy by hand"
     return
   elif ! HOST_CORE="$(installed_core)"; then
-    record_failure "Docker session stop failed" "docker" "no installed hermitd core found; the claude-config volume was kept"
+    record_failure "Docker session stop failed" "docker" "no installed hermitd core found; the claude-config volume was kept; remove this project's folders under ~/.claude/hermitd/approvals and ~/.claude/hermitd/credproxy by hand"
     return
   fi
   work "docker" "stopping the hermit container..."

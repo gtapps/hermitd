@@ -108,6 +108,9 @@ export const EN = {
   watchdog_usage_limit_no_reset: "Your agent has reached Claude's usage limit for now ({time}). It will resume on its own once the limit resets.",
   watchdog_api_unavailable: 'Your agent is affected by a temporary Claude service outage ({time}). It will resume on its own. {url}',
 
+  // Host Docker lifecycle stopped for a terminal approval (approval-notice.ts)
+  docker_approval_pending: 'A change to how your agent runs in Docker is waiting for your approval, so it was not applied. Run {approve} in a terminal on the machine the agent runs on.',
+
   // Deterministic shutdown gate (lib/prompt-stages/shutdown-gate.ts)
   shutdown_in_progress: "Shutting down — I'll be back once the restart completes.",
 
@@ -157,6 +160,7 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   watchdog_lapsed_login_fix_docker: 'Fills {fix} at the end of watchdog_lapsed_login. The placeholders are commands.',
   watchdog_lapsed_login_fix_host: 'Fills {fix} at the end of watchdog_lapsed_login. The placeholders are commands.',
   watchdog_orphan: '{command} is a shell command.',
+  docker_approval_pending: '{approve} is a shell command.',
 };
 
 /** Values for placeholders that are never translated: commands, URLs, keywords. */
@@ -169,6 +173,7 @@ export const LOCKED = {
   host_login: '`/login`',
   host_stop: '`hermitd stop`',
   host_start: '`hermitd start`',
+  host_approve: '`hermitd approve`',
   status_url: 'https://status.claude.com',
 } as const;
 

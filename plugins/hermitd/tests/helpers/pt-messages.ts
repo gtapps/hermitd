@@ -78,6 +78,7 @@ const PT_TEXT: Record<MessageKey, string> = {
   watchdog_usage_limit: 'O seu agente atingiu o limite de utilização da Claude por agora ({time}). Vai retomar sozinho às {reset}.',
   watchdog_usage_limit_no_reset: 'O seu agente atingiu o limite de utilização da Claude por agora ({time}). Vai retomar sozinho quando o limite renovar.',
   watchdog_api_unavailable: 'O seu agente está afetado por uma interrupção temporária do serviço da Claude ({time}). Vai retomar sozinho. {url}',
+  docker_approval_pending: 'Uma alteração ao modo como o seu agente corre no Docker aguarda a sua aprovação e não foi aplicada. Execute {approve} num terminal na máquina onde o agente corre.',
   shutdown_in_progress: 'A desligar — volto assim que o reinício terminar.',
   owned_chat_thread_unreachable: '(o tópico original já não está acessível)',
 };

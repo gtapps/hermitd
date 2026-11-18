@@ -2,7 +2,7 @@
   "name": "hermitd",
   "version": "1.4.34",
   "engines": {
-    "claude-code": ">=2.1.325"
+    "claude-code": ">=2.1.327"
   },
   "description": "Your own local Claude Tag, in the Claude app, Discord, Telegram, or a custom Claude Code channel.",
   "author": {

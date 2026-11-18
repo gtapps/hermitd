@@ -36,9 +36,12 @@ export const validText = (text: string) => !CONTROL_RE.test(text);
 // Fixed under the home folder, never CLAUDE_CONFIG_DIR: the wizard's session, the operator's shell and
 // a project's runtime.config_dir can each carry a different value, and all of them must name one store.
 export function storeDir(project: string, configRoot = path.join(os.homedir(), '.claude')): string {
-  const real = fs.realpathSync(project);
-  const slug = real.replace(/[^a-zA-Z0-9]/g, '-').slice(-100);
-  return path.join(path.resolve(configRoot), 'hermitd', 'credproxy', `${slug}-${sha256(real).slice(0, 16)}`);
+  return path.join(path.resolve(configRoot), 'hermitd', 'credproxy', storeName(fs.realpathSync(project)));
+}
+
+/** The store folder's name for a project's real path; pure, so a deleted project still names its stores. */
+export function storeName(real: string): string {
+  return `${real.replace(/[^a-zA-Z0-9]/g, '-').slice(-100)}-${sha256(real).slice(0, 16)}`;
 }
 
 export const inside = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith('/') ? parent : parent + '/');
@@ -152,7 +155,8 @@ export function envoyConfig(mapped: Mapped[]): object {
             generate_request_id: false,
             route_config: {
               request_headers_to_remove: ['x-forwarded-proto', 'x-request-id'],
-              virtual_hosts: [{ name: 'up', domains: ['*'], routes: [{ match: { prefix: '/' }, route: { cluster: `up_${i}`, timeout: '0s' } }] }],
+              // Only the mapped host: a tunnel opened to it must not carry a request for another host.
+              virtual_hosts: [{ name: 'up', domains: [m.host, `${m.host}:443`], routes: [{ match: { prefix: '/' }, route: { cluster: `up_${i}`, timeout: '0s' } }] }],
             },
             http_filters: [...injectors, ROUTER],
           },
@@ -284,11 +288,14 @@ function withValues(store: string, bindings: Binding[]): { mapped: Mapped[]; mis
   const missing: Binding[] = [];
   const byHost = new Map<string, Mapped>();
   for (const b of bindings) {
+    // A hand-edited store renders the canonical name everywhere: domains, SNI and SAN.
+    const host = normalizeHost(b.host);
+    if (!host) throw new Error('invalid_host');
     if (!hasValue(store, b.secret)) { missing.push(b); continue; }
     const value = fs.readFileSync(secretPath(store, b.secret), 'utf8');
-    const entry = byHost.get(b.host) ?? { host: b.host, headers: [] };
+    const entry = byHost.get(host) ?? { host, headers: [] };
     entry.headers.push({ header: b.header, value: headerValue(b, value) });
-    byHost.set(b.host, entry);
+    byHost.set(host, entry);
   }
   return { mapped: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)), missing };
 }
@@ -303,7 +310,7 @@ export function scrubConfig(store: string): void {
   if (!fs.existsSync(config)) return;
   let rendered: { host: string; headers: string[] }[] = [];
   try { rendered = JSON.parse(fs.readFileSync(path.join(store, 'agent', 'proxy.json'), 'utf8')).hosts ?? []; } catch {}
-  const keep = (b: Binding) => rendered.some(r => r.host === b.host && r.headers.some(h => sameHeader(h, b.header)));
+  const keep = (b: Binding) => rendered.some(r => r.host === normalizeHost(b.host) && r.headers.some(h => sameHeader(h, b.header)));
   const { mapped } = withValues(store, readBindings(store).filter(keep));
   writeFileAtomic(config, JSON.stringify(envoyConfig(mapped), null, 2) + '\n', 0o600);
 }

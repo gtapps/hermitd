@@ -17,29 +17,27 @@ import { composeFiles } from './lib/compose-files';
  *     Output: { chosen: {subnet, gateway, netguard_ip} | null,
  *               all_candidates_collide: bool, occupied: [...] }
  *
- *   render <project-root>
- *     Renders docker-compose.security.yml + nftables.conf + dnsmasq.allowlist
- *     from operator selections on stdin. All three render in memory and pass the
- *     fail-loud placeholder check before anything is written; any failure →
- *     {"error":"render_failed:<detail>"}, exit 1, nothing written. Output: { written: [...] }.
- *     Channel and transcription hosts come from <project-root>/.hermit/config.json.
- *     stdin JSON:
- *       {
- *         "network": { "subnet": "172.28.0.0/24", "gateway": "172.28.0.1", "netguard_ip": "172.28.0.2" },
- *         "toggles": {
- *           "lan":       { "enabled": true, "dnsMode": "log-only" | "enforce" },
- *           "resources": { "enabled": true, "memLimit": "4g", "memswapLimit": "4g", "cpus": 2.0, "sysctlsEnabled": true },
- *           "audit":     { "enabled": true },
- *           "credproxy": { "enabled": true }
- *         },
- *         "publishPorts": [ { "target": 3000, "published": "3000", "protocol": "tcp", "host_ip": "0.0.0.0", "mode": "ingress" } ],
- *         "lanAllowlist": ["192.168.1.50", ...],
- *         "fleetDomains": ["api.strava.com", ...],
- *         "additionalDomains": ["example.org", ...]
- *       }
- *     network is required only when toggles.lan.enabled; pick-subnet's `chosen` passes as-is.
- *     toggles.credproxy adds the hermit-credproxy sidecar, run as the caller's uid and gid, mounting
- *     this project's host-only credential store (outside the project folder).
+ *   render <project-root> [--store-project <project>]
+ *     Renders the five netguard files from <project-root>/.hermit/config.json
+ *     (`docker.security`) plus the operator's own dnsmasq lines in
+ *     .hermit/docker/dnsmasq.hermit-local.conf: docker-compose.security.yml and
+ *     .hermit/docker/{Dockerfile.hermit-netguard, netguard-entrypoint.sh,
+ *     nftables.conf, dnsmasq.allowlist}. Every config value is validated before it
+ *     is spliced, every file renders in memory first, and each is replaced
+ *     atomically, so a link at a generated path is replaced, never followed.
+ *     The host lifecycle runs it on the approved copy; --store-project names the real
+ *     project, whose credential store the overlay mounts. Output, one of:
+ *       { status: "rendered", written: [...] }
+ *       { status: "disabled", removed: [...] }    no security toggle on: the five files are removed
+ *       { status: "skipped", reason: "incomplete_config" }   LAN containment on without a subnet
+ *       { error: "invalid_value:<config path>" | "render_failed:<detail>" }, exit 1
+ *     The credential proxy sidecar runs as the caller's uid and gid.
+ *
+ *   migrate-allowlist <project-root>
+ *     Once per install: moves the operator's own lines out of a wizard-rendered
+ *     .hermit/docker/dnsmasq.allowlist into dnsmasq.hermit-local.conf (exclusive
+ *     create; nothing when that file exists). Output:
+ *       { moved, carve_outs_missing: [...], pins_needing_carve_out: [...] }
  */
 
 import fs from 'node:fs';
@@ -48,9 +46,10 @@ import { spawnSync } from 'node:child_process';
 import { renderTemplate } from './lib/render-template';
 import { exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
-import { featureDomains } from './lib/netguard-hosts';
+import { BUILTIN_FEATURE_HOSTS, featureDomains } from './lib/netguard-hosts';
 import { storeDir } from './lib/credproxy';
 import { CREDPROXY_MOUNT } from './lib/credproxy-env';
+import { NETGUARD_FILES, OVERLAY_FILE, SECURITY_FILES, isLink, writeExclusive } from './lib/security-files';
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, '..');
 const SECURITY_DIR = path.join(PLUGIN_ROOT, 'state-templates', 'docker', 'security');
@@ -59,9 +58,10 @@ const DNSMASQ_UID = '100'; // Alpine dnsmasq's static UID — see docker-securit
 
 // Project-relative files `render` writes. The two rule files are netguard
 // image build inputs (Dockerfile.hermit-netguard COPYs them).
-const OVERLAY_FILE = 'docker-compose.security.yml';
-const NFTABLES_FILE = '.hermit/docker/nftables.conf';
-const DNSMASQ_FILE = '.hermit/docker/dnsmasq.allowlist';
+const NFTABLES_FILE = NETGUARD_FILES.nftables;
+const DNSMASQ_FILE = NETGUARD_FILES.dnsmasq;
+/** The operator's own dnsmasq lines; the plugin writes it only when the migration creates it. */
+export const OPERATOR_DNSMASQ_FILE = '.hermit/docker/dnsmasq.hermit-local.conf';
 
 const CANDIDATES = [
   '172.28.0.0/24', '172.29.0.0/24', '172.30.0.0/24', '172.31.0.0/24',
@@ -222,7 +222,6 @@ export interface RenderInput {
   toggles: Toggles;
   publishPorts?: Port[];
   lanAllowlist?: string[];
-  fleetDomains?: string[];
   additionalDomains?: string[];
 }
 
@@ -405,16 +404,262 @@ export function renderNftables(lanAllowlist: string[], dnsMode: string): string 
 }
 
 export function renderDnsmasq(
-  fleetDomains: string[], additionalDomains: string[], features: ReturnType<typeof featureDomains>,
+  additionalDomains: string[], features: ReturnType<typeof featureDomains>, operatorLines: string[] = [],
 ): string {
   const template = fs.readFileSync(path.join(SECURITY_DIR, 'dnsmasq.allowlist.template'), 'utf8');
   const toServers = (domains: string[]) => domains.map((d) => `server=/${d}/1.1.1.1`).join('\n');
   return renderTemplate(template, {
     CHANNEL_DOMAINS: toServers(features.channels),
     TRANSCRIPTION_DOMAINS: toServers(features.transcription),
-    FLEET_DOMAINS: toServers(fleetDomains),
     ADDITIONAL_DOMAINS: toServers(additionalDomains),
+    OPERATOR_LINES: operatorLines.join('\n'),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Config mapping: the one place docker.security becomes render input.
+// ---------------------------------------------------------------------------
+
+export class InvalidValue extends Error {}
+
+const DOMAIN_RE = /^[a-z0-9][a-z0-9.-]+$/;
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const SIZE_RE = /^[0-9]+(g|m)?$/;
+const CPUS_RE = /^[0-9.]+$/;
+const PORT_RE = /^[0-9]{1,5}(-[0-9]{1,5})?$/;
+
+const isIpv4 = (v: unknown) => typeof v === 'string' && IPV4_RE.test(v) && v.split('.').every((o) => Number(o) <= 255);
+/** A carve-out as the wizard stores it: a bare IPv4 address or an IPv4 CIDR. */
+const carveOutRange = (v: string): Range | null => (isIpv4(v) ? cidrToRange(`${v}/32`) : cidrToRange(v));
+
+function stringList(value: unknown, where: string, ok: (v: string) => boolean): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new InvalidValue(where);
+  value.forEach((v, i) => { if (typeof v !== 'string' || !ok(v)) throw new InvalidValue(`${where}.${i}`); });
+  return value as string[];
+}
+
+function scalar(value: unknown, where: string, re: RegExp): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if ((typeof value !== 'string' && typeof value !== 'number') || !re.test(String(value))) throw new InvalidValue(where);
+  return String(value);
+}
+
+function publishPorts(value: unknown): Port[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new InvalidValue('docker.security.network.publish_ports');
+  return value.map((p: any, i) => {
+    const at = `docker.security.network.publish_ports.${i}`;
+    if (!p || typeof p !== 'object') throw new InvalidValue(at);
+    const target = scalar(p.target, `${at}.target`, PORT_RE);
+    const published = scalar(p.published, `${at}.published`, PORT_RE);
+    if (target === undefined) throw new InvalidValue(`${at}.target`);
+    if (published === undefined) throw new InvalidValue(`${at}.published`);
+    if (p.host_ip !== undefined && !isIpv4(p.host_ip)) throw new InvalidValue(`${at}.host_ip`);
+    if (p.protocol !== undefined && !['tcp', 'udp'].includes(p.protocol)) throw new InvalidValue(`${at}.protocol`);
+    if (p.mode !== undefined && !['ingress', 'host'].includes(p.mode)) throw new InvalidValue(`${at}.mode`);
+    return { target, published, host_ip: p.host_ip, protocol: p.protocol, mode: p.mode };
+  });
+}
+
+export type SecurityPlan =
+  | { status: 'disabled' }
+  | { status: 'skipped'; reason: 'incomplete_config' }
+  | { status: 'rendered'; input: RenderInput };
+
+/** Decide and validate from docker.security: no toggle on is disabled; LAN on without a subnet is skipped. */
+export function securityInput(security: any): SecurityPlan {
+  const s = security && typeof security === 'object' ? security : {};
+  const network = s.network ?? {};
+  const resources = s.resources ?? {};
+  const lanOn = network.enabled === true;
+  const resOn = resources.enabled === true;
+  const auditOn = s.audit?.plugin_installs === true;
+  const proxyOn = s.credential_proxy?.enabled === true;
+  if (!lanOn && !resOn && !auditOn && !proxyOn) return { status: 'disabled' };
+  if (lanOn && !network.subnet) return { status: 'skipped', reason: 'incomplete_config' };
+  const at = (key: string) => `docker.security.${key}`;
+  if (lanOn) {
+    if (typeof network.subnet !== 'string' || !cidrToRange(network.subnet)) throw new InvalidValue(at('network.subnet'));
+    for (const key of ['gateway', 'netguard_ip']) if (!isIpv4(network[key])) throw new InvalidValue(at(`network.${key}`));
+  }
+  if (network.dns_mode !== undefined && !['log-only', 'enforce'].includes(network.dns_mode)) throw new InvalidValue(at('network.dns_mode'));
+  return {
+    status: 'rendered',
+    input: {
+      network: lanOn ? { subnet: network.subnet, gateway: network.gateway, netguard_ip: network.netguard_ip } : undefined,
+      toggles: {
+        lan: { enabled: lanOn, dnsMode: network.dns_mode },
+        resources: {
+          enabled: resOn,
+          memLimit: scalar(resources.mem_limit, at('resources.mem_limit'), SIZE_RE),
+          memswapLimit: scalar(resources.memswap_limit, at('resources.memswap_limit'), SIZE_RE),
+          cpus: scalar(resources.cpus, at('resources.cpus'), CPUS_RE),
+          sysctlsEnabled: resources.sysctls_enabled === true,
+        },
+        audit: { enabled: auditOn },
+        credproxy: { enabled: proxyOn },
+      },
+      publishPorts: publishPorts(network.publish_ports),
+      lanAllowlist: stringList(network.lan_allowlist, at('network.lan_allowlist'), (v) => carveOutRange(v) !== null),
+      additionalDomains: stringList(network.additional_domains, at('network.additional_domains'), (v) => DOMAIN_RE.test(v)),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Operator lines: the include file, and the one-time move out of a wizard-rendered allowlist.
+// ---------------------------------------------------------------------------
+
+const FIXED_DIRECTIVES = new Set(['listen-address=127.0.0.1', 'no-hosts', 'no-resolv', 'address=/#/']);
+// Comment lines of the allowlist as earlier releases rendered it, beyond the current template's own.
+const LEGACY_COMMENTS = [
+  '# To add a domain at runtime, edit this file in',
+  '# .hermit/docker/dnsmasq.allowlist and run',
+  '# `hermitd-docker down && hermitd-docker up`',
+  '# (restart hermit-netguard alone leaves hermit with stale resolver state).',
+  '# In enforce mode the firewall also drops connections to any address that no',
+  '# server= name in this file returned, so a new server= line is the whole',
+  '# change. A literal IP, or the IP behind an address= pin, needs a carve-out.',
+  '# This file is built into the netguard image. To add a domain, edit',
+  '# .hermit/docker/dnsmasq.allowlist on the host and run `hermitd restart --build`.',
+  '# --- Fleet-plugin contributions (rendered from each plugin\'s',
+  '#     `## Docker network requirements` section, gated by per-entry',
+  '#     operator confirmation during /docker-security) ---',
+  '# --- Operator additions (from /docker-security Prompt 1c) ---',
+  '# Channel APIs',
+  '# Voice-note engine and model downloads and credential-enabled cloud fallback',
+];
+const DEFAULT_SERVER_RE = /^server=\/([^/]+)\/1\.1\.1\.1$/;
+
+/** The lines of a rendered allowlist that no template or config produced: the operator's own. */
+export function operatorLinesFrom(allowlist: string, additionalDomains: string[]): string[] {
+  const template = fs.readFileSync(path.join(SECURITY_DIR, 'dnsmasq.allowlist.template'), 'utf8').split('\n');
+  const comments = new Set([...template.filter((l) => l.startsWith('#')), ...LEGACY_COMMENTS].map((l) => l.trimEnd()));
+  const hosts = new Set([
+    ...template.map((l) => l.match(DEFAULT_SERVER_RE)?.[1]).filter((h): h is string => !!h),
+    ...BUILTIN_FEATURE_HOSTS,
+    ...additionalDomains,
+  ]);
+  return allowlist.split('\n').map((l) => l.trimEnd()).filter((line) => {
+    if (!line.trim() || FIXED_DIRECTIVES.has(line) || comments.has(line)) return false;
+    const host = line.match(DEFAULT_SERVER_RE)?.[1];
+    return !(host && hosts.has(host));
+  });
+}
+
+/** A file's text, or null when it is absent. */
+function readIfPresent(file: string): string | null {
+  try { return fs.readFileSync(file, 'utf8'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+
+/** The include file's lines. */
+function operatorLines(root: string): string[] {
+  const include = path.join(root, OPERATOR_DNSMASQ_FILE);
+  if (isLink(include)) throw new Error(`${OPERATOR_DNSMASQ_FILE} is a link`);
+  return (readIfPresent(include) ?? '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim());
+}
+
+/** The allowlist a render would build for this config and include file, for checks that must not read the rendered copy. */
+export function expectedAllowlist(root: string, config: any): string {
+  const additional = Array.isArray(config?.docker?.security?.network?.additional_domains) ? config.docker.security.network.additional_domains : [];
+  return renderDnsmasq(additional, featureDomains(config), operatorLines(root));
+}
+
+const INCLUDE_HEADER =`# Your own dnsmasq lines for the netguard allowlist, placed above its catchall.
+# The plugin never rewrites this file. After an edit, run \`hermitd restart\` on the host.
+# In enforce mode a literal IP, or the IP behind an address= pin, also needs a
+# carve-out in docker.security.network.lan_allowlist.
+`;
+
+export type MigrateResult = { moved: number; carve_outs_missing: string[]; pins_needing_carve_out: string[] };
+
+export function migrateAllowlist(root: string): MigrateResult {
+  const result: MigrateResult = { moved: 0, carve_outs_missing: [], pins_needing_carve_out: [] };
+  const include = path.join(root, OPERATOR_DNSMASQ_FILE);
+  if (fs.existsSync(include) || isLink(include)) return result;
+  const legacy = (isLink(path.join(root, DNSMASQ_FILE)) ? null : readIfPresent(path.join(root, DNSMASQ_FILE)));
+  if (legacy === null) return result;
+  const network = readSettledConfig(path.join(root, '.hermit')).docker?.security?.network ?? {};
+  const carveOuts: string[] = Array.isArray(network.lan_allowlist) ? network.lan_allowlist.filter((v: unknown) => typeof v === 'string') : [];
+  const lines = operatorLinesFrom(legacy, Array.isArray(network.additional_domains) ? network.additional_domains : []);
+  ensureInside(root, include);
+  fs.writeFileSync(include, INCLUDE_HEADER + (lines.length ? '\n' + lines.join('\n') + '\n' : ''), { flag: 'wx', mode: 0o644 });
+  result.moved = lines.length;
+  const ranges = carveOuts.map(carveOutRange).filter((r): r is Range => r !== null);
+  const covered = (ip: string) => { const r = carveOutRange(ip); return !!r && ranges.some((c) => c[0] <= r[0] && r[1] <= c[1]); };
+  for (const m of ((isLink(path.join(root, NFTABLES_FILE)) ? null : readIfPresent(path.join(root, NFTABLES_FILE))) ?? '').matchAll(/^\s*ip daddr (\S+) accept\s*$/gm)) {
+    if (carveOutRange(m[1]) && !carveOuts.includes(m[1]) && !result.carve_outs_missing.includes(m[1])) result.carve_outs_missing.push(m[1]);
+  }
+  for (const line of lines) {
+    const ip = line.match(/^address=\/[^/#]+\/(\S+)$/)?.[1];
+    if (ip && isIpv4(ip) && !ip.startsWith('127.') && !covered(ip) && !result.pins_needing_carve_out.includes(ip)) result.pins_needing_carve_out.push(ip);
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Writes: physical-path checked, exclusive temp file plus rename.
+// ---------------------------------------------------------------------------
+
+/** Refuse a write whose folder resolves outside the root (a linked folder the agent planted). */
+function ensureInside(root: string, file: string): void {
+  const realRoot = fs.realpathSync(root);
+  const dir = fs.realpathSync(path.dirname(file));
+  if (dir !== realRoot && !dir.startsWith(realRoot + '/')) throw new Error(`${path.relative(root, file)} resolves outside the project`);
+}
+
+function replaceFile(root: string, rel: string, content: string, mode: number): void {
+  const file = path.join(root, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureInside(root, file);
+  writeExclusive(file, content, mode);
+}
+
+function removeFile(root: string, rel: string): boolean {
+  const file = path.join(root, rel);
+  if (!fs.existsSync(file) && !isLink(file)) return false;
+  ensureInside(root, file);
+  fs.unlinkSync(file);
+  return true;
+}
+
+export type RenderOutcome =
+  | { status: 'rendered'; written: string[] }
+  | { status: 'disabled'; removed: string[] }
+  | { status: 'skipped'; reason: 'incomplete_config' };
+
+export function renderSecurity(root: string, storeProject = root): RenderOutcome {
+  const config = readSettledConfig(path.join(root, '.hermit'));
+  const plan = securityInput(config.docker?.security);
+  if (plan.status === 'skipped') return plan;
+  if (plan.status === 'disabled') return { status: 'disabled', removed: SECURITY_FILES.filter((rel) => removeFile(root, rel)) };
+  const input = plan.input;
+  const lanOn = input.toggles.lan?.enabled === true;
+  const proxyOn = input.toggles.credproxy?.enabled === true;
+  const credproxy = proxyOn ? { store: storeDir(storeProject), uid: process.getuid!(), gid: process.getgid!() } : undefined;
+  // Every file in memory first, so a render failure writes nothing.
+  const files: [string, string, number][] = [[OVERLAY_FILE, renderOverlay(input, credproxy), 0o644]];
+  if (lanOn) {
+    const additional = input.additionalDomains ?? [];
+    files.push(
+      [NETGUARD_FILES.dockerfile, fs.readFileSync(path.join(SECURITY_DIR, 'Dockerfile.hermit-netguard.template'), 'utf8'), 0o644],
+      [NETGUARD_FILES.entrypoint, fs.readFileSync(path.join(SECURITY_DIR, 'netguard-entrypoint.sh.template'), 'utf8'), 0o755],
+      [NFTABLES_FILE, renderNftables(input.lanAllowlist ?? [], input.toggles.lan?.dnsMode ?? 'log-only'), 0o644],
+      [DNSMASQ_FILE, renderDnsmasq(additional, featureDomains(config), operatorLines(root)), 0o644],
+    );
+  }
+  for (const [rel, content, mode] of files) replaceFile(root, rel, content, mode);
+  // Without LAN containment the netguard files would only be stale build inputs.
+  const wanted = new Set(files.map(([rel]) => rel));
+  for (const rel of SECURITY_FILES) if (!wanted.has(rel)) removeFile(root, rel);
+  // Made here so Docker never creates the bind-mount sources as root; the host lifecycle fills them.
+  if (credproxy) {
+    fs.mkdirSync(path.join(credproxy.store, 'sidecar'), { recursive: true, mode: 0o700 });
+    fs.mkdirSync(path.join(credproxy.store, 'agent'), { recursive: true, mode: 0o755 });
+  }
+  return { status: 'rendered', written: files.map(([rel]) => rel) };
 }
 
 /** Hostnames of remote (url-based) servers in the project's .mcp.json, for the wizard to offer. */
@@ -448,40 +693,6 @@ function runPickSubnet(projectRoot: string, candidate: string | null): void {
   process.exit(0);
 }
 
-function runRender(projectRoot: string, raw: string): void {
-  const input = JSON.parse(raw) as RenderInput;
-  // Render + validate all three in memory before any write.
-  const proxyOn = input.toggles.credproxy?.enabled === true;
-  const credproxy = proxyOn ? { store: storeDir(projectRoot), uid: process.getuid!(), gid: process.getgid!() } : undefined;
-  const overlay = renderOverlay(input, credproxy);
-  const nftables = renderNftables(input.lanAllowlist ?? [], input.toggles.lan?.dnsMode ?? 'log-only');
-  const features = featureDomains(readSettledConfig(path.join(projectRoot, '.hermit')));
-  const dnsmasq = renderDnsmasq(input.fleetDomains ?? [], input.additionalDomains ?? [], features);
-
-  const lanOn = input.toggles.lan?.enabled === true;
-  const overlayPath = path.join(projectRoot, OVERLAY_FILE);
-  const written: string[] = [overlayPath];
-  fs.writeFileSync(overlayPath, overlay);
-
-  if (lanOn) {
-    const nftPath = path.join(projectRoot, NFTABLES_FILE);
-    const allowPath = path.join(projectRoot, DNSMASQ_FILE);
-    fs.mkdirSync(path.dirname(nftPath), { recursive: true });
-    fs.writeFileSync(nftPath, nftables);
-    fs.writeFileSync(allowPath, dnsmasq);
-    written.push(nftPath, allowPath);
-  }
-
-  // Made here so Docker never creates the bind-mount sources as root; the host lifecycle fills them.
-  if (credproxy) {
-    fs.mkdirSync(path.join(credproxy.store, 'sidecar'), { recursive: true, mode: 0o700 });
-    fs.mkdirSync(path.join(credproxy.store, 'agent'), { recursive: true, mode: 0o755 });
-  }
-
-  console.log(JSON.stringify({ written }));
-  process.exit(0);
-}
-
 if (import.meta.main) {
   const sub = process.argv[2];
   const projectRoot = path.resolve(process.argv[3] || process.cwd());
@@ -494,17 +705,21 @@ if (import.meta.main) {
     const candidate = ci >= 0 ? process.argv[ci + 1] ?? null : null;
     runPickSubnet(projectRoot, candidate);
   } else if (sub === 'render') {
-    let raw = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (c) => { raw += c; });
-    process.stdin.on('error', () => {});
-    process.stdin.on('end', () => {
-      try {
-        runRender(projectRoot, raw.trim());
-      } catch (e: any) {
-        exitError(`render_failed:${e.message}`);
-      }
-    });
+    const si = process.argv.indexOf('--store-project');
+    const storeProject = si >= 0 && process.argv[si + 1] ? path.resolve(process.argv[si + 1]) : projectRoot;
+    try {
+      console.log(JSON.stringify(renderSecurity(projectRoot, storeProject)));
+      process.exit(0);
+    } catch (e: any) {
+      exitError(e instanceof InvalidValue ? `invalid_value:${e.message}` : `render_failed:${e.message}`);
+    }
+  } else if (sub === 'migrate-allowlist') {
+    try {
+      console.log(JSON.stringify(migrateAllowlist(projectRoot)));
+      process.exit(0);
+    } catch (e: any) {
+      exitError(`migrate_failed:${e.message}`);
+    }
   } else {
     exitError();
   }

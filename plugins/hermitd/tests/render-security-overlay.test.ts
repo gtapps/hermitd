@@ -15,6 +15,7 @@ import { runScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
 import {
   cidrToRange, overlaps, pickSubnet, validateCandidate, ipv4SubnetsFromInspect, renderOverlay as renderOverlayText,
+  securityInput, InvalidValue,
 } from '../scripts/render-security-overlay';
 import { storeDir } from '../scripts/lib/credproxy';
 
@@ -116,13 +117,12 @@ describe('pick-subnet CLI (docker absent)', () => {
     expect(out.chosen.subnet).toBe('172.28.0.0/24');
   });
 
-  test('a failed render or unknown subcommand prints {"error"} on stdout', async () => {
+  test('an invalid config value or unknown subcommand prints {"error"} on stdout and writes nothing', async () => {
     const dir = freshDir();
-    const bad = await runScript('render-security-overlay.ts', {
-      args: ['render', dir], stdin: JSON.stringify({ toggles: { lan: { enabled: true } } }),
-    });
+    writeConfig(dir, { ...ALL_ON, network: { ...ALL_ON.network, lan_allowlist: ['192.168.1.50', '10.0.0.5; drop'] } });
+    const bad = await runScript('render-security-overlay.ts', { args: ['render', dir] });
     expect(bad.exitCode).toBe(1);
-    expect(JSON.parse(bad.stdout).error).toStartWith('render_failed:');
+    expect(JSON.parse(bad.stdout)).toEqual({ error: 'invalid_value:docker.security.network.lan_allowlist.1' });
     expect(fs.existsSync(path.join(dir, 'docker-compose.security.yml'))).toBe(false);
     const usage = await runScript('render-security-overlay.ts', { args: ['nope', dir] });
     expect(usage.exitCode).toBe(1);
@@ -133,10 +133,14 @@ describe('pick-subnet CLI (docker absent)', () => {
 // -------------------------------------------------------
 // render subcommand — real templates, property assertions
 // -------------------------------------------------------
-async function renderOverlay(dir: string, input: Record<string, unknown>) {
-  const r = await runScript('render-security-overlay.ts', {
-    args: ['render', dir], stdin: JSON.stringify(input),
-  });
+function writeConfig(dir: string, security: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({ ...extra, docker: { security } }));
+}
+
+async function renderOverlay(dir: string, security: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  writeConfig(dir, security, extra);
+  const r = await runScript('render-security-overlay.ts', { args: ['render', dir] });
   expect(r.exitCode).toBe(0);
   return r;
 }
@@ -144,25 +148,29 @@ async function renderOverlay(dir: string, input: Record<string, unknown>) {
 const overlayPath = (dir: string) => path.join(dir, 'docker-compose.security.yml');
 const nftPath = (dir: string) => path.join(dir, '.hermit', 'docker', 'nftables.conf');
 const allowPath = (dir: string) => path.join(dir, '.hermit', 'docker', 'dnsmasq.allowlist');
+const includePath = (dir: string) => path.join(dir, '.hermit', 'docker', 'dnsmasq.hermit-local.conf');
 
+const NETWORK = { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' };
 const ALL_ON = {
-  network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' },
-  toggles: {
-    lan: { enabled: true, dnsMode: 'enforce' },
-    resources: { enabled: true, memLimit: '4g', memswapLimit: '4g', cpus: 2.0, sysctlsEnabled: true },
-    audit: { enabled: true },
+  network: {
+    enabled: true, dns_mode: 'enforce', ...NETWORK,
+    publish_ports: [{ target: 3000, published: '3000', protocol: 'tcp', host_ip: '0.0.0.0', mode: 'ingress' }],
+    lan_allowlist: ['192.168.1.50', '10.0.0.0/24'],
+    additional_domains: ['api.strava.com', 'example.org'],
   },
-  publishPorts: [{ target: 3000, published: '3000', protocol: 'tcp', host_ip: '0.0.0.0', mode: 'ingress' }],
-  lanAllowlist: ['192.168.1.50', '10.0.0.5'],
-  fleetDomains: ['api.strava.com'],
-  additionalDomains: ['example.org'],
+  resources: { enabled: true, mem_limit: '4g', memswap_limit: '4g', cpus: 2.0, sysctls_enabled: true },
+  audit: { plugin_installs: true },
 };
 
 describe('render subcommand — all toggles on', () => {
-  test('writes all three files with no {{ }} left', async () => {
+  test('writes all five files with no {{ }} left', async () => {
     const dir = freshDir();
     const r = await renderOverlay(dir, ALL_ON);
-    expect(JSON.parse(r.stdout).written).toHaveLength(3);
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'rendered', written: [
+      'docker-compose.security.yml', '.hermit/docker/Dockerfile.hermit-netguard', '.hermit/docker/netguard-entrypoint.sh',
+      '.hermit/docker/nftables.conf', '.hermit/docker/dnsmasq.allowlist',
+    ] });
+    expect(fs.statSync(path.join(dir, '.hermit/docker/netguard-entrypoint.sh')).mode & 0o777).toBe(0o755);
     for (const p of [overlayPath(dir), nftPath(dir), allowPath(dir)]) {
       expect(fs.readFileSync(p, 'utf8')).not.toMatch(/\{\{[A-Z][A-Z0-9_]*\}\}/);
     }
@@ -197,13 +205,13 @@ describe('render subcommand — all toggles on', () => {
     await renderOverlay(dir, ALL_ON);
     const nft = fs.readFileSync(nftPath(dir), 'utf8');
     expect(nft).toMatch(/^ {8}ip daddr 192\.168\.1\.50 accept$/m);
-    expect(nft).toMatch(/^ {8}ip daddr 10\.0\.0\.5 accept$/m);
+    expect(nft).toMatch(/^ {8}ip daddr 10\.0\.0\.0\/24 accept$/m);
     expect(nft).toContain('meta skuid != 100 ');
     // The doc-comment reference must not have been mangled into a rule line.
     expect(nft).not.toMatch(/accept is rendered at overlay/);
   });
 
-  test('dnsmasq renders fleet + additional domains as server= lines', async () => {
+  test('dnsmasq renders additional domains as server= lines', async () => {
     const dir = freshDir();
     await renderOverlay(dir, ALL_ON);
     const allow = fs.readFileSync(allowPath(dir), 'utf8');
@@ -213,11 +221,7 @@ describe('render subcommand — all toggles on', () => {
 });
 
 describe('render subcommand: egress enforcement', () => {
-  const LOG_ONLY = {
-    network: ALL_ON.network,
-    toggles: { lan: { enabled: true, dnsMode: 'log-only' } },
-    lanAllowlist: [], fleetDomains: [], additionalDomains: [],
-  };
+  const LOG_ONLY = { network: { enabled: true, dns_mode: 'log-only', ...NETWORK } };
 
   test('enforce mode drops by default and accepts only resolved sets and dnsmasq upstream', async () => {
     const dir = freshDir();
@@ -243,12 +247,10 @@ describe('render subcommand: egress enforcement', () => {
 
   test('channel and voice-note hosts follow config.json', async () => {
     const dir = freshDir();
-    fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({
+    await renderOverlay(dir, LOG_ONLY, {
       channels: { telegram: { enabled: true }, discord: { enabled: false } },
       transcription: { enabled: false },
-    }));
-    await renderOverlay(dir, LOG_ONLY);
+    });
     const allow = fs.readFileSync(allowPath(dir), 'utf8');
     expect(allow).toContain('server=/telegram.org/1.1.1.1');
     expect(allow).not.toContain('discord.com');
@@ -287,7 +289,7 @@ describe('render subcommand: egress enforcement', () => {
 
 describe('credential proxy sidecar', () => {
   const host = { store: '/cfg/hermitd/credproxy/p-0123', uid: 1000, gid: 1000 };
-  const LAN = { network: ALL_ON.network, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const } } };
+  const LAN = { network: NETWORK, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const } } };
 
   test('joins the agent and mounts only the store folders read-only', () => {
     const overlay = Bun.YAML.parse(renderOverlayText({ toggles: { credproxy: { enabled: true } } }, host)) as any;
@@ -311,7 +313,8 @@ describe('credential proxy sidecar', () => {
   });
 
   test('off or absent leaves the overlay byte-identical', () => {
-    for (const input of [ALL_ON, LAN, { toggles: {} }]) {
+    const allOn = { network: NETWORK, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const }, resources: { enabled: true, sysctlsEnabled: true }, audit: { enabled: true } } };
+    for (const input of [allOn, LAN, { toggles: {} }]) {
       const off = renderOverlayText({ ...input, toggles: { ...input.toggles, credproxy: { enabled: false } } } as any, host);
       expect(off).toBe(renderOverlayText(input as any));
       expect(off).not.toContain('credproxy');
@@ -326,11 +329,14 @@ describe('credential proxy sidecar', () => {
     const dir = freshDir();
     const home = freshDir();
     const config = path.join(home, '.claude');
+    const real = freshDir();
+    writeConfig(dir, { credential_proxy: { enabled: true } });
     const r = await runScript('render-security-overlay.ts', {
-      args: ['render', dir], stdin: JSON.stringify({ toggles: { credproxy: { enabled: true } } }), env: { HOME: home },
+      args: ['render', dir, '--store-project', real], env: { HOME: home },
     });
     expect(r.exitCode).toBe(0);
-    const store = storeDir(dir, config);
+    // A render in the approved copy names the real project's store, never the copy's.
+    const store = storeDir(real, config);
     const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
     expect(overlay.services['hermit-credproxy'].user).toBe(`${process.getuid!()}:${process.getgid!()}`);
     expect(overlay.services['hermit-credproxy'].volumes).toEqual([`${store}/sidecar:/etc/envoy:ro`]);
@@ -364,14 +370,8 @@ describe('mcp-hosts subcommand', () => {
 describe('render subcommand — partial toggles', () => {
   test('resources-only (no LAN) writes only the overlay, sysctls on hermit', async () => {
     const dir = freshDir();
-    const r = await renderOverlay(dir, {
-      toggles: {
-        lan: { enabled: false },
-        resources: { enabled: true, sysctlsEnabled: true },
-        audit: { enabled: false },
-      },
-    });
-    expect(JSON.parse(r.stdout).written).toHaveLength(1);
+    const r = await renderOverlay(dir, { network: { enabled: false }, resources: { enabled: true, sysctls_enabled: true } });
+    expect(JSON.parse(r.stdout).written).toEqual(['docker-compose.security.yml']);
     expect(fs.existsSync(nftPath(dir))).toBe(false);
     const overlay = fs.readFileSync(overlayPath(dir), 'utf8');
     expect(overlay).not.toContain('hermit-netguard:');
@@ -381,12 +381,150 @@ describe('render subcommand — partial toggles', () => {
 
   test('log-only DNS mode sets DNS_LOG_ONLY=1', async () => {
     const dir = freshDir();
-    await renderOverlay(dir, {
-      network: { subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2' },
-      toggles: { lan: { enabled: true, dnsMode: 'log-only' }, resources: { enabled: false }, audit: { enabled: false } },
-      lanAllowlist: [], fleetDomains: [], additionalDomains: [],
-    });
+    await renderOverlay(dir, { network: { enabled: true, dns_mode: 'log-only', ...NETWORK }, resources: { enabled: false } });
     expect(fs.readFileSync(overlayPath(dir), 'utf8')).toContain('- DNS_LOG_ONLY=1');
+  });
+});
+
+describe('render outcomes and validation', () => {
+  test('no toggle on is disabled and removes the five files, a link only unlinked', async () => {
+    const dir = freshDir();
+    await renderOverlay(dir, ALL_ON);
+    const outside = path.join(freshDir(), 'target');
+    fs.writeFileSync(outside, 'keep');
+    fs.rmSync(nftPath(dir));
+    fs.symlinkSync(outside, nftPath(dir));
+    const r = await renderOverlay(dir, { network: { enabled: false }, managed_ceiling: true });
+    expect(JSON.parse(r.stdout).status).toBe('disabled');
+    expect(JSON.parse(r.stdout).removed).toHaveLength(5);
+    expect(fs.existsSync(overlayPath(dir))).toBe(false);
+    expect(fs.readFileSync(outside, 'utf8')).toBe('keep');
+  });
+
+  test('LAN containment without a subnet is skipped and writes nothing', async () => {
+    const dir = freshDir();
+    const r = await renderOverlay(dir, { network: { enabled: true, dns_mode: 'enforce' } });
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'incomplete_config' });
+    expect(fs.existsSync(overlayPath(dir))).toBe(false);
+  });
+
+  test('the mapper accepts the wizard\'s bare IPv4 carve-out and rejects each bad value by its path', () => {
+    expect(securityInput(ALL_ON)).toMatchObject({ status: 'rendered', input: { lanAllowlist: ['192.168.1.50', '10.0.0.0/24'] } });
+    const bad: [Record<string, unknown>, string][] = [
+      [{ network: { ...ALL_ON.network, additional_domains: ['Bad Domain'] } }, 'docker.security.network.additional_domains.0'],
+      [{ network: { ...ALL_ON.network, subnet: '172.28.0.0' } }, 'docker.security.network.subnet'],
+      [{ network: { ...ALL_ON.network, gateway: '172.28.0.1\n' } }, 'docker.security.network.gateway'],
+      [{ network: { ...ALL_ON.network, dns_mode: 'strict' } }, 'docker.security.network.dns_mode'],
+      [{ network: { ...ALL_ON.network, publish_ports: [{ target: 3000, published: '3000', host_ip: '0.0.0.0\n  privileged: true' }] } }, 'docker.security.network.publish_ports.0.host_ip'],
+      [{ network: { ...ALL_ON.network, publish_ports: [{ target: 3000, published: '3000', protocol: 'sctp' }] } }, 'docker.security.network.publish_ports.0.protocol'],
+      [{ network: { ...ALL_ON.network, publish_ports: [{ target: 3000, published: '3000', mode: 'x' }] } }, 'docker.security.network.publish_ports.0.mode'],
+      [{ network: { ...ALL_ON.network, publish_ports: [{ target: 'x', published: '3000' }] } }, 'docker.security.network.publish_ports.0.target'],
+      [{ resources: { enabled: true, mem_limit: '4g\nprivileged: true' } }, 'docker.security.resources.mem_limit'],
+      [{ resources: { enabled: true, cpus: '2; x' } }, 'docker.security.resources.cpus'],
+    ];
+    for (const [patch, where] of bad) expect(() => securityInput({ ...ALL_ON, ...patch })).toThrow(new InvalidValue(where));
+  });
+
+  test('a link at a generated path is replaced, not followed', async () => {
+    const dir = freshDir();
+    const outside = path.join(freshDir(), 'target');
+    fs.writeFileSync(outside, 'keep');
+    fs.mkdirSync(path.join(dir, '.hermit', 'docker'), { recursive: true });
+    fs.symlinkSync(outside, allowPath(dir));
+    await renderOverlay(dir, ALL_ON);
+    expect(fs.readFileSync(outside, 'utf8')).toBe('keep');
+    expect(fs.lstatSync(allowPath(dir)).isSymbolicLink()).toBe(false);
+  });
+
+  test('a linked include file is refused', async () => {
+    const dir = freshDir();
+    writeConfig(dir, ALL_ON);
+    fs.mkdirSync(path.join(dir, '.hermit', 'docker'), { recursive: true });
+    fs.symlinkSync('/etc/hostname', includePath(dir));
+    const r = await runScript('render-security-overlay.ts', { args: ['render', dir] });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).error).toStartWith('render_failed:');
+  });
+
+  test('include lines land above the catchall', async () => {
+    const dir = freshDir();
+    fs.mkdirSync(path.join(dir, '.hermit', 'docker'), { recursive: true });
+    fs.writeFileSync(includePath(dir), '# mine\naddress=/nas.lan/192.168.1.9\n\nserver=/corp.example/10.0.0.53\n');
+    await renderOverlay(dir, ALL_ON);
+    const allow = fs.readFileSync(allowPath(dir), 'utf8');
+    for (const line of ['# mine', 'address=/nas.lan/192.168.1.9', 'server=/corp.example/10.0.0.53']) {
+      expect(allow).toContain(line);
+      expect(allow.indexOf(line)).toBeLessThan(allow.lastIndexOf('address=/#/'));
+    }
+  });
+});
+
+describe('migrate-allowlist', () => {
+  // The allowlist as the hermitd--v1.4.34 wizard rendered it, plus hand-added lines.
+  const LEGACY = `# dnsmasq allowlist for the hermit-netguard sidecar.
+# To add a domain at runtime, edit this file in
+# .hermit/docker/dnsmasq.allowlist and run
+# \`hermitd-docker down && hermitd-docker up\`
+# (restart hermit-netguard alone leaves hermit with stale resolver state).
+
+listen-address=127.0.0.1
+no-hosts
+no-resolv
+
+# --- Core hermit operation ---
+server=/anthropic.com/1.1.1.1
+server=/github.com/1.1.1.1
+# Channel APIs
+server=/discord.com/1.1.1.1
+server=/telegram.org/1.1.1.1
+# Voice-note engine and model downloads and credential-enabled cloud fallback
+server=/api.openai.com/1.1.1.1
+address=/api.openai.com/10.0.0.20
+
+# --- Operator additions (from /docker-security Prompt 1c) ---
+server=/example.org/1.1.1.1
+server=/example.org/192.168.1.53
+server=/cdn.discordapp.com/9.9.9.9
+server=/db/127.0.0.11
+
+# Catchall: NXDOMAIN for everything else (requires no-resolv above to work correctly).
+address=/#/
+`;
+  const NFT = 'table inet firewall {\n  chain output {\n        ip daddr 192.168.1.50 accept\n        ip daddr 10.9.9.9 accept\n  }\n}\n';
+
+  function legacyProject() {
+    const dir = freshDir();
+    writeConfig(dir, { network: { enabled: true, dns_mode: 'enforce', ...NETWORK, lan_allowlist: ['192.168.1.50'], additional_domains: ['example.org'] } });
+    fs.mkdirSync(path.join(dir, '.hermit', 'docker'), { recursive: true });
+    fs.writeFileSync(allowPath(dir), LEGACY);
+    fs.writeFileSync(nftPath(dir), NFT);
+    return dir;
+  }
+  const kept = ['address=/api.openai.com/10.0.0.20', 'server=/example.org/192.168.1.53', 'server=/cdn.discordapp.com/9.9.9.9', 'server=/db/127.0.0.11'];
+
+  test('keeps every operator line, drops exact defaults, reports pins and carve-outs, and runs once', async () => {
+    const dir = legacyProject();
+    const r = await runScript('render-security-overlay.ts', { args: ['migrate-allowlist', dir] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ moved: 4, carve_outs_missing: ['10.9.9.9'], pins_needing_carve_out: ['10.0.0.20'] });
+    const include = fs.readFileSync(includePath(dir), 'utf8');
+    for (const line of kept) expect(include).toContain(line);
+    for (const line of ['server=/anthropic.com/1.1.1.1', 'server=/example.org/1.1.1.1', 'server=/discord.com/1.1.1.1', 'no-resolv', 'address=/#/', '# Channel APIs']) {
+      expect(include.split('\n')).not.toContain(line);
+    }
+    expect(fs.readFileSync(allowPath(dir), 'utf8')).toBe(LEGACY);
+    const again = await runScript('render-security-overlay.ts', { args: ['migrate-allowlist', dir] });
+    expect(JSON.parse(again.stdout)).toEqual({ moved: 0, carve_outs_missing: [], pins_needing_carve_out: [] });
+    expect(fs.readFileSync(includePath(dir), 'utf8')).toBe(include);
+  });
+
+  test('after the migration a render carries the moved lines', async () => {
+    const dir = legacyProject();
+    await runScript('render-security-overlay.ts', { args: ['migrate-allowlist', dir] });
+    const r = await runScript('render-security-overlay.ts', { args: ['render', dir] });
+    expect(r.exitCode).toBe(0);
+    const allow = fs.readFileSync(allowPath(dir), 'utf8');
+    for (const line of kept) expect(allow).toContain(line);
   });
 });
 

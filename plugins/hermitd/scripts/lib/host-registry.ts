@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { storeName } from './credproxy';
+import { isLink } from './security-files';
 import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
 
@@ -62,12 +65,61 @@ export function registerInMarketplace(mp: string, project: string, runtimeHint: 
     return [...rows.filter(row => row.project_dir !== canonical), entry];
   });
 }
-export function prune(mp: string, name?: string): void {
-  update(mp, rows => {
-    if (!name) return rows.filter(row => entryState(row) !== 'missing');
+export type PruneResult = { removed: string[]; kept: { project_dir: string; reason: string }[] };
+
+/** The two host stores a project leaves under the home folder: approved Docker inputs and credentials. */
+export function hostStores(project: string, home = os.homedir()): string[] {
+  const name = storeName(project);
+  return ['approvals', 'credproxy'].map(kind => path.join(home, '.claude', 'hermitd', kind, name));
+}
+
+/** Running containers of a Compose project, by its working-dir label; null when Docker cannot answer. */
+function runningContainers(project: string): string | null {
+  const result = spawnSync('docker', ['ps', '-q', '--filter', `label=com.docker.compose.project.working_dir=${project}`], { encoding: 'utf8' });
+  return result.error || result.status !== 0 ? null : result.stdout.trim();
+}
+
+/** Remove a project's stores; the reason it kept them, or null once both are gone. */
+function removeStores(project: string, home: string, running: (project: string) => string | null): string | null {
+  const stores = hostStores(project, home).filter(store => fs.existsSync(store) || isLink(store));
+  if (!stores.length) return null;
+  const containers = running(project);
+  if (containers === null) return 'docker_unavailable';
+  if (containers) return 'containers_running';
+  for (const store of stores) {
+    const root = path.dirname(store);
+    // A linked store or store root would point the delete outside the home folder's hermitd tree.
+    if (isLink(root) || isLink(path.dirname(root)) || isLink(store)) return 'store_is_link';
+    try { fs.rmSync(store, { recursive: true, force: true }); }
+    catch (error) { return `store_delete_failed:${(error as NodeJS.ErrnoException).code ?? error}`; }
+  }
+  return null;
+}
+
+/**
+ * Drop registry rows, deleting each project's host stores first so a failed delete keeps the
+ * row for a retry. Bare prune selects rows whose project is gone; a name or path selects one.
+ */
+export function prune(mp: string, name?: string, options: { home?: string; running?: (project: string) => string | null } = {}): PruneResult {
+  const rows = load(mp);
+  let selected: string[];
+  if (!name) selected = rows.filter(row => entryState(row) === 'missing').map(row => row.project_dir);
+  else {
     // An absolute path names exactly one project; a bare name may match several.
-    const matches = rows.filter(row => path.isAbsolute(name) ? row.project_dir === name : row.name === name || row.agent_name === name);
+    const matches = rows.filter(row => path.isAbsolute(name) ? [name, realOr(name)].includes(row.project_dir) : row.name === name || row.agent_name === name);
     if (matches.length > 1) throw new Error(`Ambiguous name ${name}: ${matches.map(row => row.project_dir).join(', ')}`);
-    return rows.filter(row => row !== matches[0]);
-  });
+    selected = matches.length ? [matches[0].project_dir] : path.isAbsolute(name) ? [realOr(name)] : [];
+  }
+  const result: PruneResult = { removed: [], kept: [] };
+  for (const project of selected) {
+    const reason = removeStores(project, options.home ?? os.homedir(), options.running ?? runningContainers);
+    if (reason) result.kept.push({ project_dir: project, reason });
+    else result.removed.push(project);
+  }
+  if (result.removed.length) update(mp, current => current.filter(row => !result.removed.includes(row.project_dir)));
+  return result;
+}
+
+function realOr(file: string): string {
+  try { return fs.realpathSync(file); } catch { return file; }
 }

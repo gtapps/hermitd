@@ -523,7 +523,7 @@ Then run, in sequence:
 
 1. `hermitd stop`; sends the configured shutdown skill, if any, and polls for a fresh execution boundary up to 60s before removing the container. If it prints "Timed out waiting for graceful close; forcing stop", flag it in the final summary (session that witnessed setup didn't close cleanly; not blocking but worth noting).
 
-2. `docker compose "${COMPOSE_FILES[@]}" up -d` recreates the container. Use the same Compose stack as in Step 8. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
+2. `hermitd start` recreates the container. Docker's named volume preserves credentials, plugins, workspace trust. Bind-mounts preserve `.claude.local/channels/<plugin>/access.json` and `.hermit/`.
 
 3. Re-verify the container stayed running (same poll as step 8.2). If it failed to come back up, run `docker compose "${COMPOSE_FILES[@]}" logs --tail=30 hermit`, show the output, and apply the same targeted hints as step 8.2 (daemon down, build failure, port conflict). Stop — don't proceed to step 9.
 

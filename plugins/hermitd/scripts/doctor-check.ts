@@ -24,10 +24,11 @@ import { claudeStateFile } from './lib/setup-token';
 import { readRuntimeJson } from './lib/runtime';
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { getEnabledChannels, isDict } from './lib/channel-config';
-import { featureDomains } from './lib/netguard-hosts';
+import { readApprovalNote } from './lib/approval';
+import { expectedAllowlist } from './render-security-overlay';
 import { browserDeployment, browserEnabled, browserHostPlatform, browserHostPrerequisite, browserImageProbe, browserRuntimeMode, type BrowserPrerequisiteOptions } from './lib/browser-runtime';
 import { readiness, type ReadinessOptions } from './lib/transcription';
-import { isContainer, MANAGED_SECURITY_SETTINGS } from './lib/container';
+import { isContainer, managedFloorApplies, MANAGED_SECURITY_SETTINGS } from './lib/container';
 import { readChannelToken, channelStateDir } from './lib/channel-token';
 import { CHANNEL_PROBES, extractBotIdentity } from './lib/channel-probe';
 import { siblingPluginDirs, versionedCacheCoreDir, readHermitMeta } from './lib/plugin-siblings';
@@ -580,71 +581,50 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
   try {
     // Anchor to the project root (parent of the agent dir), not process.cwd().
     const projectRoot = path.join(hermitDir, '..');
-    const overlayPath = path.join(projectRoot, 'docker-compose.security.yml');
-    const overlayPresent = fs.existsSync(overlayPath);
 
     const config: Json = readSettledConfig(hermitDir);
     const sec = (config.docker && config.docker.security) || null;
     // managed_ceiling governs the image's deny floor, not the overlay.
     const declared = sec && Object.entries(sec).some(([k, v]: [string, Json]) => k !== 'managed_ceiling' &&
-      (v && typeof v === 'object' ? v.enabled === true : v === true)
+      (v && typeof v === 'object' ? (v.enabled === true || v.plugin_installs === true) : v === true)
     );
 
-    if (!declared && !overlayPresent) {
+    if (!declared) {
       return { id: 'docker-security', status: 'ok', detail: 'not configured (type /docker-security in a terminal or the Claude app to enable)' };
-    }
-    if (declared && !overlayPresent) {
-      return {
-        id: 'docker-security',
-        status: 'warn',
-        detail: 'posture declared in config but docker-compose.security.yml is missing — ask your operator to re-run /docker-security from a terminal or the Claude app',
-      };
-    }
-    if (!declared && overlayPresent) {
-      return {
-        id: 'docker-security',
-        status: 'warn',
-        detail: 'overlay present but no posture declared in config — likely a manual edit; ask your operator to re-run /docker-security from a terminal or the Claude app to reconcile',
-      };
     }
 
     const net = sec.network;
     const dnsMode = net?.enabled ? (net.dns_mode === 'enforce' ? 'enforce' : 'log-only') : null;
-    const posture = `posture declared and overlay present${dnsMode ? ` (DNS ${dnsMode})` : ''}`;
+    const posture = `posture declared${dnsMode ? ` (DNS ${dnsMode})` : ''}`;
+    // The host renders the rules from config inside its approved copy and records what it
+    // approved and started; the project's own rule files are not what runs.
+    const note = readApprovalNote(projectRoot);
+    let drift: string | null = null;
+    if (note?.status === 'approved') {
+      if (net?.enabled && note.security !== 'rendered') {
+        drift = `the host did not render the netguard rules (${note.security}); run \`hermitd setup docker-security\` on the host`;
+      } else if (note.deployed !== note.approved) {
+        drift = 'approved Docker changes are not running yet; run `hermitd restart` on the host to apply them';
+      }
+    }
     // The credential proxy's host list and address come from its read-only mount (container only).
     const proxy = sec.credential_proxy?.enabled === true ? readProxyInfo(proxyMount) : null;
-    // Enforce-mode rule drift: rules rendered before IP filtering existed only
-    // filter names, and a channel or transcription enabled after the last render
-    // has no hosts on the allowlist. The rendered files sit in the project mount,
-    // so this runs in the container too. Drift downgrades only an ok verdict, so
-    // the host checks below still surface.
-    let drift: string | null = null;
-    if (dnsMode === 'enforce') {
-      const read = (file: string) => {
-        try { return fs.readFileSync(path.join(hermitDir, 'docker', file), 'utf8'); } catch { return ''; }
-      };
-      const nft = read('nftables.conf');
-      const allow = read('dnsmasq.allowlist');
-      const { channels, transcription } = featureDomains(config);
-      const missing = allow ? [...channels, ...transcription].filter((d) => !allow.includes(`server=/${d}/`)) : [];
-      if (nft && !nft.includes('@allow4')) drift = 'DNS enforce rules predate IP filtering, so connections to literal IPs still pass';
-      else if (missing.length) drift = `DNS allowlist lacks ${missing.join(', ')} for enabled features, so those connections are refused`;
-      const uncovered = allow && proxy ? proxy.hosts.map((h) => h.host).filter((h) => !allowlistCovers(allow, h)) : [];
-      if (!drift && uncovered.length) drift = `DNS allowlist lacks credential proxy hosts ${uncovered.join(', ')}, so those requests are refused`;
+    if (!drift && dnsMode === 'enforce' && proxy) {
+      const allow = expectedAllowlist(projectRoot, config);
+      const uncovered = proxy.hosts.map((h) => h.host).filter((h) => !allowlistCovers(allow, h));
+      if (uncovered.length) {
+        drift = `DNS allowlist lacks credential proxy hosts ${uncovered.join(', ')}, so those requests are refused; add them to the allowlist with /docker-security from a terminal or the Claude app`;
+      }
     }
     const proxyDown = proxy && !proxyAnswers(proxy.address)
       ? `the credential proxy does not answer at ${proxy.address}, so mapped hosts get no credentials; run \`hermitd restart\` on the host`
       : null;
     const settled = (detail: string) => drift
-      ? {
-          id: 'docker-security',
-          status: 'warn',
-          detail: `${drift}; ask your operator to re-run /docker-security from a terminal or the Claude app`,
-        }
+      ? { id: 'docker-security', status: 'warn', detail: drift }
       : proxyDown ? { id: 'docker-security', status: 'warn', detail: proxyDown }
       : { id: 'docker-security', status: 'ok', detail };
 
-    // Both declared and overlay present. The deep checks below need the docker CLI,
+    // Posture declared. The deep checks below need the docker CLI,
     // which does not exist inside the hermit container — verification is a host-side
     // concern. Gating here (rather than degrading the ENOENT to warn) keeps a
     // dockerized hermit from reporting a permanent, unfixable warn. Gate on live
@@ -655,7 +635,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
       return settled(`${posture} (in-container: compose verification runs on the host)`);
     }
 
-    // Both declared and overlay present — run deeper checks via subprocess.
+    // Posture declared: run deeper checks via subprocess.
     const baseCompose = path.join(projectRoot, 'docker-compose.hermit.yml');
     if (!fs.existsSync(baseCompose)) {
       return settled(posture);
@@ -671,7 +651,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
       return {
         id: 'docker-security',
         status: 'warn',
-        detail: `posture declared and overlay present (could not verify via docker compose: ${e.message.slice(0, 80)})`,
+        detail: `posture declared (could not verify via docker compose: ${e.message.slice(0, 80)})`,
       };
     }
 
@@ -730,7 +710,7 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
           return {
             id: 'docker-security',
             status: 'warn',
-            detail: `posture declared and overlay present (subnet collision check failed: ${e.message.slice(0, 80)})`,
+            detail: `posture declared (subnet collision check failed: ${e.message.slice(0, 80)})`,
           };
         }
       }
@@ -740,6 +720,15 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
   } catch (e: any) {
     return { id: 'docker-security', status: 'fail', detail: `check failed: ${e.message}` };
   }
+}
+
+// A host lifecycle command that stopped with no terminal to ask leaves the change pending;
+// this is the catch-up when its chat notice did not reach the operator.
+function checkDockerApproval(p: DoctorPaths = PATHS) {
+  const note = readApprovalNote(path.join(p.hermitDir, '..'));
+  return note?.status === 'pending'
+    ? { id: 'docker-approval', status: 'warn', detail: 'A Docker change is waiting for your approval. Run `hermitd approve` in a terminal on the host.' }
+    : { id: 'docker-approval', status: 'ok', detail: 'no Docker change waiting for approval' };
 }
 
 // Seeded `ask` rules are inert under bypassPermissions: Claude Code consults no
@@ -753,13 +742,17 @@ function checkPermissionRules(p: DoctorPaths = PATHS, options: { container?: boo
     const read = readConfigOrCovered(id, p);
     if ('covered' in read) return read.covered;
     const mode = read.config.permission_mode;
+    const container = options.container ?? isContainer();
+    // Startup's own condition (hermitd-start), read from the installed file only: it holds
+    // while `managed_ceiling: false` is staged but not rebuilt, and the inert-ask analysis
+    // below would be false, since the session runs in auto mode.
+    if (mode === 'bypassPermissions' && container
+      && readJson(options.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS)?.permissions?.disableBypassPermissionsMode === 'disable') {
+      return { id, status: 'warn', detail: 'permission_mode is bypassPermissions but the image locks bypass mode, so the session runs in auto mode; run `hermitd restart --build` on the host to apply the configured mode' };
+    }
     const managedWarning = (() => {
-      if (!(options.container ?? isContainer()) || read.config.docker?.security?.managed_ceiling === false) return null;
-      // Only a renderer-generated Dockerfile bakes the floor; a toolbox container or an
-      // unconverted Dockerfile has nothing a rebuild would add.
-      let generated = false;
-      try { generated = fs.readFileSync(path.join(p.hermitDir, '..', 'Dockerfile.hermit'), 'utf8').startsWith('# Generated by hermitd '); } catch {}
-      if (!generated) return null;
+      // A toolbox container or an unconverted Dockerfile has nothing a rebuild would add.
+      if (!container || !managedFloorApplies(path.join(p.hermitDir, '..'), read.config)) return null;
       const file = options.managedSettingsPath ?? MANAGED_SECURITY_SETTINGS;
       if (!fs.existsSync(file)) return { id, status: 'warn', detail: 'deny floor missing; rebuild with hermitd update' };
       if (mode !== 'bypassPermissions' && readJson(file)?.permissions?.disableBypassPermissionsMode !== 'disable') {
@@ -2464,6 +2457,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     checkVersionCurrency(p),
     checkPermissionRules(p),
     checkDockerSecurity(p),
+    checkDockerApproval(p),
     checkReflectLoop(p),
     checkScheduler(p),
     checkWatchdog(p),
@@ -2692,7 +2686,7 @@ export {
   checkPermissionRules,
   checkRuntime, checkConfig, checkHooks, checkStateFiles,
   checkCost, checkProposals, checkDependencies, checkVersionCurrency,
-  checkDockerSecurity, checkReflectLoop, checkScheduler,
+  checkDockerSecurity, checkDockerApproval, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
   checkCredentialExpiry, checkChromeAuth, checkBrowser, checkTranscription, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,

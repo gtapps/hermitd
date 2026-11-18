@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setupBrowserHost, securityRenderInput, tailscaleCLI, installHostPrerequisites } from '../scripts/browser-host';
+import { setupBrowserHost, tailscaleCLI, installHostPrerequisites } from '../scripts/browser-host';
 import { browserAppArmorProfile } from '../scripts/lib/browser-runtime';
 import { render } from '../scripts/render-docker-templates';
 import { freshDirFactory } from './helpers/workdir';
@@ -177,8 +177,9 @@ test.serial('missing CLI reports clearly and Windows interop is the final PATH c
   } finally { process.env.PATH = oldPath; f.stop(); }
 });
 
-test.serial('security inputs use the configured domains, network and toggles', () => {
-  expect(securityRenderInput({ network: { enabled: true, subnet: 'subnet', gateway: 'gw', netguard_ip: 'ip', additional_domains: ['one'] }, resources: { sysctls_enabled: true } })).toMatchObject({ network: { subnet: 'subnet', gateway: 'gw', netguard_ip: 'ip' }, fleetDomains: [], additionalDomains: ['one'], toggles: { resources: { sysctlsEnabled: true } } });
+test.serial('the viewer re-renders the security files from config, with no second mapper', () => {
+  const source = fs.readFileSync(path.join(import.meta.dir, '../scripts/browser-host.ts'), 'utf8');
+  expect(source).toContain("script('render-security-overlay'), 'render', project]");
 });
 
 function hostFixture() {

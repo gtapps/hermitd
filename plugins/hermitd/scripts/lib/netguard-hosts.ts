@@ -17,6 +17,9 @@ const TRANSCRIPTION_DOMAINS = [
   'archive.ubuntu.com', 'ports.ubuntu.com', 'huggingface.co', 'hf.co', 'api.groq.com', 'api.openai.com',
 ];
 
+/** Every host a built-in feature can add, enabled or not. */
+export const BUILTIN_FEATURE_HOSTS: readonly string[] = [...Object.values(CHANNEL_DOMAINS).flat(), ...TRANSCRIPTION_DOMAINS];
+
 /** Allowlist domains the settled config's enabled features need, by group. */
 export function featureDomains(config: Json): { channels: string[]; transcription: string[] } {
   return {
