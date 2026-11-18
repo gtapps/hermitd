@@ -386,7 +386,9 @@ function checkForUpgrade(config: Json): void {
     const rel = cmpSemver(pluginVer, configVer);
     if (rel > 0) {
       console.log(`[hermit] Upgrade available: v${configVer} -> v${pluginVer}`);
-      console.log('[hermit] Run /hermitd:hermit-evolve inside Claude Code');
+      console.log(config.always_on === true
+        ? '[hermit] The agent applies it after this start, then restarts once when quiet.'
+        : '[hermit] Type /hermitd:hermit-evolve in the agent session, from a terminal or the Claude app');
     } else if (rel < 0) {
       console.log(`[hermit] Stale plugin runtime: boot scripts loaded v${pluginVer} from ${PLUGIN_ROOT},`);
       console.log(`[hermit] older than this hermit's applied state v${configVer}. hermit-evolve cannot fix this.`);

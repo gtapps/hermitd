@@ -49,6 +49,7 @@ import { isPaused, pauseReasonLabel } from './lib/pause';
 import { LOCKED, EN_MESSAGES, loadMessages, type Messages } from './lib/messages';
 import { claudeStateFile, credentialsFilePath, defaultConfigDir, envAuthPresent, loginStatus, msUntilExpiry, resolveAuthMode } from './lib/setup-token';
 import { isContainer } from './lib/container';
+import { parseExpectPairs } from './lib/request-restart';
 import { writeFileAtomic } from './lib/md-write';
 import { promptTokensOf as promptTokens, compactibleTokens, MAX_PLAUSIBLE_PROMPT_TOKENS, isOwnTurn } from './lib/context-signal';
 import { readContextSurface } from './lib/context-surface';
@@ -316,6 +317,10 @@ export function composeSessionWedgedMessage(timezone: string, m: Messages = OPER
 /** Operator-language message for a likely orphan (tmux gone, state still fresh). */
 export function composeOrphanMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
   return m.t('watchdog_orphan', { time: nowHHMM(timezone), command: LOCKED.orphan_command });
+}
+
+export function composeRestartDroppedMessage(timezone: string, m: Messages = OPERATOR_MESSAGES): string {
+  return m.t('watchdog_restart_dropped', { time: nowHHMM(timezone), command: LOCKED.restart_command });
 }
 
 /** Operator-language message for an upstream API failure — see ApiFailureVerdict. */
@@ -2472,6 +2477,37 @@ async function cmdRestart(reason: string): Promise<void> {
   await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', true);
 }
 
+export type QuietRestart = UpgradeReadiness | { status: 'replaced' };
+
+/** Wait like awaitUpgrade, then confirm the session that asked is still the one running. */
+export async function awaitQuietRestart(hermitRoot: string, expected: Record<string, string>, boot: string | null,
+  options: Parameters<typeof awaitUpgrade>[2] = {}): Promise<QuietRestart> {
+  const ready = await awaitUpgrade(hermitRoot, expected, options);
+  if (ready.status === 'timeout') return ready;
+  const runtime = readRuntimeJson(path.join(hermitRoot, 'state'));
+  return boot !== null && String(runtime?.session_pid ?? '') !== boot ? { status: 'replaced' } : ready;
+}
+
+/** A restart requested from inside the session: wait for the versions and a quiet moment first. */
+async function cmdQuietRestart(reason: string, expected: Record<string, string>, boot: string | null): Promise<void> {
+  const outcome = await awaitQuietRestart(HERMIT_ROOT, expected, boot);
+  if (outcome.status === 'ready') return cmdRestart(reason);
+  appendEvent('restart-dropped', outcome.status === 'timeout' ? outcome.reason : 'session_replaced');
+  if (outcome.status === 'replaced') return;
+  const config: Json = readSettledConfig(HERMIT_ROOT);
+  OPERATOR_MESSAGES = loadMessages(HERMIT_ROOT, config.language);
+  pushOperatorMessage(composeRestartDroppedMessage(config.timezone ?? 'UTC'));
+}
+
+/** `restart <reason> [--when-quiet [--boot <pid>] [--expect name=version]...]`, in that order. */
+function parseRestartFlags(args: string[]): { quiet: boolean; boot: string | null; expected: Record<string, string> } | null {
+  if (!args.length) return { quiet: false, boot: null, expected: {} };
+  if (args[0] !== '--when-quiet') return null;
+  const boot = args[1] === '--boot' && /^\d+$/.test(args[2] ?? '') ? args[2]! : null;
+  const expected = parseExpectPairs(args.slice(boot ? 3 : 1));
+  return expected ? { quiet: true, boot, expected } : null;
+}
+
 export type UpgradeReadiness = { status: 'ready' } | { status: 'timeout'; reason: string };
 
 /** Wait for migrations first, then a quiet execution boundary. */
@@ -2519,19 +2555,21 @@ if (import.meta.main) {
   } else if (subcommand === 'uninstall') {
     cmdUninstall();
   } else if (subcommand === 'await-upgrade') {
-    const expected: Record<string, string> = {};
-    for (let i = 3; i < process.argv.length; i += 2) {
-      const pair = process.argv[i + 1] ?? '';
-      const equals = pair.indexOf('=');
-      if (process.argv[i] !== '--expect' || equals < 1 || equals === pair.length - 1) {
-        console.log(JSON.stringify({ error: 'invalid_expect' }));
-        process.exit(1);
-      }
-      expected[pair.slice(0, equals)] = pair.slice(equals + 1);
+    const expected = parseExpectPairs(process.argv.slice(3));
+    if (!expected) {
+      console.log(JSON.stringify({ error: 'invalid_expect' }));
+      process.exit(1);
     }
     console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected)));
   } else if (subcommand === 'restart') {
-    await cmdRestart(process.argv[3] ?? 'manual');
+    const reason = process.argv[3] ?? 'manual';
+    const flags = parseRestartFlags(process.argv.slice(4));
+    if (!flags) {
+      process.stderr.write('[watchdog] restart: invalid flags\n');
+      process.exit(1);
+    }
+    if (flags.quiet) await cmdQuietRestart(reason, flags.expected, flags.boot);
+    else await cmdRestart(reason);
   } else {
     process.stderr.write(`[watchdog] unknown subcommand: ${subcommand}\n`);
     process.exit(1);

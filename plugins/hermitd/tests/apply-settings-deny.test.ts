@@ -85,16 +85,49 @@ describe('apply-settings.ts deny', () => {
     expect(JSON.stringify(settings)).not.toContain('Write(');
   });
 
-  // The ask-only and hardened tests above carry every ASK entry; this pins the spellings.
-  test('every hermitd update spelling is a seeded ask rule', () => {
-    for (const pattern of [
-      'Bash(hermitd update*)',
-      'Bash(*/hermitd update*)',
-      'Bash(*.hermit/bin/hermitd-update*)',
-      'Bash(*.hermit/bin/hermitd-run hermitd-update*)',
-      'Bash(hermitd run *hermitd-update*)',
-      'Bash(*/hermitd run *hermitd-update*)',
-    ]) expect(ASK).toContain(pattern);
+  const UPDATE_SPELLINGS = [
+    'Bash(hermitd update*)',
+    'Bash(*/hermitd update*)',
+    'Bash(*.hermit/bin/hermitd-update*)',
+    'Bash(*.hermit/bin/hermitd-run hermitd-update*)',
+    'Bash(hermitd run *hermitd-update*)',
+    'Bash(*/hermitd run *hermitd-update*)',
+  ];
+
+  // The standard and hardened tests above carry every DENY entry; this pins the spellings.
+  test('every hermitd update spelling is a seeded deny rule, not an ask', () => {
+    for (const pattern of UPDATE_SPELLINGS) {
+      expect(DENY).toContain(pattern);
+      expect(ASK).not.toContain(pattern);
+    }
+  });
+
+  test('deny deny-only adds the missing deny rules to a seeded Standard install', async () => {
+    const dir = freshDir();
+    const file = seedSettings(dir, {
+      permissions: { deny: [DENY[0], 'Bash(operator-own*)'], ask: [...UPDATE_SPELLINGS] },
+    });
+    const r = await runScript('apply-settings.ts', { args: [file, 'deny', 'deny-only'] });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ added: DENY.slice(1) });
+    const settings = readSettings(file);
+    for (const pattern of [...DENY, 'Bash(operator-own*)']) expect(settings.permissions.deny).toContain(pattern);
+    expect(settings.permissions.ask).toEqual(UPDATE_SPELLINGS);
+  });
+
+  test('deny deny-only adds nothing on Hardened and skips an unseeded file', async () => {
+    const dir = freshDir();
+    const hardened = seedSettings(dir, { permissions: { deny: ['Bash(operator-own*)'] } });
+    await runScript('apply-settings.ts', { args: [hardened, 'deny', 'hardened'] });
+    const before = fs.readFileSync(hardened, 'utf8');
+    let r = await runScript('apply-settings.ts', { args: [hardened, 'deny', 'deny-only'] });
+    expect(JSON.parse(r.stdout)).toEqual({ added: [] });
+    expect(fs.readFileSync(hardened, 'utf8')).toBe(before);
+    const virgin = seedSettings(freshDir(), { permissions: { deny: ['Bash(operator-own*)'] } });
+    const untouched = fs.readFileSync(virgin, 'utf8');
+    r = await runScript('apply-settings.ts', { args: [virgin, 'deny', 'deny-only'] });
+    expect(JSON.parse(r.stdout)).toEqual({ status: 'skipped', reason: 'not_seeded' });
+    expect(fs.readFileSync(virgin, 'utf8')).toBe(untouched);
   });
 
   test('trust-workspace apply spellings are seeded asks, but check is not', () => {

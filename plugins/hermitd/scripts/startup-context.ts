@@ -580,8 +580,8 @@ function emitFullContext(source: string | null) {
       if (v?.status === 'upgrade_available') {
         title = 'Upgrade Available';
         text = `Plugin v${v.plugin_version} ≠ config v${v.config_version}. ` + (v.always_on
-          ? 'REQUIRED: run /hermitd:hermit-evolve unattended NOW, before any other work this session.'
-          : 'Run /hermitd:hermit-evolve');
+          ? 'The upgrade runs by itself after this boot turn, then the agent restarts once when quiet. Continue normally.'
+          : 'Tell the operator to type /hermitd:hermit-evolve in a terminal or the Claude app.');
       } else if (v?.status === 'stale_plugin_runtime') {
         title = 'Stale Plugin Runtime';
         text = `Loaded plugin v${v.plugin_version} is older than this hermit's applied state v${v.config_version}: a stale install copy. hermit-evolve cannot fix this: find the \`claude plugin list\` entry matching the path below, run \`claude plugin update hermitd@hermitd --scope <its scope>\`, then restart.\n`

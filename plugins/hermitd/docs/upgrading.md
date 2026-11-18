@@ -21,9 +21,18 @@ Docker agents also accept `--plugins-only` (update plugins and restart the conta
 
 Docker updates check for pending Docker input changes before updating the host plugin. The upgrade inside the container can also change those inputs and trigger a second check before rebuilding or restarting. Approval requires a terminal `y`, including with `--yes`. If the command stops for approval, run `hermitd approve` in a terminal, then rerun `hermitd update` to finish. See the [host trust boundary](docker-security.md#host-trust-boundary).
 
-Always-on hermits do this on their own: the resident-start upgrade banner triggers `hermit-evolve unattended` automatically.
+Always-on agents do this on their own: when one starts with a version gap, it finishes its startup turn, runs `hermit-evolve unattended` from its own command queue, and restarts once when quiet so the next start runs on the migrated state. If the agent's command queue is not loaded, the upgrade waits and `hermitd doctor` reports the gap.
 
-From chat, ask a host hermit to update itself: it asks for approval through Claude Code's permission prompt, which only DM-paired users can answer, then restarts once when quiet. Docker hermits are updated from the host. See [security](security.md#trust-model).
+### Typed management commands
+
+A host agent's own session takes four management commands, typed by the operator in a terminal or in the Claude app (Remote Control). Chat cannot start them; the upgrade at start above is the only one the agent runs by itself:
+
+- `/hermitd:hermit-update` runs `hermitd update` without its prompt, then restarts the agent once the upgrade has applied and the agent is quiet.
+- `/hermitd:hermit-restart` restarts the agent once it has been quiet for about a minute; the conversation resumes. If the agent stays busy for 15 minutes, the restart is dropped and the agent says so.
+- `/hermitd:doctor-fix` runs `hermitd doctor --fix` and relays its result.
+- `/hermitd:hermit-evolve` applies a pending upgrade by hand.
+
+Each one runs only on a turn that opens with that typed command; asking in prose, from chat or from another command is refused. Typed update and repair work on Standard and Hardened alike. On a Docker agent, `/hermitd:hermit-restart` restarts the session inside the container, while update and repair answer that they run on the host: use `hermitd update` and `hermitd doctor --fix` there. The `hermitd update` spellings are denied in the agent's own shell on every install. See [security](security.md#trust-model).
 
 Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; after a wait timeout, or an interrupt before the restart, nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
 

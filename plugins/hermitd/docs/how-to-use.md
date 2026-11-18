@@ -166,7 +166,7 @@ You're always in control. Hermit suggests. You decide.
 ## Tips
 
 - **Don't create session/proposal files by hand.** Skills handle lifecycle tracking.
-- **After plugin updates**, run `/hermitd:hermit-evolve`.
+- **Manage the agent by typing.** In a terminal or the Claude app, type `/hermitd:hermit-update`, `/hermitd:hermit-restart`, `/hermitd:doctor-fix` or `/hermitd:hermit-evolve`. Chat cannot start them.
 - **Talk to your hermit.** Ask how it can improve. It gets better when you tell it what you need.
 
 ---
@@ -344,7 +344,7 @@ Most common actions auto-trigger from natural language — just say what you mea
 | **Status**     | `brief`                                                            |
 | **Monitoring** | `watch`, `heartbeat`                                               |
 | **Learning**   | `proposal-create`, `reflect`, `dream`      |
-| **Config**     | `hermit-settings`, `hatch`, `hermit-evolve`                        |
+| **Config**     | `hermit-settings`, `hatch`; `hermit-update`, `hermit-restart`, `doctor-fix`, `hermit-evolve` (typed only) |
 | **Docker**     | `docker-customize`; `docker-setup`, `docker-security` (type the last two; they never auto-trigger) |
 | **Channels**   | `channel-responder`, `voice-notes`                                 |
 | **Summaries**  | `hermit-evolution`, `hermit-health`, `weekly-review`              |

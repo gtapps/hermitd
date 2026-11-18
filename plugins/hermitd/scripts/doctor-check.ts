@@ -388,6 +388,7 @@ function checkDependencies(p: DoctorPaths = PATHS) {
 }
 
 // ----------------- Version currency -----------------
+const UPDATE_STEP = 'type `/hermitd:hermit-update` in a terminal or the Claude app (Docker: `hermitd update` on the host)';
 // The version-gap signal hermit-evolve's evolve-plan.ts computes (recorded-vs-installed)
 // is reactive — it only reports once the operator runs /hermit-evolve. This check is the
 // proactive half: "is a newer version already sitting in the local marketplace cache that
@@ -493,11 +494,11 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
     const row = { id: 'version-currency', installed_version: installedVersion };
     if (relation > 0) {
       const pending = pendingPurpose(p.hermitDir, 'upgrade');
-      return { ...row, status: 'warn', detail: `${versions} — upgrade ${pending ? `queued at ${pending.requested_at}` : 'pending; run `hermitd doctor --fix`'}`,
+      return { ...row, status: 'warn', detail: `${versions} — upgrade ${pending ? `queued at ${pending.requested_at}` : 'pending; type `/hermitd:hermit-evolve` in a terminal or the Claude app'}`,
         ...(!pending ? { fix: 'evolve' } : {}) };
     }
-    if (relation < 0) return { ...row, status: 'warn', detail: `${versions} — run \`hermitd update\`` };
-    if (markerState === 'stale') return { ...row, status: 'warn', detail: `${versions} — rerun \`hermitd update\`` };
+    if (relation < 0) return { ...row, status: 'warn', detail: `${versions} — ${UPDATE_STEP}` };
+    if (markerState === 'stale') return { ...row, status: 'warn', detail: `${versions} — ${UPDATE_STEP} again` };
     if (markerState === 'fresh') return { ...row, status: 'ok', detail: versions };
 
     const mpFile = marketplaceCacheFile(coreName, p);
@@ -539,7 +540,7 @@ function checkVersionCurrency(p: DoctorPaths = PATHS) {
     return {
       ...row,
       status: 'warn',
-      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — run \`hermitd update\` from a host terminal (it also applies the permission list), or \`/plugin marketplace update\` then \`/plugin update\`, then /hermitd:hermit-evolve`,
+      detail: `installed ${installedVersion}, marketplace cache has ${cachedVersion}${cachedAt}${escalation} — ${UPDATE_STEP}`,
     };
   } catch (e: any) {
     return { id: 'version-currency', status: 'warn', detail: `check failed: ${e.message}` };
@@ -2457,7 +2458,7 @@ function checkMessageCatalog(p: DoctorPaths = PATHS) {
       if (!a.live) issues.push(`no ${language} translations (run /hermitd:hermit-settings language)`);
       else {
         const redo = a.stale.length + a.invalid.length + a.missing.length;
-        if (redo > 0) issues.push(`${redo} message(s) not translated for the current version (run /hermitd:hermit-evolve or /hermitd:hermit-settings language)`);
+        if (redo > 0) issues.push(`${redo} message(s) not translated for the current version (type /hermitd:hermit-evolve in a terminal or the Claude app, or run /hermitd:hermit-settings language)`);
       }
     }
     if (a.invalidOverrides.length > 0) issues.push(`custom wording no longer fits: ${a.invalidOverrides.join(', ')}`);

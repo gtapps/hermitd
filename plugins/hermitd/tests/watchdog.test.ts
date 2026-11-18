@@ -20,7 +20,7 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  awaitUpgrade, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, awaitQuietRestart, composeRestartDroppedMessage, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
   maybeContextCompact, readHarnessOutcomes, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
@@ -162,11 +162,11 @@ const isoAgoSeconds = (hours: number) =>
 /** Spawn the watchdog. restrictPath limits PATH to the fake bin dir (no systemctl).
  *  preload inserts a `--preload <path>` module ahead of the script, used to force
  *  process.platform for the darwin-gated launchd install branch on Linux CI. */
-async function watchdog(h: Hermit, sub: string, opts: { restrictPath?: boolean; env?: Record<string, string>; preload?: string } = {}) {
+async function watchdog(h: Hermit, sub: string, opts: { restrictPath?: boolean; env?: Record<string, string>; preload?: string; args?: string[] } = {}) {
   const proc = Bun.spawn({
     cmd: opts.preload
-      ? [process.execPath, '--preload', opts.preload, ...WATCHDOG_CMD.slice(1), sub]
-      : [...WATCHDOG_CMD, sub],
+      ? [process.execPath, '--preload', opts.preload, ...WATCHDOG_CMD.slice(1), sub, ...(opts.args ?? [])]
+      : [...WATCHDOG_CMD, sub, ...(opts.args ?? [])],
     cwd: h.dir,
     env: {
       ...process.env,
@@ -651,6 +651,36 @@ describe('restart subcommand', () => {
       stub.stop();
     }
   }), 45000);
+
+  test('restart --when-quiet restarts once the boundary passes and the boot still matches', withHermit(async (h) => {
+    writeConfig(h);
+    patchRuntime(h, { session_pid: '4242' });
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    const r = await watchdog(h, 'restart', { args: ['requested', '--when-quiet', '--boot', '4242'] });
+    expect(r.exitCode).toBe(0);
+    expect(await waitForStartMarker(h)).toBe(true);
+    const events = fs.readFileSync(eventsFile(h), 'utf-8').trim().split('\n').map(line => JSON.parse(line));
+    expect(events.some(e => e.action === 'restart' && e.requested === true)).toBe(true);
+  }), 45000);
+
+  test('restart --when-quiet from a replaced session restarts nothing', withHermit(async (h) => {
+    writeConfig(h);
+    patchRuntime(h, { session_pid: '5555' });
+    writeFakeTmux(h, 0);
+    writeFakePgrep(h, 1);
+    const r = await watchdog(h, 'restart', { args: ['requested', '--when-quiet', '--boot', '4242'] });
+    expect(r.exitCode).toBe(0);
+    const last = JSON.parse(fs.readFileSync(eventsFile(h), 'utf-8').trim().split('\n').pop()!);
+    expect(last).toMatchObject({ action: 'restart-dropped', reason: 'session_replaced' });
+    expect(fs.existsSync(path.join(h.dir, 'hermit-start-args'))).toBe(false);
+  }));
+
+  test('restart rejects an unknown flag', withHermit(async (h) => {
+    writeConfig(h);
+    const r = await watchdog(h, 'restart', { args: ['requested', '--soon'] });
+    expect(r.exitCode).toBe(1);
+  }));
 });
 
 // -------------------------------------------------------
@@ -5644,6 +5674,21 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
 
 
 describe('await-upgrade', () => {
+  test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {
+    const root = path.join(h.dir, '.hermit');
+    patchRuntime(h, { session_pid: '4242' });
+    expect(await awaitQuietRestart(root, {}, '4242')).toEqual({ status: 'ready' });
+    expect(await awaitQuietRestart(root, {}, null)).toEqual({ status: 'ready' });
+    expect(await awaitQuietRestart(root, {}, '1')).toEqual({ status: 'replaced' });
+    let clock = 0;
+    expect(await awaitQuietRestart(root, {}, '4242', {
+      now: () => clock, sleep: async (ms) => { clock += ms; }, quietCapMs: 30, pollMs: 15,
+      boundary: () => ({ ok: false, reason: 'worker-running' }),
+    })).toEqual({ status: 'timeout', reason: 'worker_running' });
+  }));
+  test('the dropped-restart notice names the typed command', () => {
+    expect(composeRestartDroppedMessage('UTC', EN_MESSAGES)).toContain('`/hermitd:hermit-restart`');
+  });
   test('ready at an idle boundary, with no expected versions', withHermit(async (h) => {
     expect(await awaitUpgrade(path.join(h.dir, '.hermit'))).toEqual({ status: 'ready' });
   }));

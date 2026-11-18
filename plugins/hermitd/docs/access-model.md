@@ -42,7 +42,7 @@ Each tool uses one account for every chat and routine in the resident. Anyone ad
 
 Native settings own project MCP enrollment through `enabledMcpjsonServers`, `enableAllProjectMcpServers`, and `disabledMcpjsonServers`. Without approval, a project server stays pending without blocking boot. Remove approvals in every applicable native scope, including blanket approval, or explicitly disable the server to exclude it at restart. Removing enrollment does not delete its declaration or credentials. A temporary `/mcp` toggle does not remove the saved approval.
 
-Native `disableClaudeAiConnectors` owns account connector loading. When unset, a login-authenticated hermit loads account connectors; setting it to `true` disables them for the project without deleting account connections. Removing the setting restores default loading at restart. Setup-token authentication fetches no account connectors. See [MCP servers](always-on.md#mcp-servers).
+Account connectors are added and authorized on claude.ai, and each one reaches every chat the agent serves, so a shared agent belongs on a dedicated account. See [Claude Code MCP](https://code.claude.com/docs/en/mcp). Native `disableClaudeAiConnectors` owns account connector loading. When unset, a login-authenticated hermit loads account connectors; setting it to `true` disables them for the project without deleting account connections. Removing the setting restores default loading at restart. Setup-token authentication fetches no account connectors. See [MCP servers](always-on.md#mcp-servers).
 
 ## Browser phone takeover
 

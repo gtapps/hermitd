@@ -126,7 +126,7 @@ function neverFires(schedule: string): boolean {
 }
 
 function retiredKeyWarning(key: string): string {
-  return `${key} is retired and no longer read; run /hermitd:hermit-evolve to remove it`;
+  return `${key} is retired and no longer read; type /hermitd:hermit-evolve in a terminal or the Claude app to remove it`;
 }
 
 // Warning-only and specialized grammars retain their existing validation below.

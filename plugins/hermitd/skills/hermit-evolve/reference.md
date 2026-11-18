@@ -42,7 +42,7 @@ The evolve-runner body supplies the absolute plugin root for non-command files a
   Install:  curl -fsSL https://bun.sh/install | bash
   Upgrade:  bun upgrade
 
-  Then re-run /hermitd:hermit-evolve.
+  Then type /hermitd:hermit-evolve again.
   ```
 
   Then **stop. Do not prompt to bypass and do not continue the upgrade** — completing
