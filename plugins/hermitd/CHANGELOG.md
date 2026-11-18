@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- `channel-setup` asks whether a new third-party channel is members-only and registers the answer; `/hermitd:hermit-settings channels` can set or clear `members_only`
+- `/hermitd:hermit-settings channels` can set or clear `members_only`, and `channel-register` accepts it
 - `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
 - `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands, `hermitd-status` and `hermitd-attach` run there target that root, so a stray boot no longer splits state or blocks helper reports
 

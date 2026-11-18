@@ -67,7 +67,7 @@ Set up the hermitd connector for my agent by following https://github.com/gtapps
    claude plugin install hermitd-connector --marketplace gtapps/hermitd --scope local
    ```
 
-   In Claude Code, type `/hermitd:channel-setup`, choose **Other**, and use channel key `connector`. Answer yes to the members-only question (a protected setting, so it asks for your approval), so nobody on it gets operator authority and the agent never sends notices there. Leave `allowed_users` unset: only people you pair get through the connector server.
+   First ask the agent to set `channels.connector.members_only` to `true` (a protected setting, so it asks for your approval), so nobody on it gets operator authority and the agent never sends notices there, from the first message on. Then type `/hermitd:channel-setup`, choose **Other**, and use channel key `connector`; registration keeps the setting. Leave `allowed_users` unset: only people you pair get through the connector server.
 
 4. **Restart the agent** with `hermitd restart`, or `hermitd restart --build` on Docker, where the image must allow the new channel and the approval prompt names it. On a tmux install, first add the Claude Code channel policy that `/hermitd:channel-setup` gives you. `hermitd connector status` should show the server `running` and the channel connected.
 
