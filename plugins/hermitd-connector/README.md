@@ -28,7 +28,15 @@ The connector server ships with core `hermitd` and starts and stops with the age
 
 ## Set up
 
-Run these on the agent's machine, from the agent's folder.
+**Let the agent do it.** Open the tunnel (step 1) first, then send this to the agent from its terminal or the Claude app:
+
+```text
+Set up the hermitd-connector channel by following its README. My public address is https://agent.example.com, tunneled to local port 8790. Do every step you can and list what I must run myself.
+```
+
+It hands back what only you can do, such as host commands and the restart, and asks you to approve the `members_only` setting.
+
+**Or do it by hand.** Run these on the agent's machine, from the agent's folder.
 
 1. **Open a tunnel** to a free local port, here `8790`. Any tunnel that serves public HTTPS on 443 works. Two common ones:
 
