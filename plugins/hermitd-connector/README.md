@@ -28,10 +28,10 @@ The connector server ships with core `hermitd` and starts and stops with the age
 
 ## Set up
 
-**Let an AI assistant do it.** On the agent's machine, open Claude Code, Codex or another coding assistant in the agent's folder and send:
+**Let an AI assistant do it.** On the agent's machine, open Claude Code, Codex or another coding assistant and send:
 
 ```text
-Set up the hermitd connector for the agent in this folder by following https://github.com/gtapps/hermitd/blob/main/plugins/hermitd-connector/README.md. Ask me which tunnel I want first. Stop and tell me when something needs my login or approval, and before restarting the agent.
+Set up the hermitd connector for my agent by following https://github.com/gtapps/hermitd/blob/main/plugins/hermitd-connector/README.md. First ask me which agent folder and which tunnel I want. Hand me each Claude Code command I have to type myself. Stop and tell me when something needs my login or approval, and before restarting the agent.
 ```
 
 **Or do it by hand.** Run these on the agent's machine, from the agent's folder.
