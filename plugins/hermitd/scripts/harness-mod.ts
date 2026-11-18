@@ -3,14 +3,16 @@ import { reconcileRoutines } from './lib/routines/recover';
 import { clearRecoveryPending, reconcileChannels } from './lib/channel-recovery';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readSettledConfig } from './lib/config-read';
+import { spawnSync } from 'node:child_process';
+import { readConfigRaw, readSettledConfig } from './lib/config-read';
+import { requestRestart } from './lib/request-restart';
 import { hermitDir, transcriptDirFor } from './lib/cc-compat';
 import { readJson } from './lib/cli';
 import { readRuntimeJson } from './lib/runtime';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
-  approvalReason, APPROVAL_CHECK_FAILED, APPROVAL_PROMPT_REFUSED, claim, enqueue, finalize, MOD_LOADED_FILE, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
+  approvalReason, APPROVAL_CHECK_FAILED, APPROVAL_PROMPT_REFUSED, claim, enqueue, finalize, MOD_LOADED_FILE, pendingPurpose, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
   type Leg, type QueueEntry, type ReplyTarget, type Unanswered,
 } from './lib/harness-mod';
 
@@ -18,6 +20,24 @@ import {
 // in the same copy, so a reload that replaced the mod also replaced this file.
 function ownVersion(): string {
   return readJson(path.join(import.meta.dir, '..', '.claude-plugin', 'plugin.json'))?.version ?? 'unknown';
+}
+
+/** An always-on agent that starts with a version gap migrates from the queue after its boot
+ *  turn, then restarts once when quiet so the next boot runs on the migrated state. */
+function queueStartUpgrade(dir: string): void {
+  const config = readConfigRaw(dir);
+  if (config?.always_on !== true || config._hermit_versions?.hermitd === ownVersion()) return;
+  const check = spawnSync('bash', [path.join(import.meta.dir, 'check-upgrade.sh'), path.join(import.meta.dir, '..')], {
+    cwd: path.dirname(dir), encoding: 'utf8', timeout: 5000,
+  });
+  const verdict = (() => { try { return JSON.parse(check.stdout); } catch { return null; } })();
+  if (verdict?.status !== 'upgrade_available' || verdict.always_on !== true || pendingPurpose(dir, 'upgrade')) return;
+  const queued = enqueue(dir, {
+    source: 'update', purpose: 'upgrade', expect_version: verdict.plugin_version,
+    commands: [{ command: '/hermitd:hermit-evolve', arg: 'unattended' }],
+  });
+  if (queued.status !== 'queued') return;
+  requestRestart(dir, 'requested', { expect: { hermitd: verdict.plugin_version }, boot: readRuntimeJson(path.join(dir, 'state'))?.session_pid });
 }
 
 const REFUSALS: Record<string, string> = {
@@ -92,6 +112,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     }
     case 'loaded':
       writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
+      try { queueStartUpgrade(dir); } catch { /* doctor reports a version gap that stays */ }
       return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId, approvals: readSettledConfig(dir).approvals };
     case 'reconcile': {
       const options = payload ? JSON.parse(payload) : {};

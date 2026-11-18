@@ -195,7 +195,7 @@ The Docker entrypoint seeds workspace trust but does not approve servers declare
 
 A project server loads only when approved through native settings. Use the list above for individual servers, or set `enableAllProjectMcpServers: true` in the same file to approve all project servers. A server listed in `disabledMcpjsonServers` remains excluded. An unlisted server stays pending without stalling boot or prompting in chat. To revoke enrollment at the next restart, remove its name from the approval list (and turn off blanket approval if enabled), or add it to `disabledMcpjsonServers` in the same file. Approval in other native settings scopes must also be removed. Toggling a server off in `/mcp` records the change in the config volume's `.claude.json`, which the harness does not consult for `.mcp.json` approval, so a server left listed in settings comes back on the next boot.
 
-A hermit using `auth_mode: login` loads every connector on the operator's claude.ai account by default. To turn them all off for this project, add this setting to the same `.claude/settings.json` file:
+A hermit using `auth_mode: login` loads every connector on the operator's claude.ai account by default. Account connectors are added and authorized on claude.ai, not in the agent, and each one reaches every chat the agent serves; for an agent shared with other people, sign it in with a dedicated account that holds only the connectors they should reach. To turn them all off for this project, add this setting to the same `.claude/settings.json` file:
 
 ```json
 {

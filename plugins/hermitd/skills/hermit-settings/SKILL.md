@@ -122,6 +122,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 
 The enum values, dotted paths, and "applies" notes come from `scripts/lib/settings/registry.ts`, the same module `show` reads and `validate-config.ts` shares its enums with. When a setting is added, add the row there; this table mirrors it.
 
+A change that applies at the next start or restart on a host agent takes effect when the operator types `/hermitd:hermit-restart` in a terminal or the Claude app; say so when relaying it.
+
 **`model` takes whatever Claude Code takes.** The stored value is passed verbatim to `--model` by `hermitd-start.ts`, so no model list lives here. Offer the operator the aliases Claude Code itself accepts (`opus`, `sonnet`, `haiku`) or a full model ID, and pass it through.
 
 **Permission-mode note (surface when the operator picks one):** `auto` is classifier-reviewed autonomy and the default; `acceptEdits` auto-approves file edits but prompts for shell; `default` prompts on first use of each tool; `plan` is read-only; `dontAsk` denies anything not in `permissions.allow`; `bypassPermissions` is for isolated containers only. `auto` may report unavailable depending on plan/model/provider — see [Permission Modes](https://code.claude.com/docs/en/permission-modes).
@@ -209,7 +211,7 @@ Loop until operator says "done":
 
 - **primary <name>:** Validate `<name>` exists as a key in `channels` (and is not `primary` itself). If valid, `set channels.primary <name>`. If invalid, reject: "No channel named `<name>` configured. Add it first with `add <name>`."
 - **primary clear:** `unset channels.primary`. Outbound sends will fall back to the default `discord` → `telegram` → `imessage` order.
-Note: "Channel changes take effect on next `hermitd-start` run. `channels.primary` and `default_chat_id` are consulted live by `scripts/resolve-outbound-channel.ts` on every proactive send — no restart needed for those keys."
+Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:hermit-restart` in a terminal or the Claude app). `channels.primary` and `default_chat_id` are consulted live by `scripts/resolve-outbound-channel.ts` on every proactive send — no restart needed for those keys."
 
 **If argument is "brief":**
 - If no channels configured: "Morning brief requires channels. Configure channels first with `/hermitd:hermit-settings channels`."
@@ -354,7 +356,7 @@ Note: "Channel changes take effect on next `hermitd-start` run. `channels.primar
   - If input targets a protected key: reject with the message above
   - If input is `remove <KEY>`: `unset env.<KEY>`
   - If input is `<KEY> <VALUE>`: `set env.<KEY> '"<VALUE>"'` — env values must stay **strings**, and `set` JSON-parses its argument, so a bare `20000` would land as a number and reach the launch overlay as one.
-- Note: "Env changes reach the session through the launch overlay at the next `hermitd-start`. Restart the hermit to apply them."
+- Note: "Env changes reach the session through the launch overlay at the next `hermitd-start`. Type `/hermitd:hermit-restart` in a terminal or the Claude app to apply them."
 
 **If argument is "docker":**
 - Show current `docker.packages` list:

@@ -2,8 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `/hermitd:hermit-update`, `/hermitd:hermit-restart` and `/hermitd:doctor-fix` update, restart and repair a host agent when typed into its session from a terminal or the Claude app. They run only on a turn that opens with the matching typed command; on a Docker agent, update and repair answer that they run on the host.
+- A restart requested from inside the agent waits until it is quiet; one that finds no quiet moment within 15 minutes is dropped and the operator is told once.
+
 ### Changed
 
+- `/hermitd:hermit-evolve` is typed-only. An always-on agent that starts with a version gap runs the upgrade from its own command queue after its startup turn, then restarts once when quiet.
+- A `hermitd update` run from the agent's own session is followed by one restart once the upgrade has applied.
+- Updating from chat is removed: every `hermitd update` spelling is denied in the agent's own shell on every install.
 - `docker-setup` and `channel-setup` share credential and admission steps, including private token entry and a single wake-access question after pairing.
 - On hosts, `channel-setup start` starts a new always-on agent before pairing, and `channel-setup` can restart a running agent with consent while keeping its conversation. The agent’s own Claude app session supports adding its first channel.
 - For Docker channel changes, `channel-setup` waits for the operator’s terminal start or restart and continues to pairing after checking the service. First-time Docker setup keeps registered third-party channel plugins in the boot list.
@@ -12,6 +20,12 @@
 
 - Voice notes in a Docker image without ffmpeg report that they could not be transcribed instead of attempting a bundled ffmpeg download that needs `xz`, and doctor shows this as informational rather than a warning or an earlier install error
 - Upgrade reports on unconverted Docker installs name the host Convert step instead of asking for a rebuild that changes nothing
+
+### Upgrade Instructions
+
+1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny deny-only` to add the seeded deny entries this install is missing, which now include every `hermitd update` spelling. Report the added entries or the unseeded skip. This is additive and idempotent; operator-added rules and the existing ask entries stay as they are, and no leftover check is needed.
+
+   Tell the operator: updating, restarting and repairing the agent are now typed commands, `/hermitd:hermit-update`, `/hermitd:hermit-restart` and `/hermitd:doctor-fix`, entered in a terminal or the Claude app; asking from chat no longer runs them.
 
 ## [1.4.35] - 2026-11-18
 

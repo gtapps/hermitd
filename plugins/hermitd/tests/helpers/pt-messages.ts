@@ -69,6 +69,7 @@ const PT_TEXT: Record<MessageKey, string> = {
   watchdog_paused_until_date: 'O seu agente está em pausa ({label}) até {boundary}.',
   watchdog_stall_question: 'O seu agente está à espera de uma pergunta que não pode fazer pelo chat — abra o terminal ou a app Claude para responder ({time}).',
   watchdog_stall_permission: 'O agente pediu autorização para continuar e está à espera de resposta ({time}). Retoma onde parou assim que alguém aprovar.',
+  watchdog_restart_dropped: 'O seu agente não foi reiniciado ({time}): esteve ocupado, ou a atualização não terminou, durante demasiado tempo. Escreva {command} outra vez quando estiver parado.',
   watchdog_session_wedged: 'O seu agente deixou de executar o trabalho agendado — algo no ecrã está a bloqueá-lo. Abra o terminal ou a app Claude e resolva o que está à espera ({time}).',
   watchdog_orphan: 'A sessão do seu agente terminou mas pode haver um processo ainda a correr ({time}). Se continuar a responder, pare-o no terminal: corra {command} e faça kill desse PID.',
   watchdog_lapsed_login: 'A sua sessão Claude expirou, por isso o seu agente não consegue trabalhar até voltar a autenticar-se ({time}). {fix}',

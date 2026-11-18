@@ -98,6 +98,7 @@ export const EN = {
   watchdog_paused_until_date: 'Your agent is paused ({label}) until {boundary}.',
   watchdog_stall_question: "Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer ({time}).",
   watchdog_stall_permission: 'The agent asked for permission to continue and is waiting for an answer ({time}). It will pick up where it left off once someone approves.',
+  watchdog_restart_dropped: 'Your agent was not restarted ({time}): it stayed busy, or its upgrade did not finish, for too long. Type {command} again once it is idle.',
   watchdog_session_wedged: 'Your agent has stopped picking up its scheduled work — something on screen is holding it. Open the terminal or Claude app and clear whatever is waiting there ({time}).',
   watchdog_orphan: "Your agent's session ended but a process may still be running ({time}). If it keeps replying, stop it from the terminal: run {command} and kill that PID.",
   watchdog_lapsed_login: "Your Claude login has expired, so your agent can't do any work until you sign in again ({time}). {fix}",
@@ -160,6 +161,7 @@ export const NOTES: Partial<Record<MessageKey, string>> = {
   watchdog_lapsed_login_fix_docker: 'Fills {fix} at the end of watchdog_lapsed_login. The placeholders are commands.',
   watchdog_lapsed_login_fix_host: 'Fills {fix} at the end of watchdog_lapsed_login. The placeholders are commands.',
   watchdog_orphan: '{command} is a shell command.',
+  watchdog_restart_dropped: '{command} is a slash command the operator types; do not translate it.',
   docker_approval_pending: '{approve} is a shell command.',
 };
 
@@ -169,6 +171,7 @@ export const LOCKED = {
   orphan_command: '`pgrep -af "claude --channels"`',
   docker_login: '`hermitd docker login`',
   docker_restart: '`hermitd restart`',
+  restart_command: '`/hermitd:hermit-restart`',
   host_claude: '`claude`',
   host_login: '`/login`',
   host_stop: '`hermitd stop`',

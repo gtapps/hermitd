@@ -391,7 +391,7 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     EVOLVE_SENT=$BATCH
   else
     echo "[hermit] Warning: /reload-plugins did not complete ($REQUEST_STATUS${REQUEST_REASON:+: $REQUEST_REASON})." >&2
-    [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; run /hermitd:hermit-evolve when you attach." >&2
+    [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; type /hermitd:hermit-evolve when you attach." >&2
     echo "[hermit]          Pins are already updated (durable); next session start picks them up." >&2
   fi
   if [ "$EVOLVE_SENT" = true ]; then
@@ -400,7 +400,14 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     _await_upgrade || return 0
   fi
   if [ "$SELF_RUN" = true ]; then
-    echo "[hermit] Run from the resident's own session: commands queued for after this turn; no restart."
+    echo "[hermit] Run from the resident's own session: commands queued for after this turn."
+    if [ "$RELOAD_PLUGINS_SENT" = true ]; then
+      RESTART_ARGS=(--when-quiet)
+      [ "$EVOLVE_SENT" = true ] && RESTART_ARGS+=("${EXPECT_ARGS[@]}")
+      (cd "$PROJECT_DIR" && .hermit/bin/hermitd-run request-restart .hermit "${RESTART_ARGS[@]}" </dev/null >/dev/null 2>&1) \
+        && echo "[hermit] A restart follows once the agent is quiet." \
+        || echo "[hermit] Warning: the follow-up restart was not requested; restart the agent when it is idle." >&2
+    fi
   else
     trap 'exit 130' INT
     trap 'exit 143' TERM
@@ -414,7 +421,7 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   _apply_live_update
 else
   echo "[hermit] No live tmux session '$TMUX_SESSION' — pins are moved (durable);"
-  echo "[hermit] the next session start picks them up. If the hermit version bumped, run"
+  echo "[hermit] the next session start picks them up. If the hermit version bumped, type"
   echo "[hermit] /hermitd:hermit-evolve in that session (always-on does it automatically)."
 fi
 

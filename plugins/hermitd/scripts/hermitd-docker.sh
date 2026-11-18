@@ -938,7 +938,7 @@ case "$CMD" in
         EVOLVE_SENT=$BATCH
       else
         echo "[hermit] Warning: /reload-plugins did not complete ($REQUEST_STATUS${REQUEST_REASON:+: $REQUEST_REASON})." >&2
-        [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; run /hermitd:hermit-evolve after: hermitd attach" >&2
+        [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; type /hermitd:hermit-evolve after: hermitd attach" >&2
         echo "[hermit]          Pins are already updated (durable); run /reload-plugins after: hermitd attach" >&2
       fi
     fi
