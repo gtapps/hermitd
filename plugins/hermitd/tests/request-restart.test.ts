@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { markGuest } from '../scripts/lib/guest-marker';
 import { runPinnedScript, runScript, type RunResult } from './helpers/run';
 
 let project: string;
@@ -11,7 +12,10 @@ beforeEach(() => {
   project = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-restart-'));
   hermitDir = path.join(project, '.hermit');
   fs.mkdirSync(path.join(hermitDir, 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(hermitDir, 'state'));
 });
+
+const restart = (...args: string[]) => runPinnedScript('request-restart.ts', hermitDir, [hermitDir, ...args], { cwd: project });
 
 afterEach(() => fs.rmSync(project, { recursive: true, force: true }));
 
@@ -39,7 +43,7 @@ mv watchdog.tmp watchdog.receipt
   return { out, reason };
 }
 
-test('the channel helper requests a detached watchdog restart', async () => {
+test.serial('the channel helper requests a detached watchdog restart', async () => {
   const { out, reason } = await withWatchdog(() =>
     runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project }));
   expect(out.exitCode).toBe(0);
@@ -47,13 +51,37 @@ test('the channel helper requests a detached watchdog restart', async () => {
   expect(reason).toBe('requested');
 });
 
-test('the channel helper reports a missing watchdog', async () => {
+test.serial('the channel helper requests a restart for a session without a guest marker', async () => {
+  const { out } = await withWatchdog(() => restart('--session-id', 'resident-1'));
+  expect(out.exitCode).toBe(0);
+  expect(JSON.parse(out.stdout)).toEqual({ status: 'requested' });
+});
+
+test.serial('the channel helper refuses a guest session before reaching the watchdog', async () => {
+  // No watchdog installed: a restart attempt would exit with watchdog_missing.
+  markGuest(path.join(hermitDir, 'state'), 'helper-1');
+  const out = await restart('--session-id', 'helper-1');
+  expect(out.exitCode).toBe(0);
+  expect(JSON.parse(out.stdout)).toEqual({ status: 'refused', reason: 'guest_session' });
+});
+
+test.serial('the channel helper check reports the residency verdict', async () => {
+  markGuest(path.join(hermitDir, 'state'), 'helper-1');
+  expect(JSON.parse((await restart('--check', '--session-id', 'helper-1')).stdout)).toEqual({ status: 'guest' });
+  expect(JSON.parse((await restart('--check', '--session-id', 'resident-1')).stdout)).toEqual({ status: 'resident' });
+});
+
+test.serial('the channel helper rejects malformed flags', async () => {
+  expect((await restart('--session-id')).exitCode).toBe(1);
+});
+
+test.serial('the channel helper reports a missing watchdog', async () => {
   const out = await runPinnedScript('request-restart.ts', hermitDir, [hermitDir], { cwd: project });
   expect(out.exitCode).toBe(1);
   expect(JSON.parse(out.stdout)).toEqual({ error: 'watchdog_missing' });
 });
 
-test('the channel helper refuses a foreign state directory', async () => {
+test.serial('the channel helper refuses a foreign state directory', async () => {
   const foreign = path.join(project, 'other', '.hermit');
   fs.mkdirSync(path.join(foreign, 'bin'), { recursive: true });
   const out = await runPinnedScript('request-restart.ts', hermitDir, [foreign], { cwd: project });
@@ -61,7 +89,7 @@ test('the channel helper refuses a foreign state directory', async () => {
   expect(JSON.parse(out.stdout).error).toStartWith('foreign_state_dir:');
 });
 
-test('the token mint finish path still requests a reauth restart', async () => {
+test.serial('the token mint finish path still requests a reauth restart', async () => {
   const { out, reason } = await withWatchdog(() => runScript('setup-token-mint.ts', {
     args: ['finish'],
     cwd: project,
@@ -72,7 +100,7 @@ test('the token mint finish path still requests a reauth restart', async () => {
   expect(reason).toBe('reauth');
 });
 
-test('default permissions leave the channel restart helper ungranted', async () => {
+test.serial('default permissions leave the channel restart helper ungranted', async () => {
   const out = await runScript('apply-settings.ts', {
     args: ['.claude/settings.local.json', 'permissions-plan'],
     cwd: project,

@@ -1,11 +1,9 @@
 # Channel credential
 
-Built-in channel plugins follow this stage.
-For other plugins, follow [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) for credentials, then return to the calling wizard for activation.
+This stage covers the channels named in the token env var names below.
+For every other channel plugin, official or not, follow [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) for credentials, then return to the calling wizard for activation.
 
 Use the absolute project `.hermit` directory as `<hermit_state_dir>`. On Docker, skip host channel plugin installation and use the host-visible `.claude.local/channels/<channel>` where `<channel>` is the configured key: the bind mount uses that folder regardless of `state_dir`. On a host, use `channels.<channel>.state_dir` from config, defaulting to the same folder. Resolve relative paths against the project root. Never look up a bot token in the host's Claude home directory.
-
-iMessage has no bot token and is macOS-only. Skip it on Docker and continue with the other enabled channels.
 
 Before the token question, read the plugin's README and skills from the installed copy or the marketplace source. Explain its platform steps in the operator's configured `language`, using the plugin's guide as the source. Keep the official guide link below.
 
@@ -41,7 +39,7 @@ ${EDITOR:-vi} "<state_dir>/.env"
 
 Tell the operator to enter `<TOKEN_VAR>=` followed by the secret. Wait for confirmation and check for a nonempty token without printing it. If deferred, return to the calling wizard with the credential skipped.
 
-**Paste here:** create the state directory, write `<TOKEN_VAR>=<pasted-token>` to `<state_dir>/.env` (overwrite if it exists), and set mode `600`. Ensure `.claude.local/` is in `.gitignore`, appending it if missing.
+**Paste here:** create `<state_dir>/.env` with mode `600` by running the Private file commands except the editor line, in one Bash call. Then Write `<TOKEN_VAR>=<pasted-token>` into it, replacing its contents, so the token never appears in a shell command. Ensure `.claude.local/` is in `.gitignore`, appending it if missing.
 
 ## Validate the saved credential
 

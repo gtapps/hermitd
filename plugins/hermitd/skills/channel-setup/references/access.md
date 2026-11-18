@@ -1,7 +1,7 @@
 # Channel access
 
-Built-in channel plugins follow this stage.
-For other plugins, follow [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) for admission and the [Shared flow boundary](other-channel.md#shared-flow-boundary) for agent access control.
+This stage covers the same channels as the [credential stage](credential.md).
+For every other channel plugin, follow [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) for admission and the [Shared flow boundary](other-channel.md#shared-flow-boundary) for agent access control.
 
 Use the absolute project `.hermit` directory as `<hermit_state_dir>`, distinct from the channel's `<state_dir>`. On Docker, use the host-visible channel folder resolved in the credential stage, with no host plugin install. Set `<CHANNEL_UPPERCASE>_STATE_DIR` to that absolute folder for the channel access commands.
 
@@ -41,7 +41,7 @@ If the project file is still missing, report that pairing could not be verified 
 
 Read the current channel config. Only set or ask about `allowed_users` after an admission in this run, when the pairing receipt has a `sender_id` and `allowed_users` is absent. Preserve any existing value.
 
-In the agent's own managed session (`HERMIT_MANAGED=1`), apply **Only <paired id>** without asking and point to `/hermitd:hermit-settings channels` for later changes. In a separate setup session, ask once with header "Access ctrl" and question "Who may wake the agent on this channel?" Offer **Only <paired id>** (recommended), **Allow everyone**, or additional ids through Other. Use the receipt's `sender_id` for the paired id. For additional ids include the paired id.
+In the agent's own managed session (routing 2 in [channel setup](../SKILL.md)), apply **Only <paired id>** without asking and point to `/hermitd:hermit-settings channels` for later changes. In a separate setup session, ask once with header "Access ctrl" and question "Who may wake the agent on this channel?" Offer **Only <paired id>** (recommended), **Allow everyone**, or additional ids through Other. Use the receipt's `sender_id` for the paired id. For additional ids include the paired id.
 
 For an id selection, run `channel-config-merge` (Commands) with `{"channels":{"<channel>":{"allowed_users":<selected_string_array>}}}` on stdin. Stop this channel on a nonzero exit. For Allow everyone or a skipped setting, omit the key.
 
