@@ -28,10 +28,10 @@ The connector server ships with core `hermitd` and starts and stops with the age
 
 ## Set up
 
-**Let an AI assistant do it.** On the agent's machine, open Claude Code, Codex or another coding assistant in the agent's folder and send this, with your tunnel filled in:
+**Let an AI assistant do it.** On the agent's machine, open Claude Code, Codex or another coding assistant in the agent's folder and send:
 
 ```text
-Set up the hermitd connector for the agent in this folder by following https://github.com/gtapps/hermitd/blob/main/plugins/hermitd-connector/README.md. For the tunnel I want <Tailscale Funnel, or Cloudflare Tunnel on agent.example.com>. Stop and tell me when something needs my login or approval, and before restarting the agent.
+Set up the hermitd connector for the agent in this folder by following https://github.com/gtapps/hermitd/blob/main/plugins/hermitd-connector/README.md. Ask me which tunnel I want first. Stop and tell me when something needs my login or approval, and before restarting the agent.
 ```
 
 **Or do it by hand.** Run these on the agent's machine, from the agent's folder.
