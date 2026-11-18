@@ -62,7 +62,8 @@ const VERBS = ['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update
 const USAGE = 'Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup|mcp [name] [args]';
 const VERB_USAGE: Record<string, string> = {
   list: 'hermitd list [--json]', status: 'hermitd status [name] [--json]', prune: 'hermitd prune [name]',
-  restart: 'hermitd restart [name] [--fresh]', doctor: 'hermitd doctor [name] [--fix]', setup: 'hermitd setup [skill]',
+  start: 'hermitd start [name] [--resume] [--build]', restart: 'hermitd restart [name] [--fresh] [--build]',
+  update: 'hermitd update [name] [--dry-run] [--yes]', doctor: 'hermitd doctor [name] [--fix]', setup: 'hermitd setup [skill]',
   mcp: 'hermitd mcp serve [--roots <dir,dir>]', approve: 'hermitd approve [name]', run: 'hermitd run [name] <script> [args]',
 };
 const HELP = ['--help', '-h'];
@@ -250,7 +251,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   const [verb, ...args] = argv;
   // Help never resolves a project or runs a verb. `run` and `agents` pass later arguments on.
   if (HELP.includes(verb)) { console.log(USAGE); return 0; }
-  if (verb === 'run' || verb === 'agents' ? HELP.includes(args[0]) : args.some(arg => HELP.includes(arg))) {
+  const named = verb === 'run' && HELP.includes(args[1]) && registry(root).some(row => row.name === args[0] || row.agent_name === args[0]);
+  if (named || (verb === 'run' || verb === 'agents' ? HELP.includes(args[0]) : args.some(arg => HELP.includes(arg)))) {
     console.log(usage(verb));
     return 0;
   }

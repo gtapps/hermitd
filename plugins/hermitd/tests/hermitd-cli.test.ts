@@ -480,7 +480,7 @@ test('help flags print usage and dispatch nothing', async () => {
   const connector = await f.run(['connector', '--help']);
   expect(connector.exitCode).toBe(0);
   expect(connector.stdout).toContain('Usage: hermitd connector [name] enable|disable|status|pair|list|revoke|render [args]');
-  for (const [args, cwd] of [[['stop', '--help'], f.p], [['restart', 'demo', '--help'], f.root], [['doctor', '-h'], f.p], [['run', '--help'], f.p]] as const) {
+  for (const [args, cwd] of [[['stop', '--help'], f.p], [['restart', 'demo', '--help'], f.root], [['doctor', '-h'], f.p], [['run', '--help'], f.p], [['run', 'demo', '--help'], f.root]] as const) {
     const result = await f.run([...args], cwd);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toStartWith('Usage: hermitd');
