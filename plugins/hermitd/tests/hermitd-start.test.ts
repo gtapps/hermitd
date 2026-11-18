@@ -2271,6 +2271,14 @@ describe('hydrateSetupTokenEnv', () => {
     const declaration = src.slice(src.indexOf('const forwardVars =')).split('\n')[0];
     expect(declaration).toContain('...Object.keys(resolveHermitEnv(config))');
   });
+
+  test('the connector socket path is forwarded into the tmux env-file', () => {
+    const src = fs.readFileSync(path.join(import.meta.dir, '..', 'scripts', 'hermitd-start.ts'), 'utf-8');
+    const declaration = src.slice(src.indexOf('const forwardVars =')).split('\n')[0];
+    expect(declaration).toContain("'HERMIT_CONNECTOR_SOCKET'");
+    // Started before either launch path, so the interactive execvp inherits the variable too.
+    expect(src.indexOf('startConnector(')).toBeLessThan(src.indexOf('if (noTmuxFlag || !pyTruthy(tools.tmux)) {\n    if (!noTmuxFlag'));
+  });
 });
 
 // -------------------------------------------------------
@@ -2293,7 +2301,10 @@ describe('checkForUpgrade', () => {
   test('plugin newer than the stamp -> upgrade notice', () => {
     const out = run('0.0.1');
     expect(out).toContain('Upgrade available');
-    expect(out).toContain('hermit-evolve');
+    expect(out).toContain('Type /hermitd:hermit-evolve');
+    const alwaysOn = captureLog(() => checkForUpgrade({ always_on: true, _hermit_versions: { 'hermitd': '0.0.1' } } as any)).out;
+    expect(alwaysOn).toContain('applies it after this start');
+    expect(alwaysOn).not.toContain('hermit-evolve');
   });
 
   // The stale-install direction. Previously this printed a backwards arrow

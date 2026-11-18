@@ -209,17 +209,18 @@ describe('startup-context upgrade section', () => {
     } finally { wd.cleanup(); }
   }
 
-  test('always_on=true + gap -> REQUIRED directive', async () => {
+  test('always_on=true + gap -> the upgrade runs by itself, no directive', async () => {
     const out = await run({ always_on: true, _hermit_versions: { 'hermitd': '0.0.0' } });
     expect(out).toContain('---Upgrade Available---');
-    expect(out).toContain('REQUIRED');
-    expect(out).toContain('hermit-evolve unattended');
+    expect(out).toContain('runs by itself');
+    expect(out).not.toContain('REQUIRED');
+    expect(out).not.toContain('/hermitd:hermit-evolve');
   });
 
-  test('always_on=false + gap -> advisory, no REQUIRED', async () => {
+  test('always_on=false + gap -> the operator types the upgrade command', async () => {
     const out = await run({ always_on: false, _hermit_versions: { 'hermitd': '0.0.0' } });
     expect(out).toContain('---Upgrade Available---');
-    expect(out).toContain('/hermitd:hermit-evolve');
+    expect(out).toContain('type /hermitd:hermit-evolve in a terminal or the Claude app');
     expect(out).not.toContain('REQUIRED');
   });
 
@@ -988,6 +989,11 @@ ${doctorPassStub}if [ "$1" = harness-request ]; then
   case " $* " in *" --wait "*) echo '{"status":"ok"}' ;; *) echo '{"status":"queued","id":"q1"}' ;; esac
   exit 0
 fi
+if [ "$1" = request-restart ]; then
+  printf '%s\\n' "$*" >> "$LIVE_CALLS"
+  echo '{"status":"requested","when":"quiet"}'
+  exit 0
+fi
 exec "$(dirname "$0")/hermitd-run.real" "$@"
 `);
         fs.chmodSync(path.join(bin, 'hermitd-run'), 0o755);
@@ -1036,6 +1042,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           expect(r.stdout).not.toContain('Waiting for hermit-evolve');
           expect(calls.some(l => l.includes('await-upgrade'))).toBe(false);
           expect(calls).toContain('harness-request /reload-plugins --then /hermitd:hermit-evolve unattended --expect-version 1.2.0 --source update --purpose upgrade');
+          expect(calls).toContain('request-restart .hermit --when-quiet --expect hermitd=1.2.0');
           expect(calls.some(l => l.startsWith('send-keys'))).toBe(false);
           expect(calls.some(l => l.startsWith('stop') || l.startsWith('start'))).toBe(false);
           expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
@@ -5628,8 +5635,8 @@ else if (text.includes('await-upgrade')) console.log('{"status":"ready"}');
     const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     expect(await run(['up'])).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('Recorded Docker approval baseline') });
     const set = appliedSet(project, configRoot)!;
-    // Validate, cached netguard build, stale-sidecar check (a plain `docker ps -aq`), start.
-    const start = ['config', 'config', 'build', 'config', '-aq', 'up', 'ps'];
+    // Validate, cached netguard build, stale-sidecar checks (a plain `docker ps -aq` per absent sidecar), start.
+    const start = ['config', 'config', 'build', 'config', '-aq', '-aq', 'up', 'ps'];
     expect(calls().map(row => row.command)).toEqual(start);
     expect(calls().find(row => row.command === 'build').args.slice(-2)).toEqual(['build', 'hermit-netguard']);
     write(log, '');

@@ -39,7 +39,13 @@
     "Bash(*>.hermit/resident-prompt.md*)",
     "Bash(*>.hermit/helper-prompt.md*)",
     "Bash(*>.hermit/claude-settings.json*)",
-    "Edit(//**/.claude/plugins/**)"
+    "Edit(//**/.claude/plugins/**)",
+    "Bash(hermitd update*)",
+    "Bash(*/hermitd update*)",
+    "Bash(*.hermit/bin/hermitd-update*)",
+    "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
+    "Bash(hermitd run *hermitd-update*)",
+    "Bash(*/hermitd run *hermitd-update*)"
   ],
   "ask": [
     "Edit(*.hermit/TASKS.md)",
@@ -51,12 +57,6 @@
     "Bash(git push --force*)",
     "Bash(git reset --hard*)",
     "Bash(*--no-verify*)",
-    "Bash(hermitd update*)",
-    "Bash(*/hermitd update*)",
-    "Bash(*.hermit/bin/hermitd-update*)",
-    "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
-    "Bash(hermitd run *hermitd-update*)",
-    "Bash(*/hermitd run *hermitd-update*)",
     "Bash(bun */scripts/trust-workspace.ts apply *)",
     "Bash(*.hermit/bin/hermitd-run trust-workspace apply*)",
     "Bash(hermitd run trust-workspace apply*)",

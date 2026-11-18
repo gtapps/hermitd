@@ -50,7 +50,7 @@ function writeConfig(config: Json, before: Json): void {
 
 export function seedDefaultChatId(config: Json, channelKey: string, chatId: Json, isInboundReply: boolean): boolean {
   const channel = config.channels[channelKey];
-  if (!chatId) return false;
+  if (!chatId || channel?.members_only === true) return false; // a members-only channel never gets a home
   // Channel plugins may deliver numeric IDs; config IDs are always strings.
   const id = String(chatId);
   const block = homeSeedBlock(channel, id);

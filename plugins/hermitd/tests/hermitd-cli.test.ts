@@ -470,6 +470,37 @@ test('credproxy runs the installed script from outside the project and never a p
   expect(f.calls()).toContain(`credproxy|/|map ${f.p} api.example.com --header X\n`);
   expect(f.calls()).not.toContain('run|');
 });
+test('connector runs the installed script from outside the project, on tmux projects too', async () => {
+  const f = fixture();
+  write(path.join(f.core, 'scripts/connector.ts'), `require('fs').appendFileSync(process.env.CALLS, 'connector|' + process.cwd() + '|' + process.argv.slice(2).join(' ') + '\\n');\n`);
+  expect((await f.run(['connector', 'status'], f.p)).exitCode).toBe(0);
+  expect(f.calls()).toBe(`connector|/|status ${f.p}\n`);
+  expect((await f.run(['connector', 'demo', 'pair', 'ABCD2345', '--name', 'Ana'])).exitCode).toBe(0);
+  expect(f.calls()).toContain(`connector|/|pair ${f.p} ABCD2345 --name Ana\n`);
+  expect(f.calls()).not.toContain('run|');
+});
+test('mcp serve runs the installed control surface from / with absolute roots and adds nothing to stdout', async () => {
+  const f = fixture();
+  write(path.join(f.core, 'scripts/mcp-server.ts'), `console.log(JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2), env: process.env.HERMIT_MCP_ROOTS ?? null }));\n`);
+  const r = await f.run(['mcp', 'serve', '--roots', 'demo,./other'], f.root, { HERMIT_MCP_ROOTS: 'demo' });
+  expect(r.exitCode).toBe(0);
+  expect(r.stdout.trim().split('\n')).toHaveLength(1);
+  expect(JSON.parse(r.stdout)).toEqual({ cwd: '/', argv: ['--roots', `${f.root}/demo,${f.root}/other`], env: `${f.root}/demo` });
+  expect(f.calls()).not.toContain('run|');
+  const eq = await f.run(['mcp', 'serve', '--roots=demo'], f.root);
+  expect(JSON.parse(eq.stdout).argv).toEqual([`--roots=${f.root}/demo`]);
+  expect((await f.run(['mcp'], f.root)).exitCode).toBe(1);
+});
+test('connector refuses an install inside the project and runs nothing', async () => {
+  const f = fixture();
+  const inner = path.join(f.p, 'plugins/hermitd');
+  write(path.join(inner, 'scripts/connector.ts'), `require('fs').appendFileSync(process.env.CALLS, 'inner\\n');\n`);
+  write(f.env.LIST, JSON.stringify([{ id: 'hermitd@mp', scope: 'project', enabled: true, projectPath: f.p, installPath: inner }]));
+  const r = await f.run(['connector', 'status'], f.p);
+  expect(r.exitCode).toBe(1);
+  expect(JSON.parse(r.stdout)).toEqual({ error: 'untrusted_install' });
+  expect(f.calls()).toBe('');
+});
 test('credproxy refuses an install inside the project and runs nothing', async () => {
   const f = fixture();
   const inner = path.join(f.p, 'plugins/hermitd');

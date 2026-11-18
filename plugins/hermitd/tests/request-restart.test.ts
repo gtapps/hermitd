@@ -75,6 +75,55 @@ test.serial('the channel helper rejects malformed flags', async () => {
   expect((await restart('--session-id', '')).exitCode).toBe(1);
 });
 
+/** Own fixture per test: this file's tests run concurrently. */
+function quietAgent(alwaysOn: boolean, runtime: object | null) {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-quiet-')));
+  const dir = path.join(root, '.hermit');
+  fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ always_on: alwaysOn }));
+  if (runtime) fs.writeFileSync(path.join(dir, 'state', 'runtime.json'), JSON.stringify(runtime));
+  fs.writeFileSync(path.join(dir, 'bin', 'hermitd-watchdog'), `#!/bin/sh
+{ pwd; printf '%s\\n' "$@"; } > "${root}/args.tmp"
+mv "${root}/args.tmp" "${root}/args.receipt"
+`, { mode: 0o700 });
+  return { root, dir, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+
+async function receiptOf(root: string): Promise<string[] | null> {
+  const receiptPath = path.join(root, 'args.receipt');
+  const deadline = Date.now() + 4000;
+  while (!fs.existsSync(receiptPath) && Date.now() < deadline) await Bun.sleep(10);
+  return fs.existsSync(receiptPath) ? fs.readFileSync(receiptPath, 'utf8').trim().split('\n') : null;
+}
+
+test('a quiet request passes the boot, the expected versions, and the project root as cwd', async () => {
+  const agent = quietAgent(true, { session_pid: 4242 });
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-restart-cwd-'));
+  try {
+    const out = await runPinnedScript('request-restart.ts', agent.dir, [agent.dir, '--when-quiet', '--expect', 'hermitd=1.2.3'], { cwd: elsewhere });
+    expect(JSON.parse(out.stdout)).toEqual({ status: 'requested', when: 'quiet' });
+    expect(await receiptOf(agent.root)).toEqual([agent.root, 'restart', 'requested', '--when-quiet', '--boot', '4242', '--expect', 'hermitd=1.2.3']);
+  } finally {
+    agent.cleanup();
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+for (const [alwaysOn, runtime, reason] of [[false, { session_pid: 4242 }, 'interactive'], [true, null, 'not_running']] as const) {
+  test(`a quiet request refuses without spawning: ${reason}`, async () => {
+    const agent = quietAgent(alwaysOn, runtime);
+    try {
+      const out = await runPinnedScript('request-restart.ts', agent.dir, [agent.dir, '--when-quiet'], { cwd: agent.root });
+      expect(out.exitCode).toBe(0);
+      expect(JSON.parse(out.stdout)).toEqual({ status: 'refused', reason });
+      expect(fs.existsSync(path.join(agent.root, 'args.receipt'))).toBe(false);
+    } finally {
+      agent.cleanup();
+    }
+  });
+}
+
 test.serial('the channel helper reports a missing watchdog', async () => {
   const out = await restart();
   expect(out.exitCode).toBe(1);

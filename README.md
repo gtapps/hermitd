@@ -292,6 +292,7 @@ Optional plugins that add domain tools and workflows to your agent.
 - [homeassistant-hermit](plugins/hermitd-homeassistant/README.md): Home Assistant tools, automation workflows, and safety checks.
 - [fitness-hermit](plugins/hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
 - [hermitd-feed](plugins/hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
+- [hermitd-connector](plugins/hermitd-connector/README.md): People you pair talk to the agent from their own Claude app, typed or by voice.
 - [hermitd-laravel-forge](plugins/hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
 - [hermitd-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 
@@ -310,6 +311,8 @@ You can run separate agents for different responsibilities, each with its own wo
 ## Upgrading
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update waits for a quiet moment, applies migrations, then restarts the agent once and resumes the conversation. External updates finish with a `hermitd doctor --fix` pass and record its result in update history. Run `hermitd doctor [--fix]` to list health findings and their commands, or apply safe repairs and re-check; queued upgrades remain pending until the agent applies them.
+
+Without a host terminal, type `/hermitd:hermit-update`, `/hermitd:hermit-restart` or `/hermitd:doctor-fix` into a host agent's session from the Claude app (or a terminal). These management commands run only when typed: chat cannot start them, and the agent never starts them on its own. A Docker agent takes the restart; its update and repair stay on the host.
 
 `hermitd list` shows registered and discovered agents on this host, including stopped and missing projects. `hermitd status [name]` shows transport, execution and its age, open and waiting tasks, and the task in progress, including one a worker or helper runs. Both support `--json`. Listing never removes entries; `hermitd prune [name]` removes missing projects, or the named one, with their host stores (approved Docker copies, which include a copy of `.env`, and credential proxy data), keeping them while a container of the project still runs.
 

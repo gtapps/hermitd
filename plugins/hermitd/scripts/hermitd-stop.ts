@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import { stopBrowserDisplay } from './browser-display';
+import { stopConnector } from './lib/connector';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { gracefulShutdown } from './lib/shutdown';
@@ -25,6 +26,12 @@ import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 
 type Json = any;
+
+/** Helper sessions that live beside the resident: the browser display and the connector server. */
+function stopHelpers(sessionName: string): void {
+  stopBrowserDisplay();
+  stopConnector(sessionName);
+}
 
 const CONFIG_PATH = '.hermit/config.json';
 const DEFAULT_TIMEOUT = 60; // seconds to wait for graceful close
@@ -115,7 +122,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    stopBrowserDisplay();
+    stopHelpers(sessionName);
     console.log(`[hermit] No running session: ${sessionName}`);
     config.always_on = false;
     saveConfig(config, raw);
@@ -130,7 +137,7 @@ async function main(): Promise<void> {
   }
 
   if (force) {
-    stopBrowserDisplay();
+    stopHelpers(sessionName);
     console.log(`[hermit] Force-killing session: ${sessionName}`);
     config.always_on = false;
     saveConfig(config, raw);
@@ -189,7 +196,7 @@ async function main(): Promise<void> {
   config.always_on = false;
   saveConfig(config, raw);
 
-  stopBrowserDisplay();
+  stopHelpers(sessionName);
 
   // Kill tmux session
   if (tmuxSessionAlive(sessionName)) {

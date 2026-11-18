@@ -126,7 +126,7 @@ function neverFires(schedule: string): boolean {
 }
 
 function retiredKeyWarning(key: string): string {
-  return `${key} is retired and no longer read; run /hermitd:hermit-evolve to remove it`;
+  return `${key} is retired and no longer read; type /hermitd:hermit-evolve in a terminal or the Claude app to remove it`;
 }
 
 // Warning-only and specialized grammars retain their existing validation below.
@@ -461,7 +461,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           errors.push(`channels.${name}.passive_chats: every entry must be a string`);
         }
       }
-      for (const key of ['isolate_chats', 'log_chats']) {
+      for (const key of ['isolate_chats', 'log_chats', 'members_only']) {
         if (ch[key] !== undefined && typeof ch[key] !== 'boolean') {
           errors.push(`channels.${name}.${key}: must be a boolean`);
         }

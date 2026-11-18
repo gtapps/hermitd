@@ -1,6 +1,7 @@
 ---
 name: hermit-evolve
 description: Evolves hermit configuration and templates after a plugin update. Detects version gaps and runs the upgrade (migrations, templates, new settings) in an isolated subagent. Run after updating the plugin.
+disable-model-invocation: true
 ---
 
 # Evolve Hermit
@@ -21,11 +22,8 @@ Every run of this skill (interactive or unattended) delegates steps 0–9 to the
 - **Otherwise (main loop, any mode):**
   1. **Determine execution and delivery separately** and remember both for step 10:
      - Positional argument `unattended` ⇒ execution *unattended*, delivery *automated-maintainer*.
-     - No `unattended` argument + an inbound `<channel source="...">` tag ⇒ execution *unattended*
-       (never block on `AskUserQuestion`), delivery *direct-channel-reply*.
      - Otherwise ⇒ execution *interactive*, delivery *inline*.
-     Only the explicit `unattended` argument authorizes a proactive maintainer notification. A
-     direct channel request must answer the channel that invoked it.
+     Only the explicit `unattended` argument authorizes a proactive maintainer notification.
   2. **Check the runner reference:** run `test -f "${CLAUDE_PLUGIN_ROOT}/skills/hermit-evolve/reference.md"`. If it fails, **abort** — log `"hermit-evolve aborted: plugin root unresolved; cannot dispatch evolve-runner."` and stop. Do not dispatch with a broken path.
   3. **Record `<now>`** for step 10 as the current UTC time (`date -u +%FT%TZ`), then **dispatch** the `hermitd:evolve-runner` subagent via the Agent tool. Pass the report contract (below); the runner body supplies its own plugin root and Commands entries. Do **not** execute steps 0–9 yourself.
   4. **Go to step 10** with the subagent's returned report.
@@ -35,7 +33,7 @@ Every run of this skill (interactive or unattended) delegates steps 0–9 to the
 Steps 0–9 (in `reference.md`, read only by the `evolve-runner` subagent) are executed with no `AskUserQuestion` — the subagent cannot pause to ask. Each step's **"Delegated mode:"** note states the non-interactive behavior. The rule in every case: never guess on a destructive choice, never block.
 
 - For any interactive choice with a safe non-destructive default (new settings, file deletions, `## Plan` strip, template conflicts, an `### Upgrade Instructions` step that names a single non-destructive command such as `deny ask-only`), take the default silently and report the outcome.
-- For a genuine either/or with **no safe default** (an `### Upgrade Instructions` migration step in 2b/7 that poses a choice and names no default), **defer**: skip that step and record a verbatim deferred-migration block in the report (see the report contract in step 10). Never guess. Step 10 resolves it — interactive asks the operator; direct-channel and automated-maintainer execution relay it through their respective delivery routes. Never apply a deferred instruction that would write `.claude/settings*.json` from a channel session.
+- For a genuine either/or with **no safe default** (an `### Upgrade Instructions` migration step in 2b/7 that poses a choice and names no default), **defer**: skip that step and record a verbatim deferred-migration block in the report (see the report contract in step 10). Never guess. Step 10 resolves it — interactive asks the operator; automated-maintainer execution relays it through its delivery route. Never apply a deferred instruction that would write `.claude/settings*.json` from a channel session.
 
 ### 10. Report
 
@@ -79,14 +77,14 @@ Deferred for operator: <none | one or more verbatim blocks, each:>
 
 **Audit scope.** `whole_run` needs no mention; say nothing. On `version_only`, tell the operator once that this upgrade's config changes were not recorded in the settings history (the upgrade itself succeeded; only the attribution is missing), so a later "why did this setting change?" gets an honest answer instead of a confident wrong one.
 
-**Operator notes.** If `Operator notes` is not `none`, append every line to the delivered result as its own line, in every delivery mode (inline, direct-channel-reply, automated-maintainer). These are the CHANGELOG's version-specific notes for the operator and the report is their only route out of the subagent. Relay each line verbatim: a line starting with `**Operator action required:**` keeps that marker so it renders bold. Never fold these lines into the one-line summary and never merge them with deferred-migration text. Omit the section when `none`.
+**Operator notes.** If `Operator notes` is not `none`, append every line to the delivered result as its own line, in every delivery mode (inline, automated-maintainer). These are the CHANGELOG's version-specific notes for the operator and the report is their only route out of the subagent. Relay each line verbatim: a line starting with `**Operator action required:**` keeps that marker so it renders bold. Never fold these lines into the one-line summary and never merge them with deferred-migration text. Omit the section when `none`.
 
 **Sibling report integrity:** parse the finalizer JSON `siblings_confirmed` and `siblings_skipped`. Only names in `siblings_confirmed` may be reported as `vOLD->vNEW`. Any name in `siblings_skipped` must be reported as `SKIPPED-by-finalizer` — never as upgraded, even if Step 7 said it ran.
 
 **Failure fallback.** If the Agent call returned null/empty (subagent died — same partial-state risk
-as an in-loop failure), report "evolve delegation failed — run
-`/hermitd:hermit-evolve` manually". In automated-maintainer delivery, send that as a
-maintainer-only notice; in direct-channel or inline delivery, return it only to the invoking
+as an in-loop failure), report "evolve delegation failed — type
+`/hermitd:hermit-evolve` in a terminal or the Claude app". In automated-maintainer delivery, send that as a
+maintainer-only notice; in inline delivery, return it only to the invoking
 conversation. Stop.
 
 **Print the summary** from the report fields. Omit lines where nothing changed. End with "Run /hermitd:hermit-settings to adjust any settings." if settings were added.
@@ -120,7 +118,7 @@ costs one Bash call instead of loading the routines skill. Route on its JSON `st
   that changed routines shows up in `reasons` as `fallback_drift`) and re-arms the heartbeat leg with it.
 - `arm` with only `heartbeat`: invoke `/hermitd:heartbeat start`.
 - `skip`, reason `paused`: the hermit is paused and fires nothing until resumed. Log it; invoke nothing.
-- `restart_required`: arm nothing, then continue to delivery. With a fresh update-in-progress marker, the single update line in Deliver the result covers it. Otherwise append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself at its next idle moment; without it, restart the resident with `hermitd restart`.
+- `restart_required`: arm nothing, then continue to delivery. With a fresh update-in-progress marker, the single update line in Deliver the result covers it. Otherwise append this as its own line, delivered through the same route as Operator notes: the monitors still run the previous version. An always-on hermit with its watchdog running restarts itself at its next idle moment; without it, the operator types `/hermitd:hermit-restart` in a terminal or the Claude app.
 - An `error` (`check_error:<reason>`): state was unreadable, so nothing is safe to re-arm. Append
   it and the manual `hermit-routines load` next action to the report.
 
@@ -138,5 +136,5 @@ non-`none` Operator notes line after that list**, one line each. With an update-
 - **Automated-maintainer:** deliver through `channel-send.ts --notice` with
   `{"maintainer":"<complete condensed result>"}` on stdin and no `client` leg. Follow prompts/resident.md
   § Operator Notification fallback behavior.
-- **Direct-channel-reply or inline:** return the result only to the invoking conversation. Do not
+- **Inline:** return the result only to the invoking conversation. Do not
   send a second proactive notice.

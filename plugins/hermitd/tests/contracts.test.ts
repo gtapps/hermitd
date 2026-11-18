@@ -522,7 +522,7 @@ describe('push_notifications validation', () => {
 });
 
 describe('retired settings dials', () => {
-  const RETIRED = 'is retired and no longer read; run /hermitd:hermit-evolve to remove it';
+  const RETIRED = 'is retired and no longer read; type /hermitd:hermit-evolve in a terminal or the Claude app to remove it';
 
   test('each leftover key warns once and never errors', () => {
     const fromChat = runValidate({ settings_from_chat: false });
@@ -1395,7 +1395,7 @@ describe('model-invocable inventory', () => {
       return fs.existsSync(skillPath)
         && isModelInvocationDisabled(fs.readFileSync(skillPath, 'utf8'));
     }).sort();
-    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'hatch', 'rc-gate', 'task-decide']);
+    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'doctor-fix', 'hatch', 'hermit-evolve', 'hermit-restart', 'hermit-update', 'rc-gate', 'task-decide']);
   });
 });
 
@@ -2214,7 +2214,7 @@ const DOCTOR_CHECK_IDS = [
   'runtime', 'config', 'hooks', 'state', 'cost', 'proposals', 'dependencies', 'version-currency',
   'permission-rules', 'docker-security', 'docker-approval', 'reflect', 'scheduler', 'watchdog', 'context-age',
   'routine-cost', 'heartbeat', 'routine-monitor', 'routine-precheck', 'raw-size', 'credential-expiry', 'chrome-auth', 'browser', 'transcription', 'model-pricing-known',
-  'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox',
+  'memory-size', 'passive-chats', 'context-scan', 'voice-carrier', 'message-catalog', 'overlay-hooks', 'harness-mod', 'classifier-denials', 'channel-liveness', 'peer-inbox', 'connector',
   'backup',
 ];
 

@@ -18,11 +18,13 @@ Inventory is explicit. There is no auto-discovery of hosts or of hermit folders
 on disk. Pass every project root you want visible:
 
 ```bash
-.hermit/bin/hermitd-run mcp-server --roots /path/to/project,/path/to/other
+hermitd mcp serve --roots /path/to/project,/path/to/other
 ```
 
-`--roots` wins over `HERMIT_MCP_ROOTS` (comma-separated). Each root is
-canonicalized (`realpath`) and must contain `.hermit/`. Duplicates
+`hermitd mcp serve` runs the control surface from the installed plugin, never
+from a file inside a project. `--roots` wins over `HERMIT_MCP_ROOTS`
+(comma-separated). Relative roots resolve against the folder you run the command
+from. Each root is canonicalized (`realpath`) and must contain `.hermit/`. Duplicates
 are rejected at startup. Tool `root` arguments must match an inventory entry;
 arbitrary paths come back as a tool error (`isError: true` in the result), not
 a protocol error.
@@ -30,31 +32,39 @@ a protocol error.
 ### Local
 
 ```bash
-.hermit/bin/hermitd-run mcp-server --roots /home/you/project
+hermitd mcp serve --roots /home/you/project
 ```
 
 ### OpenClaw
 
 ```bash
-openclaw mcp set hermit '{"command":"/home/you/project/.hermit/bin/hermitd-run","args":["mcp-server","--roots","/home/you/project"]}'
+openclaw mcp set hermit '{"command":"hermitd","args":["mcp","serve","--roots","/home/you/project"]}'
 ```
 
 ### Cross-host
 
-ssh does not forward `HERMIT_MCP_ROOTS`. Pass `--roots` on the remote command:
+ssh does not forward `HERMIT_MCP_ROOTS`. Pass `--roots` on the remote command, with
+`hermitd` on the remote shell's `PATH`:
 
 ```bash
-ssh box /home/you/project/.hermit/bin/hermitd-run mcp-server --roots /home/you/project
+ssh box hermitd mcp serve --roots /home/you/project
 ```
 
-### Container
+### Docker agents
+
+Run the same command on the host, with the project folder as the root:
 
 ```bash
-docker exec -i <container> .hermit/bin/hermitd-run mcp-server --roots /workspace
+hermitd mcp serve --roots /home/you/project
 ```
 
-Use the path the process inside the container sees. Cross-host auth is out of
+The read tools read the project's state through its bind mount. A wake reaches the
+container through Docker, so it still depends on project state and, when the host
+has no Docker approval record, on the live compose files. Cross-host auth is out of
 scope for v1; ssh keys are the boundary.
+
+To let people talk to an agent from their own Claude app instead, see
+[the connector](connector.md).
 
 ## Fleet split
 

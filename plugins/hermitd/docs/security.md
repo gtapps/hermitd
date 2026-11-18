@@ -67,7 +67,13 @@ Two classes (canonical source: `state-templates/deny-patterns.json`):
       "Bash(*>.hermit/resident-prompt.md*)",
       "Bash(*>.hermit/helper-prompt.md*)",
       "Bash(*>.hermit/claude-settings.json*)",
-      "Edit(//**/.claude/plugins/**)"
+      "Edit(//**/.claude/plugins/**)",
+      "Bash(hermitd update*)",
+      "Bash(*/hermitd update*)",
+      "Bash(*.hermit/bin/hermitd-update*)",
+      "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
+      "Bash(hermitd run *hermitd-update*)",
+      "Bash(*/hermitd run *hermitd-update*)"
     ]
   }
 }
@@ -120,12 +126,6 @@ Standard seeds these as approval prompts. Hardened writes them into `permissions
       "Bash(git push --force*)",
       "Bash(git reset --hard*)",
       "Bash(*--no-verify*)",
-      "Bash(hermitd update*)",
-      "Bash(*/hermitd update*)",
-      "Bash(*.hermit/bin/hermitd-update*)",
-      "Bash(*.hermit/bin/hermitd-run hermitd-update*)",
-      "Bash(hermitd run *hermitd-update*)",
-      "Bash(*/hermitd run *hermitd-update*)",
       "Bash(bun */scripts/trust-workspace.ts apply *)",
       "Bash(*.hermit/bin/hermitd-run trust-workspace apply*)",
       "Bash(hermitd run trust-workspace apply*)",
@@ -257,7 +257,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | --- | --- |
   | Identity and execution | `approvals`, `permission_mode`, `operator_profile`, `voice.prose`, `env`, `monitors`, `boot_skill`, `shutdown_skill`, `backup` |
   | Channel routing | `channels.primary` |
-  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
+  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `members_only`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
   | Tools and credentials | `docker.packages`, `docker.git_identity_mount`, `docker.security`, `docker.recommended_plugins`, `docker.fleet_mesh`, `browser`, `remote`, `chrome`, `auth_mode` |
 
@@ -445,6 +445,8 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 
 ### Known limitations
 
+- **The connector's trusted server is a boundary only on Docker.** On a tmux install it runs as the same user as the agent. Its pairing is not a verified Claude account, replies reach every paired person, and the words it delivers are written by Claude in each person's app. See [connector limits](connector.md#limits).
+
 - The managed Docker deny floor protects the running container's policy file. The agent can still write image build inputs and the `claude` binary to stage changes for a later rebuild or start; organization server-managed settings can also supersede local drop-ins.
 - Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `browser.admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. Authenticated requests must also match `browser.host:browser.port`; state-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.
 - Text pasted into the takeover keyboard strip is typed into the remote browser as key presses, so the agent sees it as it would a typed password. The viewer never sends clipboard data, and copy out stays off (`-SendCutText=0`).
@@ -510,7 +512,7 @@ Plugins run with the same permissions as Hermit. The default `auto` mode applies
 
 **Policy:** The entrypoint installs every enabled entry in `docker.recommended_plugins` on first boot, regardless of marketplace. The trust gate is at **configuration time**: entries only land in `config.json` when the operator explicitly confirmed the mirrored plugin list during `/docker-setup` or `/hermit-settings docker`, or confirms the exact plugin and repository through **Other** in `/hermitd:channel-setup`. Channel setup uses the always-prompted `channel-register` verb and confirms per-start installation on Docker. Preselection during setup is restricted to `claude-plugins-official` and `gtapps/*`; third-party entries must be manually opted in. See [Recommended Plugins: Trust model](recommended-plugins.md#trust-model).
 
-**No auto-updates:** The entrypoint installs plugins on first boot but never auto-updates them. Plugin updates are operator-initiated with `hermitd update` from a host terminal. When a chat asks a host resident to run it, the seeded ask rules raise Claude Code's native permission prompt, even under auto mode, and only DM-paired users can answer it; a Hardened install denies it outright. A Docker resident cannot run it, because the update runs on the host. The rules match the seeded spellings only: a raw `claude plugin update` stays with the classifier.
+**No auto-updates:** The entrypoint installs plugins on first boot but never auto-updates them. Plugin updates are operator-initiated: `hermitd update` from a host terminal, or `/hermitd:hermit-update` typed into a host agent's session from a terminal or the Claude app. The seeded deny rules refuse every `hermitd update` spelling in the agent's own shell on every install, and the settings gate refuses the agent's update, restart and repair commands unless the turn opens with the matching typed command, so neither chat nor the model can start them. A Docker resident cannot update, because the update runs on the host. The rules match the seeded spellings only: a raw `claude plugin update` stays with the classifier.
 
 **Hermit does not vet, audit, or take responsibility for any plugin.** Even official plugins should be understood before enabling. You are responsible for evaluating what you install.
 

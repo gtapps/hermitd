@@ -2,8 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- `channels.<name>.members_only: true` makes every sender on a channel a plain member: no control commands, primary-operator or sign-in authority, unscoped recall, home pin or notice routing. It is a protected setting.
+- Doctor reports whether the connector server answers and its channel is connected.
+- `hermitd mcp serve` starts the external control surface from the installed plugin instead of a project file, resolving relative roots against the caller's folder.
+- `hermitd connector` enables a trusted server per agent that lets paired people reach it from their own Claude app through a custom connector, with sign-in, pairing approved at the host terminal, a per-person hourly cap and a message record kept in a host-only store the agent cannot read. Default off, since it needs a public HTTPS address from the operator; it starts and stops with the agent, on Docker as its own `hermit-connector` service. The in-agent half is the `hermitd-connector` channel plugin. Guide: `docs/connector.md`.
+- `/hermitd:hermit-update`, `/hermitd:hermit-restart` and `/hermitd:doctor-fix` update, restart and repair a host agent when typed into its session from a terminal or the Claude app. They run only on a turn that opens with the matching typed command; on a Docker agent, update and repair answer that they run on the host.
+- A restart requested from inside the agent waits until it is quiet; one that finds no quiet moment within 15 minutes is dropped and the operator is told once.
+
 ### Changed
 
+- `/hermitd:hermit-evolve` is typed-only. An always-on agent that starts with a version gap runs the upgrade from its own command queue after its startup turn, then restarts once when quiet.
+- A `hermitd update` run from the agent's own session is followed by one restart once the upgrade has applied.
+- Updating from chat is removed: every `hermitd update` spelling is denied in the agent's own shell on every install.
 - `docker-setup` and `channel-setup` share credential and admission steps, including private token entry and a single wake-access question after pairing.
 - On hosts, `channel-setup start` starts a new always-on agent before pairing, and `channel-setup` can restart a running agent with consent while keeping its conversation. The agent’s own Claude app session supports adding its first channel.
 - For Docker channel changes, `channel-setup` waits for the operator’s terminal start or restart and continues to pairing after checking the service. First-time Docker setup keeps registered third-party channel plugins in the boot list.
@@ -15,6 +27,13 @@
 - `channel-setup` no longer restarts the agent when run from a helper or from a session launched in the agent's pane
 - `channel-setup` sets up channels without a core bot token, such as iMessage, through the plugin's own setup and access steps
 - `channel-setup` creates a pasted channel token file with private permissions before writing the token
+
+### Upgrade Instructions
+
+**Leftover check:** the operator's own files and MCP client configs may launch the control surface as `.hermit/bin/hermitd-run mcp-server`; the supported launch is now `hermitd mcp serve` with the same arguments. A launch through `docker exec` moves to the host, with the host project folder as the root instead of the container path.
+1. Use the `settings_file` Step 1's preflight resolved. Run `bun <plugin_root>/scripts/apply-settings.ts <resolved-settings-file> deny deny-only` to add the seeded deny entries this install is missing, which now include every `hermitd update` spelling. Report the added entries or the unseeded skip. This is additive and idempotent; operator-added rules and the existing ask entries stay as they are, and no leftover check is needed.
+
+   Tell the operator: updating, restarting and repairing the agent are now typed commands, `/hermitd:hermit-update`, `/hermitd:hermit-restart` and `/hermitd:doctor-fix`, entered in a terminal or the Claude app; asking from chat no longer runs them.
 
 ## [1.4.35] - 2026-11-18
 

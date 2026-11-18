@@ -57,6 +57,7 @@ function target(args: string[], verb: string, cwd: string, root: string): string
     pause: ['on', 'off', 'snooze', 'status'], watchdog: ['run', 'install', 'uninstall'],
     docker: ['up', 'down', 'attach', 'agents', 'bash', 'login', 'setup-token', 'logs', 'restart', 'update', 'doctor'],
     credproxy: ['map', 'unmap', 'status', 'set', 'unset', 'render'],
+    connector: ['enable', 'disable', 'status', 'pair', 'list', 'revoke', 'render'],
     approve: [],
   };
   const matches = registry(root).filter(row => row.name === first || row.agent_name === first);
@@ -249,8 +250,8 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     for (const row of kept) console.error(`[hermit] kept ${row.project_dir}: ${row.reason}`);
     return kept.length ? 1 : 0;
   }
-  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'approve', 'setup'].includes(verb)) {
-    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|approve|setup [name] [args]');
+  if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'connector', 'approve', 'setup', 'mcp'].includes(verb)) {
+    throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|connector|approve|setup|mcp [name] [args]');
   }
   if (verb === 'setup') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
@@ -263,6 +264,17 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     if (args[0]) options.push('/hermitd:' + args[0]);
     return execute('claude', options, project, { BUN_OPTIONS: bunIsolation });
   }
+  if (verb === 'mcp') {
+    // The control surface runs from installed code, never a project wrapper. It runs from `/`,
+    // so relative roots are resolved against the caller's folder first.
+    if (args[0] !== 'serve') throw new Error('Usage: hermitd mcp serve [--roots <dir,dir>]');
+    const absolute = (list: string) => list.split(',').map(r => r.trim()).filter(Boolean).map(r => path.resolve(cwd, r)).join(',');
+    const rest = args.slice(1).map((arg, i, all) => all[i - 1] === '--roots' ? absolute(arg)
+      : arg.startsWith('--roots=') ? '--roots=' + absolute(arg.slice('--roots='.length)) : arg);
+    const env: Record<string, string> = { BUN_OPTIONS: bunIsolation };
+    if (process.env.HERMIT_MCP_ROOTS) env.HERMIT_MCP_ROOTS = absolute(process.env.HERMIT_MCP_ROOTS);
+    return execute(process.execPath, [path.join(root, 'scripts/mcp-server.ts'), ...rest], '/', env);
+  }
   if (verb === 'approve') {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
     const project = target(args, verb, cwd, root);
@@ -274,8 +286,9 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   }
   const project = target(args, verb, cwd, root);
   const useDocker = isDockerProject(project, root);
-  if (useDocker && verb !== 'credproxy') warnProjectContainsHostConfig(project, root);
-  if (verb !== 'credproxy' && verb !== 'docker' && !useDocker) {
+  const hostStore = verb === 'credproxy' || verb === 'connector';
+  if (useDocker && !hostStore) warnProjectContainsHostConfig(project, root);
+  if (!hostStore && verb !== 'docker' && !useDocker) {
     restoreTmuxEnvironment(project);
   }
   if (verb === 'register') {
@@ -301,14 +314,14 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     if (useDocker) return dockerScript(project, [verb, ...args], hostInstall(project).installPath);
     return wrapper(project, `hermitd-${verb}`, args);
   }
-  if (verb === 'credproxy') {
+  if (hostStore) {
     if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
     // Runs only the installed plugin's script, from outside the project (bun reads bunfig.toml
     // from its cwd), so no file the agent can write executes.
     const install = fs.realpathSync(hostInstall(project).installPath);
     if (inside(install, project)) { printJson({ error: 'untrusted_install' }); return 1; }
     const [sub, ...rest] = args;
-    return execute(process.execPath, [path.join(install, 'scripts/credproxy.ts'), sub ?? '', project, ...rest], '/', { BUN_OPTIONS: bunIsolation });
+    return execute(process.execPath, [path.join(install, `scripts/${verb}.ts`), sub ?? '', project, ...rest], '/', { BUN_OPTIONS: bunIsolation });
   }
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);
   const docker = dockerTransport(project, useDocker);

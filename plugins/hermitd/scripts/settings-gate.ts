@@ -208,7 +208,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
   }
 }
 
-export type ApprovalTurn = { kind: 'typed' | 'admin_chat' | 'other'; channel: boolean; conversation?: string };
+export type ApprovalTurn = { kind: 'typed' | 'admin_chat' | 'other'; channel: boolean; conversation?: string; command?: string };
 
 /** The admin console exists only when the channel has DM-paired approvers. */
 export function approvalConsole(dir: string, config: Json): { key: string; channel: string; chat: string; approvers: string[] } | null {
@@ -264,8 +264,9 @@ export function approvalTurn(payload: Json, dir = hermitDir()): ApprovalTurn {
       return { kind: admin && !background ? 'admin_chat' : 'other', channel: true, conversation };
     }
     const runtime = JSON.parse(fs.readFileSync(path.join(dir, 'state/runtime.json'), 'utf8'));
-    return origin?.kind === 'human' && !background && !isLaunchPrompt(text, runtime.launch_prompt)
-      ? { kind: 'typed', channel: false } : other;
+    if (origin?.kind !== 'human' || background || isLaunchPrompt(text, runtime.launch_prompt)) return other;
+    const command = /^<command-message>[^<]*<\/command-message>\n<command-name>\/([^<\s]+)<\/command-name>/.exec(text)?.[1];
+    return { kind: 'typed', channel: false, command };
   } catch { return other; }
 }
 
@@ -306,6 +307,7 @@ const ROUTINE_PATH = /^routines(?:\.(\d+)(?:\..+)?)?$/;
 function operatorChat(key: string): boolean {
   const at = key.indexOf(':');
   const ch = readConfigRaw(hermitDir())?.channels?.[key.slice(0, at)];
+  if (ch?.members_only === true) return false;
   const chatId = key.slice(at + 1);
   return [ch?.default_chat_id, ch?.maintainer_channel_id]
     .some(id => id != null && String(id) === chatId);
@@ -579,6 +581,17 @@ function ask(reason: string): void {
     },
   }) + '\n');
 }
+
+/** Agent management scripts, and the typed commands that may run each. */
+const MANAGEMENT_COMMANDS: Record<string, string[]> = {
+  'request-restart': ['hermitd:hermit-restart', 'hermitd:channel-setup'],
+  'self-update': ['hermitd:hermit-update'],
+  'doctor-fix': ['hermitd:doctor-fix'],
+};
+const MANAGEMENT_NAMES = Object.keys(MANAGEMENT_COMMANDS).join('|');
+const MANAGEMENT_MENTION = new RegExp(MANAGEMENT_NAMES);
+/** A run of one, not a mention. */
+const MANAGEMENT_RUN = new RegExp(String.raw`\b(?:bun(?:\s+run)?|hermitd-run|hermitd-exec\.sh|hermitd\s+run(?:\s+\S+)?)\s+\S*\b(${MANAGEMENT_NAMES})(?:\.ts)?(?=["'\s]|$)`);
 
 function deny(reason: string): void {
   fs.writeSync(1, JSON.stringify({
@@ -909,6 +922,17 @@ function main(payload: any): void {
 
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
+    if (MANAGEMENT_MENTION.test(command)) {
+      const managed = MANAGEMENT_RUN.exec(literalShellText(command).replace(/['"\\]/g, ''))?.[1];
+      if (managed) {
+        const turn = approvalTurn(payload);
+        const allowed = MANAGEMENT_COMMANDS[managed]!;
+        if (turn.kind !== 'typed' || !turn.command || !allowed.includes(turn.command)) {
+          deny(`Only the operator can run this: ask them to type /${allowed[0]} in a terminal or the Claude app. If the command only mentions it, reword that text.`);
+          return;
+        }
+      }
+    }
     // Quoted heredoc bodies are stdin data: a note that mentions a decision call answers nothing.
     // Only a command that could reach task.ts pays for the scan (quotes cannot hide the name).
     // A substitution left after blanking can splice a blanked body back in as arguments, so it keeps the raw command.

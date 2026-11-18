@@ -212,7 +212,8 @@ export function finalData(o: Observed, deployment: string): Json {
     running_after_step: runningAfter,
     anytime: [
       { run: '/hermit-settings', purpose: 'change_settings', reference: CONFIG_REFERENCE_URL },
-      { run: '/hermit-evolve', purpose: 'after_plugin_updates' },
+      { run: '/hermitd:hermit-update', purpose: 'update_plugins' },
+      { run: '/hermitd:hermit-restart', purpose: 'restart_agent' },
       { run: '/hermit-doctor', purpose: 'troubleshoot' },
       { run: 'hermitd run backup setup', purpose: 'back_up_state_to_git', from: 'terminal' },
     ],

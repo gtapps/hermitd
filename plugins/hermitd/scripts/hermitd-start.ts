@@ -14,6 +14,7 @@ import { composeFiles } from './lib/compose-files';
 
 import fs from 'node:fs';
 import { ensureDisplay } from './browser-display';
+import { startConnector } from './lib/connector';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -385,7 +386,9 @@ function checkForUpgrade(config: Json): void {
     const rel = cmpSemver(pluginVer, configVer);
     if (rel > 0) {
       console.log(`[hermit] Upgrade available: v${configVer} -> v${pluginVer}`);
-      console.log('[hermit] Run /hermitd:hermit-evolve inside Claude Code');
+      console.log(config.always_on === true
+        ? '[hermit] The agent applies it after this start, then restarts once when quiet.'
+        : '[hermit] Type /hermitd:hermit-evolve in the agent session, from a terminal or the Claude app');
     } else if (rel < 0) {
       console.log(`[hermit] Stale plugin runtime: boot scripts loaded v${pluginVer} from ${PLUGIN_ROOT},`);
       console.log(`[hermit] older than this hermit's applied state v${configVer}. hermit-evolve cannot fix this.`);
@@ -1655,6 +1658,7 @@ async function main(): Promise<void> {
   seedWorkspaceTrust();
   seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
+  startConnector(process.cwd(), sessionName, { container: isContainer() });
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
     if (!noTmuxFlag && !pyTruthy(tools.tmux)) {
@@ -1708,7 +1712,7 @@ async function main(): Promise<void> {
   // Auth vars must be in shell env before claude launches.
   // *_STATE_DIR vars must be OS env because MCP servers (channel plugins)
   // inherit shell env but don't read settings.local.json.
-  const forwardVars = ['CLAUDE_CONFIG_DIR', 'ANTHROPIC_API_KEY', TOKEN_ENV_VAR, 'AGENT_HOOK_PROFILE', ...Object.keys(resolveHermitEnv(config))];
+  const forwardVars = ['CLAUDE_CONFIG_DIR', 'ANTHROPIC_API_KEY', TOKEN_ENV_VAR, 'AGENT_HOOK_PROFILE', 'HERMIT_CONNECTOR_SOCKET', ...Object.keys(resolveHermitEnv(config))];
   const envFile = path.join('/tmp', `.hermit-env-${sessionName}`);
   // CLAUDE_PLUGIN_ROOT is not injected into the tmux shell by the harness;
   // set it explicitly so Bash tool calls in skills work in cron-triggered sessions.

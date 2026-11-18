@@ -545,7 +545,7 @@ switch (op) {
 
   case 'deny': {
     const profile = rest[0];
-    if (!['standard', 'hardened', 'ask-only', 'ask-stamp'].includes(profile)) exitError();
+    if (!['standard', 'hardened', 'ask-only', 'ask-stamp', 'deny-only'].includes(profile)) exitError();
     const { deny: denyEntries, ask: askEntries } = readSeedPatterns(PLUGIN_ROOT);
 
     const stateDir = path.resolve(path.dirname(resolvedTarget), '..', '.hermit/state');
@@ -570,7 +570,7 @@ switch (op) {
       if (hasState) askOffered = { file: offeredFile, entries: [...new Set([...offered, ...askEntries])] };
     };
 
-    if (profile === 'ask-only' || profile === 'ask-stamp') {
+    if (profile === 'ask-only' || profile === 'ask-stamp' || profile === 'deny-only') {
       const existingDeny = new Set<string>(
         Array.isArray(settings?.permissions?.deny) ? settings.permissions.deny : [],
       );
@@ -578,6 +578,12 @@ switch (op) {
       if (!seeded) {
         printJson({ status: 'skipped', reason: 'not_seeded' });
         readOnly = true;
+        break;
+      }
+      if (profile === 'deny-only') {
+        const added = mergePermissionKey(settings, 'deny', denyEntries);
+        printJson({ added });
+        if (added.length === 0) readOnly = true;
         break;
       }
       stamp();

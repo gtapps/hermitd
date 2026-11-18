@@ -158,7 +158,7 @@ describe('settings-gate ask list', () => {
     expectSilent(r);
   });
 
-  for (const [key, value] of [['isolate_chats', 'false'], ['shared_chats', "'[]'"], ['operators', "'[]'"], ['instructions', "'[]'"]]) {
+  for (const [key, value] of [['isolate_chats', 'false'], ['members_only', 'true'], ['shared_chats', "'[]'"], ['operators', "'[]'"], ['instructions', "'[]'"]]) {
     test(`channel ${key} asks`, async () => {
       const dir = fixture();
       const r = await runGate(payload({ dir, tool: 'Bash', input: { command: cmd(`set channels.discord.${key} ${value}`) } }), dir);
@@ -1256,5 +1256,62 @@ describe('approval turn provenance', () => {
   });
   test('unreadable transcript refuses', () => {
     expect(approvalTurn({ transcript_path: '/missing/transcript' })).toEqual({ kind: 'other', channel: false });
+  });
+});
+
+describe('management commands run only on their own typed command', () => {
+  const RESTART = '.hermit/bin/hermitd-run request-restart .hermit --when-quiet';
+  const UPDATE = '.hermit/bin/hermitd-run self-update .hermit';
+  const REPAIR = '.hermit/bin/hermitd-run doctor-fix .hermit';
+  const slash = (name: string, args = '') =>
+    `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>${args ? `\n<command-args>${args}</command-args>` : ''}`;
+  async function gate(command: string, text: string, origin: any = { kind: 'human' }, opts: { launch?: string; bg?: boolean } = {}) {
+    const dir = fixture({});
+    fs.writeFileSync(path.join(dir, '.hermit/state/runtime.json'), JSON.stringify({ launch_prompt: opts.launch ?? null }));
+    const transcript = path.join(dir, 'turn.jsonl');
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'user', origin, sessionKind: opts.bg ? 'bg' : undefined, message: { content: text } }) + '\n');
+    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
+    return runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
+  }
+  function expectRefused(result: { exitCode: number; stdout: string }, typed: string) {
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout).hookSpecificOutput;
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason).toContain(`type /${typed} in a terminal or the Claude app`);
+  }
+
+  test('each command passes silently on its own typed command', async () => {
+    expectSilent(await gate(RESTART, slash('hermitd:hermit-restart')));
+    expectSilent(await gate(UPDATE, slash('hermitd:hermit-update')));
+    expectSilent(await gate(REPAIR, slash('hermitd:doctor-fix')));
+    expectSilent(await gate('bun /p/scripts/request-restart.ts "/proj/.hermit"', slash('hermitd:channel-setup', 'discord')));
+  });
+
+  test('another command, typed prose, and every non-typed turn are refused', async () => {
+    expectRefused(await gate(UPDATE, slash('hermitd:hermit-restart')), 'hermitd:hermit-update');
+    expectRefused(await gate(REPAIR, slash('hermitd:channel-setup')), 'hermitd:doctor-fix');
+    expectRefused(await gate(RESTART, 'please restart yourself'), 'hermitd:hermit-restart');
+    const chat = '<channel source="discord" chat_id="1" user_id="admin">restart</channel>';
+    expectRefused(await gate(RESTART, chat, undefined), 'hermitd:hermit-restart');
+    expectRefused(await gate(RESTART, chat, { kind: 'channel' }), 'hermitd:hermit-restart');
+    expectRefused(await gate(UPDATE, slash('hermitd:hermit-update'), { kind: 'peer' }), 'hermitd:hermit-update');
+    expectRefused(await gate(UPDATE, slash('hermitd:hermit-update'), { kind: 'plugin', name: 'hermitd' }), 'hermitd:hermit-update');
+    expectRefused(await gate(UPDATE, 'wake', { kind: 'task-notification' }), 'hermitd:hermit-update');
+    expectRefused(await gate(UPDATE, slash('hermitd:hermit-update'), { kind: 'human' }, { bg: true }), 'hermitd:hermit-update');
+    expectRefused(await gate(UPDATE, slash('hermitd:hermit-update'), { kind: 'human' }, { launch: '/hermitd:hermit-update' }), 'hermitd:hermit-update');
+    expectRefused(await gate(`bun "/p/scripts/self-update.ts" .hermit`, 'update please'), 'hermitd:hermit-update');
+    expectRefused(await gate('bash /p/scripts/hermitd-exec.sh doctor-fix .hermit', 'fix it'), 'hermitd:doctor-fix');
+    expectRefused(await gate('hermitd run self-update .hermit', 'update please'), 'hermitd:hermit-update');
+    expectRefused(await gate('hermitd run myagent request-restart .hermit --when-quiet', 'restart'), 'hermitd:hermit-restart');
+    expectRefused(await gate('bun run /p/scripts/doctor-fix.ts .hermit', 'fix it'), 'hermitd:doctor-fix');
+  });
+
+  test('reading, testing or mentioning the scripts is untouched', async () => {
+    for (const command of [
+      'cat plugins/hermitd/scripts/request-restart.ts',
+      'grep -n self-update scripts/hermitd-update.sh',
+      'bun test tests/request-restart.test.ts',
+      "task note .hermit T-1 --stdin <<'EOF'\nran .hermit/bin/hermitd-run doctor-fix .hermit\nEOF",
+    ]) expectSilent(await gate(command, 'hello'));
   });
 });
