@@ -103,7 +103,7 @@ async function handle(message: any): Promise<void> {
     return result(id, {
       protocolVersion: params?.protocolVersion ?? '2025-06-18',
       capabilities: { experimental: { 'claude/channel': {} }, tools: {} },
-      serverInfo: { name: 'connector', version: '0.1.0' },
+      serverInfo: { name: 'connector', version: '0.0.1' },
       instructions: INSTRUCTIONS,
     });
   }
