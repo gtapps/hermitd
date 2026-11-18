@@ -20,7 +20,7 @@ import { acquireLock, releaseLock } from './lib/lockfile';
 import { settleConfig, readConfigRaw } from './lib/config-read';
 import { auditConfigChange } from './lib/config-audit';
 import { localISOStamp } from './lib/time';
-import { readRuntimeJson, updateRuntimeField, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
+import { readRuntimeJson, updateRuntimeField, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
 import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
@@ -91,6 +91,7 @@ function warnSurvivors(pids: number[]): void {
 async function main(): Promise<void> {
   const force = process.argv.includes('--force');
 
+  refuseProjectionRoot('hermitd-stop');
   const { config, raw } = loadConfig();
   acquireLifecycleLock();
   const sessionName = getSessionName(config);
