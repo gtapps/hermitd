@@ -209,25 +209,25 @@ Hermits using `setup-token` fetch no claude.ai connectors. See the [Claude Code 
 
 ## Channels
 
-`/hermitd:channel-setup` lists existing channels and **Add another channel**, with Discord, Telegram and Other choices. Other guides a conforming plugin through confirmation, installation, gated `channel-register`, and plugin-owned credentials and admission. On tmux or interactive installs, follow the linked [Claude Code approval step](https://code.claude.com/docs/en/channels#enterprise-controls); on Docker, confirm the boot entry and activate with `hermitd restart --build`. The selected-channel reply check and access report also cover custom plugins.
+`/hermitd:channel-setup` lists existing channels and **Add another channel**, with Discord, Telegram and Other choices. Other guides a conforming plugin through confirmation, installation, gated `channel-register`, and plugin-owned credentials and admission. On tmux or interactive installs, follow the linked [Claude Code approval step](https://code.claude.com/docs/en/channels#enterprise-controls); on Docker, confirm the boot entry and run the wizard’s `--build` start or restart command in your own terminal. The selected-channel reply check and access report also cover custom plugins.
 
 Official channel tokens live in `.claude.local/channels/<name>/.env` (project-local scope). `hermitd-start` derives `DISCORD_STATE_DIR` / `TELEGRAM_STATE_DIR` from `channels.<name>.state_dir` in config.json (relative paths resolved against project root); on a bare-host boot, an omitted value defaults to `.claude.local/channels/<name>`. It writes the derived paths into the resident launch overlay and shell env so MCP servers can find them.
 
 ### Docker
 
-The docker-setup wizard pairs during first run. Afterwards `/hermitd:channel-setup` from the host pairs or re-pairs. A channel or token added later needs `hermitd-docker restart` first (the bot is offline until then). Inside the container, use the two native `/<channel>:access` commands in the attached REPL; pair carries the "save access.json to `<state_dir>/` not `~/.claude`" hint.
+The Docker setup wizard handles credentials and pairing during first run. For changes later, run `hermitd setup channel-setup` from the host. After the credential stage, run the requested `hermitd start` or `hermitd restart` in your own terminal and respond to any approval diff there. The wizard checks that the container is running, then continues with access.
 
-The docker-compose file bind-mounts `.claude.local/channels/<plugin>/` into `~/.claude/channels/<plugin>/` inside the container — channel skill commands write to the right place automatically, and state persists across container restarts.
+Compose bind-mounts `.claude.local/channels/<channel>/` into the matching folder under `~/.claude/channels/` inside the container. The folder uses the configured channel key, and its contents persist across restarts.
 
 ### Local / tmux
 
-Run the guided activation wizard — it picks up the channel preference from `hatch`, or adds one if you skipped that step:
+On a first install with a channel selected at hatch, type `/hermitd:channel-setup start` after reloading plugins. The wizard installs the channel plugin, guides credential entry, starts the agent, and continues with pairing. If you defer the credential, the agent still starts. To start without chat, run `hermitd start`.
 
-```
-/hermitd:channel-setup
-```
+To add or re-enable a channel for a running agent, type `/hermitd:channel-setup`. In a separate host session, choose **Restart now** to activate the channel and continue pairing in the same run, or **Later** to keep the agent running and defer pairing. Restart resumes the conversation.
 
-It installs the plugin (requires [Bun](https://bun.sh)) and guides credentials and pairing. For official channels, private token entry uses `.claude.local/channels/<plugin>/.env`; pasted tokens enter conversation history. Other follows the plugin's runtime credential location. It can also re-enable a channel you previously turned off. `hermitd-start` passes `--channels` automatically, so no manual flag is needed. If bun is missing or the token file isn't present, `hermitd-start` prints a clear warning and skips the channel.
+In the host agent’s own managed Claude app session, you can add its first channel. The wizard requests a restart after saving the credential. When the agent returns, DM the bot for a code and type `/hermitd:channel-setup` again in the app. After admission the wizard defaults wake access to the admitted sender unless you already configured a restriction. Change it later with `/hermitd:hermit-settings channels`.
+
+Channel setup requires [Bun](https://bun.sh). For built-in channels, private token entry uses `.claude.local/channels/<channel>/.env`. Pasted tokens enter conversation history. Other follows the plugin’s runtime credential location.
 
 ---
 

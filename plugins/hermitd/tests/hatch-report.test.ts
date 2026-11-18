@@ -158,9 +158,16 @@ describe('final next-steps keys off deployment', () => {
     expect(out.running_after_step).toBe(2);
   });
 
-  test('tmux points at the boot script, and is running before pairing', () => {
+  test('tmux with a channel starts and admits through channel-setup', () => {
     const out = finalData(observe(hatched(discord)), 'tmux');
-    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd start', '/hermitd:channel-setup']);
+    expect(runs(out)).toEqual(['/reload-plugins', '/hermitd:channel-setup start']);
+    expect(out.next_steps[1].purpose).toBe('set_credential_start_and_admit');
+    expect(out.running_after_step).toBe(2);
+  });
+
+  test('tmux without a channel points straight at the boot script', () => {
+    const out = finalData(observe(hatched()), 'tmux');
+    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd start']);
     expect(out.running_after_step).toBe(2);
   });
 

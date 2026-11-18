@@ -222,17 +222,17 @@ Usually a UID mismatch between the host and the container user. The generated Do
 
 ## Channel Messages Not Arriving
 
-For a third-party plugin, run `/hermitd:channel-setup` and select its entry or **Add another channel → Other**. Setup follows its guide and uses the gated `channel-register` verb. Re-check [Claude Code approval](https://code.claude.com/docs/en/channels#enterprise-controls) first if conversational proof gets no answer; inspect the plugin's startup error and guide before naming a cause. Docker activation requires `hermitd restart --build`.
+For a third-party plugin, run `/hermitd:channel-setup` and select its entry or **Add another channel → Other**. Setup follows its guide and uses the gated `channel-register` verb. Re-check [Claude Code approval](https://code.claude.com/docs/en/channels#enterprise-controls) first if conversational proof gets no answer; inspect the plugin's startup error and guide before naming a cause. For Docker, the wizard asks you to run the `--build` start or restart in your own terminal.
 
 **Docker:**
-- Pair or re-pair from the host with `/hermitd:channel-setup`. docker-setup pairs during first run; afterwards use channel-setup. A channel or token added later needs `hermitd-docker restart` first (the bot is offline until then). Inside the container, `/<channel>:access pair <code>` (save access.json to `<state_dir>/` not `~/.claude`) and `/<channel>:access policy allowlist` in the attached REPL.
+- Docker setup pairs during first run. Afterward, run `hermitd setup channel-setup` from the host. Follow its start or restart instruction in your own terminal and confirm when it succeeds. The wizard checks the running service before pairing. If the bot stays silent, inspect `hermitd docker logs --tail=60` for the channel plugin’s startup error.
 - Verify the channel plugin is installed inside the container: `hermitd-docker attach`, then check with `claude plugin list`.
 - Check bot pairing: send a test message to the bot and watch the logs (`hermitd-docker logs`).
 - For Discord: ensure `channels.discord.state_dir` is set in `config.json` (e.g. `.claude.local/channels/discord`) and the directory is bind-mounted in `docker-compose.hermit.yml`. `hermitd-start` resolves relative paths and derives `DISCORD_STATE_DIR` at boot.
 - For Telegram: ensure `channels.telegram.state_dir` is set and the bot token is in the state directory's `.env` file.
 
 **Local/tmux:**
-- Type `/hermitd:channel-setup` in a terminal or the Claude app to verify and repair the full setup (bun, plugin, token, pairing, access.json location).
+- Type `/hermitd:channel-setup` in a separate host session to verify or repair setup. When adding the first channel in the running agent’s own Claude app session, type the wizard again after the agent restarts and you have the pairing code.
 - Check `hermitd-start` output for bun or token warnings — the channel is skipped if either is missing.
 
 

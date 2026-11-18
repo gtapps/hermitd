@@ -37,10 +37,10 @@ The operator writes the secret in their own terminal, in the runtime where the p
 
 Show commands from the guide and obtain approval before running them. Run the plugin's own skills as the agent where possible. Otherwise give the operator the exact command, or, on Docker, the exact message to send to the running agent. Use the plugin's own admission and pairing procedures.
 
-For Docker activation run `hermitd restart --build`, or `hermitd start --build` when stopped. Other installs restart as the shared start stage says, with `<plugin>@<marketplace>`. Point at `/hermitd:docker-security` when the plugin needs hosts outside the allowlist.
+Use the calling wizard's activation step. On Docker, if activation calls for `hermitd restart --build` or `hermitd start --build`, the operator runs it in their own terminal. On a foreground host, use `<plugin>@<marketplace>`. Point at `/hermitd:docker-security` when the plugin needs hosts outside the allowlist.
 
 ## Shared flow boundary
 
 Skip the official-only procedures: `channel-access.ts`, group enrollment, `channel-bot-id.ts`, the `access.json` move. The official Docker routing shortcuts do not apply to this path.
 
-Rejoin shared access control with `allowed_users` when the operator supplies ids; use the shared field-preserving settings commands and do not infer ids from an unreadable plugin policy. Continue with conditional Operators and Primary questions, selected-channel conversational proof, and summary. Report plugin admission, the agent's sender restriction, permission relay, and script-alert reachability separately; unreadable facts stay unknown.
+Rejoin the [shared wake access procedure](access.md#who-may-wake-the-agent) only after this run admits someone. Use the plugin's verified admitted sender id where available and preserve an existing `allowed_users`. In the agent's own managed session, skip the wake question and use the safe default when the id is known. If the id is unknown, report that and point to `/hermitd:hermit-settings channels` for later changes. Return to the calling wizard with the admission and access results. Report plugin admission, the agent's sender restriction, permission relay, and script-alert reachability separately; unreadable facts stay unknown.

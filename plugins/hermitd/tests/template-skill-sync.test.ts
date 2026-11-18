@@ -103,7 +103,7 @@ describe('channel settings stay referenced in operator skills', () => {
   ];
   const validator = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'validate-config.ts'), 'utf8');
   const settings = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'hermit-settings', 'SKILL.md'), 'utf8');
-  const wizard = ['SKILL.md', 'references/group-enrollment.md']
+  const wizard = ['SKILL.md', 'references/access.md', 'references/group-enrollment.md']
     .map((f) => fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'channel-setup', f), 'utf8')).join('\n');
 
   for (const key of VALIDATED_CHANNEL_KEYS) {
