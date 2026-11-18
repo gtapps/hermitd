@@ -404,7 +404,8 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     if [ "$RELOAD_PLUGINS_SENT" = true ]; then
       RESTART_ARGS=(--when-quiet)
       [ "$EVOLVE_SENT" = true ] && RESTART_ARGS+=("${EXPECT_ARGS[@]}")
-      (cd "$PROJECT_DIR" && .hermit/bin/hermitd-run request-restart .hermit "${RESTART_ARGS[@]}" </dev/null >/dev/null 2>&1) \
+      (cd "$PROJECT_DIR" && .hermit/bin/hermitd-run request-restart .hermit "${RESTART_ARGS[@]}" </dev/null 2>/dev/null) \
+        | grep -q '"status":"requested"' \
         && echo "[hermit] A restart follows once the agent is quiet." \
         || echo "[hermit] Warning: the follow-up restart was not requested; restart the agent when it is idle." >&2
     fi

@@ -3,8 +3,8 @@ import { reconcileRoutines } from './lib/routines/recover';
 import { clearRecoveryPending, reconcileChannels } from './lib/channel-recovery';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { readConfigRaw, readSettledConfig } from './lib/config-read';
+import { cmpSemver } from './lib/semver';
 import { requestRestart } from './lib/request-restart';
 import { hermitDir, transcriptDirFor } from './lib/cc-compat';
 import { readJson } from './lib/cli';
@@ -26,18 +26,15 @@ function ownVersion(): string {
  *  turn, then restarts once when quiet so the next boot runs on the migrated state. */
 function queueStartUpgrade(dir: string): void {
   const config = readConfigRaw(dir);
-  if (config?.always_on !== true || config._hermit_versions?.hermitd === ownVersion()) return;
-  const check = spawnSync('bash', [path.join(import.meta.dir, 'check-upgrade.sh'), path.join(import.meta.dir, '..')], {
-    cwd: path.dirname(dir), encoding: 'utf8', timeout: 5000,
-  });
-  const verdict = (() => { try { return JSON.parse(check.stdout); } catch { return null; } })();
-  if (verdict?.status !== 'upgrade_available' || verdict.always_on !== true || pendingPurpose(dir, 'upgrade')) return;
+  const version = ownVersion();
+  if (config?.always_on !== true || cmpSemver(version, String(config._hermit_versions?.hermitd ?? '0.0.0')) <= 0) return;
+  if (pendingPurpose(dir, 'upgrade')) return;
   const queued = enqueue(dir, {
-    source: 'update', purpose: 'upgrade', expect_version: verdict.plugin_version,
+    source: 'update', purpose: 'upgrade', expect_version: version,
     commands: [{ command: '/hermitd:hermit-evolve', arg: 'unattended' }],
   });
   if (queued.status !== 'queued') return;
-  requestRestart(dir, 'requested', { expect: { hermitd: verdict.plugin_version }, boot: readRuntimeJson(path.join(dir, 'state'))?.session_pid });
+  requestRestart(dir, 'requested', { expect: { hermitd: version }, boot: readRuntimeJson(path.join(dir, 'state'))?.session_pid });
 }
 
 const REFUSALS: Record<string, string> = {

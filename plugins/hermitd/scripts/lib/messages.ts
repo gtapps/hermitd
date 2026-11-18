@@ -98,7 +98,7 @@ export const EN = {
   watchdog_paused_until_date: 'Your agent is paused ({label}) until {boundary}.',
   watchdog_stall_question: "Your agent is waiting on a question it can't ask over chat — open the terminal or Claude app to answer ({time}).",
   watchdog_stall_permission: 'The agent asked for permission to continue and is waiting for an answer ({time}). It will pick up where it left off once someone approves.',
-  watchdog_restart_dropped: 'Your agent was not restarted ({time}): it stayed busy, or its upgrade did not finish, for too long. Type {command} again once it is idle.',
+  watchdog_restart_dropped: 'Your agent was not restarted ({time}): it stayed busy, or its upgrade did not finish, for too long. Type {command} once it is idle to restart it.',
   watchdog_session_wedged: 'Your agent has stopped picking up its scheduled work — something on screen is holding it. Open the terminal or Claude app and clear whatever is waiting there ({time}).',
   watchdog_orphan: "Your agent's session ended but a process may still be running ({time}). If it keeps replying, stop it from the terminal: run {command} and kill that PID.",
   watchdog_lapsed_login: "Your Claude login has expired, so your agent can't do any work until you sign in again ({time}). {fix}",

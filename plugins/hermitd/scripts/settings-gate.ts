@@ -590,7 +590,7 @@ const MANAGEMENT_COMMANDS: Record<string, string[]> = {
 const MANAGEMENT_NAMES = Object.keys(MANAGEMENT_COMMANDS).join('|');
 const MANAGEMENT_MENTION = new RegExp(MANAGEMENT_NAMES);
 /** A run of one, not a mention. */
-const MANAGEMENT_RUN = new RegExp(String.raw`\b(?:bun|hermitd-run|hermitd-exec\.sh)\s+\S*\b(${MANAGEMENT_NAMES})(?:\.ts)?(?=["'\s]|$)`);
+const MANAGEMENT_RUN = new RegExp(String.raw`\b(?:bun(?:\s+run)?|hermitd-run|hermitd-exec\.sh|hermitd\s+run(?:\s+\S+)?)\s+\S*\b(${MANAGEMENT_NAMES})(?:\.ts)?(?=["'\s]|$)`);
 
 function deny(reason: string): void {
   fs.writeSync(1, JSON.stringify({

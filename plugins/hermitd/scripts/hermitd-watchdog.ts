@@ -2484,7 +2484,7 @@ export async function awaitQuietRestart(hermitRoot: string, expected: Record<str
   options: Parameters<typeof awaitUpgrade>[2] = {}): Promise<QuietRestart> {
   const ready = await awaitUpgrade(hermitRoot, expected, options);
   if (ready.status === 'timeout') return ready;
-  const runtime = readJson(path.join(hermitRoot, 'state', 'runtime.json'));
+  const runtime = readRuntimeJson(path.join(hermitRoot, 'state'));
   return boot !== null && String(runtime?.session_pid ?? '') !== boot ? { status: 'replaced' } : ready;
 }
 

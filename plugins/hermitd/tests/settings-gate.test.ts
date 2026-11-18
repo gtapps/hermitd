@@ -1301,6 +1301,9 @@ describe('management commands run only on their own typed command', () => {
     expectRefused(await gate(UPDATE, slash('hermitd:hermit-update'), { kind: 'human' }, { launch: '/hermitd:hermit-update' }), 'hermitd:hermit-update');
     expectRefused(await gate(`bun "/p/scripts/self-update.ts" .hermit`, 'update please'), 'hermitd:hermit-update');
     expectRefused(await gate('bash /p/scripts/hermitd-exec.sh doctor-fix .hermit', 'fix it'), 'hermitd:doctor-fix');
+    expectRefused(await gate('hermitd run self-update .hermit', 'update please'), 'hermitd:hermit-update');
+    expectRefused(await gate('hermitd run myagent request-restart .hermit --when-quiet', 'restart'), 'hermitd:hermit-restart');
+    expectRefused(await gate('bun run /p/scripts/doctor-fix.ts .hermit', 'fix it'), 'hermitd:doctor-fix');
   });
 
   test('reading, testing or mentioning the scripts is untouched', async () => {

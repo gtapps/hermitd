@@ -25,7 +25,7 @@ Always-on agents do this on their own: when one starts with a version gap, it fi
 
 ### Typed management commands
 
-A host agent's own session takes four management commands, typed by the operator in a terminal or in the Claude app (Remote Control). The agent never starts them from chat or on its own:
+A host agent's own session takes four management commands, typed by the operator in a terminal or in the Claude app (Remote Control). Chat cannot start them; the upgrade at start above is the only one the agent runs by itself:
 
 - `/hermitd:hermit-update` runs `hermitd update` without its prompt, then restarts the agent once the upgrade has applied and the agent is quiet.
 - `/hermitd:hermit-restart` restarts the agent once it has been quiet for about a minute; the conversation resumes. If the agent stays busy for 15 minutes, the restart is dropped and the agent says so.
