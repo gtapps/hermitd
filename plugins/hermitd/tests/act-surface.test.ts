@@ -32,19 +32,29 @@ test('startup context carries the act surface line on a reachable non-technical 
     const env = { HERMIT_RESIDENT: '1', CLAUDE_CONFIG_DIR: path.join(dir, 'cc'), ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_USE_BEDROCK: '', CLAUDE_CODE_USE_VERTEX: '', CLAUDE_CODE_USE_FOUNDRY: '' };
     const run = (source: string) => runScript('startup-context.ts', { cwd: dir, env, stdin: JSON.stringify({ source, session_id: 'resident' }) });
 
-    // Remote Control starts only when config.json sets `remote`, and only on a claude.ai sign-in.
-    for (const unreachable of [{ auth_mode: 'login' }, { auth_mode: 'token', remote: true }]) {
-      write({ operator_profile: 'non-technical', channels: {}, ...unreachable, _hermit_versions: { hermitd: '0.0.1' } });
+    // Remote Control starts unless `remote` is off, and only on a claude.ai sign-in.
+    for (const unreachable of [{ auth_mode: 'login', remote: false }, { auth_mode: 'token' }]) {
+      write({ operator_profile: 'non-technical', channels: {}, ...unreachable });
       expect((await run('startup')).stdout).not.toContain('act_surface');
     }
 
-    write({ operator_profile: 'non-technical', auth_mode: 'login', remote: true, channels: {}, _hermit_versions: { hermitd: '0.0.1' } });
+    // A sparse config with no `remote` key launches with Remote Control on.
+    write({ operator_profile: 'non-technical', auth_mode: 'login', channels: {} });
     const full = await run('startup');
     expect(full.exitCode).toBe(0);
-    expect(full.stdout).toContain('---Operator Preferences---\nact_surface: claude_app');
-    expect((await run('compact')).stdout).toContain('act_surface: claude_app');
+    expect(full.stdout).toContain('---Operator Preferences---\nact_surface: claude_app. ');
+    expect((await run('compact')).stdout).toContain('act_surface: claude_app. ');
 
-    write({ operator_profile: 'technical', auth_mode: 'login', remote: true, _hermit_versions: { hermitd: '0.0.1' } });
+    write({ operator_profile: 'technical', auth_mode: 'login' });
     expect((await run('startup')).stdout).not.toContain('act_surface');
+
+    // Four channel format hints fill most of the compaction cap; the whole rule still survives.
+    const provider = actSurfaceLine({ operator_profile: 'non-technical', channels: { discord: { maintainer_channel_id: '9' } } }, () => false)!;
+    write({ operator_profile: 'non-technical', channels: {
+      discord: { maintainer_channel_id: '9' }, slack: { format: 'slack' }, matrix: { format: 'matrix' }, signal: { format: 'signal' },
+    } });
+    const compact = (await run('compact')).stdout;
+    expect(compact).not.toContain('Task policy');
+    expect(compact).toContain(`${provider}\n`);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

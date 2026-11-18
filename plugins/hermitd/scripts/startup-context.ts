@@ -1,5 +1,5 @@
 import { hintFor } from './lib/channel-format';
-import { getEnabledChannels, pyTruthy } from './lib/channel-config';
+import { getEnabledChannels } from './lib/channel-config';
 import { readTaskReports } from './lib/task-report';
 import { observeExecution, readExecution, startupTasks } from './lib/tasks';
 // Suppress EPIPE errors (e.g. when stdout pipe closes early in tests)
@@ -116,11 +116,10 @@ function operatorLanguage(agentDir: string): string | null {
 
 function actSurface(config: ReturnType<typeof readSettledConfig>): string[] {
   try {
-    // Remote Control connects only on a claude.ai sign-in, and hermitd-start enables it only
-    // when config.json itself sets `remote`, not from the settled default.
+    // Remote Control connects only on a claude.ai sign-in; hermitd-start enables it unless
+    // `remote` is off, defaulting it on like the settled config does.
     const line = actSurfaceLine(config, () =>
-      pyTruthy(readJson(path.join(AGENT_DIR, 'config.json'))?.remote ?? false)
-      && resolveAuthMode(config, defaultConfigDir()) === 'login');
+      config.remote !== false && resolveAuthMode(config, defaultConfigDir()) === 'login');
     return line ? [line] : [];
   } catch { return []; }
 }
@@ -148,8 +147,8 @@ function buildCompactionPointers(agentDir: string): string {
   if (lang) parts.push(`operator language: ${safe(lang)} (reply in this language)`);
 
   const config = readSettledConfig(agentDir);
-  parts.push(...channelFormatHints(config));
   parts.push(...actSurface(config));
+  parts.push(...channelFormatHints(config));
 
   parts.push('Task policy: read TASKS.md before intake or confirmation.');
 

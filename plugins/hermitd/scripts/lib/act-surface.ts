@@ -13,11 +13,12 @@ export function actSurfaceLine(config: Json, claudeAppReachable: () => boolean):
   if (config?.operator_profile !== 'non-technical') return null;
   const maintainer = resolveMaintainerTarget(config.channels);
   if (maintainer) {
-    return `act_surface: provider (maintainer chat ${safe(maintainer.id)}:${safe(maintainer.chat_id)})\n`
+    // One line, so a capped compaction capsule keeps or drops the rule whole.
+    return `act_surface: provider (maintainer chat ${safe(maintainer.id)}:${safe(maintainer.chat_id)}). `
       + 'Elsewhere, any "terminal or the Claude app" step is the provider\'s: say so, and send the detail, '
       + 'updates and repairs included, as a maintainer-only notice.';
   }
   if (!claudeAppReachable()) return null;
-  return 'act_surface: claude_app\n'
+  return 'act_surface: claude_app. '
     + 'For any "terminal or the Claude app" step, name only the Claude app; a step that names only a terminal keeps it.';
 }
