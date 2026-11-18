@@ -213,7 +213,7 @@ function list(root: string, cwd: string, json: boolean): void {
   const projects = new Map(entries.map(entry => [entry.project_dir, { registered: true, state: entry.state, name: entry.name }]));
   const discover = (dir: string) => {
     if (!dir || !fs.existsSync(path.join(dir, '.hermit/config.json'))) return;
-    const canonical = fs.realpathSync(dir);
+    const canonical = fs.realpathSync(path.dirname(resolveProjection(path.join(dir, '.hermit'))));
     if (!projects.has(canonical)) projects.set(canonical, { registered: false, state: 'present', name: path.basename(canonical) });
   };
   const docker = inspect('docker', ['ps', '-a', '--filter', 'label=com.docker.compose.service=hermit', '--format', '{{.Label "com.docker.compose.project.working_dir"}}'], cwd);

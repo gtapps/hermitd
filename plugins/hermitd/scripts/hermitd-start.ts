@@ -22,7 +22,7 @@ import { acquireLock, releaseLock } from './lib/lockfile';
 import { readConfigRaw } from './lib/config-read';
 import { readJson } from './lib/cli';
 import { auditConfigChange } from './lib/config-audit';
-import { writeRuntimeJson, readRuntimeJson, readRuntimeState, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
+import { writeRuntimeJson, readRuntimeJson, readRuntimeState, refuseProjectionRoot, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
 import { localISOStamp } from './lib/time';
 import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
@@ -38,7 +38,6 @@ import { artifactGrantApplies, generatedAutoMode, mergeOperatorAutoMode, operato
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
-import { resolveProjection } from './lib/cc-compat';
 import { renderTemplate } from './lib/render-template';
 import { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
 export { resolveResumeTarget } from './lib/resident-prompt';
@@ -297,20 +296,6 @@ function shlexJoin(args: string[]): string {
 
 /** True when config.json exists but could not be parsed — gates the write-back. */
 let configReadFailed = false;
-
-/**
- * Refuse to boot from a checkout whose `.hermit/` projects a real root above it.
- * Every lifecycle state path is cwd-relative, so a boot here would create
- * `state/` inside the projection and turn it into a root of its own.
- */
-function refuseProjectionBoot(): void {
-  const here = path.resolve('.hermit');
-  const root = resolveProjection(here);
-  if (root === here) return;
-  console.log(`[hermit] ${process.cwd()} is a checkout inside the agent project at ${path.dirname(root)}.`);
-  console.log('[hermit] Run hermitd-start from that folder.');
-  process.exit(1);
-}
 
 /** Load config.json or return defaults. */
 function loadConfig(): Json {
@@ -1571,7 +1556,7 @@ async function main(): Promise<void> {
   const noTmuxFlag = process.argv.includes('--no-tmux');
   const resumeIndex = process.argv.indexOf('--resume');
 
-  refuseProjectionBoot();
+  refuseProjectionRoot('hermitd-start');
   // Config first: which credential to hydrate is a config question now, and the
   // answer decides whether a token file is read at all.
   const config = loadConfig();
