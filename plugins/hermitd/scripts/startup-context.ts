@@ -1,5 +1,5 @@
 import { hintFor } from './lib/channel-format';
-import { getEnabledChannels } from './lib/channel-config';
+import { getEnabledChannels, pyTruthy } from './lib/channel-config';
 import { readTaskReports } from './lib/task-report';
 import { observeExecution, readExecution, startupTasks } from './lib/tasks';
 // Suppress EPIPE errors (e.g. when stdout pipe closes early in tests)
@@ -116,7 +116,11 @@ function operatorLanguage(agentDir: string): string | null {
 
 function actSurface(config: ReturnType<typeof readSettledConfig>): string[] {
   try {
-    const line = actSurfaceLine(config, () => resolveAuthMode(config, defaultConfigDir()));
+    // Remote Control connects only on a claude.ai sign-in, and hermitd-start enables it only
+    // when config.json itself sets `remote`, not from the settled default.
+    const line = actSurfaceLine(config, () =>
+      pyTruthy(readJson(path.join(AGENT_DIR, 'config.json'))?.remote ?? false)
+      && resolveAuthMode(config, defaultConfigDir()) === 'login');
     return line ? [line] : [];
   } catch { return []; }
 }
@@ -415,11 +419,10 @@ function emitFullContext(source: string | null) {
 
   const lang = operatorLanguage(AGENT_DIR);
   const settled = readSettledConfig(AGENT_DIR);
-  const surface = actSurface(settled);
   const preferences = [
     ...(lang ? [`operator_language: ${safe(lang)}\nAll operator-facing prose uses this language.`] : []),
     ...channelFormatHints(settled),
-    ...surface,
+    ...actSurface(settled),
   ];
   if (preferences.length) emit('Operator Preferences', preferences.join('\n'));
 
@@ -442,12 +445,9 @@ function emitFullContext(source: string | null) {
   if (totalChars < HARD_CAP) {
     try {
       let knowledgeBudget = BUDGETS.knowledge;
-      try {
-        const config = readSettledConfig(AGENT_DIR);
-        if (config.knowledge && typeof config.knowledge.compiled_budget_chars === 'number') {
-          knowledgeBudget = config.knowledge.compiled_budget_chars;
-        }
-      } catch {}
+      if (settled.knowledge && typeof settled.knowledge.compiled_budget_chars === 'number') {
+        knowledgeBudget = settled.knowledge.compiled_budget_chars;
+      }
 
       // Clamp to remaining headroom so a maxed compiled budget doesn't crowd lower-priority
       // sections (cost, report, upgrade). Operator and session emit first and are already safe.
@@ -593,7 +593,7 @@ function emitFullContext(source: string | null) {
         title = 'Upgrade Available';
         text = `Plugin v${v.plugin_version} ≠ config v${v.config_version}. ` + (v.always_on
           ? 'The upgrade runs by itself after this boot turn, then the agent restarts once when quiet. Continue normally.'
-          : `Tell the operator to type /hermitd:hermit-evolve${surface.length ? ', worded per act_surface.' : ' in a terminal or the Claude app.'}`);
+          : 'Tell the operator to type /hermitd:hermit-evolve in a terminal or the Claude app.');
       } else if (v?.status === 'stale_plugin_runtime') {
         title = 'Stale Plugin Runtime';
         text = `Loaded plugin v${v.plugin_version} is older than this hermit's applied state v${v.config_version}: a stale install copy. hermit-evolve cannot fix this: find the \`claude plugin list\` entry matching the path below, run \`claude plugin update hermitd@hermitd --scope <its scope>\`, then restart.\n`
