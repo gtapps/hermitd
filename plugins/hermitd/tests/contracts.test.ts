@@ -522,7 +522,7 @@ describe('push_notifications validation', () => {
 });
 
 describe('retired settings dials', () => {
-  const RETIRED = 'is retired and no longer read; run /hermitd:hermit-evolve to remove it';
+  const RETIRED = 'is retired and no longer read; type /hermitd:hermit-evolve in a terminal or the Claude app to remove it';
 
   test('each leftover key warns once and never errors', () => {
     const fromChat = runValidate({ settings_from_chat: false });
@@ -1395,7 +1395,7 @@ describe('model-invocable inventory', () => {
       return fs.existsSync(skillPath)
         && isModelInvocationDisabled(fs.readFileSync(skillPath, 'utf8'));
     }).sort();
-    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'hatch', 'rc-gate', 'task-decide']);
+    expect(flagged).toEqual(['channel-setup', 'docker-security', 'docker-setup', 'doctor-fix', 'hatch', 'hermit-evolve', 'hermit-restart', 'hermit-update', 'rc-gate', 'task-decide']);
   });
 });
 

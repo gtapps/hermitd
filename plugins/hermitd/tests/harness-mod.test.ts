@@ -294,6 +294,51 @@ test('loaded stamps the marker and names the state directory', async () => {
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident', queue: QUEUE_PROTOCOL });
 });
 
+function startUpgradeFixture(config: object, runtime: object = { session_pid: 4242 }) {
+  const { wd, dir } = fixture(runtime);
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ timezone: 'UTC', channels: {}, ...config }));
+  fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+  const receipt = path.join(wd.dir, 'restart.receipt');
+  fs.writeFileSync(path.join(dir, 'bin', 'hermitd-watchdog'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${receipt}"\n`, { mode: 0o700 });
+  const restarts = async () => {
+    // The restart request is detached; give its stub a moment to write.
+    for (let i = 0; i < 100 && !fs.existsSync(receipt); i++) await Bun.sleep(20);
+    return fs.existsSync(receipt) ? fs.readFileSync(receipt, 'utf8').trim().split('\n') : [];
+  };
+  return { wd, dir, restarts };
+}
+const queuedUpgrades = (dir: string) => listing(dir, 'harness-queue').map(name => JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-queue', name), 'utf8')));
+
+test('loaded queues the upgrade of an always-on agent once and requests a quiet restart', async () => {
+  const { wd, dir, restarts } = startUpgradeFixture({ always_on: true, _hermit_versions: { hermitd: '0.0.1' } });
+  await call(wd, 'loaded');
+  await call(wd, 'loaded');
+  const queued = queuedUpgrades(dir);
+  expect(queued).toHaveLength(1);
+  expect(queued[0]).toMatchObject({ source: 'update', purpose: 'upgrade', expect_version: VERSION, commands: [{ command: '/hermitd:hermit-evolve', arg: 'unattended' }] });
+  expect(await restarts()).toEqual([`restart requested --when-quiet --boot 4242 --expect hermitd=${VERSION}`]);
+});
+
+for (const [name, config] of [
+  ['no gap', { always_on: true, _hermit_versions: { hermitd: VERSION } }],
+  ['an interactive agent', { always_on: false, _hermit_versions: { hermitd: '0.0.1' } }],
+] as const) {
+  test(`loaded queues no upgrade for ${name}`, async () => {
+    const { wd, dir, restarts } = startUpgradeFixture(config);
+    await call(wd, 'loaded');
+    expect(queuedUpgrades(dir)).toEqual([]);
+    expect(await restarts()).toEqual([]);
+  });
+}
+
+test('loaded leaves an already pending upgrade alone', async () => {
+  const { wd, dir, restarts } = startUpgradeFixture({ always_on: true, _hermit_versions: { hermitd: '0.0.1' } });
+  enqueue(dir, { source: 'update', purpose: 'upgrade', expect_version: '9.9.9', commands: [{ command: '/reload-plugins', arg: null }] });
+  await call(wd, 'loaded');
+  expect(queuedUpgrades(dir).map(entry => entry.expect_version)).toEqual(['9.9.9']);
+  expect(await restarts()).toEqual([]);
+});
+
 test('claim leaves the loaded marker alone', async () => {
   const { wd, dir } = fixture();
   const file = path.join(dir, 'state/harness-mod-loaded.json');

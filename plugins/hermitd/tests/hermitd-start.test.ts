@@ -2293,7 +2293,10 @@ describe('checkForUpgrade', () => {
   test('plugin newer than the stamp -> upgrade notice', () => {
     const out = run('0.0.1');
     expect(out).toContain('Upgrade available');
-    expect(out).toContain('hermit-evolve');
+    expect(out).toContain('Type /hermitd:hermit-evolve');
+    const alwaysOn = captureLog(() => checkForUpgrade({ always_on: true, _hermit_versions: { 'hermitd': '0.0.1' } } as any)).out;
+    expect(alwaysOn).toContain('applies it after this start');
+    expect(alwaysOn).not.toContain('hermit-evolve');
   });
 
   // The stale-install direction. Previously this printed a backwards arrow
