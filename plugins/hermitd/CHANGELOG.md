@@ -5,6 +5,8 @@
 ### Changed
 
 - On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.
+### Fixed
+- `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands run there target that root, so a stray boot no longer splits state or blocks helper reports
 
 ### Fixed
 
