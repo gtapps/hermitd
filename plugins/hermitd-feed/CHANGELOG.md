@@ -1,9 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.9] - 2026-11-18
 
 ### Changed
 - Hook scripts run with Bun's automatic package install disabled (`bun --no-install`)
+
+### Upgrade Instructions
+No action required.
+
+No `config.json` changes required.
 
 ## [0.2.8] - 2026-11-09
 
