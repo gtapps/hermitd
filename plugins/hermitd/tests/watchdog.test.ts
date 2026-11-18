@@ -20,7 +20,7 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  awaitUpgrade, awaitQuietRestart, composeRestartDroppedMessage, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, awaitQuietRestart, turnEnded, composeRestartDroppedMessage, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
   maybeContextCompact, readHarnessOutcomes, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
@@ -5674,6 +5674,20 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
 
 
 describe('await-upgrade', () => {
+  test('turnEnded waits only for the turn running at its first check', withHermit(async (h) => {
+    const root = path.join(h.dir, '.hermit');
+    const at = new Date().toISOString();
+    const execution = (state: string, turn: string | null) => writeState(h, 'execution.json', { state, turn_id: turn, at, source: null, cc_session_id: 's', reason: null });
+    execution('idle', 't1');
+    expect(turnEnded()(root)).toEqual({ ok: true });
+    execution('in_flight', 't1');
+    const evolve = turnEnded();
+    expect(evolve(root)).toEqual({ ok: false, reason: 'execution-not-idle' });
+    execution('idle', 't1');
+    expect(evolve(root)).toEqual({ ok: true });
+    execution('in_flight', 't2');
+    expect(evolve(root)).toEqual({ ok: true });
+  }));
   test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');
     patchRuntime(h, { session_pid: '4242' });

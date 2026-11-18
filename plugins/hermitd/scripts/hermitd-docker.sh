@@ -782,11 +782,7 @@ case "$CMD" in
 
     _await_upgrade() {
       local output parsed
-      if [ $# -gt 0 ]; then
-        echo "[hermit] Waiting for hermit-evolve, then a quiet boundary (up to 45 min)..."
-      else
-        echo "[hermit] Waiting for a quiet boundary (up to 15 min)..."
-      fi
+      echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."
       # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
       _stamp_update_marker
       if output=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
@@ -817,8 +813,6 @@ case "$CMD" in
       return 0
     }
     _apply_update() {
-    # A CC-only run changes nothing before the build, so only the pre-bounce wait applies.
-    if [ "$CC_ONLY" = false ]; then _await_upgrade || return 0; fi
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       # Refresh each backing marketplace's catalog first. `claude plugin update` moves the
       # pin against whatever is already in the local cache — it does not git-pull. A
@@ -986,7 +980,6 @@ case "$CMD" in
         fi
       fi
     fi
-    _await_upgrade || return 0
     _validate_compose
     if [ "$PLUGINS_ONLY" = true ]; then _build_netguard_cached; fi
     trap 'exit 130' INT

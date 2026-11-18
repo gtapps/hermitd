@@ -2540,6 +2540,21 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
+/** A boundary that waits only for the turn running at its first check to end; a later turn never holds it. */
+export function turnEnded(): typeof passesExecutionBoundary {
+  let first = true;
+  let held: string | null = null;
+  return (hermitRoot) => {
+    const execution = readExecution(hermitRoot);
+    if (first) {
+      first = false;
+      held = execution.state === 'in_flight' ? execution.turn_id : null;
+    }
+    return held !== null && execution.state === 'in_flight' && execution.turn_id === held
+      ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
+  };
+}
+
 if (import.meta.main) {
   refuseProjectionRoot('hermitd-watchdog');
   const subcommand = process.argv[2] ?? 'run';
@@ -2561,7 +2576,8 @@ if (import.meta.main) {
       console.log(JSON.stringify({ error: 'invalid_expect' }));
       process.exit(1);
     }
-    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected)));
+    // An operator-run update waits for evolve and the turn that ran it, never for a quiet agent.
+    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary: turnEnded() })));
   } else if (subcommand === 'restart') {
     const reason = process.argv[3] ?? 'manual';
     const flags = parseRestartFlags(process.argv.slice(4));

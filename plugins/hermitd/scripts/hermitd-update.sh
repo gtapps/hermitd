@@ -182,7 +182,7 @@ if [ -n "$SKIP_ROWS" ]; then
     echo "    - $pid  ->  claude plugin update $pid --scope user"
   done
 fi
-echo "  A live tmux resident restarts once at a quiet boundary after reload and evolve."
+echo "  A live tmux resident restarts once after reload and evolve."
 echo "  Note: Claude Code itself is updated separately on the host: claude update"
 
 if [ "$DRY_RUN" = true ]; then
@@ -268,11 +268,7 @@ _await_upgrade() {
   local output parsed
   # The resident's own turn never reaches a quiet boundary, so a self-run update keeps the immediate path.
   [ "$SELF_RUN" = false ] || return 0
-  if [ $# -gt 0 ]; then
-    echo "[hermit] Waiting for hermit-evolve, then a quiet boundary (up to 45 min)..."
-  else
-    echo "[hermit] Waiting for a quiet boundary (up to 15 min)..."
-  fi
+  echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."
   # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
   _stamp_update_marker
   if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
@@ -323,7 +319,6 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   fi
   AWAIT_NOTED=false
   _apply_live_update() {
-  _await_upgrade || return 0
   # Check whether any registered hermit (core or sibling) has a version gap.
   # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
   # We compare each installed hermit version against config._hermit_versions.
@@ -396,8 +391,6 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   fi
   if [ "$EVOLVE_SENT" = true ]; then
     _await_upgrade "${EXPECT_ARGS[@]}" || return 0
-  else
-    _await_upgrade || return 0
   fi
   if [ "$SELF_RUN" = true ]; then
     echo "[hermit] Run from the resident's own session: commands queued for after this turn."

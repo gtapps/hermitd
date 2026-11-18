@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
+
 ### Fixed
 
 - `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands run there target that root, so a stray boot no longer splits state or blocks helper reports

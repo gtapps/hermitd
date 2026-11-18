@@ -8,7 +8,7 @@ Hermit is backwards compatible — nothing breaks if you don't upgrade. But upgr
 
 ### One command (recommended)
 
-From the project root, run `hermitd update`. It waits for quiet, moves the durable plugin pins and queues `/reload-plugins` for the running session's core mod. For version gaps it runs `hermit-evolve` after the reload. It waits for migrations, builds the Docker image from approved copies when applicable, waits for quiet again and restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
+From the project root, run `hermitd update`. It moves the durable plugin pins and queues `/reload-plugins` for the running session's core mod. For version gaps it runs `hermit-evolve` after the reload. It waits for migrations, builds the Docker image from approved copies when applicable and restarts the resident once with resume requested. A changed resident prompt starts a fresh conversation.
 
 ```bash
 # Docker hermits:
@@ -34,7 +34,7 @@ A host agent's own session takes four management commands, typed by the operator
 
 Each one runs only on a turn that opens with that typed command; asking in prose, from chat or from another command is refused. Typed update and repair work on Standard and Hardened alike. On a Docker agent, `/hermitd:hermit-restart` restarts the session inside the container, while update and repair answer that they run on the host: use `hermitd update` and `hermitd doctor --fix` there. The `hermitd update` spellings are denied in the agent's own shell on every install. See [security](security.md#trust-model).
 
-Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. A busy resident or worker can delay the update; after a wait timeout, or an interrupt before the restart, nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without the quiet guard.
+Both host and Docker updates restart the resident to load the rewritten launch overlay and monitors. The update does not wait for the agent to be quiet: a running turn can delay the reload by up to five minutes, and a turn still running at the restart is cut off while the conversation resumes. After a wait for evolve times out, or after an interrupt before the restart, nothing restarts right away, and the update asks you to rerun `hermitd update`. Once evolve has applied, the watchdog may still restart the resident at its next quiet moment; only the rerun rebuilds the image. The first update from a watchdog without `await-upgrade` prints a note and proceeds without waiting for evolve.
 
 External updates end with `hermitd doctor --fix` after removing the update marker. The pass queues a pending core upgrade once, repairs a policy-safe watchdog scheduler, then re-checks and prints the remaining manual actions. It does not change the update's exit status. `.hermit/state/update-history.jsonl` records a `doctor` field: `ran` with non-ok check ids and statuses from a report inside the pass window, `error` if the pass failed or produced no current report, or `skipped` with reason `self_run` for a host update run by the resident. A doctor error asks you to run `hermitd doctor` from a terminal.
 
