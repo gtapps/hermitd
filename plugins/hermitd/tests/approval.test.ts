@@ -1,7 +1,7 @@
-import { afterAll, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { appliedSet, approvalStore, approveProject, contextsName } from '../scripts/lib/approval';
+import { appliedSet, approvalStore, approveProject, contextsName, markApprovalNote, unannouncedCandidate } from '../scripts/lib/approval';
 import { freshDirFactory } from './helpers/workdir';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-approval-');
@@ -180,4 +180,126 @@ test('an approval keeps only the new set and the one before it', async () => {
   f.write('docker-compose.override.yml', 'services: {c: {}}\n');
   expect((await f.approve(() => 'n')).code).toBe(1);
   expect(sets()).toEqual([path.basename(second.applied!), path.basename(third.applied!)].sort());
+});
+
+describe('approval note', () => {
+  const note = (project: string) => JSON.parse(fs.readFileSync(path.join(project, '.hermit/state/docker-approval.json'), 'utf8'));
+  const withState = () => { const f = fixture(); fs.mkdirSync(path.join(f.project, '.hermit/state')); return f; };
+
+  test('a no-terminal stop is pending until approved or reverted; notified survives only for the same candidate', async () => {
+    const f = withState();
+    const baseline = (await f.approve()).applied!;
+    expect(note(f.project)).toMatchObject({ status: 'approved', approved: path.basename(baseline), security: 'disabled' });
+    expect(unannouncedCandidate(f.project)).toBeUndefined();
+    f.write('docker-compose.override.yml', 'services: {a: {}}\n');
+    await f.approve();
+    const pending = note(f.project);
+    expect(pending).toMatchObject({ status: 'pending', changed: ['docker-compose.override.yml'], notified: false });
+    expect(unannouncedCandidate(f.project)).toBe(pending.candidate);
+    markApprovalNote(f.project, 'notified', 'another-candidate');
+    expect(note(f.project).notified).toBe(false);
+    expect(markApprovalNote(f.project, 'doctor_requested', pending.candidate)).toBe(true);
+    expect(markApprovalNote(f.project, 'doctor_requested', pending.candidate)).toBe(false);
+    markApprovalNote(f.project, 'notified', pending.candidate);
+    await f.approve();
+    expect(note(f.project)).toMatchObject({ status: 'pending', notified: true, doctor_requested: true });
+    f.write('docker-compose.override.yml', 'services: {b: {}}\n');
+    await f.approve();
+    expect(note(f.project)).toMatchObject({ status: 'pending', notified: false });
+    expect(note(f.project).doctor_requested).toBeUndefined();
+    fs.rmSync(path.join(f.project, 'docker-compose.override.yml'));
+    expect((await f.approve()).applied).toBe(baseline);
+    expect(note(f.project).status).toBe('approved');
+  });
+
+  test('deployed is stamped only for the approved set and kept until the next set runs', async () => {
+    const f = withState();
+    const first = (await f.approve()).applied!;
+    markApprovalNote(f.project, 'deployed', 'set-other');
+    expect(note(f.project).deployed).toBeUndefined();
+    markApprovalNote(f.project, 'deployed', path.basename(first));
+    f.write('docker-compose.override.yml', 'services: {a: {}}\n');
+    const second = (await f.approve(() => 'y')).applied!;
+    expect(note(f.project)).toMatchObject({ approved: path.basename(second), deployed: path.basename(first) });
+  });
+
+  test('the in-container notice reports the sender\'s error when no chat is reachable', () => {
+    const f = withState();
+    const r = Bun.spawnSync([process.execPath, path.join(import.meta.dir, '../scripts/approval-notice.ts'), path.join(f.project, '.hermit')], { cwd: f.project });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout.toString().trim())).toHaveProperty('error');
+  });
+
+  test('a linked state folder gets no note', async () => {
+    const f = fixture();
+    const outside = path.join(path.dirname(f.project), 'outside');
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(f.project, '.hermit/state'));
+    expect((await f.approve()).code).toBe(0);
+    expect(fs.readdirSync(outside)).toEqual([]);
+  });
+});
+
+describe('netguard rendered in the approved copy', () => {
+  const NETWORK = { enabled: true, dns_mode: 'enforce', subnet: '172.28.0.0/24', gateway: '172.28.0.1', netguard_ip: '172.28.0.2', additional_domains: ['example.org'] };
+  const config = (network: Record<string, unknown>) => JSON.stringify({ docker: { security: { network } } });
+  const lan = () => { const f = fixture(); f.write('.hermit/config.json', config(NETWORK)); return f; };
+
+  test('the copy carries rules rendered from config, built from the set even when the project has none', async () => {
+    const f = lan();
+    const applied = (await f.approve()).applied!;
+    expect(fs.readFileSync(path.join(applied, '.hermit/docker/dnsmasq.allowlist'), 'utf8')).toContain('server=/example.org/1.1.1.1');
+    expect(fs.existsSync(path.join(f.project, '.hermit/docker'))).toBe(false);
+    expect(fs.existsSync(path.join(f.project, 'docker-compose.security.yml'))).toBe(false);
+    const contexts = JSON.parse(fs.readFileSync(path.join(applied, contextsName), 'utf8'));
+    expect(contexts.services['hermit-netguard'].build.context).toBe(path.join(applied, '.hermit/docker'));
+    const record = JSON.parse(fs.readFileSync(path.join(f.store, 'record.json'), 'utf8'));
+    expect(Object.keys(record.files)).not.toContain('docker-compose.security.yml');
+    expect(record.security).toBeUndefined();
+  });
+
+  test('a changed security value shows the rule diff and asks', async () => {
+    const f = lan();
+    await f.approve();
+    f.write('.hermit/config.json', config({ ...NETWORK, additional_domains: ['example.org', 'api.strava.com'] }));
+    f.messages.length = 0;
+    expect((await f.approve(() => 'n')).code).toBe(1);
+    const shown = f.messages.join('\n');
+    expect(shown).toContain('docker.security.network:');
+    expect(shown).toContain('+server=/api.strava.com/1.1.1.1');
+  });
+
+  test('a project file at a generated path neither asks nor applies; the include file does both', async () => {
+    const f = lan();
+    await f.approve();
+    fs.mkdirSync(path.join(f.project, '.hermit/docker'), { recursive: true });
+    f.write('.hermit/docker/nftables.conf', 'table inet firewall {}\n');
+    f.write('docker-compose.security.yml', 'services: {hermit: {privileged: true}}\n');
+    f.messages.length = 0;
+    const quiet = await f.approve();
+    expect(quiet.code).toBe(0);
+    expect(f.messages).toEqual([]);
+    expect(fs.readFileSync(path.join(quiet.applied!, 'docker-compose.security.yml'), 'utf8')).not.toContain('privileged');
+    f.write('.hermit/docker/dnsmasq.hermit-local.conf', 'address=/nas.lan/192.168.1.9\n');
+    expect(await f.approve()).toEqual({ code: 1 });
+    expect(f.messages.join('\n')).toContain('.hermit/docker/dnsmasq.hermit-local.conf');
+    const applied = (await f.approve(() => 'y')).applied!;
+    expect(fs.readFileSync(path.join(applied, '.hermit/docker/dnsmasq.allowlist'), 'utf8')).toContain('address=/nas.lan/192.168.1.9');
+  });
+
+  test('with no security toggle on, a planted overlay is not applied', async () => {
+    const f = fixture();
+    f.write('docker-compose.security.yml', 'services: {hermit: {privileged: true}}\n');
+    const applied = (await f.approve()).applied!;
+    expect(fs.existsSync(path.join(applied, 'docker-compose.security.yml'))).toBe(false);
+  });
+
+  test('an incomplete config falls back to the project files, tracked by bytes', async () => {
+    const f = fixture();
+    f.write('.hermit/config.json', config({ enabled: true, dns_mode: 'enforce' }));
+    f.write('docker-compose.security.yml', 'services: {}\n');
+    await f.approve();
+    const record = JSON.parse(fs.readFileSync(path.join(f.store, 'record.json'), 'utf8'));
+    expect(Object.keys(record.files)).toContain('docker-compose.security.yml');
+  });
 });

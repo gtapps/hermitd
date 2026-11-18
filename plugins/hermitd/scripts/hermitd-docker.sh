@@ -171,6 +171,44 @@ _sync_permissions() {
   bun -e 'try { const r = JSON.parse(process.argv[1].trim().split("\n").pop()); if (r.summary) console.log("[hermit] Permission list: " + r.summary); } catch {}' "$out"
 }
 
+_approval_note() {
+  (cd / && bun "$HOST_SCRIPTS/approve.ts" note "$@" 2>/dev/null) || true
+}
+
+# A lifecycle command that stopped with no terminal to ask tells the operator's chat once
+# per candidate, through the agent's own channel sender (no model turn). Only the sender's
+# OK counts as delivered; otherwise the terminal says so, the next run tries again, and a
+# doctor run is requested once per candidate, whose docker-approval check reports it.
+# An operator who answered N at a terminal is not sent a notice.
+_notify_pending_approval() {
+  if [ -t 0 ] && [ -t 1 ]; then return 0; fi
+  local candidate install out=""
+  candidate="$(_approval_note unannounced "$PROJECT_DIR")"
+  [ -n "$candidate" ] || return 0
+  if (cd "$PROJECT_DIR" && _dc ps --status running --format '{{.Service}}' 2>/dev/null) | grep -qx "$SERVICE"; then
+    install="$(_core_install)"
+    if [ -n "$install" ]; then
+      out="$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" bun "$install/scripts/approval-notice.ts" .hermit </dev/null 2>/dev/null | tail -n 1)" || true
+    fi
+  else
+    out='{"error":"agent_not_running"}'
+  fi
+  if [ "$out" = OK ]; then
+    _approval_note notified "$PROJECT_DIR" "$candidate" >/dev/null
+    echo "[hermit] The agent's chat was told that a change waits for hermitd approve." >&2
+  else
+    echo "[hermit] The approval notice was not delivered to chat (${out:-no reply}). Run hermitd approve in a terminal." >&2
+    if [ "$(_approval_note doctor_requested "$PROJECT_DIR" "$candidate")" = OK ]; then
+      _harness_request /hermitd:hermit-doctor >/dev/null
+    fi
+  fi
+}
+
+# Record that the approved set is running, so doctor can tell approved from deployed.
+_stamp_deployed() {
+  if [ -n "${DOCKER_FILES_SET:-}" ]; then _approval_note deployed "$PROJECT_DIR" "$DOCKER_FILES_SET" >/dev/null; fi
+}
+
 _approve_docker_inputs() {
   local result code=0 file
   # FD 3 returns the frozen path. Stdin and stdout stay attached to the caller
@@ -183,6 +221,7 @@ _approve_docker_inputs() {
     if [ "$CMD" = update ]; then
       echo '[hermit] The upgrade inside the container already ran. Run hermitd update again after approving.' >&2
     fi
+    _notify_pending_approval
     return 1
   fi
   file="${DOCKER_FILES_SET:-$PROJECT_DIR}/Dockerfile.hermit"
@@ -201,12 +240,47 @@ _approve_docker_inputs() {
   esac
 }
 
+# Without an argument the build is cached: Docker rebuilds only when a rendered rule or other input changed.
 _build_netguard() {
   local services
   services="$(_dc config --services)" || return 1
   if printf '%s\n' "$services" | grep -qx hermit-netguard; then
-    _dc build --no-cache hermit-netguard
+    _dc build "$@" hermit-netguard
   fi
+}
+
+# A sidecar the new stack no longer has (netguard or the credential proxy turned off) is
+# `restart: unless-stopped` and would keep the published ports. Remove only these two
+# plugin services of this project: the Compose project name is the folder default, so
+# --remove-orphans would also take an operator's own Compose containers from that folder.
+_remove_stale_sidecars() {
+  local services svc ids
+  services="$(_dc config --services)" || return 1
+  for svc in hermit-netguard hermit-credproxy; do
+    printf '%s\n' "$services" | grep -qx "$svc" && continue
+    ids="$(docker ps -aq --filter "label=com.docker.compose.project.working_dir=$PROJECT_DIR" --filter "label=com.docker.compose.service=$svc")" || return 1
+    if [ -n "$ids" ]; then
+      echo "[hermit] Removing the $svc container the configuration no longer has."
+      # shellcheck disable=SC2086
+      docker rm -f $ids >/dev/null || return 1
+    fi
+  done
+}
+
+# Before every stop-and-start that did not just build --no-cache. A failed build stops the
+# command before anything is torn down.
+_build_netguard_cached() {
+  if ! (cd "$PROJECT_DIR" && _build_netguard); then
+    echo "[hermit] Netguard build failed: the running stack was left as it is." >&2
+    return 1
+  fi
+}
+
+# Between the stop and the start.
+_start_stack() {
+  (cd "$PROJECT_DIR" && _remove_stale_sidecars) || echo "[hermit] Warning: could not check for stale sidecar containers." >&2
+  cd "$PROJECT_DIR" && _dc up -d "$@"
+  _stamp_deployed
 }
 
 _validate_compose() {
@@ -360,6 +434,11 @@ case "$CMD" in
     if [ -t 0 ] && [ -t 1 ]; then TTY=; fi
     cd "$PROJECT_DIR" && _dc exec $TTY "$SERVICE" ".hermit/bin/hermitd-$CMD" "$@"
     ;;
+  # Internal: the host CLI's early approval check in `hermitd update` uses the same notice.
+  notify-approval)
+    _notify_pending_approval
+    ;;
+
   up)
     UP_ARGS=()
     for arg in "$@"; do
@@ -379,7 +458,8 @@ case "$CMD" in
     # Clear any stale conflict marker from a prior inert boot before starting, so
     # the poll below only trips on a marker THIS boot's entrypoint writes.
     _remove_state_file .boot-conflict 2>/dev/null || true
-    cd "$PROJECT_DIR" && _dc up -d "$@"
+    case " $* " in *' --no-build '*) ;; *) _build_netguard_cached ;; esac
+    _start_stack "$@"
     # Surface an entrypoint singleton-conflict: the container comes up but stays
     # inert (a live non-docker owner holds the state dir). `up -d` returns success
     # and the healthcheck only flips minutes later, so poll the marker briefly.
@@ -588,13 +668,16 @@ case "$CMD" in
         CC_PIN="latest"
       fi
       echo "[hermit] Rebuilding image pinned to Claude Code ${CC_PIN}..."
-      if ! (cd "$PROJECT_DIR" && _build_netguard && _dc build --build-arg "CLAUDE_CODE_VERSION=${CC_PIN}"); then
+      if ! (cd "$PROJECT_DIR" && _build_netguard --no-cache && _dc build --build-arg "CLAUDE_CODE_VERSION=${CC_PIN}"); then
         echo "[hermit] Image build failed: old container still running, no changes applied." >&2
         exit 1
       fi
+    else
+      _build_netguard_cached
     fi
     echo "[hermit] Restarting container..."
-    cd "$PROJECT_DIR" && _dc down && _dc up -d
+    (cd "$PROJECT_DIR" && _dc down)
+    _start_stack
     _warn_if_entrypoint_stale
     echo "[hermit] Container restarted."
     _oauth_hint
@@ -871,7 +954,7 @@ case "$CMD" in
       fi
       _validate_compose
       echo "[hermit] Rebuilding image with latest Claude Code (${CC_BUILD_VERSION})..."
-      if ! (cd "$PROJECT_DIR" && _build_netguard && _dc build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
+      if ! (cd "$PROJECT_DIR" && _build_netguard --no-cache && _dc build --pull --build-arg "CLAUDE_CODE_VERSION=${CC_BUILD_VERSION}"); then
         echo "[hermit] Image build failed — old container still running, no changes applied." >&2
         exit 1
       fi
@@ -899,12 +982,13 @@ case "$CMD" in
     fi
     _await_upgrade || return 0
     _validate_compose
+    if [ "$PLUGINS_ONLY" = true ]; then _build_netguard_cached; fi
     trap 'exit 130' INT
     trap 'exit 143' TERM
     echo "[hermit] Bouncing container..."
-    cd "$PROJECT_DIR" && _dc down
+    (cd "$PROJECT_DIR" && _dc down)
     export HERMIT_RESUME=1
-    cd "$PROJECT_DIR" && _dc up -d
+    _start_stack
     RESTARTED=true
 
     RUNNING=""

@@ -8,7 +8,6 @@ import { APPARMOR_PROFILE_FILE, BROWSER_PACKAGE_COMMANDS, appArmorProfileMissing
 import { installBrowser } from './browser-install';
 import { maybeStartBrowserDisplay } from './browser-display';
 import os from 'node:os';
-import type { RenderInput } from './render-security-overlay';
 
 interface HostOptions {
   container?: () => boolean;
@@ -35,23 +34,6 @@ export function tailscaleCLI(): string {
   const windows = onPath('tailscale.exe');
   if (windows) return windows;
   throw new Error('Tailscale CLI missing. Install Tailscale and enable its CLI integration on the host.');
-}
-
-export function securityRenderInput(security: any): RenderInput {
-  const network = security.network ?? {};
-  const resources = security.resources ?? {};
-  return {
-    network: network.enabled ? { subnet: network.subnet, gateway: network.gateway, netguard_ip: network.netguard_ip } : undefined,
-    toggles: {
-      lan: { enabled: network.enabled, dnsMode: network.dns_mode },
-      resources: { enabled: resources.enabled, memLimit: resources.mem_limit, memswapLimit: resources.memswap_limit,
-        cpus: resources.cpus, sysctlsEnabled: resources.sysctls_enabled },
-      audit: { enabled: security.audit?.plugin_installs },
-      credproxy: { enabled: security.credential_proxy?.enabled },
-    },
-    publishPorts: network.publish_ports ?? [], lanAllowlist: network.lan_allowlist ?? [],
-    additionalDomains: network.additional_domains ?? [], fleetDomains: [],
-  };
 }
 
 export async function installHostPrerequisites(project: string, options: HostOptions = {}): Promise<void> {
@@ -220,7 +202,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
       if (!ports.some((entry: any) => Number(entry.target) === 6080 && String(entry.published) === String(port) && entry.host_ip === '127.0.0.1' && (entry.protocol ?? 'tcp') === 'tcp')) ports.push(mapping);
       await set('docker.security.network.publish_ports', ports);
       security.network.publish_ports = ports;
-      await required([process.execPath, script('render-security-overlay'), 'render', project], securityRenderInput(security));
+      await required([process.execPath, script('render-security-overlay'), 'render', project]);
     } else {
       const rendered = JSON.parse(await required([process.execPath, script('render-docker-templates'), project]));
       if (rendered.status === 'skipped') throw new Error(rendered.reason === 'not_converted'

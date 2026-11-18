@@ -161,6 +161,25 @@ describe('container managed deny floor', () => {
     expect(result.detail).toContain('seeded ask rules never fire');
   });
 
+  test('bypass configured on a locked image warns and names restart --build, also with the opt-out staged', () => {
+    for (const ceiling of [true, false]) {
+      const { dir } = scenario({ mode: 'bypassPermissions', local: standard });
+      generated(dir);
+      fs.writeFileSync(path.join(dir, '.hermit/config.json'), JSON.stringify({
+        permission_mode: 'bypassPermissions', docker: { security: { managed_ceiling: ceiling } },
+      }));
+      const managedSettingsPath = path.join(dir, 'hermitd-security.json');
+      fs.writeFileSync(managedSettingsPath, JSON.stringify({ permissions: { disableBypassPermissionsMode: 'disable' } }));
+      const paths = resolvePaths(path.join(dir, '.hermit'), PLUGIN_ROOT);
+      const result = checkPermissionRules(paths, { container: true, managedSettingsPath });
+      expect(result.status).toBe('warn');
+      expect(result.detail).toContain('runs in auto mode');
+      expect(result.detail).toContain('hermitd restart --build');
+      // Outside a container the lock file is not the agent's.
+      expect(checkPermissionRules(paths, { container: false, managedSettingsPath }).detail).not.toContain('auto mode');
+    }
+  });
+
   test('managed_ceiling alone does not declare a security overlay posture', () => {
     const { dir } = scenario({});
     fs.writeFileSync(path.join(dir, '.hermit/config.json'), JSON.stringify({ docker: { security: { managed_ceiling: true } } }));

@@ -1,6 +1,6 @@
 # Docker Security — Advanced Hardening
 
-`hermitd setup docker-security` opens the opt-in wizard for stronger container isolation beyond the default `cap_drop: ALL`, `no-new-privileges` and `pids_limit: 2048` settings. The wizard writes `docker-compose.security.yml`. The host includes that overlay in the Docker inputs it checks for approval.
+`hermitd setup docker-security` opens the opt-in wizard for stronger container isolation beyond the default `cap_drop: ALL`, `no-new-privileges` and `pids_limit: 2048` settings. The wizard saves your choices under `docker.security` in `config.json`. `hermitd start`, `restart` and `update` render `docker-compose.security.yml` and the netguard files from that config inside the approved copy, so the overlay is part of the Docker inputs the host checks for approval.
 
 > **Trust model.** Installing a plugin runs that plugin's hooks and skills with the same authority as hermit. The hardening here reduces what a *compromised* plugin can do to the host kernel and your local network — it does not vet the plugin's intent, sandbox its file access within the project, or prevent it from acting on your behalf via the agent. A malicious or careless plugin still runs as you. See [Plugin Security](security.md#plugin-security).
 
@@ -32,11 +32,11 @@ DNS enforce mode limits the browser, like every other process, to allowlisted na
 
 ## Host trust boundary
 
-On a Docker install, the host `hermitd` command runs the installed plugin's code and ignores the project's `bunfig.toml` and automatic Bun `.env` loading. It leaves project wrappers to the container. The agent must be running for `hermitd run`, `pause`, `skills` and `watchdog run`. The `browser-host` script runs from the installed plugin on the host. The host registry remembers that a project uses Docker even if its Compose file is deleted. `hermitd prune <name>` removes that registry entry.
+On a Docker install, the host `hermitd` command runs the installed plugin's code and ignores the project's `bunfig.toml` and automatic Bun `.env` loading. It leaves project wrappers to the container. The agent must be running for `hermitd run`, `pause`, `skills` and `watchdog run`. The `browser-host` script runs from the installed plugin on the host. The host registry remembers that a project uses Docker even if its Compose file is deleted. `hermitd prune <name>` removes that registry entry and the project's two host stores (approved copies and credential proxy), keeping them while any container of the project still runs.
 
-`hermitd start`, `restart` and `update` freeze Docker's inputs under `~/.claude/hermitd/approvals/` and build and start from those copies. The first check records the current inputs as approved and prints a summary. Later changes to the override, security overlay, build hook, files under `.hermit/docker/`, build-related configuration or Compose-referenced `.env` variables require approval because they can change what the image does or what the container can reach. Operator-authored Dockerfiles and base Compose files also require approval when changed. Generated versions are compared through their configuration inputs. Entrypoint changes, `HERMIT_GH_TOKEN`, unreferenced environment variables and unrelated config keys pass without a prompt. The approval check displays environment variable names only.
+`hermitd start`, `restart` and `update` freeze Docker's inputs under `~/.claude/hermitd/approvals/`, render the security files there from config, and build and start from those copies. The copies include the project's `.env`. Each start builds `hermit-netguard` from Docker's layer cache, so a changed allowlist applies on a plain `hermitd restart`; `restart --build` and a full `update` build without the cache. The first check records the current inputs as approved and prints a summary. Later changes to the override, security overlay, build hook, files under `.hermit/docker/`, build-related configuration or Compose-referenced `.env` variables require approval because they can change what the image does or what the container can reach. Operator-authored Dockerfiles and base Compose files also require approval when changed. Generated versions are compared through their configuration inputs. Entrypoint changes, `HERMIT_GH_TOKEN`, unreferenced environment variables and unrelated config keys pass without a prompt. The approval check displays environment variable names only.
 
-When changes need approval, the terminal displays the diff and asks `Apply these changes? [y/N]`. Enter `y` to approve the displayed copies. Declining leaves the running agent and project files alone and prints the location of the last approved copies. Without a terminal, the command stops and names the changed inputs. Run `hermitd approve` in a terminal to review them before retrying. A file swapped in the project after the check cannot replace the frozen copy.
+When changes need approval, the terminal displays the diff and asks `Apply these changes? [y/N]`. Enter `y` to approve the displayed copies. Declining leaves the running agent and project files alone and prints the location of the last approved copies. Without a terminal (cron, systemd, ssh without a tty), the command stops, names the changed inputs and sends a one-time notice to the agent's maintainer chat; if that notice fails, the command says so and `/hermitd:hermit-doctor` reports the pending change. Run `hermitd approve` in a terminal to review them before retrying. A file swapped in the project after the check cannot replace the frozen copy.
 
 `hermitd setup [skill]` opens a host Claude Code session at the project root. The session excludes project settings, hooks, instructions, MCP servers, skills and agents. Text in project files the session reads can still steer the model. See [Claude Code's CLI reference for `--setting-sources`](https://code.claude.com/docs/en/cli-reference#cli-flags).
 
@@ -55,14 +55,15 @@ The wizard makes the container *meaningfully harder to abuse*. It does not make 
 - **Log-only mode does not constrain public egress.** Only enforce mode drops connections. Log-only shows name lookups, not connections, so a tool that connects to a literal IP never appears in the log and fails after the switch to enforce until that IP gets a carve-out.
 - **Enforce mode filters by IP, not by site.** dnsmasq adds every address an allowlisted name resolves to the firewall's allowed set, so another site served from the same CDN address is reachable too. The set grows while the sidecar runs, as allowlisted names resolve to new addresses, and clears when it restarts.
 - **Allowed hosts are still exfiltration routes.** GitHub, npm and PyPI are on every allowlist and accept uploads, as do channel platforms. The allowlist narrows where data can go; it does not stop data leaving through an allowed host.
-- **The netguard rule sources stay writable.** Docker copies `nftables.conf` and `dnsmasq.allowlist` into the netguard image. An agent can stage edits in `.hermit/docker/` or change the Compose override. The host requires a terminal `y` before it applies those changes, and rule changes reach the running agent after a rebuild.
+- **The netguard rule sources stay writable.** The host renders the rules from `docker.security` in `config.json` and from `.hermit/docker/dnsmasq.hermit-local.conf` and builds them into the netguard image. An agent can edit those or the Compose override. The host requires a terminal `y` before it applies those changes.
 - **No per-host filter for shell commands.** Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) filters shell commands by host, but it does not run inside the agent's container without relaxing the container's seccomp and AppArmor profiles ([Bash Sandbox](security.md#bash-sandbox)), so netguard's IP filter is the only egress control here.
+- **Verified on Linux only.** The credential proxy and the approved-copy build were verified on Linux; macOS and WSL2 are not yet exercised.
 - **Docker's default bridge (172.17.0.0/16) is dropped** by the LAN block — it sits inside `172.16.0.0/12`. Operators with adjacent Compose stacks must add carve-outs for the relevant bridge IPs (Prompt 1b "Extra LAN carve-outs").
-- **Compose service-name DNS doesn't work through dnsmasq** — Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the allowlist:
+- **Compose service-name DNS doesn't work through dnsmasq.** Compose's embedded resolver at 127.0.0.11 isn't an upstream. Operators with adjacent services like `db`, `cache`, etc. must add per-service-name lines to the DNS policy:
   ```
   server=/db/127.0.0.11
   ```
-  Edit `.hermit/docker/dnsmasq.allowlist`, then `hermitd restart --build` (the file is built into the netguard image).
+  Add them to `.hermit/docker/dnsmasq.hermit-local.conf`, then run `hermitd restart`.
 - **mDNS / `.local`** doesn't resolve through dnsmasq. Services must be referenced by IP address (with a LAN carve-out) rather than `.local` hostnames.
 - **Host-bound services unreachable in bridge+containment mode** — `localhost`/`127.0.0.1` on the host is only reachable when `network_mode: host`. Operators wanting both LAN containment AND host-bound access need to refactor their host service to bind on the bridge IP and add a carve-out for that IP.
 - **Sidecar crash isolates hermit** — because hermit shares hermit-netguard's network namespace, if the sidecar dies hermit loses *all* networking until you bring it back up. The sidecar has `restart: unless-stopped` and a fail-safe entrypoint (loads-rules-or-tail-stay-up rather than crash-loop), but a misconfigured `nftables.conf` can still strand hermit. If this happens, `docker compose -f docker-compose.hermit.yml -f docker-compose.security.yml logs hermit-netguard` will tell you what went wrong.
@@ -74,7 +75,7 @@ The wizard makes the container *meaningfully harder to abuse*. It does not make 
 2. Answer the wizard's questions. The wizard will:
    - Detect host-network mode and gate Prompt 1 / Prompt 2 sysctls accordingly.
    - Scan installed fleet plugins (`hermitd-homeassistant`, `hermitd-fitness`, etc.) for declared `## Docker network requirements`. Surface their domain/LAN suggestions for per-entry confirmation.
-   - Render `docker-compose.security.yml` and (if Prompt 1) the `.hermit/docker/{Dockerfile.hermit-netguard,netguard-entrypoint.sh,nftables.conf,dnsmasq.allowlist}` files.
+   - Save your choices to `docker.security` in `config.json` and render `docker-compose.security.yml` and (if Prompt 1) the `.hermit/docker/{Dockerfile.hermit-netguard,netguard-entrypoint.sh,nftables.conf,dnsmasq.allowlist}` files.
    - Ask you to run `hermitd approve` in your terminal. After you confirm approval, it rebuilds and recreates the container so the new settings take effect.
    - Run a verification pass and print a per-toggle pass/fail table.
 3. Re-run the wizard at any time to change toggles. Answer No to a prompt to disable that toggle.
@@ -129,26 +130,26 @@ docker compose "${COMPOSE_FILES[@]}" logs hermit-netguard
 
 In **enforce mode**, the same command shows every query, and a denied name appears as `config <name> is NXDOMAIN`. A connection to an address no allowlisted name returned is dropped without a log line; give that IP a carve-out by re-running `/docker-security`. Decide which domains to allow, then:
 
-1. Edit `.hermit/docker/dnsmasq.allowlist`. Add lines like:
+1. Add the domains to `docker.security.network.additional_domains` (re-run `/docker-security`), or add lines like this to `.hermit/docker/dnsmasq.hermit-local.conf`:
    ```
    server=/example-vendor.com/1.1.1.1
    ```
-2. Rebuild the netguard image, which carries the allowlist, and restart hermit and the sidecar together:
+2. Restart the agent and the sidecar together. The host renders the allowlist and rebuilds the netguard image that carries it:
    ```
-   hermitd restart --build
+   hermitd restart
    ```
    (Restarting only `hermit-netguard` leaves `hermit` with stale resolver/conntrack state, and DNS fails for all domains until hermit itself is bounced.)
 3. When the log goes quiet, re-run `/docker-security` and switch from "Yes — recommended (log-only)" to "Yes — strict (enforce)".
 
 The wizard does not auto-promote blocked domains. Manual review keeps the trust boundary at the operator.
 
-**⚠️ Re-running the `/docker-security` wizard regenerates `dnsmasq.allowlist` from scratch** (from your fleet/additional domain selections only) and **erases any hand-added `address=` lines**. Back up the file first if you've added static records below.
+`dnsmasq.allowlist` is generated at every start, so hand edits there do not apply. Your own lines belong in `dnsmasq.hermit-local.conf`, which the plugin never rewrites; the render places them above the catchall.
 
-**Pinning an internal/private hostname (e.g. Tailscale MagicDNS) to an IP:** add a static record —
+**Pinning an internal/private hostname (e.g. Tailscale MagicDNS) to an IP:** add a static record to `.hermit/docker/dnsmasq.hermit-local.conf`:
 ```
 address=/internal-host.example/10.0.0.5
 ```
-— above the `address=/#/` catchall, then apply it with `hermitd restart --build`. In enforce mode a public pinned IP also needs a carve-out, because pinned answers do not reach the firewall's allowed set. Resolution works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here — hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
+Then run `hermitd restart`. In enforce mode a public pinned IP also needs a carve-out, because pinned answers do not reach the firewall's allowed set. Resolution works in both enforce and log-only mode: log-only extracts and honors static `address=` records while still forwarding everything else (block-nothing preserved); enforce loads the file as-is. `extra_hosts` on the `hermit` service is **not** a usable alternative here: hermit runs with `network_mode: "service:hermit-netguard"`, and Docker rejects `extra_hosts`/`--add-host` outright on any container sharing another container's network namespace.
 
 ## GitHub CLI authentication {#gh-cli-authentication}
 
@@ -189,7 +190,7 @@ The credential proxy keeps API credentials for hosts you choose outside the agen
 
 ### Enable it
 
-Run `/hermitd:docker-security` from a host terminal and answer Yes to "Credential proxy". Then map each host and header and store the value, from the project folder in a host terminal:
+Run `hermitd setup docker-security` from a host terminal and answer Yes to "Credential proxy". Then map each host and header and store the value, from the project folder in a host terminal:
 
 ```
 hermitd credproxy map api.datadoghq.com --header DD-API-KEY --secret dd_api
@@ -207,7 +208,7 @@ hermitd restart
 
 After mapping a credential, remove it from the project `.env`. The agent's tools keep sending the header with any placeholder value, and the proxy replaces it.
 
-The map, the values and the proxy's certificate authority live in a host-only folder, `~/.claude/hermitd/credproxy/` (always under your home folder, whatever `CLAUDE_CONFIG_DIR` says), outside the project. The `hermitd credproxy` commands run only from the installed plugin, never from a file in the project. Certificates are made with the host's `openssl`.
+The map, the values and the proxy's certificate authority live in a host-only folder, `~/.claude/hermitd/credproxy/` (always under your home folder, whatever `CLAUDE_CONFIG_DIR` says), outside the project. The `hermitd credproxy` commands run only from the installed plugin, never from a file in the project. The proxy needs the host's `openssl`, which makes its certificates.
 
 In DNS enforce mode a mapped host must also be on the allowlist; the wizard offers mapped hosts there, and `/hermitd:hermit-doctor` warns about any that are missing.
 
@@ -245,7 +246,7 @@ hermitd restart
 Two ways:
 
 1. **Through the wizard** (preferred — keeps config and overlay consistent): re-run `/hermitd:docker-security` and answer No to every prompt. The wizard removes `docker-compose.security.yml`, clears `docker.security.*` from `config.json`, and offers to restart the container.
-2. **By hand**: `rm docker-compose.security.yml` and run `hermitd-docker down && hermitd-docker up`. The wrapper no-ops on the overlay's absence. This leaves `docker.security.*` in `config.json` (which `/hermit-doctor` will warn about — re-run the wizard to reconcile).
+2. **By hand**: turn the toggles off under `docker.security` in `config.json` (`network.enabled`, `resources.enabled`, `audit.plugin_installs`, `credential_proxy.enabled`), then run `hermitd restart`. The host removes the overlay, the netguard files and the old sidecar containers. Deleting `docker-compose.security.yml` alone does not turn anything off; the next start renders it again.
 
 To reverse just one toggle: re-run the wizard, answer Yes to the toggles you still want and No to the one you're disabling.
 
@@ -257,7 +258,7 @@ A few decisions that operators occasionally ask about:
 
 **Why the dnsmasq UID exemption.** dnsmasq's own upstream queries to `1.1.1.1:53` would otherwise hit the port-53 redirect rule and loop back to itself, breaking all DNS resolution. The `meta skuid != <DNSMASQ_UID>` rule in `nftables.conf` exempts dnsmasq's outbound DNS so it can actually resolve.
 
-**Why the dnsmasq UID is hardcoded.** Alpine's `dnsmasq` package consistently ships `dnsmasq` as uid 100 (its `apk` post-install runs `adduser -u 100 -D -H -s /sbin/nologin dnsmasq`). The wizard renders `100` directly into `nftables.conf` — no probe step. If a future Alpine release ever changes this, the netguard sidecar's fail-safe entrypoint holds the netns open instead of crash-looping (`tail -f /dev/null` after rule-load failure), and the operator can `docker exec hermit-netguard getent passwd dnsmasq` to grep the live UID and update the rendered `nftables.conf` by hand.
+**Why the dnsmasq UID is hardcoded.** Alpine's `dnsmasq` package consistently ships `dnsmasq` as uid 100 (its `apk` post-install runs `adduser -u 100 -D -H -s /sbin/nologin dnsmasq`). The wizard renders `100` directly into `nftables.conf`, with no probe step. If a future Alpine release ever changes this, the netguard sidecar's fail-safe entrypoint holds the netns open instead of crash-looping (`tail -f /dev/null` after rule-load failure), and the operator can `docker exec hermit-netguard getent passwd dnsmasq` to grep the live UID. `nftables.conf` is rendered at every start, so a hand edit does not persist.
 
 ## For plugin authors — declaring network requirements
 
@@ -286,7 +287,7 @@ See [Creating Your Own Hermit](creating-your-own-hermit.md#docker-network-requir
 
 Your `docker-compose.hermit.yml` has a `ports:` block on the `hermit` service. With LAN containment on, hermit joins `hermit-netguard`'s network namespace — Docker forbids port publishing on a container that joins another container's netns. Only the netns owner (`hermit-netguard`) can publish ports.
 
-**Fix:** Re-run `/hermitd:docker-security`. The wizard detects the ports and offers to move them to `hermit-netguard`. When prompted, delete the `ports:` block from `docker-compose.hermit.yml`. The wizard hard-gates `hermitd-docker up` until that's done, so a partial state can't reach the daemon.
+**Fix:** Re-run `/hermitd:docker-security`. The wizard detects the ports and offers to move them to `hermit-netguard`, then clears them from the `hermit` service with `ports: !reset []` in `docker-compose.override.yml` (the base Compose file is generated). The wizard hard-gates the start until that's done, so a partial state can't reach the daemon.
 
 ### `invalid pool request: Pool overlaps with other one on this address space`
 

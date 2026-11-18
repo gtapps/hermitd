@@ -106,7 +106,8 @@ test('Docker update stops before the host update when approval is pending', asyn
   expect(await f.run(['update', 'demo', '--yes'])).toMatchObject({
     exitCode: 1, stdout: expect.stringContaining('Run hermitd approve in a terminal'), stderr: expect.stringContaining('Nothing was applied'),
   });
-  expect(f.calls()).toBe('');
+  // No host update; the lifecycle's own notice handler runs, as for a stopped `hermitd restart`.
+  expect(f.calls()).toBe(`old|${f.p}|notify-approval\n`);
 });
 test('Docker stop and status load only applied Compose inputs after approval', async () => {
   const f = fixture();

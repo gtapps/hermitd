@@ -73,6 +73,7 @@ import { SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from './lib/settings/
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { emitJson, exitError, printJson } from './lib/cli';
 import { readTargetState, settingsFile } from './lib/domain-hatch/target';
+import { isContainer, managedFloorApplies } from './lib/container';
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
 
@@ -394,6 +395,21 @@ function planPermissions(settings: Json): PermissionsPlan {
   };
 }
 
+// Seed deny rules neither project settings file carries. The generated image enforces the
+// whole seed list through its managed floor after the next rebuild, so this forecasts which
+// never-allowed rules the operator has not seen before. Empty outside a container built
+// from a generated Dockerfile, and when `docker.security.managed_ceiling` is false.
+function missingFloorDeny(target: string): string[] {
+  const claudeDir = path.dirname(target);
+  const projectRoot = path.dirname(claudeDir);
+  if (!isContainer() || !managedFloorApplies(projectRoot, readSettledConfig(path.join(projectRoot, '.hermit')))) return [];
+  const carried = new Set(['settings.local.json', 'settings.json'].flatMap((name) => {
+    const deny = readJson(path.join(claudeDir, name))?.permissions?.deny;
+    return Array.isArray(deny) ? deny : [];
+  }));
+  return readSeedPatterns(PLUGIN_ROOT).deny.filter((rule) => !carried.has(rule));
+}
+
 // Removes exactly the entries handed in from `permissions.<key>` — always a literal
 // shipped in this file: HERMIT_OBSOLETE for allow, HERMIT_OBSOLETE_DENY for deny, and
 // `Artifact` for artifact-revoke. That is what makes an operator's own rules
@@ -439,7 +455,7 @@ let askOffered: { file: string; entries: string[] } | undefined;
 
 switch (op) {
   case 'permissions-plan': {
-    console.log(JSON.stringify(planPermissions(settings)));
+    console.log(JSON.stringify({ ...planPermissions(settings), missing_deny: missingFloorDeny(resolvedTarget) }));
     readOnly = true;
     break;
   }

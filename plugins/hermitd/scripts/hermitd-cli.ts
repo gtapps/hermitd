@@ -95,6 +95,7 @@ function updateProject(project: string, args: string[], docker: boolean): number
   const approval = execute(process.execPath, [path.join(host.installPath, 'scripts/approve.ts'), project], '/', { BUN_OPTIONS: bunIsolation });
   if (approval !== 0) {
     console.error('[hermit] Nothing was applied.');
+    dockerScript(project, ['notify-approval'], host.installPath);
     return approval;
   }
   if (host.scope === 'user') console.error(`[hermit] Skipping shared user-scope host update: ${host.id}`);
@@ -242,7 +243,11 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
   }
   if (verb === 'list') { list(root, cwd, args.includes('--json')); return 0; }
   if (verb === 'prune') {
-    const mp = marketplace(root); if (mp) prune(mp, args[0]); return 0;
+    const mp = marketplace(root);
+    if (!mp) return 0;
+    const { kept } = prune(mp, args[0]);
+    for (const row of kept) console.error(`[hermit] kept ${row.project_dir}: ${row.reason}`);
+    return kept.length ? 1 : 0;
   }
   if (!['status', 'start', 'stop', 'restart', 'attach', 'agents', 'update', 'doctor', 'docker', 'pause', 'watchdog', 'skills', 'run', 'install', 'register', 'credproxy', 'approve', 'setup'].includes(verb)) {
     throw new Error('Usage: hermitd list|status|start|stop|restart|attach|agents|update|doctor|prune|docker|pause|watchdog|skills|run|credproxy|approve|setup [name] [args]');

@@ -263,6 +263,34 @@ describe('render', () => {
     expect(fs.readdirSync(f.store()).filter(name => name.startsWith('.render-'))).toEqual([]);
   });
 
+  test('a hand-edited host renders lowercase everywhere; an IP or wildcard host is refused', async () => {
+    const f = await mapped();
+    const map = path.join(f.store(), 'map.json');
+    const data = JSON.parse(fs.readFileSync(map, 'utf8'));
+    data.bindings = data.bindings.map((b: any) => b.host === 'api.github.com' ? { ...b, host: 'API.GitHub.com.' } : b);
+    fs.writeFileSync(map, JSON.stringify(data));
+    const r = await f.run('render');
+    expect(r.code).toBe(0);
+    expect(r.json.hosts).toEqual(['api.example.com', 'api.github.com']);
+    const config = fs.readFileSync(path.join(f.store(), 'sidecar/envoy.yaml'), 'utf8');
+    expect(config).not.toContain('GitHub');
+    for (const host of ['10.0.0.1', '*.example.com']) {
+      data.bindings[0].host = host;
+      fs.writeFileSync(map, JSON.stringify(data));
+      expect((await f.run('render')).json).toEqual({ error: 'invalid_host' });
+    }
+  });
+
+  test('an injecting route accepts only its mapped host', () => {
+    const config: any = envoyConfig([
+      { host: 'a.example.com', headers: [{ header: 'X-A', value: 'va' }] },
+      { host: 'b.example.com', headers: [{ header: 'X-B', value: 'vb' }] },
+    ]);
+    const internal = config.static_resources.listeners.slice(1);
+    const domains = internal.map((l: any) => l.filter_chains[0].filters[0].typed_config.route_config.virtual_hosts.map((v: any) => v.domains));
+    expect(domains).toEqual([[['a.example.com', 'a.example.com:443']], [['b.example.com', 'b.example.com:443']]]);
+  });
+
   test('the config verifies each upstream by name, drops Envoy headers and only listens on loopback', () => {
     const config: any = envoyConfig([
       { host: 'a.example.com', headers: [{ header: 'X-A', value: 'va' }, { header: 'X-B', value: 'vb' }] },
