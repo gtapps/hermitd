@@ -271,7 +271,8 @@ describe('core side of the contract', () => {
 // inventory — and this workflow's path filters do not even watch core's
 // non-hatch skill dirs, so a copy here would never fire on an edit to them.
 describe('instruction delivery', () => {
-  for (const slug of pluginSlugs()) {
+  // A plugin with no hatch (a bare channel) writes nothing, so it is out of scope.
+  for (const slug of pluginSlugs().filter((s) => fs.existsSync(path.join(PLUGINS_DIR, s, 'skills/hatch/SKILL.md')))) {
     test(`${slug}: hatch writes no instruction block`, () => {
       const text = fs.readFileSync(path.join(PLUGINS_DIR, slug, 'skills/hatch/SKILL.md'), 'utf8');
       expect(text).not.toMatch(/(?:append|inject|replace|update|write)[^\n]{0,120}CLAUDE(?:\.local)?\.md/i);

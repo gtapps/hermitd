@@ -35,8 +35,8 @@ export const validText = (text: string) => !CONTROL_RE.test(text);
 /** The store for a project: named from its real path plus a hash of that path, so punctuation never collides. */
 // Fixed under the home folder, never CLAUDE_CONFIG_DIR: the wizard's session, the operator's shell and
 // a project's runtime.config_dir can each carry a different value, and all of them must name one store.
-export function storeDir(project: string, configRoot = path.join(os.homedir(), '.claude')): string {
-  return path.join(path.resolve(configRoot), 'hermitd', 'credproxy', storeName(fs.realpathSync(project)));
+export function storeDir(project: string, configRoot = path.join(os.homedir(), '.claude'), kind = 'credproxy'): string {
+  return path.join(path.resolve(configRoot), 'hermitd', kind, storeName(fs.realpathSync(project)));
 }
 
 /** The store folder's name for a project's real path; pure, so a deleted project still names its stores. */

@@ -18,6 +18,7 @@ import {
   securityInput, InvalidValue,
 } from '../scripts/render-security-overlay';
 import { storeDir } from '../scripts/lib/credproxy';
+import { storeDir as connectorStoreDir, writeConfig as writeConnectorConfig } from '../scripts/lib/connector';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-rso-');
 afterAll(cleanup);
@@ -342,6 +343,69 @@ describe('credential proxy sidecar', () => {
     expect(overlay.services['hermit-credproxy'].volumes).toEqual([`${store}/sidecar:/etc/envoy:ro`]);
     expect(fs.statSync(path.join(store, 'sidecar')).mode & 0o777).toBe(0o700);
     expect(fs.existsSync(path.join(store, 'agent'))).toBe(true);
+  });
+});
+
+describe('connector service', () => {
+  const connector = { store: '/cfg/hermitd/connector/p-0123', port: 8790, uid: 1000, gid: 1000 };
+  const proxy = { store: '/cfg/hermitd/credproxy/p-0123', uid: 1000, gid: 1000 };
+
+  test('runs in its own namespace, publishes only on host loopback, and gives the agent the socket folder read-only', () => {
+    const overlay = Bun.YAML.parse(renderOverlayText({ toggles: {} }, undefined, connector)) as any;
+    expect(overlay.services['hermit-connector']).toMatchObject({
+      image: 'oven/bun:1.4.2-distroless', command: ['/connector/sidecar/gateway.ts', '/connector'], user: '1000:1000',
+      environment: ['CONNECTOR_HOSTNAME=0.0.0.0'], cap_drop: ['ALL'], security_opt: ['no-new-privileges:true'],
+      restart: 'unless-stopped', ports: ['127.0.0.1:8790:8790'],
+      volumes: [`${connector.store}/sidecar:/connector/sidecar:ro`, `${connector.store}/data:/connector/data`, `${connector.store}/bridge:/connector/bridge`],
+    });
+    expect(overlay.services['hermit-connector'].network_mode).toBeUndefined();
+    expect(overlay.services.hermit.volumes).toEqual([`${connector.store}/bridge:/run/hermit-connector:ro`]);
+    expect(overlay.services.hermit.ports).toBeUndefined();
+  });
+
+  test('shares one agent volumes block with the credential proxy and leaves netguard without ports', () => {
+    const LAN = { network: NETWORK, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const }, credproxy: { enabled: true } } };
+    const overlay = Bun.YAML.parse(renderOverlayText(LAN, proxy, connector)) as any;
+    expect(overlay.services.hermit.volumes).toEqual([`${proxy.store}/agent:/run/hermit-credproxy:ro`, `${connector.store}/bridge:/run/hermit-connector:ro`]);
+    expect(overlay.services['hermit-netguard'].ports).toBeUndefined();
+    expect(overlay.services['hermit-connector'].network_mode).toBeUndefined();
+  });
+
+  test('absent leaves the overlay byte-identical', () => {
+    for (const input of [{ toggles: {} }, { network: NETWORK, toggles: { lan: { enabled: true, dnsMode: 'enforce' as const } } }]) {
+      expect(renderOverlayText(input as any, undefined, undefined)).toBe(renderOverlayText(input as any));
+      expect(renderOverlayText(input as any)).not.toContain('connector');
+    }
+  });
+
+  test('host networking or a corrupt settings file leaves the connector out instead of failing the render', async () => {
+    for (const [extra, settings] of [[{ docker: { network_mode: 'host' } }, null], [{}, '{"port":']] as const) {
+      const dir = freshDir();
+      const home = freshDir();
+      const real = freshDir();
+      fs.mkdirSync(path.join(dir, '.hermit'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.hermit', 'config.json'), JSON.stringify({ docker: { ...(extra as any).docker, security: { audit: { plugin_installs: true } } } }));
+      const store = connectorStoreDir(real, path.join(home, '.claude'));
+      writeConnectorConfig(store, { port: 8790, public_url: 'https://agent.example.com', wait_seconds: 25, rate_per_hour: 60 });
+      if (settings) fs.writeFileSync(path.join(store, 'sidecar', 'connector.json'), settings);
+      const r = await runScript('render-security-overlay.ts', { args: ['render', dir, '--store-project', real], env: { HOME: home } });
+      expect(r.exitCode).toBe(0);
+      expect(fs.readFileSync(overlayPath(dir), 'utf8')).not.toContain('hermit-connector');
+    }
+  });
+
+  test('the render subcommand renders the overlay when the connector is the only thing on', async () => {
+    const dir = freshDir();
+    const home = freshDir();
+    const real = freshDir();
+    writeConfig(dir, {});
+    const store = connectorStoreDir(real, path.join(home, '.claude'));
+    writeConnectorConfig(store, { port: 8790, public_url: 'https://agent.example.com', wait_seconds: 25, rate_per_hour: 60 });
+    const r = await runScript('render-security-overlay.ts', { args: ['render', dir, '--store-project', real], env: { HOME: home } });
+    expect(r.exitCode).toBe(0);
+    const overlay = Bun.YAML.parse(fs.readFileSync(overlayPath(dir), 'utf8')) as any;
+    expect(overlay.services['hermit-connector'].user).toBe(`${process.getuid!()}:${process.getgid!()}`);
+    expect(overlay.services.hermit.volumes).toEqual([`${store}/bridge:/run/hermit-connector:ro`]);
   });
 });
 

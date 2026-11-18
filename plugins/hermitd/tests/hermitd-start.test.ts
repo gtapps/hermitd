@@ -2271,6 +2271,14 @@ describe('hydrateSetupTokenEnv', () => {
     const declaration = src.slice(src.indexOf('const forwardVars =')).split('\n')[0];
     expect(declaration).toContain('...Object.keys(resolveHermitEnv(config))');
   });
+
+  test('the connector socket path is forwarded into the tmux env-file', () => {
+    const src = fs.readFileSync(path.join(import.meta.dir, '..', 'scripts', 'hermitd-start.ts'), 'utf-8');
+    const declaration = src.slice(src.indexOf('const forwardVars =')).split('\n')[0];
+    expect(declaration).toContain("'HERMIT_CONNECTOR_SOCKET'");
+    // Started before either launch path, so the interactive execvp inherits the variable too.
+    expect(src.indexOf('startConnector(')).toBeLessThan(src.indexOf('if (noTmuxFlag || !pyTruthy(tools.tmux)) {\n    if (!noTmuxFlag'));
+  });
 });
 
 // -------------------------------------------------------

@@ -1,0 +1,36 @@
+{
+  "name": "hermitd-connector",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "hermitd",
+      "version": "^1.4.36"
+    }
+  ],
+  "description": "The in-agent channel for the hermitd connector: messages people send from their own Claude app reach the agent as a member, and its replies go back to them.",
+  "author": {
+    "name": "gtapps",
+    "url": "https://github.com/gtapps"
+  },
+  "repository": "https://github.com/gtapps/hermitd",
+  "homepage": "https://github.com/gtapps/hermitd/tree/main/plugins/hermitd-connector",
+  "license": "MIT",
+  "keywords": [
+    "connector",
+    "channel",
+    "voice",
+    "claude-app",
+    "gtapps"
+  ],
+  "mcpServers": {
+    "connector": {
+      "command": "bun",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.ts"]
+    }
+  },
+  "channels": [
+    {
+      "server": "connector"
+    }
+  ]
+}

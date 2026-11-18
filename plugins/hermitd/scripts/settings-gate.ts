@@ -307,6 +307,7 @@ const ROUTINE_PATH = /^routines(?:\.(\d+)(?:\..+)?)?$/;
 function operatorChat(key: string): boolean {
   const at = key.indexOf(':');
   const ch = readConfigRaw(hermitDir())?.channels?.[key.slice(0, at)];
+  if (ch?.members_only === true) return false;
   const chatId = key.slice(at + 1);
   return [ch?.default_chat_id, ch?.maintainer_channel_id]
     .some(id => id != null && String(id) === chatId);

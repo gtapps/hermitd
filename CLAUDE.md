@@ -1,6 +1,6 @@
 # hermitd (monorepo)
 
-This repo is a multi-plugin Claude Code marketplace. Seven plugins ship from `plugins/<slug>/`, each with its own `CLAUDE.md`, `CHANGELOG.md`, and `tests/`. `.claude-plugin/marketplace.json` is the only marketplace; the root README is the canonical hermit pitch.
+This repo is a multi-plugin Claude Code marketplace. Eight plugins ship from `plugins/<slug>/`, each with its own `CLAUDE.md`, `CHANGELOG.md`, and `tests/`. `.claude-plugin/marketplace.json` is the only marketplace; the root README is the canonical hermit pitch.
 
 Always launch Claude Code from this repo's root. A plugin dir's own `.claude-plugin/` would load the plugin under test as the project plugin.
 

@@ -7,7 +7,7 @@ LOGDIR="$(mktemp -d)"
 overall_rc=0
 trap 'if [ "$overall_rc" -eq 0 ]; then rm -rf "$LOGDIR"; else printf "Full test logs: %s\n" "$LOGDIR"; fi' EXIT
 
-BUN_TEST_SLUGS=(hermitd hermitd-homeassistant hermitd-feed)
+BUN_TEST_SLUGS=(hermitd hermitd-homeassistant hermitd-feed hermitd-connector)
 RUN_ALL_SLUGS=(hermitd-dev hermitd-fitness hermitd-scribe hermitd-laravel-forge)
 
 # Bun 1.4 isolates files in worker processes. Cap core at two workers to keep

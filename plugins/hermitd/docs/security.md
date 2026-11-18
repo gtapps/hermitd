@@ -257,7 +257,7 @@ Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls 
   | --- | --- |
   | Identity and execution | `approvals`, `permission_mode`, `operator_profile`, `voice.prose`, `env`, `monitors`, `boot_skill`, `shutdown_skill`, `backup` |
   | Channel routing | `channels.primary` |
-  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
+  | Channel boundaries | A channel entry's existence, plus per-channel `allowed_users`, `operators`, `passive_chats`, `instructions`, `default_chat_id`, `maintainer_channel_id`, `isolate_chats`, `members_only`, `shared_chats`, `state_dir`, `marketplace`, `enabled`, `plugin`, `send_script`, `attributes` |
   | Export and publishing | `telemetry_export.enabled`, `telemetry_export.destination`, `telemetry_export.redact_operator_text`, `artifacts.publish_authorized`, `artifacts.backend` |
   | Tools and credentials | `docker.packages`, `docker.git_identity_mount`, `docker.security`, `docker.recommended_plugins`, `docker.fleet_mesh`, `browser`, `remote`, `chrome`, `auth_mode` |
 
@@ -444,6 +444,8 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 ---
 
 ### Known limitations
+
+- **The connector's trusted server is a boundary only on Docker.** On a tmux install it runs as the same user as the agent. Its pairing is not a verified Claude account, replies reach every paired person, and the words it delivers are written by Claude in each person's app. See [connector limits](connector.md#limits).
 
 - The managed Docker deny floor protects the running container's policy file. The agent can still write image build inputs and the `claude` binary to stage changes for a later rebuild or start; organization server-managed settings can also supersede local drop-ins.
 - Phone takeover is inactive until explicitly set up. HTTP and WebSockets require an exact `browser.admins` Tailscale user login; a missing identity header, a non-admin, or a tagged phone is refused. Authenticated requests must also match `browser.host:browser.port`; state-changing POSTs and upgrades require Origin to match Host. Only the current generation receives input; there is no watch mode.

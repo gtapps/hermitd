@@ -51,6 +51,7 @@ import { heartbeatHealth } from './lib/heartbeat/monitor-cmd';
 import { effectiveHeartbeatMode } from './lib/heartbeat/control';
 import { readBootId } from './lib/routines/registry';
 import { probeDeclaredCredentials, strayTokenNote, chromeAuthNote } from './lib/credential-probe';
+import { CONTAINER_SOCKET, isEnabled as connectorEnabled, socketPath as connectorSocketPath, socketStatus, storeDir as connectorStore } from './lib/connector';
 
 type Json = any;
 
@@ -2073,6 +2074,29 @@ function overlayAcceptsInbound(stateDir: string): boolean {
 }
 
 /**
+ * The socket the launcher named, or, for a run outside the agent's session (`hermitd doctor`),
+ * the one it would have named: the container mount, or an enabled host store's socket.
+ */
+function connectorSocket(p: DoctorPaths): string | undefined {
+  if (process.env.HERMIT_CONNECTOR_SOCKET) return process.env.HERMIT_CONNECTOR_SOCKET;
+  if (isContainer()) return fs.existsSync(path.dirname(CONTAINER_SOCKET)) ? CONTAINER_SOCKET : undefined;
+  try {
+    const store = connectorStore(path.dirname(p.hermitDir));
+    return connectorEnabled(store) ? connectorSocketPath(store) : undefined;
+  } catch { return undefined; }
+}
+
+/** Is the connector's trusted server answering this agent? Asks only its socket for status. */
+async function checkConnector(p: DoctorPaths = PATHS, socket = connectorSocket(p)) {
+  const id = 'connector';
+  if (!socket) return { id, status: 'ok', detail: 'not enabled' };
+  const body = await socketStatus(socket, 3000);
+  if (!body) return { id, status: 'warn', detail: 'the connector server does not answer; run `hermitd restart` on the host, then `hermitd connector status`' };
+  if (!body.channel_connected) return { id, status: 'warn', detail: 'the connector server runs but no channel is connected; check that the connector channel is enrolled and the agent was restarted' };
+  return { id, status: 'ok', detail: `server running, channel connected, ${body.grants ?? 0} paired` };
+}
+
+/**
  * Peer inbox — can the watchdog's socket wake actually reach the resident?
  *
  * The wake is invisible on the wire: `postToSession` reports that bytes were
@@ -2488,7 +2512,7 @@ async function runAllChecks(p: DoctorPaths = PATHS) {
     // peer socket connect) and share no state, so they run concurrently rather
     // than adding both timeouts to every doctor run. Promise.all preserves
     // order, so the pinned check-id sequence is unchanged.
-    ...(await Promise.all([checkChannelLiveness(p), checkPeerInbox(p)])),
+    ...(await Promise.all([checkChannelLiveness(p), checkPeerInbox(p), checkConnector(p)])),
     checkBackup(p),
   ];
 }
@@ -2693,7 +2717,7 @@ export {
   checkDockerSecurity, checkDockerApproval, checkReflectLoop, checkScheduler,
   checkWatchdog, checkContextAge, checkRoutineCost, checkHeartbeat, checkRoutineMonitor,
   checkRoutinePrecheck, checkRawSize,
-  checkCredentialExpiry, checkChromeAuth, checkBrowser, checkTranscription, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkBackup,
+  checkCredentialExpiry, checkChromeAuth, checkBrowser, checkTranscription, checkModelPricingKnown, checkMemorySize, checkContextScan, checkVoiceCarrier, checkMessageCatalog, checkOverlayHooks, checkHarnessMod, checkClassifierDenials, checkChannelLiveness, checkPeerInbox, checkConnector, checkBackup,
   satisfiesRange, cidrOverlap,
   // Tests build their own paths for a scratch dir; the CLI runs on the argv-derived default.
   resolvePaths,

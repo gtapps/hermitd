@@ -37,7 +37,7 @@ function resolveTarget(
 
 function eligible(ch: Json): boolean {
   if (!ch || typeof ch !== 'object') return false;
-  if (ch.enabled === false) return false;
+  if (ch.enabled === false || ch.members_only === true) return false;
   if (Array.isArray(ch.allowed_users) && ch.allowed_users.length === 0) return false;
   return !!proactiveChatId(ch);
 }
@@ -61,7 +61,7 @@ export function ownedTarget(entries: Json, id: string | undefined): { id: string
 // reach a non-technical client chat.
 function maintainerEligible(ch: Json): boolean {
   if (!ch || typeof ch !== 'object') return false;
-  if (ch.enabled === false) return false;
+  if (ch.enabled === false || ch.members_only === true) return false;
   return typeof ch.maintainer_channel_id === 'string' && ch.maintainer_channel_id.length > 0;
 }
 
