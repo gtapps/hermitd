@@ -43,6 +43,41 @@ test('hermitd-stop refuses to run in a projection and creates no state there', a
   expect(fs.existsSync(path.join(nested, '.hermit', 'state'))).toBe(false);
 });
 
+test('hermitd-status in a projection reports on the real root', async () => {
+  const root = freshDir();
+  const nested = path.join(root, 'nested');
+  writeConfig(root, { agent_name: 'real-root' });
+  writeConfig(nested, { agent_name: 'projection' });
+  fs.mkdirSync(path.join(root, '.hermit', 'state'));
+
+  const result = await runScript('hermitd-status.ts', {
+    cwd: nested,
+    args: ['--json'],
+    env: { AGENT_DIR: '', CLAUDE_PROJECT_DIR: '' },
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).agent_name).toBe('real-root');
+  expect(fs.existsSync(path.join(nested, '.hermit', 'state'))).toBe(false);
+});
+
+test('hermitd-attach through a symlinked bin/ reads the real root runtime', () => {
+  const root = freshDir();
+  const nested = path.join(root, 'nested');
+  writeConfig(root, {});
+  writeConfig(nested, {});
+  fs.mkdirSync(path.join(root, '.hermit', 'bin'));
+  fs.copyFileSync(path.resolve(import.meta.dir, '../state-templates/bin/hermitd-attach'), path.join(root, '.hermit', 'bin', 'hermitd-attach'));
+  fs.mkdirSync(path.join(root, '.hermit', 'state'));
+  fs.writeFileSync(path.join(root, '.hermit', 'state', 'runtime.json'), JSON.stringify({ runtime_mode: 'interactive' }));
+  fs.symlinkSync(path.join(root, '.hermit', 'bin'), path.join(nested, '.hermit', 'bin'));
+
+  const result = Bun.spawnSync(['bash', '.hermit/bin/hermitd-attach'], { cwd: nested, stdout: 'pipe', stderr: 'pipe' });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr.toString()).toContain('interactive mode');
+});
+
 test('hermitd-watchdog refuses to run in a projection and creates no state there', async () => {
   const root = freshDir();
   const nested = path.join(root, 'nested');
