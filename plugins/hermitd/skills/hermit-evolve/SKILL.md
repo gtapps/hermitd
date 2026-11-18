@@ -101,6 +101,7 @@ conversation. Stop.
 **Docker rebuild notice.** When `.hermit/state/update-in-progress.json` has an `at` under 60 minutes old and does not hold `"build": false`, the update that launched evolve waits for the version stamps, builds the merged Docker files, and restarts the resident at a quiet boundary. Report that the running update applies the refreshed files and restarts the agent at a quiet moment, unless a changed Docker input needs the operator's approval, which the agent reports separately; never request another update. Otherwise, from the report's `Docker entrypoint` / `Docker rebuild` fields, append a `Docker:` section when a rebuild is needed:
 - Entrypoint refreshed → "Docker entrypoint refreshed. Rebuild to apply: `hermitd update`."
 - `Docker entrypoint: migrated(...)` → "Your entrypoint customizations moved to `docker-entrypoint.hermit-local.sh`, where upgrades no longer touch them (`<N>` moved). Rebuild to apply the new entrypoint: `hermitd update`." Add, only when `<M>` is non-zero: "`<M>` change(s) could not be moved automatically — they are in `<patch path>` for you to re-apply."
+- `Docker render: skipped(not_converted)`, with or without an update in progress → a `Docker:` section holding only "The image still builds from the project folder. Run `hermitd setup docker-customize` in a host terminal, then ask for Convert." No rebuild or running-update line goes with it.
 - Never auto-rebuild.
 
 **Reconcile routines after a successful always-on upgrade.** If the report represents a completed

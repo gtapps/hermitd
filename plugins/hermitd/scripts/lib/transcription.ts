@@ -69,14 +69,20 @@ export interface ReadinessOptions {
   which?: (name: string) => string | null;
   docker?: boolean;
 }
-export function readiness(options: ReadinessOptions): { status: 'disabled' | 'ready' | 'first_use' | 'unsupported' | 'failed'; reason: string } {
+export function readiness(options: ReadinessOptions): { status: 'disabled' | 'ready' | 'first_use' | 'unavailable' | 'unsupported' | 'failed'; reason: string } {
   const enabled = options.enabled ?? readSettledConfig(options.hermitDir ?? path.join(options.projectRoot, '.hermit')).transcription.enabled !== false;
   if (!enabled) return { status: 'disabled', reason: 'Voice-note transcription disabled' };
   const which = options.which ?? (name => Bun.which(name));
   const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
-  if (options.docker && !which('ffmpeg')) return { status: 'failed', reason: 'Docker image has no ffmpeg; run hermitd update' };
   if (which('whisper-cli') && which('ffmpeg')) return { status: 'ready', reason: 'PATH engine ready; models download on first use' };
+  // A container gets ffmpeg from its image and never installs it, so an old install error is moot there.
+  if (options.docker) {
+    if (!which('ffmpeg')) return { status: 'unavailable', reason: 'Voice notes unavailable: image has no ffmpeg' };
+    return installedWhisper(options.projectRoot, platform, arch)
+      ? { status: 'ready', reason: 'Installed engine ready; models download on first use' }
+      : { status: 'first_use', reason: 'Engine and models install on first voice note' };
+  }
   if (platform !== 'linux') return { status: 'unsupported', reason: platform === 'darwin' ? 'brew install whisper-cpp ffmpeg' : `Unsupported platform: ${platform}` };
   if ((options.musl ?? isMusl()) || !['x64', 'arm64'].includes(arch)) return { status: 'unsupported', reason: 'Automatic transcription install requires Linux glibc x64 or arm64' };
   const installed = installedWhisper(options.projectRoot, platform, arch);

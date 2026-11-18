@@ -3720,8 +3720,7 @@ test('transcription doctor is read-only and warning-only for every readiness ver
   expect(checkTranscription(p, { ...options, platform: 'darwin' }).detail).toContain('brew install whisper-cpp ffmpeg');
   expect(checkTranscription(p, { ...options, platform: 'darwin' }).status).toBe('warn');
   expect(checkTranscription(p, { ...options, musl: true }).status).toBe('warn');
-  expect(checkTranscription(p, { ...options, docker: true }).detail).toContain('hermitd update');
-  expect(checkTranscription(p, { ...options, docker: true }).status).toBe('warn');
+  expect(checkTranscription(p, { ...options, docker: true })).toMatchObject({ status: 'ok', detail: expect.stringContaining('no ffmpeg') });
   const data = path.join(dir, '.claude.local/whisper.cpp');
   expect(fs.existsSync(data)).toBe(false);
   fs.mkdirSync(data, { recursive: true });
@@ -3730,6 +3729,7 @@ test('transcription doctor is read-only and warning-only for every readiness ver
   expect(failed.status).toBe('warn');
   expect(failed.detail).toContain('fixture failure');
   expect(failed.detail).toContain('.hermit/bin/hermitd-run transcribe --prepare');
+  expect(checkTranscription(p, { ...options, docker: true, which: name => name === 'ffmpeg' ? '/usr/bin/ffmpeg' : null }).status).toBe('ok');
   writeConfig(dir, { transcription: { enabled: false } });
   expect(checkTranscription(p, options).status).toBe('ok');
 }));

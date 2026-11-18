@@ -125,7 +125,7 @@ Run `evolve-apply` (Commands) **first**, once for Steps 5 through 5c. Parse its 
 
 The script copies missing/unmodified templates and wrappers, parks template conflicts as `<name>.new`, backs up and replaces boot-wrapper conflicts, refreshes unmodified entrypoints, and seeds the corresponding pristine baselines. Resolve only `remaining` entries in Steps 5b–5c; preserve customized files unless that procedure resolves their entrypoint sidecar migration.
 
-On Docker installs, run `.hermit/bin/hermitd-run render-docker-templates <project-root>` after `evolve-apply` and report its status. Generated Docker files are header-gated; skipped files require docker-customize "Convert" or a newer host plugin, according to the reason.
+On Docker installs, run `.hermit/bin/hermitd-run render-docker-templates <project-root>` after `evolve-apply` and report its status. Generated Docker files are header-gated. `skipped(newer_renderer)` needs a newer host plugin. `skipped(not_converted)` means the installed Docker files stay as they are, so a rebuild applies nothing from this release: report `Docker rebuild: no` even when a release's Upgrade Instructions say the next `hermitd update` rebuilds. The Docker rebuild notice in SKILL.md gives the operator the Convert step instead.
 
 Keep the receipt for Step 10:
 - Templates: `restored`/`refreshed` from `applied`; `parked-new` counts as `conflicts-parked-N`; untouched `remaining` templates count as kept.

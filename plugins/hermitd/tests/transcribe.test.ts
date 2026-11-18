@@ -82,6 +82,15 @@ describe('transcription engine', () => {
     expect(readiness({ projectRoot: root, platform: 'linux', musl: true, which: () => null }).status).toBe('unsupported');
     expect(fs.readdirSync(root, { recursive: true })).toEqual(before);
   }));
+  test('container readiness follows the image and ignores an old install error', withDir(root => {
+    fs.mkdirSync(transcriptionDir(root), { recursive: true });
+    fs.writeFileSync(path.join(transcriptionDir(root), 'install-error.json'), JSON.stringify({ error: 'tar: xz: Cannot exec' }));
+    const docker = { projectRoot: root, enabled: true, platform: 'linux' as const, arch: 'x64', musl: false, docker: true };
+    expect(readiness({ ...docker, which: () => null })).toEqual({ status: 'unavailable', reason: 'Voice notes unavailable: image has no ffmpeg' });
+    expect(readiness({ ...docker, which: name => name === 'ffmpeg' ? '/usr/bin/ffmpeg' : null }).status).toBe('first_use');
+    expect(readiness({ ...docker, which: name => `/usr/bin/${name}` }).status).toBe('ready');
+    expect(readiness({ ...docker, docker: false, which: () => null }).status).toBe('failed');
+  }));
   test('rejects malformed deb archives', () => {
     expect(() => debData(new Uint8Array())).toThrow('invalid_deb');
   });
@@ -110,7 +119,7 @@ function note(root: string, config: object = {}) {
   const argv = ['--file', file, '--channel', 'custom', '--chat', 'chat', '--message-id', 'message'];
   return { dir, file, argv };
 }
-const noEngine = { which: () => null, install: async () => ({ error: 'unavailable' }) };
+const noEngine = { which: () => null, container: false, install: async () => ({ error: 'unavailable' }) };
 const models = async () => ({ base: '/fixture/base', silero: '/fixture/silero' });
 function localRun(text?: string) {
   return (argv: string[]) => {
@@ -208,9 +217,20 @@ describe('transcribe verb', () => {
   test('prepare never downloads models or sends', withDir(async root => {
     const n = note(root);
     let installs = 0;
-    const out = await transcribe(['--prepare'], { dir: n.dir, which: () => null, install: async () => { installs++; return { error: 'fixture missing' }; }, models: async () => { throw new Error('models requested'); }, send: async () => { throw new Error('send requested'); } });
+    const out = await transcribe(['--prepare'], { dir: n.dir, which: () => null, container: false, install: async () => { installs++; return { error: 'fixture missing' }; }, models: async () => { throw new Error('models requested'); }, send: async () => { throw new Error('send requested'); } });
     expect(installs).toBe(1);
     expect(out.result).toHaveProperty('status', 'unavailable');
+  }));
+  test('a container without ffmpeg never installs and reports the image', withDir(async root => {
+    const n = note(root, { transcription: { echo: false } });
+    const unexpected = async () => { throw new Error('install requested'); };
+    for (const argv of [['--prepare'], n.argv]) {
+      const out = await transcribe(argv, { dir: n.dir, container: true, env: {}, which: () => null, install: unexpected, models: unexpected });
+      expect(out.result).toMatchObject({ status: 'unavailable', reason: 'image_has_no_ffmpeg' });
+    }
+    let installs = 0;
+    await transcribe(['--prepare'], { dir: n.dir, container: true, which: name => name === 'ffmpeg' ? '/usr/bin/ffmpeg' : null, install: async () => { installs++; return { error: 'fixture missing' }; } });
+    expect(installs).toBe(1);
   }));
   for (const [error, expected] of [[undefined, 'sent'], ['no_send_path', 'unsupported'], ['missing_token', 'failed']] as const) {
     test(`echo outcome ${expected} preserves success and exact chat`, withDir(async root => {

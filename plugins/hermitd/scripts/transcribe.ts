@@ -9,6 +9,7 @@ import { channelStateDir } from './lib/channel-token';
 import { enrichInbound } from './lib/channel-log';
 import { sendToChannel } from './lib/channel-send';
 import { loadMessages } from './lib/messages';
+import { isContainer } from './lib/container';
 import { ensureModels, installedWhisper, installEngine, remaining, type EngineOptions } from './lib/transcription';
 
 export function normalizeLanguage(value?: string): string {
@@ -24,6 +25,7 @@ interface Options {
   install?: typeof installEngine;
   models?: typeof ensureModels;
   send?: typeof sendToChannel;
+  container?: boolean;
 }
 type Result = { status: 'disabled' | 'empty'; path: string }
   | { status: 'unavailable'; reason: string; path: string }
@@ -95,7 +97,9 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
     remaining(deadline);
     let binary = which('whisper-cli');
     let ffmpeg = which('ffmpeg');
-    if (!binary || !ffmpeg) {
+    // A container gets ffmpeg from its image; the bundled download is for hosts only.
+    if (!ffmpeg && (options.container ?? isContainer())) localReason = 'image_has_no_ffmpeg';
+    else if (!binary || !ffmpeg) {
       let installed = installedWhisper(path.dirname(dir));
       if (!installed || (!ffmpeg && !installed.ffmpeg)) {
         const result = await (options.install ?? installEngine)(engineOptions);

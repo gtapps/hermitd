@@ -1659,7 +1659,7 @@ function checkTranscription(p: DoctorPaths = PATHS, options: Partial<ReadinessOp
   const id = 'transcription';
   try {
     const result = readiness({ projectRoot: path.dirname(p.hermitDir), hermitDir: p.hermitDir, docker: isContainer(), ...options });
-    const status = ['disabled', 'ready', 'first_use'].includes(result.status) ? 'ok' : 'warn';
+    const status = ['disabled', 'ready', 'first_use', 'unavailable'].includes(result.status) ? 'ok' : 'warn';
     const next = result.status === 'failed' ? '; next: .hermit/bin/hermitd-run transcribe --prepare' : '';
     return { id, status, detail: result.reason + next };
   } catch (error: any) {

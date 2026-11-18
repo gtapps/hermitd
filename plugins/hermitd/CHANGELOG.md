@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Voice notes in a Docker image without ffmpeg report that they could not be transcribed instead of attempting a bundled ffmpeg download that needs `xz`, and doctor shows this as informational rather than a warning or an earlier install error
+- Upgrade reports on unconverted Docker installs name the host Convert step instead of asking for a rebuild that changes nothing
+
 ## [1.4.35] - 2026-11-18
 
 ### Added
