@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { storeDir as hostStoreDir } from './credproxy';
+import { inside, storeDir as hostStoreDir } from './credproxy';
 import { tmuxSessionAlive } from './tmux';
 import { writeFileAtomic } from './md-write';
 
@@ -86,7 +86,7 @@ export async function adminRequest(store: string, request: object, waitMs = ADMI
 
 export const connectorSession = (resident: string) => `connector-${resident}`;
 
-type HostDeps = { container: boolean; spawn?: typeof spawnSync; sessionAlive?: (name: string) => boolean; configRoot?: string };
+type HostDeps = { container: boolean; spawn?: typeof spawnSync; sessionAlive?: (name: string) => boolean; configRoot?: string; installRoot?: string };
 
 /**
  * Before the resident launches: point the channel at the socket and, on a host
@@ -104,9 +104,12 @@ export function startConnector(project: string, resident: string, deps: HostDeps
     const store = storeDir(project, deps.configRoot);
     if (!isEnabled(store)) return;
     process.env.HERMIT_CONNECTOR_SOCKET = socketPath(store);
+    // Same rule as `hermitd connector`: never run trusted-server code the agent can write.
+    const install = fs.realpathSync(deps.installRoot ?? path.join(import.meta.dir, '..', '..'));
+    if (inside(install, fs.realpathSync(project))) throw new Error('untrusted_install');
     const session = connectorSession(resident);
     if ((deps.sessionAlive ?? tmuxSessionAlive)(session)) return;
-    const gateway = path.join(import.meta.dir, '..', 'connector-gateway.ts');
+    const gateway = path.join(install, 'scripts', 'connector-gateway.ts');
     const result = (deps.spawn ?? spawnSync)('tmux', ['new-session', '-d', '-s', session, '-c', '/', process.execPath, gateway, store], { stdio: 'ignore' });
     if (result.error || result.status !== 0) throw new Error(result.error?.message ?? `tmux exited ${result.status}`);
   } catch (error) {

@@ -5,7 +5,7 @@
 ### Added
 
 - `channels.<name>.members_only: true` makes every sender on a channel a plain member: no control commands, primary-operator or sign-in authority, unscoped recall, home pin or notice routing. It is a protected setting.
-- `hermitd connector` enables a trusted server per agent that lets paired people reach it from their own Claude app through a custom connector, with sign-in, pairing approved at the host terminal, a per-person hourly cap and a message record kept in a host-only store the agent cannot read. Default off; on host installs it starts and stops with the agent. The in-agent half is the `hermitd-connector` channel plugin.
+- `hermitd connector` enables a trusted server per agent that lets paired people reach it from their own Claude app through a custom connector, with sign-in, pairing approved at the host terminal, a per-person hourly cap and a message record kept in a host-only store the agent cannot read. Default off, since it needs a public HTTPS address from the operator; on host installs it starts and stops with the agent. The in-agent half is the `hermitd-connector` channel plugin.
 
 ### Changed
 

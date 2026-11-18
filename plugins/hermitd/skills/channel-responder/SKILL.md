@@ -52,7 +52,7 @@ Use hook-provided authorization and loaded `config.json` → `channels.<channel>
 - If `allowed_users` is absent for this channel: accept all messages
 - If `allowed_users` is an empty array `[]`: accept from no one (explicit lockdown)
 
-**Primary operator:** If `channels.<channel>.operators` is set, any listed user id is primary. Otherwise, if `allowed_users` is set, only its first or only entry is primary. Otherwise, the sender must be in the channel's maintainer chat (`maintainer_channel_id`), or in its home chat (`default_chat_id`) with `operator_profile` other than `non-technical`. Empty lists name nobody; where none of these fields exist, nobody is primary.
+**Primary operator:** On a channel with `members_only: true`, nobody is primary. Otherwise, if `channels.<channel>.operators` is set, any listed user id is primary. Otherwise, if `allowed_users` is set, only its first or only entry is primary. Otherwise, the sender must be in the channel's maintainer chat (`maintainer_channel_id`), or in its home chat (`default_chat_id`) with `operator_profile` other than `non-technical`. Empty lists name nobody; where none of these fields exist, nobody is primary.
 
 ## 1d. Record Operator Activity
 

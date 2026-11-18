@@ -127,6 +127,21 @@ describe('host start and stop', () => {
     delete process.env.HERMIT_CONNECTOR_SOCKET;
   });
 
+  test.serial('an install inside the project is refused and nothing starts', async () => {
+    const f = fixture();
+    await f.cmd(...ENABLE);
+    const inner = path.join(f.project, 'plugins/hermitd');
+    fs.mkdirSync(path.join(inner, 'scripts'), { recursive: true });
+    const calls: string[][] = [];
+    const logs: string[] = [];
+    const log = console.log;
+    console.log = (line: string) => { logs.push(line); };
+    try { start(f.project, { configRoot: f.config, installRoot: inner, spawn: recorder(calls) }); }
+    finally { console.log = log; delete process.env.HERMIT_CONNECTOR_SOCKET; }
+    expect(calls).toEqual([]);
+    expect(logs.join('\n')).toContain('untrusted_install');
+  });
+
   test.serial('a failed start warns and does not throw', async () => {
     const f = fixture();
     await f.cmd(...ENABLE);

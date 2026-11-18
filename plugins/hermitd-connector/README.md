@@ -10,7 +10,7 @@ This plugin holds no state and does no sign-in. Core's trusted server does both,
 claude plugin install hermitd-connector@hermitd
 ```
 
-Then enable the trusted server and enrol the channel with `members_only: true`, as the core connector guide describes. Requires core `hermitd` 1.4.36 or newer.
+Then enable the trusted server on the host with `hermitd connector enable --port <n> --public-url <https url>`, pair people with `hermitd connector pair <code>`, and enrol the channel with `members_only: true`. Requires core `hermitd` 1.4.36 or newer.
 
 ## What the agent sees
 

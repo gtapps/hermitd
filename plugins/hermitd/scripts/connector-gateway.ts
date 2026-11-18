@@ -145,8 +145,11 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
     waiter.settle = setTimeout(() => waiter.resolve(takeReplies(grant)), settleMs);
   }
 
-  /** One waiter per grant: a newer call takes over and the older returns "nothing yet". */
-  function waitForReplies(grant: string, seconds: number): Promise<Reply[] | null> {
+  /**
+   * One waiter per grant: a newer call takes over and the older returns "nothing yet".
+   * A caller that hangs up stops waiting, so its replies stay queued for the next call.
+   */
+  function waitForReplies(grant: string, seconds: number, signal: AbortSignal): Promise<Reply[] | null> {
     const queued = db.query("SELECT 1 FROM replies WHERE grant_id = ? AND status = 'queued'").get(grant);
     waiters.get(grant)?.resolve(null);
     return new Promise(resolve => {
@@ -154,7 +157,15 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       const timer = setTimeout(() => waiter.resolve(takeReplies(grant)), seconds * 1000);
       waiters.set(grant, waiter);
       if (queued) armSettle(grant, waiter);
+      if (signal.aborted) waiter.resolve(null);
+      else signal.addEventListener('abort', () => waiter.resolve(null), { once: true });
     });
+  }
+
+  /** Wait, then render; a caller that hung up gets nothing, so no notice is spent on it. */
+  async function collect(grant: string, seconds: number, signal: AbortSignal): Promise<object> {
+    const replies = await waitForReplies(grant, seconds, signal);
+    return toolText(signal.aborted ? NOTHING_YET : render(grant, replies));
   }
 
   function notifyReply(grant: string): boolean {
@@ -302,7 +313,7 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
 
   const toolText = (text: string, isError = false) => ({ content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) });
 
-  async function agentMessage(grant: string, text: unknown): Promise<object> {
+  async function agentMessage(grant: string, text: unknown, signal: AbortSignal): Promise<object> {
     if (typeof text !== 'string' || !text.trim()) return toolText('Refused: the message is empty.', true);
     if (text.length > MAX_TEXT) return toolText(`Refused: the message is over ${MAX_TEXT} characters.`, true);
     if (/<\/?channel/i.test(text)) return toolText('Refused: the message contains channel markup.', true);
@@ -312,12 +323,12 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
     audit('message', grant);
     for (const wake of wakePoll.splice(0)) wake();
     if (!connected()) return toolText(OFFLINE);
-    return toolText(render(grant, await waitForReplies(grant, waitDefault)));
+    return collect(grant, waitDefault, signal);
   }
 
-  async function agentReplies(grant: string, wait: unknown): Promise<object> {
+  async function agentReplies(grant: string, wait: unknown, signal: AbortSignal): Promise<object> {
     const seconds = typeof wait === 'number' && Number.isFinite(wait) ? Math.max(0, Math.min(MAX_WAIT_S, wait)) : waitDefault;
-    return toolText(render(grant, await waitForReplies(grant, seconds)));
+    return collect(grant, seconds, signal);
   }
 
   async function mcp(req: Request, server: any): Promise<Response> {
@@ -337,8 +348,8 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       case 'tools/call': {
         const args = msg.params?.arguments ?? {};
         const name = msg.params?.name;
-        if (name === 'agent_message') { server.timeout(req, waitDefault + 10); return reply(await agentMessage(grant, args.text)); }
-        if (name === 'agent_replies') { server.timeout(req, MAX_WAIT_S + 10); return reply(await agentReplies(grant, args.wait_seconds)); }
+        if (name === 'agent_message') { server.timeout(req, waitDefault + 10); return reply(await agentMessage(grant, args.text, req.signal)); }
+        if (name === 'agent_replies') { server.timeout(req, MAX_WAIT_S + 10); return reply(await agentReplies(grant, args.wait_seconds, req.signal)); }
         return json({ jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'Unknown tool' } });
       }
       default: return json({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
@@ -477,7 +488,8 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
   function sweep(): void {
     const t = now();
     db.run('DELETE FROM clients WHERE created_at < ? AND id NOT IN (SELECT client_id FROM grants)', [t - ORPHAN_CLIENT_TTL_S]);
-    db.run('DELETE FROM requests WHERE grant_id IS NULL AND created_at < ?', [t - CODE_TTL_S]);
+    // An approved request whose page never came back to collect its code is gone after twice the TTL.
+    db.run('DELETE FROM requests WHERE created_at < ? AND (grant_id IS NULL OR created_at < ?)', [t - CODE_TTL_S, t - 2 * CODE_TTL_S]);
     db.run('DELETE FROM auth_codes WHERE expires_at < ?', [t]);
     db.run('DELETE FROM tokens WHERE expires_at < ? OR used = 1', [t]);
     db.run('DELETE FROM audit WHERE ts < ?', [t - AUDIT_TTL_S]);
@@ -513,7 +525,8 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       for (const wake of wakePoll.splice(0)) wake();
       publicServer.stop(true);
       socketServer.stop(true);
-      db.close();
+      // Released callers still render their answer; close the database after they have.
+      setTimeout(() => db.close(), 0);
     },
   };
 }
