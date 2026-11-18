@@ -4,7 +4,8 @@
 # Run from project root: .hermit/bin/hermitd-attach
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# -P: a checkout that symlinks the agent's bin/ attaches to the agent's own runtime.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNTIME_FILE="$AGENT_DIR/state/runtime.json"
 
