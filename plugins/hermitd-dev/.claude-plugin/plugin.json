@@ -1,13 +1,13 @@
 {
   "name": "hermitd-dev",
-  "version": "0.4.27",
+  "version": "0.4.28",
   "engines": {
     "claude-code": ">=2.1.302"
   },
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.33"
+      "version": "^1.4.36"
     }
   ],
   "description": "Git safeguards, debugging, and merge-conflict resolution for your Hermit.",
