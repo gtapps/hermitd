@@ -28,7 +28,7 @@ person in their Claude app ──> your public HTTPS address (your tunnel)
 
    Optional: `--wait-seconds` (how long a call waits for the agent, default 25, at most 200) and `--rate-per-hour` (per person, default 60).
 2. Install the channel plugin and enrol it as a channel with `members_only: true`, the same way as any [third-party channel](channel-plugins.md): plugin `hermitd-connector`, channel key `connector`. On Docker the approval prompt names the new channel plugin.
-3. Point your tunnel at `127.0.0.1:<port>` and restart the agent. `hermitd connector <name> status` shows the server running and the channel connected.
+3. Point your tunnel at `127.0.0.1:<port>` and restart the agent. The local port is your choice, but the public address must be HTTPS on the standard port 443: Claude does not connect to a connector URL with another port ([Anthropic help](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)). If another service already holds 443 on that host name, use another host name. `hermitd connector <name> status` shows the server running and the channel connected.
 
 `hermitd connector <name> disable` stops it at the next restart and keeps every pairing, so enabling it again needs no new pairing. `list` shows who is paired and `revoke <id>` removes one person.
 
