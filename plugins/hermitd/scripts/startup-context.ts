@@ -25,7 +25,8 @@ import { readSettledConfig } from './lib/config-read';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
 import { findResident, ownsResidentIdentity } from './lib/session-registry';
-import { envAuthPresent } from './lib/setup-token';
+import { defaultConfigDir, envAuthPresent, resolveAuthMode } from './lib/setup-token';
+import { actSurfaceLine } from './lib/act-surface';
 import { seedOperatorActivity } from './record-operator-action';
 import { clearGuest, markGuest, pruneGuestMarkers } from './lib/guest-marker';
 import { recordContextPolicy } from './lib/context-policy';
@@ -113,6 +114,16 @@ function operatorLanguage(agentDir: string): string | null {
     scanHits.push({ source: 'config.json:language', reason }));
 }
 
+function actSurface(config: ReturnType<typeof readSettledConfig>): string[] {
+  try {
+    // Remote Control connects only on a claude.ai sign-in; hermitd-start enables it unless
+    // `remote` is off, defaulting it on like the settled config does.
+    const line = actSurfaceLine(config, () =>
+      config.remote !== false && resolveAuthMode(config, defaultConfigDir()) === 'login');
+    return line ? [line] : [];
+  } catch { return []; }
+}
+
 function channelFormatHints(config: ReturnType<typeof readSettledConfig>): string[] {
   return getEnabledChannels(config).flatMap(key => {
     const hint = hintFor(config, key);
@@ -136,6 +147,7 @@ function buildCompactionPointers(agentDir: string): string {
   if (lang) parts.push(`operator language: ${safe(lang)} (reply in this language)`);
 
   const config = readSettledConfig(agentDir);
+  parts.push(...actSurface(config));
   parts.push(...channelFormatHints(config));
 
   parts.push('Task policy: read TASKS.md before intake or confirmation.');
@@ -405,9 +417,11 @@ function emitFullContext(source: string | null) {
   }
 
   const lang = operatorLanguage(AGENT_DIR);
+  const settled = readSettledConfig(AGENT_DIR);
   const preferences = [
     ...(lang ? [`operator_language: ${safe(lang)}\nAll operator-facing prose uses this language.`] : []),
-    ...channelFormatHints(readSettledConfig(AGENT_DIR)),
+    ...channelFormatHints(settled),
+    ...actSurface(settled),
   ];
   if (preferences.length) emit('Operator Preferences', preferences.join('\n'));
 
@@ -430,12 +444,9 @@ function emitFullContext(source: string | null) {
   if (totalChars < HARD_CAP) {
     try {
       let knowledgeBudget = BUDGETS.knowledge;
-      try {
-        const config = readSettledConfig(AGENT_DIR);
-        if (config.knowledge && typeof config.knowledge.compiled_budget_chars === 'number') {
-          knowledgeBudget = config.knowledge.compiled_budget_chars;
-        }
-      } catch {}
+      if (settled.knowledge && typeof settled.knowledge.compiled_budget_chars === 'number') {
+        knowledgeBudget = settled.knowledge.compiled_budget_chars;
+      }
 
       // Clamp to remaining headroom so a maxed compiled budget doesn't crowd lower-priority
       // sections (cost, report, upgrade). Operator and session emit first and are already safe.

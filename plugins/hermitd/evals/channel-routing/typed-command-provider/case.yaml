@@ -1,0 +1,37 @@
+schema_version: "1.1"
+name: typed-command-provider
+description: 'A typed-only command asked from a client chat with a maintainer chat set: the provider handles it.'
+tags: [channel-routing, heldout]
+expected_outcome: 'Client reply says the provider handles it, without sending the client to a terminal or the Claude app.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts or read state files, directly or through subagents.
+    - config.json: operator_profile=non-technical; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator); channels.discord.default_chat_id=400000000000000001 (the client's chat); channels.discord.maintainer_channel_id=400000000000000009.
+    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
+    - channel-send .hermit --notice (any payload): {"status":"delivered"}
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000071" user="sam" user_id="100000000000000001" ts="2026-10-01T09:40:00.000Z">
+    /hermitd:hermit-update
+    </channel>
+graders:
+  - name: replied-via-channel
+    type: tool_used
+    tool: 'mcp__plugin_discord_discord__reply'
+    input_match: '"chat_id"\s*:\s*"400000000000000001"'
+  - name: provider-handles-it
+    type: llm
+    focus: 'mock_calls'
+    criteria: 'PASS if the reply to chat 400000000000000001 tells the client, in any language and wording, that this is handled by their provider or the people who maintain the agent, and asks nothing technical of them. FAIL if the reply tells the client to use a terminal, the Claude app, a shell, or to type the command somewhere else, or if no reply was sent.'
+    weight: 2
