@@ -25,7 +25,8 @@ import { readSettledConfig } from './lib/config-read';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
 import { findResident, ownsResidentIdentity } from './lib/session-registry';
-import { envAuthPresent } from './lib/setup-token';
+import { defaultConfigDir, envAuthPresent, resolveAuthMode } from './lib/setup-token';
+import { actSurfaceLine } from './lib/act-surface';
 import { seedOperatorActivity } from './record-operator-action';
 import { clearGuest, markGuest, pruneGuestMarkers } from './lib/guest-marker';
 import { recordContextPolicy } from './lib/context-policy';
@@ -113,6 +114,13 @@ function operatorLanguage(agentDir: string): string | null {
     scanHits.push({ source: 'config.json:language', reason }));
 }
 
+function actSurface(config: ReturnType<typeof readSettledConfig>): string[] {
+  try {
+    const line = actSurfaceLine(config, () => resolveAuthMode(config, defaultConfigDir()));
+    return line ? [line] : [];
+  } catch { return []; }
+}
+
 function channelFormatHints(config: ReturnType<typeof readSettledConfig>): string[] {
   return getEnabledChannels(config).flatMap(key => {
     const hint = hintFor(config, key);
@@ -137,6 +145,7 @@ function buildCompactionPointers(agentDir: string): string {
 
   const config = readSettledConfig(agentDir);
   parts.push(...channelFormatHints(config));
+  parts.push(...actSurface(config));
 
   parts.push('Task policy: read TASKS.md before intake or confirmation.');
 
@@ -405,9 +414,12 @@ function emitFullContext(source: string | null) {
   }
 
   const lang = operatorLanguage(AGENT_DIR);
+  const settled = readSettledConfig(AGENT_DIR);
+  const surface = actSurface(settled);
   const preferences = [
     ...(lang ? [`operator_language: ${safe(lang)}\nAll operator-facing prose uses this language.`] : []),
-    ...channelFormatHints(readSettledConfig(AGENT_DIR)),
+    ...channelFormatHints(settled),
+    ...surface,
   ];
   if (preferences.length) emit('Operator Preferences', preferences.join('\n'));
 
@@ -581,7 +593,7 @@ function emitFullContext(source: string | null) {
         title = 'Upgrade Available';
         text = `Plugin v${v.plugin_version} ≠ config v${v.config_version}. ` + (v.always_on
           ? 'The upgrade runs by itself after this boot turn, then the agent restarts once when quiet. Continue normally.'
-          : 'Tell the operator to type /hermitd:hermit-evolve in a terminal or the Claude app.');
+          : `Tell the operator to type /hermitd:hermit-evolve${surface.length ? ', worded per act_surface.' : ' in a terminal or the Claude app.'}`);
       } else if (v?.status === 'stale_plugin_runtime') {
         title = 'Stale Plugin Runtime';
         text = `Loaded plugin v${v.plugin_version} is older than this hermit's applied state v${v.config_version}: a stale install copy. hermit-evolve cannot fix this: find the \`claude plugin list\` entry matching the path below, run \`claude plugin update hermitd@hermitd --scope <its scope>\`, then restart.\n`

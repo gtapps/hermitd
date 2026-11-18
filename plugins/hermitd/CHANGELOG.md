@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.
+
 ## [1.4.36] - 2026-11-18
 
 ### Added
