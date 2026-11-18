@@ -276,7 +276,7 @@ function showFiles(changed: string[], oldSet: string, set: string, report: (mess
 // state, so it only reports: a hidden notice never applies a change the operator did not approve.
 const noteName = '.hermit/state/docker-approval.json';
 export type ApprovalNote =
-  | { status: 'pending'; at: string; changed: string[]; candidate: string; notified: boolean }
+  | { status: 'pending'; at: string; changed: string[]; candidate: string; notified: boolean; doctor_requested?: boolean }
   | { status: 'approved'; at: string; approved: string; security: string; deployed?: string };
 
 export function readApprovalNote(project: string): ApprovalNote | null {
@@ -296,11 +296,22 @@ function writeApprovalNote(project: string, note: ApprovalNote): void {
   } catch {}
 }
 
-/** Record that the pending candidate's notice reached chat, or that an approved set is now running. */
-export function markApprovalNote(project: string, mark: 'notified' | 'deployed', value: string): void {
+/**
+ * Record that the pending candidate's notice reached chat, that the doctor fallback was
+ * requested for it, or that an approved set is now running. Returns whether the note changed,
+ * so a caller asks for the doctor fallback once per candidate.
+ */
+export function markApprovalNote(project: string, mark: 'notified' | 'doctor_requested' | 'deployed', value: string): boolean {
   const note = readApprovalNote(project);
-  if (mark === 'notified' && note?.status === 'pending' && note.candidate === value) writeApprovalNote(project, { ...note, notified: true });
-  if (mark === 'deployed' && note?.status === 'approved' && note.approved === value) writeApprovalNote(project, { ...note, deployed: value });
+  if (note?.status === 'pending' && note.candidate === value && mark !== 'deployed' && !note[mark]) {
+    writeApprovalNote(project, { ...note, [mark]: true });
+    return true;
+  }
+  if (mark === 'deployed' && note?.status === 'approved' && note.approved === value && note.deployed !== value) {
+    writeApprovalNote(project, { ...note, deployed: value });
+    return true;
+  }
+  return false;
 }
 
 /** A pending candidate whose notice has not reached chat yet. */
@@ -360,8 +371,12 @@ export async function approveProject(project: string, options: ApprovalOptions =
       if (!prompt) {
         report('Changed: ' + names.join(', ') + '. Run hermitd approve in a terminal.');
         const before = readApprovalNote(project);
-        const notified = before?.status === 'pending' && before.candidate === next.digest && before.notified;
-        writeApprovalNote(project, { status: 'pending', at: new Date().toISOString(), changed: names, candidate: next.digest, notified });
+        // Same candidate: keep what was already sent or requested for it.
+        const same = before?.status === 'pending' && before.candidate === next.digest ? before : undefined;
+        writeApprovalNote(project, {
+          status: 'pending', at: new Date().toISOString(), changed: names, candidate: next.digest,
+          notified: same?.notified === true, ...(same?.doctor_requested ? { doctor_requested: true } : {}),
+        });
         return { code: 1 };
       }
       const oldSet = path.join(store, previous.applied);

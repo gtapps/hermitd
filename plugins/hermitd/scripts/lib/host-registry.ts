@@ -73,10 +73,18 @@ export function hostStores(project: string, home = os.homedir()): string[] {
   return ['approvals', 'credproxy'].map(kind => path.join(home, '.claude', 'hermitd', kind, name));
 }
 
-/** Running containers of a Compose project, by its working-dir label; null when Docker cannot answer. */
+/**
+ * Running containers of a Compose project, by its working-dir label; null when Docker cannot answer.
+ * The label holds the folder as the lifecycle named it, which may pass through a link, so it is
+ * compared by real path.
+ */
 function runningContainers(project: string): string | null {
-  const result = spawnSync('docker', ['ps', '-q', '--filter', `label=com.docker.compose.project.working_dir=${project}`], { encoding: 'utf8' });
-  return result.error || result.status !== 0 ? null : result.stdout.trim();
+  const result = spawnSync('docker', ['ps', '--format', '{{.ID}}\t{{.Label "com.docker.compose.project.working_dir"}}'], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.split('\n').flatMap(line => {
+    const [id, dir] = line.split('\t');
+    return id && dir && (dir === project || realOr(dir) === project) ? [id] : [];
+  }).join('\n');
 }
 
 /** Remove a project's stores; the reason it kept them, or null once both are gone. */
@@ -121,5 +129,5 @@ export function prune(mp: string, name?: string, options: { home?: string; runni
 }
 
 function realOr(file: string): string {
-  try { return fs.realpathSync(file); } catch { return file; }
+  try { return fs.realpathSync(file); } catch { return path.resolve(file); }
 }

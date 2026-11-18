@@ -2,7 +2,9 @@
 // Usage: bun approve.ts <project>
 //        bun approve.ts note unannounced <project>             prints the pending candidate whose notice has not reached chat
 //        bun approve.ts note notified <project> <candidate>    the notice for that candidate was delivered
+//        bun approve.ts note doctor_requested <project> <candidate>   the doctor fallback was asked for that candidate
 //        bun approve.ts note deployed <project> <set-path>     that approved set is now running
+// A mark prints `OK` when it changed the note, nothing when it was already set or does not apply.
 import path from 'node:path';
 import { approveProject, markApprovalNote, unannouncedCandidate } from './lib/approval';
 import { isContainer } from './lib/container';
@@ -19,8 +21,8 @@ if (import.meta.main) {
       if (mark === 'unannounced' && value === undefined) {
         const candidate = unannouncedCandidate(project);
         if (candidate) console.log(candidate);
-      } else if ((mark === 'notified' || mark === 'deployed') && value) {
-        markApprovalNote(project, mark, mark === 'deployed' ? path.basename(value) : value);
+      } else if ((mark === 'notified' || mark === 'doctor_requested' || mark === 'deployed') && value) {
+        if (markApprovalNote(project, mark, mark === 'deployed' ? path.basename(value) : value)) console.log('OK');
       } else throw new Error('usage');
     } else {
       const [project, ...extra] = process.argv.slice(2);

@@ -21,6 +21,11 @@ export function isLink(file: string): boolean {
 export function writeExclusive(file: string, content: string, mode: number): void {
   const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
   fs.writeFileSync(tmp, content, { flag: 'wx', mode });
-  fs.chmodSync(tmp, mode);
-  fs.renameSync(tmp, file);
+  try {
+    fs.chmodSync(tmp, mode);
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    fs.rmSync(tmp, { force: true });
+    throw error;
+  }
 }

@@ -177,9 +177,11 @@ _approval_note() {
 
 # A lifecycle command that stopped with no terminal to ask tells the operator's chat once
 # per candidate, through the agent's own channel sender (no model turn). Only the sender's
-# OK counts as delivered; otherwise the terminal says so and a doctor run is requested,
-# whose docker-approval check reports the pending change.
+# OK counts as delivered; otherwise the terminal says so, the next run tries again, and a
+# doctor run is requested once per candidate, whose docker-approval check reports it.
+# An operator who answered N at a terminal is not sent a notice.
 _notify_pending_approval() {
+  if [ -t 0 ] && [ -t 1 ]; then return 0; fi
   local candidate install out=""
   candidate="$(_approval_note unannounced "$PROJECT_DIR")"
   [ -n "$candidate" ] || return 0
@@ -192,17 +194,19 @@ _notify_pending_approval() {
     out='{"error":"agent_not_running"}'
   fi
   if [ "$out" = OK ]; then
-    _approval_note notified "$PROJECT_DIR" "$candidate"
+    _approval_note notified "$PROJECT_DIR" "$candidate" >/dev/null
     echo "[hermit] The agent's chat was told that a change waits for hermitd approve." >&2
   else
     echo "[hermit] The approval notice was not delivered to chat (${out:-no reply}). Run hermitd approve in a terminal." >&2
-    _harness_request /hermitd:hermit-doctor >/dev/null
+    if [ "$(_approval_note doctor_requested "$PROJECT_DIR" "$candidate")" = OK ]; then
+      _harness_request /hermitd:hermit-doctor >/dev/null
+    fi
   fi
 }
 
 # Record that the approved set is running, so doctor can tell approved from deployed.
 _stamp_deployed() {
-  if [ -n "${DOCKER_FILES_SET:-}" ]; then _approval_note deployed "$PROJECT_DIR" "$DOCKER_FILES_SET"; fi
+  if [ -n "${DOCKER_FILES_SET:-}" ]; then _approval_note deployed "$PROJECT_DIR" "$DOCKER_FILES_SET" >/dev/null; fi
 }
 
 _approve_docker_inputs() {

@@ -529,6 +529,7 @@ const LEGACY_COMMENTS = [
   '# --- Operator additions (from /docker-security Prompt 1c) ---',
   '# Channel APIs',
   '# Voice-note engine and model downloads and credential-enabled cloud fallback',
+  '# Voice-note model downloads and credential-enabled cloud fallback',
 ];
 const DEFAULT_SERVER_RE = /^server=\/([^/]+)\/1\.1\.1\.1$/;
 

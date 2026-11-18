@@ -572,9 +572,9 @@ function allowlistCovers(allow: string, host: string): boolean {
 
 function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()) {
   const { hermitDir } = p;
-  // Presence check between docker.security.* in config.json and the rendered
-  // docker-compose.security.yml overlay. When both are present, also shells out
-  // to `docker compose config --format json` (timeout 10s) to detect:
+  // Reads docker.security.* in config.json and the host's approval record. When a
+  // posture is declared, the host also shells out to
+  // `docker compose config --format json` (timeout 10s) to detect:
   //   - hermit service ports conflicting with network_mode:service:hermit-netguard (fail)
   //   - overlay subnet colliding with another Docker network on this host (warn)
   // All subprocess failures degrade to warn, never fail — daemon-down is transient.
@@ -601,7 +601,10 @@ function checkDockerSecurity(p: DoctorPaths = PATHS, proxyMount = credproxyDir()
     const note = readApprovalNote(projectRoot);
     let drift: string | null = null;
     if (note?.status === 'approved') {
-      if (net?.enabled && note.security !== 'rendered') {
+      if (net?.enabled && note.security === 'disabled') {
+        // The record predates turning LAN containment on: no lifecycle command has applied it yet.
+        drift = 'LAN containment is on in config but not applied yet; run `hermitd restart` on the host';
+      } else if (net?.enabled && note.security !== 'rendered') {
         drift = `the host did not render the netguard rules (${note.security}); run \`hermitd setup docker-security\` on the host`;
       } else if (note.deployed !== note.approved) {
         drift = 'approved Docker changes are not running yet; run `hermitd restart` on the host to apply them';

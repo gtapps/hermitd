@@ -43,6 +43,14 @@ describe('docker-security from the host note', () => {
     }
   });
 
+  test('containment turned on after the last approval says it is not applied yet, not to re-run the wizard', () => {
+    const r = scenario('enforce', { ...RUNNING, security: 'disabled' });
+    expect(r.status).toBe('warn');
+    expect(r.detail).toContain('not applied yet');
+    expect(r.detail).toContain('hermitd restart');
+    expect(r.detail).not.toContain('docker-security');
+  });
+
   test('rules the host did not render warn with the reason', () => {
     const r = scenario('enforce', { ...RUNNING, security: 'skipped:incomplete_config' });
     expect(r.status).toBe('warn');

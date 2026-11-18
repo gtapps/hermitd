@@ -5765,6 +5765,11 @@ describe('Docker lifecycle renders the credential proxy from the host-only store
       expect(third.stderr).toContain('The approval notice was not delivered to chat ({"error":"no_channel"})');
       expect(p.calls()).toContain('harness-request /hermitd:hermit-doctor');
       expect(JSON.parse(fs.readFileSync(hermit(p.proj, 'state', 'docker-approval.json'), 'utf8')).notified).toBe(false);
+      // The send is retried on the next run; the doctor fallback is asked once per candidate.
+      const fourth = await p.run(['restart']);
+      expect(fourth.stderr).toContain('The approval notice was not delivered to chat');
+      expect(p.calls().match(/approval-notice/g)).toHaveLength(3);
+      expect(p.calls().match(/harness-request \/hermitd:hermit-doctor/g)).toHaveLength(1);
     } finally { p.cleanup(); }
   });
 

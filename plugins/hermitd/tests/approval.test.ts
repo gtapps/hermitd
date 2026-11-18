@@ -198,12 +198,15 @@ describe('approval note', () => {
     expect(unannouncedCandidate(f.project)).toBe(pending.candidate);
     markApprovalNote(f.project, 'notified', 'another-candidate');
     expect(note(f.project).notified).toBe(false);
+    expect(markApprovalNote(f.project, 'doctor_requested', pending.candidate)).toBe(true);
+    expect(markApprovalNote(f.project, 'doctor_requested', pending.candidate)).toBe(false);
     markApprovalNote(f.project, 'notified', pending.candidate);
     await f.approve();
-    expect(note(f.project)).toMatchObject({ status: 'pending', notified: true });
+    expect(note(f.project)).toMatchObject({ status: 'pending', notified: true, doctor_requested: true });
     f.write('docker-compose.override.yml', 'services: {b: {}}\n');
     await f.approve();
     expect(note(f.project)).toMatchObject({ status: 'pending', notified: false });
+    expect(note(f.project).doctor_requested).toBeUndefined();
     fs.rmSync(path.join(f.project, 'docker-compose.override.yml'));
     expect((await f.approve()).applied).toBe(baseline);
     expect(note(f.project).status).toBe('approved');
